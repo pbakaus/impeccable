@@ -1872,6 +1872,8 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
     // renders it as the current capture does) was seen and accepted without it.
     let viewport_accepted = human_accepted_viewport(human);
     let as_accepted = human_rendered_as_accepted(human);
+    // Missing plates the accepted screenshot lacks too: worded as a question once the reasons are final.
+    let mut plate_questions: Vec<(String, String)> = Vec::new();
     for id in &missing_ids {
         if let Some(r) = regions.iter().find(|r| r.get("id").and_then(Value::as_str) == Some(id.as_str())) {
             if r.get("verdict").and_then(Value::as_str) == Some("missing") {
@@ -1883,9 +1885,8 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
                 if waive(id, &format!("{message}; the first viewport the user accepted lacks it too, so the acceptance covers it"), &mut advisories) { continue; }
                 // A produced plate must ship, so its absence stays material; when the accepted
                 // screenshot already lacks it, restoring cannot clear it, so the user decides.
-                let message = if viewport_accepted && as_accepted.contains(id) {
-                    format!("{message}. The first viewport the user accepted already lacks it, so restoring what they accepted cannot clear this. Stop iterating and ask the user: place the plate at its box (the page then no longer matches the accepted screenshot, and the readings apply again until it passes), or keep the first viewport without it. Keeping it downgrades the comp, so it takes their words saying so, quoted in {s} build-phase advance --force --reason (for example: the user said: \"the plate does not need to match\"); force refuses any other reason.")
-                } else { message };
+                let raster = matches!(r.get("kind").and_then(Value::as_str), Some("plate" | "image" | "texture"));
+                if raster && viewport_accepted && as_accepted.contains(id) { plate_questions.push((id.clone(), message.clone())); }
                 push_region_blocker(&mut reasons, &mut region_reasons, id, message);
                 material.push(reasons.last().unwrap().clone());
             }
@@ -2145,6 +2146,23 @@ fn gate_hero_inner(io: &Io, state: &mut Value, build_path: &str, min: f64, out_d
             Some(i) => { advisories.push(format!("(measured) {}", reasons[i])); reasons[i] = lapse; }
             None if !reasons.is_empty() => reasons.insert(0, lapse),
             None => advisories.insert(0, format!("(advisory) {lapse}")),
+        }
+    }
+    // Restoring cannot clear a plate the accepted screenshot lacks too, so the user decides.
+    // Force closes the whole gate, so it is offered only when nothing else blocks.
+    if !plate_questions.is_empty() {
+        let others = reasons.iter().filter(|r| !plate_questions.iter().any(|(_, m)| m == *r)).count();
+        for (id, plain) in &plate_questions {
+            let asked = if others == 0 {
+                format!("{plain}. The first viewport the user accepted already lacks it, so restoring what they accepted cannot clear this. Stop iterating and ask the user: place the plate at its box (the page then no longer matches the accepted screenshot, and the readings apply again until it passes), or keep the first viewport without it. Keeping it downgrades the comp, so it takes their words saying so, quoted in {s} build-phase advance --force --reason (for example: the user said: \"the plate does not need to match\"); force refuses any other reason.")
+            } else {
+                format!("{plain}. The first viewport the user accepted already lacks it, so restoring what they accepted cannot clear this. Clear the other blocking reasons first: once this plate is all that blocks, ask the user whether to place it at its box or keep the first viewport without it; force closes the whole gate, so it is never the answer while anything else blocks.")
+            };
+            for r in reasons.iter_mut().filter(|r| *r == plain) { *r = asked.clone(); }
+            for m in material.iter_mut().filter(|m| *m == plain) { *m = asked.clone(); }
+            if let Some(rows) = region_reasons.get_mut(id).and_then(Value::as_array_mut) {
+                for m in rows.iter_mut().filter(|m| m.as_str() == Some(plain.as_str())) { *m = json!(asked.clone()); }
+            }
         }
     }
     if let Some(h) = human {

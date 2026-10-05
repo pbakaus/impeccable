@@ -1663,6 +1663,13 @@ fn a_plate_the_accepted_first_viewport_lacks_asks_the_user_instead_of_looping() 
     assert!(reason.contains("already lacks it, so restoring what they accepted cannot clear this") && reason.contains("ask the user") && reason.contains("build-phase advance --force --reason"), "{reason}");
     let example = reason.split("for example: ").nth(1).unwrap().split(')').next().unwrap();
     assert!(force_allowed(Some(example)), "{example}");
+    // With another material veto outstanding, force would close that too: the question waits.
+    let svg = format!("{REVIEWED_PAGE}<svg width=\"400\" height=\"300\" viewBox=\"0 0 400 300\">{}</svg>",
+        (0..12).map(|i| format!("<path d=\"M{i} 0 C {} 40 80 {} 120 {i} S 200 90 240 {}\"/>", i * 7, i * 9, i * 11)).collect::<String>());
+    let (gate, _) = run_reviewed_hero(&blank, Some(&blank), &svg);
+    assert!(gate.reasons.iter().any(|r| r.contains("inline SVG")), "{:?}", gate.reasons);
+    let reason = gate.reasons.iter().find(|r| r.starts_with("region art is missing")).expect("the plate still blocks");
+    assert!(reason.contains("Clear the other blocking reasons first") && !reason.contains("--force --reason"), "{reason}");
     // Unreviewed, or removed after the acceptance, the plate blocks without the question.
     for approved in [None, Some(reviewed_hero(true, true))] {
         let (gate, _) = run_reviewed_hero(&blank, approved.as_ref(), REVIEWED_PAGE);
