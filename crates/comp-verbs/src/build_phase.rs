@@ -2603,6 +2603,12 @@ fn run_gate(io: &Io, state: &mut Value, phase: &str, opts: &GateOpts, organic_sc
 /// current spec. A hosted review lives in the host's store: the host names its trusted
 /// session directories, and the gate fails closed without them.
 fn plan_review_refusal(io: &Io) -> Option<String> {
+    // A spec with no plate and no code region to decide on has nothing to review;
+    // `component-review plan` says so and writes no packet, so demanding an
+    // acceptance here would deadlock the build on a review that cannot exist.
+    if !impeccable_context::component_review::plan::spec_needs_review(&io.cwd) {
+        return None;
+    }
     let s = self_cmd(io);
     if let Some(tool) = io.env("IMPECCABLE_COMPONENT_REVIEW_TOOL") {
         let Some(named) = io.env("IMPECCABLE_COMPONENT_REVIEW_SESSIONS") else {

@@ -164,7 +164,10 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = |k: &str| body[k].as_str().ok_or_else(|| format!("missing {k}"));
             match route.as_str() {
                 "/capture" => {
-                    require_component_review(component_review_pending, &review_tool)?;
+                    // Pending only binds while the spec owes a review: a spec with nothing
+                    // to decide never produces a kit to approve.
+                    require_component_review(component_review_pending
+                        && impeccable_context::component_review::plan::spec_needs_review(&root), &review_tool)?;
                     if active.len() >= 2 {
                         return Err("active capture limit".into());
                     }

@@ -105,6 +105,30 @@ fn hosted_capture_routes_to_the_review_tool_before_browser_or_store_access() {
     assert!(error.contains("Call component_review with manifest_path=\"review.json\""), "{error}");
     assert!(!f.root.join(".impeccable").exists());
 }
+#[test]
+fn hosted_lifecycle_owes_no_components_review_for_a_spec_with_nothing_to_decide() {
+    let f = Fixture::new();
+    let lifecycle = |project: Option<&std::path::Path>| {
+        let (mut io, captured) = impeccable_common::Io::captured("", f.project.clone(),
+            std::collections::HashMap::from([("HOME".into(), f.root.to_string_lossy().into_owned())]));
+        let mut args: Vec<String> = ["lifecycle", "--hosted", "--require", "components", "--require", "hero"].map(String::from).to_vec();
+        if let Some(project) = project { args.extend(["--project".into(), project.to_string_lossy().into_owned()]); }
+        assert_eq!(super::run(&args, &mut io), 0);
+        let out = captured.stdout.borrow().clone();
+        serde_json::from_slice::<Value>(&out).unwrap()
+    };
+    // No spec yet: the components stage stays owed, with or without the project named.
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
+    fs::create_dir_all(f.project.join(".impeccable/build")).unwrap();
+    fs::write(f.project.join(super::plan::SPEC), br#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#).unwrap();
+    assert_eq!(lifecycle(None)["stage"], "components");
+    // Named, a spec with nothing to decide releases the kit review; the hero review still binds.
+    let named = lifecycle(Some(&f.project));
+    assert_eq!((named["status"].as_str(), named["stage"].as_str()), (Some("pending"), Some("hero")), "{named}");
+    // A spec with a raster region owes the kit review again.
+    fs::write(f.project.join(super::plan::SPEC), br#"{"regions":[{"id":"art","kind":"plate","box":{"x":0,"y":0,"w":1,"h":1}}]}"#).unwrap();
+    assert_eq!(lifecycle(Some(&f.project))["stage"], "components");
+}
 struct Fixture {
     root: PathBuf,
     project: PathBuf,

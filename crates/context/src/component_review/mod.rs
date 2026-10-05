@@ -12,7 +12,7 @@ pub mod verify;
 mod visual_approval;
 use impeccable_common::Io;
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 fn arg(args: &[String], name: &str) -> Option<String> {
     args.iter()
         .position(|v| v == name)
@@ -59,8 +59,15 @@ pub fn run_with_capturer(
             Some("lifecycle") => {
                 let sessions: Vec<PathBuf> = args.windows(2).filter(|w| w[0] == "--session-dir")
                     .map(|w| PathBuf::from(&w[1])).collect();
-                let required: Vec<String> = args.windows(2).filter(|w| w[0] == "--require")
+                let mut required: Vec<String> = args.windows(2).filter(|w| w[0] == "--require")
                     .map(|w| w[1].clone()).collect();
+                // A host names the builder project so the components stage is read
+                // against its spec: nothing to decide means no kit review is owed.
+                if let Some(project) = arg(args, "--project") {
+                    if !plan::spec_needs_review(Path::new(&project)) {
+                        required.retain(|stage| stage != "components");
+                    }
+                }
                 let sessions = if sessions.is_empty() && !args.iter().any(|a| a == "--hosted") {
                     let project = io.cwd.canonicalize().map_err(|e| e.to_string())?;
                     lifecycle::project_sessions(&store, &project)?

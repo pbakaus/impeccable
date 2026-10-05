@@ -29,6 +29,15 @@ pub fn needs_review(spec: &Value) -> bool {
         rs.iter().any(|r| raster(r["kind"].as_str().unwrap_or("")) || plan_item(r))
     })
 }
+/// Whether the project's measured spec owes a plan and asset review. A missing or
+/// unreadable spec owes one, so every gate keeps failing closed; only a spec that was
+/// measured and holds nothing to decide releases the review, the same reading
+/// `component-review plan` reports when it refuses to write an empty packet.
+pub fn spec_needs_review(project: &Path) -> bool {
+    std::fs::read(project.join(SPEC)).ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .is_none_or(|spec| needs_review(&spec))
+}
 fn name(id: &str) -> String {
     let words = id.replace(['-', '_'], " ");
     let mut chars = words.trim().chars();
