@@ -1158,9 +1158,13 @@ fn text_only_hero(restyled: bool) -> Image {
 }
 
 fn run_text_only_hero(capture: &Image, approved: Option<&Image>) -> (Gate, Value) {
+    run_text_only_hero_on(&text_only_hero(false), capture, approved)
+}
+
+fn run_text_only_hero_on(comp: &Image, capture: &Image, approved: Option<&Image>) -> (Gate, Value) {
     let ws = Workspace::new();
     let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
-    ws.write("comp.png", &png(&text_only_hero(false)));
+    ws.write("comp.png", &png(comp));
     ws.write("index.html", b"<main><h1>Revenue</h1><button>Export</button></main>");
     let spec = json!({"comp":"comp.png","compSize":{"width":240,"height":160},"regions":[
         {"id":"headline","kind":"text","medium":"semantic","note":"striped headline lettering","type":{},
@@ -1608,4 +1612,79 @@ fn review_next_says_ship_rechecks_and_a_later_edit_needs_ship_again() {
         && native.contains("needs ship recorded again"), "{native}");
     let screenshots = next_instruction(&io, &json!({"phase":"review"}));
     assert!(screenshots.contains("ship refuses while the frontend files differ from the responsive screenshots"), "{screenshots}");
+}
+
+/// The code-led first viewport with a lettered export control (`export`), or
+/// with that control left out of the page.
+fn lettered_text_only_hero(restyled: bool, export: bool) -> Image {
+    let mut img = text_only_hero(restyled);
+    if export {
+        for x in (166..218).step_by(4) { r::fill_rect(&mut img, x as f64, 121., 2., 14., [240., 240., 240., 255.]); }
+    } else {
+        r::fill_rect(&mut img, 160., 116., 64., 24., [244., 244., 240., 255.]);
+    }
+    img
+}
+
+fn text_only_hero_without_export() -> Image { lettered_text_only_hero(true, false) }
+
+#[test]
+fn a_code_region_the_accepted_first_viewport_lacks_does_not_block_the_hero() {
+    let comp = lettered_text_only_hero(false, true);
+    let current = text_only_hero_without_export();
+    let missing = |g: &Gate| g.reasons.iter().any(|r| r.contains("region export is missing"));
+    // Unreviewed, the comp's control is missing and blocks.
+    let (unreviewed, _) = run_text_only_hero_on(&comp, &current, None);
+    assert!(missing(&unreviewed), "{:?}", unreviewed.reasons);
+    // The user saw this first viewport without the control and accepted it: the phase closes.
+    let (accepted, report) = run_text_only_hero_on(&comp, &current, Some(&current));
+    assert!(accepted.ok, "{:?}", accepted.reasons);
+    assert!(accepted.advisories.iter().any(|a| a.starts_with("(advisory, accepted in the first-viewport review) region export is missing") && a.contains("the first viewport the user accepted lacks it too")), "{:?}", accepted.advisories);
+    assert!(report["humanHeroReview"]["acceptedRegions"].as_array().unwrap().contains(&json!("export")), "{report}");
+}
+
+#[test]
+fn a_code_region_removed_after_the_acceptance_still_blocks_the_hero() {
+    // The user accepted the viewport with the control; the build dropped it afterwards.
+    let (gate, report) = run_text_only_hero_on(&lettered_text_only_hero(false, true), &text_only_hero_without_export(), Some(&lettered_text_only_hero(true, true)));
+    assert!(!gate.ok);
+    assert!(gate.reasons.iter().any(|r| r.starts_with("region export is missing") && !r.contains("accepted")), "{:?}", gate.reasons);
+    assert!(gate.reasons[0].starts_with("the hero capture no longer matches the first viewport the user accepted") && gate.reasons[0].contains("export"), "{:?}", gate.reasons);
+    assert!(!gate.advisories.iter().any(|a| a.contains("region export is missing")), "{:?}", gate.advisories);
+    assert_eq!(report["humanHeroReview"]["viewportAccepted"], false);
+}
+
+#[test]
+fn a_plate_the_accepted_first_viewport_lacks_asks_the_user_instead_of_looping() {
+    let blank = reviewed_hero(true, false);
+    let (gate, _) = run_reviewed_hero(&blank, Some(&blank), REVIEWED_PAGE);
+    assert!(!gate.ok);
+    let reason = gate.reasons.iter().find(|r| r.starts_with("region art is missing")).expect("the plate still blocks");
+    assert!(reason.contains("already lacks it, so restoring what they accepted cannot clear this") && reason.contains("ask the user") && reason.contains("build-phase advance --force --reason"), "{reason}");
+    let example = reason.split("for example: ").nth(1).unwrap().split(')').next().unwrap();
+    assert!(force_allowed(Some(example)), "{example}");
+    // Unreviewed, or removed after the acceptance, the plate blocks without the question.
+    for approved in [None, Some(reviewed_hero(true, true))] {
+        let (gate, _) = run_reviewed_hero(&blank, approved.as_ref(), REVIEWED_PAGE);
+        let reason = gate.reasons.iter().find(|r| r.starts_with("region art is missing")).expect("the plate still blocks");
+        assert!(!reason.contains("ask the user"), "{reason}");
+    }
+}
+
+#[test]
+fn a_code_region_the_accepted_first_viewport_lacks_carries_to_desktop_width() {
+    let ws = reviewed_desktop_workspace();
+    // The comp has the control; the accepted first viewport and the desktop frame do not.
+    let current = reviewed_hero(false, false);
+    let mut without = current.clone();
+    r::fill_rect(&mut without, 120., 84., 60., 24., [230., 220., 200., 255.]);
+    let (unreviewed, _) = run_reviewed_desktop(&ws, &without, None, 0.1);
+    assert!(unreviewed.reasons.iter().any(|r| r.contains("region headline is missing")), "{:?}", unreviewed.reasons);
+    let (accepted, report) = run_reviewed_desktop(&ws, &without, Some(&without), 0.1);
+    assert!(accepted.ok, "{:?}", accepted.reasons);
+    assert!(accepted.advisories.iter().any(|a| a.starts_with("(advisory, accepted in the first-viewport review) at desktop width, region headline is missing")), "{:?}", accepted.advisories);
+    assert_eq!(report["humanTextReview"]["acceptedRegions"], json!(["headline"]));
+    // Removed after the acceptance: it blocks again.
+    let (removed, _) = run_reviewed_desktop(&ws, &without, Some(&current), 0.1);
+    assert!(removed.reasons.iter().any(|r| r == "at desktop width, region headline is missing"), "{:?}", removed.reasons);
 }
