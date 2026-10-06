@@ -165,6 +165,20 @@ CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - `cli-version`.
 
+## Recorded 2026-09-10: sampled contrast on image-backed text (#560)
+
+The static engine now reads the pixels of a local `url()` background behind
+text instead of skipping the contrast check (docs/CLI-CONTRACT.md, "Sampled
+contrast"). The JS never had this path, so the new fixture
+`sampled-image-contrast.html` (with `sampled-images/`) has no JS golden; its
+cases were recorded from the engine, and the directory sweeps below moved
+only by that fixture's `low-contrast` findings, verified entry by entry. The
+fixture grew with the review of #806 (2026-10-05) and now carries twelve.
+
+- `detect-fixture-json-sampled-image-contrast-html`, `detect-fixture-text-sampled-image-contrast-html`, `detect-fixture-json-sampled-images`, `detect-fixture-text-sampled-images`: new cases.
+- `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-no-advisory-json`, `detect-no-advisory-text`: the directory sweep picks up the new fixture. Re-recorded after each merge of main (last on 2026-10-06): main's entries plus the fixture's twelve findings and the one below.
+- `detect-fixture-json-surface-resolution-contrast-html`, `detect-fixture-text-surface-resolution-contrast-html`: 13 to 14. That fixture's `#flag-frosted-tagline` sits on a data-URI backdrop under a 95% fill, which its header called URL-engine only; the static engine now reads it by sampling, `sampled (coarse) 3.1:1 (need 4.5:1) — text #818898 on data:image/png`. A true positive gained, not a new false one: the browser pass flags the same text.
+
 ## Recorded 2026-09-12: the URL scan reads the page after the reveal sweep
 
 `crates/browser` now runs the reveal sweep before it captures the page, and

@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "896 anti-patterns found.\n170 advisory notes (not counted).\n",
+  "stderr": "909 anti-patterns found.\n170 advisory notes (not counted).\n",
   "exit": 2,
   "signal": null,
   "files": {}

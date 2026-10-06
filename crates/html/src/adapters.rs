@@ -6,13 +6,15 @@
 //! and the computed style and hands plain data over.
 
 use crate::background::{
-    a_ge, a_gt, read_cascade_background_color, read_own_background_color, resolve_background,
+    a_ge, a_gt, find_image_ground, read_cascade_background_color, read_own_background_color,
+    resolve_background,
     resolve_border_radius_px, resolve_side_accent_corners, resolve_text_gradient_stops,
     resolve_text_surface, sv, sv_opt, CustomPropMap, TextSurface,
 };
 use crate::cascade::StyleValues;
 use crate::layer::picture_under_text;
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::{ground_label, layer_url, ImageSampler};
 use crate::quality::{
     collapse_ws, is_in_non_rendered_markup, is_visually_hidden, pf0, resolve_font_size_px,
 };
@@ -33,6 +35,7 @@ use impeccable_core::checks::rules::{
     HoverContrastOpts, IconTileOpts, ItalicSerifOpts, KickerCandidate, MotionOpts, RuleHit,
     SafeTagTextSeen, Sides,
 };
+use impeccable_core::checks::sampled_contrast::{self, Sampled};
 use impeccable_core::checks::text_rules::{
     check_numbered_section_labels, is_kicker_candidate, is_numbered_section_label_candidate,
     parse_numbered_label_text, KickerCandidateInput, NumberedLabelCandidate,
@@ -946,12 +949,16 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
 }
 
 /// JS: checks.mjs#checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule)
+///
+/// `images` serves the one branch the JS never had: text whose ground is a
+/// `url()` layer is measured against the image's pixels (#560).
 pub fn check_element_colors(
     el: &StaticElement<'_>,
     style: &StyleValues,
     tag: &str,
     custom_props: CustomPropMap<'_>,
     seen: &mut SafeTagTextSeen,
+    images: &ImageSampler,
 ) -> Vec<RuleHit> {
     if sv_opt(style, "visibility") == Some("hidden") {
         return Vec::new();
@@ -1128,13 +1135,41 @@ pub fn check_element_colors(
     let decorative = std::cell::OnceCell::new();
     let is_decorative =
         || *decorative.get_or_init(|| crate::decorative_text::is_decorative_text(el));
-    let mut findings = check_colors_deduped_shaped(
-        &color_opts,
-        seen,
-        None,
-        &is_decorative,
-        &mut |h: &RuleHit| !scoped_ignore_active(el, &h.id) && !picture_under_text(el),
-    );
+    let mut keep = |h: &RuleHit| !scoped_ignore_active(el, &h.id) && !picture_under_text(el);
+    // Where the ground is an image the engine can read, its pixels are the
+    // ground (#560): the analytic pair (nothing, or a fallback color the
+    // image covers) gets no say, whichever way the sampled verdict goes. An
+    // element's own `::before` surface hides the image, so it keeps the
+    // analytic answer, and a stretched picture laid under the text waives
+    // the sampled verdict the way it waives the analytic one.
+    let sampled = if pseudo_surface_read {
+        None
+    } else {
+        sampled_image_contrast(el, &color_opts, images)
+    };
+    let mut findings = match &sampled {
+        Some(_) => check_colors_deduped_shaped(
+            &ColorOpts {
+                effective_bg: None,
+                effective_bg_stops: None,
+                ..color_opts.clone()
+            },
+            seen,
+            None,
+            &is_decorative,
+            &mut keep,
+        ),
+        None => check_colors_deduped_shaped(&color_opts, seen, None, &is_decorative, &mut keep),
+    };
+    if let Some(Sampled::Fail(hit)) = sampled {
+        if keep(&hit) {
+            let mut hits = vec![hit];
+            if is_decorative() {
+                impeccable_core::checks::rules::demote_low_contrast(&mut hits);
+            }
+            findings.extend(hits);
+        }
+    }
     if tag == "input" || tag == "textarea" {
         let placeholder = el.get_attribute("placeholder").unwrap_or("").trim();
         if !placeholder.is_empty() {
@@ -1172,6 +1207,77 @@ pub fn check_element_colors(
         }
     }
     findings
+}
+
+/// The sampled-contrast path (#560): when the text sits on a `url()` layer
+/// the engine can read, measure it against a grid of that image's pixels.
+/// Every gate that needs no IO runs first, the header is read before any
+/// pixel, and nothing is decoded for a layer that is not the ground.
+fn sampled_image_contrast(
+    el: &StaticElement<'_>,
+    opts: &ColorOpts,
+    images: &ImageSampler,
+) -> Option<Sampled> {
+    if !sampled_contrast::applies(opts) {
+        return None;
+    }
+    let ground = find_image_ground(el, images.levels())?;
+    if replaced_by_its_image(el) {
+        return None;
+    }
+    let source = images.source(el.doc, ground.node, &ground.layer)?;
+    let extents = sampled_contrast::layer_extents(
+        &ground.layer.repeat,
+        &ground.layer.size,
+        source.width as f64,
+        source.height as f64,
+        ground.layer.font_size,
+    );
+    // Over an opaque fallback color the image has to provably fill the box
+    // before its pixels replace that color as the ground. With no such
+    // color, anything that is not decoration is the best evidence there is.
+    let is_ground = if ground.over_opaque_color {
+        sampled_contrast::covers_box(extents)
+    } else {
+        !sampled_contrast::is_decoration(extents)
+    };
+    if !is_ground {
+        return None;
+    }
+    let raster = images.raster(el.doc, ground.node, &ground.layer, &source)?;
+    let points = sampled_contrast::grid_points(raster.width as usize, raster.height as usize);
+    let samples: Vec<Rgba> = points
+        .iter()
+        .filter_map(|&(x, y)| {
+            sampled_contrast::composite_sample(raster.pixel(x, y), ground.under, &ground.overlays)
+        })
+        .collect();
+    let label = ground_label(&layer_url(el.doc, ground.node, &ground.layer));
+    sampled_contrast::sampled_contrast(opts, &label, &samples, points.len())
+}
+
+/// Text hidden on purpose over the image that stands in for it: a
+/// visually-hidden label, `font-size: 0`, or a `text-indent` that throws
+/// the first line out of its box (`-9999px`, or `100%`) on the element or
+/// anything above it. The image is the label, so there is no contrast to
+/// measure. A browser can tell by the boxes (the DOM path never measures one
+/// under 10px); a file scan has none and goes by the declarations that make
+/// them.
+///
+/// Such an indent is taken at its word. Whether a descendant that resets it
+/// shows its text again, or text indented by `100%` wraps back into view,
+/// depends on box types and line layout the static engine does not have, so
+/// neither is modelled and both keep the skip: the sampler stays silent
+/// where it cannot know.
+fn replaced_by_its_image(el: &StaticElement<'_>) -> bool {
+    let style = el.style();
+    is_visually_hidden(el, style)
+        || parse_float(sv(style, "fontSize")) == 0.0
+        || std::iter::successors(Some(*el), |e| e.parent_element()).any(|e| {
+            let indent = js::trim(sv(e.style(), "textIndent"));
+            let amount = parse_float(indent);
+            amount <= -999.0 || (indent.ends_with('%') && amount >= 100.0)
+        })
 }
 
 /// JS: checks.mjs#checkElementHoverContrast(el, style, tag, window)

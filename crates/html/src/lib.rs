@@ -11,6 +11,7 @@ pub mod decorative_text;
 pub mod dom;
 pub mod engine;
 pub mod field_label;
+pub mod image_sampling;
 pub mod layer;
 pub mod page;
 pub mod profile;

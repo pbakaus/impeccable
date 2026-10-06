@@ -4,6 +4,8 @@
 //! `compositeGradientStops`, `resolveBorderRadiusPx`), static-engine
 //! branches only (`DETECTOR_IS_BROWSER === false`).
 
+use crate::cascade::csstree::strings::{decode_string, decode_url};
+use crate::cascade::values::{css_call_end, css_string_end, extract_static_color};
 use crate::cascade::StyleValues;
 use crate::dom::StaticElement;
 use ego_tree::NodeId;
@@ -13,6 +15,7 @@ use impeccable_core::checks::measures::{
     parse_radius_token_px, CustomProps, ROOT_FONT_SIZE_PX,
 };
 use impeccable_core::checks::rules::Corners;
+use impeccable_core::checks::sampled_contrast::uniform_wash;
 use impeccable_core::color::{
     composite_color_over, is_no_paint_color_value, parse_any_color, parse_gradient_colors,
     parse_rgb, split_top_level_commas, Rgba,
@@ -20,6 +23,10 @@ use impeccable_core::color::{
 use impeccable_core::js;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// `style.x || ''` on a computed style map.
 pub fn sv<'a>(style: &'a StyleValues, key: &str) -> &'a str {
@@ -199,6 +206,24 @@ fn flatten(overlays: &[(NodeId, Rgba)], base: Rgba) -> Rgba {
     acc
 }
 
+/// One element's own background color as both ancestor walks read it: the
+/// cascade color, or the text color when the declared value is
+/// `currentcolor`.
+fn level_background_color(
+    cur: &StaticElement<'_>,
+    style: &StyleValues,
+    custom_props: CustomPropMap<'_>,
+) -> Option<Rgba> {
+    let mut bg = read_cascade_background_color(cur, style, custom_props);
+    if (bg.is_none() || bg.as_ref().is_some_and(|c| a_lt(c, 0.1)))
+        && CURRENTCOLOR_RE.is_match(js::trim(sv(style, "backgroundColor")))
+    {
+        let color = sv_opt(style, "color");
+        bg = parse_rgb(color).or_else(|| parse_color_resolved(color, custom_props));
+    }
+    bg
+}
+
 /// JS: checks.mjs#resolveBackgroundInfo(el, win, customPropMap)
 pub fn resolve_background_info(
     el: &StaticElement<'_>,
@@ -285,14 +310,7 @@ fn walk_surface(
             && bg_image != "none"
             && (GRADIENT_RE.is_match(bg_image) || URL_CALL_RE.is_match(bg_image));
 
-        let mut bg = read_cascade_background_color(&cur, style, custom_props);
-
-        if (bg.is_none() || bg.as_ref().is_some_and(|c| a_lt(c, 0.1)))
-            && CURRENTCOLOR_RE.is_match(js::trim(sv(style, "backgroundColor")))
-        {
-            let color = sv_opt(style, "color");
-            bg = parse_rgb(color).or_else(|| parse_color_resolved(color, custom_props));
-        }
+        let bg = level_background_color(&cur, style, custom_props);
 
         if let Some(c) = bg.as_ref().filter(|c| a_gt(c, q.min_fill_alpha)) {
             if a_ge(c, 0.99) {
@@ -620,4 +638,603 @@ pub fn resolve_side_accent_corners(
         }
     }
     resolve_border_radius_corners(style, width_px)
+}
+
+// ─── the image ground (#560) ────────────────────────────────────────────────
+
+static GRADIENT_PRELUDE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(
+        r"(?i)^(?:to{ws}|from{ws}|at{ws}|in{ws}|[-+]?[0-9.]+(?:deg|grad|rad|turn)(?-u:\b)|circle(?-u:\b)|ellipse(?-u:\b)|closest-|farthest-)|{ws}at{ws}",
+        ws = js::WS
+    ))
+    .expect("GRADIENT_PRELUDE_RE")
+});
+static STOP_POSITION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^[-+]?[0-9.]+(?:%|[a-z]+)?$").expect("STOP_POSITION_RE"));
+
+/// The first call at the top level of `text[from..to]` whose name `wanted`
+/// accepts, as `(start of the name, index of its "(")`. A call nested in
+/// another (`image-set(url(a.png) 1x)`, `cross-fade(..)`) is that function's
+/// argument, not the layer's image, and a string hides whatever it quotes.
+fn top_level_call(
+    text: &str,
+    from: usize,
+    to: usize,
+    wanted: impl Fn(&str) -> bool,
+) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let is_name = |b: u8| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b >= 0x80;
+    let mut i = from;
+    while i < to {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'"' | b'\'' => i = css_string_end(text, i),
+            b'(' => {
+                let mut name = i;
+                while name > from && is_name(bytes[name - 1]) {
+                    name -= 1;
+                }
+                if wanted(&text[name..i]) {
+                    return Some((name, i));
+                }
+                i = css_call_end(text, i);
+            }
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+fn is_gradient_name(name: &str) -> bool {
+    name.len() >= 8 && name.as_bytes()[name.len() - 8..].eq_ignore_ascii_case(b"gradient")
+}
+
+/// A `url()` call inside a background value, located the way the CSS
+/// tokenizer would: `url(` and then a quoted string, or an unquoted run to
+/// the first unescaped `)`. Spans are byte offsets into the value it was
+/// found in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UrlCall {
+    arg_start: usize,
+    arg_end: usize,
+    quoted: bool,
+    escaped: bool,
+}
+
+impl UrlCall {
+    /// The `url()` call at the top level of `text[from..to]`. `url(` inside
+    /// a longer identifier (`myurl(`) is a custom function, not this token.
+    fn find(text: &str, from: usize, to: usize) -> Option<UrlCall> {
+        let (_, open) = top_level_call(text, from, to, |name| name.eq_ignore_ascii_case("url"))?;
+        let close = css_call_end(text, open).min(to);
+        let closed = close > open + 1 && text.as_bytes()[close - 1] == b')';
+        let inner_end = if closed { close - 1 } else { close };
+        let inner = &text[open + 1..inner_end];
+        let lead = inner.len() - inner.trim_start().len();
+        let trimmed = inner.trim();
+        let mut arg_start = open + 1 + lead;
+        let mut arg_end = arg_start + trimmed.len();
+        let bytes = trimmed.as_bytes();
+        let quoted = bytes.len() >= 2
+            && (bytes[0] == b'"' || bytes[0] == b'\'')
+            && bytes[bytes.len() - 1] == bytes[0];
+        if quoted {
+            arg_start += 1;
+            arg_end -= 1;
+        }
+        Some(UrlCall {
+            arg_start,
+            arg_end,
+            quoted,
+            escaped: text[arg_start..arg_end].contains('\\'),
+        })
+    }
+
+    /// The url the call names, decoded. Borrowed from `text` unless it
+    /// carries escapes, so a multi-megabyte data URI is never copied.
+    pub fn value<'t>(&self, text: &'t str) -> Cow<'t, str> {
+        let raw = &text[self.arg_start..self.arg_end];
+        if !self.escaped {
+            Cow::Borrowed(raw)
+        } else if self.quoted {
+            Cow::Owned(decode_string(&text[self.arg_start - 1..self.arg_end + 1]))
+        } else {
+            Cow::Owned(decode_url(&format!("url({raw})")))
+        }
+    }
+}
+
+/// The byte spans of a background list's top-level layers, trimmed. Commas
+/// inside calls and strings do not split.
+fn layer_spans(text: &str) -> Vec<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'(' => {
+                i = css_call_end(text, i);
+                continue;
+            }
+            b'"' | b'\'' => {
+                i = css_string_end(text, i);
+                continue;
+            }
+            b',' => {
+                spans.push((start, i));
+                start = i + 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    spans.push((start.min(text.len()), text.len()));
+    spans
+        .into_iter()
+        .map(|(from, to)| {
+            let slice = &text[from..to];
+            let lead = slice.len() - slice.trim_start().len();
+            (from + lead, from + lead + slice.trim().len())
+        })
+        .collect()
+}
+
+/// One entry of a comma-separated background list, with the CSS wraparound
+/// for a list shorter than the image list.
+fn layer_entry(value: &str, index: usize) -> String {
+    let parts = split_top_level_commas(value);
+    if parts.is_empty() {
+        return String::new();
+    }
+    js::trim(&parts[index % parts.len()]).to_string()
+}
+
+/// The stops of a gradient call (`linear-gradient(..)`, name to closing
+/// paren), when every one of them was read. `parse_gradient_colors` reads
+/// color functions and hex only, so a `transparent`, named, `currentcolor`,
+/// or `var()` stop goes missing from its result, and a wash judged on the
+/// stops that remain is not the wash that paints. `None` for that case, and
+/// for a gradient with no stops.
+fn gradient_stops(call: &str) -> Option<Vec<Rgba>> {
+    let stops = parse_gradient_colors(Some(call));
+    let args = &call[call.find('(')? + 1..];
+    let args = args.strip_suffix(')').unwrap_or(args);
+    let expected = split_top_level_commas(args)
+        .iter()
+        .enumerate()
+        .filter(|(index, segment)| {
+            let segment = js::trim(segment);
+            let prelude = *index == 0 && GRADIENT_PRELUDE_RE.is_match(segment);
+            !segment.is_empty() && !prelude && !STOP_POSITION_RE.is_match(segment)
+        })
+        .count();
+    (!stops.is_empty() && stops.len() == expected).then_some(stops)
+}
+
+/// A background layer that names a color and nothing else: the final layer
+/// of `background: url(x.png), #17150f`. An unresolved `var()` could be an
+/// image as easily as a color, so it is not one.
+fn is_color_layer(layer: &str) -> bool {
+    let var = layer
+        .get(..4)
+        .is_some_and(|head| head.eq_ignore_ascii_case("var("));
+    !var && extract_static_color(layer) == layer
+}
+
+/// What one element paints behind its descendants' text, as the sampled
+/// path reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LevelPaint {
+    /// Translucent paint only (uniform washes, then the element's own
+    /// color), top to bottom. The walk goes on to the parent.
+    Through(Vec<Rgba>),
+    /// The analytic walk owns this level: an opaque color with no image over
+    /// it, an opaque gradient, a scrim that varies or has a stop the engine
+    /// cannot read, an unparseable color, or an image function it cannot
+    /// read.
+    Stop,
+    /// A `url()` layer, with what the element paints over and under it.
+    Image(ImageLayer),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageLayer {
+    /// The `url()` call inside the element's `backgroundImage` value.
+    pub call: UrlCall,
+    /// The layer's own `background-repeat` and `background-size` entries.
+    pub repeat: String,
+    pub size: String,
+    /// Uniform washes listed above the image in the same declaration.
+    pub washes: Vec<Rgba>,
+    /// The element's own background color, painted beneath the image.
+    pub color: Option<Rgba>,
+    /// Another layer is listed beneath the image, so a translucent pixel has
+    /// unknown paint under it.
+    pub layers_beneath: bool,
+    /// The element's font size in px, for a size given in `em`.
+    pub font_size: f64,
+}
+
+/// The paint of one element, in isolation from its ancestors.
+pub fn analyze_level(cur: &StaticElement<'_>) -> LevelPaint {
+    let style = cur.style();
+    // `display: contents` generates no box: its fill and its image paint
+    // nowhere, and the walk reads past it, as the analytic walk does.
+    if paints_no_box(style) {
+        return LevelPaint::Through(Vec::new());
+    }
+    let bg = level_background_color(cur, style, None);
+    if bg.is_none() && !is_no_paint_color_value(sv_opt(style, "backgroundColor")) {
+        return LevelPaint::Stop;
+    }
+    let color = bg.filter(|c| a_gt(c, 0.1));
+    let bg_image = sv(style, "backgroundImage");
+    let mut washes: Vec<Rgba> = Vec::new();
+    if !bg_image.is_empty() {
+        let spans = layer_spans(bg_image);
+        for (index, &(from, to)) in spans.iter().enumerate() {
+            let layer = &bg_image[from..to];
+            if layer.is_empty() || layer.eq_ignore_ascii_case("none") {
+                continue;
+            }
+            if let Some((name, open)) = top_level_call(bg_image, from, to, is_gradient_name) {
+                // An opaque gradient is the ground; a scrim that varies is
+                // placed under the text on purpose, and without layout the
+                // engine cannot say which stop the text sits on.
+                let call = &bg_image[name..css_call_end(bg_image, open)];
+                let Some(stops) = gradient_stops(call) else {
+                    return LevelPaint::Stop;
+                };
+                if stops.iter().all(|s| s.alpha_or_one() >= 0.99) {
+                    return LevelPaint::Stop;
+                }
+                let Some(wash) = uniform_wash(&stops) else {
+                    return LevelPaint::Stop;
+                };
+                washes.push(wash);
+                continue;
+            }
+            // A shorthand layer may put color, position, size, or repeat
+            // tokens around the image call; the call is what matters.
+            let Some(call) = UrlCall::find(bg_image, from, to) else {
+                return LevelPaint::Stop;
+            };
+            // `none` paints nothing, and a final layer that is only a color
+            // is the element's own color, which the cascade stored as
+            // `backgroundColor`. Anything else beneath the image is paint
+            // this walk has not read.
+            let last = spans.len() - 1;
+            let layers_beneath = (index + 1..spans.len()).any(|below| {
+                let (from, to) = spans[below];
+                let rest = &bg_image[from..to];
+                !(rest.is_empty()
+                    || rest.eq_ignore_ascii_case("none")
+                    || (below == last && is_color_layer(rest)))
+            });
+            let font_size = js::parse_float(sv(style, "fontSize"));
+            return LevelPaint::Image(ImageLayer {
+                call,
+                repeat: layer_entry(sv(style, "backgroundRepeat"), index),
+                size: layer_entry(sv(style, "backgroundSize"), index),
+                washes,
+                color,
+                layers_beneath,
+                font_size: if font_size > 0.0 { font_size } else { 16.0 },
+            });
+        }
+    }
+    if color.as_ref().is_some_and(|c| a_ge(c, 0.99)) {
+        return LevelPaint::Stop;
+    }
+    washes.extend(color);
+    LevelPaint::Through(washes)
+}
+
+/// [`analyze_level`] remembered per element for one document: a page's text
+/// elements share their ancestors, and an ancestor's background (a data URI
+/// can run to megabytes) is read once.
+#[derive(Default)]
+pub struct LevelCache(RefCell<HashMap<NodeId, Rc<LevelPaint>>>);
+
+impl LevelCache {
+    fn get(&self, el: &StaticElement<'_>) -> Rc<LevelPaint> {
+        if let Some(hit) = self.0.borrow().get(&el.id()) {
+            return hit.clone();
+        }
+        let paint = Rc::new(analyze_level(el));
+        self.0.borrow_mut().insert(el.id(), paint.clone());
+        paint
+    }
+}
+
+/// The image a text element sits on: the nearest level that paints a `url()`
+/// layer, with everything painted between the text and it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageGround {
+    /// The element that paints the image.
+    pub node: NodeId,
+    pub layer: ImageLayer,
+    /// Translucent paint between the text and the image, top to bottom.
+    pub overlays: Vec<Rgba>,
+    /// What a translucent pixel composites over, when the walk can say.
+    pub under: Option<Rgba>,
+    /// The element also declares an opaque color, so the image replaces it
+    /// as the ground only if it provably covers the box.
+    pub over_opaque_color: bool,
+}
+
+/// The walk the sampled path takes in place of [`resolve_background_info`]:
+/// up from the text to the first `url()` layer. `None` when an element on
+/// the way is one the analytic walk owns (see [`LevelPaint::Stop`]) or when
+/// no image is reached.
+pub fn find_image_ground(el: &StaticElement<'_>, levels: &LevelCache) -> Option<ImageGround> {
+    let mut current = Some(*el);
+    let mut overlays: Vec<Rgba> = Vec::new();
+    while let Some(cur) = current {
+        match &*levels.get(&cur) {
+            LevelPaint::Stop => return None,
+            LevelPaint::Through(paint) => overlays.extend(paint.iter().copied()),
+            LevelPaint::Image(layer) => {
+                overlays.extend(layer.washes.iter().copied());
+                let over_opaque_color = layer.color.as_ref().is_some_and(|c| a_ge(c, 0.99));
+                // A layer beneath the image is unknown paint. Otherwise the
+                // element's own color, over its parent's ground when it is
+                // translucent, white at the root like the analytic walk.
+                let under = if layer.layers_beneath {
+                    None
+                } else if over_opaque_color {
+                    layer.color
+                } else {
+                    let parent_ground = match cur.parent_element() {
+                        Some(p) => resolve_background(&p, None),
+                        None => Some(Rgba::new(255.0, 255.0, 255.0, 1.0)),
+                    };
+                    match layer.color {
+                        Some(c) => parent_ground.map(|p| composite_color_over(&c, &p)),
+                        None => parent_ground,
+                    }
+                };
+                return Some(ImageGround {
+                    node: cur.id(),
+                    layer: layer.clone(),
+                    overlays,
+                    under,
+                    over_opaque_color,
+                });
+            }
+        }
+        current = cur.parent_element();
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cascade::{build_static_style_map, collect_static_css_text};
+    use crate::dom::StaticDocument;
+    use std::path::Path;
+
+    fn url_in(text: &str) -> Option<Cow<'_, str>> {
+        UrlCall::find(text, 0, text.len()).map(|call| call.value(text))
+    }
+
+    #[test]
+    fn a_url_call_ends_where_the_tokenizer_says() {
+        assert_eq!(url_in("url(x.png)").as_deref(), Some("x.png"));
+        assert_eq!(
+            url_in("URL( 'x y.png' ) no-repeat").as_deref(),
+            Some("x y.png")
+        );
+        // The generator's unquoted-escaped form: an escaped paren is part
+        // of the url, not its end.
+        assert_eq!(
+            url_in(r"url(a\).png)center/cover").as_deref(),
+            Some("a).png")
+        );
+        assert_eq!(url_in(r"url(a\ b\(1\).png)").as_deref(), Some("a b(1).png"));
+        // A style attribute keeps its quotes: an escaped quote does not
+        // close the string, and a paren inside it does not close the call.
+        assert_eq!(
+            url_in(r#"url("a\"b.png") no-repeat"#).as_deref(),
+            Some(r#"a"b.png"#)
+        );
+        assert_eq!(
+            url_in(r#"url("a).png") no-repeat"#).as_deref(),
+            Some("a).png")
+        );
+        // Tokens may come first, and a color function ahead of the image is
+        // not the call.
+        assert_eq!(
+            url_in("rgba(0, 0, 0, 0.5) url(x.png)center/cover").as_deref(),
+            Some("x.png")
+        );
+        assert_eq!(url_in("myurl(x.png)"), None);
+        assert_eq!(url_in("linear-gradient(red, blue)"), None);
+        // A url that is another function's argument is not the layer's
+        // image, and neither is one a string merely mentions.
+        assert_eq!(url_in("image-set(url(x.png) 1x, url(x2.png) 2x)"), None);
+        assert_eq!(url_in("cross-fade(url(a.png), url(b.png), 50%)"), None);
+        assert_eq!(url_in(r#"image-set("url(x.png)" 1x)"#), None);
+        // No escapes means no copy, whatever the length.
+        let uri = format!("url(data:image/png;base64,{})", "A".repeat(4096));
+        assert!(matches!(url_in(&uri), Some(Cow::Borrowed(_))));
+        // A call that never closes still yields what is there.
+        assert_eq!(url_in("url(x.png").as_deref(), Some("x.png"));
+    }
+
+    #[test]
+    fn layers_split_on_top_level_commas_only() {
+        let text = r#"linear-gradient(red, blue) , url("a,b.png") center, none"#;
+        let layers: Vec<&str> = layer_spans(text)
+            .into_iter()
+            .map(|(from, to)| &text[from..to])
+            .collect();
+        assert_eq!(
+            layers,
+            [
+                "linear-gradient(red, blue)",
+                r#"url("a,b.png") center"#,
+                "none"
+            ]
+        );
+        assert_eq!(layer_spans("none"), vec![(0, 4)]);
+    }
+
+    #[test]
+    fn a_gradient_is_read_only_when_every_stop_is() {
+        let uniform =
+            gradient_stops("linear-gradient(to right, rgba(0,0,0,.4) 0%, rgba(0,0,0,.4) 100%)");
+        assert_eq!(uniform.map(|s| s.len()), Some(2));
+        assert_eq!(
+            gradient_stops("radial-gradient(circle at top, #000, 40%, #fff)").map(|s| s.len()),
+            Some(2)
+        );
+        assert_eq!(
+            gradient_stops("conic-gradient(from 90deg, #000 0deg, #fff 180deg)").map(|s| s.len()),
+            Some(2)
+        );
+        // A stop the color parser does not read is a stop all the same.
+        for scrim in [
+            "linear-gradient(rgba(0,0,0,.8), transparent)",
+            "linear-gradient(to top, rgba(0,0,0,.75), transparent)",
+            "linear-gradient(transparent, rgba(0,0,0,.8))",
+            "linear-gradient(black, rgba(0,0,0,.8))",
+            "linear-gradient(rgba(0,0,0,.8), currentcolor)",
+            "linear-gradient(rgba(0,0,0,.8), var(--end))",
+            "linear-gradient(transparent, transparent)",
+        ] {
+            assert_eq!(gradient_stops(scrim), None, "{scrim}");
+        }
+    }
+
+    #[test]
+    fn only_unread_paint_counts_as_a_layer_beneath_the_image() {
+        let beneath = |background: &str| -> bool {
+            let doc = document(&format!(
+                "<style>.x {{ background: {background}; }}</style><p class=x>Text</p>"
+            ));
+            let el = doc.query_selector(".x").expect("element");
+            match analyze_level(&el) {
+                LevelPaint::Image(layer) => layer.layers_beneath,
+                other => panic!("{background}: {other:?}"),
+            }
+        };
+        assert!(!beneath("url(a.png)"));
+        assert!(!beneath("url(a.png), none"));
+        // The declared color is the element's own, not unknown paint.
+        assert!(!beneath("url(a.png), #17150f"));
+        assert!(!beneath("url(a.png) no-repeat, rgba(23, 21, 15, 0.9)"));
+        assert!(beneath("url(a.png), url(b.png)"));
+        assert!(beneath("url(a.png), linear-gradient(#000, #fff)"));
+        assert!(beneath("url(a.png), url(b.png), #17150f"));
+        assert!(beneath("url(a.png), var(--below)"));
+    }
+
+    fn document(html: &str) -> StaticDocument {
+        let mut doc = StaticDocument::parse(html);
+        let css = collect_static_css_text(&doc, Path::new("/nonexistent"), None, "x.html", None);
+        build_static_style_map(&mut doc, &css, None, "x.html");
+        doc
+    }
+
+    /// The two ancestor walks, side by side: the analytic one (`unresolved`)
+    /// and the sampled one (an image ground, and whether it sits over an
+    /// opaque color).
+    fn walks(css: &str) -> (bool, Option<bool>) {
+        let doc = document(&format!(
+            "<style>{css}</style><section><div class=x><p id=t>Text</p></div></section>"
+        ));
+        let el = doc.query_selector("#t").expect("text element");
+        let levels = LevelCache::default();
+        (
+            resolve_background_info(&el, None).unresolved,
+            find_image_ground(&el, &levels).map(|g| g.over_opaque_color),
+        )
+    }
+
+    #[test]
+    fn the_sampled_walk_finds_an_image_only_where_the_analytic_walk_cannot_see_past_one() {
+        // Wherever the analytic walk reports `unresolved` because of a
+        // `url()` layer, the sampled walk finds that layer, and nowhere else
+        // does it claim one without an opaque color to say so.
+        for (css, unresolved, ground) in [
+            (".x { background: url(a.png); }", true, Some(false)),
+            (
+                ".x { background-image: none, url(a.png); }",
+                true,
+                Some(false),
+            ),
+            (
+                ".x { background: center / cover no-repeat url(a.png); }",
+                true,
+                Some(false),
+            ),
+            (
+                ".x { background: rgba(0,0,0,.4) url(a.png); }",
+                true,
+                Some(false),
+            ),
+            (
+                ".x { background: linear-gradient(rgba(0,0,0,.4), rgba(0,0,0,.4)), url(a.png); }",
+                true,
+                Some(false),
+            ),
+            (
+                "section { background: url(a.png); } .x { background: rgba(0,0,0,.4); }",
+                true,
+                Some(false),
+            ),
+            // A scrim, a stop it cannot read, an image function it cannot
+            // read: both walks give up.
+            (
+                ".x { background: linear-gradient(rgba(0,0,0,.8), transparent), url(a.png); }",
+                true,
+                None,
+            ),
+            (
+                ".x { background: linear-gradient(rgba(0,0,0,.8), rgba(0,0,0,0)), url(a.png); }",
+                true,
+                None,
+            ),
+            (
+                ".x { background-image: image-set(url(a.png) 1x); }",
+                true,
+                None,
+            ),
+            // An opaque color: the analytic walk resolves it. The sampled
+            // walk agrees unless an image is painted over that color.
+            (".x { background: #111; }", false, None),
+            (
+                "section { background: url(a.png); } .x { background: #111; }",
+                false,
+                None,
+            ),
+            (".x { background: #111 url(a.png); }", false, Some(true)),
+            (".x { background: url(a.png) #111; }", false, Some(true)),
+            // A color-only shorthand clears the image an earlier rule set.
+            (
+                ".x { background: url(a.png); } div.x { background: transparent; }",
+                false,
+                None,
+            ),
+            // No image anywhere.
+            (".x { color: red; }", false, None),
+            // A `display: contents` box paints nothing: its own image is not
+            // a ground, and it does not hide the one behind it.
+            (".x { display: contents; background: url(a.png); }", false, None),
+            (
+                "section { background: url(a.png); } .x { display: contents; background: #111; }",
+                true,
+                Some(false),
+            ),
+            // A color as the final layer of the list is the color, in
+            // either walk.
+            (".x { background: url(a.png), #111; }", false, Some(true)),
+        ] {
+            assert_eq!(walks(css), (unresolved, ground), "{css}");
+        }
+    }
 }

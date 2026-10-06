@@ -32,6 +32,9 @@
 //!   checkNumberedSectionLabels, checkEmDashOveruse, isRepeatedTextContainer.
 //!   Open (selector and tag lists, thresholds, the two text parsers):
 //!   `impeccable_foundation::rules::text`.
+//! - `sampled_contrast`: the static engine's pixel-sampled verdict for text
+//!   over a `url()` background (#560): grid, decoration gate, wash and
+//!   compositing rules, the percentile verdict. No JS ancestor.
 //! - `text_context`: the contexts in which a typography finding reports as
 //!   advisory (framed HTML demos, legal fine print, micro-labels), decided
 //!   once over the `ContextNode` both engines implement.
@@ -54,6 +57,7 @@ pub mod gradient_geometry;
 pub mod html_patterns;
 pub mod measures;
 pub mod rules;
+pub mod sampled_contrast;
 pub mod text_context;
 pub mod text_rules;
 

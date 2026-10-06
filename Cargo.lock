@@ -515,6 +515,7 @@ dependencies = [
  "image-webp",
  "moxcms",
  "num-traits",
+ "png",
  "zune-core",
  "zune-jpeg",
 ]
@@ -686,9 +687,11 @@ dependencies = [
 name = "impeccable-html"
 version = "0.1.11"
 dependencies = [
+ "base64",
  "cssparser",
  "ego-tree",
  "html5ever",
+ "image",
  "impeccable-common",
  "impeccable-core",
  "impeccable-detect",

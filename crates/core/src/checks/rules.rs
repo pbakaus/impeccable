@@ -524,8 +524,8 @@ fn is_styled_control(opts: &ColorOpts, bg_image: &str) -> bool {
 
 /// Whether `check_colors` answers from `safe_tag_text_contrast` rather than
 /// from the full pass, which is the set of findings the per-page dedupe
-/// owns.
-fn scores_safe_tag_text(opts: &ColorOpts) -> bool {
+/// owns. The sampled-contrast path (#560) leaves these elements to it.
+pub fn scores_safe_tag_text(opts: &ColorOpts) -> bool {
     set_has(SAFE_TAGS, opts.tag.as_str())
         && !is_styled_control(opts, opts.bg_image.as_deref().unwrap_or(""))
 }

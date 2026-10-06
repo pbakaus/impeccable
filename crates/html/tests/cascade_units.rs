@@ -113,6 +113,17 @@ fn apply_static_declaration_matches_node() {
             s("rgba(0, 0, 0, 0)"),
         ),
         (s("backgroundImage"), false, [0, 1, 0], 6, false, s("none")),
+        // Not in the JS model: the background longhands the shorthand
+        // resets, stored beside its expansion (see `background_longhands`).
+        (
+            s("backgroundRepeat"),
+            false,
+            [0, 1, 0],
+            6,
+            false,
+            s("repeat"),
+        ),
+        (s("backgroundSize"), false, [0, 1, 0], 6, false, s("auto")),
         (s("--brand"), false, [0, 1, 0], 7, false, s("#fff")),
         (s("fontStyle"), false, [0, 1, 0], 8, false, s("italic")),
         (s("fontWeight"), false, [0, 1, 0], 8, false, s("700")),
@@ -220,4 +231,319 @@ fn checks_shim_helpers() {
     assert_eq!(resolve_length_px("2em", 10.0), Some(20.0));
     assert_eq!(resolve_length_px("50%", 10.0), Some(5.0));
     assert_eq!(resolve_length_px("1.5", 10.0), Some(15.0));
+}
+
+#[test]
+fn background_longhands_ride_beside_the_expansion() {
+    use impeccable_html::cascade::shorthand::background_longhands;
+    let pairs =
+        |prop: &str, value: &str| -> Vec<(String, String)> { background_longhands(prop, value) };
+    let own = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    };
+
+    // The expansion itself is pinned by the recorded vectors and stays
+    // image-and-color only; repeat and size come from the side channel.
+    assert_eq!(
+        pairs(
+            "background",
+            "url(a.png) center / cover no-repeat, url(b.png)"
+        ),
+        own(&[
+            ("backgroundRepeat", "no-repeat, repeat"),
+            ("backgroundSize", "cover, auto")
+        ])
+    );
+    // The css-tree generator glues the first keyword to the call.
+    assert_eq!(
+        pairs("background", "url(a.png)center/cover no-repeat"),
+        own(&[
+            ("backgroundRepeat", "no-repeat"),
+            ("backgroundSize", "cover")
+        ])
+    );
+    // Tokens may come before the image, and a paren in an escaped or quoted
+    // url does not end the call early.
+    assert_eq!(
+        pairs("background", "center / 64px no-repeat url(a\\).png)"),
+        own(&[
+            ("backgroundRepeat", "no-repeat"),
+            ("backgroundSize", "64px")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "url(\"a)b.png\") repeat-x"),
+        own(&[("backgroundRepeat", "repeat-x"), ("backgroundSize", "auto")])
+    );
+    // A size given as a function is kept for the compute loop to resolve;
+    // it used to collapse to `auto`. A slash inside calc() is not the
+    // position / size separator.
+    assert_eq!(
+        pairs(
+            "background",
+            "url(seal.png) no-repeat right top / var(--Seal)"
+        ),
+        own(&[
+            ("backgroundRepeat", "no-repeat"),
+            ("backgroundSize", "var(--Seal)")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "url(a.png) 0 0 / calc(100% / 3) AUTO"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "calc(100% / 3) auto")
+        ])
+    );
+    assert_eq!(
+        pairs("Background-Size", "100% 32px"),
+        own(&[("backgroundSize", "100% 32px")])
+    );
+    // A shorthand that names no image resets the image, as in CSS. The
+    // expansion only does that for `background: none`.
+    assert_eq!(
+        pairs("background", "#fff"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "auto"),
+            ("backgroundImage", "none")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "transparent"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "auto"),
+            ("backgroundImage", "none")
+        ])
+    );
+    // An image function the engine does not read is an image all the same:
+    // it replaces what an earlier rule set and is not cleared to `none`.
+    assert_eq!(
+        pairs("background", "#111 paint(dots)"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "auto"),
+            ("backgroundImage", "#111 paint(dots)")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "paint(var(--pattern))"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "auto"),
+            ("backgroundImage", "paint(var(--pattern))")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "image-set(\"a.png\" 1x) center / cover"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "cover"),
+            ("backgroundImage", "image-set(\"a.png\" 1x) center / cover")
+        ])
+    );
+    // A color named after the image, which the expansion never reads. A
+    // color before the image is the expansion's, and a gradient's own stops
+    // are not the background color.
+    assert_eq!(
+        pairs("background", "url(cutout.png) #17150f"),
+        own(&[
+            ("backgroundRepeat", "repeat"),
+            ("backgroundSize", "auto"),
+            ("backgroundColor", "#17150f")
+        ])
+    );
+    assert_eq!(
+        pairs(
+            "background",
+            "url(a.png), url(b.png) no-repeat rgba(0, 0, 0, 0.5)"
+        ),
+        own(&[
+            ("backgroundRepeat", "repeat, no-repeat"),
+            ("backgroundSize", "auto, auto"),
+            ("backgroundColor", "rgba(0, 0, 0, 0.5)")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "url(a.png) no-repeat, #17150F"),
+        own(&[
+            ("backgroundRepeat", "no-repeat, repeat"),
+            ("backgroundSize", "auto, auto"),
+            ("backgroundColor", "#17150F")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "url(a.png), element(#abc)"),
+        own(&[
+            ("backgroundRepeat", "repeat, repeat"),
+            ("backgroundSize", "auto, auto")
+        ])
+    );
+    assert_eq!(
+        pairs("background", "#111 url(a.png)"),
+        own(&[("backgroundRepeat", "repeat"), ("backgroundSize", "auto")])
+    );
+    assert_eq!(
+        pairs("background", "linear-gradient(#fff, #000)"),
+        own(&[("backgroundRepeat", "repeat"), ("backgroundSize", "auto")])
+    );
+    assert_eq!(
+        pairs("background", "Inherit"),
+        own(&[
+            ("backgroundRepeat", "inherit"),
+            ("backgroundSize", "inherit")
+        ])
+    );
+    assert!(pairs("background", "var(--surface)").is_empty());
+    assert!(pairs("background-color", "red").is_empty());
+    assert!(pairs("color", "red").is_empty());
+
+    // Through the cascade: a later shorthand resets an earlier longhand, a
+    // later longhand overrides a shorthand, and a color-only shorthand
+    // clears the image an earlier rule set.
+    let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
+    let node = "n1";
+    let value_of = |specified: &SpecifiedStore<&str>, prop: &str| -> Option<String> {
+        specified
+            .get(&node)
+            .and_then(|map| map.get(prop))
+            .map(|d| d.value.clone())
+    };
+    let mut order = 0;
+    let mut apply = |specified: &mut SpecifiedStore<&str>, prop: &str, value: &str| {
+        apply_static_declaration(
+            specified,
+            node,
+            prop,
+            value,
+            &meta(false, [0, 1, 0], order, false),
+        );
+        order += 1;
+    };
+    apply(&mut specified, "background-repeat", "no-repeat");
+    apply(&mut specified, "background", "url(hero.jpg) center / cover");
+    apply(&mut specified, "background-size", "contain");
+    assert_eq!(
+        value_of(&specified, "backgroundRepeat").as_deref(),
+        Some("repeat")
+    );
+    assert_eq!(
+        value_of(&specified, "backgroundSize").as_deref(),
+        Some("contain")
+    );
+    assert_eq!(
+        value_of(&specified, "backgroundImage").as_deref(),
+        Some("url(hero.jpg) center / cover")
+    );
+    apply(&mut specified, "background", "transparent");
+    assert_eq!(
+        value_of(&specified, "backgroundImage").as_deref(),
+        Some("none")
+    );
+    assert_eq!(
+        value_of(&specified, "backgroundSize").as_deref(),
+        Some("auto")
+    );
+    // A less specific color-only shorthand does not clear a more specific
+    // image: the reset obeys the same priority as everything else.
+    let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
+    apply_static_declaration(
+        &mut specified,
+        node,
+        "background",
+        "url(hero.jpg)",
+        &meta(false, [1, 0, 0], 0, false),
+    );
+    apply_static_declaration(
+        &mut specified,
+        node,
+        "background",
+        "#fff",
+        &meta(false, [0, 1, 0], 1, false),
+    );
+    assert_eq!(
+        value_of(&specified, "backgroundImage").as_deref(),
+        Some("url(hero.jpg)")
+    );
+}
+
+#[test]
+fn a_foreign_sheet_resolves_its_urls_against_itself() {
+    use impeccable_html::cascade::rules::{
+        collect_static_css_rules, collect_static_css_rules_from, UrlBase,
+    };
+
+    let css = concat!(
+        "/* see url( for details, and url(commented.png) */\n",
+        ".a { background: url(light.png) }\n",
+        ".b { background: url(\"../img/hero.jpg?v=3\") no-repeat }\n",
+        ".c { background-image: url('./x.webp'), url(/root.png), url(data:image/png;base64,AAAA) }\n",
+        ".d { background: url(https://cdn.example.com/a.png) }\n",
+        ".e { mask: url(#clip) }\n",
+        ".f { background: url(\"a b (1).png\") }\n",
+        ".g { content: \"url(k.png) /* not a comment */\"; background: url(g.png) }\n",
+        ".h { mask: myurl(h.png); list-style: url(dot.png) }\n",
+        ":root { --hero: url(\"../img/hero.jpg\") ; --tint: rgba(0, 0, 0, 0.4); --note: \"url(k.png)\" }\n",
+    );
+    let base = UrlBase::new("/site/css", "/site");
+    let rules = collect_static_css_rules_from(css, 40, Some(&base));
+    let value = |selector: &str, prop: &str| -> String {
+        rules
+            .iter()
+            .find(|r| r.selector == selector)
+            .and_then(|r| r.declarations.iter().find(|d| d.prop == prop))
+            .map(|d| d.value.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(value(".a", "background"), "url(css/light.png)");
+    assert_eq!(value(".b", "background"), "url(img/hero.jpg?v=3)no-repeat");
+    assert_eq!(
+        value(".c", "background-image"),
+        "url(css/x.webp),url(/root.png),url(data:image/png;base64,AAAA)"
+    );
+    assert_eq!(
+        value(".d", "background"),
+        "url(https://cdn.example.com/a.png)"
+    );
+    assert_eq!(value(".e", "mask"), "url(#clip)");
+    // An escaped url is decoded by the parser, resolved, and re-escaped:
+    // it is no longer left sheet-relative.
+    assert_eq!(value(".f", "background"), "url(css/a\\ b\\ \\(1\\).png)");
+    // A string is content, a custom function is not the url token, and
+    // every real url in the sheet is resolved, whatever the property.
+    assert_eq!(value(".g", "content"), "\"url(k.png) /* not a comment */\"");
+    assert_eq!(value(".g", "background"), "url(css/g.png)");
+    assert_eq!(value(".h", "mask"), "myurl(h.png)");
+    assert_eq!(value(".h", "list-style"), "url(css/dot.png)");
+    // A custom property's value is opaque to the parser. One that holds a
+    // url is read as a value and resolved; any other is left as written.
+    assert_eq!(value(":root", "--hero"), "url(img/hero.jpg)");
+    assert_eq!(value(":root", "--tint"), "rgba(0, 0, 0, 0.4)");
+    assert_eq!(value(":root", "--note"), "\"url(k.png)\"");
+    // Cascade order runs on from where the stretch before it stopped.
+    assert_eq!(rules.first().map(|r| r.order), Some(40));
+    assert_eq!(
+        rules.last().map(|r| r.order),
+        Some(40 + rules.len() as i64 - 1)
+    );
+    // A sheet above the page walks back up, and without a base nothing is
+    // touched: the plain collector is the same parse as before.
+    let up = collect_static_css_rules_from(
+        ".a { background: url(light.png) }",
+        0,
+        Some(&UrlBase::new("/site", "/site/pages")),
+    );
+    assert_eq!(up[0].declarations[0].value, "url(../light.png)");
+    assert_eq!(
+        collect_static_css_rules(css),
+        collect_static_css_rules_from(css, 0, None)
+    );
+    assert_eq!(
+        collect_static_css_rules(css)[0].declarations[0].value,
+        "url(light.png)"
+    );
 }
