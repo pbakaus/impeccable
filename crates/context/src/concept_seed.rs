@@ -43,8 +43,6 @@ pub fn extract_section(text: &str, name: &str) -> Option<String> {
     Some(body[start..=end].join("\n"))
 }
 
-/// The MODE RULES block for `mode`, or the one-line fallback naming the file
-/// when it cannot be read or lacks a section. Never fails the roll.
 /// Whether a surface of this mode builds in code by default. Image comps of
 /// working screens and documents rate below their code-led builds, so those
 /// modes are code-led whatever build path the project recorded.
@@ -52,6 +50,8 @@ pub fn code_led_mode(mode: &str) -> bool {
     matches!(mode, "operate" | "read")
 }
 
+/// The MODE RULES block for `mode`, or the one-line fallback naming the file
+/// when it cannot be read or lacks a section. Never fails the roll.
 pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
     let file = mode_rules_file(mode);
     let path = crate::provider::detect(env, cwd).reference_path(file);

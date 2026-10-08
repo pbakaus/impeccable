@@ -171,7 +171,7 @@ pub fn recorded_build_path(ctx: &Ctx, cwd: &str) -> Option<(String, String)> {
 
 fn append_build_path_directive(parts: &mut Vec<String>, ctx: &Ctx, cwd: &str) {
     if let Some((value, source)) = recorded_build_path(ctx, cwd) {
-        parts.push(format!("BUILD_PATH_DEFAULT: {} (from {}). Author direction and surface rounds with this as buildPath.value and toggle: true; a flip on the page binds that session only and is never written back, because a default is already recorded here. New-work's one-time offer to record a flipped value applies only where no default exists, which is why you are not seeing this line on those projects. Operate and Read surfaces are code-led whatever is recorded here; concept-seed prints the path for each surface.", value, source));
+        parts.push(format!("BUILD_PATH_DEFAULT: {} (from {}). Author Persuade and Experience direction and surface rounds with this as buildPath.value and toggle: true; Operate and Read surfaces are code-led whatever is recorded here, and concept-seed prints the path for each surface. A flip on the page binds that session only and is never written back, because a default is already recorded here. New-work's one-time offer to record a flipped value applies only where no default exists, which is why you are not seeing this line on those projects.", value, source));
     }
 }
 

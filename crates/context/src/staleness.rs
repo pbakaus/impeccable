@@ -395,8 +395,8 @@ pub fn check_build_path_unset(project_root: &str, repo_root: Option<&str>, produ
         "config.json",
         Some(".impeccable/config.json".to_string()),
         "mention",
-        "This project has run visual direction work but records no `buildPath`, so every direction round takes the comp-first default without anyone having chosen it.".to_string(),
-        "Only when image generation exists in your tool surface, offer the choice once: **comp-first** (an image sets the bar before any code; bolder composition, slower) or **code-first** (build directly; ambition carried by the direction contract; leaner, faster). Write the answer to `.impeccable/config.json` as `\"buildPath\": \"comp\"` or `\"buildPath\": \"code\"`, merging with the keys already there. Without image generation there is no choice to record: stay silent.".to_string(),
+        "This project has run visual direction work but records no `buildPath`, so Persuade and Experience rounds take the comp-first default without anyone having chosen it.".to_string(),
+        "Only when image generation exists in your tool surface, offer the choice once, saying it covers landing pages and showcase surfaces (app screens and documents build code-first either way): **comp-first** (an image sets the bar before any code; bolder composition, slower) or **code-first** (build directly; ambition carried by the direction contract; leaner, faster). Write the answer to `.impeccable/config.json` as `\"buildPath\": \"comp\"` or `\"buildPath\": \"code\"`, merging with the keys already there. Without image generation there is no choice to record: stay silent.".to_string(),
     )]
 }
 
