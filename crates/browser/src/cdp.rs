@@ -55,7 +55,8 @@ impl From<String> for CdpError {
 pub type CdpResult<T> = Result<T, CdpError>;
 
 /// puppeteer's `ChromeLauncher.defaultArgs()` (headless, no extensions) plus
-/// the user args, in the order puppeteer emits them. `--remote-debugging-port`
+/// the user args, in the order puppeteer emits them, with one feature more
+/// switched off (see `--disable-features` below). `--remote-debugging-port`
 /// and `--user-data-dir` are appended by the launcher afterwards, as
 /// puppeteer's `computeLaunchArguments` does.
 pub fn default_chrome_args(user_args: &[String], dangerous_no_sandbox: bool) -> Vec<String> {
@@ -86,7 +87,13 @@ pub fn default_chrome_args(user_args: &[String], dangerous_no_sandbox: bool) -> 
         "--no-first-run",
         "--password-store=basic",
         "--use-mock-keychain",
-        "--disable-features=Translate,AcceptCHFrame,MediaRouter,OptimizationHints,WebUIReloadButton,ProcessPerSiteUpToMainFrameThreshold,IsolateSandboxedIframes",
+        // puppeteer's list plus `DeviceBoundSessions`. With that feature on,
+        // Chrome holds every request of a new profile until it has created
+        // and read the profile's bound-session store, which comes after the
+        // cookie store and has no protocol call to wait on. On a busy disk
+        // that took over 15 s, out of the first navigation's timeout. A
+        // throwaway profile has no bound session to honour.
+        "--disable-features=Translate,AcceptCHFrame,MediaRouter,OptimizationHints,WebUIReloadButton,ProcessPerSiteUpToMainFrameThreshold,IsolateSandboxedIframes,DeviceBoundSessions",
         "--enable-features=PdfOopif",
     ]
     .iter()
@@ -2229,6 +2236,20 @@ mod tests {
         let with = default_chrome_args(&["--no-sandbox".to_string()], false);
         assert_eq!(with.last().unwrap(), "--no-sandbox");
         assert!(with.contains(&"about:blank".to_string()));
+    }
+
+    /// Chrome reads only the last `--disable-features`, so the bound-session
+    /// switch has to sit in the one list the launcher passes.
+    #[test]
+    fn bound_sessions_are_off_in_the_only_feature_list() {
+        let args = default_chrome_args(&[], false);
+        let lists: Vec<&String> = args
+            .iter()
+            .filter(|a| a.starts_with("--disable-features="))
+            .collect();
+        assert_eq!(lists.len(), 1);
+        let features = lists[0].trim_start_matches("--disable-features=");
+        assert!(features.split(',').any(|f| f == "DeviceBoundSessions"));
     }
 }
 

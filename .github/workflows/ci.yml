@@ -198,6 +198,35 @@ jobs:
         run: rustup show
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo build --workspace --all-targets
+      # The default TEMP is on the image's C: drive. Every browser test starts
+      # Chrome on a new profile there, and with several starting at once that
+      # disk queues 30 to 40 requests deep for 20 s at a stretch: profile
+      # stores took up to 27 s to load and a page load of fourteen requests
+      # took 14 s. The runner's own temp directory is on the work drive, where
+      # the same loads stay under 3 s.
+      - name: Keep temporary files on the work drive
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:RUNNER_TEMP 'tmp'
+          New-Item -ItemType Directory -Force -Path $temp | Out-Null
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      # The first Chrome start after boot reads the browser off that same C:
+      # drive and has taken 25 s to open its DevTools port, against the
+      # launcher's 30 s limit. Pay that once here, where no test is timing it.
+      # The step has taken 4 to 38 s; a start that never returns ends after
+      # three minutes and the tests run anyway.
+      - name: Start the browser once before the tests
+        shell: pwsh
+        timeout-minutes: 3
+        continue-on-error: true
+        run: |
+          $chrome = Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'
+          if (Test-Path $chrome) {
+            $profile = Join-Path $env:TEMP 'browser-warmup'
+            & $chrome --headless=new --no-sandbox --disable-gpu "--user-data-dir=$profile" --dump-dom about:blank | Out-Null
+          }
+          exit 0
       - run: cargo test --workspace --no-fail-fast
 
   launcher-windows:
