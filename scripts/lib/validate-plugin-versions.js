@@ -117,6 +117,12 @@ export function collectPluginVersions(rootDir) {
 
   const checks = [
     {
+      // The npm CLI shares the skill's version: one number for users to read
+      // off npm, the plugin and the changelog.
+      relPath: 'package.json',
+      read: (raw) => JSON.parse(raw).version,
+    },
+    {
       relPath: '.claude-plugin/marketplace.json',
       read: (raw) => JSON.parse(raw).plugins?.[0]?.version,
     },

@@ -59,6 +59,16 @@ describe('collectPluginVersions', () => {
     expect(mismatches).toEqual([]);
   });
 
+  test('flags an npm package.json whose version drifted from the skill', () => {
+    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1' });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'impeccable', version: '3.6.0' }));
+    const { mismatches } = collectPluginVersions(root);
+    expect(mismatches).toEqual([{ relPath: 'package.json', found: '3.6.0', expected: '3.7.1' }]);
+
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'impeccable', version: '3.7.1' }));
+    expect(collectPluginVersions(root).mismatches).toEqual([]);
+  });
+
   test('flags a lagging marketplace.json (the half the sync workflow cannot repair)', () => {
     writeFixture(root, { plugin: '3.7.1', marketplace: '3.1.1', subtreePlugin: '3.7.1', skill: '3.7.1' });
     const { mismatches } = collectPluginVersions(root);

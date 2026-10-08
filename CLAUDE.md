@@ -263,18 +263,19 @@ The package no longer exports a JS detector API (`main` / `exports` are gone); t
 
 **Feature PRs do not bump versions and do not add changelog entries.** Bumping is a release step, not part of the change that earns the release: a version in a feature branch conflicts with every other open branch, and a changelog entry describes a release that has not happened. Land the code first; the maintainer bumps and writes the changelog when cutting the release. This holds even though the "Bump when: ..." notes below name the source dirs — those say *which* component a change belongs to, not *when* to edit the manifest. The only PR that touches a manifest version is one whose purpose is the release itself.
 
-There are three independently versioned components plus the engine pin. Only bump the one(s) that actually changed:
+The skill and the npm CLI share one version; the Chrome extension and the engine pin are versioned on their own. Bump only what changed, except that the skill and the CLI always move together:
 
 **Engine pin** (`ENGINE_VERSION`, root):
 - The engine release the launcher downloads and the npm shim's `optionalDependencies` pin. Bump it when a new engine release is published; keep `package.json` `optionalDependencies` at the same version and run `bun run build` (it rewrites `skill/scripts/VERSION`). A skill release that needs the new engine bumps this together with the skill version.
 
 **CLI** (npm package):
-- `package.json` → `version`
-- Bump when: CLI shim code changes (`cli/bin/cli.js`, `cli/platform-packages/`)
+- `package.json` → `version`, always equal to the skill version in `.claude-plugin/plugin.json`. One number for users to read off npm, the plugin and the changelog: the two drifted to 4.1.0 against 4.5.1 in 2026-10 and npm kept serving an engine seven releases old. `validatePluginVersions` fails the build when they disagree.
+- Bump when: the skill version bumps, and when CLI shim code changes (`cli/bin/cli.js`, `cli/platform-packages/`), which then bumps the skill version too. Every skill release is followed by `bun run release:cli` and `npm publish`, so the published shim pins the current engine.
 
 **Skills** (Claude Code plugin / skill definitions):
 - `.claude-plugin/plugin.json` → `version` (source of truth)
 - `.claude-plugin/marketplace.json` → `plugins[0].version`
+- `package.json` → `version` (the npm CLI, same number)
 - Bump when: skill content changes (`skill/`, reference files, command metadata, etc.)
 - After bumping, run `bun run build:release` so the committed `./plugin` subtree (`plugin/.claude-plugin/plugin.json` + `plugin/skills/impeccable/SKILL.md`) is regenerated to the new version. The build validator (`validatePluginVersions` in `scripts/build.js`) fails if `marketplace.json`, the `./plugin` manifest, or the bundled `SKILL.md` frontmatter disagree with `plugin.json` — this guards the marketplace install path against version drift (issue #274).
 
@@ -299,7 +300,7 @@ Workflow for any component:
 1. Bump the manifest version (see Versioning above).
 2. Add a changelog entry to `site/pages/changelog.astro` (see **Website changelog** above for placement and tone). Skill entries use a bare `vX.Y.Z` label; CLI and extension entries use the prefixed forms `CLI vX.Y.Z` and `Extension vX.Y.Z`. The release script extracts notes by matching this label, so the prefix matters.
 3. Commit and push to `main`.
-4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`.
+4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`. A skill release is always followed by the CLI release at the same version (its changelog entry uses the `CLI vX.Y.Z` label) and `npm publish`.
 5. Skill only: `npx impeccable install` / `update` serve the version in impeccable-site's `published-skill.json`, a signed pointer that does not follow the release by itself (site `docs/PUBLISHED-SKILL.md`). On a branch from site main, run `bun run skill:publish-pointer <version>` (it verifies the release signature and checksum), commit the pointer, and merge; the main deploy then serves it. Redeploying without moving the pointer republishes the old version. The release script warns when `impeccable.style/api/version` still lags.
 
 The script refuses to run if: the working tree is dirty, HEAD is ahead of origin, the tag already exists, the matching changelog entry is missing, or (for skill/extension) `bun run build:release` / `bun run build:extension` produces uncommitted changes — meaning the harness output dirs or `extension/detector/` files weren't refreshed before the bump was committed.
