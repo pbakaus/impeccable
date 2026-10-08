@@ -90,6 +90,8 @@ pub const COMPS_SURFACE_CODE: &str = "- Code-led round: each dealt card carries 
 
 pub const BUILD_PATH_RECORDED: &str = "- Build path: recorded default @@VALUE@@ (from @@SOURCE@@). With image generation, put \"buildPath\": {\"value\": \"@@VALUE@@\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path.";
 
+pub const BUILD_PATH_MODE: &str = "- Build path: code-led. A surface in @@MODE@@ mode builds in code whatever the project records@@RECORDED@@. With image generation, put \"buildPath\": {\"value\": \"code\", \"toggle\": true} in the payload, so the user can still flip this one round to comp; without it there is no toggle. Never ask the user about the build path, and never offer to record a flip made on this surface.";
+
 pub const BUILD_PATH_NONE: &str = "- Build path: none recorded in .impeccable/config.json or .impeccable/config.local.json, so comp-led whenever image generation exists. Then put \"buildPath\": {\"value\": \"comp\", \"toggle\": true} in the payload; without image generation there is no toggle and the build is code-led. Never ask about the build path during the round; only when the ANSWER returns buildPathFlipped: true, offer once afterwards to keep the flipped value as the default.";
 
 pub const WAIT_AFTER_COMPS: &str = "After the last comp lands (at once when this round generates none),";

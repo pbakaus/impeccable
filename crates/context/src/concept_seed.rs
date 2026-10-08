@@ -45,6 +45,13 @@ pub fn extract_section(text: &str, name: &str) -> Option<String> {
 
 /// The MODE RULES block for `mode`, or the one-line fallback naming the file
 /// when it cannot be read or lacks a section. Never fails the roll.
+/// Whether a surface of this mode builds in code by default. Image comps of
+/// working screens and documents rate below their code-led builds, so those
+/// modes are code-led whatever build path the project recorded.
+pub fn code_led_mode(mode: &str) -> bool {
+    matches!(mode, "operate" | "read")
+}
+
 pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
     let file = mode_rules_file(mode);
     let path = crate::provider::detect(env, cwd).reference_path(file);
@@ -61,10 +68,13 @@ pub fn mode_rules_block(env: &Env, cwd: &str, mode: &str) -> String {
 
 /// The PRESENTATION block printed after every roll: new-work.md's decision
 /// round, condensed. `build_path` is the recorded default and its file.
-pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degraded: bool, register: Option<&str>, build_path: Option<&(String, String)>) -> String {
+pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degraded: bool, register: Option<&str>, mode: Option<&str>, build_path: Option<&(String, String)>) -> String {
     let sq = crate::provider::detect(env, cwd).verb_cmd("serve-question");
     let present = fill(if reroll > 0 { t::PRESENT_REROLL } else { t::PRESENT_FIRST }, &[("SQ", &sq)]);
-    let code_led = build_path.map(|(v, _)| v == "code").unwrap_or(false);
+    // Operate and Read surfaces build in code whatever the project records;
+    // the recorded default governs Persuade and Experience.
+    let mode_code = mode.filter(|m| code_led_mode(m));
+    let code_led = mode_code.is_some() || build_path.map(|(v, _)| v == "code").unwrap_or(false);
     // A degraded roll is one text-only card, except the safer register,
     // whose lineup of grounded candidates plus canon is a full hand.
     let single_card = degraded && register != Some("safer");
@@ -75,9 +85,16 @@ pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degr
         (_, _, true) => t::COMPS_SURFACE_CODE,
         _ => t::COMPS_SURFACE,
     };
-    let build = match build_path {
-        Some((value, source)) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
-        None => t::BUILD_PATH_NONE.to_string(),
+    let build = match (mode_code, build_path) {
+        (Some(m), recorded) => {
+            let recorded = match recorded {
+                Some((value, source)) if value != "code" => format!(" (the recorded default {} from {} governs Persuade and Experience surfaces)", value, source),
+                _ => String::new(),
+            };
+            fill(t::BUILD_PATH_MODE, &[("MODE", m), ("RECORDED", &recorded)])
+        }
+        (None, Some((value, source))) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
+        (None, None) => t::BUILD_PATH_NONE.to_string(),
     };
     // Comps generated up front come before the wait; a code-led round's
     // comps wait for the flip --wait reports, and a single text card has none.
@@ -340,7 +357,7 @@ fn render_concept_seed(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArg
     // PRESENTATION closes every roll, where a middle-truncated read still
     // reaches it, like the restated lines above it.
     let register = a.register.clone().flatten();
-    Ok((roll + &presentation_block(env, cwd, scope, reroll, degraded, register.as_deref(), a.build_path.as_ref()), worlds))
+    Ok((roll + &presentation_block(env, cwd, scope, reroll, degraded, register.as_deref(), a.mode.clone().flatten().as_deref(), a.build_path.as_ref()), worlds))
 }
 
 /// The roll itself: (scope, re-roll round, text, degraded, printed worlds).
@@ -825,8 +842,10 @@ mod tests {
 
     #[test]
     fn surface_roll_carries_wireframes_and_no_pick_or_canon() {
-        let (proj, skill) = fixture("present-surface", &[("mode-operate", MODE_FILE)]);
-        let (code, out) = seed(&proj, &skill, true, &["--scope", "surface", "--mode", "operate", "--from", "k1"]);
+        // Persuade: the comp-led surface wording. Operate and Read surface rounds are code-led
+        // (operate_and_read_surfaces_are_code_led_whatever_is_recorded).
+        let (proj, skill) = fixture("present-surface", &[("mode-persuade", MODE_FILE)]);
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "surface", "--mode", "persuade", "--from", "k1"]);
         assert_eq!(code, 0, "{out}");
         let block = presentation(&out);
         assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
@@ -871,6 +890,41 @@ mod tests {
         assert!(presentation(&out).contains("single text-only card"), "{out}");
         let (_, out) = seed(&proj, &skill, false, &["--scope", "surface", "--mode", "persuade", "--from", "k1"]);
         assert!(presentation(&out).contains("each dealt card declares a comp"), "{out}");
+    }
+
+    #[test]
+    fn operate_and_read_surfaces_are_code_led_whatever_is_recorded() {
+        let (proj, skill) = fixture("present-mode-code-led", &[("mode-operate", MODE_FILE), ("mode-read", MODE_FILE), ("mode-persuade", MODE_FILE)]);
+        let dir = proj.join(".impeccable");
+        std::fs::create_dir_all(&dir).unwrap();
+        let roll = |scope: &str, mode: &str| seed(&proj, &skill, true, &["--scope", scope, "--mode", mode, "--from", "k1"]).1;
+
+        // Nothing recorded: Operate and Read are code-led, Persuade and Experience keep the comp default.
+        for mode in ["operate", "read"] {
+            let out = roll("direction", mode);
+            let block = presentation(&out);
+            assert!(block.contains(&format!("- Build path: code-led. A surface in {mode} mode builds in code whatever the project records. With image generation, put \"buildPath\": {{\"value\": \"code\", \"toggle\": true}} in the payload")), "{block}");
+            assert!(block.contains("never offer to record a flip made on this surface"), "{block}");
+            assert!(block.contains("- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve"), "{block}");
+            assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
+            assert!(presentation(&roll("surface", mode)).contains("- Code-led round: each dealt card carries a wireframe (shape in --schema)"), "{mode}");
+        }
+        for mode in ["persuade", "experience"] {
+            assert!(presentation(&roll("direction", mode)).contains("- Build path: none recorded"), "{mode}");
+        }
+
+        // A recorded comp default still governs Persuade, and is named, not followed, on Operate and Read.
+        std::fs::write(dir.join("config.json"), r#"{"buildPath": "comp"}"#).unwrap();
+        let out = roll("direction", "operate");
+        let block = presentation(&out);
+        assert!(block.contains("- Build path: code-led. A surface in operate mode builds in code whatever the project records (the recorded default comp from .impeccable/config.json governs Persuade and Experience surfaces)."), "{block}");
+        assert!(block.contains("\"buildPath\": {\"value\": \"code\", \"toggle\": true}"), "{block}");
+        assert!(!block.contains("Serve first, then generate each comp in reading order"), "{block}");
+        assert!(presentation(&roll("direction", "persuade")).contains("- Build path: recorded default comp (from .impeccable/config.json)."));
+
+        // A recorded code default reads the same on Operate, with nothing extra to name.
+        std::fs::write(dir.join("config.json"), r#"{"buildPath": "code"}"#).unwrap();
+        assert!(presentation(&roll("direction", "read")).contains("A surface in read mode builds in code whatever the project records. With image generation"));
     }
 
     #[test]

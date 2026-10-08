@@ -36,12 +36,13 @@ v4 replaced the old brand/product **register** axis with four modes, named in SK
 - **Read** — the visitor understands something. Docs, articles, guides, help, changelogs.
 - **Experience** — the visitor is inside the work itself. Portfolios, galleries, showcases.
 
-Three differences from register that matter when editing skill text:
+Differences from register that matter when editing skill text:
 
 1. **Mode is per surface, not per project.** A tool's landing page is Persuade even though the product is Operate; a fashion house's documentation is Read. Choose from the requested surface.
 2. **Mode is not stored in PRODUCT.md.** It persists only in that surface's brief under `.impeccable/surfaces/`. There is no `## Register` field and no `extractRegister()`; PRODUCT.md's only bare-value field is `## Platform`. A `## Register` section left over from v3 is reported at boot as deprecated (see `lib/staleness.mjs`) and read by nothing.
 3. **There are no register reference files.** `reference/brand.md` and `reference/product.md` are gone. `reference/operate.md` carries the deeper Operate and Read guidance; `reference/new-work.md` owns new surfaces.
 4. **Mode rules for directions and comps live in `reference/mode-persuade.md` (Persuade and Experience), `mode-operate.md`, and `mode-read.md`**, each with exactly two sections, `## Directions` and `## Comps`. The router never sends the agent to them: `impeccable concept-seed --mode <mode>` prints the mode's file as a MODE RULES block, because a printed engine line is followed where an extra file read gets skipped. `new-work.md` and `visualize.md` keep only the shared procedure and point at the block. Persuade's hill-climbed comp rules live in `mode-persuade.md`; do not reintroduce mode clauses into the shared files.
+5. **Mode also decides the build path.** Operate and Read surfaces are code-led whatever `buildPath` the project records; the recorded default (and the comp default when nothing is recorded) governs Persuade and Experience only. `concept-seed --mode` prints the resolved path in its PRESENTATION block (`code_led_mode` in `crates/context/src/concept_seed.rs`), and the decision page keeps its toggle so one round can still be flipped to comp. In blind ratings, comps of working screens and documents scored 2.0 to 2.9 across five rule changes while code-led builds of the same briefs scored 3 to 3.5 and were always complete.
 
 **a11y lives in `audit.md`**, not in SKILL.md or the mode guidance. Models over-cautious themselves into safe, underdesigned output when reminded about accessibility at design time. The audit command is the dedicated place for that check.
 
