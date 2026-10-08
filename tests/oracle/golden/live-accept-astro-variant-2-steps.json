@@ -1,0 +1,12 @@
+{
+  "stdout": "{\"handled\":true,\"file\":\"src/pages/index.astro\",\"carbonize\":true,\"todo\":\"REQUIRED before next poll: carbonize cleanup in src/pages/index.astro. See reference/live.md \\\"Required after accept\\\".\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/accept-receipts/ab12cd34.json": "{\n  \"id\": \"ab12cd34\",\n  \"operation\": \"accept\",\n  \"variantId\": \"2\",\n  \"result\": {\n    \"handled\": true,\n    \"file\": \"src/pages/index.astro\",\n    \"carbonize\": true,\n    \"todo\": \"REQUIRED before next poll: carbonize cleanup in src/pages/index.astro. See reference/live.md \\\"Required after accept\\\".\"\n  },\n  \"completedAt\": \"<ISO>\"\n}\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"src/layouts/Layout.astro\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/layouts/Layout.astro": "---\nexport interface Props { title: string }\nconst { title } = Astro.props;\n---\n<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>{title}</title>\n  </head>\n  <body>\n    <slot />\n  </body>\n</html>\n",
+    "src/pages/index.astro": "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout title=\"Astro Fixture\">\n  <main class=\"page\">\n    <!-- impeccable-carbonize-start ab12cd34 -->\n    <style is:inline data-impeccable-css=\"ab12cd34\">\n    [data-impeccable-variant=\"1\"] > h1 { font-weight: 300; color: oklch(var(--p-lightness, 0.5) 0.25 25); }\n    [data-impeccable-variant=\"2\"] > h1 { font-weight: 900; }\n    [data-impeccable-variant=\"2\"][data-p-face=\"serif\"] > h1 { font-family: ui-serif, serif; }\n    [data-impeccable-variant=\"3\"] > h1 { font-weight: 600; text-transform: uppercase; }\n    </style>\n    <!-- impeccable-param-values ab12cd34: {\"face\":\"serif\"} -->\n    <!-- impeccable-carbonize-end ab12cd34 -->\n    <div data-impeccable-variant=\"2\" style=\"display: contents\">\n      <h1 class=\"hero-title\">Astro Fixture</h1>\n    </div>\n    <p class=\"hero-hook\">Minimal Astro tree for oracle live-mode goldens.</p>\n    <section id=\"features\" class=\"feature-grid\">\n      <article class=\"feature-card\">One</article>\n      <article class=\"feature-card\">Two</article>\n    </section>\n  </main>\n</Layout>\n"
+  }
+}

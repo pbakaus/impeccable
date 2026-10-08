@@ -148,6 +148,31 @@ export function stageWrappedHtml(ws, id = 'ab12cd34') {
   fs.writeFileSync(file, src.replace('      ' + original, block));
 }
 
+/**
+ * live-astro src/pages/index.astro with the hero h1 wrapped and variants
+ * written the way an agent writes them for `styleMode: astro-global-prefixed`:
+ * an `is:inline` style tag and variant-prefixed selectors, no `@scope`.
+ */
+export function stageWrappedAstro(ws, id = 'ab12cd34') {
+  const file = path.join(ws, 'src', 'pages', 'index.astro');
+  const src = fs.readFileSync(file, 'utf8');
+  const original = '<h1 class="hero-title">Astro Fixture</h1>';
+  const indent = '    ';
+  const css = [
+    '[data-impeccable-variant="1"] > h1 { font-weight: 300; color: oklch(var(--p-lightness, 0.5) 0.25 25); }',
+    '[data-impeccable-variant="2"] > h1 { font-weight: 900; }',
+    '[data-impeccable-variant="2"][data-p-face="serif"] > h1 { font-family: ui-serif, serif; }',
+    '[data-impeccable-variant="3"] > h1 { font-weight: 600; text-transform: uppercase; }',
+  ];
+  const block = wrappedBlock({ id, tag: 'h1', inner: original, original, indent })
+    .replace(/<style data-impeccable-css="[^"]*">[\s\S]*?<\/style>/, [
+      '<style is:inline data-impeccable-css="' + id + '">',
+      ...css.map((l) => indent + '    ' + l),
+      indent + '  </style>',
+    ].join('\n'));
+  fs.writeFileSync(file, src.replace(indent + original, block));
+}
+
 /** live-vite src/App.jsx with the hero h1 wrapped and variants written (JSX syntax). */
 export function stageWrappedJsx(ws, id = 'ab12cd34') {
   const file = path.join(ws, 'src', 'App.jsx');

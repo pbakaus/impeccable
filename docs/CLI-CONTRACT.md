@@ -1764,6 +1764,7 @@ Order in `live-accept.mjs`: receipt check → find `impeccable-variants-start <i
 <indent>  …variant lines…
 <indent></div>
 ```
+- Astro (`.astro`): as HTML, except the style tag is the file type's own `styleTag`, `<style is:inline data-impeccable-css="ID">`. The variants block it replaces is `is:inline` too, so accept and the cleanup never add or remove a style block that Astro compiles. A bare `<style>` here would become a `?astro&type=style&index=N` module ahead of the page's own, and deleting it again makes Astro's dev server answer the reload of the vanished index with a 500 (Astro 7.3.6+) or serve another block's CSS under the surviving index (earlier versions).
 - JSX: everything above wrapped in `<indent><div data-impeccable-carbonize="ID" style={{ display: "contents" }}>` … `</div>` with body indented 2 more, `<style …>{\`` / `\`}</style>`, `{/* … */}` comments, `style={{ display: 'contents' }}` on the variant div.
 Result `{handled:true, file: rel, carbonize:boolean, todo?:'REQUIRED before next poll: carbonize cleanup in <file>. See reference/live.md "Required after accept".', bakeSkipped?}`. Discard: replace range with deindented original → `{handled:true, file, carbonize:false}`.
 

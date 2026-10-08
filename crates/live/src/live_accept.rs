@@ -2,6 +2,7 @@
 //! accept/discard of variant sessions: HTML/JSX wrapper carbonize, the
 //! Svelte component inline path, receipts, source locks, buffer scrub.
 
+use crate::inject::resolve_source_traits;
 use crate::paths::{live_dir, safe_session_id};
 use crate::pending_edits::{read_buffer, write_buffer};
 use crate::roots::enter_live_root;
@@ -670,11 +671,33 @@ fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Res
     Ok(())
 }
 
+/// The opening `<style>` tag of a carbonize block in `target_file`: the file
+/// type's own `styleTag` with the session id filled in.
+///
+/// On `.astro` that tag carries `is:inline`, exactly like the variants block
+/// it replaces. A bare `<style>` there is a different thing: Astro compiles
+/// it into a `?astro&type=style&index=N` module, which renumbers the page's
+/// own style modules for as long as the block exists and removes one again
+/// when the cleanup deletes it. Astro's dev server answers the reload of
+/// that vanished index with a 500 (7.3.6 and later) or serves the wrong
+/// block's CSS under the surviving index (7.3.5 and earlier).
+fn carbonize_style_open(target_file: &str, id: &str) -> String {
+    resolve_source_traits(target_file)
+        .style_tag
+        .replace("SESSION_ID", id)
+}
+
 /// JS: buildCarbonizeReplacement({...})
+///
+/// `style_open` is the opening `<style>` tag for the carbonize block. It is
+/// the same tag the variants block was authored with for this file type
+/// (`carbonize_style_open`), so accept never changes how the framework's
+/// compiler treats the block.
 fn build_carbonize_replacement(
     indent: &str,
     cs: (&str, &str),
     is_jsx: bool,
+    style_open: &str,
     id: &str,
     variant_num: &str,
     css: Option<&[String]>,
@@ -699,9 +722,9 @@ fn build_carbonize_replacement(
             body_indent, co, id, cc
         ));
         lines.push(format!(
-            "{}<style data-impeccable-css=\"{}\">{}",
+            "{}{}{}",
             body_indent,
-            id,
+            style_open,
             if is_jsx { "{`" } else { "" }
         ));
         for css_line in css {
@@ -828,6 +851,7 @@ fn handle_accept_unlocked(
         &indent,
         cs,
         is_jsx,
+        &carbonize_style_open(target_file, id),
         id,
         variant_num,
         css_content.as_deref(),
@@ -1302,6 +1326,113 @@ mod discard_tests {
         assert_eq!(
             out,
             "      </div>\n      <Bar title=\"Log in\" />\n    </AuthPage>"
+        );
+    }
+}
+
+#[cfg(test)]
+mod carbonize_tests {
+    use super::*;
+
+    fn wrapped(style_open: &str) -> Vec<String> {
+        [
+            "  <main>",
+            "    <!-- impeccable-variants-start ab12cd34 -->",
+            "    <div data-impeccable-variants=\"ab12cd34\" data-impeccable-variant-count=\"2\" style=\"display: contents\">",
+            "      <!-- Original -->",
+            "      <div data-impeccable-variant=\"original\">",
+            "        <h1 class=\"hero-title\">Title</h1>",
+            "      </div>",
+            "      <!-- Variants: insert below this line -->",
+            style_open,
+            "        [data-impeccable-variant=\"1\"] > h1 { font-weight: 300; }",
+            "        [data-impeccable-variant=\"2\"] > h1 { font-weight: 900; }",
+            "      </style>",
+            "      <div data-impeccable-variant=\"1\">",
+            "        <h1 class=\"hero-title\">Title</h1>",
+            "      </div>",
+            "      <div data-impeccable-variant=\"2\" style=\"display: none\">",
+            "        <h1 class=\"hero-title\">Title</h1>",
+            "      </div>",
+            "    </div>",
+            "    <!-- impeccable-variants-end ab12cd34 -->",
+            "  </main>",
+            "",
+            "<style>",
+            "  .hero-title { font-size: 2rem; }",
+            "</style>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+    }
+
+    fn carbonize(file_name: &str, style_open: &str) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("impeccable-carbonize-{}-{nanos}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join(file_name);
+        let lines = wrapped(style_open);
+        std::fs::write(&file, lines.join("\n")).unwrap();
+        let outcome = handle_accept_unlocked("ab12cd34", "2", &lines, &file.to_string_lossy(), None, None);
+        let out = std::fs::read_to_string(&file).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            matches!(outcome, Ok(AcceptOutcome::Carbonized { carbonize: true, .. })),
+            "accept did not carbonize: {out}"
+        );
+        out
+    }
+
+    /// Every `<style ...>` opening tag in `source`, in order.
+    fn style_tags(source: &str) -> Vec<&str> {
+        source
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("<style"))
+            .collect()
+    }
+
+    /// Astro compiles a bare `<style>` into a style module and numbers the
+    /// modules in source order. The variants block is `is:inline`, so the
+    /// carbonize block has to be too: otherwise accept puts a compiled block
+    /// in front of the page's own and the cleanup takes it away again, and
+    /// the dev server fails the reload of the index that vanished.
+    #[test]
+    fn an_astro_carbonize_block_keeps_the_style_tag_inline() {
+        let out = carbonize("index.astro", "      <style is:inline data-impeccable-css=\"ab12cd34\">");
+        assert_eq!(
+            style_tags(&out),
+            vec!["<style is:inline data-impeccable-css=\"ab12cd34\">", "<style>"],
+            "{out}"
+        );
+        assert!(out.contains("<!-- impeccable-carbonize-start ab12cd34 -->"), "{out}");
+    }
+
+    /// The tag comes from the file type, not from what the agent wrote: an
+    /// Astro variants block authored without `is:inline` still carbonizes
+    /// into the inline form.
+    #[test]
+    fn an_astro_carbonize_block_is_inline_whatever_the_variants_tag_was() {
+        let out = carbonize("index.astro", "      <style data-impeccable-css=\"ab12cd34\">");
+        assert_eq!(
+            style_tags(&out),
+            vec!["<style is:inline data-impeccable-css=\"ab12cd34\">", "<style>"],
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn an_html_carbonize_block_keeps_the_plain_style_tag() {
+        let out = carbonize("index.html", "      <style data-impeccable-css=\"ab12cd34\">");
+        assert_eq!(
+            style_tags(&out),
+            vec!["<style data-impeccable-css=\"ab12cd34\">", "<style>"],
+            "{out}"
         );
     }
 }

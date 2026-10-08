@@ -1,0 +1,12 @@
+{
+  "stdout": "{\"handled\":true,\"file\":\"src/pages/index.astro\",\"carbonize\":false}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/accept-receipts/ab12cd34.json": "{\n  \"id\": \"ab12cd34\",\n  \"operation\": \"discard\",\n  \"variantId\": null,\n  \"result\": {\n    \"handled\": true,\n    \"file\": \"src/pages/index.astro\",\n    \"carbonize\": false\n  },\n  \"completedAt\": \"<ISO>\"\n}\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"src/layouts/Layout.astro\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/layouts/Layout.astro": "---\nexport interface Props { title: string }\nconst { title } = Astro.props;\n---\n<!DOCTYPE html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <title>{title}</title>\n  </head>\n  <body>\n    <slot />\n  </body>\n</html>\n",
+    "src/pages/index.astro": "---\nimport Layout from '../layouts/Layout.astro';\n---\n<Layout title=\"Astro Fixture\">\n  <main class=\"page\">\n    <h1 class=\"hero-title\">Astro Fixture</h1>\n    <p class=\"hero-hook\">Minimal Astro tree for oracle live-mode goldens.</p>\n    <section id=\"features\" class=\"feature-grid\">\n      <article class=\"feature-card\">One</article>\n      <article class=\"feature-card\">Two</article>\n    </section>\n  </main>\n</Layout>\n"
+  }
+}
