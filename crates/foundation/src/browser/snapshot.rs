@@ -80,6 +80,7 @@ pub const STYLE_PROPS: &[&str] = &[
     "backgroundColor",
     "backgroundImage",
     "backgroundPosition",
+    "backgroundRepeat",
     "backgroundSize",
     "blockSize",
     "borderBottomColor",
