@@ -538,8 +538,15 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
 /// white highlight, inside a 1.6px conic ring on the button itself, and the
 /// walk scored its near-white label against the ring's white stop.
 ///
+/// Every translucent wash is composited over every base stop, wherever on
+/// the face the wash is drawn, so a highlight far from the label still adds
+/// its lighter colours to the stops the verdict takes the worst of: a
+/// light-on-light face can fail where the label itself passes.
+///
 /// `None` where the pseudo is not a face over the run (the same placement
-/// and opacity tests as [`read_pseudo_surface_dom`]), where its colour is
+/// tests as [`read_pseudo_surface_dom`]; an explicit `opacity: 0`,
+/// `visibility: hidden`, a transform or translate other than the identity,
+/// or a bottom layer drawn once at a stated size), where its colour is
 /// what paints (that function reads it), where any layer is not a gradient
 /// or the bottom layer lets something through, and where the capture cannot
 /// say it paints over the box.
@@ -552,15 +559,32 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         if position != "absolute" && position != "fixed" {
             continue;
         }
+        // An explicit 0 is 0: the hover face parked at `opacity: 0` until
+        // `:hover::before { opacity: 1 }` paints nothing at rest. Only an
+        // opacity the capture did not read counts as 1.
         let opacity = {
-            let n = parse_float(&pseudo_str(dom, el, which, "opacity"));
-            if num_truthy(n) {
-                n
-            } else {
+            let raw = pseudo_str(dom, el, which, "opacity");
+            let n = parse_float(&raw);
+            if js::trim(&raw).is_empty() || !n.is_finite() {
                 1.0
+            } else {
+                n
             }
         };
-        if pseudo_str(dom, el, which, "display") == "none" || opacity < 0.9 {
+        if pseudo_str(dom, el, which, "display") == "none"
+            || pseudo_str(dom, el, which, "visibility") == "hidden"
+            || opacity < 0.9
+        {
+            continue;
+        }
+        // A face moved or scaled at rest (a slide-in parked at
+        // `translateX(-101%)` or `scaleX(0)`) may not be under the text; the
+        // capture places only one that is not transformed.
+        let untransformed = |prop: &str| {
+            let v: String = pseudo_str(dom, el, which, prop).split_whitespace().collect();
+            v.is_empty() || v == "none" || is_identity_matrix(&v)
+        };
+        if !(untransformed("transform") && untransformed("translate")) {
             continue;
         }
         let w = pseudo_px(dom, el, which, "width");
@@ -570,6 +594,24 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         }
         if parse_rgb_or_any(&pseudo_str(dom, el, which, "backgroundColor")).is_some_and(|c| c.alpha_or_one() > 0.05) {
             continue;
+        }
+        // A bottom layer drawn once at a stated size (a strip, a corner wash)
+        // does not paint under the whole run.
+        let shorthand = js::to_lower_case(&pseudo_str(dom, el, which, "background"));
+        if let Some(bottom) = crate::color::split_top_level_commas(&shorthand).last() {
+            let once = bottom.contains("no-repeat") || bottom.contains("repeat-x") || bottom.contains("repeat-y");
+            let size = bottom.split('/').nth(1).map(|t| {
+                t.split_whitespace()
+                    .take_while(|w| !w.ends_with("-box") && *w != "text")
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
+            let fills = size.as_deref().map_or(true, |s| {
+                matches!(s, "" | "auto" | "auto auto" | "cover" | "100%" | "100% 100%")
+            });
+            if once && !fills {
+                continue;
+            }
         }
         let image = pseudo_str(dom, el, which, "backgroundImage");
         let layers = crate::color::split_top_level_commas(&image);
@@ -9141,7 +9183,7 @@ mod tests {
     /// #ffffff". The face is what the label sits on.
     #[test]
     fn an_opaque_gradient_face_on_a_pseudo_is_the_surface() {
-        let run = |face: &str, isolation: &str| {
+        let run_with = |face: &str, isolation: &str, extra: &[(&str, &str)]| {
             let (mut d, body) = page();
             let a = d.add(Some(body), "a");
             visible(&mut d, a);
@@ -9178,8 +9220,12 @@ mod tests {
             ] {
                 d.set_pseudo_style(a, "::after", p, v);
             }
+            for (p, v) in extra {
+                d.set_pseudo_style(a, "::after", p, v);
+            }
             colors(&d, a).into_iter().filter(|h| h.id == "low-contrast").collect::<Vec<_>>()
         };
+        let run = |face: &str, isolation: &str| run_with(face, isolation, &[]);
         let face = "radial-gradient(130% 130% at 50% 0px, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 46%), linear-gradient(rgb(29, 29, 35) 0%, rgb(11, 11, 15) 100%)";
         assert!(run(face, "isolate").is_empty(), "{:?}", run(face, "isolate"));
         // Where the capture cannot say the face paints over the box's own
@@ -9193,6 +9239,28 @@ mod tests {
         let hits = run(light, "isolate");
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert!(hits[0].snippet.contains("(gradient on a::after)"), "{}", hits[0].snippet);
+        // A light hover face parked out of sight at rest is not the surface
+        // (review B1): an explicit `opacity: 0`, `visibility: hidden`, a
+        // slide-in moved off the run or scaled to nothing, or a strip drawn
+        // once at a stated size. Each falls back to the walk, which reads
+        // the dark ring and passes the near-white label here as on main.
+        let hidden = [
+            vec![("opacity", "0")],
+            vec![("visibility", "hidden")],
+            vec![("transform", "matrix(0, 0, 0, 1, 0, 0)")],
+            vec![("translate", "-101% 0px")],
+            vec![(
+                "background",
+                "rgba(0, 0, 0, 0) linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236)) no-repeat scroll 0% 0% / 100% 4px padding-box border-box",
+            )],
+        ];
+        for extra in &hidden {
+            let hits = run_with(light, "isolate", extra);
+            assert!(hits.iter().all(|h| !h.snippet.contains("::after")), "{extra:?}: {hits:?}");
+        }
+        // Stated at its default, the same face still reads.
+        let hits = run_with(light, "isolate", &[("opacity", "1"), ("visibility", "visible"), ("transform", "none"), ("translate", "none")]);
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
     }
 
     #[test]
