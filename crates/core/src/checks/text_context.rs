@@ -667,6 +667,35 @@ fn is_demo_window<N: ContextNode>(c: &N) -> bool {
 /// child is often a heading band.
 fn is_traffic_light_window<N: ContextNode>(c: &N) -> bool {
     title_bar(c).is_some_and(|bar| bar_leads_with_traffic_lights(&bar) == Some(true))
+        && !landmark_holds_the_page(c)
+}
+
+/// Whether a landmark is the page's own content rather than a drawing on
+/// it: it holds the page's `h1`, or at least half the page's text. A blog
+/// theme that draws its post as a macOS window keeps the post's findings at
+/// their own severity.
+fn landmark_holds_the_page<N: ContextNode>(c: &N) -> bool {
+    const MAX_VISITED: usize = 2000;
+    let mut stack = c.children();
+    let mut visited = 0usize;
+    while let Some(n) = stack.pop() {
+        visited += 1;
+        if visited > MAX_VISITED {
+            // Too large to be a drawing.
+            return true;
+        }
+        if n.tag() == "h1" {
+            return true;
+        }
+        stack.extend(n.children());
+    }
+    let mut root = c.clone();
+    while let Some(p) = root.parent() {
+        root = p;
+    }
+    let own = collapse(&c.text()).chars().count();
+    let page = collapse(&root.text()).chars().count();
+    page > 0 && own * 2 >= page
 }
 
 /// A device frame that is tilted in 3D, or drawn as a frame and scaled down.
@@ -1472,10 +1501,21 @@ mod tests {
         // glowcase.app 321817: the product tour is an `<article>` with a
         // 44px title bar and three dots.
         let (_t, body) = Tree::new();
+        body.add("p").text("Glowcase turns your product into an interactive demo that buyers explore on their own.");
         let (win, _bar, label) = window(&body);
         (win.0).0.borrow_mut()[win.1].tag = "article".into();
         assert!(in_framed_demo(&label));
         assert!(is_demo_frame(&win));
+        // The same window holding the page's h1 is the page's own post.
+        let h1 = win.add("h1").text("Notes");
+        assert!(!in_framed_demo(&label));
+        (h1.0).0.borrow_mut()[h1.1].tag = "h2".into();
+        assert!(in_framed_demo(&label));
+        // Holding most of the page's text, it is the page too.
+        let (_t, body) = Tree::new();
+        let (win, _bar, label) = window(&body);
+        (win.0).0.borrow_mut()[win.1].tag = "article".into();
+        assert!(!in_framed_demo(&label), "the only text on the page");
         // A section whose title bar carries a preview caption but no dots
         // stays a landmark the walk passes through.
         let (_t, body) = Tree::new();
