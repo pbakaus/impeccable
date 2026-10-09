@@ -177,8 +177,12 @@ pub const PAINT_GATED_BOX_RULES: &[&str] = &["ai-color-palette", "bounce-easing"
 /// declared: such a finding reports only when at least one element the
 /// selector matches is painted at capture. The match is tested on the base
 /// predicate alone, with no area test, because the selector may name a
-/// pseudo-element (`.node::after`) whose host has no box of its own.
-pub const PAINT_GATED_PAGE_FORMS: &[&str] = &["bounce-easing", "dark-glow", "gradient-text", "pulsing-dot", "repeating-stripes-gradient"];
+/// pseudo-element (`.node::after`) whose host has no box of its own. A
+/// stripe declared for cards none of which renders (fastsocial.co's
+/// `.pricing .tier-card::before`, every host in a `display: none` grid) is
+/// one of them: `side-tab`.
+pub const PAINT_GATED_PAGE_FORMS: &[&str] =
+    &["bounce-easing", "dark-glow", "gradient-text", "pulsing-dot", "repeating-stripes-gradient", "side-tab"];
 
 /// Which gate a rule's findings pass through, or `None` for an ungated rule.
 pub fn paint_gate(rule_id: &str) -> Option<PaintGate> {
@@ -252,6 +256,35 @@ pub fn text_shown_across(dom: &dyn Dom, el: ElId) -> bool {
 /// Whether a visitor sees `el` painted at rest, counting its own opacity.
 pub fn painted_at_capture(dom: &dyn Dom, el: ElId) -> bool {
     unpainted_at_capture(dom, el, OwnOpacity::Counts).is_none()
+}
+
+/// Whether `sib`, a later sibling of `el` under `parent` that the caller has
+/// already found drawn over `el` in tree order (both at `z-index: auto`, and
+/// `sib` positioned or `el` not), still paints after it once CSS `order` is
+/// counted. A flex or grid container paints its children in order-modified
+/// document order, so there a later sibling paints after `el` only when its
+/// `order` is not lower. An absolutely positioned child counts as `order: 0`
+/// (CSS Flexbox 5.4); for any other child the capture has to have recorded
+/// `order`, and one it did not record answers no. A positioned `sib` over an
+/// unpositioned `el` paints in a later phase whatever the `order`, and any
+/// other parent paints in tree order.
+pub(crate) fn later_sibling_paints_after(dom: &dyn Dom, parent: ElId, el: ElId, sib: ElId) -> bool {
+    if !matches!(dom.style(parent, "display").as_str(), "flex" | "inline-flex" | "grid" | "inline-grid") {
+        return true;
+    }
+    let position = |e: ElId| dom.style(e, "position");
+    let positioned = |e: ElId| !matches!(position(e).as_str(), "static" | "");
+    if positioned(sib) && !positioned(el) {
+        return true;
+    }
+    let order = |e: ElId| {
+        if matches!(position(e).as_str(), "absolute" | "fixed") {
+            return Some(0.0);
+        }
+        let v = js::parse_float(&dom.style(e, "order"));
+        v.is_finite().then_some(v)
+    };
+    matches!((order(el), order(sib)), (Some(a), Some(b)) if b >= a)
 }
 
 /// Why `el` is not painted at capture, or `None` when it is (or when the Dom
@@ -512,6 +545,12 @@ fn unpainted_walk(
         if viewport_w > 0.0 && misses_axis(band.left, band.right, band.width, 0.0, viewport_w) {
             return Some(Unpainted::OutsideDocument);
         }
+        // Nor is a text measurement shown when the viewport's sides leave
+        // under its visible share of it (momoshop.com.tw's fixed side tab,
+        // 6 of its label's 40px on screen): no scroll brings the rest in.
+        if viewport_w > 0.0 && vis.cut(0.0, viewport_w, || true) {
+            return Some(Unpainted::OutsideDocument);
+        }
         return None;
     }
     // The document's edges are the outermost clip, above any container.
@@ -646,7 +685,7 @@ pub fn fixed_box_clippable_by(dom: &dyn Dom, el: ElId, container: ElId) -> bool 
 /// removes it: the screen-reader-only utility. Its content is laid out, and
 /// can overlap the pixel the box keeps, but none of it is seen. The rect is
 /// read first, so the common case costs one read.
-fn is_visually_hidden_box(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn is_visually_hidden_box(dom: &dyn Dom, el: ElId) -> bool {
     let r = dom.rect(el);
     if !r.all_finite() || r.width > 1.0 || r.height > 1.0 {
         return false;
@@ -707,13 +746,29 @@ pub fn under_1px(font_size: &str) -> bool {
 
 /// Whether `node` is a face turned away under `backface-visibility: hidden`:
 /// its own `transform` is a 3D matrix that points its front away from the
-/// viewer (a negative z scale, as `rotateY(180deg)` gives), and nothing above
-/// it rotates in 3D, which could turn it back (a flip card's inner box on
-/// hover). A property the capture did not record, an individual `rotate` or
-/// `scale` on the face, or a 3D transform above it keeps the element. The
+/// viewer (a negative z scale, as `rotateY(180deg)` gives), and the
+/// transforms above it do not turn it back. The linear parts of the face's
+/// transform and of every ancestor's are multiplied, and the face is away
+/// when the product's normal (the third row of its inverse, which is what a
+/// browser tests: Chromium's `IsBackFaceVisible` takes the sign of
+/// `cofactor33 * det`) points away from the viewer. A book tilted a few
+/// degrees towards the viewer (cochat.ai's page-flip mockup, `m33` 0.99)
+/// leaves the back of each leaf facing away.
+///
+/// The capture records neither `transform-style` nor how far a 3D context
+/// reaches, so the product assumes one context, and every case that
+/// assumption could get wrong keeps the element: a second matrix in the
+/// chain that flips on its own (`m33` below 0; a flat ancestor could undo or
+/// redo the flip, as a flip card inside a mirrored wrapper does), a chain
+/// deeper than the walk reads, a property the capture did not record, an
+/// individual `rotate` or `scale` on the face or above it, a transform that does not parse as a matrix, a perspective term
+/// inside one, and a normal close to edge-on ([`FACING_AWAY_MIN`], or
+/// [`FACING_AWAY_MIN_UNDER_PERSPECTIVE`] under an ancestor that sets
+/// `perspective`, where a face off to the side can show past edge-on). The
 /// walk calls this for the element and each ancestor, so a face hides its
 /// whole subtree; only a face found reads the chain above it.
 fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 256;
     if dom.style(node, "backfaceVisibility") != "hidden" || !faces_away(&dom.style(node, "transform")) {
         return false;
     }
@@ -721,14 +776,109 @@ fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
     if !(individual_none(node, "rotate") && individual_none(node, "scale")) {
         return false;
     }
+    let Some(face) = linear_part(&dom.style(node, "transform")) else {
+        return false;
+    };
+    // Row-major products: `total = ancestor_n * ... * ancestor_1 * face`.
+    let mut total = rows(&face);
+    let mut perspective = false;
     let mut up = dom.parent(node);
+    let mut steps = 0;
     while let Some(a) = up {
-        if dom.style(a, "transform").starts_with("matrix3d(") || !individual_none(a, "rotate") {
+        steps += 1;
+        if steps > MAX_ANCESTORS || !individual_none(a, "rotate") || !individual_none(a, "scale") {
             return false;
+        }
+        let p = dom.style(a, "perspective");
+        perspective |= !(p.is_empty() || p == "none");
+        let t = dom.style(a, "transform");
+        let t = js::trim(&t);
+        if !(t.is_empty() || t == "none") {
+            let Some(m) = linear_part(t) else { return false };
+            if m[2][2] < 0.0 {
+                return false;
+            }
+            total = multiply(&rows(&m), &total);
         }
         up = dom.parent(a);
     }
-    true
+    let Some(inverse) = invert(&total) else { return false };
+    let normal = inverse[2];
+    let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    let floor = if perspective { FACING_AWAY_MIN_UNDER_PERSPECTIVE } else { FACING_AWAY_MIN };
+    length > 0.0 && normal[2] / length < -floor
+}
+
+/// How far past edge-on a face's normal has to point away from the viewer
+/// (the z component of the unit normal) to count as turned away.
+const FACING_AWAY_MIN: f64 = 0.1;
+
+/// The same under an ancestor that sets `perspective`, which the capture
+/// does not model: a face off to the side of the perspective origin shows
+/// although its normal points a little away.
+const FACING_AWAY_MIN_UNDER_PERSPECTIVE: f64 = 0.3;
+
+/// A column-major linear part (`m[c][r]`) as rows.
+fn rows(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut r = [[0.0; 3]; 3];
+    for (c, col) in m.iter().enumerate() {
+        for (i, v) in col.iter().enumerate() {
+            r[i][c] = *v;
+        }
+    }
+    r
+}
+
+fn multiply(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut out = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            out[i][j] = (0..3).map(|k| a[i][k] * b[k][j]).sum();
+        }
+    }
+    out
+}
+
+/// The inverse of a 3x3 matrix, `None` when it is singular.
+fn invert(m: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let c = |r0: usize, r1: usize, c0: usize, c1: usize| m[r0][c0] * m[r1][c1] - m[r0][c1] * m[r1][c0];
+    let cof = [
+        [c(1, 2, 1, 2), -c(1, 2, 0, 2), c(1, 2, 0, 1)],
+        [-c(0, 2, 1, 2), c(0, 2, 0, 2), -c(0, 2, 0, 1)],
+        [c(0, 1, 1, 2), -c(0, 1, 0, 2), c(0, 1, 0, 1)],
+    ];
+    let det = m[0][0] * cof[0][0] + m[0][1] * cof[0][1] + m[0][2] * cof[0][2];
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return None;
+    }
+    // inverse = adjugate / det, the adjugate being the cofactors transposed.
+    let mut inv = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            inv[i][j] = cof[j][i] / det;
+        }
+    }
+    Some(inv)
+}
+
+/// The linear part of a computed `transform` (`matrix()` or `matrix3d()`),
+/// column by column, or `None` for anything else, or for a `matrix3d()`
+/// carrying a perspective term.
+fn linear_part(transform: &str) -> Option<[[f64; 3]; 3]> {
+    let parse = |body: &str| -> Option<Vec<f64>> {
+        let values: Vec<f64> = body.split(',').map(|v| js::parse_float(js::trim(v))).collect();
+        values.iter().all(|v| v.is_finite()).then_some(values)
+    };
+    if let Some(body) = transform.strip_prefix("matrix3d(").and_then(|b| b.strip_suffix(')')) {
+        let v = parse(body)?;
+        if v.len() != 16 || v[3] != 0.0 || v[7] != 0.0 || v[11] != 0.0 {
+            return None;
+        }
+        return Some([[v[0], v[1], v[2]], [v[4], v[5], v[6]], [v[8], v[9], v[10]]]);
+    }
+    let body = transform.strip_prefix("matrix(").and_then(|b| b.strip_suffix(')'))?;
+    let v = parse(body)?;
+    (v.len() == 6).then(|| [[v[0], v[1], 0.0], [v[2], v[3], 0.0], [0.0, 0.0, 1.0]])
 }
 
 /// Whether a computed `transform` is a 3D matrix whose z axis points away
@@ -1049,6 +1199,7 @@ fn is_state_layer(dom: &dyn Dom, el: ElId) -> bool {
         || lazy_raster_pending(dom, el)
         || opacity_in_motion(dom, el)
         || awaits_class_reveal(dom, el)
+        || inside_a_reveal_in_progress(dom, el)
     {
         return true;
     }
@@ -1061,6 +1212,61 @@ fn is_state_layer(dom: &dyn Dom, el: ElId) -> bool {
         return false;
     }
     declares_animation(dom, el) || marks_lazy_loading(dom, el) || in_crossfade_stack(dom, el)
+}
+
+/// Whether a box above `el` is caught part way through a reveal: below full
+/// opacity, displaced (a `transform` other than the identity, or a
+/// `translate`, `scale` or `rotate` that moves it), declaring a transition
+/// that names `opacity` itself (`all` does not count: utility CSS and
+/// hover styles declare it everywhere), and showing that the frame is one
+/// between two values. That last is either an `opacity` the capture saw
+/// running on the box, or an opacity off the 0.01 grid authors write
+/// (fastsocial.co's `[data-reveal]` cards at `opacity: 0.600778; transform:
+/// scale(0.99568) translateY(3.74px)` with a 0.7s opacity transition, an
+/// image inside fading in with them). A watermark held at `opacity: .08`
+/// and centred with a transform, or a dimmed carousel slide at `.5`, is a
+/// value at rest. The raster's own transform is not asked: a picture held
+/// faint that also floats would read the same.
+fn inside_a_reveal_in_progress(dom: &dyn Dom, el: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 64;
+    let mut cur = dom.parent(el);
+    for _ in 0..MAX_ANCESTORS {
+        let Some(c) = cur else { return false };
+        if Some(c) == dom.body() || Some(c) == dom.document_element() {
+            return false;
+        }
+        let opacity = js::parse_float(&dom.style(c, "opacity"));
+        if opacity.is_finite()
+            && opacity < 0.999
+            && declares_transition_naming(dom, c, "opacity")
+            && super::element_checks::visibly_displaced(dom, c)
+            && (opacity_in_motion(dom, c) || off_authored_grid(opacity))
+        {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
+
+/// Whether an opacity lies off the hundredths an author writes: a value
+/// interpolated between two states (0.600778), not one set (0.6, .08).
+fn off_authored_grid(opacity: f64) -> bool {
+    let hundredths = opacity * 100.0;
+    (hundredths - hundredths.round()).abs() > 0.01
+}
+
+/// Whether `el` declares a transition of `property` by name, with a duration
+/// above 0. `all` does not count.
+fn declares_transition_naming(dom: &dyn Dom, el: ElId, property: &str) -> bool {
+    let props = dom.style(el, "transitionProperty");
+    let durations = dom.style(el, "transitionDuration");
+    let durations: Vec<&str> = durations.split(',').map(js::trim).collect();
+    props
+        .split(',')
+        .map(js::trim)
+        .enumerate()
+        .any(|(i, p)| p == property && css_time_seconds(durations[i % durations.len()]) > 0.0)
 }
 
 /// Whether an animation or transition running on the element at capture
@@ -1331,6 +1537,95 @@ pub(crate) fn loops_in_motion(dom: &dyn Dom, el: ElId) -> bool {
                 .keyframes(&entry.name)
                 .is_some_and(|frames| frames.iter().filter_map(frame_opacity).any(|o| o <= LOOP_VANISH_OPACITY))
     })
+}
+
+/// Whether `el` or an ancestor is caught part way through a sideways move
+/// that ends: the capture saw an animation or transition running on the box
+/// that moves it on the x axis (`left`, `right`, `margin-left`,
+/// `margin-right`, an `inset-inline` longhand, or a `transform` or
+/// `translate` whose current x offset is not 0), and the page traces that
+/// move to something that stops: CSS animations whose keyframes set the
+/// property, every one finite, on the document timeline and not paused, or
+/// a transition that names it. elevancehealth.com's quote slides in from the
+/// right (`quote-appear-right`, one run, `right` from -96% to 0) and the
+/// capture caught it 79px past the viewport's edge, where no visitor finds
+/// it once the slide ends.
+///
+/// A vertical move (a fade-up's `translateY`, `top`) cannot change where
+/// text meets the side of the viewport and does not count. A running
+/// property the page does not trace (a Web Animations API loop, which a
+/// marquee library starts from script) is unknown, and the box stands where
+/// it was measured, as it does where the recording did not read running
+/// animations.
+pub(crate) fn moves_mid_animation(dom: &dyn Dom, el: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 64;
+    let mut cur = Some(el);
+    for _ in 0..MAX_ANCESTORS {
+        let Some(c) = cur else { return false };
+        if Some(c) == dom.body() || Some(c) == dom.document_element() {
+            return false;
+        }
+        if let Some(props) = dom.running_animation_properties(c) {
+            if props.iter().any(|p| moves_sideways(dom, c, p) && traced_to_an_end(dom, c, p)) {
+                return true;
+            }
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
+
+/// Whether a running property `p` moves `el` on the x axis at capture.
+fn moves_sideways(dom: &dyn Dom, el: ElId, p: &str) -> bool {
+    match p {
+        "left" | "right" | "margin-left" | "margin-right" => true,
+        _ if p.starts_with("inset-inline") => true,
+        "transform" => {
+            let t = js::trim(&dom.style(el, "transform")).replace(' ', "");
+            let x = if let Some(body) = t.strip_prefix("matrix3d(").and_then(|b| b.strip_suffix(')')) {
+                body.split(',').nth(12).map(js::parse_float)
+            } else if let Some(body) = t.strip_prefix("matrix(").and_then(|b| b.strip_suffix(')')) {
+                body.split(',').nth(4).map(js::parse_float)
+            } else {
+                None
+            };
+            x.is_some_and(|x| x.is_finite() && x.abs() >= 1.0)
+        }
+        "translate" => {
+            let t = dom.style(el, "translate");
+            t.split_whitespace().next().map(js::parse_float).is_some_and(|x| x.is_finite() && x.abs() >= 1.0)
+        }
+        _ => false,
+    }
+}
+
+/// Whether the page traces the running property `p` on `el` to a move that
+/// stops: a transition that names `p`, or CSS animations whose keyframes set
+/// `p`, every one of them finite (a positive iteration count), on the
+/// document timeline and not paused. The capture records which properties
+/// run, not which animation runs them, so one animation that keeps `p`
+/// moving (an infinite float beside a one-shot entrance) keeps the box where
+/// it was measured, and so does an animation whose keyframes the capture
+/// could not read.
+fn traced_to_an_end(dom: &dyn Dom, el: ElId, p: &str) -> bool {
+    let mut setting = Vec::new();
+    for e in animation_entries(dom, el) {
+        let Some(frames) = dom.keyframes(&e.name) else { return false };
+        if frames.iter().any(|f| f.decls.iter().any(|(prop, _)| prop == p)) {
+            setting.push(e);
+        }
+    }
+    let ends = |e: &AnimationEntry| {
+        let count = js::parse_float(&e.iterations);
+        count.is_finite()
+            && count > 0.0
+            && (e.timeline.is_empty() || e.timeline == "auto")
+            && e.play_state != "paused"
+    };
+    if !setting.iter().all(ends) {
+        return false;
+    }
+    declares_transition_naming(dom, el, p) || !setting.is_empty()
 }
 
 /// Whether `el` (when `include_self`) or an ancestor fades out for good
@@ -1972,6 +2267,28 @@ mod tests {
         assert_eq!(why(&d, p), None);
     }
 
+    fn rotate_y(deg: f64) -> [[f64; 3]; 3] {
+        let (s, c) = deg.to_radians().sin_cos();
+        [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
+    }
+
+    fn rotate_x(deg: f64) -> [[f64; 3]; 3] {
+        let (s, c) = deg.to_radians().sin_cos();
+        [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]
+    }
+
+    fn mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+        multiply(a, b)
+    }
+
+    /// A row-major linear part as the computed `matrix3d()` (column-major).
+    fn matrix3d(r: &[[f64; 3]; 3]) -> String {
+        format!(
+            "matrix3d({}, {}, {}, 0, {}, {}, {}, 0, {}, {}, {}, 0, 0, 0, 0, 1)",
+            r[0][0], r[1][0], r[2][0], r[0][1], r[1][1], r[2][1], r[0][2], r[1][2], r[2][2]
+        )
+    }
+
     /// aisdr.com's guide cards: the back of each is `rotateY(180deg)` under
     /// `backface-visibility: hidden`.
     #[test]
@@ -2010,6 +2327,62 @@ mod tests {
         d.set_style(card, "transform", "none");
         d.set_style(card, "rotate", "y 180deg");
         assert_eq!(why(&d, copy), None);
+        d.set_style(card, "rotate", "none");
+        // So may an individual `scale` above it (`scale: 1 1 -1` flips z).
+        d.set_style(card, "scale", "1 1 -1");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "scale", "none");
+
+        // cochat.ai's page-flip book: the whole book is tilted a few degrees
+        // towards the viewer (and scaled), which leaves the back of each leaf
+        // facing away.
+        const TILTED_BOOK: &str = "matrix3d(1.3797, -0.0286851, -0.00352209, 0, 0.0289005, 1.36941, 0.168143, 0, 0, -0.121869, 0.992546, 0, 153.3, 0, 0, 1)";
+        d.set_style(card, "transform", TILTED_BOOK);
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        // A 2D transform above it turns nothing towards the viewer either.
+        d.set_style(body, "transform", "matrix(0.5, 0.2, -0.2, 0.5, 10, 10)");
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        d.set_style(body, "transform", "none");
+        // A quarter turn about y leaves the face edge-on, which the
+        // perspective the capture does not model could show either way; a
+        // perspective term, or a transform that does not parse as a matrix,
+        // says nothing.
+        d.set_style(card, "transform", "matrix3d(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -0.001, 0, 0, 0, 1)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "rotateX(5deg)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "none");
+
+        // Intermediate card angles over the 180-degree back: at 60 degrees
+        // the back still faces away; at 120 the card's own matrix flips,
+        // and with two flips in the chain nothing is decided.
+        d.set_style(card, "transform", &matrix3d(&rotate_y(60.0)));
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        d.set_style(card, "transform", &matrix3d(&rotate_y(120.0)));
+        assert_eq!(why(&d, copy), None);
+        // A flipped flip card inside a mirrored wrapper (two flips): kept,
+        // since a flat wrapper would show it.
+        d.set_style(card, "transform", FLIPPED);
+        d.set_style(body, "transform", FLIPPED);
+        assert_eq!(why(&d, copy), None);
+        d.set_style(body, "transform", "none");
+        // A non-uniform scale under a 3D rotation turns the normal, not the
+        // z axis: a face at rotateX(150deg) under rotateX(-60deg)
+        // scaleY(0.2) faces the viewer.
+        d.set_style(back, "transform", &matrix3d(&rotate_x(150.0)));
+        let squashed = mul(&rotate_x(-60.0), &[[1.0, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 0.0, 1.0]]);
+        d.set_style(card, "transform", &matrix3d(&squashed));
+        assert_eq!(why(&d, copy), None);
+        // Under perspective, a face a little past edge-on is kept.
+        d.set_style(back, "transform", FLIPPED);
+        d.set_style(card, "transform", &matrix3d(&rotate_y(75.0)));
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway), "cos 255 = -0.26 past the plain floor");
+        d.set_style(body, "perspective", "1000px");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(body, "perspective", "none");
+        d.set_style(card, "transform", "none");
 
         // A 2D mirror turns nothing away.
         d.set_style(card, "rotate", "none");
@@ -2055,6 +2428,61 @@ mod tests {
         assert_eq!(why(&d, label), None);
     }
 
+    /// momoshop.com.tw (324173): a fixed side tab at x 1258 on a 1280px
+    /// viewport; 6 of its label's 40px are on screen.
+    #[test]
+    fn a_viewport_layer_shows_text_only_past_its_visible_share() {
+        let (mut d, body) = page();
+        d.inner_width = 1280.0;
+        d.inner_height = 800.0;
+        let tab = d.add(Some(body), "div");
+        resolved(&mut d, tab);
+        d.set_style(tab, "position", "fixed");
+        d.set_rect(tab, 1258.0, 320.0, 72.0, 158.0);
+        let label = d.add(Some(tab), "span");
+        resolved(&mut d, label);
+        d.add_text(label, "購物車");
+        let place = |d: &mut FakeDom, x: f64| {
+            d.set_rect(label, x, 334.0, 40.0, 16.0);
+            d.set_text_rect(label, x, 334.0, 40.0, 16.0);
+        };
+        place(&mut d, 1274.0);
+        assert_eq!(unpainted_for(&d, label, PaintGate::Text), Some(Unpainted::OutsideDocument));
+        // The base predicate keeps any pixel on screen.
+        assert_eq!(why(&d, label), None);
+        // Half of it on screen is read.
+        place(&mut d, 1260.0);
+        assert_eq!(unpainted_for(&d, label, PaintGate::Text), None);
+        // Inside a horizontal scroller in a fixed bar, the scroller's range
+        // is what the share is taken of: a chip at the viewport's edge in a
+        // scroller that runs past it is scrolled into view.
+        let bar = d.add(Some(body), "div");
+        resolved(&mut d, bar);
+        d.set_style(bar, "position", "fixed");
+        d.set_rect(bar, 0.0, 760.0, 1600.0, 40.0);
+        let scroller = d.add(Some(bar), "div");
+        resolved(&mut d, scroller);
+        d.set_styles(scroller, &[("overflowX", "auto"), ("overflowY", "hidden")]);
+        d.set_rect(scroller, 0.0, 760.0, 1600.0, 40.0);
+        d.el_mut(scroller).scroll_width = 2400.0;
+        d.el_mut(scroller).client_width = 1600.0;
+        let chip = d.add(Some(scroller), "span");
+        resolved(&mut d, chip);
+        d.add_text(chip, "Weekly deals");
+        d.set_rect(chip, 1270.0, 770.0, 90.0, 20.0);
+        d.set_text_rect(chip, 1270.0, 770.0, 90.0, 20.0);
+        assert_eq!(unpainted_for(&d, chip, PaintGate::Text), None);
+        // Pinned as it stands: one unbroken run in a fixed bar more than
+        // four viewports wide shows under a quarter of itself, and the Text
+        // gate drops it.
+        let ticker = d.add(Some(tab), "span");
+        resolved(&mut d, ticker);
+        d.add_text(ticker, "Free shipping on every order, every day, everywhere");
+        d.set_rect(ticker, 0.0, 300.0, 5200.0, 16.0);
+        d.set_text_rect(ticker, 0.0, 300.0, 5200.0, 16.0);
+        assert_eq!(unpainted_for(&d, ticker, PaintGate::Text), Some(Unpainted::OutsideDocument));
+    }
+
     /// jyes.com.tw's spec table under a "read more" panel held at
     /// `max-height: 1000px`, taller than the phone's viewport.
     #[test]
@@ -2090,6 +2518,77 @@ mod tests {
         d.set_style(panel, "maxHeight", &format!("{vh}px"));
         d.set_rect(cell, 40.0, 1600.0, 195.0, 40.0);
         assert_eq!(why(&d, cell), None);
+    }
+
+    /// fastsocial.co (323161): an image at 0.057 inside a `[data-reveal]`
+    /// card caught mid-reveal (0.6 opacity, nudged by a transform, with an
+    /// opacity transition). Its own float animation moves it too, which on
+    /// its own says nothing.
+    #[test]
+    fn an_image_inside_a_reveal_in_progress_is_a_state_layer() {
+        let (mut d, body) = page();
+        let card = d.add(Some(body), "div");
+        d.set_styles(
+            card,
+            &[
+                ("opacity", "0.600778"),
+                ("transform", "matrix(0.99568, 0, 0, 0.99568, 0, 3.74421)"),
+                ("transitionProperty", "opacity, transform"),
+                ("transitionDuration", "0.7s, 0.9s"),
+            ],
+        );
+        d.set_rect(card, 25.0, 7399.0, 341.0, 182.0);
+        let img = d.add(Some(card), "img");
+        d.set_styles(img, &[("opacity", "0.0567087"), ("transform", "matrix(0.75, 0.06, -0.06, 0.75, 0, 24)")]);
+        d.set_rect(img, 158.0, 7432.0, 73.0, 78.0);
+        assert_eq!(raster(&d, img), Some(Unpainted::StateLayer));
+        // At rest: the card at full opacity, or not displaced, or with no
+        // opacity transition, leaves the image held faint.
+        for (prop, value) in [
+            ("opacity", "1"),
+            ("transform", "none"),
+            ("transitionProperty", "transform"),
+            // `all` is everywhere; it says nothing about a reveal.
+            ("transitionProperty", "all"),
+            // An authored value is a state at rest.
+            ("opacity", "0.6"),
+        ] {
+            let was = d.style(card, prop);
+            d.set_style(card, prop, value);
+            assert_eq!(raster(&d, img), None, "{prop}: {value}");
+            d.set_style(card, prop, &was);
+        }
+        // An authored value the capture saw moving is a frame of a fade.
+        d.set_style(card, "opacity", "0.6");
+        d.el_mut(card).running_animations = Some(vec!["opacity".to_string()]);
+        assert_eq!(raster(&d, img), Some(Unpainted::StateLayer));
+    }
+
+    /// The classic buried raster: a faint watermark image in a box centred
+    /// with a transform, dimmed to `opacity: .5`, with `transition: all
+    /// .3s` (a dimmed carousel slide reads the same). It is at rest.
+    #[test]
+    fn a_watermark_with_a_transition_stays_buried() {
+        let (mut d, body) = page();
+        let mark = d.add(Some(body), "div");
+        d.set_styles(
+            mark,
+            &[
+                ("position", "absolute"),
+                ("opacity", "0.5"),
+                ("transform", "matrix(1, 0, 0, 1, -200, -150)"),
+                ("transitionProperty", "all"),
+                ("transitionDuration", "0.3s"),
+            ],
+        );
+        d.set_rect(mark, 440.0, 250.0, 400.0, 300.0);
+        let img = d.add(Some(mark), "img");
+        d.set_style(img, "opacity", "0.1");
+        d.set_rect(img, 440.0, 250.0, 400.0, 300.0);
+        assert_eq!(raster(&d, img), None);
+        // Naming opacity does not make an authored .5 a frame.
+        d.set_style(mark, "transitionProperty", "opacity, transform");
+        assert_eq!(raster(&d, img), None);
     }
 
     /// zigzag.kr (`data-loaded="false"`), thairath.co.th
@@ -3586,6 +4085,8 @@ mod tests {
         assert!(page_form_painted(&d, "bounce-easing", &[loader, shown]));
         assert!(!page_form_painted(&d, "pulsing-dot", &[loader]));
         assert!(!page_form_painted(&d, "dark-glow", &[loader]));
+        assert!(!page_form_painted(&d, "side-tab", &[loader]));
+        assert!(page_form_painted(&d, "side-tab", &[loader, shown]));
         // Outside the list, and with nothing matched, base behavior stands.
         assert!(page_form_painted(&d, "marquee", &[loader]));
         assert!(page_form_painted(&d, "bounce-easing", &[]));

@@ -4,7 +4,8 @@
 //!
 //! - `content-hidden-at-rest.html` / `content-hidden-closed-interface.html`:
 //!   text in closed nav flyouts, an inert mega-menu, an off-canvas drawer, a
-//!   closed dialog, unselected tab panels and collapsed accordion sections is
+//!   closed dialog, a hidden layer fixed over the whole viewport, unselected
+//!   tab panels and collapsed accordion sections is
 //!   left out of the hidden share; sections staged for a reveal that never ran
 //!   still count (r5-p5-content-hidden-closed-navigation).
 //! - `script-error-hydration.html`: React's recoverable hydration errors

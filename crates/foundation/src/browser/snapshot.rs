@@ -112,7 +112,9 @@ pub const STYLE_PROPS: &[&str] = &[
     "flexWrap",
     "float",
     "fontFamily",
+    "fontFeatureSettings",
     "fontSize",
+    "fontStretch",
     "fontStyle",
     "fontVariant",
     "fontVariantCaps",
@@ -144,6 +146,7 @@ pub const STYLE_PROPS: &[&str] = &[
     "objectFit",
     "objectPosition",
     "opacity",
+    "order",
     "outline",
     "outlineColor",
     "outlineOffset",
@@ -190,6 +193,7 @@ pub const STYLE_PROPS: &[&str] = &[
     "width",
     "willChange",
     "wordBreak",
+    "wordSpacing",
     "zIndex",
 ];
 

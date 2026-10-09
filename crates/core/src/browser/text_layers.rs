@@ -496,6 +496,11 @@ pub fn layers_at_text(
     };
     let points = occlusion_probe_points(&rect, vw, vh);
     if points.is_empty() || points.len() * 2 < occlusion_grid_size(&rect) {
+        // Below the fold no point is answered, but one layer can be read off
+        // the tree: a loaded picture a later sibling lays over the text.
+        if rect.top >= vh && covered_by_a_later_picture(dom, el) {
+            return TextLayers::Covered;
+        }
         return TextLayers::Undecided;
     }
     let answers: Vec<AtPoint> = points
@@ -516,4 +521,130 @@ pub fn layers_at_text(
     } else {
         TextLayers::Consistent
     }
+}
+
+/// The opacity a picture and the boxes between it and the sibling that holds
+/// it need for the picture to hide what is under it.
+const PICTURE_COVER_MIN_OPACITY: f64 = 0.95;
+
+/// How far the picture's box may sit from the avatar box on each side.
+const AVATAR_BOX_SLACK: f64 = 3.0;
+
+/// The largest avatar box, on either axis.
+const AVATAR_MAX_SIDE: f64 = 160.0;
+
+/// The most characters initials run to, for a box larger than an avatar.
+const AVATAR_MAX_TEXT: usize = 3;
+
+/// Whether a later sibling of `el` lays a loaded picture over all of `el`'s
+/// text in the shape of an avatar: thingstohave.app's initials
+/// (`Avatar__Fallback`) under the photo the next sibling holds. The engine
+/// cannot see an image's alpha, and transparent pictures are common exactly
+/// where they lie over text (grain and texture overlays, frames, cut-out
+/// product shots), so the test keeps to the shape it was built for:
+///
+/// - the picture's box matches the box of `el`'s parent within
+///   [`AVATAR_BOX_SLACK`] on every side, and that box is no larger than
+///   [`AVATAR_MAX_SIDE`] on either axis or `el`'s text is at most
+///   [`AVATAR_MAX_TEXT`] characters (initials);
+/// - the picture is an `<img>` the capture saw complete with a size of its
+///   own, whose source does not end in `.svg` or `.png`, sized to cover
+///   (`object-fit` `fill` or `cover`), covering the text within a pixel, and
+///   which neither it nor any box up to the sibling fades below
+///   [`PICTURE_COVER_MIN_OPACITY`];
+/// - the sibling is drawn over `el` (neither sets a `z-index`, the sibling
+///   is positioned or `el` is not, and in a flex or grid container CSS
+///   `order` does not put it first) and is painted.
+///
+/// An image whose load state was not recorded covers nothing.
+fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
+    let Some(parent) = dom.parent(el) else { return false };
+    let text = dom
+        .direct_text_rect(el)
+        .filter(|r| r.all_finite() && r.width > 0.0 && r.height > 0.0)
+        .unwrap_or_else(|| dom.rect(el));
+    if !text.all_finite() || text.width <= 0.0 || text.height <= 0.0 {
+        return false;
+    }
+    let host = dom.rect(parent);
+    if !host.all_finite() {
+        return false;
+    }
+    let small = host.width <= AVATAR_MAX_SIDE && host.height <= AVATAR_MAX_SIDE;
+    if !small && js::trim(&dom.text_content(el)).chars().count() > AVATAR_MAX_TEXT {
+        return false;
+    }
+    let positioned = |e: ElId| !matches!(dom.style(e, "position").as_str(), "static" | "");
+    let z_auto = |e: ElId| matches!(dom.style(e, "zIndex").as_str(), "auto" | "");
+    if !z_auto(el) {
+        return false;
+    }
+    let opaque = |e: ElId| {
+        let o = js::parse_float(&dom.style(e, "opacity"));
+        o.is_finite() && o >= PICTURE_COVER_MIN_OPACITY
+    };
+    let siblings = dom.children(parent);
+    let Some(at) = siblings.iter().position(|&c| c == el) else { return false };
+    siblings[at + 1..].iter().any(|&sib| {
+        if !z_auto(sib)
+            || !(positioned(sib) || !positioned(el))
+            || !super::painted::later_sibling_paints_after(dom, parent, el, sib)
+        {
+            return false;
+        }
+        if !super::painted::painted_at_capture(dom, sib) {
+            return false;
+        }
+        let pictures = if tag_lower(dom, sib) == "img" {
+            vec![sib]
+        } else {
+            dom.query_all(Some(sib), "img").unwrap_or_default()
+        };
+        pictures.into_iter().any(|img| {
+            let loaded = dom.image_complete(img) == Some(true)
+                && dom.image_natural_size(img).is_some_and(|(w, h)| w > 0.0 && h > 0.0);
+            if !loaded || !matches!(dom.style(img, "objectFit").as_str(), "fill" | "cover" | "") {
+                return false;
+            }
+            let src = dom
+                .image_current_src(img)
+                .or_else(|| dom.attr(img, "src"))
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let path = src.split(['?', '#']).next().unwrap_or("");
+            if path.ends_with(".svg") || path.ends_with(".png") {
+                return false;
+            }
+            let r = dom.rect(img);
+            let matches_host = r.all_finite()
+                && (r.left - host.left).abs() <= AVATAR_BOX_SLACK
+                && (r.top - host.top).abs() <= AVATAR_BOX_SLACK
+                && (r.right - host.right).abs() <= AVATAR_BOX_SLACK
+                && (r.bottom - host.bottom).abs() <= AVATAR_BOX_SLACK;
+            if !matches_host {
+                return false;
+            }
+            let covers = r.all_finite()
+                && r.left <= text.left + 1.0
+                && r.top <= text.top + 1.0
+                && r.right >= text.right - 1.0
+                && r.bottom >= text.bottom - 1.0;
+            if !covers || !super::painted::painted_at_capture(dom, img) {
+                return false;
+            }
+            // A `z-index` on the picture or a box under the sibling can put
+            // it behind the initials.
+            let mut cur = Some(img);
+            while let Some(c) = cur {
+                if !opaque(c) || !z_auto(c) {
+                    return false;
+                }
+                if c == sib {
+                    break;
+                }
+                cur = dom.parent(c);
+            }
+            true
+        })
+    })
 }
