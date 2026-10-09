@@ -3946,8 +3946,10 @@ mod tests {
         let mut d = FakeDom::new();
         let (_h, body) = d.with_page();
         d.set_styles(body, &[("backgroundColor", "rgb(255, 255, 255)"), ("backgroundImage", "none")]);
+        // The row paints the surface it fades, so the element pass's fold
+        // does not score the fade and the pixels are asked.
         let row = d.add(Some(body), "div");
-        d.set_styles(row, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("backgroundImage", "none"), ("opacity", "0.5")]);
+        d.set_styles(row, &[("backgroundColor", "rgb(240, 240, 240)"), ("backgroundImage", "none"), ("opacity", "0.5")]);
         d.set_rect(row, 0.0, 0.0, 400.0, 40.0);
         let p = d.add(Some(row), "p");
         d.add_text(p, "Pick a template:");
