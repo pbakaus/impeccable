@@ -2411,6 +2411,34 @@ mod tests {
         // Half of it on screen is read.
         place(&mut d, 1260.0);
         assert_eq!(unpainted_for(&d, label, PaintGate::Text), None);
+        // Inside a horizontal scroller in a fixed bar, the scroller's range
+        // is what the share is taken of: a chip at the viewport's edge in a
+        // scroller that runs past it is scrolled into view.
+        let bar = d.add(Some(body), "div");
+        resolved(&mut d, bar);
+        d.set_style(bar, "position", "fixed");
+        d.set_rect(bar, 0.0, 760.0, 1600.0, 40.0);
+        let scroller = d.add(Some(bar), "div");
+        resolved(&mut d, scroller);
+        d.set_styles(scroller, &[("overflowX", "auto"), ("overflowY", "hidden")]);
+        d.set_rect(scroller, 0.0, 760.0, 1600.0, 40.0);
+        d.el_mut(scroller).scroll_width = 2400.0;
+        d.el_mut(scroller).client_width = 1600.0;
+        let chip = d.add(Some(scroller), "span");
+        resolved(&mut d, chip);
+        d.add_text(chip, "Weekly deals");
+        d.set_rect(chip, 1270.0, 770.0, 90.0, 20.0);
+        d.set_text_rect(chip, 1270.0, 770.0, 90.0, 20.0);
+        assert_eq!(unpainted_for(&d, chip, PaintGate::Text), None);
+        // Pinned as it stands: one unbroken run in a fixed bar more than
+        // four viewports wide shows under a quarter of itself, and the Text
+        // gate drops it.
+        let ticker = d.add(Some(tab), "span");
+        resolved(&mut d, ticker);
+        d.add_text(ticker, "Free shipping on every order, every day, everywhere");
+        d.set_rect(ticker, 0.0, 300.0, 5200.0, 16.0);
+        d.set_text_rect(ticker, 0.0, 300.0, 5200.0, 16.0);
+        assert_eq!(unpainted_for(&d, ticker, PaintGate::Text), Some(Unpainted::OutsideDocument));
     }
 
     /// jyes.com.tw's spec table under a "read more" panel held at

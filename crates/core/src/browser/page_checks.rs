@@ -4575,6 +4575,15 @@ mod tests {
             d
         };
         assert!(check_typography(&build(true)).is_empty());
+        // A 1px box that nothing clips is not the sr-only utility: its
+        // headings are type like any other.
+        let mut d = build(true);
+        for e in 0..d.els.len() as ElId {
+            if d.style(e, "position") == "absolute" {
+                d.set_styles(e, &[("clip", "auto"), ("clipPath", "none")]);
+            }
+        }
+        assert_eq!(check_typography(&d).len(), 1);
         // Boxes the clip does not remove are type like any other.
         let f = check_typography(&build(false));
         assert_eq!(f.len(), 1, "{f:?}");
