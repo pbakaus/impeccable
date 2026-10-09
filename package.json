@@ -74,11 +74,11 @@
     "build:component-review": "bun scripts/build-component-review.mjs"
   },
   "optionalDependencies": {
-    "@impeccable/cli-darwin-arm64": "0.1.12",
-    "@impeccable/cli-darwin-x64": "0.1.12",
-    "@impeccable/cli-linux-x64": "0.1.12",
-    "@impeccable/cli-linux-arm64": "0.1.12",
-    "@impeccable/cli-windows-x64": "0.1.12"
+    "@impeccable/cli-darwin-arm64": "0.1.14",
+    "@impeccable/cli-darwin-x64": "0.1.14",
+    "@impeccable/cli-linux-x64": "0.1.14",
+    "@impeccable/cli-linux-arm64": "0.1.14",
+    "@impeccable/cli-windows-x64": "0.1.14"
   },
   "devDependencies": {
     "@ai-sdk/anthropic": "^4.0.7",
