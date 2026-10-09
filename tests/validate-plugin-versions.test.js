@@ -69,6 +69,16 @@ describe('collectPluginVersions', () => {
     expect(collectPluginVersions(root).mismatches).toEqual([]);
   });
 
+  test('leaves a package.json that is not the impeccable CLI alone', () => {
+    // impeccable-site builds the skill from a tree whose root package.json is
+    // the site's own, at its own version.
+    writeFixture(root, { plugin: '3.7.1', marketplace: '3.7.1' });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'impeccable-site', version: '3.2.1' }));
+    const { checked, mismatches } = collectPluginVersions(root);
+    expect(mismatches).toEqual([]);
+    expect(checked.some((c) => c.relPath === 'package.json')).toBe(false);
+  });
+
   test('flags a lagging marketplace.json (the half the sync workflow cannot repair)', () => {
     writeFixture(root, { plugin: '3.7.1', marketplace: '3.1.1', subtreePlugin: '3.7.1', skill: '3.7.1' });
     const { mismatches } = collectPluginVersions(root);
