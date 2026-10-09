@@ -80,13 +80,13 @@ pub const PRESENT_WAIT: &str = "- @@WHEN@@ hold `@@SQ@@ --wait --key <key>`. If 
 
 pub const COMPS_DIRECTION: &str = "- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first, then generate each comp in reading order (assigned, pick, full-card hand, canon), writing its prompt sidecar as it lands (a.png gets a.png.json).";
 
-pub const COMPS_DIRECTION_CODE: &str = "- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve, canon included, declined challengers excepted. Generate those comps only when --wait prints BUILD PATH FLIPPED, in reading order, each with its prompt sidecar (a.png gets a.png.json).";
+pub const COMPS_DIRECTION_CODE: &str = "- Code-led round: every card but the declined challengers carries an HTML sketch: one self-contained file of the first viewport only (1440 x 900, fixed height, overflow hidden) at .impeccable/mocks/decision/<card id>.html, declared as the card's html, with real content from the product, inline CSS, no JavaScript, nothing fetched but Google Fonts, under 200 lines. Serve first, then write the sketches, in parallel subagents where your harness has them; the page draws each as a skeleton as it lands. With image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve, canon included, declined challengers excepted. Generate those comps only when --wait prints BUILD PATH FLIPPED, in reading order, each with its prompt sidecar (a.png gets a.png.json).";
 
 pub const COMPS_DIRECTION_DEGRADED: &str = "- This degraded hand goes on the page as a single text-only card with re-roll; it declares no comp.";
 
-pub const COMPS_SURFACE: &str = "- With image generation, each dealt card declares a comp under .impeccable/mocks/decision/; serve first, then generate them in reading order, lead first, each with its prompt sidecar (a.png gets a.png.json). Without image generation, each card carries a wireframe instead (shape in --schema). Surface rounds have no pick card and no canon card.";
+pub const COMPS_SURFACE: &str = "- With image generation, each dealt card declares a comp under .impeccable/mocks/decision/; serve first, then generate them in reading order, lead first, each with its prompt sidecar (a.png gets a.png.json). Without image generation, each card carries an HTML sketch: one self-contained file of the first viewport only (1440 x 900, fixed height, overflow hidden) at .impeccable/mocks/decision/<card id>.html, declared as the card's html, with real content from the product, inline CSS, no JavaScript, nothing fetched but Google Fonts, under 200 lines. Serve first, then write the sketches, in parallel subagents where your harness has them; the page draws each as a skeleton as it lands; a card without one falls back to a wireframe (shape in --schema). Surface rounds have no pick card and no canon card.";
 
-pub const COMPS_SURFACE_CODE: &str = "- Code-led round: each dealt card carries a wireframe (shape in --schema) and, with image generation, declares a comp path under .impeccable/mocks/decision/ as a flip reserve; generate those comps only when --wait prints BUILD PATH FLIPPED, lead first, each with its prompt sidecar (a.png gets a.png.json). Surface rounds have no pick card and no canon card.";
+pub const COMPS_SURFACE_CODE: &str = "- Code-led round: each dealt card carries an HTML sketch: one self-contained file of the first viewport only (1440 x 900, fixed height, overflow hidden) at .impeccable/mocks/decision/<card id>.html, declared as the card's html, with real content from the product, inline CSS, no JavaScript, nothing fetched but Google Fonts, under 200 lines. Serve first, then write the sketches, in parallel subagents where your harness has them; the page draws each as a skeleton as it lands; a card without one falls back to a wireframe (shape in --schema). With image generation, each card also declares a comp path under .impeccable/mocks/decision/ as a flip reserve; generate those comps only when --wait prints BUILD PATH FLIPPED, lead first, each with its prompt sidecar (a.png gets a.png.json). Surface rounds have no pick card and no canon card.";
 
 pub const BUILD_PATH_RECORDED: &str = "- Build path: recorded default @@VALUE@@ (from @@SOURCE@@). With image generation, put \"buildPath\": {\"value\": \"@@VALUE@@\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path.";
 
@@ -94,7 +94,9 @@ pub const BUILD_PATH_MODE: &str = "- Build path: code-led. A surface in @@MODE@@
 
 pub const BUILD_PATH_NONE: &str = "- Build path: none recorded in .impeccable/config.json or .impeccable/config.local.json, so comp-led whenever image generation exists. Then put \"buildPath\": {\"value\": \"comp\", \"toggle\": true} in the payload; without image generation there is no toggle and the build is code-led. Never ask about the build path during the round; only when the ANSWER returns buildPathFlipped: true, offer once afterwards to keep the flipped value as the default.";
 
-pub const WAIT_AFTER_COMPS: &str = "After the last comp lands (at once when this round generates none),";
+pub const WAIT_AFTER_COMPS: &str = "After the last comp or sketch lands (at once when this round makes none),";
+
+pub const WAIT_AFTER_SKETCHES: &str = "After the last sketch lands,";
 
 pub const WAIT_NOW: &str = "Right after serving, with no comp to generate first,";
 

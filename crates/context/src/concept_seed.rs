@@ -96,9 +96,10 @@ pub fn presentation_block(env: &Env, cwd: &str, scope: &str, reroll: usize, degr
         (None, Some((value, source))) => fill(t::BUILD_PATH_RECORDED, &[("VALUE", value), ("SOURCE", source)]),
         (None, None) => t::BUILD_PATH_NONE.to_string(),
     };
-    // Comps generated up front come before the wait; a code-led round's
-    // comps wait for the flip --wait reports, and a single text card has none.
-    let when = if code_led || (scope == "direction" && single_card) { t::WAIT_NOW } else { t::WAIT_AFTER_COMPS };
+    // Comps generated up front come before the wait. A code-led round's comps
+    // wait for the flip --wait reports, but its sketches are written right
+    // after serving, before the wait; a single text card has neither.
+    let when = if scope == "direction" && single_card { t::WAIT_NOW } else if code_led { t::WAIT_AFTER_SKETCHES } else { t::WAIT_AFTER_COMPS };
     let wait = fill(t::PRESENT_WAIT, &[("SQ", &sq), ("WHEN", when)]);
     [t::PRESENTATION_HEADER, &present, comps, &wait, &build, t::PRESENT_FALLBACK].join("\n") + "\n"
 }
@@ -830,7 +831,7 @@ mod tests {
         assert!(lines[2].starts_with("- With image generation, every card declares a comp under .impeccable/mocks/decision/, canon included, declined challengers excepted. Serve first"), "{block}");
         assert!(lines[2].contains("(a.png gets a.png.json)"), "{block}");
         // The wait follows comp generation, never precedes it.
-        assert!(lines[3].starts_with("- After the last comp lands (at once when this round generates none), hold `impeccable serve-question --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
+        assert!(lines[3].starts_with("- After the last comp or sketch lands (at once when this round makes none), hold `impeccable serve-question --wait --key <key>`. If your shell hands back a session before --wait exits, keep polling that session until it exits; rerun --wait only after it exits 3"), "{block}");
         assert!(lines[4].starts_with("- Build path: none recorded"), "{block}");
         assert!(lines[4].contains("\"buildPath\": {\"value\": \"comp\", \"toggle\": true}"), "{block}");
         assert!(lines[5].starts_with("- The structured question tool is the fallback, never the first channel: take it when --start exits 2, when --wait exits 4"), "{block}");
@@ -850,7 +851,7 @@ mod tests {
         let block = presentation(&out);
         assert!(block.contains(PRESENT_FIRST_LINE), "{block}");
         assert!(block.contains("- With image generation, each dealt card declares a comp under .impeccable/mocks/decision/; serve first"), "{block}");
-        assert!(block.contains("Without image generation, each card carries a wireframe instead (shape in --schema). Surface rounds have no pick card and no canon card."), "{block}");
+        assert!(block.contains("Without image generation, each card carries an HTML sketch: one self-contained file of the first viewport only"), "{block}");
         assert!(!block.contains("canon included"), "{block}");
     }
 
@@ -905,9 +906,9 @@ mod tests {
             let block = presentation(&out);
             assert!(block.contains(&format!("- Build path: code-led. A surface in {mode} mode builds in code whatever the project records. With image generation, put \"buildPath\": {{\"value\": \"code\", \"toggle\": true}} in the payload")), "{block}");
             assert!(block.contains("never offer to record a flip made on this surface"), "{block}");
-            assert!(block.contains("- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve"), "{block}");
-            assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
-            assert!(presentation(&roll("surface", mode)).contains("- Code-led round: each dealt card carries a wireframe (shape in --schema)"), "{mode}");
+            assert!(block.contains("- Code-led round: every card but the declined challengers carries an HTML sketch"), "{block}");
+            assert!(block.contains("- After the last sketch lands, hold `impeccable serve-question --wait --key <key>`."), "{block}");
+            assert!(presentation(&roll("surface", mode)).contains("- Code-led round: each dealt card carries an HTML sketch"), "{mode}");
         }
         for mode in ["persuade", "experience"] {
             assert!(presentation(&roll("direction", mode)).contains("- Build path: none recorded"), "{mode}");
@@ -938,11 +939,11 @@ mod tests {
         let out = roll("direction");
         let block = presentation(&out);
         assert!(block.contains("- Build path: recorded default code (from .impeccable/config.json). With image generation, put \"buildPath\": {\"value\": \"code\", \"toggle\": true} in the payload; without it there is no toggle and the build is code-led. Never ask the user about the build path."), "{block}");
-        assert!(block.contains("- Code-led round: with image generation, every card still declares a comp path under .impeccable/mocks/decision/ as a flip reserve"), "{block}");
+        assert!(block.contains("- Code-led round: every card but the declined challengers carries an HTML sketch"), "{block}");
         assert!(block.contains("only when --wait prints BUILD PATH FLIPPED"), "{block}");
-        assert!(block.contains("- Right after serving, with no comp to generate first, hold `impeccable serve-question --wait --key <key>`."), "{block}");
+        assert!(block.contains("- After the last sketch lands, hold `impeccable serve-question --wait --key <key>`."), "{block}");
         let out = roll("surface");
-        assert!(presentation(&out).contains("- Code-led round: each dealt card carries a wireframe (shape in --schema)"), "{out}");
+        assert!(presentation(&out).contains("- Code-led round: each dealt card carries an HTML sketch"), "{out}");
 
         // The machine-local file wins over the committed one.
         std::fs::write(dir.join("config.local.json"), r#"{"buildPath": "comp"}"#).unwrap();
