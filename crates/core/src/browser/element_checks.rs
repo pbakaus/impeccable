@@ -529,6 +529,87 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
     None
 }
 
+/// The colours an opaque gradient face drawn by a positioned `::before` or
+/// `::after` puts under the whole text run, where it paints over the box's
+/// own background (its `z-index` puts it there, as an `isolate` button's
+/// `::after { z-index: -1 }` does): the stops of its bottom layer, every one
+/// opaque, plus each of them under each translucent stop of the layers above
+/// it. ardainc.com's CTA draws a dark `linear-gradient` face, under a 14%
+/// white highlight, inside a 1.6px conic ring on the button itself, and the
+/// walk scored its near-white label against the ring's white stop.
+///
+/// `None` where the pseudo is not a face over the run (the same placement
+/// and opacity tests as [`read_pseudo_surface_dom`]), where its colour is
+/// what paints (that function reads it), where any layer is not a gradient
+/// or the bottom layer lets something through, and where the capture cannot
+/// say it paints over the box.
+pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<(Vec<Rgba>, &'static str)> {
+    for which in PSEUDOS {
+        if !pseudo_present(dom, el, which) {
+            continue;
+        }
+        let position = pseudo_str(dom, el, which, "position");
+        if position != "absolute" && position != "fixed" {
+            continue;
+        }
+        let opacity = {
+            let n = parse_float(&pseudo_str(dom, el, which, "opacity"));
+            if num_truthy(n) {
+                n
+            } else {
+                1.0
+            }
+        };
+        if pseudo_str(dom, el, which, "display") == "none" || opacity < 0.9 {
+            continue;
+        }
+        let w = pseudo_px(dom, el, which, "width");
+        let h = pseudo_px(dom, el, which, "height");
+        if w < rect.width - 4.0 || h < rect.height - 4.0 {
+            continue;
+        }
+        if parse_rgb_or_any(&pseudo_str(dom, el, which, "backgroundColor")).is_some_and(|c| c.alpha_or_one() > 0.05) {
+            continue;
+        }
+        let image = pseudo_str(dom, el, which, "backgroundImage");
+        let layers = crate::color::split_top_level_commas(&image);
+        let mut stops_by_layer = Vec::with_capacity(layers.len());
+        for layer in &layers {
+            let layer = js::trim(layer);
+            if !layer.to_ascii_lowercase().contains("gradient(") {
+                stops_by_layer.clear();
+                break;
+            }
+            match measures::parse_gradient_layer_stops(layer) {
+                Some(stops) => stops_by_layer.push(stops),
+                None => {
+                    stops_by_layer.clear();
+                    break;
+                }
+            }
+        }
+        let Some((base, washes)) = stops_by_layer.split_last() else { continue };
+        let base: Vec<Rgba> = base.iter().filter_map(|s| s.color).collect();
+        if base.is_empty() || base.iter().any(|c| c.alpha_or_one() < 0.95) {
+            continue;
+        }
+        if !crate::browser::visual::pseudo_paints_over(dom, el, which) {
+            continue;
+        }
+        let mut colours: Vec<Rgba> = base.iter().map(|c| Rgba { a: Some(1.0), ..*c }).collect();
+        for wash in washes.iter().flatten().filter_map(|s| s.color) {
+            if wash.alpha_or_one() <= 0.05 {
+                continue;
+            }
+            for b in &base {
+                colours.push(composite_color_over(&wash, &Rgba { a: Some(1.0), ..*b }));
+            }
+        }
+        return Some((colours, which));
+    }
+    None
+}
+
 // ── colors ────────────────────────────────────────────────────────────────
 
 /// Whether an ancestor carrying direct text is one the contrast pass
@@ -1450,12 +1531,18 @@ pub fn check_element_colors_dom(
     let mut surface_unresolved = surface.info.unresolved;
     let mut own_bg = read_own_background_color(dom, el);
     let mut pseudo_surface_read = false;
+    let mut pseudo_face: Option<(Vec<Rgba>, &'static str)> = None;
     if own_bg.map_or(true, |c| c.alpha_or_one() <= 0.5) {
         if let Some(pseudo_surface) = read_pseudo_surface_dom(dom, el, &rect) {
             own_bg = Some(pseudo_surface);
             effective_bg = Some(pseudo_surface);
             surface_unresolved = false;
             pseudo_surface_read = true;
+        } else if let Some(face) = read_pseudo_gradient_face(dom, el, &rect) {
+            effective_bg = None;
+            surface_unresolved = false;
+            pseudo_surface_read = true;
+            pseudo_face = Some(face);
         }
     }
     let font_weight = {
@@ -1477,8 +1564,13 @@ pub fn check_element_colors_dom(
             dom.style(el, "backgroundClip")
         }
     };
-    let (effective_bg_stops, bg_source, bg_source_host) =
-        if surface_unresolved || effective_bg.is_some() {
+    let (effective_bg_stops, bg_source, bg_source_host) = if let Some((stops, which)) = pseudo_face {
+        (
+            Some(stops),
+            Some(format!("gradient on {}{which}", surface_label(dom, el))),
+            Some(el.to_string()),
+        )
+    } else if surface_unresolved || effective_bg.is_some() {
             (None, None, None)
         } else {
             let stops = surface
@@ -8989,6 +9081,68 @@ mod tests {
         assert!(!run(strip, "auto", white));
         assert!(run(strip, "8px 8px", white), "a small tile is a texture over the fill");
         assert!(run(strip, "auto", "rgb(225, 121, 121)"), "ink in another colour keeps its verdict");
+    }
+
+    /// observations-47 row 12, ardainc.com 322246: the CTA paints a conic
+    /// ring on itself (white at one stop) and, inside it, a dark
+    /// `linear-gradient` face under a 14% white highlight on an `::after` at
+    /// `z-index: -1` that its `isolation: isolate` keeps over the ring. The
+    /// near-white label was scored against the ring's white, "#f4f4f6 on
+    /// #ffffff". The face is what the label sits on.
+    #[test]
+    fn an_opaque_gradient_face_on_a_pseudo_is_the_surface() {
+        let run = |face: &str, isolation: &str| {
+            let (mut d, body) = page();
+            let a = d.add(Some(body), "a");
+            visible(&mut d, a);
+            d.add_text(a, "Book a demo");
+            d.set_rect(a, 45.0, 600.0, 566.0, 42.0);
+            d.set_text_rect(a, 272.0, 612.0, 89.0, 18.0);
+            d.set_styles(
+                a,
+                &[
+                    ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                    (
+                        "backgroundImage",
+                        "conic-gradient(from 256deg, rgb(38, 38, 44) 0deg, rgb(214, 214, 224) 78deg, rgb(255, 255, 255) 92deg, rgb(38, 38, 44) 360deg)",
+                    ),
+                    ("color", "rgb(244, 244, 246)"),
+                    ("fontSize", "14px"),
+                    ("fontWeight", "500"),
+                    ("position", "relative"),
+                    ("isolation", isolation),
+                ],
+            );
+            for (p, v) in [
+                ("content", "\"\""),
+                ("position", "absolute"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("backgroundImage", face),
+                ("top", "1.6px"),
+                ("left", "1.6px"),
+                ("width", "562.8px"),
+                ("height", "39.2px"),
+                ("zIndex", "-1"),
+                ("opacity", "1"),
+                ("display", "block"),
+            ] {
+                d.set_pseudo_style(a, "::after", p, v);
+            }
+            colors(&d, a).into_iter().filter(|h| h.id == "low-contrast").collect::<Vec<_>>()
+        };
+        let face = "radial-gradient(130% 130% at 50% 0px, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 46%), linear-gradient(rgb(29, 29, 35) 0%, rgb(11, 11, 15) 100%)";
+        assert!(run(face, "isolate").is_empty(), "{:?}", run(face, "isolate"));
+        // Where the capture cannot say the face paints over the box's own
+        // background, the walk's reading stands.
+        assert!(!run(face, "auto").is_empty());
+        // A face that lets the box show through is not read as a surface.
+        let thin = "linear-gradient(rgba(29, 29, 35, 0.5) 0%, rgb(11, 11, 15) 100%)";
+        assert!(!run(thin, "isolate").is_empty());
+        // A light face fails against the near-white label, printed on the face.
+        let light = "linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236))";
+        let hits = run(light, "isolate");
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("(gradient on a::after)"), "{}", hits[0].snippet);
     }
 
     #[test]

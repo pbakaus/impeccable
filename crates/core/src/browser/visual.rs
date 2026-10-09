@@ -707,6 +707,12 @@ fn pseudo_order(dom: &dyn Dom, node: ElId, which: &str) -> Order {
     }
 }
 
+/// Whether `node`'s `which` pseudo-element paints over the fills between it
+/// and the text, as far as the capture says ([`pseudo_order`]).
+pub(crate) fn pseudo_paints_over(dom: &dyn Dom, node: ElId, which: &str) -> bool {
+    pseudo_order(dom, node, which) == Order::Over
+}
+
 /// A `::before` or `::after` painting something over the whole text run.
 /// A small pseudo (an underline, a bullet, a badge dot) is not a surface,
 /// and neither is one laid out inline, one placed off the text (a "Most
