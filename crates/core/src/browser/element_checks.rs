@@ -2719,16 +2719,15 @@ pub fn check_element_radial_spotlight_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHi
     check_element_radial_spotlight_dom_with(dom, el, &GlowTextRects::default())
 }
 
-/// The declaration test of `checkRadialSpotlight`, then the prominence gate,
-/// reporting the stop that passed it.
 /// How much of `el`'s paint shows through the media laid over it: the
 /// product of `1 - opacity` over every later sibling `<video>` or `<img>`
 /// that covers its box (within a pixel), paints above it and shows a
 /// picture at capture. useforward.co's hero glow sits under a 0.7-opacity
-/// video, so 30% of it shows. A video counts when it has a `poster`, or
-/// plays by itself (`autoplay`) from a source it names; an image when the
-/// capture saw it complete with a size of its own. Anything the capture
-/// cannot tell about leaves the glow as it is (1).
+/// video, so 30% of it shows. A video counts only when it has a `poster`
+/// (an autoplay video with no poster paints nothing until a frame is
+/// decoded, and never where autoplay is blocked); an image when the capture
+/// saw it complete with a size of its own. Anything the capture cannot tell
+/// about leaves the glow as it is (1).
 fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
     let Some(parent) = dom.parent(el) else { return 1.0 };
     if !rect.all_finite() || rect.width <= 0.0 || rect.height <= 0.0 {
@@ -2745,14 +2744,10 @@ fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
     for &media in &siblings[at + 1..] {
         let tag = tag_lower(dom, media);
         let shows_picture = match tag.as_str() {
-            "video" => {
-                let named = |name: &str| dom.attr(media, name).is_some_and(|v| !js::trim(&v).is_empty());
-                let has_source = named("src")
-                    || dom.children(media).into_iter().any(|c| {
-                        tag_lower(dom, c) == "source" && dom.attr(c, "src").is_some_and(|v| !js::trim(&v).is_empty())
-                    });
-                named("poster") || (dom.attr(media, "autoplay").is_some() && has_source)
-            }
+            // A video paints nothing until a frame is decoded, or ever when
+            // autoplay is blocked or the source fails; its poster paints
+            // from the start.
+            "video" => dom.attr(media, "poster").is_some_and(|v| !js::trim(&v).is_empty()),
             "img" => {
                 dom.image_complete(media) == Some(true)
                     && dom.image_natural_size(media).is_some_and(|(w, h)| w > 0.0 && h > 0.0)
@@ -2785,6 +2780,8 @@ fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
     share
 }
 
+/// The declaration test of `checkRadialSpotlight`, then the prominence gate,
+/// reporting the stop that passed it.
 pub fn check_element_radial_spotlight_dom_with(
     dom: &dyn Dom,
     el: ElId,
@@ -6704,8 +6701,9 @@ mod tests {
         };
         let poster = [("poster", "/images/poster.jpg")];
         assert!(run(&poster, "0.7", 803.0).is_empty());
+        // An autoplay video with no poster may paint nothing at all.
         let autoplay = [("autoplay", ""), ("src", "/videos/hero.mp4")];
-        assert!(run(&autoplay, "0.7", 803.0).is_empty());
+        assert_eq!(run(&autoplay, "0.7", 803.0).len(), 1);
         // A fainter video leaves the glow bright enough.
         assert_eq!(run(&poster, "0.3", 803.0).len(), 1);
         // A video that may show nothing, one that covers part of the glow,

@@ -2000,14 +2000,21 @@ pub fn check_heading_rhythm_dom(dom: &dyn Dom) -> Vec<ElFinding> {
         .collect()
 }
 
-/// JS: checks.mjs#checkCreamPalette(document) (browser path)
 /// The share of the page's height that full-width bands have to cover for
 /// the body's own fill to count as hidden.
 const GROUND_COVER_MIN_SHARE: f64 = 0.95;
 
-/// How far down the tree, under the body, a transparent in-flow box is looked
-/// through for the bands it holds (body > main > section is two).
+/// The deepest level under the body (its children are level 1) at which
+/// [`covering_ground`] takes a box for a band; it looks through transparent
+/// boxes only (body > main > section reaches level 2).
 const GROUND_BAND_MAX_DEPTH: usize = 3;
+
+/// The deepest level under the body at which [`cream_band_shows`] looks for
+/// a cream box. It looks through every full-width box, opaque ones
+/// included, since an SPA root that paints the ground can hold its cream
+/// sections several levels down (body > #root > div > div > main >
+/// section); it visits only full-width boxes, so the walk stays short.
+const CREAM_BAND_MAX_DEPTH: usize = 8;
 
 /// The colour a visitor sees as the page's ground when in-flow boxes as wide
 /// as the body, each painting an opaque fill and no image, cover the body
@@ -2050,8 +2057,10 @@ fn covering_ground(dom: &dyn Dom, body: ElId) -> Option<crate::color::Rgba> {
             }
             let image = dom.style(child, "backgroundImage");
             let fill = super::background::read_own_background_color(dom, child);
+            // A band faded below full opacity lets the body show through.
+            let opaque = effective_opacity_dom(dom, child) >= 0.95;
             match fill {
-                Some(f) if f.alpha_or_one() >= 0.95 && (image.is_empty() || image == "none") => {
+                Some(f) if opaque && f.alpha_or_one() >= 0.95 && (image.is_empty() || image == "none") => {
                     bands.push((r.top + sy, r.bottom + sy, f));
                 }
                 _ if depth + 1 < GROUND_BAND_MAX_DEPTH && fill.map_or(true, |f| f.alpha_or_one() <= 0.0) => {
@@ -2094,8 +2103,12 @@ fn covering_ground(dom: &dyn Dom, body: ElId) -> Option<crate::color::Rgba> {
     .map(|(c, _)| c)
 }
 
-/// Whether a painted in-flow box as wide as the body, a few levels under it,
-/// paints a cream fill of its own.
+/// Whether a painted in-flow box as wide as the body, up to
+/// [`CREAM_BAND_MAX_DEPTH`] levels under it, paints a cream fill of its own
+/// by the strict cream test. Near-cream (which keeps a finding when it is
+/// the ground) is deliberately not enough here: a warm near-white header or
+/// footer strip on a white page (visiby.net/guides) does not make the page
+/// cream, while a near-cream colour covering most of the page does.
 fn cream_band_shows(dom: &dyn Dom, body: ElId) -> bool {
     let width = dom.rect(body).width;
     let mut stack: Vec<(ElId, usize)> = vec![(body, 0)];
@@ -2115,7 +2128,7 @@ fn cream_band_shows(dom: &dyn Dom, body: ElId) -> bool {
             if fill.is_some_and(|f| f.alpha_or_one() >= 0.95) && is_cream_color(fill.as_ref()) {
                 return true;
             }
-            if depth + 1 <= GROUND_BAND_MAX_DEPTH {
+            if depth + 1 < CREAM_BAND_MAX_DEPTH {
                 stack.push((child, depth + 1));
             }
         }
@@ -2130,8 +2143,11 @@ fn near_cream(c: &crate::color::Rgba) -> bool {
     c.r.min(c.g).min(c.b) >= 209.0 && c.r >= c.g && c.g >= c.b && c.r - c.b >= NEAR_CREAM_MIN_WARMTH
 }
 
-/// Two steps under the cream test's warmth floor of 6.
-const NEAR_CREAM_MIN_WARMTH: f64 = 4.0;
+/// Red at least 2 over blue. The grounds the cover test drops are grey
+/// (useforward.co's rgb(241, 242, 239), green over red, which fails the
+/// channel order at any floor) or white (warmth 0); the warm ground it keeps
+/// (visiby.net's rgb(250, 248, 245), warmth 5) sits 3 units clear.
+const NEAR_CREAM_MIN_WARMTH: f64 = 2.0;
 
 fn finite_or_zero(v: f64) -> f64 {
     if v.is_finite() {
@@ -2141,6 +2157,8 @@ fn finite_or_zero(v: f64) -> f64 {
     }
 }
 
+/// JS: checks.mjs#checkCreamPalette(document) (browser path), plus the
+/// covered-body test ([`covering_ground`], [`cream_band_shows`]).
 pub fn check_cream_palette(dom: &dyn Dom) -> Vec<RuleHit> {
     let mut findings = Vec::new();
     let Some(body) = dom.body() else { return findings };
@@ -2500,10 +2518,13 @@ fn closed_container(dom: &dyn Dom, el: ElId, closed_ids: &std::collections::Hash
         }
         // A layer fixed over the whole viewport and held at `visibility:
         // hidden` is a dialog or overlay waiting to open (visitabudhabi.ae's
-        // MUI "Create Itinerary" modal): page content is never laid out
-        // as a curtain over the screen. Transparency alone is not enough,
-        // since an app shell faded to 0 waiting for its reveal is exactly
-        // what the rule reports.
+        // MUI "Create Itinerary" modal), as long as it is not the page
+        // itself: an app shell fixed over the viewport (`#app { position:
+        // fixed; inset: 0 }`) held hidden by a reveal that failed is what the
+        // rule reports, so a layer holding a `main`, an `h1`, or half the
+        // page's text or more is left to the other tests. Transparency
+        // alone is not enough either: a shell faded to 0 waiting for its
+        // reveal looks the same.
         let viewport_height = dom.inner_height();
         if HIDDEN_VIS_RE.is_match(&dom.style(el, "visibility"))
             && rect.all_finite()
@@ -2513,6 +2534,7 @@ fn closed_container(dom: &dyn Dom, el: ElId, closed_ids: &std::collections::Hash
             && rect.top <= 1.0
             && rect.right >= viewport_width - 1.0
             && rect.bottom >= viewport_height - 1.0
+            && !holds_the_page(dom, el)
         {
             return true;
         }
@@ -2536,6 +2558,19 @@ fn closed_container(dom: &dyn Dom, el: ElId, closed_ids: &std::collections::Hash
         }
     }
     false
+}
+
+/// Whether `el` holds the page rather than an overlay on it: a `main`
+/// (or `role="main"`) or an `h1` inside it, or at least half of the
+/// document's text.
+fn holds_the_page(dom: &dyn Dom, el: ElId) -> bool {
+    if dom.query_one(Some(el), "main, [role=\"main\"], h1").ok().flatten().is_some() {
+        return true;
+    }
+    let Some(body) = dom.body() else { return true };
+    let own = js::trim(&dom.text_content(el)).chars().count();
+    let page = js::trim(&dom.text_content(body)).chars().count();
+    page == 0 || own * 2 >= page
 }
 
 /// Whether `el` is a drawer slid off the page: positioned (`absolute` or
@@ -7136,11 +7171,74 @@ mod tests {
         // A cream strip laid over a white ground shows the cream.
         let f = build(&[("rgb(255, 255, 255)", 2000.0), (cream, 300.0), ("rgb(255, 255, 255)", 3400.0)], 5700.0);
         assert_eq!(f.len(), 1);
-        // A ground just short of the warmth floor is still warm paper.
-        assert_eq!(build(&[("rgb(250, 248, 245)", 5700.0)], 5700.0).len(), 1);
+        // Warmth at the boundaries of the near-cream floor (2): white drops,
+        // warmth 2 and 5 are warm paper, and a grey with green over red
+        // drops whatever its warmth.
+        assert!(build(&[("rgb(250, 250, 250)", 5700.0)], 5700.0).is_empty());
+        assert!(build(&[("rgb(250, 249, 249)", 5700.0)], 5700.0).is_empty(), "warmth 1");
+        assert_eq!(build(&[("rgb(250, 249, 248)", 5700.0)], 5700.0).len(), 1, "warmth 2");
+        assert_eq!(build(&[("rgb(250, 248, 245)", 5700.0)], 5700.0).len(), 1, "warmth 5");
+        assert!(build(&[("rgb(241, 242, 239)", 5700.0)], 5700.0).is_empty(), "grey");
+        // A band at half alpha, or an opaque band at half opacity, lets the
+        // cream through: it is no band.
+        let f = build(&[("rgba(16, 16, 14, 0.5)", 5700.0)], 5700.0);
+        assert_eq!(f.len(), 1);
+        let faded = {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.inner_width = 1280.0;
+            d.set_style(body, "backgroundColor", "rgb(245, 242, 236)");
+            d.set_rect(html, 0.0, 0.0, 1280.0, 1000.0);
+            d.set_rect(body, 0.0, 0.0, 1280.0, 1000.0);
+            let band = d.add(Some(body), "section");
+            d.set_styles(band, &[("backgroundColor", dark), ("backgroundImage", "none"), ("opacity", "0.5")]);
+            d.set_rect(band, 0.0, 0.0, 1280.0, 1000.0);
+            check_cream_palette(&d)
+        };
+        assert_eq!(faded.len(), 1);
         // A band with no measured rect covers nothing.
         let f = build(&[(dark, 800.0), (grey, f64::NAN)], 5700.0);
         assert_eq!(f.len(), 1);
+    }
+
+    /// An SPA root painting white over a cream body, with cream sections
+    /// five levels down, still shows cream; a band painted by an image is
+    /// no band, so a page it covers keeps the body's finding.
+    #[test]
+    fn cream_palette_finds_cream_deep_in_an_spa_and_skips_image_bands() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.inner_width = 1280.0;
+        d.set_style(body, "backgroundColor", "rgb(245, 242, 236)");
+        d.set_rect(html, 0.0, 0.0, 1280.0, 4000.0);
+        d.set_rect(body, 0.0, 0.0, 1280.0, 4000.0);
+        d.el_mut(html).scroll_height = Some(4000.0);
+        let root = d.add(Some(body), "div");
+        d.set_styles(root, &[("backgroundColor", "rgb(255, 255, 255)"), ("backgroundImage", "none")]);
+        d.set_rect(root, 0.0, 0.0, 1280.0, 4000.0);
+        let mut parent = root;
+        for tag in ["div", "div", "main"] {
+            let el = d.add(Some(parent), tag);
+            d.set_rect(el, 0.0, 0.0, 1280.0, 4000.0);
+            parent = el;
+        }
+        for i in 0..4 {
+            let section = d.add(Some(parent), "section");
+            d.set_style(section, "backgroundColor", "rgb(251, 247, 240)");
+            d.set_rect(section, 0.0, 1000.0 * i as f64, 1280.0, 1000.0);
+        }
+        assert_eq!(check_cream_palette(&d).len(), 1);
+
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.inner_width = 1280.0;
+        d.set_style(body, "backgroundColor", "rgb(245, 242, 236)");
+        d.set_rect(html, 0.0, 0.0, 1280.0, 1000.0);
+        d.set_rect(body, 0.0, 0.0, 1280.0, 1000.0);
+        let hero = d.add(Some(body), "section");
+        d.set_styles(hero, &[("backgroundColor", "rgb(16, 16, 14)"), ("backgroundImage", "url(\"/hero.jpg\")")]);
+        d.set_rect(hero, 0.0, 0.0, 1280.0, 1000.0);
+        assert_eq!(check_cream_palette(&d).len(), 1);
     }
 
     /// visitabudhabi.ae (324145): a MUI dialog fixed over the whole 390x844
@@ -7152,7 +7250,7 @@ mod tests {
             let (_h, body) = d.with_page();
             d.inner_width = 390.0;
             d.inner_height = 844.0;
-            hidden_box(&mut d, body, "p", &[], "visible text");
+            hidden_box(&mut d, body, "p", &[], "visible text on the page around the dialog");
             let dialog = hidden_box(&mut d, body, "div", styles, "Create Itinerary");
             d.set_rect(dialog, rect.0, rect.1, rect.2, rect.3);
             mark_body_descendants(&mut d);
@@ -7166,6 +7264,27 @@ mod tests {
         // Not fixed, or not over the whole viewport: content.
         assert_eq!(run(&[("position", "absolute"), ("visibility", "hidden")], full), 16.0);
         assert_eq!(run(&hidden_fixed, (0.0, 0.0, 390.0, 300.0)), 16.0);
+
+        // An app shell fixed over the viewport and held hidden by a reveal
+        // that failed is the page, not an overlay: a `main` in it, or most
+        // of the page's text, keeps it counted.
+        let shell = |with_main: bool, text: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.inner_width = 390.0;
+            d.inner_height = 844.0;
+            hidden_box(&mut d, body, "p", &[], "Loading");
+            let app = hidden_box(&mut d, body, "div", &hidden_fixed, "");
+            d.set_rect(app, 0.0, 0.0, 390.0, 844.0);
+            let inner = hidden_box(&mut d, app, if with_main { "main" } else { "div" }, &[], text);
+            d.set_rect(inner, 0.0, 0.0, 390.0, 844.0);
+            mark_body_descendants(&mut d);
+            measure_hidden_text_dom(&d).hidden_chars
+        };
+        assert_eq!(shell(true, "Short"), 5.0);
+        assert_eq!(shell(false, "Your orders, your saved items and your account"), 46.0);
+        // A short overlay beside more page text is still closed interface.
+        assert_eq!(shell(false, "Hi"), 0.0);
     }
 
     /// hse.de (287847, 287911): the mobile menu at opacity 0, `position:
