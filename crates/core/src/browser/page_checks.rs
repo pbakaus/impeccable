@@ -445,7 +445,11 @@ fn edge_surface_under(dom: &dyn Dom, el: ElId) -> Option<Rgba> {
         if visited > MAX_VISITED || holders.len() >= MAX_INKS {
             break;
         }
-        if !js::trim(&direct_text(dom, n)).is_empty() {
+        // A subtree that paints nothing says nothing about the surface.
+        if n != el && paints_no_subtree(dom, n) {
+            continue;
+        }
+        if !js::trim(&direct_text(dom, n)).is_empty() && paints_own_text(dom, n) {
             holders.push(n);
         }
         // Children pushed in reverse so the walk reads in document order.
@@ -462,6 +466,23 @@ fn edge_surface_under(dom: &dyn Dom, el: ElId) -> Option<Rgba> {
         }
     }
     Some(surface)
+}
+
+/// Whether nothing under `n` paints: `display: none`, `content-visibility:
+/// hidden`, or an opacity at zero. Read off `n` alone; the walk that asks
+/// starts under a box already gated as painted.
+fn paints_no_subtree(dom: &dyn Dom, n: ElId) -> bool {
+    dom.style(n, "display") == "none"
+        || js::to_lower_case(&dom.style(n, "contentVisibility")) == "hidden"
+        || parse_float(&dom.style(n, "opacity")) <= 0.01
+}
+
+/// Whether `n`'s own text paints: not `visibility: hidden` or `collapse`.
+/// Visibility inherits but a child can turn it back on, so a hidden node's
+/// subtree is still walked.
+fn paints_own_text(dom: &dyn Dom, n: ElId) -> bool {
+    let visibility = js::to_lower_case(&dom.style(n, "visibility"));
+    visibility != "hidden" && visibility != "collapse"
 }
 
 /// How far, on some channel, a border composited over the box has to sit
@@ -6575,6 +6596,19 @@ mod tests {
         // oklab(0.16 0 0 / 0.5) composites to about 7 on black.
         let (d, _) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
         assert!(check_layout(&d).is_empty(), "the shell's border draws no edge");
+        // A descendant that paints nothing is no evidence about the surface:
+        // its unreadable ink does not make the shell's border count.
+        for (prop, value) in [("display", "none"), ("visibility", "hidden"), ("opacity", "0")] {
+            let (mut d, panel) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+            let shell = d.parent(panel).unwrap();
+            let hidden = d.add(Some(shell), "span");
+            d.set_style(hidden, "color", "rgb(10, 10, 10)");
+            d.add_text(hidden, "Dark copy nobody sees");
+            assert!(super::edge_surface_under(&d, shell).is_none(), "painted dark copy spoils the surface");
+            d.set_style(hidden, prop, value);
+            assert!(super::edge_surface_under(&d, shell).is_some(), "{prop}: {value}");
+            assert!(check_layout(&d).is_empty(), "{prop}: {value}");
+        }
         let (d, panel) = dark_page("rgba(255, 255, 255, 0.1)");
         let f = check_layout(&d);
         assert_eq!(f.len(), 1, "a white/10 border draws one: {f:?}");

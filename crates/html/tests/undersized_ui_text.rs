@@ -59,3 +59,21 @@ fn each_floor_keeps_a_tenth_of_a_pixel() {
         assert_eq!(!hits.is_empty(), reports, "{size} against the 10px floor: {hits:?}");
     }
 }
+
+/// A furniture class on `html` is a script state flag (schlittermann.de's
+/// `html.js-nav-ready`), as the browser engine reads it: it does not make
+/// every sentence on the page navigation. On `body` and below it still
+/// counts.
+#[test]
+fn furniture_class_on_html_is_a_state_flag() {
+    let sentence = "This sentence is long enough to read as body copy.";
+    let css = "p { font-size: 10px; }";
+    let on_html = format!(
+        "<!DOCTYPE html><html class=\"js-nav-ready\"><head><style>{css}</style></head><body><p>{sentence}</p></body></html>"
+    );
+    assert!(undersized(&on_html, Path::new("/tmp/flag.html")).is_empty(), "html.js-nav-ready");
+    let on_body = format!(
+        "<!DOCTYPE html><html><head><style>{css}</style></head><body class=\"has-breadcrumb\"><p>{sentence}</p></body></html>"
+    );
+    assert!(!undersized(&on_body, Path::new("/tmp/flag.html")).is_empty(), "body.has-breadcrumb");
+}

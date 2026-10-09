@@ -1278,8 +1278,12 @@ fn drop_covered_class_forms(findings: &mut Vec<BrowserFinding>) {
 }
 
 /// The contrast below which an element's text is as good as gone: its size
-/// is not what a reader misses.
-const VANISHING_INK_RATIO: f64 = 1.3;
+/// is not what a reader misses. Read off the ratio low-contrast prints, at
+/// one decimal this far under its bar ([`crate::color::ratio_label`]): a
+/// printed `1.2` is a measured ratio under 1.25 and a printed `1.3` is not,
+/// so the cutoff on the printed value is exactly the cutoff on the measured
+/// one.
+const VANISHING_INK_RATIO: f64 = 1.25;
 
 /// Text the element's own low-contrast finding scores under
 /// [`VANISHING_INK_RATIO`] belongs to that finding alone: `tiny-text` and

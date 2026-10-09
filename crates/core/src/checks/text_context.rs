@@ -693,9 +693,28 @@ fn landmark_holds_the_page<N: ContextNode>(c: &N) -> bool {
     while let Some(p) = root.parent() {
         root = p;
     }
-    let own = collapse(&c.text()).chars().count();
-    let page = collapse(&root.text()).chars().count();
+    let own = rendered_text_chars(c);
+    let page = rendered_text_chars(&root);
     page > 0 && own * 2 >= page
+}
+
+/// Elements whose text is source, not words on the page.
+const SOURCE_TEXT_TAGS: &[&str] = &["script", "style", "noscript", "template"];
+
+/// The non-whitespace characters of the text `n` and its descendants put
+/// on the page. `textContent` would count a `<script>` bundle or a
+/// `<style>` sheet, which can outweigh a page's whole copy.
+fn rendered_text_chars<N: ContextNode>(n: &N) -> usize {
+    let mut count = 0usize;
+    let mut stack = vec![n.clone()];
+    while let Some(e) = stack.pop() {
+        if SOURCE_TEXT_TAGS.contains(&e.tag().as_str()) {
+            continue;
+        }
+        count += e.direct_text().chars().filter(|ch| !ch.is_whitespace()).count();
+        stack.extend(e.children());
+    }
+    count
 }
 
 /// A device frame that is tilted in 3D, or drawn as a frame and scaled down.
@@ -1516,6 +1535,10 @@ mod tests {
         let (win, _bar, label) = window(&body);
         (win.0).0.borrow_mut()[win.1].tag = "article".into();
         assert!(!in_framed_demo(&label), "the only text on the page");
+        // A script bundle or a style sheet is not text on the page.
+        body.add("script").text(&"window.__APP_STATE__ = {};".repeat(200));
+        body.add("style").text(&".a { color: red; }".repeat(200));
+        assert!(!in_framed_demo(&label), "the only words on the page, beside a bundle");
         // A section whose title bar carries a preview caption but no dots
         // stays a landmark the walk passes through.
         let (_t, body) = Tree::new();

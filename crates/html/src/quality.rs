@@ -363,7 +363,11 @@ fn is_in_control(el: &StaticElement<'_>) -> bool {
     }
     false
 }
-const FURNITURE: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer, [class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
+const FURNITURE_ELEMENTS: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer";
+/// Class markers of page furniture. As in the browser engine, they are not
+/// read off `html`, which holds a page's script state flags
+/// (`html.js-nav-ready` is not navigation).
+const FURNITURE_CLASSES: &str = "[class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
 const SMALLPRINT: &str = "small, footer, [class*=\"legal\" i], [class*=\"copyright\" i], [class*=\"fineprint\" i], [class*=\"fine-print\" i], [class*=\"smallprint\" i], [class*=\"small-print\" i], [class*=\"disclaimer\" i], [class*=\"disclosure\" i], [class*=\"footnote\" i]";
 
 fn has_unresolved_var(value: &str) -> bool {
@@ -733,7 +737,8 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
             let is_exempt_context = el.closest(EXEMPT_CONTEXT).is_some();
             if !is_exempt_context && !is_visually_hidden(el, style) {
                 let is_interactive = is_in_control(el);
-                let is_furniture = el.closest(FURNITURE).is_some();
+                let is_furniture = el.closest(FURNITURE_ELEMENTS).is_some()
+                    || el.closest(FURNITURE_CLASSES).is_some_and(|m| m.tag_lower() != "html");
                 let is_smallprint = el.closest(SMALLPRINT).is_some();
                 let floor = if !is_interactive && is_smallprint {
                     SMALLPRINT_TEXT_FLOOR_PX

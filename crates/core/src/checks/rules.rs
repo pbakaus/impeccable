@@ -1082,9 +1082,12 @@ const GRADIENT_ONE_COLOUR_DELTA: f64 = 12.0;
 
 /// Whether every stop of a gradient value is the same colour (within
 /// [`GRADIENT_ONE_COLOUR_DELTA`] on each channel and alpha). Two stops at
-/// least are needed to say so; with fewer, or stops that cannot be read,
-/// no.
+/// least are needed to say so; with fewer, or any stop that cannot be read
+/// ([`gradient_stops_all_readable`]), no.
 pub fn gradient_stops_are_one_colour(image: &str) -> bool {
+    if !gradient_stops_all_readable(image) {
+        return false;
+    }
     let stops = crate::color::parse_gradient_colors(Some(image));
     let Some(first) = stops.first() else { return false };
     stops.len() >= 2
@@ -1094,6 +1097,84 @@ pub fn gradient_stops_are_one_colour(image: &str) -> bool {
                 && (c.b - first.b).abs() < GRADIENT_ONE_COLOUR_DELTA
                 && (c.alpha_or_one() - first.alpha_or_one()).abs() * 255.0 < GRADIENT_ONE_COLOUR_DELTA
         })
+}
+
+/// Whether every colour stop the value's gradients author is one
+/// [`crate::color::parse_gradient_colors`] reads: a hex colour or a colour
+/// function. That parse drops what it cannot resolve, so
+/// `linear-gradient(#111, var(--accent), #111)` would read as two `#111`
+/// stops. The first argument may set the direction, shape or colour space;
+/// a lone length or percentage is a transition hint. Anything else (a
+/// `var()`, a named colour) is a stop the parse did not see.
+pub fn gradient_stops_all_readable(image: &str) -> bool {
+    let lower = js::to_lower_case(image);
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("gradient(") {
+        let body_start = at + "gradient(".len();
+        let body = &rest[body_start..];
+        let mut depth = 0i32;
+        let mut end = body.len();
+        for (i, ch) in body.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' if depth == 0 => {
+                    end = i;
+                    break;
+                }
+                ')' => depth -= 1,
+                _ => {}
+            }
+        }
+        let mut args = Vec::new();
+        let (mut depth, mut from) = (0i32, 0usize);
+        for (i, ch) in body[..end].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    args.push(body[from..i].trim());
+                    from = i + 1;
+                }
+                _ => {}
+            }
+        }
+        args.push(body[from..end].trim());
+        for (i, arg) in args.iter().enumerate() {
+            if gradient_arg_is_colour(arg) || is_transition_hint(arg) {
+                continue;
+            }
+            if i == 0 && gradient_arg_is_geometry(arg) {
+                continue;
+            }
+            return false;
+        }
+        rest = &body[end.min(body.len())..];
+    }
+    true
+}
+
+fn gradient_arg_is_colour(arg: &str) -> bool {
+    arg.starts_with('#')
+        || crate::color::COLOR_FUNCTION_NAMES
+            .iter()
+            .any(|name| arg.strip_prefix(name).is_some_and(|tail| tail.starts_with('(')))
+}
+
+fn is_transition_hint(arg: &str) -> bool {
+    !arg.is_empty() && !arg.contains(' ') && arg.starts_with(|c: char| c.is_ascii_digit() || c == '.' || c == '-')
+}
+
+fn gradient_arg_is_geometry(arg: &str) -> bool {
+    arg.starts_with("to ")
+        || arg.starts_with("from ")
+        || arg.starts_with("at ")
+        || arg.starts_with("in ")
+        || arg.contains(" at ")
+        || arg.contains(" in ")
+        || ["circle", "ellipse", "closest-", "farthest-"].iter().any(|w| arg.contains(w))
+        || ["deg", "rad", "grad", "turn"]
+            .iter()
+            .any(|u| arg.strip_suffix(u).is_some_and(|n| n.trim_start_matches('-').parse::<f64>().is_ok()))
 }
 
 /// Whether a computed `background-clip` clips the background to the text:
@@ -2258,6 +2339,17 @@ pub fn check_flat_type_hierarchy_samples(samples: &[TypeSample]) -> Vec<RuleHit>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_colour_gradient_needs_every_stop_read() {
+        assert!(gradient_stops_are_one_colour("linear-gradient(#111, #111)"));
+        assert!(gradient_stops_are_one_colour("linear-gradient(to right, rgb(17, 17, 17) 0%, 40%, #111 100%)"));
+        assert!(gradient_stops_are_one_colour("conic-gradient(from 90deg at 50% 50%, #111, #121212)"));
+        assert!(gradient_stops_are_one_colour("radial-gradient(circle at top, #111, #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, var(--accent), #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(180deg, #111, red, #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, #f0f)"));
+    }
 
     fn rgb(r: f64, g: f64, b: f64) -> Rgba {
         Rgba::new(r, g, b, 1.0)
