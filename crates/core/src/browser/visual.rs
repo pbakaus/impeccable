@@ -3683,6 +3683,12 @@ mod tests {
         d.set_rect(p, 84.0, 1591.0, 768.0, 39.0);
         d.set_text_rect(p, 84.0, 1592.0, 753.0, 34.0);
         assert!(collect_visual_contrast_reasons(&d, p).is_empty());
+        // Over a page ground that carries a photo, the fold composites over
+        // the ground's fill, which is not what the text sits on: the fade
+        // stays a reason (review B2).
+        d.set_styles(body, &[("backgroundImage", "url(\"/hero.jpg\")"), ("backgroundSize", "cover")]);
+        assert_eq!(collect_visual_contrast_reasons(&d, p), vec!["opacity stack".to_string()]);
+        d.set_styles(body, &[("backgroundImage", "none"), ("backgroundSize", "auto")]);
         // The fade on the surface's own box.
         d.set_style(p, "opacity", "1");
         d.set_styles(footer, &[("backgroundColor", "rgb(20, 20, 24)"), ("opacity", "0.8")]);

@@ -1420,7 +1420,8 @@ fn fold_surface_opacity(
 /// computes 4.92:1, and the glyph-core median of its 12px strokes printed
 /// 4.47. A fade at or above the surface's box, a surface the walk could not
 /// resolve, a pseudo-element surface, or a fold that gives up keeps the
-/// fade a reason.
+/// fade a reason, and so does a surface on a page ground that paints a
+/// picture ([`crate::browser::visual::page_ground_paints_picture`]).
 pub(crate) fn opacity_fold_scores_fades(dom: &dyn Dom, el: ElId, faded: &[ElId]) -> bool {
     if faded.is_empty() {
         return true;
@@ -1431,7 +1432,9 @@ pub(crate) fn opacity_fold_scores_fades(dom: &dyn Dom, el: ElId, faded: &[ElId])
     };
     let rect = dom.rect(el);
     let own = read_own_background_color(dom, el);
-    if own.map_or(true, |c| c.alpha_or_one() <= 0.5) && read_pseudo_surface_dom(dom, el, &rect).is_some() {
+    if own.map_or(true, |c| c.alpha_or_one() <= 0.5)
+        && (read_pseudo_surface_dom(dom, el, &rect).is_some() || read_pseudo_gradient_face(dom, el, &rect).is_some())
+    {
         return false;
     }
     let font_size = {
@@ -1448,6 +1451,13 @@ pub(crate) fn opacity_fold_scores_fades(dom: &dyn Dom, el: ElId, faded: &[ElId])
     };
     let surface = resolve_text_surface(dom, ink_el, &|_| false, text_box, font_size);
     if surface.info.unresolved {
+        return false;
+    }
+    // On a page ground that carries a picture the fold composites over the
+    // ground's fill, which is not what the text sits on, and the fade is
+    // what makes the text a pixel candidate at all (the document's images
+    // add no reason of their own).
+    if on_page_ground(dom, surface.host) && crate::browser::visual::page_ground_paints_picture(dom) {
         return false;
     }
     let below_host = |n: ElId| match surface.host {
