@@ -725,6 +725,30 @@ pub(crate) fn pseudo_paints_over(dom: &dyn Dom, node: ElId, which: &str) -> bool
     pseudo_order(dom, node, which) == Order::Over
 }
 
+/// Whether `node`'s `which` pseudo-element is a face between its own
+/// background and its own text over `text`. The text is the host's inline
+/// content, which every positioned box at `z-index: auto` or above paints
+/// over, so only a negative `z-index` the host's stacking context keeps
+/// over its background ([`pseudo_order`]) is under the glyphs. A pseudo
+/// the capture places must cover the text run: a full-size face parked at
+/// `top: 100%` is not under it. One it cannot place is left to the
+/// caller's size test.
+pub(crate) fn pseudo_face_under_text(dom: &dyn Dom, node: ElId, which: &str, text: &Rect) -> bool {
+    let z = dom.pseudo_style(node, which, "zIndex").unwrap_or_default();
+    let z = js::trim(&z);
+    if z.is_empty() || z == "auto" {
+        return false;
+    }
+    let v = parse_float(z);
+    if !(v.is_finite() && v < 0.0) || !pseudo_paints_over(dom, node, which) {
+        return false;
+    }
+    match pseudo_box(dom, node, which) {
+        Some((b, _)) => rect_covers(&b, text),
+        None => true,
+    }
+}
+
 /// A `::before` or `::after` painting something over the whole text run.
 /// A small pseudo (an underline, a bullet, a badge dot) is not a surface,
 /// and neither is one laid out inline, one placed off the text (a "Most

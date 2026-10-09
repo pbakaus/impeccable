@@ -548,8 +548,10 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
 /// `visibility: hidden`, a transform or translate other than the identity,
 /// or a bottom layer drawn once at a stated size), where its colour is
 /// what paints (that function reads it), where any layer is not a gradient
-/// or the bottom layer lets something through, and where the capture cannot
-/// say it paints over the box.
+/// or the bottom layer lets something through, where the capture places it
+/// off the text run, and where it is not at a negative `z-index` the
+/// capture can say paints over the box: at `auto` or above, a positioned
+/// face paints over the host's own text, not under it.
 pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<(Vec<Rgba>, &'static str)> {
     for which in PSEUDOS {
         if !pseudo_present(dom, el, which) {
@@ -635,7 +637,8 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         if base.is_empty() || base.iter().any(|c| c.alpha_or_one() < 0.95) {
             continue;
         }
-        if !crate::browser::visual::pseudo_paints_over(dom, el, which) {
+        let text = dom.direct_text_rect(el).unwrap_or(*rect);
+        if !crate::browser::visual::pseudo_face_under_text(dom, el, which, &text) {
             continue;
         }
         let mut colours: Vec<Rgba> = base.iter().map(|c| Rgba { a: Some(1.0), ..*c }).collect();
@@ -9268,6 +9271,13 @@ mod tests {
                 "background",
                 "rgba(0, 0, 0, 0) linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236)) no-repeat scroll 0% 0% / 100% 4px padding-box border-box",
             )],
+            // Full size but parked below the run (review: placement).
+            vec![("top", "42px")],
+            // At `auto` or above, a positioned face paints over the label's
+            // own text, not under it (review: paint order).
+            vec![("zIndex", "auto")],
+            vec![("zIndex", "0")],
+            vec![("zIndex", "2")],
         ];
         for extra in &hidden {
             let hits = run_with(light, "isolate", extra);
