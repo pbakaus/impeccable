@@ -3493,23 +3493,113 @@ fn generated_content_has_text(content: &str) -> bool {
 /// arrow icon parked past a link, a decoration layer) adds nothing, as an
 /// absolutely positioned child with no text adds nothing.
 fn generated_content_unmeasured(dom: &dyn Dom, el: ElId) -> bool {
-    PSEUDOS.iter().any(|which| {
-        if !pseudo_present(dom, el, which) {
-            return false;
-        }
-        let content = pseudo_str(dom, el, which, "content");
-        if content == "normal" || pseudo_str(dom, el, which, "display") == "none" {
-            return false;
-        }
-        if generated_content_has_text(&content) {
+    PSEUDOS.iter().any(|which| pseudo_unmeasured(dom, el, which))
+}
+
+/// [`generated_content_unmeasured`] for one pseudo-element.
+fn pseudo_unmeasured(dom: &dyn Dom, el: ElId, which: &str) -> bool {
+    if !pseudo_present(dom, el, which) {
+        return false;
+    }
+    let content = pseudo_str(dom, el, which, "content");
+    if content == "normal" || pseudo_str(dom, el, which, "display") == "none" {
+        return false;
+    }
+    if generated_content_has_text(&content) {
+        return true;
+    }
+    let position = pseudo_str(dom, el, which, "position");
+    if position == "absolute" || position == "fixed" {
+        return false;
+    }
+    content.contains("url(") || pseudo_px(dom, el, which, "width") > 0.0
+}
+
+/// Whether every unmeasured `::before` and `::after` on `el` generates one
+/// icon glyph and nothing else: a symbol or an icon font's private-use
+/// character (`content: "\e90a"`, `"\2605"`), with a variation selector
+/// after it allowed. An icon is one glyph's width, not a run of words that
+/// could spill. A letter or digit is not an icon (`"WW"` in a large face can
+/// run past a 30px box), nor is a counter, an attribute, an image or a
+/// longer string.
+fn generated_content_is_one_glyph(dom: &dyn Dom, el: ElId) -> bool {
+    PSEUDOS.iter().all(|which| {
+        if !pseudo_unmeasured(dom, el, which) {
             return true;
         }
-        let position = pseudo_str(dom, el, which, "position");
-        if position == "absolute" || position == "fixed" {
+        let content = pseudo_str(dom, el, which, "content");
+        if content.contains("url(") || content.contains("counter") || content.contains("attr(") {
             return false;
         }
-        content.contains("url(") || pseudo_px(dom, el, which, "width") > 0.0
+        let parts: Vec<&str> = content.split(['"', '\'']).collect();
+        // A quoted string and nothing else: `"x"` splits into three parts.
+        if !(parts.len() == 3 && parts[0].trim().is_empty() && parts[2].trim().is_empty()) {
+            return false;
+        }
+        let mut glyphs = parts[1].chars().filter(|c| !('\u{fe00}'..='\u{fe0f}').contains(c));
+        matches!(
+            (glyphs.next(), glyphs.next()),
+            (Some(c), None) if !c.is_alphanumeric() && !c.is_whitespace() && !c.is_control()
+        )
     })
+}
+
+/// Whether `el` clips on the y axis and its own text lies wholly above or
+/// below the box it clips to, as do the rects of everything its descendants
+/// paint: none of it is seen, so nothing it spills on the x axis is seen
+/// either. That is icon-font image replacement written on the y axis
+/// (valero.com's 30px social links, `height: 30px; overflow: hidden`, a
+/// block `::before` glyph, and the label "Youtube" laid out 3px below the
+/// clip), the twin of the `text-indent: -9999px` form. Generated content the
+/// engine cannot measure stops the answer unless it is one glyph per
+/// pseudo-element, which sits inside the box it is the icon of.
+fn text_clipped_away_on_y(
+    dom: &dyn Dom,
+    el: ElId,
+    rect: &Rect,
+    extents: &[Rect],
+    descendants_unmeasured: bool,
+) -> bool {
+    if extents.is_empty() || descendants_unmeasured || !generates_box(dom, el) {
+        return false;
+    }
+    match crate::browser::text_geometry::overflow_y(dom, el).as_str() {
+        "hidden" => {}
+        // `overflow: clip` paints out to its `overflow-clip-margin`; only a
+        // margin of zero (or one the capture did not record) clips at the
+        // padding box.
+        "clip" => {
+            let margin = dom.style(el, "overflowClipMargin");
+            if !(margin.is_empty() || parse_float(&margin) == 0.0) {
+                return false;
+            }
+        }
+        _ => return false,
+    }
+    let client = dom.client_height(el);
+    let border_top = style_px(dom, el, "borderTopWidth");
+    let border_bottom = style_px(dom, el, "borderBottomWidth");
+    if !(client.is_finite() && client > 0.0 && border_top.is_finite() && border_bottom.is_finite()) {
+        return false;
+    }
+    // The band mixes the drawn rect with layout metrics, so it holds only
+    // for a box drawn at its layout size: under a transform that scales it,
+    // the drawn clip is not `clientHeight` tall, and the box keeps the base
+    // reading.
+    if (rect.height - (client + border_top + border_bottom)).abs() > 1.0 {
+        return false;
+    }
+    let top = rect.top + border_top;
+    if !top.is_finite() {
+        return false;
+    }
+    let bottom = top + client;
+    if generated_content_unmeasured(dom, el) && !generated_content_is_one_glyph(dom, el) {
+        return false;
+    }
+    extents
+        .iter()
+        .all(|r| r.all_finite() && (r.bottom <= top || r.top >= bottom))
 }
 
 /// The rects of what `el`'s descendants paint, for deciding whether its
@@ -3603,9 +3693,12 @@ fn painted_overflow_extent(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<(f64,
     if own.width > 0.0 && own.height > 0.0 {
         extents.push(own);
     }
-    let mut unmeasured = generated_content_unmeasured(dom, el);
-    painted_descendant_extents(dom, el, &mut extents, &mut unmeasured);
-    if unmeasured {
+    let mut descendants_unmeasured = false;
+    painted_descendant_extents(dom, el, &mut extents, &mut descendants_unmeasured);
+    if text_clipped_away_on_y(dom, el, rect, &extents, descendants_unmeasured) {
+        return None;
+    }
+    if descendants_unmeasured || generated_content_unmeasured(dom, el) {
         return Some(scroll_extent());
     }
     // A box that clips paints none of what lies wholly outside it.
@@ -7302,6 +7395,74 @@ mod tests {
         // With visible overflow the label really lands 9,999px away.
         d.set_styles(tab, &[("overflow", "visible"), ("overflowX", "visible"), ("overflowY", "visible")]);
         assert_eq!(check_element_text_overflow_dom(&d, tab).len(), 1);
+    }
+
+    /// observations-47 row 2: valero.com's icon-font social links clip on
+    /// the y axis. The 30px link holds a block `::before` glyph and lays the
+    /// label "Youtube" out 3px below its clip, so the 54px the label runs
+    /// past the box on x is never painted.
+    #[test]
+    fn text_overflow_skips_a_label_clipped_away_on_y() {
+        let (mut d, body) = page();
+        let link = d.add(Some(body), "a");
+        visible(&mut d, link);
+        d.set_attr(link, "class", "icon-youtube");
+        d.add_text(link, "Youtube");
+        d.set_rect(link, 48.0, 600.0, 30.0, 30.0);
+        d.el_mut(link).client_width = 30.0;
+        d.el_mut(link).client_height = 30.0;
+        d.el_mut(link).scroll_width = 84.0;
+        d.set_styles(link, &[("display", "block"), ("overflow", "hidden"), ("overflowX", "hidden"), ("overflowY", "hidden"), ("position", "static"), ("fontSize", "24px"), ("borderTopWidth", "0px"), ("borderBottomWidth", "0px")]);
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
+        d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
+        d.set_pseudo_style(link, "::before", "display", "block");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "the label sits below the clip");
+
+        // Without a y clip the label shows below the box, and its spill with it.
+        d.set_style(link, "overflowY", "visible");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "no y clip");
+        d.set_style(link, "overflowY", "hidden");
+        // The shorthand alone says the same.
+        d.set_styles(link, &[("overflowY", ""), ("overflow", "hidden")]);
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "the shorthand clips y");
+        d.set_style(link, "overflowY", "hidden");
+        // `overflow: clip` with a clip margin paints past the box.
+        d.set_styles(link, &[("overflowY", "clip"), ("overflowClipMargin", "8px")]);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a clip margin");
+        d.set_style(link, "overflowClipMargin", "0px");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "clip with no margin");
+        d.set_style(link, "overflowY", "hidden");
+        // Drawn at twice its layout size (a scale transform), the clip is
+        // 60px tall and a label at 640 to 660 shows inside it.
+        d.set_rect(link, 48.0, 600.0, 60.0, 60.0);
+        d.set_text_rect(link, 48.0, 640.0, 168.0, 20.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a scaled box");
+        d.set_rect(link, 48.0, 600.0, 30.0, 30.0);
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
+        // A label that reaches into the box is seen.
+        d.set_text_rect(link, 48.0, 620.0, 84.0, 25.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "the label crosses the clip");
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
+        // Generated words, not a glyph, may themselves spill: taken as read.
+        d.set_pseudo_style(link, "::before", "content", "\"Watch us on Youtube\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "generated words");
+        d.set_pseudo_style(link, "::before", "content", "counter(item)");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a counter");
+        d.set_pseudo_style(link, "::before", "content", "\"WW\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "letters are not an icon");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{2605}\u{2605}\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "two glyphs");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{2605}\u{fe0f}\"");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "a symbol and its variation selector");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
+        // A child whose text sits inside the box is seen.
+        let note = d.add(Some(link), "span");
+        visible(&mut d, note);
+        d.set_style(note, "position", "static");
+        d.add_text(note, "New");
+        d.set_rect(note, 48.0, 605.0, 70.0, 20.0);
+        d.set_text_rect(note, 48.0, 605.0, 70.0, 20.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a child's text inside the clip");
     }
 
     /// walkthroughs-20 miss 4a: `overflow-x: hidden` computes the shorthand to

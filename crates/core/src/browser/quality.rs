@@ -887,6 +887,84 @@ fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
     count.total()
 }
 
+/// How deep into `el`'s box an edge is drawn on each side, `[top, right,
+/// bottom, left]`, by an inset `box-shadow` (a visible inset layer's spread,
+/// moved by its offset: `inset 1px 0 0 1px` draws 2px on the left, 1px on the
+/// top and bottom and nothing on the right) or by an outline a negative
+/// `outline-offset` pulls inside the box (the offset's depth on every side).
+/// Infinite when the capture recorded neither value, so callers keep their
+/// base reading.
+fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> [f64; 4] {
+    let shadow = dom.style(el, "boxShadow");
+    let offset = dom.style(el, "outlineOffset");
+    if shadow.is_empty() || offset.is_empty() {
+        return [f64::INFINITY; 4];
+    }
+    let mut depth = [0.0f64; 4];
+    if shadow != "none" {
+        // Layers split on commas outside parentheses.
+        let mut layers = Vec::new();
+        let (mut level, mut start) = (0i32, 0usize);
+        for (i, c) in shadow.char_indices() {
+            match c {
+                '(' => level += 1,
+                ')' => level -= 1,
+                ',' if level == 0 => {
+                    layers.push(&shadow[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        layers.push(&shadow[start..]);
+        for layer in layers {
+            if !layer.split_whitespace().any(|w| w == "inset") {
+                continue;
+            }
+            // The colour is the one function or keyword in the layer; the
+            // lengths are, in order, x, y, blur and spread.
+            let colour_end = layer.rfind(')').map_or(0, |i| i + 1);
+            let colour = &layer[..colour_end];
+            if !colour.is_empty() && css_color_is_transparent(Some(colour.trim())) {
+                continue;
+            }
+            let lengths: Vec<f64> = layer[colour_end..]
+                .split_whitespace()
+                .filter(|w| w.ends_with("px"))
+                .map(parse_float)
+                .collect();
+            // The shadow is the padding box shrunk by the spread and moved
+            // by the offset; what it leaves uncovered is drawn. An offset
+            // deepens one side and thins the other.
+            let (Some(&x), Some(&y), Some(&spread)) =
+                (lengths.first(), lengths.get(1), lengths.get(3))
+            else {
+                continue;
+            };
+            for (side, d) in [spread + y, spread - x, spread - y, spread + x].into_iter().enumerate() {
+                if d.is_finite() && d > 0.0 {
+                    depth[side] = js::math_max(depth[side], d);
+                }
+            }
+        }
+    }
+    let offset = parse_float(&offset);
+    let width = parse_float(&dom.style(el, "outlineWidth"));
+    let style = dom.style(el, "outlineStyle");
+    if offset.is_finite()
+        && offset < 0.0
+        && width.is_finite()
+        && width > 0.0
+        && !matches!(style.as_str(), "" | "none" | "hidden")
+        && !css_color_is_transparent(Some(&dom.style(el, "outlineColor")))
+    {
+        for d in &mut depth {
+            *d = js::math_max(*d, -offset);
+        }
+    }
+    depth
+}
+
 /// JS: checks.mjs#textDescendantsFlushSides(el, rect) → [top, right, bottom, left]
 ///
 /// The side is flush when the *text* lands on it, not when a text-bearing box
@@ -922,10 +1000,39 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
         }
         js::math_min(4.0, font_size * SMALL_CHIP_AIR_EM) * scale
     };
+    // How deep an edge is drawn into the box on each side, `[top, right,
+    // bottom, left]`: a border, an inset `box-shadow` ring (Tailwind's
+    // `ring-inset`) or an outline pulled inside by a negative
+    // `outline-offset`. A transparent one is drawn nowhere. A side whose
+    // border, shadow or outline offset the capture did not record reads as
+    // drawn without limit, which keeps the threshold's edge flush there as
+    // it always was.
+    let inner_edge = drawn_inner_edge(dom, el);
+    let border_drawn: [f64; 4] = std::array::from_fn(|i| {
+        let side = ["Top", "Right", "Bottom", "Left"][i];
+        let width = parse_float(&dom.style(el, &format!("border{side}Width")));
+        let color = dom.style(el, &format!("border{side}Color"));
+        let border = if !width.is_finite() || color.is_empty() {
+            f64::INFINITY
+        } else if width > 0.0 && !css_color_is_transparent(Some(&color)) {
+            width
+        } else {
+            0.0
+        };
+        js::math_max(border, inner_edge[i])
+    });
     let candidates = dom.query_all(Some(el), TEXT_EDGE_QUERY).unwrap_or_default();
     for node in candidates {
         let tag_name = dom.tag_name(node);
         if !TEXT_EDGE_TAGS.contains(&tag_name.as_str()) || !has_meaningful_direct_text(dom, node) {
+            continue;
+        }
+        // Text set under a pixel paints nothing: `font-size: 0` image
+        // replacement, whose visible label is a sprite or a pseudo-element
+        // (auction.co.kr's menu links). The Range has no rect for it, and the
+        // fallback to the link's box put its "text" on the wrapper's edges.
+        let node_font = parse_float(&dom.style(node, "fontSize"));
+        if node_font.is_finite() && node_font < 1.0 {
             continue;
         }
         let br = dom.rect(node);
@@ -974,12 +1081,21 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
         // not held against it: it runs out of the box (a block parked 64px
         // to the left of its column until its scroll reveal brings it in).
         let land = land_threshold(node);
-        let lands = |gap: f64| gap <= land && gap >= -edge_threshold;
+        // The gap runs from the outer edge of `el`'s box. A child insulates
+        // a side at 4px or more, so text exactly the threshold off an edge
+        // where nothing is drawn is air, not flush (midilibre.fr's footer
+        // band read both ways at 4.0). A drawn border is not air: measured
+        // from its inner edge the same text sits strictly inside the
+        // threshold and stays flush (jyes.com.tw's table frame holds its
+        // headings 4px off the outer edge of a 1px border, 3px of air).
+        let lands = |gap: f64, side: usize| {
+            gap <= land && gap - border_drawn[side] * scale < land && gap >= -edge_threshold
+        };
         let sides = [
-            lands(nr.top - rect.top),
-            !cut_right && lands(rect.right - right),
-            lands(rect.bottom - nr.bottom),
-            !cut_left && lands(left - rect.left),
+            lands(nr.top - rect.top, 0),
+            !cut_right && lands(rect.right - right, 1),
+            lands(rect.bottom - nr.bottom, 2),
+            !cut_left && lands(left - rect.left, 3),
         ];
         // The remaining tests run only for text that reached an edge.
         if !sides.iter().any(|s| *s) {
@@ -3279,6 +3395,86 @@ mod tests {
         );
     }
 
+    /// observations-47 row 13: auction.co.kr's menu links set their text at
+    /// `font-size: 0` and show a sprite instead. The Range has no rect for
+    /// that text, and the fallback to the link's box put it on the wrapper's
+    /// edges.
+    #[test]
+    fn flush_skips_text_set_under_a_pixel() {
+        let mut d = FakeDom::new();
+        let (row, button) = accordion_row(&mut d);
+        d.set_style(button, "fontSize", "0px");
+        assert!(check_element_quality_dom(&d, row, &BrowserConfig::default()).is_empty());
+        // The control: real text the Dom cannot measure stands on its box.
+        d.set_style(button, "fontSize", "16px");
+        let hits = check_element_quality_dom(&d, row, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+    }
+
+    /// observations-47 row 13: midilibre.fr's footer band holds its text
+    /// exactly 4px off its fill's edge. A child 4px in insulates its side, so
+    /// 4px of air beside a fill is not flush. A drawn border is not air:
+    /// jyes.com.tw's table frame holds its headings 4px off the outer edge
+    /// of a 1px border (confirmed harmful on run 28), 3px off its inner edge.
+    #[test]
+    fn flush_needs_text_strictly_inside_the_threshold() {
+        let mut d = FakeDom::new();
+        let (row, button) = accordion_row(&mut d);
+        let flush = |d: &FakeDom| -> Vec<String> {
+            check_element_quality_dom(d, row, &BrowserConfig::default())
+                .into_iter()
+                .map(|h| h.snippet)
+                .collect()
+        };
+        // 4px off the outer edge of a 1px border is 3px of air.
+        d.set_text_rect(button, 24.0, 4.0, 300.0, 50.0);
+        assert_eq!(
+            flush(&d),
+            vec!["<div> \"border\": children flush against border on top/bottom (no inset)".to_string()]
+        );
+        // A fill, with no border drawn: 4px is air.
+        for side in ["Top", "Right", "Bottom", "Left"] {
+            d.set_style(row, &format!("border{side}Width"), "0px");
+        }
+        d.set_styles(row, &[("backgroundColor", "rgb(240, 240, 240)"), ("boxShadow", "none"), ("outlineOffset", "0px")]);
+        assert!(flush(&d).is_empty(), "{:?}", flush(&d));
+        // An inset ring (Tailwind's `ring-1 ring-inset`) draws the edge a
+        // border would: 4px off the box is 3px off the line.
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 0px 0px 0px 1px inset");
+        assert_eq!(flush(&d).len(), 1, "an inset ring");
+        d.set_style(row, "boxShadow", "rgba(0, 0, 0, 0) 0px 0px 0px 1px inset");
+        assert!(flush(&d).is_empty(), "a transparent ring draws nothing");
+        // An offset moves the edge: `inset 0 8px 0 1px` draws 9px along
+        // the top and nothing along the bottom, and `inset 1px 0 0 1px`
+        // still draws 1px along the top and bottom.
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 0px 8px 0px 1px inset");
+        assert_eq!(
+            flush(&d),
+            vec!["<div> \"border\": children flush against bg on top (no inset)".to_string()],
+            "only the top is drawn"
+        );
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 1px 0px 0px 1px inset");
+        assert_eq!(flush(&d).len(), 1, "a sideways offset keeps the top and bottom edges");
+        d.set_style(row, "boxShadow", "rgb(0, 0, 0) 0px 4px 12px 0px");
+        assert!(flush(&d).is_empty(), "an outer shadow draws no inner edge");
+        d.set_style(row, "boxShadow", "none");
+        // So does an outline pulled inside the box.
+        d.set_styles(row, &[("outlineWidth", "1px"), ("outlineStyle", "solid"), ("outlineColor", "rgb(0, 0, 0)"), ("outlineOffset", "-1px")]);
+        assert_eq!(flush(&d).len(), 1, "an inset outline");
+        d.set_styles(row, &[("outlineWidth", "0px"), ("outlineStyle", "none"), ("outlineOffset", "0px")]);
+        assert!(flush(&d).is_empty());
+        d.set_text_rect(button, 24.0, 3.5, 300.0, 51.0);
+        assert_eq!(
+            flush(&d),
+            vec!["<div> \"border\": children flush against bg on top/bottom (no inset)".to_string()]
+        );
+        // A border the capture did not record keeps the edge flush.
+        d.set_text_rect(button, 24.0, 4.0, 300.0, 50.0);
+        d.set_style(row, "borderTopWidth", "");
+        d.set_style(row, "borderBottomWidth", "");
+        assert_eq!(flush(&d).len(), 1, "unrecorded borders");
+    }
+
     /// freenet.de (218500, 218548) and sona8.com (217614, 217742, 217750,
     /// 217758): text the wrapper's padding does not place, or that a scroll
     /// reveal has not brought in yet.
@@ -3487,8 +3683,10 @@ mod tests {
     /// label on a 20px `normal` line 2px off its edges; the glyphs' em box
     /// sits 5px off. haraj.com.sa's 28px price chip holds a 19px content
     /// area 4px off inside a 24px line box 2px off and keeps the content-area
-    /// measure, so it reports as it did before the decision (its em box, 5.5px
-    /// off, would not).
+    /// measure (its em box, 5.5px off, would not). Since observations-47 row
+    /// 13 a gap of exactly 4px beside a fill with no border is air, so the
+    /// case below sets the content area 3.5px off to keep the 28px bound
+    /// pinned.
     #[test]
     fn cramped_padding_measures_small_chips_by_their_glyphs() {
         let mut d = FakeDom::new();
@@ -3499,7 +3697,7 @@ mod tests {
         let price = |height: f64| -> Vec<String> {
             let mut d = FakeDom::new();
             let (c, label) = chip(&mut d, height, "16px", "24px", (2.0, 24.0));
-            d.set_text_rect(label, 628.0, 104.0, 41.0, 19.0);
+            d.set_text_rect(label, 628.0, 103.5, 41.0, 19.0);
             cramped(&d, c)
         };
         assert_eq!(price(28.0), top, "28px is not under 28px");

@@ -52,6 +52,9 @@
     .truncate { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .flag-pseudo-suffix::after { content: " and a long generated suffix that runs past the box"; }
+    .icon-link { display: block; width: 30px; height: 30px; overflow: hidden; font-size: 24px; line-height: 24px; white-space: nowrap; color: #036; }
+    .icon-link::before { content: "\2605"; display: block; width: 30px; height: 30px; margin-bottom: 4px; line-height: 30px; text-align: center; }
+.icon-link.crosses::before { height: 20px; margin-bottom: 0; line-height: 20px; }
   </style>
 </head>
 <body>
@@ -76,6 +79,13 @@
       <!-- Generated content past the box. No text rect covers a pseudo-element,
            so the engine cannot measure it and the spill stands. -->
       <div class="box flag-pseudo-suffix" style="white-space: nowrap">Tag</div>
+      <!-- The same icon link with its label starting 10px inside the 30px
+           clip: the top of the word shows, and the clip cuts it on x. -->
+      <a class="flag-icon-label-crosses-clip icon-link crosses" href="#">Youtube</a>
+      <!-- The same icon link at `overflow: clip` with an 8px clip margin:
+           the label 4px below the box paints inside the margin, and its
+           spill shows. -->
+      <a class="flag-icon-label-in-clip-margin icon-link" href="#" style="overflow: clip; overflow-clip-margin: 8px">Youtube</a>
     </section>
 
     <!-- PASS column: real scroll regions, preformatted code, wrapping text, scroll ancestors -->
@@ -104,6 +114,10 @@
       <a class="box pass-ripple" href="#" style="display: inline-flex; position: relative; overflow: hidden; width: 120px">Shop now<span style="position: absolute; display: block; width: 340px; height: 340px; left: -110px; top: -150px"></span></a>
       <a class="box pass-image-replacement" href="#" style="display: block; overflow: hidden; text-indent: -9999px; height: 20px">Internet access plans</a>
       <div class="box pass-reserve">Durable streams on <span style="display: inline-block; min-width: 220px">storage</span></div>
+      <!-- Icon-font image replacement on the y axis (valero.com's social
+           links): a block ::before glyph fills the 30px clip and the label
+           lays out below it, so none of its width is painted. -->
+      <a class="icon-link pass-icon-label-below-clip" href="#">Youtube</a>
       <!-- scrollWidth counts absolutely positioned descendants too. A hover
            tooltip parked above a platform name at opacity 0 (clipto.com) and
            a badge pinned past a tab's corner (coachcall.ai's "Popular") are

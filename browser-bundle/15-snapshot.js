@@ -38,7 +38,7 @@ const __SNAP_STYLE_PROPS = [
   "marginRight", "marginTop", "maskImage", "maxHeight", "maxWidth", "minHeight", "minWidth",
   "mixBlendMode", "objectFit", "objectPosition", "opacity", "outline",
   "outlineColor", "outlineOffset", "outlineStyle", "outlineWidth", "overflow",
-  "overflowX", "overflowY", "paddingBottom", "paddingLeft", "paddingRight",
+  "overflowClipMargin", "overflowX", "overflowY", "paddingBottom", "paddingLeft", "paddingRight",
   "paddingTop", "perspective", "pointerEvents", "position", "right", "rotate",
   "scale", "textAlign",
   "textDecoration", "textDecorationLine", "textIndent", "textOverflow",

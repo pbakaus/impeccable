@@ -114,6 +114,10 @@
        box is what counts and the chip passes; at 28px or 27.6px it is not a
        small chip and reports on top, as it did before taste call r3-20. */
     .flag-price-chip, .flag-price-chip-subpixel, .pass-price-chip { display: flex; align-items: flex-start; width: 120px; box-sizing: border-box; padding: 2px 8px; background: #e0f2fe; color: #0c4a6e; border-radius: 4px; }
+    /* The flag chips sit 1px from the top, so the content area is under 4px
+       off the edge with any face: at 2px a Linux face whose rounded content
+       area is 16px tall lands it exactly 4px off, which is air on a fill. */
+    .flag-price-chip, .flag-price-chip-subpixel { padding-top: 1px; }
     .flag-price-chip { height: 28px; }
     .flag-price-chip-subpixel { height: 27.6px; }
     .pass-price-chip { height: 27px; }
@@ -185,7 +189,7 @@
 
       <h3>Chip of 28px or more, measured by its content area (browser engine only)</h3>
       <div class="case">
-        <span class="case-label">28px price chip, padding 2px 8px, 14px label on a 20px line at the top: a 28px chip is not under 28px, so its text is measured by the content area, about 3px off the top</span>
+        <span class="case-label">28px price chip, padding 1px 8px 2px, 14px label on a 20px line at the top: a 28px chip is not under 28px, so its text is measured by the content area, about 2px off the top</span>
         <div class="flag-price-chip"><span>1,250 SAR</span></div>
       </div>
       <div class="case">

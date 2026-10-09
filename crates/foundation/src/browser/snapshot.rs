@@ -150,6 +150,7 @@ pub const STYLE_PROPS: &[&str] = &[
     "outlineStyle",
     "outlineWidth",
     "overflow",
+    "overflowClipMargin",
     "overflowX",
     "overflowY",
     "paddingBottom",
