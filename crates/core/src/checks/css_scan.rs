@@ -1995,9 +1995,196 @@ fn polygon_is_rectilinear(body: &str) -> bool {
     })
 }
 
+/// One polygon coordinate as a number and its unit, when it is a plain
+/// length or percentage (`96%`, `4px`, `0`). A `calc()` or a variable is not.
+fn polygon_coordinate_number(token: &str) -> Option<(f64, String)> {
+    let t = js::trim(token).to_ascii_lowercase();
+    let unit_start = t.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+')).unwrap_or(t.len());
+    let value: f64 = t[..unit_start].parse().ok()?;
+    let unit = &t[unit_start..];
+    if !unit.chars().all(|c| c.is_ascii_alphabetic() || c == '%') {
+        return None;
+    }
+    // A zero is a zero in any unit.
+    Some((value, if value == 0.0 { String::new() } else { unit.to_string() }))
+}
+
+/// Whether a `polygon()` body is a zigzag edge: its vertices take two to
+/// four distinct values on one axis and step evenly along the other.
+/// presswhisper.com's tape ribbon (`100% 20%, 96% 40%, 100% 60%, 96% 80%,
+/// ...`) notches both ends that way; a hand-drawn contour wanders on both
+/// axes. A coordinate that is not a plain number answers no.
+fn polygon_is_zigzag(body: &str) -> bool {
+    let mut xs: Vec<(f64, String)> = Vec::new();
+    let mut ys: Vec<(f64, String)> = Vec::new();
+    for (i, point) in split_top_level(body, |c| c == ',').into_iter().enumerate() {
+        let coords = split_top_level(point, char::is_whitespace);
+        if i == 0 && coords.len() == 1 && matches!(js::to_lower_case(coords[0]).as_str(), "nonzero" | "evenodd") {
+            continue;
+        }
+        let [x, y] = coords.as_slice() else {
+            return false;
+        };
+        let (Some(x), Some(y)) = (polygon_coordinate_number(x), polygon_coordinate_number(y)) else {
+            return false;
+        };
+        xs.push(x);
+        ys.push(y);
+    }
+    // One unit per axis, so the values compare.
+    let one_unit = |v: &[(f64, String)]| {
+        let mut units = v.iter().map(|(_, u)| u.as_str()).filter(|u| !u.is_empty());
+        let first = units.next();
+        units.all(|u| Some(u) == first)
+    };
+    if xs.len() < 3 || !one_unit(&xs) || !one_unit(&ys) {
+        return false;
+    }
+    let distinct = |v: &[(f64, String)]| {
+        let mut d: Vec<f64> = Vec::new();
+        for (n, _) in v {
+            if !d.iter().any(|x| (x - n).abs() < 0.01) {
+                d.push(*n);
+            }
+        }
+        d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        d
+    };
+    let even_steps = |d: &[f64]| {
+        d.len() >= 3 && {
+            let step = d[1] - d[0];
+            step > 0.0 && d.windows(2).all(|w| ((w[1] - w[0]) - step).abs() <= 0.5)
+        }
+    };
+    let (dx, dy) = (distinct(&xs), distinct(&ys));
+    ((2..=4).contains(&dx.len()) && even_steps(&dy)) || ((2..=4).contains(&dy.len()) && even_steps(&dx))
+}
+
+re!(PATH_TOKEN_RE, r"[A-Za-z]|[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?".to_string());
+
+/// Whether a `path()` body draws a rounded rectangle: every straight
+/// segment (`L`, `H`, `V`, a closing `Z`) runs along an edge of the box the
+/// path's points span, and the straight segments reach at least three of its
+/// four edges. sinter.systems' smooth-corner buttons are squircles drawn
+/// that way: four straight sides joined by curves. A blob has no straight
+/// side, or one. Path data the reader cannot follow answers no.
+fn path_is_rounded_rectangle(body: &str) -> bool {
+    // Path data holds no parentheses: the body ends at the first one. An
+    // inline style escapes the quotes, and a fill rule may lead.
+    let data = body.split(')').next().unwrap_or("").replace("&quot;", "\"");
+    let data = match data.rfind(',') {
+        Some(i) if data[..i].trim().trim_matches(|c| c == '"' || c == '\'').chars().all(|c| c.is_ascii_alphabetic()) => {
+            data[i + 1..].to_string()
+        }
+        _ => data,
+    };
+    let data = data.trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace());
+    let tokens: Vec<&str> = PATH_TOKEN_RE.find_iter(data).map(|m| m.as_str()).collect();
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    let mut lines: Vec<((f64, f64), (f64, f64))> = Vec::new();
+    let (mut cur, mut start) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64));
+    let mut i = 0usize;
+    let mut cmd: Option<char> = None;
+    while i < tokens.len() {
+        let tok = tokens[i];
+        let c = tok.chars().next().unwrap_or(' ');
+        if c.is_ascii_alphabetic() {
+            cmd = Some(c);
+            i += 1;
+            if c == 'Z' || c == 'z' {
+                if cur != start {
+                    lines.push((cur, start));
+                }
+                cur = start;
+                points.push(cur);
+                cmd = None;
+            }
+            continue;
+        }
+        let Some(command) = cmd else { return false };
+        let arity = match command.to_ascii_uppercase() {
+            'M' | 'L' | 'T' => 2,
+            'H' | 'V' => 1,
+            'C' => 6,
+            'S' | 'Q' => 4,
+            'A' => 7,
+            _ => return false,
+        };
+        if i + arity > tokens.len() {
+            return false;
+        }
+        let mut args = Vec::with_capacity(arity);
+        for t in &tokens[i..i + arity] {
+            match t.parse::<f64>() {
+                Ok(v) if v.is_finite() => args.push(v),
+                _ => return false,
+            }
+        }
+        i += arity;
+        let rel = command.is_ascii_lowercase();
+        let base = if rel { cur } else { (0.0, 0.0) };
+        let end = match command.to_ascii_uppercase() {
+            'H' => (if rel { cur.0 + args[0] } else { args[0] }, cur.1),
+            'V' => (cur.0, if rel { cur.1 + args[0] } else { args[0] }),
+            _ => (base.0 + args[arity - 2], base.1 + args[arity - 1]),
+        };
+        match command.to_ascii_uppercase() {
+            'M' => {
+                start = end;
+                // Pairs after a moveto are implicit linetos.
+                cmd = Some(if rel { 'l' } else { 'L' });
+            }
+            'L' | 'H' | 'V' => {
+                if end != cur {
+                    lines.push((cur, end));
+                }
+            }
+            _ => {}
+        }
+        cur = end;
+        points.push(cur);
+    }
+    if lines.len() < 3 || points.is_empty() {
+        return false;
+    }
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+    for (x, y) in &points {
+        min_x = min_x.min(*x);
+        max_x = max_x.max(*x);
+        min_y = min_y.min(*y);
+        max_y = max_y.max(*y);
+    }
+    let tol = 0.01 * (max_x - min_x).max(max_y - min_y).max(1.0);
+    let near = |a: f64, b: f64| (a - b).abs() <= tol;
+    let mut edges = [false; 4];
+    for (a, b) in &lines {
+        let side = if near(a.1, min_y) && near(b.1, min_y) {
+            0
+        } else if near(a.0, max_x) && near(b.0, max_x) {
+            1
+        } else if near(a.1, max_y) && near(b.1, max_y) {
+            2
+        } else if near(a.0, min_x) && near(b.0, min_x) {
+            3
+        } else {
+            return false;
+        };
+        edges[side] = true;
+    }
+    edges.iter().filter(|e| **e).count() >= 3
+}
+
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
+///
+/// The same declaration repeated (one inline style per button) reports once
+/// per selector.
 pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFinding> {
-    let mut findings = Vec::new();
+    let mut findings: Vec<PatternFinding> = Vec::new();
+    let push = |findings: &mut Vec<PatternFinding>, f: PatternFinding| {
+        if !findings.iter().any(|g| g.snippet == f.snippet && g.selector == f.selector) {
+            findings.push(f);
+        }
+    };
     for m in ORGANIC_CLIP_RE.captures_iter(style_text) {
         let kind = js::to_lower_case(&m[1]);
         let body = m.get(2).map(|g| g.as_str()).unwrap_or("");
@@ -2007,10 +2194,10 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
             // not a rectilinear M/L/Z outline; letters in path data are only
             // commands
             let curves = CURVE_CMD_RE.find_iter(body).count();
-            if curves < 3 {
+            if curves < 3 || path_is_rounded_rectangle(body) {
                 continue;
             }
-            findings.push(PatternFinding {
+            push(&mut findings, PatternFinding {
                 id: "organic-clip-path".to_string(),
                 snippet: format!("clip-path: path() with {curves} curve segments"),
                 selector: enclosing_css_selector(style_text, index),
@@ -2041,10 +2228,10 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
         if off_grid < points.len() {
             continue;
         }
-        if polygon_is_rectilinear(body) {
+        if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
             continue;
         }
-        findings.push(PatternFinding {
+        push(&mut findings, PatternFinding {
             id: "organic-clip-path".to_string(),
             snippet: format!(
                 "clip-path: polygon() with {} vertices approximating an organic contour",
@@ -2677,6 +2864,42 @@ mod tests {
         assert!(!polygon_is_rectilinear("0 0, 10px, 10px 10px, 0 10px)"));
         let blob = ".b{clip-path:polygon(50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%)}";
         assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
+    }
+
+    /// presswhisper.com 323796: a tape ribbon with zigzag ends.
+    #[test]
+    fn zigzag_polygons_are_geometric() {
+        let tape = ".tape-edges { clip-path: polygon(0% 0%, 100% 0%, 100% 20%, 96% 40%, 100% 60%, 96% 80%, 100% 100%, 0% 100%, 4% 80%, 0% 60%, 4% 40%, 0% 20%); }";
+        assert!(scan_css_text_for_organic_clip_path(tape).is_empty());
+        // A torn top edge: evenly stepped x, a few y values.
+        assert!(polygon_is_zigzag("0 10%, 10% 0, 20% 10%, 30% 0, 40% 10%, 50% 0, 60% 10%, 70% 0, 80% 10%, 90% 0, 100% 10%, 100% 100%, 0 100%"));
+        // Mixed units on one axis do not compare.
+        assert!(!polygon_is_zigzag("0 10px, 10% 0, 20% 10%, 30% 0, 40% 10px, 50% 0, 60% 10px, 70% 0, 80% 10px, 90% 0, 100% 10px, 100% 100%, 0 100%"));
+        // A blob wanders on both axes; uneven steps are not a zigzag.
+        assert!(!polygon_is_zigzag("50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%"));
+        assert!(!polygon_is_zigzag("0% 0%, 100% 0%, 100% 13%, 96% 40%, 100% 62%, 96% 80%, 100% 100%, 0% 100%, 4% 77%, 0% 60%, 4% 31%, 0% 20%"));
+        // A coordinate that is not a plain number answers no.
+        assert!(!polygon_is_zigzag("0 0, calc(100% - 4px) 0, 100% 20%, 0 100%"));
+    }
+
+    /// sinter.systems 321980: smooth-corner buttons clip to a squircle, an
+    /// inline style per button.
+    #[test]
+    fn squircle_paths_are_rounded_rectangles() {
+        let squircle = "M 25.2 0 L 110.003 0 c 10.4993 0 15.7489 0 19.429 2.6738 a 14 14 0 0 1 4.9854 6.7023 c 0.7856 2.2452 0.7856 5.0381 0.7856 10.6239 L 135.203 20 c 0 5.5858 0 8.3787 -0.7856 10.6239 a 14 14 0 0 1 -4.9854 6.7023 c -3.6801 2.6738 -8.9297 2.6738 -19.429 2.6738 L 25.2 40 c -10.4993 0 -15.7489 0 -19.429 -2.6738 a 14 14 0 0 1 -4.9854 -6.7023 c -0.7856 -2.2452 -0.7856 -5.0381 -0.7856 -10.6239 L 0 20 c 0 -5.5858 0 -8.3787 0.7856 -10.6239 a 14 14 0 0 1 4.9854 -6.7023 c 3.6801 -2.6738 8.9297 -2.6738 19.429 -2.6738 Z";
+        let page = format!(
+            "<a style=\"clip-path: path(&quot;{squircle}&quot;);\">Talk</a><a style=\"clip-path: path(&quot;{squircle}&quot;);\">Explore</a>"
+        );
+        assert!(scan_css_text_for_organic_clip_path(&page).is_empty());
+        assert!(path_is_rounded_rectangle(&format!("'{squircle}')")));
+        assert!(path_is_rounded_rectangle("evenodd, 'M10 0H90Q100 0 100 10V90Q100 100 90 100H10Q0 100 0 90V10Q0 0 10 0Z')"));
+        // A blob of curves, and a curved shape with one flat side, still report.
+        let blob = ".b{clip-path:path('M50 0 C80 0 100 20 100 50 C100 80 80 100 50 100 C20 100 0 80 0 50 C0 20 20 0 50 0 Z')}";
+        assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
+        assert!(!path_is_rounded_rectangle("'M0 100 L100 100 C100 40 70 0 50 0 C30 0 0 40 0 100 Z')"));
+        // The same organic declaration twice reports once.
+        let twice = format!("{blob}{blob}");
+        assert_eq!(scan_css_text_for_organic_clip_path(&twice).len(), 1);
     }
 
     #[test]
