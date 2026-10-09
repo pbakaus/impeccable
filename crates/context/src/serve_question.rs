@@ -687,7 +687,12 @@ fn new_hand_dealt(cwd: &str, payload: &Value, worlds: &[Value]) -> Map<String, V
     m.insert("id".into(), Value::String(hand_digest(&json!([hand_digest(payload), nonce.to_string(), std::process::id()]))));
     m.insert("digest".into(), Value::String(hand_digest(payload)));
     m.insert("comps".into(), json!(comps));
+    let sketches = declared_html(payload);
+    if !sketches.is_empty() {
+        m.insert("sketches".into(), json!(sketches));
+    }
     m.insert("pre".into(), Value::Object(pre));
+    m.insert("startedAt".into(), Value::from(now_ms() as i64));
     if !worlds.is_empty() {
         m.insert("worlds".into(), Value::Array(worlds.to_vec()));
     }
@@ -775,6 +780,34 @@ fn comp_is_this_hands(cwd: &str, comp: &str, hand: Option<&Map<String, Value>>) 
         None => true,
         Some(before) => file_fingerprint(&abs).map(|now| now != before).unwrap_or(false),
     }
+}
+
+/// A declared sketch is this hand's when its file exists and was written after
+/// the hand began, or differs from the file that sat there then. The write
+/// time is what lets an identical rewrite count: a sketch has no generated
+/// marker the way a comp from generate-image does.
+fn sketch_is_this_hands(cwd: &str, path: &str, hand: Option<&Map<String, Value>>) -> bool {
+    let abs = jsp::resolve(cwd, &[path]);
+    if !exists(&abs) {
+        return false;
+    }
+    let Some(h) = hand else { return true };
+    let written = std::fs::metadata(&abs).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as f64);
+    let began = h.get("startedAt").and_then(Value::as_f64);
+    if let (Some(w), Some(b)) = (written, began) {
+        if w > b {
+            return true;
+        }
+    }
+    comp_is_this_hands(cwd, path, hand)
+}
+
+/// Declared sketches whose file is still the one an earlier round left; the
+/// page keeps waiting on them.
+fn stale_sketches(cwd: &str, hand: Option<&Map<String, Value>>) -> Vec<String> {
+    let Some(h) = hand else { return vec![] };
+    let declared: Vec<String> = h.get("sketches").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    declared.into_iter().filter(|p| exists(&jsp::resolve(cwd, &[p.as_str()])) && !sketch_is_this_hands(cwd, p, hand)).collect()
 }
 
 /// Declared comps whose file is still the one an earlier round left.
@@ -919,7 +952,7 @@ fn schema_json() -> Value {
     })
 }
 
-const SCHEMA_NOTE: &str = "\nOption ids return verbatim in ANSWER; \"reroll\" and \"canon\" are reserved. hero/board/comp accept URLs or local paths; comp slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the comp, never as the promise of the build. verdict routes rendering: \"wins\" and \"competitive\" challengers keep full cards, \"declined\" ones render demoted after them (narrow, quiet, art as a labeled thumb, \"Adopt anyway\"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no comp (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker \"IMPECCABLE’S PICK\" on your top-ranked grounded candidate, one at most, never in the lead slot. Every card gets the full anatomy, challengers, canon, and declined included: thesis, palette, materials, viewport, risk; the seed already hands you each challenger’s system rules, so a card with no palette chips is an authoring gap, not a data gap. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. A card may declare \"html\", a local path to one self-contained HTML file of the first viewport (1440 x 900): the page draws it in the media slot as a skeleton (text under 22px becomes bars, so composition, palette and display type read and the copy does not) once the file lands, polling until it does, counts only a file written after the round was served, and opens the file as written from the expand chip; code-led and image-less rounds use it, a comp face wins over it, and ANSWER carries the picked card's html. A card with neither may declare \"wireframe\" ({\"cols\":12,\"rows\":10,\"regions\":[{\"label\":\"nav rail\",\"x\":0,\"y\":0,\"w\":3,\"h\":10,\"accent\":true}]}): the page draws it as a layout schematic in the media slot; surface-scope rounds use it on code-led builds, it never counts toward salience, and the card keeps its full read on the front. The comp slot carries the card’s full-fidelity direction comp (the legacy key \"sketch\" is accepted as an alias). Comp aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { \"registers\": [\"safer\", \"bolder\"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries \"register\", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. buildPath rides the payload as { \"value\": \"comp\"|\"code\", \"toggle\": true }: the value is the recorded default (.impeccable/config.json buildPath, or .impeccable/config.local.json where one machine differs) and the toggle renders a footer switch whose flip binds that session only; the ANSWER then carries buildPath plus buildPathFlipped. On a code-led round each card still declares its comp path as a flip reserve: wireframes render, and a flip to comp makes --wait return once with BUILD PATH FLIPPED so you generate the comps into the declared slots while the round stays open; a flip back to code is free, and a comp that already landed stays as the critique reference. The toggle may only be offered when image generation exists: a harness with no image tool and no API key never sets toggle: true, so the choice never renders where comps cannot be made, and code-led simply rides as the untoggleable value. followup: true keeps the table open after a pick for a second round via --update; send the next payload immediately, the page is waiting on it.";
+const SCHEMA_NOTE: &str = "\nOption ids return verbatim in ANSWER; \"reroll\" and \"canon\" are reserved. hero/board/comp accept URLs or local paths; comp slots may point at files that do not exist yet (serve first, generate after; the page polls until they land, so never block serving on generation). hero on a challenger is the inspiration it draws from and renders picture-in-picture beside the comp, never as the promise of the build. verdict routes rendering: \"wins\" and \"competitive\" challengers keep full cards, \"declined\" ones render demoted after them (narrow, quiet, art as a labeled thumb, \"Adopt anyway\"), with their kept line on the front; the page reorders declined cards to the end on its own. raised on the assigned card renders each donation as a named raise line. Salience parity: when the assigned card declares no comp (no image generation this round), catalog art on every card demotes to a labeled thumb, so what looks important is the verdict’s call, never rendering luck. canonCard renders the standing exit as a subordinate card with the same anatomy; without it, canon stays a quiet footer action. Include canon only for visual-direction rounds; never present it as your own recommendation. The pick card is a kicker convention, not a field: kicker \"IMPECCABLE’S PICK\" on your top-ranked grounded candidate, one at most, never in the lead slot. Every card gets the full anatomy, challengers, canon, and declined included: thesis, palette, materials, viewport, risk; the seed already hands you each challenger’s system rules, so a card with no palette chips is an authoring gap, not a data gap. Keep thesis and each fact to one short sentence: the card front shows thesis, identity, and a two-line risk, while first viewport and the case read on the card back behind the Details chip, so long facts cost the reader a flip, not the page its scanability. A card with no imagery at all has no back; its full read renders on the front, so a text-only round loses nothing. A card may declare \"html\", a local path to one self-contained HTML file of the first viewport (1440 x 900 by default; \"htmlFrame\": \"390x844\" names a phone or native surface's first screen): the page draws it in the media slot as a skeleton (text under 22px becomes bars, so composition, palette and display type read and the copy does not) once the file lands, polling until it does, counts only a file written after the round was served, and opens the file as written from the expand chip; code-led and image-less rounds use it, a comp face wins over it, and ANSWER carries the picked card's html. A card with neither may declare \"wireframe\" ({\"cols\":12,\"rows\":10,\"regions\":[{\"label\":\"nav rail\",\"x\":0,\"y\":0,\"w\":3,\"h\":10,\"accent\":true}]}): the page draws it as a layout schematic in the media slot; surface-scope rounds use it on code-led builds, it never counts toward salience, and the card keeps its full read on the front. The comp slot carries the card’s full-fidelity direction comp (the legacy key \"sketch\" is accepted as an alias). Comp aspect follows the surface: portrait at device viewport for native or mobile-first surfaces, landscape otherwise; the page adapts its cards to either. reroll accepts true or { \"registers\": [\"safer\", \"bolder\"] }: the register buttons steer the next hand along the familiar-to-bold axis, the answer carries \"register\", and you re-run concept-seed with --register <value> for the next round; offer the registers on direction rounds, and never pre-select one. buildPath rides the payload as { \"value\": \"comp\"|\"code\", \"toggle\": true }: the value is the recorded default (.impeccable/config.json buildPath, or .impeccable/config.local.json where one machine differs) and the toggle renders a footer switch whose flip binds that session only; the ANSWER then carries buildPath plus buildPathFlipped. On a code-led round each card still declares its comp path as a flip reserve: wireframes render, and a flip to comp makes --wait return once with BUILD PATH FLIPPED so you generate the comps into the declared slots while the round stays open; a flip back to code is free, and a comp that already landed stays as the critique reference. The toggle may only be offered when image generation exists: a harness with no image tool and no API key never sets toggle: true, so the choice never renders where comps cannot be made, and code-led simply rides as the untoggleable value. followup: true keeps the table open after a pick for a second round via --update; send the next payload immediately, the page is waiting on it.";
 
 /// JS: Number(arg('timeout','900')) etc.
 fn js_number_arg(a: &Args, name: &str, fallback: &str) -> f64 {
@@ -1023,6 +1056,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         // Read before the answer path may delete the state file.
         let hand = read_hand(&qdir, &key);
+        let stale_sketch = stale_sketches(&cwd, hand.as_ref());
         let (missing, stale, landed, served) = {
             let comps = round_comps(hand.as_ref(), read_state(&qdir, &key).as_ref());
             (comps_missing_sidecar(&cwd, &comps, hand.as_ref()), stale_comps(&cwd, &comps, hand.as_ref()), landed_decision_comps(&cwd, &comps, hand.as_ref()), comps)
@@ -1036,6 +1070,9 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             // they saw is the one they chose.
             if !stale.is_empty() {
                 io.out(&stale_comps_line(&env, &cwd, &stale));
+            }
+            if !stale_sketch.is_empty() {
+                io.out(&format!("SKETCH STALE: these sketch files predate this round, so the page is still waiting on them: {}. Rewrite each now; the page shows a sketch only once it is written after the round was served.\n", stale_sketch.join(", ")));
             }
             if landed && render_check_due(&qdir, &key, hand.as_ref()) {
                 io.out(&render_check_line(&env, &cwd));
@@ -1411,13 +1448,24 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         if method == "GET" && path.starts_with("/sketch/") {
             let idx: Option<usize> = path[8..].parse().ok();
             let hand = st.detached_key.as_deref().and_then(|k| read_hand(&st.qdir, k));
-            let landed = idx.and_then(|i| st.local_sketches.get(i).cloned()).filter(|(rel, abs)| exists(abs) && !is_dir(abs) && comp_is_this_hands(&st.cwd, rel, hand.as_ref()));
+            let landed = idx.and_then(|i| st.local_sketches.get(i).cloned()).filter(|(rel, abs)| !is_dir(abs) && sketch_is_this_hands(&st.cwd, rel, hand.as_ref()));
             match landed.and_then(|(_, abs)| safe_read(&abs)) {
                 Some(text) => {
-                    let body = if query_param(&query, "raw").is_some() { text } else { with_skeleton(&text) };
-                    let resp = tiny_http::Response::from_string(body)
-                        .with_header(tiny_http::Header::from_bytes("content-type", "text/html; charset=utf-8").unwrap())
-                        .with_header(tiny_http::Header::from_bytes("cache-control", "no-store").unwrap());
+                    // A sketch is agent-written HTML served on the page's own
+                    // origin, so it never gets that origin: the CSP sandboxes it
+                    // and closes every network path but its fonts. The skeleton
+                    // view runs the injected pass; the raw view runs nothing.
+                    let raw = query_param(&query, "raw").is_some();
+                    let body = if raw { text } else { with_skeleton(&text) };
+                    let csp = format!(
+                        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src data: blob:; script-src {}; connect-src 'none'; base-uri 'none'; form-action 'none'; {}; frame-ancestors 'self'",
+                        if raw { "'none'" } else { "'unsafe-inline'" },
+                        if raw { "sandbox" } else { "sandbox allow-scripts" }
+                    );
+                    let mut resp = tiny_http::Response::from_string(body);
+                    for (k, v) in [("content-type", "text/html; charset=utf-8"), ("cache-control", "no-store"), ("x-content-type-options", "nosniff"), ("referrer-policy", "no-referrer"), ("content-security-policy", csp.as_str())] {
+                        resp = resp.with_header(tiny_http::Header::from_bytes(k, v).unwrap());
+                    }
                     let _ = request.respond(resp);
                 }
                 None => {
@@ -1485,8 +1533,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                     ans.insert("hero".into(), c.get("hero").cloned().filter(|v| !v.is_null()).unwrap_or(Value::Null));
                     ans.insert("board".into(), c.get("board").cloned().filter(|v| !v.is_null()).unwrap_or(Value::Null));
                 }
+                // The sketch rides the answer only when it is what the user
+                // chose from: this hand's file, on a card the comp face did not
+                // replace after a flip.
                 if let Some(h) = c.get("html").filter(|v| crate::staleness::js_truthy(v)) {
-                    ans.insert("html".into(), h.clone());
+                    let hand = st.detached_key.as_deref().and_then(|k| read_hand(&st.qdir, k));
+                    if st.live_build_path.as_deref() != Some("comp") && sketch_is_this_hands(&st.cwd, &js_str(h), hand.as_ref()) {
+                        ans.insert("html".into(), h.clone());
+                    }
                 }
                 let comp = c.get("comp").filter(|v| !v.is_null()).or_else(|| c.get("sketch").filter(|v| !v.is_null()));
                 if let Some(cv) = comp.filter(|v| crate::staleness::js_truthy(v)) {
@@ -1695,6 +1749,21 @@ struct ServerState {
 /// so the composition, palette, display type and headline numbers read and the
 /// copy does not invite proofreading. `?raw=1` serves the file as written.
 const SKETCH_SKELETON: &str = "<script>(()=>{const run=()=>{const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const ns=[];while(w.nextNode()){const n=w.currentNode;if(n.textContent.trim()&&!n.parentElement.closest('script,style,svg,title'))ns.push(n);}for(const n of ns){const el=n.parentElement;const cs=getComputedStyle(el);const fs=parseFloat(cs.fontSize)||14;if(fs>=22)continue;const r=document.createRange();r.selectNodeContents(n);const rects=[...r.getClientRects()].filter(x=>x.width>0);if(!rects.length)continue;const f=document.createDocumentFragment();for(const x of rects){const s=document.createElement('span');s.style.cssText='display:inline-block;vertical-align:middle;width:'+Math.max(6,x.width*.92)+'px;height:'+Math.max(4,fs*.5)+'px;border-radius:99px;background:currentColor;opacity:.32;margin-right:'+(x.width*.08)+'px';f.appendChild(s);}n.replaceWith(f);}parent.postMessage({impeccableSketch:'ready'},'*');};const go=()=>Promise.race([document.fonts?document.fonts.ready:null,new Promise(r=>setTimeout(r,2500))].filter(Boolean)).then(run,run);if(document.readyState==='complete')go();else addEventListener('load',go,{once:true});})();</script>";
+
+/// A sketch's frame from its card's `htmlFrame` ("390x844" or [390, 844]):
+/// the device's first screen for a phone or native surface; 1440 x 900, a
+/// desktop first viewport, when absent or unreadable.
+fn sketch_frame(o: &Value) -> (u32, u32) {
+    let pair = match o.get("htmlFrame") {
+        Some(Value::String(t)) => t.split_once(['x', 'X', '×']).and_then(|(w, h)| Some((w.trim().parse::<f64>().ok()?, h.trim().parse::<f64>().ok()?))),
+        Some(Value::Array(a)) if a.len() == 2 => a[0].as_f64().zip(a[1].as_f64()),
+        _ => None,
+    };
+    match pair {
+        Some((w, h)) if (200.0..=4000.0).contains(&w) && (200.0..=4000.0).contains(&h) => (w.round() as u32, h.round() as u32),
+        _ => (1440, 900),
+    }
+}
 
 fn with_skeleton(html: &str) -> String {
     match html.to_ascii_lowercase().rfind("</body>") {
@@ -1968,9 +2037,17 @@ impl ServerState {
                 );
             }
             if let Some(src) = face_html(o) {
+                let (fw, fh) = sketch_frame(o);
+                let portrait = if f64::from(fh) > f64::from(fw) * 1.05 { " portrait" } else { "" };
                 return format!(
-                    "<div class=\"media html html-pending\" data-html=\"{}\">\n            <div class=\"shimmer\"><span class=\"comp-note\">sketching&hellip;</span></div>\n            <div class=\"sketch-frame\"><iframe sandbox=\"allow-scripts\" tabindex=\"-1\" aria-hidden=\"true\" title=\"Sketch\"></iframe></div>\n            {}\n            <p class=\"media-label\">sketch</p>\n            <div class=\"chips\">{}{}</div>\n          </div>",
+                    "<div class=\"media html html-pending{}\" data-html=\"{}\" data-frame-w=\"{}\" style=\"aspect-ratio: {} / {}\">\n            <div class=\"shimmer\"><span class=\"comp-note\">sketching&hellip;</span></div>\n            <div class=\"sketch-frame\"><iframe sandbox=\"allow-scripts\" tabindex=\"-1\" aria-hidden=\"true\" title=\"Sketch\" style=\"width:{}px;height:{}px\"></iframe></div>\n            {}\n            <p class=\"media-label\">sketch</p>\n            <div class=\"chips\">{}{}</div>\n          </div>",
+                    portrait,
                     esc_s(&src),
+                    fw,
+                    fw,
+                    fh,
+                    fw,
+                    fh,
                     inspiration,
                     expand_chip,
                     details
@@ -2278,10 +2355,31 @@ mod tests {
         write_file(&dir.join(slot), b"<p>last round</p>");
         let hand = new_hand(&cwd, &payload);
         assert!(hand.get("pre").and_then(|p| p.get(slot)).is_some());
-        assert!(!comp_is_this_hands(&cwd, slot, Some(&hand)));
+        assert!(!sketch_is_this_hands(&cwd, slot, Some(&hand)));
+        assert_eq!(stale_sketches(&cwd, Some(&hand)), vec![slot.to_string()]);
+        // Identical bytes written after the hand began still count: the write
+        // time decides where the fingerprint cannot.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_file(&dir.join(slot), b"<p>last round</p>");
+        assert!(sketch_is_this_hands(&cwd, slot, Some(&hand)));
+        assert!(stale_sketches(&cwd, Some(&hand)).is_empty());
+        // A hand recorded before startedAt existed falls back to the fingerprint.
+        let mut old_hand = hand.clone();
+        old_hand.remove("startedAt");
+        assert!(!sketch_is_this_hands(&cwd, slot, Some(&old_hand)));
         write_file(&dir.join(slot), b"<p>this round</p>");
-        assert!(comp_is_this_hands(&cwd, slot, Some(&hand)));
+        assert!(sketch_is_this_hands(&cwd, slot, Some(&old_hand)));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_sketch_frame_reads_a_device_screen_and_defaults_to_desktop() {
+        assert_eq!(sketch_frame(&json!({})), (1440, 900));
+        assert_eq!(sketch_frame(&json!({ "htmlFrame": "390x844" })), (390, 844));
+        assert_eq!(sketch_frame(&json!({ "htmlFrame": "390 × 844" })), (390, 844));
+        assert_eq!(sketch_frame(&json!({ "htmlFrame": [834, 1194] })), (834, 1194));
+        assert_eq!(sketch_frame(&json!({ "htmlFrame": "tiny" })), (1440, 900));
+        assert_eq!(sketch_frame(&json!({ "htmlFrame": "10x10" })), (1440, 900));
     }
 
     #[test]

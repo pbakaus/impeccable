@@ -686,6 +686,105 @@ describe('new-work-e2e: serve-question decision page', () => {
     }
   });
 
+  // HTML sketches: the code-led card face. The agent writes one first-viewport
+  // file per card after serving; the page draws it as a skeleton, shows only
+  // files written for this hand, opens the file as written on expand, and the
+  // picked sketch rides the answer as the composition to build.
+  const sketchHtml = (headline, copy) => `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;height:900px;overflow:hidden;font-family:system-ui;background:#10161c;color:#edf1f4}h1{font-size:56px;margin:40px}p{font-size:15px;margin:0 40px}</style></head><body><h1>${headline}</h1><p>${copy}</p></body></html>`;
+  const decisionDir = (cwd) => { const d = path.join(cwd, '.impeccable', 'mocks', 'decision'); mkdirSync(d, { recursive: true }); return d; };
+
+  it('(s1) sketches land as skeletons, a stale one waits for its rewrite, expand opens the raw file, and the pick carries it', async () => {
+    const cwd = makeWorkspace();
+    const key = 'sketches';
+    const dir = decisionDir(cwd);
+    // Left by an earlier round at a reused slot: the page must not show it.
+    writeFileSync(path.join(dir, 'assigned.html'), sketchHtml('Last round', 'Old copy that must never show.'));
+    const payload = {
+      title: 'Choose the structure',
+      buildPath: { value: 'code', toggle: true },
+      options: [
+        { id: 'assigned', label: 'Night timetable', kicker: 'THE ROLL', html: '.impeccable/mocks/decision/assigned.html', comp: '.impeccable/mocks/decision/assigned.webp' },
+        { id: 'phone', label: 'Pocket ledger', html: '.impeccable/mocks/decision/phone.html', htmlFrame: '390x844' },
+      ],
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      assert.equal(await page.$$eval('.media.html', (els) => els.length), 2, 'both cards carry a sketch slot');
+      assert.equal(await page.$('.media.wire'), null, 'a sketch replaces the wireframe');
+      assert.ok(await page.$('.card[data-id="phone"] .media.html.portrait'), 'a phone frame turns the slot portrait');
+      const waiting = await run(['--wait', '--key', key, '--poll', '1'], cwd);
+      assert.equal(waiting.code, 3, waiting.out);
+      assert.match(waiting.out, /SKETCH STALE: [^\n]*assigned\.html/, 'the stale sketch is named');
+      assert.ok(await page.$('.card[data-id="assigned"] .media.html-pending'), 'the stale sketch is not shown');
+      writeFileSync(path.join(dir, 'assigned.html'), sketchHtml('Fleet overview', 'Body copy that becomes a bar.'));
+      writeFileSync(path.join(dir, 'phone.html'), sketchHtml('Ledger', 'Phone copy.'));
+      await page.waitForFunction(() => document.querySelectorAll('.media.html-pending').length === 0, null, { timeout: 20000 });
+      const frame = page.frames().find((f) => f.url().endsWith('/sketch/0'));
+      assert.ok(frame, 'the sketch loads in its frame');
+      const drawn = await frame.evaluate(() => ({ text: document.body.innerText, bars: document.querySelectorAll('span[style*="border-radius"]').length }));
+      assert.match(drawn.text, /Fleet overview/, 'display type stays type');
+      assert.doesNotMatch(drawn.text, /Body copy/, 'small copy becomes bars');
+      assert.ok(drawn.bars > 0, 'the skeleton pass drew bars');
+      const raw = await context.request.get(new URL('/sketch/0?raw=1', url).href);
+      assert.match(await raw.text(), /Body copy that becomes a bar/, 'raw serves the file as written');
+      assert.match(raw.headers()['content-security-policy'], /script-src 'none'/, 'raw runs no script');
+      const popup = context.waitForEvent('page');
+      await page.click('.card[data-id="assigned"] .media.html');
+      assert.match((await popup).url(), /\/sketch\/0\?raw=1$/, 'a click on the sketch opens it as written');
+      await page.click('.card[data-id="assigned"] .face.front button.choose');
+      const collected = await waitLoop(cwd, key, { poll: 10 });
+      await context.close();
+      assert.equal(collected.code, 0, collected.out);
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(answer.html, '.impeccable/mocks/decision/assigned.html', 'the answer carries the picked sketch');
+      assert.match(collected.out, /CHOSEN SKETCH:/, 'the sketch is named as the composition to build');
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('(s2) a flip to comp hides the sketch and leaves it out of the answer', async () => {
+    const cwd = makeWorkspace();
+    const key = 'sketchflip';
+    const dir = decisionDir(cwd);
+    const payload = {
+      title: 'Choose the structure',
+      buildPath: { value: 'code', toggle: true },
+      options: [{ id: 'assigned', label: 'Night timetable', kicker: 'THE ROLL', html: '.impeccable/mocks/decision/assigned.html', comp: '.impeccable/mocks/decision/assigned.webp' }],
+    };
+    const { url } = await startDaemon(cwd, payload, key);
+    try {
+      writeFileSync(path.join(dir, 'assigned.html'), sketchHtml('Fleet overview', 'Body copy.'));
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'load' });
+      await page.waitForSelector('.media.html:not(.html-pending)', { timeout: 20000 });
+      await page.click('.bp-opt[data-bp="comp"]');
+      await page.waitForSelector('#bp-confirm:not([hidden])');
+      await page.click('#bp-confirm [data-confirm]');
+      await page.waitForSelector('.media.comp-pending');
+      assert.ok(await page.$('.media.html[hidden]'), 'the flip hides the sketch slot');
+      const flipped = await waitLoop(cwd, key, { poll: 10 });
+      assert.match(flipped.out, /BUILD PATH FLIPPED: comp/);
+      makeFakeImage(dir, 'timetable comp', 'assigned.webp');
+      await page.waitForSelector('.card[data-id="assigned"] .media img.comp:not([hidden])', { timeout: 15000 });
+      await page.click('.card[data-id="assigned"] .face.front button.choose');
+      const collected = await waitLoop(cwd, key, { poll: 10 });
+      await context.close();
+      const answer = JSON.parse(collected.out.match(/ANSWER: (\{.*\})/)[1]);
+      assert.equal(answer.html, undefined, 'a sketch the comp replaced is not the pick');
+      assert.doesNotMatch(collected.out, /CHOSEN SKETCH:/);
+      assert.match(collected.out, /CHOSEN COMP:/);
+    } finally {
+      await stopDaemon(cwd, key);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   // The flip used to be tested only on a wireframe card, where the schematic
   // is hidden and a fresh slot inserted. A card carrying catalog art instead
   // took the other branch: the inspiration stayed the face and the comp slot
