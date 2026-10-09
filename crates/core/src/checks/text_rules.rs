@@ -472,8 +472,13 @@ pub fn is_monospace_family(font_family: &str) -> bool {
             .any(|w| matches!(w, "mono" | "monospace" | "monospaced" | "sfmono"))
 }
 
-/// JS `/[—]|--(?=\S)/g` match count over `body`.
-fn count_em_dashes(body: &str) -> usize {
+/// How many em dashes `body` sets: each `—`, and each `--` written in its
+/// place (two hyphens and no more, followed by a non-space). A longer run of
+/// hyphens is a rule, not a dash: terminal output and ASCII tables in a
+/// `<pre>` draw `----- Global (CDN) -----` (vps.dance's 139 of 140 "em
+/// dashes"), and a JS-era count that consumed the run two at a time read
+/// `----x` as two dashes.
+pub fn count_em_dashes(body: &str) -> usize {
     let chars: Vec<char> = body.chars().collect();
     let mut count = 0usize;
     let mut i = 0usize;
@@ -481,13 +486,14 @@ fn count_em_dashes(body: &str) -> usize {
         if chars[i] == '—' {
             count += 1;
             i += 1;
-        } else if chars[i] == '-'
-            && i + 2 < chars.len()
-            && chars[i + 1] == '-'
-            && !js::is_js_whitespace(chars[i + 2])
-        {
-            count += 1;
-            i += 2;
+        } else if chars[i] == '-' {
+            let start = i;
+            while i < chars.len() && chars[i] == '-' {
+                i += 1;
+            }
+            if i - start == 2 && i < chars.len() && !js::is_js_whitespace(chars[i]) {
+                count += 1;
+            }
         } else {
             i += 1;
         }
@@ -650,9 +656,13 @@ mod tests {
         assert_eq!(count_em_dashes("a — b — c"), 2);
         assert_eq!(count_em_dashes("a--b"), 1);
         assert_eq!(count_em_dashes("a-- b"), 0);
-        assert_eq!(count_em_dashes("----x"), 2);
-        assert_eq!(count_em_dashes("---x"), 1);
+        // A run longer than two is a rule, not a dash.
+        assert_eq!(count_em_dashes("----x"), 0);
+        assert_eq!(count_em_dashes("---x"), 0);
+        assert_eq!(count_em_dashes("----- Global (CDN) -----"), 0);
+        assert_eq!(count_em_dashes("a--b ---- c--d"), 2);
         assert_eq!(count_em_dashes("--"), 0);
+        assert_eq!(count_em_dashes("--x"), 1);
     }
 
     #[test]

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Em dash overuse, hyphen rules in terminal output</title>
+<!--
+  Should pass. A speed-test page prints its results as terminal output, with
+  each region set off by rules of five hyphens (vps.dance). A run longer than
+  two hyphens is a rule, not a dash written as `--`, so none of these count.
+  The one `--flag` in the prose is the only candidate, far under the floor.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #ffffff; color: #111111; }
+  pre { font-family: ui-monospace, monospace; font-size: 14px; line-height: 20px; }
+</style>
+</head>
+<body>
+  <p>Run the test with --region to pick one.</p>
+  <pre><code>----- Global (CDN) -----
+latency 12 ms
+----- Europe -----
+latency 31 ms
+----- Asia -----
+latency 88 ms
+----- Americas -----
+latency 47 ms</code></pre>
+</body>
+</html>

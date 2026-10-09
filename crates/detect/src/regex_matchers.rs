@@ -2055,28 +2055,10 @@ re!(
     format!("&{mdash};|&#0*8212;|&#[xX]0*2014;", mdash = ci("mdash"))
 );
 
+/// The page engines' count ([`impeccable_core::checks::text_rules::count_em_dashes`]):
+/// a run of more than two hyphens is a rule, not a dash.
 fn count_em_dashes(text: &str) -> usize {
-    let mut count = 0;
-    let mut chars = text.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        if c == '\u{2014}' {
-            count += 1;
-            continue;
-        }
-        if c == '-' {
-            if let Some((_, '-')) = chars.peek().copied() {
-                // `--(?=\S)`: the char after the pair must exist and be non-ws.
-                let after = text[i + 2..].chars().next();
-                if let Some(a) = after {
-                    if !js::is_js_whitespace(a) {
-                        count += 1;
-                        chars.next();
-                    }
-                }
-            }
-        }
-    }
-    count
+    impeccable_core::checks::text_rules::count_em_dashes(text)
 }
 
 fn analyze_em_dash_overuse(content: &str, file_path: &str) -> Vec<Finding> {
@@ -2753,7 +2735,8 @@ mod tests {
 
     #[test]
     fn dashes() {
-        assert_eq!(count_em_dashes("a — b -- c ---d"), 2);
+        assert_eq!(count_em_dashes("a — b -- c ---d"), 1);
+        assert_eq!(count_em_dashes("a — b --c"), 2);
         assert_eq!(count_em_dashes("a -- "), 0);
     }
 }
