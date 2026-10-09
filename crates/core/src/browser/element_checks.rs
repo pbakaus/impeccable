@@ -1010,10 +1010,9 @@ pub(crate) fn filtered_colour(filter: &str, c: &Rgba) -> Option<Rgba> {
 /// the last step of a hover fade.
 const FILTER_MAX_CHANNEL_DRIFT: f64 = 2.0;
 
-/// Whether the glyphs of `el`, or the surface under them, paint in colours
-/// other than the ones the contrast checks read (`ink`, and `surface`: the
-/// colour or the gradient samples of the box `surface_host`), so that no
-/// verdict about those is about what a reader sees:
+/// What the glyphs of `el` and the surface under them paint, against the
+/// colours the contrast checks read (`ink`, and `surface`: the colour or the
+/// gradient samples of the box `surface_host`):
 ///
 /// - SVG text paints its `fill`, which the capture does not record, and with
 ///   no `fill` it paints black whatever `color` it inherits
@@ -1022,23 +1021,31 @@ const FILTER_MAX_CHANNEL_DRIFT: f64 = 2.0;
 ///   `color` only where the markup says so ([`svg_fill_is_current_colour`]).
 /// - A `filter` on the element or on a box around it repaints them where it
 ///   moves the ink, or the surface of a box inside the filtered one
-///   ([`filtered_colour`]), or cannot be modelled:
-///   walla.co.il's `.filter-light` is `grayscale(1) brightness(0) invert(1)`,
-///   which paints `#363636` text white. A filter that leaves both where
-///   they are (`grayscale(1)` over grey text on a grey band, `brightness(1)`
-///   waiting for a hover) changes nothing and the verdict stands.
+///   ([`filtered_colour`]), or cannot be modelled. A filter that leaves both
+///   where they are (`grayscale(1)` over grey text on a grey band,
+///   `brightness(1)` waiting for a hover) changes nothing.
 ///
-/// The pixel pass refuses a filtered box as well, so nothing reports there.
-pub(crate) fn ink_is_not_computed_colour(
+/// A modelled filter on a box that holds the surface (the surface's own box
+/// or one around it) repaints the ink and the surface alike, and the
+/// verdict is read on what it paints ([`InkPaint::Filtered`]): sinter.systems'
+/// `a.primary` is white on a yellow it desaturates with `saturate(0.7)`, and
+/// nobody scored it. A filter below the surface's box that moves the ink
+/// repaints the ink alone over a surface the walk may not have read the
+/// way the page shows it (walla.co.il's `.filter-light`, `grayscale(1)
+/// brightness(0) invert(1)`, paints `#363636` text white over a band), and a
+/// filter that cannot be modelled, or that a running animation is moving,
+/// leaves no verdict ([`InkPaint::Unknown`]). The pixel pass refuses a
+/// filtered box as well.
+pub(crate) fn ink_paint(
     dom: &dyn Dom,
     el: ElId,
     ink: Option<Rgba>,
     surface: &[Rgba],
     surface_host: Option<ElId>,
-) -> bool {
+) -> InkPaint {
     const MAX_ANCESTORS: usize = 64;
     if dom.namespace_uri(el) == SVG_NS && !svg_fill_is_current_colour(dom, el) {
-        return true;
+        return InkPaint::Unknown;
     }
     let moves = |filter: &str, colour: &Rgba| match filtered_colour(filter, colour) {
         None => true,
@@ -1048,25 +1055,77 @@ pub(crate) fn ink_is_not_computed_colour(
                 || (painted.b - colour.b).abs() > FILTER_MAX_CHANNEL_DRIFT
         }
     };
+    let mut filters: Vec<String> = Vec::new();
+    let mut painted_ink = ink;
+    let mut painted_surface: Vec<Rgba> = surface.to_vec();
     // Past the box that paints the surface, a filter holds the surface too.
     let mut holds_surface = false;
     let mut cur = Some(el);
     for _ in 0..MAX_ANCESTORS {
-        let Some(c) = cur else { return false };
+        let Some(c) = cur else { break };
         holds_surface = holds_surface || Some(c) == surface_host;
         let filter = dom.style(c, "filter");
         let filter = js::trim(&filter);
         if !filter.is_empty() && filter != "none" {
-            if filter_functions(filter).is_none() || ink.is_some_and(|ink| moves(filter, &ink)) {
-                return true;
+            if filter_functions(filter).is_none() {
+                return InkPaint::Unknown;
             }
-            if holds_surface && surface.iter().any(|colour| moves(filter, colour)) {
-                return true;
+            let ink_moves = painted_ink.is_some_and(|ink| moves(filter, &ink));
+            let surface_moves = holds_surface && painted_surface.iter().any(|colour| moves(filter, colour));
+            if ink_moves || surface_moves {
+                // A filter mid-transition or mid-animation is not the one a
+                // reader meets at rest; one below the surface's box repaints
+                // the ink over a surface it does not hold.
+                let in_motion = dom
+                    .running_animation_properties(c)
+                    .is_some_and(|props| props.iter().any(|p| p == "filter"));
+                if !holds_surface || in_motion {
+                    return InkPaint::Unknown;
+                }
+                let paint = |colour: &Rgba| filtered_colour(filter, colour);
+                painted_ink = match painted_ink {
+                    Some(ink) => match paint(&ink) {
+                        Some(p) => Some(p),
+                        None => return InkPaint::Unknown,
+                    },
+                    None => None,
+                };
+                let mut next = Vec::with_capacity(painted_surface.len());
+                for colour in &painted_surface {
+                    match paint(colour) {
+                        Some(p) => next.push(p),
+                        None => return InkPaint::Unknown,
+                    }
+                }
+                painted_surface = next;
+                filters.push(filter.to_string());
             }
         }
         cur = dom.flat_parent(c);
     }
-    false
+    if filters.is_empty() {
+        InkPaint::Computed
+    } else {
+        InkPaint::Filtered(filters)
+    }
+}
+
+/// What [`ink_paint`] says the text and its surface paint.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum InkPaint {
+    /// The computed colours, as the checks read them.
+    Computed,
+    /// Colours the engine cannot name: no verdict about the computed ones is
+    /// about what a reader sees.
+    Unknown,
+    /// The computed colours repainted by these filters, innermost first,
+    /// over the text and its surface alike.
+    Filtered(Vec<String>),
+}
+
+/// `colour` through each of `filters` in turn ([`filtered_colour`]).
+pub(crate) fn through_filters(filters: &[String], colour: &Rgba) -> Option<Rgba> {
+    filters.iter().try_fold(*colour, |c, f| filtered_colour(f, &c))
 }
 
 /// Whether SVG text is filled with its own `color`: the nearest `fill` the
@@ -1476,6 +1535,44 @@ pub fn check_element_colors_dom(
         && layers_at() != crate::browser::text_layers::TextLayers::Consistent
         && (on_page_ground(dom, surface_host)
             || under().0 != crate::browser::visual::LayerUnder::Ancestor);
+    // What the glyphs and their surface paint: a filter on a box that holds
+    // the surface repaints both, and the verdicts read what it paints; one
+    // the engine cannot model leaves none (`ink_paint`). The structural tests
+    // below (the hit-test stacks, the climb) compare what the capture
+    // recorded, so only the verdicts read the painted colours.
+    let painted = {
+        let mut surface_colours: Vec<Rgba> =
+            if surface_unresolved { None } else { effective_bg }.into_iter().collect();
+        surface_colours.extend(effective_bg_stops.iter().flatten().copied());
+        ink_paint(dom, el, visible_text.or(text_color), &surface_colours, surface_host)
+    };
+    let painted_colours = match &painted {
+        InkPaint::Filtered(filters) => {
+            let through = |c: Option<Rgba>| match c {
+                Some(c) => through_filters(filters, &c).map(Some),
+                None => Some(None),
+            };
+            let stops = match &effective_bg_stops {
+                Some(stops) => stops
+                    .iter()
+                    .map(|c| through_filters(filters, c))
+                    .collect::<Option<Vec<_>>>()
+                    .map(Some),
+                None => Some(None),
+            };
+            match (through(text_color), through(visible_text), through(effective_bg), stops, through(own_bg)) {
+                (Some(ink), Some(visible), Some(bg), Some(stops), Some(own)) => Some((ink, visible, bg, stops, own)),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let painted = match painted {
+        InkPaint::Filtered(_) if painted_colours.is_none() => InkPaint::Unknown,
+        other => other,
+    };
+    let (text_color, visible_text, effective_bg, effective_bg_stops, own_bg) = painted_colours
+        .unwrap_or((text_color, visible_text, effective_bg, effective_bg_stops, own_bg));
     let color_opts = ColorOpts {
         tag: tag.clone(),
         text_color,
@@ -1501,7 +1598,6 @@ pub fn check_element_colors_dom(
         bg_source_host,
         same_color_surface_is_unread,
     };
-    let resolved = color_opts.effective_bg;
     // A contrast verdict is about the surface the walk resolved. Where the
     // hit-test stacks say the text is covered at capture (a fixed banner over
     // it, a photo laid over an initial), or reads over paint the walk never
@@ -1603,21 +1699,7 @@ pub fn check_element_colors_dom(
     // The verdicts that score the computed `color` say nothing where the
     // glyphs paint another one (SVG text, a colour filter). Asked once, only
     // of an element that failed.
-    let other_ink = std::cell::OnceCell::new();
-    let ink_read = |h: &RuleHit| {
-        (h.id != "low-contrast" && h.id != "gray-on-color")
-            || !*other_ink.get_or_init(|| {
-                let mut surface_colours: Vec<Rgba> = color_opts.effective_bg.into_iter().collect();
-                surface_colours.extend(color_opts.effective_bg_stops.iter().flatten().copied());
-                ink_is_not_computed_colour(
-                    dom,
-                    el,
-                    color_opts.visible_text.or(text_color),
-                    &surface_colours,
-                    surface_host,
-                )
-            })
-    };
+    let ink_read = |h: &RuleHit| (h.id != "low-contrast" && h.id != "gray-on-color") || painted != InkPaint::Unknown;
     let mut findings = crate::checks::rules::check_colors_deduped_shaped(
         &color_opts,
         seen,
@@ -1625,7 +1707,7 @@ pub fn check_element_colors_dom(
         &is_decorative,
         &mut |h: &RuleHit| {
             ink_read(h)
-                && safe_tag_text_hit_stands(dom, el, h, resolved, under().0, &|| {
+                && safe_tag_text_hit_stands(dom, el, h, resolved_surface, under().0, &|| {
                     unread() == crate::browser::visual::UnreadVerdict::Fails
                 })
                 && verdict_stands(h)
@@ -8826,7 +8908,10 @@ mod tests {
         // The filter paints the grey ink white, or something unknown.
         assert!(!run("p", "grayscale(1) brightness(0) invert(1)", grey));
         assert!(!run("p", "url(\"#duotone\")", grey));
-        assert!(!run("band", "invert(1)", grey), "the band's fill and the ink both move");
+        // A filter on the band repaints its fill and the ink alike, and the
+        // verdict reads what it paints: #555555 on #0f0f0f.
+        assert!(run("band", "invert(1)", grey), "the band's fill and the ink both move");
+        assert!(!run("band", "url(\"#duotone\")", grey));
         // inven.co.kr: `grayscale(1)` over grey text on a grey band moves
         // neither, and a resting hover filter is the identity.
         assert!(run("p", "grayscale(1)", grey));
@@ -8834,6 +8919,44 @@ mod tests {
         assert!(run("p", "brightness(1)", grey));
         // A tinted ink that grayscale repaints is no longer the ink scored.
         assert!(!run("p", "grayscale(1)", "rgb(120, 190, 250)"));
+    }
+
+    /// sinter.systems 11706: `a.primary` is white on rgb(232, 197, 47) with
+    /// `filter: saturate(0.7)` on itself. The filter holds the button's own
+    /// fill, so it repaints the fill and the ink alike and the verdict reads
+    /// what it paints, 1.7:1 on #dcc45b, where it used to withhold it.
+    #[test]
+    fn a_filter_that_holds_the_surface_is_read_through() {
+        let run = |filter: &str, running: &[&str]| {
+            let (mut d, body) = page();
+            let a = d.add(Some(body), "a");
+            visible(&mut d, a);
+            d.add_text(a, "Talk with us");
+            d.set_rect(a, 51.0, 1895.0, 135.0, 40.0);
+            d.set_text_rect(a, 68.0, 1907.0, 67.0, 15.0);
+            d.set_styles(
+                a,
+                &[
+                    ("backgroundColor", "rgb(232, 197, 47)"),
+                    ("color", "rgb(255, 255, 255)"),
+                    ("fontSize", "13px"),
+                    ("fontWeight", "400"),
+                    ("filter", filter),
+                ],
+            );
+            d.set_running_animations(a, running);
+            colors(&d, a).into_iter().filter(|h| h.id == "low-contrast").collect::<Vec<_>>()
+        };
+        let hits = run("saturate(0.7)", &[]);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("text #ffffff on #dcc45b"), "{}", hits[0].snippet);
+        assert!(hits[0].snippet.starts_with("1.7:1"), "{}", hits[0].snippet);
+        // Unfiltered, the same pair is scored as computed.
+        assert!(run("none", &[])[0].snippet.contains("on #e8c52f"));
+        // A filter a running animation is moving, or one the engine cannot
+        // model, still leaves no verdict.
+        assert!(run("saturate(0.7)", &["filter"]).is_empty());
+        assert!(run("url(\"#duotone\") saturate(0.7)", &[]).is_empty());
     }
 
     #[test]
