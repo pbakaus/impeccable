@@ -1531,10 +1531,14 @@ pub fn check_element_colors_dom(
     // an element some verdict needs it for.
     let under_cell = std::cell::OnceCell::new();
     let under = || *under_cell.get_or_init(|| crate::browser::visual::layer_under_text_found(dom, el));
+    // The hit-test stacks never see a background image, so on a page ground
+    // that carries a picture they cannot confirm the ground's own fill
+    // either (`visual::page_ground_paints_picture`).
     let same_color_surface_is_unread = same_hex
-        && layers_at() != crate::browser::text_layers::TextLayers::Consistent
-        && (on_page_ground(dom, surface_host)
-            || under().0 != crate::browser::visual::LayerUnder::Ancestor);
+        && ((layers_at() != crate::browser::text_layers::TextLayers::Consistent
+            && (on_page_ground(dom, surface_host)
+                || under().0 != crate::browser::visual::LayerUnder::Ancestor))
+            || (on_page_ground(dom, surface_host) && crate::browser::visual::page_ground_paints_picture(dom)));
     // What the glyphs and their surface paint: a filter on a box that holds
     // the surface repaints both, and the verdicts read what it paints; one
     // the engine cannot model leaves none (`ink_paint`). The structural tests
@@ -8957,6 +8961,34 @@ mod tests {
         // model, still leaves no verdict.
         assert!(run("saturate(0.7)", &["filter"]).is_empty());
         assert!(run("url(\"#duotone\") saturate(0.7)", &[]).is_empty());
+    }
+
+    /// observations-47 row 6, schlittermann.de 324399: the white tagline
+    /// sits on a crimson `bg.png` strip that `body` draws `repeat-x` at its
+    /// `auto` size over its white fill. The hit-test stacks name `body` and
+    /// never see the image, so they confirmed the `1.0:1` against the fill.
+    /// Ink in exactly the ground's colour over a page ground that carries a
+    /// picture takes no verdict; a small tile is a texture over the fill and
+    /// keeps it, as does any ink in another colour.
+    #[test]
+    fn ink_in_the_grounds_colour_over_a_page_picture_takes_no_verdict() {
+        let run = |image: &str, size: &str, ink: &str| {
+            let (mut d, body) = page();
+            d.set_styles(body, &[("backgroundImage", image), ("backgroundSize", size)]);
+            d.set_style(body, "background", &format!("rgb(255, 255, 255) {image} repeat-x scroll 50% 0% / {size}"));
+            let p = faint_copy(&mut d, body, ink, (632.0, 106.0, 335.0, 27.0));
+            let rect = d.rect(p);
+            for (x, y) in crate::browser::page_checks::occlusion_probe_points(&rect, 1280.0, 800.0) {
+                d.set_point(x, y, vec![p, body]);
+            }
+            reports_contrast(&colors(&d, p))
+        };
+        let strip = "url(\"https://schlittermann.de/theme/Cardinal/images/bg.png\")";
+        let white = "rgb(255, 255, 255)";
+        assert!(run("none", "auto", white), "a plain white page: the stacks confirm white on white");
+        assert!(!run(strip, "auto", white));
+        assert!(run(strip, "8px 8px", white), "a small tile is a texture over the fill");
+        assert!(run(strip, "auto", "rgb(225, 121, 121)"), "ink in another colour keeps its verdict");
     }
 
     #[test]

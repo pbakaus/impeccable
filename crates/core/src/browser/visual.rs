@@ -306,6 +306,21 @@ fn raster_tiles_as_texture(dom: &dyn Dom, node: ElId) -> bool {
         .map_or(false, |(w, h)| w <= TEXTURE_MAX_TILE_PX && h <= TEXTURE_MAX_TILE_PX)
 }
 
+/// Whether the page ground carries a picture: `body` or `html` paints a
+/// raster background that is not a small repeating texture
+/// ([`raster_tiles_as_texture`]). The climb reads the document's images as
+/// no layer over it, because where the image is drawn (a `repeat-x` strip at
+/// `auto` size, a centred photo) is not in the capture; but text in exactly
+/// the ground's own colour over such a page is text the author set on the
+/// image (schlittermann.de's white tagline on a crimson `bg.png` header
+/// strip), and its `1.0:1` against the fill is not a verdict the engine can
+/// confirm.
+pub(crate) fn page_ground_paints_picture(dom: &dyn Dom) -> bool {
+    [dom.body(), dom.document_element()].into_iter().flatten().any(|node| {
+        URL_RE.is_match(&dom.style(node, "backgroundImage")) && !raster_tiles_as_texture(dom, node)
+    })
+}
+
 /// Whether a box's background image is an icon rather than a picture: one
 /// `no-repeat` image at most [`ICON_MAX_PX`] on both axes, at a size the
 /// computed style states.
