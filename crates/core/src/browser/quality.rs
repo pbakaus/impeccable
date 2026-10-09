@@ -887,6 +887,70 @@ fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
     count.total()
 }
 
+/// How deep into `el`'s box an edge is drawn on every side by an inset
+/// `box-shadow` ring (the largest spread of a visible inset layer) or by an
+/// outline a negative `outline-offset` pulls inside the box (the offset's
+/// depth). Infinite when the capture recorded neither value, so callers keep
+/// their base reading.
+fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> f64 {
+    let shadow = dom.style(el, "boxShadow");
+    let offset = dom.style(el, "outlineOffset");
+    if shadow.is_empty() || offset.is_empty() {
+        return f64::INFINITY;
+    }
+    let mut depth: f64 = 0.0;
+    if shadow != "none" {
+        // Layers split on commas outside parentheses.
+        let mut layers = Vec::new();
+        let (mut level, mut start) = (0i32, 0usize);
+        for (i, c) in shadow.char_indices() {
+            match c {
+                '(' => level += 1,
+                ')' => level -= 1,
+                ',' if level == 0 => {
+                    layers.push(&shadow[start..i]);
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        layers.push(&shadow[start..]);
+        for layer in layers {
+            if !layer.split_whitespace().any(|w| w == "inset") {
+                continue;
+            }
+            // The colour is the one function or keyword in the layer; the
+            // lengths are, in order, x, y, blur and spread.
+            let colour_end = layer.rfind(')').map_or(0, |i| i + 1);
+            let colour = &layer[..colour_end];
+            if !colour.is_empty() && css_color_is_transparent(Some(colour.trim())) {
+                continue;
+            }
+            let lengths: Vec<f64> = layer[colour_end..]
+                .split_whitespace()
+                .filter(|w| w.ends_with("px"))
+                .map(parse_float)
+                .collect();
+            if let Some(spread) = lengths.get(3).copied().filter(|v| v.is_finite() && *v > 0.0) {
+                depth = js::math_max(depth, spread);
+            }
+        }
+    }
+    let offset = parse_float(&offset);
+    let width = parse_float(&dom.style(el, "outlineWidth"));
+    let style = dom.style(el, "outlineStyle");
+    if offset.is_finite()
+        && offset < 0.0
+        && width.is_finite()
+        && width > 0.0
+        && !matches!(style.as_str(), "" | "none" | "hidden")
+        && !css_color_is_transparent(Some(&dom.style(el, "outlineColor")))
+    {
+        depth = js::math_max(depth, -offset);
+    }
+    depth
+}
+
 /// JS: checks.mjs#textDescendantsFlushSides(el, rect) → [top, right, bottom, left]
 ///
 /// The side is flush when the *text* lands on it, not when a text-bearing box
@@ -922,20 +986,25 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
         }
         js::math_min(4.0, font_size * SMALL_CHIP_AIR_EM) * scale
     };
-    // The width of the border drawn on each side, `[top, right, bottom,
-    // left]`; a transparent one is drawn nowhere. A side whose border the
-    // capture did not record reads as drawn without limit, which keeps the
-    // threshold's edge flush there as it always was.
+    // How deep an edge is drawn into the box on each side, `[top, right,
+    // bottom, left]`: a border, an inset `box-shadow` ring (Tailwind's
+    // `ring-inset`) or an outline pulled inside by a negative
+    // `outline-offset`. A transparent one is drawn nowhere. A side whose
+    // border, shadow or outline offset the capture did not record reads as
+    // drawn without limit, which keeps the threshold's edge flush there as
+    // it always was.
+    let inner_edge = drawn_inner_edge(dom, el);
     let border_drawn: [f64; 4] = ["Top", "Right", "Bottom", "Left"].map(|side| {
         let width = parse_float(&dom.style(el, &format!("border{side}Width")));
         let color = dom.style(el, &format!("border{side}Color"));
-        if !width.is_finite() || color.is_empty() {
+        let border = if !width.is_finite() || color.is_empty() {
             f64::INFINITY
         } else if width > 0.0 && !css_color_is_transparent(Some(&color)) {
             width
         } else {
             0.0
-        }
+        };
+        js::math_max(border, inner_edge)
     });
     let candidates = dom.query_all(Some(el), TEXT_EDGE_QUERY).unwrap_or_default();
     for node in candidates {
@@ -3352,8 +3421,22 @@ mod tests {
         for side in ["Top", "Right", "Bottom", "Left"] {
             d.set_style(row, &format!("border{side}Width"), "0px");
         }
-        d.set_style(row, "backgroundColor", "rgb(240, 240, 240)");
+        d.set_styles(row, &[("backgroundColor", "rgb(240, 240, 240)"), ("boxShadow", "none"), ("outlineOffset", "0px")]);
         assert!(flush(&d).is_empty(), "{:?}", flush(&d));
+        // An inset ring (Tailwind's `ring-1 ring-inset`) draws the edge a
+        // border would: 4px off the box is 3px off the line.
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 0px 0px 0px 1px inset");
+        assert_eq!(flush(&d).len(), 1, "an inset ring");
+        d.set_style(row, "boxShadow", "rgba(0, 0, 0, 0) 0px 0px 0px 1px inset");
+        assert!(flush(&d).is_empty(), "a transparent ring draws nothing");
+        d.set_style(row, "boxShadow", "rgb(0, 0, 0) 0px 4px 12px 0px");
+        assert!(flush(&d).is_empty(), "an outer shadow draws no inner edge");
+        d.set_style(row, "boxShadow", "none");
+        // So does an outline pulled inside the box.
+        d.set_styles(row, &[("outlineWidth", "1px"), ("outlineStyle", "solid"), ("outlineColor", "rgb(0, 0, 0)"), ("outlineOffset", "-1px")]);
+        assert_eq!(flush(&d).len(), 1, "an inset outline");
+        d.set_styles(row, &[("outlineWidth", "0px"), ("outlineStyle", "none"), ("outlineOffset", "0px")]);
+        assert!(flush(&d).is_empty());
         d.set_text_rect(button, 24.0, 3.5, 300.0, 51.0);
         assert_eq!(
             flush(&d),
