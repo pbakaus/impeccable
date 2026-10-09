@@ -3296,6 +3296,29 @@ fn buried_under_answer(dom: &dyn Dom, stack: &[ElId], victim: ElId) -> bool {
 const MARQUEE_TRACK_MAX_DEPTH: usize = 4;
 
 /// JS: checks.mjs#checkTextOcclusionDOM()
+/// Whether `top` sets the words `victim` starts with again, in the same
+/// face, size and weight, from the same origin (within a pixel), so its
+/// glyphs land on the victim's own. Both have to carry text of their own and
+/// a measured text rect; anything unmeasured is no overprint.
+fn overprints(dom: &dyn Dom, top: ElId, victim: ElId) -> bool {
+    let same_origin = match (dom.direct_text_rect(top), dom.direct_text_rect(victim)) {
+        (Some(a), Some(b)) if a.all_finite() && b.all_finite() => {
+            (a.left - b.left).abs() <= 1.0 && (a.top - b.top).abs() <= 1.0
+        }
+        _ => false,
+    };
+    if !same_origin
+        || ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing"]
+            .iter()
+            .any(|p| dom.style(top, p) != dom.style(victim, p))
+    {
+        return false;
+    }
+    let top_text = collapse_ws(js::trim(&element_direct_text(dom, top)));
+    let victim_text = collapse_ws(js::trim(&element_direct_text(dom, victim)));
+    !top_text.is_empty() && victim_text.starts_with(top_text.as_str())
+}
+
 pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
     let mut findings = Vec::new();
     let mut seen_victims: Vec<ElId> = Vec::new();
@@ -3442,8 +3465,12 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
         }
         // Text a visitor cannot see (the items of a closed `<details>`, a
         // panel at `visibility: hidden`, a slide parked past its track) has
-        // nothing covering it on screen.
-        if !painted(el) {
+        // nothing covering it on screen. Nor has a run its clip cuts down to
+        // a sliver (v0-orbit's KPI label, 6px of it left inside a squeezed
+        // card): the Text gate's visible share decides, as it does for every
+        // rule that reads one run of text. The occluders keep the plain
+        // predicate: a box shows wherever any of it is painted.
+        if !painted(el) || super::painted::unpainted_text_box(dom, el).is_some() {
             continue;
         }
         // Text blurred past reading (a teaser under a sign-in gate) is
@@ -3555,6 +3582,13 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
             let top_glyphs = dom
                 .direct_text_rect(top)
                 .map(|r| if r.all_finite() { glyph_ink_band(dom, top, &r).unwrap_or(r) } else { r });
+            // The same words set again in the same face at the same origin
+            // (schlittermann.de's logo, `a.logo` laid exactly over the first
+            // word of `span.logo2`) draw the glyphs the victim draws: an
+            // overprint, not a collision a reader sees.
+            if overprints(dom, top, el) {
+                continue;
+            }
             let top_own_text = !element_direct_text(dom, top).is_empty()
                 && !super::painted::under_1px(&dom.style(top, "fontSize"))
                 && glyphs_may_cover(top_glyphs, victim_glyphs.as_ref(), x, y);
@@ -5870,6 +5904,68 @@ mod tests {
         assert!(open.iter().any(|f| f.el == Some(item)), "{open:?}");
         let (closed, _) = run(false);
         assert!(closed.is_empty(), "{closed:?}");
+    }
+
+    /// schlittermann.de: `a.logo` sets "Schlittermann" again, in the same
+    /// face and size, exactly over the first word of `span.logo2`.
+    #[test]
+    fn text_occlusion_skips_an_exact_overprint() {
+        let run = |shift: f64, size: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let tagline = d.add(Some(body), "span");
+            d.set_styles(tagline, PROBE_BASE);
+            d.set_styles(tagline, &[("position", "absolute"), ("fontSize", "52px"), ("fontFamily", "Arial")]);
+            d.set_rect(tagline, 190.0, 80.0, 777.0, 60.0);
+            d.set_text_rect(tagline, 190.0, 81.0, 442.0, 58.0);
+            d.add_text(tagline, "Schlittermann");
+            let logo = d.add(Some(body), "a");
+            d.set_styles(logo, PROBE_BASE);
+            d.set_styles(logo, &[("position", "absolute"), ("fontSize", size), ("fontFamily", "Arial")]);
+            d.set_rect(logo, 190.0 + shift, 80.0, 442.0, 60.0);
+            d.set_text_rect(logo, 190.0 + shift, 81.0, 442.0, 58.0);
+            d.add_text(logo, "Schlittermann");
+            mark_body_descendants(&mut d);
+            check_text_occlusion_dom(&d)
+        };
+        assert!(run(0.0, "52px").is_empty());
+        // Moved off the origin, or set at another size, the logo collides.
+        assert_eq!(run(30.0, "52px").len(), 1);
+        assert_eq!(run(0.0, "48px").len(), 1);
+    }
+
+    /// v0-orbit-internal-app: a KPI label clipped by its squeezed card to the
+    /// 6px left on screen, covered by the next card. A reader meets none of
+    /// it; with most of the label on screen the collision is real.
+    #[test]
+    fn text_occlusion_needs_the_victims_visible_share() {
+        let run = |card_width: f64| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let card = d.add(Some(body), "div");
+            d.set_styles(card, OCCLUSION_BASE);
+            d.set_styles(card, &[("position", "relative"), ("overflow", "hidden"), ("overflowX", "hidden"), ("overflowY", "hidden")]);
+            d.set_rect(card, 384.0, 260.0, card_width, 80.0);
+            let label = d.add(Some(card), "span");
+            d.set_styles(label, OCCLUSION_BASE);
+            d.set_rect(label, 384.0, 271.0, 60.0, 50.0);
+            d.add_text(label, "Total Book of Business");
+            let next = d.add(Some(body), "div");
+            d.set_styles(next, OCCLUSION_BASE);
+            d.set_styles(next, &[("position", "relative"), ("backgroundColor", "rgb(255, 255, 255)")]);
+            // The grid squeezes the card under its neighbour, which is laid
+            // over the label.
+            d.set_rect(next, 384.0, 260.0, 300.0, 80.0);
+            mark_body_descendants(&mut d);
+            for (x, y) in occlusion_probe_points(&d.rect(label), 1280.0, 800.0) {
+                d.set_point(x, y, vec![next, body]);
+            }
+            (check_text_occlusion_dom(&d), label)
+        };
+        let (sliver, _) = run(6.0);
+        assert!(sliver.is_empty(), "{sliver:?}");
+        let (shown, label) = run(40.0);
+        assert!(shown.iter().any(|f| f.el == Some(label)), "{shown:?}");
     }
 
     #[test]
