@@ -1408,6 +1408,10 @@ fn body_text_edge_span(dom: &dyn Dom, q: &QualityInput) -> Option<(f64, f64)> {
     if in_nav_header || has_own_bg || is_positioned || !(width_ratio > 0.5) {
         return None;
     }
+    // Nor does text in a box caught part way through a move that ends.
+    if super::painted::moves_mid_animation(dom, el) {
+        return None;
+    }
     let (left, right) = match phrasing_text_extent(dom, el) {
         Some(t) if scrolling_ancestor_cuts(dom, el, &t) => return None,
         // Text on a track a running animation moves stands wherever the
@@ -4381,6 +4385,40 @@ mod tests {
         );
         assert_eq!(at(&mut d, 1280.0, 12.0).len(), 1);
         assert!(at(&mut d, 1280.0, 16.0).is_empty());
+    }
+
+    /// elevancehealth.com (324856): a quote caught part way through its
+    /// one-shot slide in from the right, 79px past a 390px viewport.
+    #[test]
+    fn text_in_a_box_mid_slide_is_not_measured_against_the_viewport() {
+        let copy = "Our care teams meet people where they are, and that changes what health looks like.";
+        let run = |running: Option<Vec<&str>>, iterations: &str| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.inner_width = 390.0;
+            d.set_rect(html, 0.0, 0.0, 390.0, 2400.0);
+            d.el_mut(html).client_width = 390.0;
+            d.el_mut(html).scroll_width = 469.0;
+            d.set_rect(body, 0.0, 0.0, 390.0, 2400.0);
+            let quote = d.add(Some(body), "div");
+            d.set_styles(
+                quote,
+                &[("position", "relative"), ("animationName", "quote-appear-right"), ("animationIterationCount", iterations)],
+            );
+            d.set_rect(quote, 119.0, 700.0, 350.0, 320.0);
+            d.el_mut(quote).running_animations = running.map(|r| r.into_iter().map(String::from).collect());
+            let p = text_el(&mut d, quote, "p", copy, "16px");
+            d.set_style(p, "lineHeight", "24px");
+            d.set_rect(p, 143.0, 724.0, 310.0, 96.0);
+            d.set_text_rect(p, 143.0, 724.0, 310.0, 96.0);
+            check_page_overflow_dom(&d).len()
+        };
+        assert_eq!(run(Some(vec!["right", "opacity"]), "1"), 0);
+        // At rest, or in a loop, the box stands where it was measured.
+        assert_eq!(run(Some(vec!["opacity"]), "1"), 1);
+        assert_eq!(run(Some(vec!["right"]), "infinite"), 1);
+        // A recording that did not read running animations.
+        assert_eq!(run(None, "1"), 1);
     }
 
     /// Taste call r4-p20 (observations-25 issue 8): text past the viewport

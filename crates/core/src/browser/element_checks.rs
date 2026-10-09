@@ -1136,7 +1136,7 @@ fn is_displaced(dom: &dyn Dom, el: ElId) -> bool {
 /// A box that [`is_displaced`] names and that is really moved: `translate:
 /// 0px`, `scale: 1` and `rotate: 0deg` move nothing, though they are not
 /// `none`.
-fn visibly_displaced(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn visibly_displaced(dom: &dyn Dom, el: ElId) -> bool {
     let transform = js::trim(&dom.style(el, "transform")).replace(' ', "");
     if !transform.is_empty() && transform != "none" && !is_identity_matrix(&transform) {
         return true;
@@ -8414,6 +8414,33 @@ mod tests {
         d.set_style(img, "zIndex", "10");
         assert!(!reports_contrast(&colors(&d, text)), "{:?}", colors(&d, text));
         assert!(!reports_contrast(&colors(&d, initial)), "{:?}", colors(&d, initial));
+    }
+
+    /// thingstohave.app (323632): avatar initials below the fold, under the
+    /// loaded photo the next sibling lays over them. No point is asked down
+    /// there, so the tree says it.
+    #[test]
+    fn a_loaded_photo_over_initials_below_the_fold_leaves_them_unscored() {
+        let run = |complete: Option<bool>, top: f64, img_width: f64| {
+            let (mut d, body) = page();
+            let avatar = bare_box(&mut d, body, "div", (665.0, top, 35.0, 35.0));
+            d.set_style(avatar, "position", "relative");
+            let initial = faint_copy(&mut d, avatar, "rgb(220, 220, 220)", (670.0, top + 8.0, 20.0, 18.0));
+            d.set_styles(initial, &[("position", "absolute"), ("zIndex", "auto")]);
+            let wrap = bare_box(&mut d, avatar, "div", (665.0, top, 35.0, 35.0));
+            d.set_styles(wrap, &[("position", "absolute"), ("zIndex", "auto"), ("opacity", "1")]);
+            let img = bare_box(&mut d, wrap, "img", (665.0, top, img_width, 35.0));
+            d.set_styles(img, &[("opacity", "1"), ("objectFit", "cover")]);
+            d.el_mut(img).image_complete = complete;
+            d.el_mut(img).image_natural_size = Some((96.0, 96.0));
+            colors(&d, initial)
+        };
+        assert!(!reports_contrast(&run(Some(true), 1334.0, 35.0)));
+        // A photo still loading, or not recorded, or covering only part of
+        // the initials, leaves the verdict.
+        assert!(reports_contrast(&run(Some(false), 1334.0, 35.0)));
+        assert!(reports_contrast(&run(None, 1334.0, 35.0)));
+        assert!(reports_contrast(&run(Some(true), 1334.0, 12.0)));
     }
 
     #[test]

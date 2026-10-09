@@ -516,6 +516,12 @@ fn unpainted_walk(
         if viewport_w > 0.0 && misses_axis(band.left, band.right, band.width, 0.0, viewport_w) {
             return Some(Unpainted::OutsideDocument);
         }
+        // Nor is a text measurement shown when the viewport's sides leave
+        // under its visible share of it (momoshop.com.tw's fixed side tab,
+        // 6 of its label's 40px on screen): no scroll brings the rest in.
+        if viewport_w > 0.0 && vis.cut(0.0, viewport_w, || true) {
+            return Some(Unpainted::OutsideDocument);
+        }
         return None;
     }
     // The document's edges are the outermost clip, above any container.
@@ -1104,6 +1110,7 @@ fn is_state_layer(dom: &dyn Dom, el: ElId) -> bool {
         || lazy_raster_pending(dom, el)
         || opacity_in_motion(dom, el)
         || awaits_class_reveal(dom, el)
+        || inside_a_reveal_in_progress(dom, el)
     {
         return true;
     }
@@ -1116,6 +1123,36 @@ fn is_state_layer(dom: &dyn Dom, el: ElId) -> bool {
         return false;
     }
     declares_animation(dom, el) || marks_lazy_loading(dom, el) || in_crossfade_stack(dom, el)
+}
+
+/// Whether a box above `el` is caught part way through a reveal: below full
+/// opacity, displaced (a `transform` other than the identity, or a
+/// `translate`, `scale` or `rotate` that moves it), and declaring an
+/// `opacity` transition. Both values are ones the box leaves when its state
+/// changes (fastsocial.co's `[data-reveal]` cards at `opacity: 0.6;
+/// transform: scale(0.996) translateY(3.7px)` with a 0.7s opacity
+/// transition, an image inside fading in with them). The raster's own
+/// transform is not asked: a picture held faint that also floats would read
+/// the same.
+fn inside_a_reveal_in_progress(dom: &dyn Dom, el: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 64;
+    let mut cur = dom.parent(el);
+    for _ in 0..MAX_ANCESTORS {
+        let Some(c) = cur else { return false };
+        if Some(c) == dom.body() || Some(c) == dom.document_element() {
+            return false;
+        }
+        let opacity = js::parse_float(&dom.style(c, "opacity"));
+        if opacity.is_finite()
+            && opacity < 0.999
+            && declares_transition_of(dom, c, "opacity")
+            && super::element_checks::visibly_displaced(dom, c)
+        {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
 }
 
 /// Whether an animation or transition running on the element at capture
@@ -1386,6 +1423,41 @@ pub(crate) fn loops_in_motion(dom: &dyn Dom, el: ElId) -> bool {
                 .keyframes(&entry.name)
                 .is_some_and(|frames| frames.iter().filter_map(frame_opacity).any(|o| o <= LOOP_VANISH_OPACITY))
     })
+}
+
+/// Whether `el` or an ancestor is caught part way through a move that ends:
+/// an animation or transition the capture saw running on the box moves its
+/// position (`left`, `right`, `top`, `bottom`, an `inset` or `margin`
+/// longhand, `transform`, `translate`), and no animation on that box loops
+/// or follows a scroll timeline. elevancehealth.com's quote slides in from
+/// the right (`quote-appear-right`, one run, `right` from -96%) and the
+/// capture caught it 79px past the viewport's edge, where no visitor finds
+/// it once the slide ends. A rule about where a box stands against the
+/// viewport says nothing about such a frame. A recording that did not read
+/// running animations answers no.
+pub(crate) fn moves_mid_animation(dom: &dyn Dom, el: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 64;
+    let moves = |p: &str| {
+        matches!(p, "left" | "right" | "top" | "bottom" | "transform" | "translate")
+            || p.starts_with("inset")
+            || p.starts_with("margin")
+    };
+    let mut cur = Some(el);
+    for _ in 0..MAX_ANCESTORS {
+        let Some(c) = cur else { return false };
+        if Some(c) == dom.body() || Some(c) == dom.document_element() {
+            return false;
+        }
+        if dom.running_animation_properties(c).is_some_and(|props| props.iter().any(|p| moves(p)))
+            && animation_entries(dom, c)
+                .iter()
+                .all(|e| e.iterations != "infinite" && (e.timeline.is_empty() || e.timeline == "auto"))
+        {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
 }
 
 /// Whether `el` (when `include_self`) or an ancestor fades out for good
@@ -2133,6 +2205,33 @@ mod tests {
         assert_eq!(why(&d, label), None);
     }
 
+    /// momoshop.com.tw (324173): a fixed side tab at x 1258 on a 1280px
+    /// viewport; 6 of its label's 40px are on screen.
+    #[test]
+    fn a_viewport_layer_shows_text_only_past_its_visible_share() {
+        let (mut d, body) = page();
+        d.inner_width = 1280.0;
+        d.inner_height = 800.0;
+        let tab = d.add(Some(body), "div");
+        resolved(&mut d, tab);
+        d.set_style(tab, "position", "fixed");
+        d.set_rect(tab, 1258.0, 320.0, 72.0, 158.0);
+        let label = d.add(Some(tab), "span");
+        resolved(&mut d, label);
+        d.add_text(label, "購物車");
+        let place = |d: &mut FakeDom, x: f64| {
+            d.set_rect(label, x, 334.0, 40.0, 16.0);
+            d.set_text_rect(label, x, 334.0, 40.0, 16.0);
+        };
+        place(&mut d, 1274.0);
+        assert_eq!(unpainted_for(&d, label, PaintGate::Text), Some(Unpainted::OutsideDocument));
+        // The base predicate keeps any pixel on screen.
+        assert_eq!(why(&d, label), None);
+        // Half of it on screen is read.
+        place(&mut d, 1260.0);
+        assert_eq!(unpainted_for(&d, label, PaintGate::Text), None);
+    }
+
     /// jyes.com.tw's spec table under a "read more" panel held at
     /// `max-height: 1000px`, taller than the phone's viewport.
     #[test]
@@ -2173,6 +2272,38 @@ mod tests {
     /// zigzag.kr (`data-loaded="false"`), thairath.co.th
     /// (react-lazy-load-image-component before its `-loaded` class) and
     /// jyes.com.tw (jQuery lazyload's `fadeIn` in its first frames).
+    /// fastsocial.co (323161): an image at 0.057 inside a `[data-reveal]`
+    /// card caught mid-reveal (0.6 opacity, nudged by a transform, with an
+    /// opacity transition). Its own float animation moves it too, which on
+    /// its own says nothing.
+    #[test]
+    fn an_image_inside_a_reveal_in_progress_is_a_state_layer() {
+        let (mut d, body) = page();
+        let card = d.add(Some(body), "div");
+        d.set_styles(
+            card,
+            &[
+                ("opacity", "0.600778"),
+                ("transform", "matrix(0.99568, 0, 0, 0.99568, 0, 3.74421)"),
+                ("transitionProperty", "opacity, transform"),
+                ("transitionDuration", "0.7s, 0.9s"),
+            ],
+        );
+        d.set_rect(card, 25.0, 7399.0, 341.0, 182.0);
+        let img = d.add(Some(card), "img");
+        d.set_styles(img, &[("opacity", "0.0567087"), ("transform", "matrix(0.75, 0.06, -0.06, 0.75, 0, 24)")]);
+        d.set_rect(img, 158.0, 7432.0, 73.0, 78.0);
+        assert_eq!(raster(&d, img), Some(Unpainted::StateLayer));
+        // At rest: the card at full opacity, or not displaced, or with no
+        // opacity transition, leaves the image held faint.
+        for (prop, value) in [("opacity", "1"), ("transform", "none"), ("transitionProperty", "transform")] {
+            let was = d.style(card, prop);
+            d.set_style(card, prop, value);
+            assert_eq!(raster(&d, img), None, "{prop}: {value}");
+            d.set_style(card, prop, &was);
+        }
+    }
+
     #[test]
     fn a_lazy_image_a_library_has_not_shown_is_a_state_layer() {
         let (mut d, body) = page();
