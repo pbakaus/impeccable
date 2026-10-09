@@ -85,36 +85,38 @@ const NUM: &str = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?";
 /// [`NUM`] without a sign, for lightness, chroma and alpha.
 const UNUM: &str = r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?";
 
-// The neutral patterns end every captured channel on white space, a slash or
-// the closing paren, and need white space (or a `%`) between channels, so a
-// channel can never be read from the tail of the one before it
-// (`oklab(0.0999998 ...)` once read `8` as `a`) or stop at an exponent's
-// mantissa.
+// The neutral patterns are channel-delimited: they end every captured
+// channel (and its optional `%`) on white space, a slash or the closing
+// paren, and need white space (or a `%`) between channels, so a channel can
+// never be read from the tail of the one before it (`oklab(0.0999998 ...)`
+// once read `8` as `a`) or stop at an exponent's mantissa. A percentage
+// channel (valid authored CSS, never a computed value) is scaled to the
+// space's reference range before the threshold.
 re!(
     NEUTRAL_OKLCH,
     format!(
-        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(?:{WS}|/|\))",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?)(?:{WS}|/|\))",
         ci("oklch")
     )
 );
 re!(
     NEUTRAL_LCH,
     format!(
-        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(?:{WS}|/|\))",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?)(?:{WS}|/|\))",
         ci("lch")
     )
 );
 re!(
     NEUTRAL_OKLAB,
     format!(
-        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM}){WS}+({NUM})(?:{WS}|/|\))",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?){WS}+({NUM})(%?)(?:{WS}|/|\))",
         ci("oklab")
     )
 );
 re!(
     NEUTRAL_LAB,
     format!(
-        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM}){WS}+({NUM})(?:{WS}|/|\))",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?){WS}+({NUM})(%?)(?:{WS}|/|\))",
         ci("lab")
     )
 );
@@ -147,20 +149,30 @@ pub fn is_neutral_color(color: Option<&str>) -> bool {
         let b = string_to_number(grp(&m, 3).unwrap());
         return (math_max3(r, g, b) - math_min3(r, g, b)) < 30.0;
     }
+    // A channel and its `%`, scaled so 100% is `full` (CSS Color 4's
+    // reference ranges).
+    let channel = |m: &regex::Captures, i: usize, full: f64| {
+        let v = parse_float(grp(m, i).unwrap());
+        if grp(m, i + 1) == Some("%") {
+            v / 100.0 * full
+        } else {
+            v
+        }
+    };
     if let Some(m) = caps(&NEUTRAL_OKLCH, color) {
-        return parse_float(grp(&m, 1).unwrap()) < 0.02;
+        return channel(&m, 1, 0.4) < 0.02;
     }
     if let Some(m) = caps(&NEUTRAL_LCH, color) {
-        return parse_float(grp(&m, 1).unwrap()) < 3.0;
+        return channel(&m, 1, 150.0) < 3.0;
     }
     if let Some(m) = caps(&NEUTRAL_OKLAB, color) {
-        let a = parse_float(grp(&m, 1).unwrap());
-        let b = parse_float(grp(&m, 2).unwrap());
+        let a = channel(&m, 1, 0.4);
+        let b = channel(&m, 3, 0.4);
         return math_hypot(&[a, b]) < 0.02;
     }
     if let Some(m) = caps(&NEUTRAL_LAB, color) {
-        let a = parse_float(grp(&m, 1).unwrap());
-        let b = parse_float(grp(&m, 2).unwrap());
+        let a = channel(&m, 1, 125.0);
+        let b = channel(&m, 3, 125.0);
         return math_hypot(&[a, b]) < 3.0;
     }
     if let Some(m) = caps(&NEUTRAL_HSL, color) {
@@ -1284,6 +1296,15 @@ mod tests {
         assert!(!n("lab(50 2.5e1 1e-6)"));
         assert!(n("lch(50 1e-6 120)"));
         assert!(!n("lch(50 3e1 120)"));
+        // Percent chroma and a/b (authored CSS) scale to the reference
+        // range: 100% is 0.4 in oklch and oklab, 150 in lch, 125 in lab.
+        assert!(n("oklch(70% 0% 0)"));
+        assert!(n("lch(50% 0% 0)"));
+        assert!(n("lab(50 1% 1%)"));
+        assert!(n("oklab(50% 2% -1%)"));
+        assert!(!n("oklch(70% 40% 30)"));
+        assert!(!n("lch(50% 20% 30)"));
+        assert!(!n("oklab(50% 20% 0%)"));
         // Decimals behave as before.
         assert!(n("oklab(0.5 0.01 -0.01)"));
         assert!(!n("oklab(0.5 0.1 -0.1)"));
