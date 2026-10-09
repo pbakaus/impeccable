@@ -67,6 +67,7 @@ Notes:
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
 - OpenCode 1.18.10 recognises only the spec subset on SKILL.md (`name`, `description`, `license`, `compatibility`, `metadata`). Claude-style extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `model`, `agent`) are silently ignored; Impeccable still emits them today for other harnesses, but they have no effect in OpenCode. Use `commands/<name>.md` (see Placeholder / Variable Substitution below) for slash UX; OpenCode honours only `description`, `agent`, `model`, `variant`, `subtask` on command files.
 - DeepSeek Harness parses the Agent Skills frontmatter and requires `name` and `description`; it reads `metadata`, `user-invocable`, and `disable-model-invocation`. Spec fields it does not consume (`license`, `compatibility`, `allowed-tools`) and Claude-style extensions (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are silently ignored. Hooks are in-process plugins configured via cordis.yml, not on-disk manifests, so there is no hook surface to install. Subagents exist but are composed from preset config, not an on-disk skill-adjacent format. Verified against the [filesystem skill provider](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.md).
+- Oh My Pi supports standard Agent Skills frontmatter fields and `disable-model-invocation`; other harness-specific extensions are ignored.
 - Unknown fields are silently ignored by all harnesses.
 
 ## Hook surface used by Impeccable
@@ -77,6 +78,7 @@ Notes:
 | Codex CLI | Yes (`PostToolUse`) | No | `.codex/hooks.json` | Project-local manifest installed with the `.agents/skills/impeccable` payload. Runs `.agents/skills/impeccable/scripts/hook.mjs` from the git root. Requires normal `/hooks` trust approval. |
 | Cursor | Yes (`preToolUse`) | No | `.cursor/hooks.json` | Project-level manifest installed with `.cursor/skills/impeccable`. Runs `hook-before-edit.mjs` to block bad proposed writes before they land. Reloads on save; restart Cursor if hooks do not pick up. |
 | Grok Build | Yes (`PostToolUse`) | No | `.grok/hooks/impeccable.json` | Project-local manifest installed with `.grok/skills/impeccable`. Claude-compatible matchers (`Edit\|Write\|MultiEdit`) alias to Grok `search_replace`. PostToolUse runs the scan and warms the session cache; Grok ignores that stdout. Stop `additionalContext` is the user-visible pass. Ignore Grok's observe-only Stop with `reason: "shutdown"`. Requires `/hooks-trust` or `--trust`. Plugin installs use `plugin/hooks/hooks.json` with `${CLAUDE_PLUGIN_ROOT}` (aliased to `GROK_PLUGIN_ROOT`). |
+| Oh My Pi | No | No | n/a | Runtime hooks use `pi-extension`; no `hooks.json` manifest surface. |
 | All other harnesses | No | No | n/a | No documented hook surface today. Skill and commands still ship. |
 
 ## Skill Directory Structure
@@ -92,6 +94,7 @@ Notes:
 | Kiro | `.kiro/skills/` | - |
 | OpenCode | `.opencode/skills/` | `.agents/skills/`, `.claude/skills/` |
 | Pi | `.pi/skills/` (project), `~/.pi/agent/skills/` (global) | `.agents/skills/` |
+| Oh My Pi | `.omp/skills/` (project), `~/.omp/agent/skills/` (global) | `.agents/skills/` |
 | Qoder | `.qoder/skills/` | `~/.qoder/skills/` (user-level) |
 | Trae China | `.trae-cn/skills/` | TBD |
 | Trae International | `.trae/skills/` | TBD |

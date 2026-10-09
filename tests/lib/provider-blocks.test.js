@@ -19,6 +19,13 @@ describe('compileProviderBlocks', () => {
     ].join('\n'));
   });
 
+  test('compiles omp blocks only for omp output', () => {
+    const content = ['<omp>', 'OMP-only guidance.', '</omp>'].join('\n');
+
+    expect(compileProviderBlocks(content, ['omp'])).toBe('OMP-only guidance.');
+    expect(compileProviderBlocks(content, ['cursor'])).toBe('');
+  });
+
   test('removes non-matching provider blocks', () => {
     const content = [
       'Before',

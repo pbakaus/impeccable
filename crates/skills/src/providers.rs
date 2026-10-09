@@ -9,7 +9,7 @@ pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
     ".claude", ".cursor", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
-    ".opencode", ".pi", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
+    ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
 ];
 
 const PROVIDER_ALIASES: &[(&str, &str)] = &[
@@ -33,6 +33,8 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("kiro", ".kiro"),
     ("opencode", ".opencode"),
     ("pi", ".pi"),
+    ("omp", ".omp"),
+    ("oh-my-pi", ".omp"),
     ("qoder", ".qoder"),
     ("rovo-dev", ".rovodev"),
     ("rovodev", ".rovodev"),
@@ -54,6 +56,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".kiro", "Kiro", "kiro"),
     (".opencode", "OpenCode", "opencode"),
     (".pi", "Pi Coding Agent", "pi"),
+    (".omp", "Oh My Pi", "omp"),
     (".qoder", "Qoder", "qoder"),
     (".rovodev", "Rovo Dev", "rovo-dev"),
     (".trae", "Trae", "trae"),
@@ -63,7 +66,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
     "antigravity", "claude", "codex", "cursor", "dsh", "gemini", "github", "grok", "hermes", "kiro",
-    "opencode", "pi", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
+    "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
 ];
 
 pub const DEFAULT_TARGETS: &[&str] = &[".claude", ".agents"];
@@ -119,13 +122,14 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".dsh" => Some(jsp::join(&[&dsh_global_home(env, cwd, home), "skills"])),
         ".hermes" => Some(jsp::join(&[&hermes_global_home(env, cwd, home), "skills"])),
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
+        ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
         _ => None,
     }
 }
 
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".dsh" | ".hermes" | ".pi" | ".opencode")
+    matches!(provider, ".agent" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -477,6 +481,7 @@ const GLOBAL_HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".opencode", ".opencode"),
     Hint::OpencodeConfig(".opencode"),
     Hint::Home(".pi", ".pi"),
+    Hint::Home(".omp", ".omp"),
     Hint::Home(".qoder", ".qoder"),
     Hint::Home(".rovodev", ".rovodev"),
     Hint::Home(".vibe", ".vibe"),
@@ -793,6 +798,19 @@ mod tests {
         let (p, invalid) = parse_provider_list("claude, codex,claude,zzz");
         assert_eq!(p, vec![".claude", ".agents"]);
         assert_eq!(invalid, vec!["zzz"]);
+    }
+
+    #[test]
+    fn omp_provider_resolves_paths() {
+        assert_eq!(normalize_provider_name("omp"), Some(".omp"));
+        assert_eq!(normalize_provider_name("oh-my-pi"), Some(".omp"));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
+
+        assert_eq!(sys.user_provider_skills_dir(&home, ".omp"), jsp::join(&[&home, ".omp", "agent", "skills"]));
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".omp", Some(Scope::Project)), vec![jsp::join(&["/project", ".omp", "skills"])]);
+
     }
 
     #[test]

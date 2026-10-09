@@ -27,7 +27,9 @@ describe('workflow execution boundaries', () => {
   });
 
   test('generated-output sync and sheriff retain their required write access', () => {
-    expect(workflows['sync-generated-output.yml'].permissions).toEqual({ contents: 'write' });
+    const sync = workflows['sync-generated-output.yml'];
+    expect(sync.permissions).toEqual({ contents: 'write' });
+    expect(sync.env.GENERATED_PATHS.split(/\s+/)).toContain('.omp');
     expect(workflows['sheriff.yml'].permissions).toEqual({
       actions: 'read', checks: 'read', contents: 'read', issues: 'write', 'pull-requests': 'write',
     });

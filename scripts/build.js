@@ -654,6 +654,7 @@ This folder contains skills for all supported tools:
   .kiro/      -> Kiro
   .opencode/  -> OpenCode
   .pi/        -> Pi
+  .omp/       -> Oh My Pi
   .trae-cn/   -> Trae China
   .trae/      -> Trae International
   .rovodev/   -> Rovo Dev

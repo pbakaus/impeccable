@@ -65,6 +65,16 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       expect(fs.existsSync(refPath)).toBe(true);
     });
 
+    if (key === 'omp') {
+      test('uses Pi-style guidance placeholders rather than Cursor fallbacks', () => {
+        const skills = [{ name: 'test', description: 'Test', body: 'Read {{config_file}} before asking {{model}}.' }];
+        transform(skills, TEST_DIR);
+        const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
+        expect(content).toContain('Read AGENTS.md before asking the model.');
+        expect(content).not.toContain('.cursorrules');
+      });
+    }
+
     if (key === 'dsh') {
       test('uses DSH tools and resource paths without installing unsupported hooks or agents', () => {
         transform([{
