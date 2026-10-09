@@ -808,7 +808,10 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                         || (!lowered
                             && (every_letter_caps
                                 || (text_len <= TRACKED_LABEL_MAX_CHARS && is_capitalized_run(&own))));
-                    if !caps_label {
+                    // CJK text takes open tracking by convention, as the
+                    // browser engine and extreme-negative-tracking read it.
+                    let cjk = impeccable_core::checks::text_rules::is_cjk_text(&own);
+                    if !caps_label && !cjk {
                         findings.push(RuleHit::new(
                             "wide-tracking",
                             format!(
