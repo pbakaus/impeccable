@@ -54,17 +54,10 @@
     .flag-pseudo-suffix::after { content: " and a long generated suffix that runs past the box"; }
     .icon-link { display: block; width: 30px; height: 30px; overflow: hidden; font-size: 24px; line-height: 24px; white-space: nowrap; color: #036; }
     .icon-link::before { content: "\2605"; display: block; width: 30px; height: 30px; margin-bottom: 4px; line-height: 30px; text-align: center; }
+.icon-link.crosses::before { height: 20px; margin-bottom: 0; line-height: 20px; }
   </style>
 </head>
 <body>
-  <!-- PASS: a label set in the page's own white that runs off the side of
-       the window (valero.com's phone menu button keeps a white "Toggle
-       Navigation" label on its white header). None of it shows, so neither
-       does its spill. It sits in the first viewport, where the hit tests
-       can confirm the surface under it. -->
-  <div style="margin-left: calc(100vw - 100px); width: 60px; height: 24px">
-    <div class="pass-ink-matches-surface" style="white-space: nowrap; color: #fff; line-height: 24px">Toggle navigation</div>
-  </div>
   <div class="cols">
     <!-- FLAG column: content forced wider than its box with no scroll
          affordance, cut off by the column's clip -->
@@ -86,6 +79,9 @@
       <!-- Generated content past the box. No text rect covers a pseudo-element,
            so the engine cannot measure it and the spill stands. -->
       <div class="box flag-pseudo-suffix" style="white-space: nowrap">Tag</div>
+      <!-- The same icon link with its label starting 10px inside the 30px
+           clip: the top of the word shows, and the clip cuts it on x. -->
+      <a class="flag-icon-label-crosses-clip icon-link crosses" href="#">Youtube</a>
     </section>
 
     <!-- PASS column: real scroll regions, preformatted code, wrapping text, scroll ancestors -->

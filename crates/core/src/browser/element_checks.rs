@@ -3557,13 +3557,34 @@ fn text_clipped_away_on_y(
     if extents.is_empty() || descendants_unmeasured || !generates_box(dom, el) {
         return false;
     }
-    if !matches!(crate::browser::text_geometry::overflow_y(dom, el).as_str(), "hidden" | "clip") {
-        return false;
+    match crate::browser::text_geometry::overflow_y(dom, el).as_str() {
+        "hidden" => {}
+        // `overflow: clip` paints out to its `overflow-clip-margin`; only a
+        // margin of zero (or one the capture did not record) clips at the
+        // padding box.
+        "clip" => {
+            let margin = dom.style(el, "overflowClipMargin");
+            if !(margin.is_empty() || parse_float(&margin) == 0.0) {
+                return false;
+            }
+        }
+        _ => return false,
     }
     let client = dom.client_height(el);
     let border_top = style_px(dom, el, "borderTopWidth");
-    let top = rect.top + if border_top.is_finite() { border_top } else { 0.0 };
-    if !(client.is_finite() && client > 0.0 && top.is_finite()) {
+    let border_bottom = style_px(dom, el, "borderBottomWidth");
+    if !(client.is_finite() && client > 0.0 && border_top.is_finite() && border_bottom.is_finite()) {
+        return false;
+    }
+    // The band mixes the drawn rect with layout metrics, so it holds only
+    // for a box drawn at its layout size: under a transform that scales it,
+    // the drawn clip is not `clientHeight` tall, and the box keeps the base
+    // reading.
+    if (rect.height - (client + border_top + border_bottom)).abs() > 1.0 {
+        return false;
+    }
+    let top = rect.top + border_top;
+    if !top.is_finite() {
         return false;
     }
     let bottom = top + client;
@@ -3920,66 +3941,6 @@ fn generates_box(dom: &dyn Dom, el: ElId) -> bool {
     display != "inline" && display != "contents"
 }
 
-/// The contrast at or under which text and the surface it sits on read as one
-/// colour: no glyph of it shows.
-const INK_MATCHES_SURFACE_RATIO: f64 = 1.05;
-
-/// Whether `el`'s text is painted in the colour of the surface under it, so
-/// none of it shows and neither does anything it spills: valero.com's phone
-/// menu button holds a white "Toggle Navigation" label on a white header,
-/// and the label running past the window's edge is not a spill anyone
-/// sees. Every fact has to be read, or the text counts as seen: one ink for
-/// all of the element's text (no element inside it carries text), no text
-/// shadow or stroke to outline the glyphs, an opaque surface the background
-/// walk resolves without an image, and hit-test stacks that confirm the
-/// text sits on that surface ([`TextLayers::Consistent`]), the test the
-/// contrast check asks before it trusts a 1.0:1 on the page ground.
-fn ink_matches_its_surface(dom: &dyn Dom, el: ElId) -> bool {
-    if js::trim(&dom.text_content(el)) != js::trim(&direct_text(dom, el)) {
-        return false;
-    }
-    if dom.style(el, "textShadow") != "none" || parse_float(&dom.style(el, "webkitTextStrokeWidth")) != 0.0 {
-        return false;
-    }
-    let fill = dom.style(el, "webkitTextFillColor");
-    let ink_raw = if fill.is_empty() || fill == "currentcolor" { dom.style(el, "color") } else { fill };
-    let Some(ink) = parse_rgb_or_any(&ink_raw) else {
-        return false;
-    };
-    let rect = dom.rect(el);
-    let text = dom.direct_text_rect(el).unwrap_or(rect);
-    if !(text.all_finite() && text.width > 0.0 && text.height > 0.0) {
-        return false;
-    }
-    let font_size = {
-        let n = style_px(dom, el, "fontSize");
-        if n.is_finite() && n > 0.0 {
-            n
-        } else {
-            16.0
-        }
-    };
-    let surface = resolve_text_surface(
-        dom,
-        el,
-        &|_| false,
-        Box2::new(text.left, text.top, text.width, text.height),
-        font_size,
-    );
-    if surface.info.unresolved || surface.samples.is_some() || surface.gradient_host.is_some() {
-        return false;
-    }
-    let Some(bg) = surface.info.color.filter(|c| c.alpha_or_one() >= 0.999) else {
-        return false;
-    };
-    let ink = if ink.alpha_or_one() < 1.0 { composite_color_over(&ink, &bg) } else { ink };
-    if crate::color::contrast_ratio(&ink, &bg) > INK_MATCHES_SURFACE_RATIO {
-        return false;
-    }
-    crate::browser::text_layers::layers_at_text(dom, el, surface.host, Some(bg))
-        == crate::browser::text_layers::TextLayers::Consistent
-}
-
 /// JS: checks.mjs#checkElementTextOverflowDOM(el)
 pub fn check_element_text_overflow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
@@ -4029,9 +3990,6 @@ pub fn check_element_text_overflow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
         };
         let content_left = rect.left + dom.client_left(el);
         if !spill_does_harm(dom, el, (content_left, content_left + client_width), reach) {
-            return Vec::new();
-        }
-        if ink_matches_its_surface(dom, el) {
             return Vec::new();
         }
         return vec![RuleHit::new(
@@ -7448,7 +7406,7 @@ mod tests {
         d.el_mut(link).client_width = 30.0;
         d.el_mut(link).client_height = 30.0;
         d.el_mut(link).scroll_width = 84.0;
-        d.set_styles(link, &[("display", "block"), ("overflow", "hidden"), ("overflowX", "hidden"), ("overflowY", "hidden"), ("position", "static"), ("fontSize", "24px"), ("borderTopWidth", "0px")]);
+        d.set_styles(link, &[("display", "block"), ("overflow", "hidden"), ("overflowX", "hidden"), ("overflowY", "hidden"), ("position", "static"), ("fontSize", "24px"), ("borderTopWidth", "0px"), ("borderBottomWidth", "0px")]);
         d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
         d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
         d.set_pseudo_style(link, "::before", "display", "block");
@@ -7462,6 +7420,19 @@ mod tests {
         d.set_styles(link, &[("overflowY", ""), ("overflow", "hidden")]);
         assert!(check_element_text_overflow_dom(&d, link).is_empty(), "the shorthand clips y");
         d.set_style(link, "overflowY", "hidden");
+        // `overflow: clip` with a clip margin paints past the box.
+        d.set_styles(link, &[("overflowY", "clip"), ("overflowClipMargin", "8px")]);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a clip margin");
+        d.set_style(link, "overflowClipMargin", "0px");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "clip with no margin");
+        d.set_style(link, "overflowY", "hidden");
+        // Drawn at twice its layout size (a scale transform), the clip is
+        // 60px tall and a label at 640 to 660 shows inside it.
+        d.set_rect(link, 48.0, 600.0, 60.0, 60.0);
+        d.set_text_rect(link, 48.0, 640.0, 168.0, 20.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a scaled box");
+        d.set_rect(link, 48.0, 600.0, 30.0, 30.0);
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
         // A label that reaches into the box is seen.
         d.set_text_rect(link, 48.0, 620.0, 84.0, 25.0);
         assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "the label crosses the clip");
@@ -7480,47 +7451,6 @@ mod tests {
         d.set_rect(note, 48.0, 605.0, 70.0, 20.0);
         d.set_text_rect(note, 48.0, 605.0, 70.0, 20.0);
         assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a child's text inside the clip");
-    }
-
-    /// observations-47 row 2: valero.com's phone menu button sets its
-    /// "Toggle Navigation" label in white on the white page, and the label
-    /// runs past the window's edge. None of it is seen.
-    #[test]
-    fn text_overflow_skips_text_inked_in_its_surface_colour() {
-        let (mut d, body) = page();
-        d.inner_width = 390.0;
-        let button = d.add(Some(body), "button");
-        visible(&mut d, button);
-        d.set_attr(button, "class", "menu-toggle");
-        d.add_text(button, "Toggle Navigation");
-        d.set_rect(button, 340.0, 30.0, 40.0, 32.0);
-        d.el_mut(button).client_width = 40.0;
-        d.el_mut(button).client_height = 32.0;
-        d.el_mut(button).scroll_width = 83.0;
-        d.set_styles(button, &[("display", "block"), ("overflow", "visible"), ("overflowX", "visible"), ("overflowY", "visible"), ("position", "absolute"), ("fontSize", "14.4px"), ("color", "rgb(255, 255, 255)"), ("backgroundColor", "rgba(0, 0, 0, 0)"), ("textShadow", "none"), ("webkitTextStrokeWidth", "0px")]);
-        d.set_text_rect(button, 354.0, 40.0, 69.0, 31.0);
-        assert!(check_element_text_overflow_dom(&d, button).is_empty(), "white on white");
-
-        // The control: the same label in a colour the page shows.
-        d.set_style(button, "color", "rgb(0, 112, 171)");
-        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a blue label");
-        d.set_style(button, "color", "rgb(255, 255, 255)");
-        // A text shadow outlines white glyphs on white.
-        d.set_style(button, "textShadow", "rgb(0, 0, 0) 0px 1px 2px");
-        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a text shadow");
-        d.set_style(button, "textShadow", "none");
-        // A style the capture did not record is not read as no shadow.
-        d.set_style(button, "textShadow", "");
-        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "an unrecorded shadow");
-        d.set_style(button, "textShadow", "none");
-        // A child in another ink carries text the surface does not hide.
-        let word = d.add(Some(button), "span");
-        visible(&mut d, word);
-        d.set_styles(word, &[("position", "static"), ("color", "rgb(0, 0, 0)")]);
-        d.add_text(word, "Menu");
-        d.set_rect(word, 354.0, 56.0, 40.0, 15.0);
-        d.set_text_rect(word, 354.0, 56.0, 40.0, 15.0);
-        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a child with its own text");
     }
 
     /// walkthroughs-20 miss 4a: `overflow-x: hidden` computes the shorthand to
