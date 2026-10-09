@@ -2102,7 +2102,9 @@ re!(PATH_TOKEN_RE, r"[A-Za-z]|[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]
 /// corner. sinter.systems' smooth-corner buttons are squircles drawn that
 /// way. A blob has no straight side, or one; a wave divider (straight top
 /// and sides, a curved bottom) has three, and its curves run along one
-/// edge. Path data the reader cannot follow answers no.
+/// edge. The box is spanned by points sampled along every curve as well as
+/// the segment ends, so a curve that bulges outside the straight sides
+/// moves the box off them. Path data the reader cannot follow answers no.
 fn path_is_rounded_rectangle(body: &str) -> bool {
     // Path data holds no parentheses: the body ends at the first one. An
     // inline style escapes the quotes, and a fill rule may lead.
@@ -2119,6 +2121,9 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
     // Every segment in drawing order: start, end, and whether it is straight.
     let mut segments: Vec<((f64, f64), (f64, f64), bool)> = Vec::new();
     let (mut cur, mut start) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64));
+    // The last cubic or quadratic control point, for `S` and `T` to reflect.
+    let mut last_cubic: Option<(f64, f64)> = None;
+    let mut last_quad: Option<(f64, f64)> = None;
     let mut i = 0usize;
     let mut cmd: Option<char> = None;
     while i < tokens.len() {
@@ -2128,6 +2133,8 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
             cmd = Some(c);
             i += 1;
             if c == 'Z' || c == 'z' {
+                last_cubic = None;
+                last_quad = None;
                 if cur != start {
                     segments.push((cur, start, true));
                 }
@@ -2164,6 +2171,35 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
             'V' => (cur.0, if rel { cur.1 + args[0] } else { args[0] }),
             _ => (base.0 + args[arity - 2], base.1 + args[arity - 1]),
         };
+        let at = |k: usize| (base.0 + args[k], base.1 + args[k + 1]);
+        let reflect = |c: Option<(f64, f64)>| c.map_or(cur, |c| (2.0 * cur.0 - c.0, 2.0 * cur.1 - c.1));
+        let (mut cubic, mut quad) = (None, None);
+        match command.to_ascii_uppercase() {
+            'C' => {
+                let (c1, c2) = (at(0), at(2));
+                points.extend(sample_cubic(cur, c1, c2, end));
+                cubic = Some(c2);
+            }
+            'S' => {
+                let (c1, c2) = (reflect(last_cubic), at(0));
+                points.extend(sample_cubic(cur, c1, c2, end));
+                cubic = Some(c2);
+            }
+            'Q' => {
+                let c = at(0);
+                points.extend(sample_cubic(cur, lerp(cur, c, 2.0 / 3.0), lerp(end, c, 2.0 / 3.0), end));
+                quad = Some(c);
+            }
+            'T' => {
+                let c = reflect(last_quad);
+                points.extend(sample_cubic(cur, lerp(cur, c, 2.0 / 3.0), lerp(end, c, 2.0 / 3.0), end));
+                quad = Some(c);
+            }
+            'A' => points.extend(sample_arc(cur, args[0], args[1], args[2], args[3] != 0.0, args[4] != 0.0, end)),
+            _ => {}
+        }
+        last_cubic = cubic;
+        last_quad = quad;
         match command.to_ascii_uppercase() {
             'M' => {
                 start = end;
@@ -2242,6 +2278,77 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
         }
     }
     true
+}
+
+const CURVE_SAMPLES: usize = 16;
+
+fn lerp(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
+}
+
+/// Points along a cubic Bezier, its ends excluded.
+fn sample_cubic(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64)) -> Vec<(f64, f64)> {
+    (1..CURVE_SAMPLES)
+        .map(|k| {
+            let t = k as f64 / CURVE_SAMPLES as f64;
+            let u = 1.0 - t;
+            let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            (a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0, a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1)
+        })
+        .collect()
+}
+
+/// Points along an SVG elliptical arc, its ends excluded (the endpoint to
+/// centre conversion of SVG 1.1 F.6.5, radii scaled up when too small).
+fn sample_arc(
+    from: (f64, f64),
+    rx: f64,
+    ry: f64,
+    rotation_deg: f64,
+    large: bool,
+    sweep: bool,
+    to: (f64, f64),
+) -> Vec<(f64, f64)> {
+    let (mut rx, mut ry) = (rx.abs(), ry.abs());
+    if from == to || rx == 0.0 || ry == 0.0 {
+        return Vec::new();
+    }
+    let phi = rotation_deg.to_radians();
+    let (sin, cos) = phi.sin_cos();
+    let (dx, dy) = ((from.0 - to.0) / 2.0, (from.1 - to.1) / 2.0);
+    let (x1, y1) = (cos * dx + sin * dy, -sin * dx + cos * dy);
+    let lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
+    if lambda > 1.0 {
+        rx *= lambda.sqrt();
+        ry *= lambda.sqrt();
+    }
+    let num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+    let den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+    let mut coef = if den == 0.0 { 0.0 } else { (num / den).max(0.0).sqrt() };
+    if large == sweep {
+        coef = -coef;
+    }
+    let (cx1, cy1) = (coef * rx * y1 / ry, -coef * ry * x1 / rx);
+    let (cx, cy) = (
+        cos * cx1 - sin * cy1 + (from.0 + to.0) / 2.0,
+        sin * cx1 + cos * cy1 + (from.1 + to.1) / 2.0,
+    );
+    let angle = |ux: f64, uy: f64| uy.atan2(ux);
+    let theta1 = angle((x1 - cx1) / rx, (y1 - cy1) / ry);
+    let mut delta = angle((-x1 - cx1) / rx, (-y1 - cy1) / ry) - theta1;
+    let tau = std::f64::consts::TAU;
+    if sweep && delta < 0.0 {
+        delta += tau;
+    } else if !sweep && delta > 0.0 {
+        delta -= tau;
+    }
+    (1..CURVE_SAMPLES)
+        .map(|k| {
+            let t = theta1 + delta * k as f64 / CURVE_SAMPLES as f64;
+            let (ex, ey) = (rx * t.cos(), ry * t.sin());
+            (cos * ex - sin * ey + cx, sin * ex + cos * ey + cy)
+        })
+        .collect()
 }
 
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
@@ -2974,6 +3081,13 @@ mod tests {
         let blob = ".b{clip-path:path('M50 0 C80 0 100 20 100 50 C100 80 80 100 50 100 C20 100 0 80 0 50 C0 20 20 0 50 0 Z')}";
         assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
         assert!(!path_is_rounded_rectangle("'M0 100 L100 100 C100 40 70 0 50 0 C30 0 0 40 0 100 Z')"));
+        // Straight sides joined by curves that bulge far outside them.
+        assert!(!path_is_rounded_rectangle(
+            "'M20 0 H80 C150 -50 150 50 100 20 V80 C150 150 50 150 80 100 H20 C-50 150 -50 50 0 80 V20 C-50 -50 50 -50 20 0 Z')"
+        ));
+        // Corner arcs that take the long way round, outside the box.
+        assert!(!path_is_rounded_rectangle("'M10 0H90A10 10 0 1 1 100 10V90A10 10 0 1 1 90 100H10A10 10 0 1 1 0 90V10A10 10 0 1 1 10 0Z')"));
+        assert!(path_is_rounded_rectangle("'M10 0H90A10 10 0 0 1 100 10V90A10 10 0 0 1 90 100H10A10 10 0 0 1 0 90V10A10 10 0 0 1 10 0Z')"));
         // A wave divider: straight top and sides, curves along the bottom.
         let wave = ".hero{clip-path:path('M0 0 H1440 V300 C1260 360 1080 240 900 300 C720 360 540 240 360 300 C180 360 90 260 0 300 Z')}";
         assert_eq!(scan_css_text_for_organic_clip_path(wave).len(), 1);

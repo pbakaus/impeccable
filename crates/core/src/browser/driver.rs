@@ -2507,6 +2507,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let mut design_seen = DesignSeen::default();
     // One page, one set of already-reported SAFE_TAGS text colours.
     let mut color_seen = crate::checks::rules::SafeTagTextSeen::default();
+    let mut vanishing_ink_candidates: std::collections::HashSet<ElId> = std::collections::HashSet::new();
     // The AI palette is read over the whole page: neon ink on a near-black
     // ground waits here until a second tell hue turns up somewhere, so one
     // deliberate accent stays an accent (REN-405).
@@ -2609,14 +2610,15 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         if let Some(pack) = config.rule_pack {
             findings.extend(pack.check_element_dom(dom, el));
         }
-        let mut findings: Vec<BrowserFinding> =
+        let findings: Vec<BrowserFinding> =
             findings.into_iter().filter(|f| rule_ok(&f.type_)).collect();
         // Only a low-contrast finding the element keeps speaks for its size
         // findings: one the configuration turned off is gone by now, one an
         // inline ignore drops is not counted, and a verdict handed to the
-        // pixel pass may be replaced there.
+        // pixel pass may be replaced there. The drop waits until the colour
+        // claims settle below, where a later copy can withdraw this one.
         if !scoped_ignore_active(dom, el, "low-contrast") && super::visual::routed_reason(dom, el).is_none() {
-            drop_size_findings_on_vanishing_ink(&mut findings);
+            vanishing_ink_candidates.insert(el);
         }
         add_browser_findings(dom, &mut groups, el, findings);
 
@@ -2640,6 +2642,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
             g.findings
                 .retain(|f| !(f.type_ == "low-contrast" && f.detail == snippet));
         }
+    }
+    // With the colour claims settled, a low-contrast finding still on an
+    // element speaks for its size findings.
+    for g in groups.iter_mut().filter(|g| vanishing_ink_candidates.contains(&g.el)) {
+        drop_size_findings_on_vanishing_ink(&mut g.findings);
     }
     drop_brand_hue_headings(dom, &mut groups);
     groups.retain(|g| !g.findings.is_empty());
@@ -4077,6 +4084,39 @@ mod page_level_form_tests {
         };
         let off = ids(&collect_browser_findings(&d, &config), p);
         assert!(off.iter().any(|t| t == "tiny-text"), "{off:?}");
+    }
+
+    /// A copy cut by the page's edge claims its colour pair until a copy
+    /// wholly on screen wears it, and then its low-contrast finding is
+    /// withdrawn. Its size findings were never the later copy's to drop:
+    /// they stand once the claim moves on.
+    #[test]
+    fn vanishing_ink_waits_for_the_colour_claims_to_settle() {
+        let (mut d, body) = page("");
+        d.set_style(body, "backgroundColor", "rgb(248, 248, 248)");
+        let copy = |d: &mut FakeDom, x: f64, size: &str| {
+            let p = d.add(Some(body), "span");
+            d.add_text(p, "Node bwhkg served this page from the edge cache");
+            d.set_rect(p, x, 40.0, 400.0, 14.0);
+            d.set_styles(
+                p,
+                &[("color", "rgb(238, 238, 238)"), ("fontSize", size), ("lineHeight", "14px"), ("backgroundColor", "rgba(0, 0, 0, 0)")],
+            );
+            p
+        };
+        let cut = copy(&mut d, -30.0, "10px");
+        let ids = |r: &CollectResult, el: ElId| -> Vec<String> {
+            r.groups.iter().filter(|g| g.el == el).flat_map(|g| g.findings.iter().map(|f| f.type_.clone())).collect()
+        };
+        let alone = ids(&scan(&d), cut);
+        assert!(alone.iter().any(|t| t == "low-contrast"), "{alone:?}");
+        assert!(!alone.iter().any(|t| t == "tiny-text"), "{alone:?}");
+        let whole = copy(&mut d, 40.0, "16px");
+        let r = scan(&d);
+        assert!(ids(&r, whole).iter().any(|t| t == "low-contrast"));
+        let settled = ids(&r, cut);
+        assert!(!settled.iter().any(|t| t == "low-contrast"), "the whole copy took the pair: {settled:?}");
+        assert!(settled.iter().any(|t| t == "tiny-text"), "{settled:?}");
     }
 
     #[test]
