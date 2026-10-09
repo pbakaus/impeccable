@@ -530,7 +530,9 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
 }
 
 /// The most colours a layered pseudo face may combine into before it is
-/// read as too busy to score stop by stop.
+/// read as too busy to score stop by stop: still the surface under the
+/// text, so the host's background is not scored in its place, but one the
+/// verdict is withheld on.
 const FACE_COLOURS_MAX: usize = 256;
 
 /// The colours an opaque gradient face drawn by a positioned `::before` or
@@ -549,14 +551,21 @@ const FACE_COLOURS_MAX: usize = 256;
 ///
 /// `None` where the pseudo is not a face over the run (the same placement
 /// tests as [`read_pseudo_surface_dom`]; an explicit `opacity: 0`,
-/// `visibility: hidden`, a transform or translate other than the identity,
+/// `visibility: hidden`, a transform, translate or scale other than the
+/// identity,
 /// or a bottom layer drawn once at a stated size), where its colour is
 /// what paints (that function reads it), where any layer is not a gradient
 /// or the bottom layer lets something through, where the capture places it
 /// off the text run, and where it is not at a negative `z-index` the
 /// capture can say paints over the box: at `auto` or above, a positioned
-/// face paints over the host's own text, not under it.
-pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<(Vec<Rgba>, &'static str)> {
+/// face paints over the host's own text, not under it. `Some((None, _))`
+/// where the face is there but combines into more than
+/// [`FACE_COLOURS_MAX`] colours.
+pub(crate) fn read_pseudo_gradient_face(
+    dom: &dyn Dom,
+    el: ElId,
+    rect: &Rect,
+) -> Option<(Option<Vec<Rgba>>, &'static str)> {
     for which in PSEUDOS {
         if !pseudo_present(dom, el, which) {
             continue;
@@ -586,11 +595,16 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         // A face moved or scaled at rest (a slide-in parked at
         // `translateX(-101%)` or `scaleX(0)`) may not be under the text; the
         // capture places only one that is not transformed.
-        let untransformed = |prop: &str| {
-            let v: String = pseudo_str(dom, el, which, prop).split_whitespace().collect();
-            v.is_empty() || v == "none" || is_identity_matrix(&v)
+        // `translate: 0px` and `scale: 1` are the identity; `scale: 0` is a
+        // face parked at nothing.
+        let individual = |prop: &str, identity: f64| {
+            let raw = pseudo_str(dom, el, which, prop);
+            let raw = js::trim(&raw);
+            raw.is_empty() || raw == "none" || raw.split_whitespace().all(|t| parse_float(t) == identity)
         };
-        if !(untransformed("transform") && untransformed("translate")) {
+        let matrix: String = pseudo_str(dom, el, which, "transform").split_whitespace().collect();
+        let untransformed = matrix.is_empty() || matrix == "none" || is_identity_matrix(&matrix);
+        if !(untransformed && individual("translate", 0.0) && individual("scale", 1.0)) {
             continue;
         }
         let w = pseudo_px(dom, el, which, "width");
@@ -649,8 +663,10 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         // beneath it can show, so two 30% white washes over black reach
         // #828282 where one alone stops at #4d4d4d. A colour under no wash
         // stays, since a wash need not be drawn over the whole face.
+        // Past [`FACE_COLOURS_MAX`] the combining stops at once.
         let mut colours: Vec<Rgba> = base.iter().map(|c| Rgba { a: Some(1.0), ..*c }).collect();
-        for layer in washes.iter().rev() {
+        let mut too_busy = colours.len() > FACE_COLOURS_MAX;
+        'layers: for layer in washes.iter().rev() {
             let below = colours.clone();
             for wash in layer.iter().filter_map(|s| s.color) {
                 if wash.alpha_or_one() <= 0.05 {
@@ -660,14 +676,15 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
                     let c = composite_color_over(&wash, b);
                     if !colours.contains(&c) {
                         colours.push(c);
+                        if colours.len() > FACE_COLOURS_MAX {
+                            too_busy = true;
+                            break 'layers;
+                        }
                     }
                 }
             }
         }
-        if colours.len() > FACE_COLOURS_MAX {
-            continue;
-        }
-        return Some((colours, which));
+        return Some(((!too_busy).then_some(colours), which));
     }
     None
 }
@@ -1662,11 +1679,13 @@ pub fn check_element_colors_dom(
             effective_bg = Some(pseudo_surface);
             surface_unresolved = false;
             pseudo_surface_read = true;
-        } else if let Some(face) = read_pseudo_gradient_face(dom, el, &rect) {
+        } else if let Some((stops, which)) = read_pseudo_gradient_face(dom, el, &rect) {
             effective_bg = None;
-            surface_unresolved = false;
             pseudo_surface_read = true;
-            pseudo_face = Some(face);
+            // A face too busy to score is still what the text sits on: the
+            // verdict is withheld rather than taken against the host.
+            surface_unresolved = stops.is_none();
+            pseudo_face = stops.map(|s| (s, which));
         }
     }
     let font_weight = {
@@ -9284,6 +9303,7 @@ mod tests {
             vec![("visibility", "hidden")],
             vec![("transform", "matrix(0, 0, 0, 1, 0, 0)")],
             vec![("translate", "-101% 0px")],
+            vec![("scale", "0")],
             vec![(
                 "background",
                 "rgba(0, 0, 0, 0) linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236)) no-repeat scroll 0% 0% / 100% 4px padding-box border-box",
@@ -9303,6 +9323,17 @@ mod tests {
         // Stated at its default, the same face still reads.
         let hits = run_with(light, "isolate", &[("opacity", "1"), ("visibility", "visible"), ("transform", "none"), ("translate", "none")]);
         assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        // A zero translate and a unit scale are the identity (review).
+        let hits = run_with(light, "isolate", &[("translate", "0px"), ("scale", "1")]);
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        // A face that combines into more colours than the cap is still the
+        // surface: the verdict is withheld, not taken against the ring.
+        // Light stops, so a face read stop by stop would fail the label.
+        let base: Vec<String> = (0..20).map(|i| 160 + 4 * i).map(|v| format!("rgb({v}, {v}, {v})")).collect();
+        let washes: Vec<String> = (0..15).map(|k| format!("rgba(255, {}, 0, 0.5)", 17 * k)).collect();
+        let busy = format!("linear-gradient({}), linear-gradient({})", washes.join(", "), base.join(", "));
+        assert!(run(&busy, "isolate").is_empty(), "{:?}", run(&busy, "isolate"));
+        assert!(!run(&busy, "auto").is_empty(), "the ring's verdict stands where the face is not read");
         // Washes stack (review: layered gradients): two 30% white layers
         // over black reach #828282, which fails the near-white label, where
         // either one alone over black (#4d4d4d) passes.
