@@ -579,8 +579,9 @@ pub fn normalize_font_name(value: &str) -> String {
 /// JS `splitFontStack`.
 pub fn split_font_stack(stack: &str) -> Vec<String> {
     let t = IMPORTANT_TAIL_RE.replace(stack, "");
-    t.split(',')
-        .map(normalize_font_name)
+    split_top_level_args(&t)
+        .into_iter()
+        .map(|font| normalize_font_name(&font))
         .filter(|f| !f.is_empty())
         .collect()
 }
@@ -2639,6 +2640,21 @@ mod tests {
         .is_empty());
     }
 
+    #[test]
+    fn typography_var_fallback_preserves_quoted_font_commas() {
+        let md = "---\ntypography:\n  body:\n    fontFamily: \"var(--font-brand, 'Foo, Bar'), sans-serif\"\n---\nbody";
+        let fm = parse_frontmatter(md).unwrap();
+        let ds = normalize_design_system(Some(&fm), None, None, None, false);
+
+        assert_eq!(ds.allowed_fonts, vec!["foo, bar".to_string()]);
+        assert!(check_source_design_system(
+            "body { font-family: 'Foo, Bar', sans-serif; }",
+            "index.html",
+            Some(&ds),
+        )
+        .is_empty());
+    }
+
     // upstream 1bcdf80f / #687: var() radius fallbacks leave the closing
     // paren on the final token; strip it so `8px)` is not read as unitless.
     #[test]
@@ -2670,5 +2686,3 @@ mod tests {
         assert_eq!(js_string(&parse_scalar("007")), "7");
     }
 }
-
-
