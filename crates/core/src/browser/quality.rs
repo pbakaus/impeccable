@@ -3575,8 +3575,9 @@ mod tests {
     /// sits 5px off. haraj.com.sa's 28px price chip holds a 19px content
     /// area 4px off inside a 24px line box 2px off and keeps the content-area
     /// measure (its em box, 5.5px off, would not). Since observations-47 row
-    /// 13 a gap of exactly 4px is air, so the case below sets the content area
-    /// 3.5px off to keep the 28px bound pinned.
+    /// 13 a gap of exactly 4px beside a fill with no border is air, so the
+    /// case below sets the content area 3.5px off to keep the 28px bound
+    /// pinned.
     #[test]
     fn cramped_padding_measures_small_chips_by_their_glyphs() {
         let mut d = FakeDom::new();
