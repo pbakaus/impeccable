@@ -1153,11 +1153,36 @@ pub fn gradient_stops_all_readable(image: &str) -> bool {
     true
 }
 
+/// Whether a gradient argument opens with a colour the parse resolves: a
+/// hex colour, or a colour function `parse_any_color` reads
+/// (`rgb(var(--accent-rgb))` is a stop the parse drops).
 fn gradient_arg_is_colour(arg: &str) -> bool {
-    arg.starts_with('#')
-        || crate::color::COLOR_FUNCTION_NAMES
-            .iter()
-            .any(|name| arg.strip_prefix(name).is_some_and(|tail| tail.starts_with('(')))
+    let token = if arg.starts_with('#') {
+        arg.split_whitespace().next().unwrap_or("")
+    } else if crate::color::COLOR_FUNCTION_NAMES
+        .iter()
+        .any(|name| arg.strip_prefix(name).is_some_and(|tail| tail.starts_with('(')))
+    {
+        let mut depth = 0i32;
+        let mut end = arg.len();
+        for (i, ch) in arg.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        &arg[..end]
+    } else {
+        return false;
+    };
+    crate::color::parse_any_color(Some(token)).is_some()
 }
 
 fn is_transition_hint(arg: &str) -> bool {
@@ -2349,6 +2374,8 @@ mod tests {
         assert!(!gradient_stops_are_one_colour("linear-gradient(#111, var(--accent), #111)"));
         assert!(!gradient_stops_are_one_colour("linear-gradient(180deg, #111, red, #111)"));
         assert!(!gradient_stops_are_one_colour("linear-gradient(#111, #f0f)"));
+        // A colour function the parse cannot read is a stop it dropped.
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, rgb(var(--accent-rgb)), #111)"));
     }
 
     fn rgb(r: f64, g: f64, b: f64) -> Rgba {
