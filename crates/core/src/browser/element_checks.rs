@@ -1202,7 +1202,9 @@ pub(crate) fn ink_paint(
                 let in_motion = dom
                     .running_animation_properties(c)
                     .is_some_and(|props| props.iter().any(|p| p == "filter"));
-                if !holds_surface || in_motion {
+                // A blurred "locked" preview is not text a reader is asked to
+                // read, whatever colours it lands on.
+                if !holds_surface || in_motion || has_active_blur(filter) {
                     return InkPaint::Unknown;
                 }
                 let paint = |colour: &Rgba| filtered_colour(filter, colour);
@@ -9154,6 +9156,9 @@ mod tests {
         // A filter a running animation is moving, or one the engine cannot
         // model, still leaves no verdict.
         assert!(run("saturate(0.7)", &["filter"]).is_empty());
+        // A filter that moves the colours and blurs them is a locked preview
+        // (review B3): no verdict, as before.
+        assert!(run("blur(6px) saturate(0.7)", &[]).is_empty());
         assert!(run("url(\"#duotone\") saturate(0.7)", &[]).is_empty());
     }
 
