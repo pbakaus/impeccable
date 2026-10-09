@@ -177,8 +177,12 @@ pub const PAINT_GATED_BOX_RULES: &[&str] = &["ai-color-palette", "bounce-easing"
 /// declared: such a finding reports only when at least one element the
 /// selector matches is painted at capture. The match is tested on the base
 /// predicate alone, with no area test, because the selector may name a
-/// pseudo-element (`.node::after`) whose host has no box of its own.
-pub const PAINT_GATED_PAGE_FORMS: &[&str] = &["bounce-easing", "dark-glow", "gradient-text", "pulsing-dot", "repeating-stripes-gradient"];
+/// pseudo-element (`.node::after`) whose host has no box of its own. A
+/// stripe declared for cards none of which renders (fastsocial.co's
+/// `.pricing .tier-card::before`, every host in a `display: none` grid) is
+/// one of them: `side-tab`.
+pub const PAINT_GATED_PAGE_FORMS: &[&str] =
+    &["bounce-easing", "dark-glow", "gradient-text", "pulsing-dot", "repeating-stripes-gradient", "side-tab"];
 
 /// Which gate a rule's findings pass through, or `None` for an ungated rule.
 pub fn paint_gate(rule_id: &str) -> Option<PaintGate> {
@@ -3660,6 +3664,8 @@ mod tests {
         assert!(page_form_painted(&d, "bounce-easing", &[loader, shown]));
         assert!(!page_form_painted(&d, "pulsing-dot", &[loader]));
         assert!(!page_form_painted(&d, "dark-glow", &[loader]));
+        assert!(!page_form_painted(&d, "side-tab", &[loader]));
+        assert!(page_form_painted(&d, "side-tab", &[loader, shown]));
         // Outside the list, and with nothing matched, base behavior stands.
         assert!(page_form_painted(&d, "marquee", &[loader]));
         assert!(page_form_painted(&d, "bounce-easing", &[]));

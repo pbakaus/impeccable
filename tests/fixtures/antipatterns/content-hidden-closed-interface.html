@@ -27,6 +27,7 @@
     .answer { opacity: 0; height: 0; overflow: hidden; }
     [role="dialog"] { position: fixed; top: 120px; left: 400px; width: 480px; height: 240px; opacity: 0; pointer-events: none; }
     .whole-menu { position: fixed; top: 0; left: 100%; width: 390px; height: 600px; opacity: 0; }
+    .trip-layer { position: fixed; top: 0; left: 0; right: 0; bottom: 0; opacity: 0; visibility: hidden; background: #fff; }
     .megamenu { position: absolute; top: -400px; left: 0; width: 1075px; height: 300px; opacity: 0; }
   </style>
 </head>
@@ -58,6 +59,9 @@
     <h3 id="dialog-title">Leave this page?</h3>
     <p>You are about to open a partner site. Its terms, privacy notice and security practices are its own, and what you enter there is not covered by ours.</p>
   </div>
+
+  <!-- PASS: a layer fixed over the whole viewport at visibility: hidden, waiting for its trigger, with no role or class word to name it -->
+  <div class="trip-layer">Create itinerary. What is the trip name? Name your trip, pick the dates you travel, add the places you want to see, invite the people you travel with and save it to your account for later. Every trip keeps its own list of hotels, restaurants, museums, beaches and desert tours, with opening hours, prices, the distance between stops and a map you can share with everyone on the trip. Trips you build here sync to the app on your phone, so the plan you made at home is the plan you follow when you land, with every booking and every note in one place.</div>
 
   <main>
     <section class="column">

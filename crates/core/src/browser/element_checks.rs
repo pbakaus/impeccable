@@ -2721,6 +2721,70 @@ pub fn check_element_radial_spotlight_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHi
 
 /// The declaration test of `checkRadialSpotlight`, then the prominence gate,
 /// reporting the stop that passed it.
+/// How much of `el`'s paint shows through the media laid over it: the
+/// product of `1 - opacity` over every later sibling `<video>` or `<img>`
+/// that covers its box (within a pixel), paints above it and shows a
+/// picture at capture. useforward.co's hero glow sits under a 0.7-opacity
+/// video, so 30% of it shows. A video counts when it has a `poster`, or
+/// plays by itself (`autoplay`) from a source it names; an image when the
+/// capture saw it complete with a size of its own. Anything the capture
+/// cannot tell about leaves the glow as it is (1).
+fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
+    let Some(parent) = dom.parent(el) else { return 1.0 };
+    if !rect.all_finite() || rect.width <= 0.0 || rect.height <= 0.0 {
+        return 1.0;
+    }
+    let positioned = |e: ElId| !matches!(dom.style(e, "position").as_str(), "static" | "");
+    let z_auto = |e: ElId| matches!(dom.style(e, "zIndex").as_str(), "auto" | "");
+    if !z_auto(el) {
+        return 1.0;
+    }
+    let siblings = dom.children(parent);
+    let Some(at) = siblings.iter().position(|&c| c == el) else { return 1.0 };
+    let mut share = 1.0;
+    for &media in &siblings[at + 1..] {
+        let tag = tag_lower(dom, media);
+        let shows_picture = match tag.as_str() {
+            "video" => {
+                let named = |name: &str| dom.attr(media, name).is_some_and(|v| !js::trim(&v).is_empty());
+                let has_source = named("src")
+                    || dom.children(media).into_iter().any(|c| {
+                        tag_lower(dom, c) == "source" && dom.attr(c, "src").is_some_and(|v| !js::trim(&v).is_empty())
+                    });
+                named("poster") || (dom.attr(media, "autoplay").is_some() && has_source)
+            }
+            "img" => {
+                dom.image_complete(media) == Some(true)
+                    && dom.image_natural_size(media).is_some_and(|(w, h)| w > 0.0 && h > 0.0)
+            }
+            _ => false,
+        };
+        if !shows_picture || !z_auto(media) || !(positioned(media) || !positioned(el)) {
+            continue;
+        }
+        if !matches!(dom.style(media, "objectFit").as_str(), "cover" | "fill" | "") {
+            continue;
+        }
+        if !crate::browser::painted::painted_at_capture(dom, media) {
+            continue;
+        }
+        let m = dom.rect(media);
+        let covers = m.all_finite()
+            && m.left <= rect.left + 1.0
+            && m.top <= rect.top + 1.0
+            && m.right >= rect.right - 1.0
+            && m.bottom >= rect.bottom - 1.0;
+        if !covers {
+            continue;
+        }
+        let opacity = parse_float(&dom.style(media, "opacity"));
+        if opacity.is_finite() {
+            share *= 1.0 - opacity.clamp(0.0, 1.0);
+        }
+    }
+    share
+}
+
 pub fn check_element_radial_spotlight_dom_with(
     dom: &dyn Dom,
     el: ElId,
@@ -2736,7 +2800,7 @@ pub fn check_element_radial_spotlight_dom_with(
         return Vec::new();
     }
     let prominence = measures::RadialGlowProminence {
-        opacity: effective_opacity_dom(dom, el),
+        opacity: effective_opacity_dom(dom, el) * share_left_by_covering_media(dom, el, &rect),
         backdrop: glow_backdrop(dom, el, &gradient_value),
     };
     let Some(stop) = measures::radial_glow_prominent_stop(&stops, &prominence, || {
@@ -6621,6 +6685,35 @@ mod tests {
         );
         d.set_rect(glow, 0.0, 2000.0, 803.0, 502.0);
         assert!(check_element_radial_spotlight_dom(&d, glow).is_empty());
+    }
+
+    /// useforward.co (322717): the hero's warm glow sits under an autoplay
+    /// video at `opacity: 0.7`, which leaves 30% of it showing.
+    #[test]
+    fn radial_spotlight_scales_by_the_media_laid_over_it() {
+        let run = |attrs: &[(&str, &str)], opacity: &str, width: f64| {
+            let (mut d, section, glow) =
+                dark_page_with_glow("radial-gradient(circle, rgba(171, 151, 116, 0.35) 0%, transparent 28%)");
+            let video = d.add(Some(section), "video");
+            for (k, v) in attrs {
+                d.set_attr(video, k, v);
+            }
+            d.set_styles(video, &[("position", "absolute"), ("opacity", opacity), ("objectFit", "cover")]);
+            d.set_rect(video, 0.0, 0.0, width, 502.0);
+            check_element_radial_spotlight_dom(&d, glow)
+        };
+        let poster = [("poster", "/images/poster.jpg")];
+        assert!(run(&poster, "0.7", 803.0).is_empty());
+        let autoplay = [("autoplay", ""), ("src", "/videos/hero.mp4")];
+        assert!(run(&autoplay, "0.7", 803.0).is_empty());
+        // A fainter video leaves the glow bright enough.
+        assert_eq!(run(&poster, "0.3", 803.0).len(), 1);
+        // A video that may show nothing, one that covers part of the glow,
+        // and an opacity the capture did not record leave it as it was.
+        assert_eq!(run(&[], "0.7", 803.0).len(), 1);
+        assert_eq!(run(&[("src", "/videos/hero.mp4")], "0.7", 803.0).len(), 1);
+        assert_eq!(run(&poster, "0.7", 400.0).len(), 1);
+        assert_eq!(run(&poster, "", 803.0).len(), 1);
     }
 
     #[test]
