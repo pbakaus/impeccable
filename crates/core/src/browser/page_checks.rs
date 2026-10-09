@@ -421,20 +421,36 @@ fn shows_border_or_shadow(dom: &dyn Dom, el: ElId) -> bool {
 
 /// The surface under `el` its borders are judged against: the painted
 /// ancestor fill ([`super::element_checks::painted_surface_under`]), when
-/// the text the box holds reads on it at 3:1 or better (the first few
-/// elements with text of their own, or the box's own ink when it holds
-/// none). Text that does not read on the surface says the climb missed what
-/// paints there: arbiproseller's feature cards hold white copy on a dark
-/// layer the climb does not see, over a white `body`. Then no border is
-/// judged, and each counts as before.
+/// the text the box holds reads on it at 3:1 or better (the box's own ink
+/// and the first few elements with text of their own, found in a bounded
+/// walk; the box's own ink alone when it holds none). Text that does not
+/// read on the surface says the climb missed what paints there:
+/// arbiproseller's feature cards hold white copy on a dark layer the climb
+/// does not see, over a white `body`. Then no border is judged, and each
+/// counts as before.
+///
+/// The inks are read against the surface under the box, not the box's own
+/// fill or a nested one, so this is a sanity test on the surface, not a
+/// contrast verdict: where the text sits on a fill of its own and fails
+/// here, the border simply counts, the same as base behaviour.
 fn edge_surface_under(dom: &dyn Dom, el: ElId) -> Option<Rgba> {
     const MAX_INKS: usize = 8;
+    const MAX_VISITED: usize = 64;
     let surface = super::element_checks::painted_surface_under(dom, el)?;
-    let mut holders: Vec<ElId> = std::iter::once(el)
-        .chain(dom.query_all(Some(el), "*").unwrap_or_default())
-        .filter(|&n| !js::trim(&direct_text(dom, n)).is_empty())
-        .take(MAX_INKS)
-        .collect();
+    let mut holders: Vec<ElId> = Vec::new();
+    let mut stack = vec![el];
+    let mut visited = 0usize;
+    while let Some(n) = stack.pop() {
+        visited += 1;
+        if visited > MAX_VISITED || holders.len() >= MAX_INKS {
+            break;
+        }
+        if !js::trim(&direct_text(dom, n)).is_empty() {
+            holders.push(n);
+        }
+        // Children pushed in reverse so the walk reads in document order.
+        stack.extend(dom.children(n).into_iter().rev());
+    }
     if holders.is_empty() {
         holders.push(el);
     }
