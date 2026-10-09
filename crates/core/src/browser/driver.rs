@@ -1277,6 +1277,28 @@ fn drop_covered_class_forms(findings: &mut Vec<BrowserFinding>) {
     drop_covered_palette_forms(findings);
 }
 
+/// The contrast below which an element's text is as good as gone: its size
+/// is not what a reader misses.
+const VANISHING_INK_RATIO: f64 = 1.3;
+
+/// Text the element's own low-contrast finding scores under
+/// [`VANISHING_INK_RATIO`] belongs to that finding alone: `tiny-text` and
+/// `undersized-ui-text` on the same element report a size nobody can see
+/// (vps.dance's `p.nid`, #eee on #f8f8f8 at 1.07:1). Where low-contrast did
+/// not report on the element, the size findings stand.
+fn drop_size_findings_on_vanishing_ink(findings: &mut Vec<BrowserFinding>) {
+    let vanishes = findings.iter().any(|f| {
+        f.type_ == "low-contrast"
+            && f.detail
+                .split_once(':')
+                .and_then(|(ratio, _)| ratio.trim().parse::<f64>().ok())
+                .is_some_and(|ratio| ratio < VANISHING_INK_RATIO)
+    });
+    if vanishes {
+        findings.retain(|f| f.type_ != "tiny-text" && f.type_ != "undersized-ui-text");
+    }
+}
+
 /// ai-color-palette reports one finding per element and concern. Its class
 /// forms (`Purple/violet gradient (Tailwind)`, `text-purple-600 on heading`)
 /// name what its computed forms read off the same element, so a computed
@@ -2571,6 +2593,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         // them to score.
         super::painted::retain_painted(dom, el, &mut findings);
         drop_covered_class_forms(&mut findings);
+        drop_size_findings_on_vanishing_ink(&mut findings);
         findings.retain(|f| {
             palette_finding_role(f)
                 .is_none_or(|role| !category_hues.is_category_colour(dom, el, role))
@@ -3990,6 +4013,27 @@ mod page_level_form_tests {
         assert_eq!(kept, vec!["background-clip: text + gradient", "animate-bounce (Tailwind)"]);
     }
 
+    /// vps.dance's `p.nid`: #eee on #f8f8f8 at 1.1:1, a size nobody sees.
+    #[test]
+    fn size_findings_defer_to_a_low_contrast_finding_under_1_3() {
+        let run = |ratio: &str| {
+            let mut findings = vec![
+                BrowserFinding::new("low-contrast", &format!("{ratio}:1 (need 4.5:1) — text #eeeeee on #f8f8f8")),
+                BrowserFinding::new("undersized-ui-text", "10px functional text \"bwhkg\" (below 11px floor)"),
+                BrowserFinding::new("tiny-text", "10px body text"),
+            ];
+            drop_size_findings_on_vanishing_ink(&mut findings);
+            findings.into_iter().map(|f| f.type_).collect::<Vec<_>>()
+        };
+        assert_eq!(run("1.1"), vec!["low-contrast"]);
+        assert_eq!(run("1.3"), vec!["low-contrast", "undersized-ui-text", "tiny-text"]);
+        assert_eq!(run("2.5"), vec!["low-contrast", "undersized-ui-text", "tiny-text"]);
+        // With no contrast finding on the element the size findings stand.
+        let mut alone = vec![BrowserFinding::new("tiny-text", "10px body text")];
+        drop_size_findings_on_vanishing_ink(&mut alone);
+        assert_eq!(alone.len(), 1);
+    }
+
     #[test]
     fn a_bounce_class_form_defers_only_to_the_animation_it_names() {
         // animate-bounce computes to `animation: bounce`: one declaration.
@@ -4052,36 +4096,6 @@ mod page_level_form_tests {
     }
 
     #[test]
-    fn a_silent_element_elsewhere_does_not_silence_a_pseudo_elements_gradient_text() {
-        // The logo's ::after draws gradient text; an unrelated `.ghost`
-        // computes a clipped gradient but is not painted, so it is silent.
-        let (mut d, body) = page(
-            ".logo::after{content:'AI';background:linear-gradient(90deg,#f0f,#0ff);-webkit-background-clip:text;color:transparent}\
-             .ghost{background-image:linear-gradient(90deg,#000,#000);-webkit-background-clip:text;color:transparent}",
-        );
-        let logo = d.add(Some(body), "div");
-        d.add_selector(logo, ".logo");
-        d.set_rect(logo, 0.0, 0.0, 120.0, 40.0);
-        let ghost = d.add(Some(body), "p");
-        d.add_selector(ghost, ".ghost");
-        d.add_text(ghost, "Watermark");
-        d.set_rect(ghost, 0.0, 100.0, 400.0, 40.0);
-        d.set_styles(
-            ghost,
-            &[
-                ("backgroundImage", "linear-gradient(90deg, rgb(0, 0, 0), rgb(0, 0, 0))"),
-                ("webkitBackgroundClip", "text"),
-                ("backgroundClip", "text"),
-                ("opacity", "0"),
-            ],
-        );
-        assert_eq!(
-            details(&scan(&d), "gradient-text"),
-            vec![(body, "background-clip: text + gradient".to_string())]
-        );
-    }
-
-    #[test]
     fn a_one_colour_ramp_and_a_shimmer_paint_no_gradient_text() {
         // cochat.ai 322270: a gradient between two equal stops is solid type.
         let (mut d, body) = page("");
@@ -4133,6 +4147,36 @@ mod page_level_form_tests {
         assert_eq!(
             details(&scan(&d), "gradient-text"),
             vec![(p, "background-clip: text + gradient".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_silent_element_elsewhere_does_not_silence_a_pseudo_elements_gradient_text() {
+        // The logo's ::after draws gradient text; an unrelated `.ghost`
+        // computes a clipped gradient but is not painted, so it is silent.
+        let (mut d, body) = page(
+            ".logo::after{content:'AI';background:linear-gradient(90deg,#f0f,#0ff);-webkit-background-clip:text;color:transparent}\
+             .ghost{background-image:linear-gradient(90deg,#000,#000);-webkit-background-clip:text;color:transparent}",
+        );
+        let logo = d.add(Some(body), "div");
+        d.add_selector(logo, ".logo");
+        d.set_rect(logo, 0.0, 0.0, 120.0, 40.0);
+        let ghost = d.add(Some(body), "p");
+        d.add_selector(ghost, ".ghost");
+        d.add_text(ghost, "Watermark");
+        d.set_rect(ghost, 0.0, 100.0, 400.0, 40.0);
+        d.set_styles(
+            ghost,
+            &[
+                ("backgroundImage", "linear-gradient(90deg, rgb(0, 0, 0), rgb(0, 0, 0))"),
+                ("webkitBackgroundClip", "text"),
+                ("backgroundClip", "text"),
+                ("opacity", "0"),
+            ],
+        );
+        assert_eq!(
+            details(&scan(&d), "gradient-text"),
+            vec![(body, "background-clip: text + gradient".to_string())]
         );
     }
 
