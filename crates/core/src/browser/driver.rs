@@ -1451,7 +1451,9 @@ fn clipped_gradients_all_silent(dom: &dyn Dom) -> bool {
 fn computes_clipped_gradient(dom: &dyn Dom, el: ElId) -> bool {
     let clip = dom.style(el, "webkitBackgroundClip");
     let clip = if clip.is_empty() { dom.style(el, "backgroundClip") } else { clip };
-    crate::checks::rules::background_clips_to_text(&clip) && dom.style(el, "backgroundImage").contains("gradient")
+    // A multi-layer `text, text` clip is not read here: whether ardainc's
+    // shimmer eyebrows report per element waits on taste call r9-t4.
+    clip == "text" && dom.style(el, "backgroundImage").contains("gradient")
 }
 
 fn clipped_gradient_silent(dom: &dyn Dom, el: ElId) -> bool {
@@ -4135,7 +4137,7 @@ mod page_level_form_tests {
     }
 
     #[test]
-    fn a_one_colour_ramp_paints_no_gradient_text_and_a_two_layer_clip_is_read() {
+    fn a_one_colour_ramp_paints_no_gradient_text_and_a_two_layer_clip_stays_on_body() {
         // cochat.ai 322270: a gradient between two equal stops is solid type.
         let (mut d, body) = page("");
         let h2 = d.add(Some(body), "h2");
@@ -4153,8 +4155,8 @@ mod page_level_form_tests {
         assert!(details(&scan(&d), "gradient-text").is_empty());
 
         // ardainc.com 322257: two layers clipped to the text (`text, text`)
-        // are read on the element, as one clip is. Whether an animated
-        // highlight over one grey is the tell is taste call r9-t4.
+        // are left as on main, reported once by the stylesheet form on body:
+        // reading them on the element waits on taste call r9-t4.
         let (mut d, body) = page(
             ".shimmer{background-image:linear-gradient(90deg,transparent,#111,transparent),linear-gradient(#777,#777);-webkit-background-clip:text;background-clip:text;color:transparent}",
         );
@@ -4176,7 +4178,7 @@ mod page_level_form_tests {
         );
         assert_eq!(
             details(&scan(&d), "gradient-text"),
-            vec![(p, "background-clip: text + gradient".to_string())]
+            vec![(body, "background-clip: text + gradient".to_string())]
         );
     }
 

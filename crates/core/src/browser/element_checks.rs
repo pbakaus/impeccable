@@ -1410,14 +1410,14 @@ pub fn check_element_colors_dom(
     // A family named as a bold cut is bold for the large-text bar (r5-p31).
     let font_weight =
         crate::checks::rules::contrast_font_weight(font_weight, &dom.style(ink_el, "fontFamily"));
-    let bg_clip = crate::checks::rules::background_clip_for_checks({
+    let bg_clip = {
         let a = dom.style(el, "webkitBackgroundClip");
         if !a.is_empty() {
             a
         } else {
             dom.style(el, "backgroundClip")
         }
-    });
+    };
     let (effective_bg_stops, bg_source, bg_source_host) =
         if surface_unresolved || effective_bg.is_some() {
             (None, None, None)

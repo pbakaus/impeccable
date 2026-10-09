@@ -1104,15 +1104,14 @@ pub fn check_element_colors(
     };
     let font_weight =
         impeccable_core::checks::rules::contrast_font_weight(font_weight, sv(style, "fontFamily"));
-    let bg_clip = impeccable_core::checks::rules::background_clip_for_checks({
+    let bg_clip = {
         let a = sv(style, "webkitBackgroundClip");
         if !a.is_empty() {
             a
         } else {
             sv(style, "backgroundClip")
         }
-    }
-    .to_string());
+    };
     let color_opts = ColorOpts {
         tag: tag.to_string(),
         text_color,

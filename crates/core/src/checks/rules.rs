@@ -1105,17 +1105,6 @@ pub fn background_clips_to_text(value: &str) -> bool {
     layers.peek().is_some() && layers.all(|layer| layer == "text")
 }
 
-/// A computed `background-clip` as the colour checks read it: `text` when
-/// [`background_clips_to_text`] says every layer is clipped to the text,
-/// the value as computed otherwise.
-pub fn background_clip_for_checks(value: String) -> String {
-    if background_clips_to_text(&value) {
-        "text".to_string()
-    } else {
-        value
-    }
-}
-
 /// The alpha at or below which an ink paints no glyph a reader could see.
 pub(crate) const TRANSPARENT_INK_FLOOR: f64 = 0.02;
 
