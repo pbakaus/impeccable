@@ -258,6 +258,35 @@ pub fn painted_at_capture(dom: &dyn Dom, el: ElId) -> bool {
     unpainted_at_capture(dom, el, OwnOpacity::Counts).is_none()
 }
 
+/// Whether `sib`, a later sibling of `el` under `parent` that the caller has
+/// already found drawn over `el` in tree order (both at `z-index: auto`, and
+/// `sib` positioned or `el` not), still paints after it once CSS `order` is
+/// counted. A flex or grid container paints its children in order-modified
+/// document order, so there a later sibling paints after `el` only when its
+/// `order` is not lower. An absolutely positioned child counts as `order: 0`
+/// (CSS Flexbox 5.4); for any other child the capture has to have recorded
+/// `order`, and one it did not record answers no. A positioned `sib` over an
+/// unpositioned `el` paints in a later phase whatever the `order`, and any
+/// other parent paints in tree order.
+pub(crate) fn later_sibling_paints_after(dom: &dyn Dom, parent: ElId, el: ElId, sib: ElId) -> bool {
+    if !matches!(dom.style(parent, "display").as_str(), "flex" | "inline-flex" | "grid" | "inline-grid") {
+        return true;
+    }
+    let position = |e: ElId| dom.style(e, "position");
+    let positioned = |e: ElId| !matches!(position(e).as_str(), "static" | "");
+    if positioned(sib) && !positioned(el) {
+        return true;
+    }
+    let order = |e: ElId| {
+        if matches!(position(e).as_str(), "absolute" | "fixed") {
+            return Some(0.0);
+        }
+        let v = js::parse_float(&dom.style(e, "order"));
+        v.is_finite().then_some(v)
+    };
+    matches!((order(el), order(sib)), (Some(a), Some(b)) if b >= a)
+}
+
 /// Why `el` is not painted at capture, or `None` when it is (or when the Dom
 /// cannot measure it, which keeps the finding).
 pub fn unpainted_at_capture(dom: &dyn Dom, el: ElId, own: OwnOpacity) -> Option<Unpainted> {
@@ -1516,9 +1545,9 @@ pub(crate) fn loops_in_motion(dom: &dyn Dom, el: ElId) -> bool {
 /// that moves it on the x axis (`left`, `right`, `margin-left`,
 /// `margin-right`, an `inset-inline` longhand, or a `transform` or
 /// `translate` whose current x offset is not 0), and the page traces that
-/// move to something that stops: a finite CSS animation, on the document
-/// timeline and not paused, whose keyframes set the property, or a
-/// transition that names it. elevancehealth.com's quote slides in from the
+/// move to something that stops: CSS animations whose keyframes set the
+/// property, every one finite, on the document timeline and not paused, or
+/// a transition that names it. elevancehealth.com's quote slides in from the
 /// right (`quote-appear-right`, one run, `right` from -96% to 0) and the
 /// capture caught it 79px past the viewport's edge, where no visitor finds
 /// it once the slide ends.
@@ -1572,22 +1601,32 @@ fn moves_sideways(dom: &dyn Dom, el: ElId, p: &str) -> bool {
 }
 
 /// Whether the page traces the running property `p` on `el` to a move that
-/// stops: a finite CSS animation on the document timeline, not paused,
-/// whose keyframes set `p`, or a transition that names `p`.
+/// stops: a transition that names `p`, or CSS animations whose keyframes set
+/// `p`, every one of them finite (a positive iteration count), on the
+/// document timeline and not paused. The capture records which properties
+/// run, not which animation runs them, so one animation that keeps `p`
+/// moving (an infinite float beside a one-shot entrance) keeps the box where
+/// it was measured, and so does an animation whose keyframes the capture
+/// could not read.
 fn traced_to_an_end(dom: &dyn Dom, el: ElId, p: &str) -> bool {
-    if declares_transition_naming(dom, el, p) {
-        return true;
+    let mut setting = Vec::new();
+    for e in animation_entries(dom, el) {
+        let Some(frames) = dom.keyframes(&e.name) else { return false };
+        if frames.iter().any(|f| f.decls.iter().any(|(prop, _)| prop == p)) {
+            setting.push(e);
+        }
     }
-    animation_entries(dom, el).iter().any(|e| {
+    let ends = |e: &AnimationEntry| {
         let count = js::parse_float(&e.iterations);
         count.is_finite()
-            && count >= 1.0
+            && count > 0.0
             && (e.timeline.is_empty() || e.timeline == "auto")
             && e.play_state != "paused"
-            && dom
-                .keyframes(&e.name)
-                .is_some_and(|frames| frames.iter().any(|f| f.decls.iter().any(|(prop, _)| prop == p)))
-    })
+    };
+    if !setting.iter().all(ends) {
+        return false;
+    }
+    declares_transition_naming(dom, el, p) || !setting.is_empty()
 }
 
 /// Whether `el` (when `include_self`) or an ancestor fades out for good

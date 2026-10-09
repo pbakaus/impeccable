@@ -36,7 +36,7 @@ const __SNAP_STYLE_PROPS = [
   "insetBlockStart", "insetInline", "insetInlineEnd", "insetInlineStart",
   "isolation", "left", "letterSpacing", "lineHeight", "marginBottom", "marginLeft",
   "marginRight", "marginTop", "maskImage", "maxHeight", "maxWidth", "minHeight", "minWidth",
-  "mixBlendMode", "objectFit", "objectPosition", "opacity", "outline",
+  "mixBlendMode", "objectFit", "objectPosition", "opacity", "order", "outline",
   "outlineColor", "outlineOffset", "outlineStyle", "outlineWidth", "overflow",
   "overflowX", "overflowY", "paddingBottom", "paddingLeft", "paddingRight",
   "paddingTop", "perspective", "pointerEvents", "position", "right", "rotate",

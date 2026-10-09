@@ -4410,6 +4410,7 @@ mod tests {
                 "quote-appear-right".into(),
                 vec![frame(&[("opacity", "0"), ("right", "-96%")]), frame(&[("opacity", "1"), ("right", "0px")])],
             );
+            d.keyframes.insert("drift".into(), vec![frame(&[("right", "0px")]), frame(&[("right", "8px")])]);
             d.keyframes.insert(
                 "fade-up".into(),
                 vec![frame(&[("opacity", "0"), ("transform", "translateY(20px)")]), frame(&[("opacity", "1"), ("transform", "none")])],
@@ -4437,6 +4438,17 @@ mod tests {
         assert_eq!(run(Some(vec!["opacity"]), &slide, false), 1);
         let looped = [("animationName", "quote-appear-right"), ("animationIterationCount", "infinite")];
         assert_eq!(run(Some(vec!["right"]), &looped, false), 1);
+        // Half an iteration still ends.
+        let half = [("animationName", "quote-appear-right"), ("animationIterationCount", "0.5")];
+        assert_eq!(run(Some(vec!["right"]), &half, false), 0);
+        // A one-shot entrance beside an infinite drift on the same property:
+        // the capture cannot tell which one moves it, and the drift never
+        // stops.
+        let mixed = [
+            ("animationName", "quote-appear-right, drift"),
+            ("animationIterationCount", "1, infinite"),
+        ];
+        assert_eq!(run(Some(vec!["right"]), &mixed, false), 1);
         // A recording that did not read running animations.
         assert_eq!(run(None, &slide, false), 1);
         // A fade-up on an ancestor moves the text vertically only: the

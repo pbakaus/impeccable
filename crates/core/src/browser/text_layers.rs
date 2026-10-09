@@ -552,8 +552,9 @@ const AVATAR_MAX_TEXT: usize = 3;
 ///   (`object-fit` `fill` or `cover`), covering the text within a pixel, and
 ///   which neither it nor any box up to the sibling fades below
 ///   [`PICTURE_COVER_MIN_OPACITY`];
-/// - the sibling is drawn over `el` (neither sets a `z-index`, and the
-///   sibling is positioned or `el` is not) and is painted.
+/// - the sibling is drawn over `el` (neither sets a `z-index`, the sibling
+///   is positioned or `el` is not, and in a flex or grid container CSS
+///   `order` does not put it first) and is painted.
 ///
 /// An image whose load state was not recorded covers nothing.
 fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
@@ -585,7 +586,10 @@ fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
     let siblings = dom.children(parent);
     let Some(at) = siblings.iter().position(|&c| c == el) else { return false };
     siblings[at + 1..].iter().any(|&sib| {
-        if !z_auto(sib) || !(positioned(sib) || !positioned(el)) {
+        if !z_auto(sib)
+            || !(positioned(sib) || !positioned(el))
+            || !super::painted::later_sibling_paints_after(dom, parent, el, sib)
+        {
             return false;
         }
         if !super::painted::painted_at_capture(dom, sib) {

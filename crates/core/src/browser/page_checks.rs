@@ -3515,6 +3515,7 @@ const OVERPRINT_GLYPH_PROPS: &[&str] = &[
     "fontWeight",
     "fontStyle",
     "fontStretch",
+    "fontVariant",
     "fontVariantCaps",
     "fontFeatureSettings",
     "letterSpacing",
@@ -6154,6 +6155,7 @@ mod tests {
             ("fontWeight", "400"),
             ("fontStyle", "normal"),
             ("fontStretch", "100%"),
+            ("fontVariant", "normal"),
             ("fontVariantCaps", "normal"),
             ("fontFeatureSettings", "normal"),
             ("letterSpacing", "normal"),
@@ -6188,6 +6190,8 @@ mod tests {
         assert_eq!(run(0.0, "48px").len(), 1);
         // Upper-cased, the same DOM text draws other glyphs.
         assert_eq!(run_with(0.0, "52px", &[("textTransform", "uppercase")]).len(), 1);
+        // Other ligatures or numeral forms draw other glyphs too.
+        assert_eq!(run_with(0.0, "52px", &[("fontVariant", "tabular-nums")]).len(), 1);
         // A glyph property the capture did not record is unknown.
         assert_eq!(run_with(0.0, "52px", &[("wordSpacing", "")]).len(), 1);
     }

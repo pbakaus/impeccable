@@ -146,6 +146,7 @@ pub const STYLE_PROPS: &[&str] = &[
     "objectFit",
     "objectPosition",
     "opacity",
+    "order",
     "outline",
     "outlineColor",
     "outlineOffset",

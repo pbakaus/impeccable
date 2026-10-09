@@ -2754,7 +2754,11 @@ fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
             }
             _ => false,
         };
-        if !shows_picture || !z_auto(media) || !(positioned(media) || !positioned(el)) {
+        if !shows_picture
+            || !z_auto(media)
+            || !(positioned(media) || !positioned(el))
+            || !crate::browser::painted::later_sibling_paints_after(dom, parent, el, media)
+        {
             continue;
         }
         if !matches!(dom.style(media, "objectFit").as_str(), "cover" | "fill" | "") {
@@ -6714,6 +6718,31 @@ mod tests {
         assert_eq!(run(&poster, "", 803.0).len(), 1);
     }
 
+    /// A flex or grid container paints its items in `order`: a video later
+    /// in the source with a lower `order` paints under the glow.
+    #[test]
+    fn radial_spotlight_media_cover_follows_css_order() {
+        let run = |section_display: &str, glow_order: &str, video_order: &str| {
+            let (mut d, section, glow) =
+                dark_page_with_glow("radial-gradient(circle, rgba(171, 151, 116, 0.35) 0%, transparent 28%)");
+            d.set_style(section, "display", section_display);
+            d.set_styles(glow, &[("position", "relative"), ("order", glow_order)]);
+            let video = d.add(Some(section), "video");
+            d.set_attr(video, "poster", "/images/poster.jpg");
+            d.set_styles(video, &[("position", "relative"), ("opacity", "0.7"), ("objectFit", "cover"), ("order", video_order)]);
+            d.set_rect(video, 0.0, 0.0, 803.0, 502.0);
+            check_element_radial_spotlight_dom(&d, glow).len()
+        };
+        assert_eq!(run("flex", "0", "0"), 0);
+        assert_eq!(run("grid", "1", "2"), 0);
+        // Ordered first, the video paints under the glow.
+        assert_eq!(run("flex", "2", "1"), 1);
+        // An `order` the capture did not record is unknown.
+        assert_eq!(run("flex", "0", ""), 1);
+        // A block container paints in tree order.
+        assert_eq!(run("block", "2", "1"), 0);
+    }
+
     #[test]
     fn radial_spotlight_measures_a_hero_painted_with_a_gradient() {
         // The commonest way to build this pattern: a glow layer over a hero
@@ -8446,6 +8475,31 @@ mod tests {
         assert!(reports_contrast(&run(Some(false), 1334.0, 35.0)));
         assert!(reports_contrast(&run(None, 1334.0, 35.0)));
         assert!(reports_contrast(&run(Some(true), 1334.0, 12.0)));
+    }
+
+    /// In a flex avatar whose photo wrapper is an in-flow item, CSS `order`
+    /// decides whether the photo paints over the initials.
+    #[test]
+    fn a_photo_ordered_before_the_initials_does_not_cover_them() {
+        let run = |initial_order: &str, wrap_order: &str| {
+            let (mut d, body) = page();
+            let top = 1334.0;
+            let avatar = bare_box(&mut d, body, "div", (665.0, top, 35.0, 35.0));
+            d.set_styles(avatar, &[("position", "relative"), ("display", "flex")]);
+            let initial = faint_copy(&mut d, avatar, "rgb(220, 220, 220)", (670.0, top + 8.0, 20.0, 18.0));
+            d.set_styles(initial, &[("position", "relative"), ("zIndex", "auto"), ("order", initial_order)]);
+            let wrap = bare_box(&mut d, avatar, "div", (665.0, top, 35.0, 35.0));
+            d.set_styles(wrap, &[("position", "relative"), ("zIndex", "auto"), ("opacity", "1"), ("order", wrap_order)]);
+            let img = bare_box(&mut d, wrap, "img", (665.0, top, 35.0, 35.0));
+            d.set_styles(img, &[("opacity", "1"), ("objectFit", "cover")]);
+            d.el_mut(img).image_complete = Some(true);
+            d.el_mut(img).image_natural_size = Some((96.0, 96.0));
+            d.set_attr(img, "src", "/avatars/sophia.webp");
+            reports_contrast(&colors(&d, initial))
+        };
+        assert!(!run("0", "0"));
+        assert!(run("1", "0"));
+        assert!(run("0", ""));
     }
 
     /// A transparent grain overlay laid over a section below the fold: the
