@@ -2161,9 +2161,8 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     // it as plainly and take the same exemption, at any
                     // length and over any number of lines (mialight.app's
                     // caption that wraps on a phone). Every letter has to be
-                    // a capital for that, so a CJK line with one Latin
-                    // acronym in it stays running text unless it is a short
-                    // label on one line.
+                    // a capital for that: a line with one Latin acronym in
+                    // it is not a capitals label.
                     // A link or button label is read at a glance too
                     // (lpga.or.jp's bold CJK "Instagram" link), held to the
                     // same size on one line.
@@ -2175,7 +2174,12 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     let caps_label = st("textTransform") == "uppercase"
                         || (!lowered
                             && (typed_caps_text(dom, el) || typed_caps_label(dom, el, q.line_height_px, false)));
-                    if !caps_label && !control_label {
+                    // Han, kana and Hangul sit in square cells and are set
+                    // with open tracking by convention, as the crushed
+                    // tracking check below already reads them
+                    // (weathernews.jp's FAQ titles at 0.10em).
+                    let cjk = is_cjk_text(&collapse_ws(js::trim(&dom.text_content(el))));
+                    if !caps_label && !control_label && !cjk {
                         findings.push(RuleHit::new(
                             "wide-tracking",
                             format!("letter-spacing: {}em on body text", to_fixed(tracking_em, 2)),
@@ -4956,8 +4960,9 @@ mod tests {
         assert_eq!(ids, vec!["wide-tracking"]);
         d.set_style(s, "textTransform", "none");
 
-        // A long line of Hangul with one Latin acronym in capitals is running
-        // text: the short-label reading needs one line inside the label length.
+        // A long line of Hangul with one Latin acronym in capitals is not a
+        // capitals label, but it is CJK text, which takes open tracking by
+        // convention (observations-47 row 21): no finding.
         let long = text_el(
             &mut d,
             body,
@@ -4969,6 +4974,19 @@ mod tests {
         d.set_styles(long, &[("lineHeight", "26px"), ("letterSpacing", "2px")]);
         d.els[long as usize].direct_text_rect = Some(Rect::from_xywh(40.0, 300.0, 600.0, 52.0));
         let hits = check_element_quality_dom(&d, long, &BrowserConfig::default());
+        assert!(hits.iter().all(|h| h.id != "wide-tracking"), "{hits:?}");
+        // The same run in Latin letters is running text, tracked wide.
+        let latin = text_el(
+            &mut d,
+            body,
+            "p",
+            "Support hours run Monday to Friday, from nine in the morning until six (KST)",
+            "16px",
+        );
+        d.set_rect(latin, 40.0, 500.0, 600.0, 52.0);
+        d.set_styles(latin, &[("lineHeight", "26px"), ("letterSpacing", "2px")]);
+        d.els[latin as usize].direct_text_rect = Some(Rect::from_xywh(40.0, 500.0, 600.0, 52.0));
+        let hits = check_element_quality_dom(&d, latin, &BrowserConfig::default());
         let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
         assert_eq!(ids, vec!["wide-tracking"], "{hits:?}");
         assert_eq!(hits[0].snippet, "letter-spacing: 0.13em on body text");

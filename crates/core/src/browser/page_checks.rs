@@ -134,6 +134,47 @@ fn direct_text_chars(dom: &dyn Dom, el: ElId) -> f64 {
         .sum()
 }
 
+/// The letters of `el`'s own text nodes, and how many of them are Han, kana
+/// or Hangul: `(letters, cjk)`. Digits, punctuation and spaces are neither.
+fn direct_text_letters(dom: &dyn Dom, el: ElId) -> (f64, f64) {
+    let (mut letters, mut cjk) = (0.0, 0.0);
+    for node in dom.direct_text_nodes(el) {
+        for c in node.chars().filter(|c| c.is_alphabetic()) {
+            letters += 1.0;
+            if crate::checks::text_rules::is_cjk_char(c) {
+                cjk += 1.0;
+            }
+        }
+    }
+    (letters, cjk)
+}
+
+/// The letters a page sets in text that has a box, for the CJK test in
+/// [`latin_face_on_a_cjk_page`].
+#[derive(Default)]
+struct LetterTally {
+    letters: f64,
+    cjk: f64,
+    /// Latin (non-CJK) letters per primary face.
+    latin_by_face: Vec<(String, f64)>,
+}
+
+/// Whether `font` heads the stack of a page written mostly in Han, kana or
+/// Hangul and sets under [`OVERUSED_FONT_MIN_CHAR_SHARE`] of its letters.
+/// None of the faces on the overused list has those glyphs: weathernews.jp
+/// names Arial first, and Hiragino and Meiryo set every Japanese letter
+/// (observations-47 row 14). Arial sets the Latin letters and the digits,
+/// about 12% of the characters, but a face is told by its letterforms, and
+/// it sets 3.6% of the letters. A page that is not mostly CJK is weighed by
+/// characters alone, as before.
+fn latin_face_on_a_cjk_page(font: &str, tally: &LetterTally) -> bool {
+    if !(tally.letters > 0.0) || tally.cjk * 2.0 <= tally.letters {
+        return false;
+    }
+    let latin = tally.latin_by_face.iter().find(|(k, _)| k == font).map_or(0.0, |(_, c)| *c);
+    latin / tally.letters < OVERUSED_FONT_MIN_CHAR_SHARE
+}
+
 /// Whether an element's text is laid out for a visitor: neither it nor an
 /// ancestor is `hidden`, `display: none`, `visibility: hidden` or
 /// `content-visibility: hidden`. Opacity is deliberately not read: copy
@@ -167,6 +208,7 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
     let mut total_text_elements = 0.0f64;
     let mut font_chars: Vec<(String, f64)> = Vec::new();
     let mut total_text_chars = 0.0f64;
+    let mut letter_tally = LetterTally::default();
     for el in dom
         .query_all(
             None,
@@ -183,7 +225,9 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
         // The characters each face sets in text that has a box: what
         // stands a finding down when the face it names sets next to none of
         // what a visitor reads (below).
-        let weight = if font_text_has_a_box(dom, el) { direct_text_chars(dom, el) } else { 0.0 };
+        let has_a_box = font_text_has_a_box(dom, el);
+        let weight = if has_a_box { direct_text_chars(dom, el) } else { 0.0 };
+        let (letters, cjk) = if has_a_box { direct_text_letters(dom, el) } else { (0.0, 0.0) };
         let ff = dom.style(el, "fontFamily");
         if ff.is_empty() {
             continue;
@@ -215,6 +259,15 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
             }
             total_text_chars += weight;
         }
+        if letters > 0.0 {
+            letter_tally.letters += letters;
+            letter_tally.cjk += cjk;
+            if let Some(slot) = letter_tally.latin_by_face.iter_mut().find(|(k, _)| k == primary) {
+                slot.1 += letters - cjk;
+            } else {
+                letter_tally.latin_by_face.push((primary.clone(), letters - cjk));
+            }
+        }
     }
 
     if total_text_elements >= 20.0 {
@@ -232,6 +285,7 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
                 if OVERUSED_FONTS.contains(&font.as_str())
                     && !is_brand_font_on_own_domain(font, Some(&hostname))
                     && !sets_next_to_none_of_the_text(font, &font_chars, total_text_chars)
+                    && !latin_face_on_a_cjk_page(font, &letter_tally)
                 {
                     findings.push(BrowserFinding::new(
                         "overused-font",
@@ -4258,6 +4312,30 @@ mod tests {
         assert_eq!(font_finding(&build("Go")), None);
         // 100 of 1,100: 9.1%, and the snippet is the element share.
         assert_eq!(font_finding(&build("Label")).as_deref(), Some("Primary font: inter (80% of text)"));
+    }
+
+    /// weathernews.jp: Arial heads a Japanese page's stack, and the CJK
+    /// faces after it set every Japanese letter. Arial sets the few Latin
+    /// letters, under one in twenty; digits name no face.
+    #[test]
+    fn a_latin_face_first_in_a_cjk_stack_sets_only_the_latin_letters() {
+        let build = |latin: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            for _ in 0..25 {
+                typeset(&mut d, body, "p", &format!("{latin} 2026年10月8日 全国の天気予報と防災情報、気象ニュースをお届けします"), "Arial, \"Hiragino Sans\", Meiryo, sans-serif");
+            }
+            d
+        };
+        // One Latin letter in 30: 3.3%.
+        assert_eq!(font_finding(&build("x")), None);
+        // A Latin page set in the same stack still names Arial.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for _ in 0..25 {
+            typeset(&mut d, body, "p", "Weather forecasts and alerts for today", "Arial, \"Hiragino Sans\", sans-serif");
+        }
+        assert_eq!(font_finding(&d).as_deref(), Some("Primary font: arial (100% of text)"));
     }
 
     /// Only text with a box is weighed: the long copy in a closed drawer does
