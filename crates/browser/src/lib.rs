@@ -2069,6 +2069,7 @@ fn run_visual_contrast_fallback(
     }
     let mut routed_spent = std::time::Duration::ZERO;
     let mut routed_misses = 0usize;
+    let mut pixel_pairs: Vec<String> = Vec::new();
     for candidate in filtered {
         let sel = candidate.get("selector").and_then(Value::as_str);
         // A read the first budget's rules would not have made.
@@ -2118,9 +2119,46 @@ fn run_visual_contrast_fallback(
                 superseded.push(key);
             }
         }
-        findings.extend(result);
+        let routed_candidate = is_routed(candidate);
+        findings.extend(
+            result
+                .into_iter()
+                .filter(|f| {
+                    keep_pixel_finding(&mut pixel_pairs, candidate, routed_candidate, &f.severity, &f.snippet)
+                }),
+        );
     }
     Ok((findings, superseded))
+}
+
+/// The colour pair a pixel-pass finding reports: the candidate's ink, its
+/// severity and the snippet without the text it quotes, so the ratio, the
+/// bar and the reasons. An advisory read on decorative text (an avatar
+/// initial) does not claim the pair for counted text wearing it.
+fn pixel_pair_key(candidate: &Value, severity: &str, snippet: &str) -> String {
+    let text = candidate.get("text").and_then(Value::as_str).unwrap_or("");
+    let bare = if text.is_empty() {
+        snippet
+    } else {
+        snippet.strip_suffix(&format!(" \"{text}\"")).unwrap_or(snippet)
+    };
+    let ink = candidate.get("textColor").map(Value::to_string).unwrap_or_default();
+    format!("{ink}\u{1f}{severity}\u{1f}{bare}")
+}
+
+/// Whether a pixel-pass finding reports, given the pairs the page's pixel
+/// findings already reported (`seen`, which this extends). Text the element
+/// pass hands over reports a pair once per page, as the element pass does:
+/// auction.co.kr's five header links each sit on a divider sprite, each was
+/// routed to the pixels, and each printed the same 4.48:1 for the same ink.
+/// A first-budget finding always reports, and claims its pair.
+fn keep_pixel_finding(seen: &mut Vec<String>, candidate: &Value, routed: bool, severity: &str, snippet: &str) -> bool {
+    let key = pixel_pair_key(candidate, severity, snippet);
+    if seen.contains(&key) {
+        return !routed;
+    }
+    seen.push(key);
+    true
 }
 
 fn truthy(v: Option<&Value>) -> bool {
@@ -2136,6 +2174,30 @@ fn truthy(v: Option<&Value>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_routed_pixel_pair_reports_once_per_page() {
+        let link = |text: &str| json!({"selector": "a", "text": text, "textColor": {"r": 51.0, "g": 51.0, "b": 51.0, "a": 1.0}});
+        // The snippet the pixel pass writes for these links.
+        let snippet = |text: &str| {
+            screenshot_contrast::pixel_contrast_snippet(4.48, 4.48, &json!(4.5), "image background, unread layer", &format!(" \"{text}\""))
+        };
+        let mut seen = Vec::new();
+        assert!(keep_pixel_finding(&mut seen, &link("로그인"), true, "warning", &snippet("로그인")));
+        assert!(!keep_pixel_finding(&mut seen, &link("회원가입"), true, "warning", &snippet("회원가입")));
+        // Another ratio, or another ink, is another pair.
+        let other = screenshot_contrast::pixel_contrast_snippet(3.9, 3.9, &json!(4.5), "image background, unread layer", " \"고객센터\"");
+        assert!(other.starts_with("pixel contrast 3.9:1"), "{other}");
+        assert!(keep_pixel_finding(&mut seen, &link("고객센터"), true, "warning", &other));
+        let red = json!({"selector": "a", "text": "장바구니", "textColor": {"r": 200.0, "g": 0.0, "b": 0.0, "a": 1.0}});
+        assert!(keep_pixel_finding(&mut seen, &red, true, "warning", &snippet("장바구니")));
+        // The first budget always reports.
+        assert!(keep_pixel_finding(&mut seen, &link("마이페이지"), false, "warning", &snippet("마이페이지")));
+        // An advisory read on decorative text does not claim the pair for
+        // counted text wearing it (an avatar initial and a digit beside it).
+        assert!(keep_pixel_finding(&mut seen, &link("S"), true, "advisory", &snippet("S")));
+        assert!(!keep_pixel_finding(&mut seen, &link("T"), true, "advisory", &snippet("T")));
+    }
 
     #[test]
     fn a_resolved_analysis_replaces_a_routed_element_verdict() {

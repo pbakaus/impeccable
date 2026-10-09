@@ -128,6 +128,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         add(&mut reasons, "text shadow");
     }
 
+    let mut faded: Vec<ElId> = Vec::new();
     let mut current = Some(el);
     while let Some(cur) = current {
         // A `display: contents` box paints nothing (Framer's page root at
@@ -149,6 +150,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         }
         if parse_float(&dom.style(cur, "opacity")) < 0.99 {
             add(&mut reasons, "opacity stack");
+            faded.push(cur);
         }
         let mix = dom.style(cur, "mixBlendMode");
         if !mix.is_empty() && mix != "normal" {
@@ -181,6 +183,11 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
             break;
         }
         current = dom.parent(cur);
+    }
+    // A fade the element pass folds into the colours it scores is no reason
+    // to read pixels (`opacity_fold_scores_fades`).
+    if !faded.is_empty() && super::element_checks::opacity_fold_scores_fades(dom, el, &faded) {
+        reasons.retain(|r| r != "opacity stack");
     }
 
     let sample_rect = dom.direct_text_rect(el).unwrap_or_else(|| dom.rect(el));
@@ -235,6 +242,16 @@ const MEDIA_TAGS: &[&str] = &["img", "picture", "video", "canvas"];
 const LAYER_MAX_LEVELS: usize = 32;
 const LAYER_MAX_SIBLINGS: usize = 32;
 const LAYER_MAX_DEPTH: usize = 6;
+/// How deep [`layer_in_box`] follows a chain of boxes that each cover the
+/// whole run, past [`LAYER_MAX_DEPTH`]: a slider nests its hero photo a dozen
+/// wrappers down (visitabudhabi.ae's `<picture>` is 16 boxes under the white
+/// page wrapper it paints over), and every box on the way covers the text.
+/// Narrower by design: past [`LAYER_MAX_DEPTH`] a `display: contents` or
+/// zero-height wrapper ends the chain, and children are visited in reverse
+/// document order, not z-order, so a deep stack of slides told apart only by
+/// a `clip-path` may answer with an inactive slide's paint. A picture routes
+/// to the pixels, which bounds the harm; a fill from such a slide would not.
+const LAYER_MAX_COVER_DEPTH: usize = 24;
 const LAYER_MAX_CHILDREN: usize = 64;
 const LAYER_MAX_NODES: usize = 1024;
 
@@ -299,6 +316,21 @@ fn raster_tiles_as_texture(dom: &dyn Dom, node: ElId) -> bool {
     }
     drawn_image_size(dom, node)
         .map_or(false, |(w, h)| w <= TEXTURE_MAX_TILE_PX && h <= TEXTURE_MAX_TILE_PX)
+}
+
+/// Whether the page ground carries a picture: `body` or `html` paints a
+/// raster background that is not a small repeating texture
+/// ([`raster_tiles_as_texture`]). The climb reads the document's images as
+/// no layer over it, because where the image is drawn (a `repeat-x` strip at
+/// `auto` size, a centred photo) is not in the capture; but text in exactly
+/// the ground's own colour over such a page is text the author set on the
+/// image (schlittermann.de's white tagline on a crimson `bg.png` header
+/// strip), and its `1.0:1` against the fill is not a verdict the engine can
+/// confirm.
+pub(crate) fn page_ground_paints_picture(dom: &dyn Dom) -> bool {
+    [dom.body(), dom.document_element()].into_iter().flatten().any(|node| {
+        URL_RE.is_match(&dom.style(node, "backgroundImage")) && !raster_tiles_as_texture(dom, node)
+    })
 }
 
 /// Whether a box's background image is an icon rather than a picture: one
@@ -687,6 +719,36 @@ fn pseudo_order(dom: &dyn Dom, node: ElId, which: &str) -> Order {
     }
 }
 
+/// Whether `node`'s `which` pseudo-element paints over the fills between it
+/// and the text, as far as the capture says ([`pseudo_order`]).
+pub(crate) fn pseudo_paints_over(dom: &dyn Dom, node: ElId, which: &str) -> bool {
+    pseudo_order(dom, node, which) == Order::Over
+}
+
+/// Whether `node`'s `which` pseudo-element is a face between its own
+/// background and its own text over `text`. The text is the host's inline
+/// content, which every positioned box at `z-index: auto` or above paints
+/// over, so only a negative `z-index` the host's stacking context keeps
+/// over its background ([`pseudo_order`]) is under the glyphs. A pseudo
+/// the capture places must cover the text run: a full-size face parked at
+/// `top: 100%` is not under it. One it cannot place is left to the
+/// caller's size test.
+pub(crate) fn pseudo_face_under_text(dom: &dyn Dom, node: ElId, which: &str, text: &Rect) -> bool {
+    let z = dom.pseudo_style(node, which, "zIndex").unwrap_or_default();
+    let z = js::trim(&z);
+    if z.is_empty() || z == "auto" {
+        return false;
+    }
+    let v = parse_float(z);
+    if !(v.is_finite() && v < 0.0) || !pseudo_paints_over(dom, node, which) {
+        return false;
+    }
+    match pseudo_box(dom, node, which) {
+        Some((b, _)) => rect_covers(&b, text),
+        None => true,
+    }
+}
+
 /// A `::before` or `::after` painting something over the whole text run.
 /// A small pseudo (an underline, a bullet, a badge dot) is not a surface,
 /// and neither is one laid out inline, one placed off the text (a "Most
@@ -972,12 +1034,24 @@ fn layer_in_box(
     if covers && beneath && !skipped && MEDIA_TAGS.contains(&tag_lower(dom, node).as_str()) {
         return Some((Paint::Picture, node));
     }
-    if depth < LAYER_MAX_DEPTH && (covers || overflow_visible(dom, node)) {
+    // Past the first levels, only a chain of boxes that each cover the run is
+    // followed: those are the wrappers a picture sits in, and a box that does
+    // not cover the run says nothing about the paint under all of it.
+    let deep = depth >= LAYER_MAX_DEPTH;
+    if (depth < LAYER_MAX_DEPTH && (covers || overflow_visible(dom, node)))
+        || (depth < LAYER_MAX_COVER_DEPTH && covers)
+    {
         let children = dom.children(node);
         let reaching = children
             .iter()
             .rev()
-            .filter(|&&child| may_reach_text(dom, child, text))
+            .filter(|&&child| {
+                if deep {
+                    rect_covers(&dom.rect(child), text)
+                } else {
+                    may_reach_text(dom, child, text)
+                }
+            })
             .take(LAYER_MAX_CHILDREN);
         for &child in reaching {
             if let Some(paint) =
@@ -3607,6 +3681,49 @@ mod tests {
         assert_eq!(sampled_verdict(&[3.0]), 3.0);
     }
 
+    /// observations-47 row 10, doub.ly 323592: an `opacity-80` footer note
+    /// over the page's near-black. The element pass folds the fade into the
+    /// ink and passes it at 4.92:1, so the fade is no reason to read pixels
+    /// (the glyph-core median of its 12px strokes printed 4.47). A fade on
+    /// the box that paints the surface fades the surface too, over paint the
+    /// walk never read, and stays a reason.
+    #[test]
+    fn a_fade_the_element_pass_folds_is_no_reason_to_read_pixels() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        for n in [html, body] {
+            d.set_styles(n, &[("backgroundColor", "rgb(5, 5, 7)"), ("backgroundImage", "none"), ("opacity", "1")]);
+        }
+        let footer = d.add(Some(body), "footer");
+        d.set_styles(footer, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("backgroundImage", "none")]);
+        d.set_rect(footer, 0.0, 1500.0, 1280.0, 170.0);
+        let p = d.add(Some(footer), "p");
+        d.add_text(p, "Not affiliated with The Mechanical Licensing Collective.");
+        d.set_styles(
+            p,
+            &[
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("backgroundImage", "none"),
+                ("color", "rgb(154, 152, 173)"),
+                ("fontSize", "12px"),
+                ("opacity", "0.8"),
+            ],
+        );
+        d.set_rect(p, 84.0, 1591.0, 768.0, 39.0);
+        d.set_text_rect(p, 84.0, 1592.0, 753.0, 34.0);
+        assert!(collect_visual_contrast_reasons(&d, p).is_empty());
+        // Over a page ground that carries a photo, the fold composites over
+        // the ground's fill, which is not what the text sits on: the fade
+        // stays a reason (review B2).
+        d.set_styles(body, &[("backgroundImage", "url(\"/hero.jpg\")"), ("backgroundSize", "cover")]);
+        assert_eq!(collect_visual_contrast_reasons(&d, p), vec!["opacity stack".to_string()]);
+        d.set_styles(body, &[("backgroundImage", "none"), ("backgroundSize", "auto")]);
+        // The fade on the surface's own box.
+        d.set_style(p, "opacity", "1");
+        d.set_styles(footer, &[("backgroundColor", "rgb(20, 20, 24)"), ("opacity", "0.8")]);
+        assert_eq!(collect_visual_contrast_reasons(&d, p), vec!["opacity stack".to_string()]);
+    }
+
     #[test]
     fn a_frosted_header_whose_own_fill_is_opaque_blocks_nothing() {
         // bookerapp.replit.app: shadcn's `bg-background/95 backdrop-blur`.
@@ -3864,8 +3981,10 @@ mod tests {
         let mut d = FakeDom::new();
         let (_h, body) = d.with_page();
         d.set_styles(body, &[("backgroundColor", "rgb(255, 255, 255)"), ("backgroundImage", "none")]);
+        // The row paints the surface it fades, so the element pass's fold
+        // does not score the fade and the pixels are asked.
         let row = d.add(Some(body), "div");
-        d.set_styles(row, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("backgroundImage", "none"), ("opacity", "0.5")]);
+        d.set_styles(row, &[("backgroundColor", "rgb(240, 240, 240)"), ("backgroundImage", "none"), ("opacity", "0.5")]);
         d.set_rect(row, 0.0, 0.0, 400.0, 40.0);
         let p = d.add(Some(row), "p");
         d.add_text(p, "Pick a template:");
@@ -4643,6 +4762,65 @@ mod tests {
         // climb reaches the page, and only the hit test is left to answer.
         let (d, overline, img) = build("block");
         assert_ne!(layer_under_text_found(&d, overline).1, Some(img));
+    }
+
+    /// observations-47 row 5, visitabudhabi.ae 324008: the header's links sit
+    /// on a translucent bar over the hero photo, which a slider nests 16
+    /// boxes inside the white page wrapper it paints over (a `z-index:
+    /// -1111` layer inside the wrapper's own stacking context). The climb
+    /// follows the chain of wrappers that each cover the run past its usual
+    /// depth and finds the photo, where it used to stop and read the
+    /// wrapper's white. A chain that stops covering the run is not followed
+    /// that deep.
+    #[test]
+    fn the_climb_follows_covering_wrappers_down_to_a_deep_picture() {
+        let build = |depth: usize, gap_at: Option<usize>| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
+            let header = d.add(Some(body), "header");
+            d.set_styles(header, &[("position", "fixed"), ("zIndex", "10"), ("display", "block")]);
+            d.set_rect(header, 0.0, 0.0, 1280.0, 106.0);
+            let link = d.add(Some(header), "a");
+            d.add_text(link, "Partners");
+            d.set_styles(link, &[("display", "block"), ("color", "rgb(255, 255, 255)"), ("fontSize", "11px")]);
+            d.set_rect(link, 40.0, 7.0, 49.0, 13.0);
+            d.set_text_rect(link, 40.0, 7.0, 49.0, 13.0);
+            let wrapper = d.add(Some(body), "div");
+            d.set_styles(
+                wrapper,
+                &[("position", "relative"), ("zIndex", "2"), ("display", "block"), ("backgroundColor", "rgb(255, 255, 255)")],
+            );
+            d.set_rect(wrapper, 0.0, 0.0, 1280.0, 4689.0);
+            let mut parent = wrapper;
+            for level in 0..depth {
+                let next = d.add(Some(parent), "div");
+                let z = if level == 0 { "-1111" } else { "auto" };
+                d.set_styles(next, &[("position", "relative"), ("zIndex", z), ("display", "block")]);
+                if gap_at == Some(level) {
+                    d.set_rect(next, 0.0, 200.0, 1280.0, 600.0);
+                } else {
+                    d.set_rect(next, 0.0, 0.0, 1280.0, 801.0);
+                }
+                parent = next;
+            }
+            let img = d.add(Some(parent), "img");
+            d.set_styles(img, &[("position", "absolute"), ("display", "block")]);
+            d.set_rect(img, 0.0, 0.0, 1280.0, 802.0);
+            (d, link, img)
+        };
+        let (d, link, img) = build(15, None);
+        assert_eq!(layer_under_text_found(&d, link), (LayerUnder::Picture, Some(img)));
+        // Within the usual depth the photo was always found.
+        let (d, link, img) = build(4, None);
+        assert_eq!(layer_under_text_found(&d, link), (LayerUnder::Picture, Some(img)));
+        // A wrapper deep in the chain that does not cover the run ends it,
+        // and the climb reads the wrapper's white as before.
+        let (d, link, _) = build(15, Some(10));
+        assert!(matches!(layer_under_text_found(&d, link).0, LayerUnder::Detached(_)));
+        // So does a chain deeper than the bound.
+        let (d, link, _) = build(LAYER_MAX_COVER_DEPTH + 2, None);
+        assert!(matches!(layer_under_text_found(&d, link).0, LayerUnder::Detached(_)));
     }
 
     /// observations-42 row 12, telekom.de: a consent notice scrolls its list

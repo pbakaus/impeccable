@@ -529,6 +529,166 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
     None
 }
 
+/// The most colours a layered pseudo face may combine into before it is
+/// read as too busy to score stop by stop: still the surface under the
+/// text, so the host's background is not scored in its place, but one the
+/// verdict is withheld on.
+const FACE_COLOURS_MAX: usize = 256;
+
+/// The colours an opaque gradient face drawn by a positioned `::before` or
+/// `::after` puts under the whole text run, where it paints over the box's
+/// own background (its `z-index` puts it there, as an `isolate` button's
+/// `::after { z-index: -1 }` does): the stops of its bottom layer, every one
+/// opaque, plus what each translucent layer above makes of every colour the
+/// layers beneath it show, bottom-up. ardainc.com's CTA draws a dark `linear-gradient` face, under a 14%
+/// white highlight, inside a 1.6px conic ring on the button itself, and the
+/// walk scored its near-white label against the ring's white stop.
+///
+/// Every translucent wash is composited over every colour beneath it,
+/// wherever on the face the wash is drawn, so a highlight far from the label still adds
+/// its lighter colours to the stops the verdict takes the worst of: a
+/// light-on-light face can fail where the label itself passes.
+///
+/// `None` where the pseudo is not a face over the run (the same placement
+/// tests as [`read_pseudo_surface_dom`]; an explicit `opacity: 0`,
+/// `visibility: hidden`, a transform, translate or scale other than the
+/// identity,
+/// or a bottom layer drawn once at a stated size), where its colour is
+/// what paints (that function reads it), where any layer is not a gradient
+/// or the bottom layer lets something through, where the capture places it
+/// off the text run, and where it is not at a negative `z-index` the
+/// capture can say paints over the box: at `auto` or above, a positioned
+/// face paints over the host's own text, not under it. `Some((None, _))`
+/// where the face is there but combines into more than
+/// [`FACE_COLOURS_MAX`] colours.
+pub(crate) fn read_pseudo_gradient_face(
+    dom: &dyn Dom,
+    el: ElId,
+    rect: &Rect,
+) -> Option<(Option<Vec<Rgba>>, &'static str)> {
+    for which in PSEUDOS {
+        if !pseudo_present(dom, el, which) {
+            continue;
+        }
+        let position = pseudo_str(dom, el, which, "position");
+        if position != "absolute" && position != "fixed" {
+            continue;
+        }
+        // An explicit 0 is 0: the hover face parked at `opacity: 0` until
+        // `:hover::before { opacity: 1 }` paints nothing at rest. Only an
+        // opacity the capture did not read counts as 1.
+        let opacity = {
+            let raw = pseudo_str(dom, el, which, "opacity");
+            let n = parse_float(&raw);
+            if js::trim(&raw).is_empty() || !n.is_finite() {
+                1.0
+            } else {
+                n
+            }
+        };
+        if pseudo_str(dom, el, which, "display") == "none"
+            || pseudo_str(dom, el, which, "visibility") == "hidden"
+            || opacity < 0.9
+        {
+            continue;
+        }
+        // A face moved or scaled at rest (a slide-in parked at
+        // `translateX(-101%)` or `scaleX(0)`) may not be under the text; the
+        // capture places only one that is not transformed.
+        // `translate: 0px` and `scale: 1` are the identity; `scale: 0` is a
+        // face parked at nothing.
+        let individual = |prop: &str, identity: f64| {
+            let raw = pseudo_str(dom, el, which, prop);
+            let raw = js::trim(&raw);
+            raw.is_empty() || raw == "none" || raw.split_whitespace().all(|t| parse_float(t) == identity)
+        };
+        let matrix: String = pseudo_str(dom, el, which, "transform").split_whitespace().collect();
+        let untransformed = matrix.is_empty() || matrix == "none" || is_identity_matrix(&matrix);
+        if !(untransformed && individual("translate", 0.0) && individual("scale", 1.0)) {
+            continue;
+        }
+        let w = pseudo_px(dom, el, which, "width");
+        let h = pseudo_px(dom, el, which, "height");
+        if w < rect.width - 4.0 || h < rect.height - 4.0 {
+            continue;
+        }
+        if parse_rgb_or_any(&pseudo_str(dom, el, which, "backgroundColor")).is_some_and(|c| c.alpha_or_one() > 0.05) {
+            continue;
+        }
+        // A bottom layer drawn once at a stated size (a strip, a corner wash)
+        // does not paint under the whole run.
+        let shorthand = js::to_lower_case(&pseudo_str(dom, el, which, "background"));
+        if let Some(bottom) = crate::color::split_top_level_commas(&shorthand).last() {
+            let once = bottom.contains("no-repeat") || bottom.contains("repeat-x") || bottom.contains("repeat-y");
+            let size = bottom.split('/').nth(1).map(|t| {
+                t.split_whitespace()
+                    .take_while(|w| !w.ends_with("-box") && *w != "text")
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
+            let fills = size.as_deref().map_or(true, |s| {
+                matches!(s, "" | "auto" | "auto auto" | "cover" | "100%" | "100% 100%")
+            });
+            if once && !fills {
+                continue;
+            }
+        }
+        let image = pseudo_str(dom, el, which, "backgroundImage");
+        let layers = crate::color::split_top_level_commas(&image);
+        let mut stops_by_layer = Vec::with_capacity(layers.len());
+        for layer in &layers {
+            let layer = js::trim(layer);
+            if !layer.to_ascii_lowercase().contains("gradient(") {
+                stops_by_layer.clear();
+                break;
+            }
+            match measures::parse_gradient_layer_stops(layer) {
+                Some(stops) => stops_by_layer.push(stops),
+                None => {
+                    stops_by_layer.clear();
+                    break;
+                }
+            }
+        }
+        let Some((base, washes)) = stops_by_layer.split_last() else { continue };
+        let base: Vec<Rgba> = base.iter().filter_map(|s| s.color).collect();
+        if base.is_empty() || base.iter().any(|c| c.alpha_or_one() < 0.95) {
+            continue;
+        }
+        let text = dom.direct_text_rect(el).unwrap_or(*rect);
+        if !crate::browser::visual::pseudo_face_under_text(dom, el, which, &text) {
+            continue;
+        }
+        // Bottom-up: each translucent layer lands on every colour the layers
+        // beneath it can show, so two 30% white washes over black reach
+        // #828282 where one alone stops at #4d4d4d. A colour under no wash
+        // stays, since a wash need not be drawn over the whole face.
+        // Past [`FACE_COLOURS_MAX`] the combining stops at once.
+        let mut colours: Vec<Rgba> = base.iter().map(|c| Rgba { a: Some(1.0), ..*c }).collect();
+        let mut too_busy = colours.len() > FACE_COLOURS_MAX;
+        'layers: for layer in washes.iter().rev() {
+            let below = colours.clone();
+            for wash in layer.iter().filter_map(|s| s.color) {
+                if wash.alpha_or_one() <= 0.05 {
+                    continue;
+                }
+                for b in &below {
+                    let c = composite_color_over(&wash, b);
+                    if !colours.contains(&c) {
+                        colours.push(c);
+                        if colours.len() > FACE_COLOURS_MAX {
+                            too_busy = true;
+                            break 'layers;
+                        }
+                    }
+                }
+            }
+        }
+        return Some(((!too_busy).then_some(colours), which));
+    }
+    None
+}
+
 // ── colors ────────────────────────────────────────────────────────────────
 
 /// Whether an ancestor carrying direct text is one the contrast pass
@@ -1010,10 +1170,9 @@ pub(crate) fn filtered_colour(filter: &str, c: &Rgba) -> Option<Rgba> {
 /// the last step of a hover fade.
 const FILTER_MAX_CHANNEL_DRIFT: f64 = 2.0;
 
-/// Whether the glyphs of `el`, or the surface under them, paint in colours
-/// other than the ones the contrast checks read (`ink`, and `surface`: the
-/// colour or the gradient samples of the box `surface_host`), so that no
-/// verdict about those is about what a reader sees:
+/// What the glyphs of `el` and the surface under them paint, against the
+/// colours the contrast checks read (`ink`, and `surface`: the colour or the
+/// gradient samples of the box `surface_host`):
 ///
 /// - SVG text paints its `fill`, which the capture does not record, and with
 ///   no `fill` it paints black whatever `color` it inherits
@@ -1022,23 +1181,31 @@ const FILTER_MAX_CHANNEL_DRIFT: f64 = 2.0;
 ///   `color` only where the markup says so ([`svg_fill_is_current_colour`]).
 /// - A `filter` on the element or on a box around it repaints them where it
 ///   moves the ink, or the surface of a box inside the filtered one
-///   ([`filtered_colour`]), or cannot be modelled:
-///   walla.co.il's `.filter-light` is `grayscale(1) brightness(0) invert(1)`,
-///   which paints `#363636` text white. A filter that leaves both where
-///   they are (`grayscale(1)` over grey text on a grey band, `brightness(1)`
-///   waiting for a hover) changes nothing and the verdict stands.
+///   ([`filtered_colour`]), or cannot be modelled. A filter that leaves both
+///   where they are (`grayscale(1)` over grey text on a grey band,
+///   `brightness(1)` waiting for a hover) changes nothing.
 ///
-/// The pixel pass refuses a filtered box as well, so nothing reports there.
-pub(crate) fn ink_is_not_computed_colour(
+/// A modelled filter on a box that holds the surface (the surface's own box
+/// or one around it) repaints the ink and the surface alike, and the
+/// verdict is read on what it paints ([`InkPaint::Filtered`]): sinter.systems'
+/// `a.primary` is white on a yellow it desaturates with `saturate(0.7)`, and
+/// nobody scored it. A filter below the surface's box that moves the ink
+/// repaints the ink alone over a surface the walk may not have read the
+/// way the page shows it (walla.co.il's `.filter-light`, `grayscale(1)
+/// brightness(0) invert(1)`, paints `#363636` text white over a band), and a
+/// filter that cannot be modelled, or that a running animation is moving,
+/// leaves no verdict ([`InkPaint::Unknown`]). The pixel pass refuses a
+/// filtered box as well.
+pub(crate) fn ink_paint(
     dom: &dyn Dom,
     el: ElId,
     ink: Option<Rgba>,
     surface: &[Rgba],
     surface_host: Option<ElId>,
-) -> bool {
+) -> InkPaint {
     const MAX_ANCESTORS: usize = 64;
     if dom.namespace_uri(el) == SVG_NS && !svg_fill_is_current_colour(dom, el) {
-        return true;
+        return InkPaint::Unknown;
     }
     let moves = |filter: &str, colour: &Rgba| match filtered_colour(filter, colour) {
         None => true,
@@ -1048,25 +1215,79 @@ pub(crate) fn ink_is_not_computed_colour(
                 || (painted.b - colour.b).abs() > FILTER_MAX_CHANNEL_DRIFT
         }
     };
+    let mut filters: Vec<String> = Vec::new();
+    let mut painted_ink = ink;
+    let mut painted_surface: Vec<Rgba> = surface.to_vec();
     // Past the box that paints the surface, a filter holds the surface too.
     let mut holds_surface = false;
     let mut cur = Some(el);
     for _ in 0..MAX_ANCESTORS {
-        let Some(c) = cur else { return false };
+        let Some(c) = cur else { break };
         holds_surface = holds_surface || Some(c) == surface_host;
         let filter = dom.style(c, "filter");
         let filter = js::trim(&filter);
         if !filter.is_empty() && filter != "none" {
-            if filter_functions(filter).is_none() || ink.is_some_and(|ink| moves(filter, &ink)) {
-                return true;
+            if filter_functions(filter).is_none() {
+                return InkPaint::Unknown;
             }
-            if holds_surface && surface.iter().any(|colour| moves(filter, colour)) {
-                return true;
+            let ink_moves = painted_ink.is_some_and(|ink| moves(filter, &ink));
+            let surface_moves = holds_surface && painted_surface.iter().any(|colour| moves(filter, colour));
+            if ink_moves || surface_moves {
+                // A filter mid-transition or mid-animation is not the one a
+                // reader meets at rest; one below the surface's box repaints
+                // the ink over a surface it does not hold.
+                let in_motion = dom
+                    .running_animation_properties(c)
+                    .is_some_and(|props| props.iter().any(|p| p == "filter"));
+                // A blurred "locked" preview is not text a reader is asked to
+                // read, whatever colours it lands on.
+                if !holds_surface || in_motion || has_active_blur(filter) {
+                    return InkPaint::Unknown;
+                }
+                let paint = |colour: &Rgba| filtered_colour(filter, colour);
+                painted_ink = match painted_ink {
+                    Some(ink) => match paint(&ink) {
+                        Some(p) => Some(p),
+                        None => return InkPaint::Unknown,
+                    },
+                    None => None,
+                };
+                let mut next = Vec::with_capacity(painted_surface.len());
+                for colour in &painted_surface {
+                    match paint(colour) {
+                        Some(p) => next.push(p),
+                        None => return InkPaint::Unknown,
+                    }
+                }
+                painted_surface = next;
+                filters.push(filter.to_string());
             }
         }
         cur = dom.flat_parent(c);
     }
-    false
+    if filters.is_empty() {
+        InkPaint::Computed
+    } else {
+        InkPaint::Filtered(filters)
+    }
+}
+
+/// What [`ink_paint`] says the text and its surface paint.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum InkPaint {
+    /// The computed colours, as the checks read them.
+    Computed,
+    /// Colours the engine cannot name: no verdict about the computed ones is
+    /// about what a reader sees.
+    Unknown,
+    /// The computed colours repainted by these filters, innermost first,
+    /// over the text and its surface alike.
+    Filtered(Vec<String>),
+}
+
+/// `colour` through each of `filters` in turn ([`filtered_colour`]).
+pub(crate) fn through_filters(filters: &[String], colour: &Rgba) -> Option<Rgba> {
+    filters.iter().try_fold(*colour, |c, f| filtered_colour(f, &c))
 }
 
 /// Whether SVG text is filled with its own `color`: the nearest `fill` the
@@ -1195,7 +1416,9 @@ fn fold_surface_opacity(
         }
         let fill = surface.overlays.iter().find(|(n, _)| *n == c).map(|(_, f)| *f);
         let opacity = opacity_of(dom, c);
-        let opacity = if opacity < 0.999 && !opacity_at_rest(dom, c, opacity) {
+        let opacity = if let Some(end) = crate::browser::painted::scroll_held_end_opacity(dom, c) {
+            end
+        } else if opacity < 0.999 && !opacity_at_rest(dom, c, opacity) {
             1.0
         } else {
             opacity
@@ -1225,6 +1448,66 @@ fn fold_surface_opacity(
     let (fg, bg) = geo::fold_opacity(ink, &layers, &base);
     *effective_bg = Some(bg);
     Some(fg)
+}
+
+/// Whether the element pass's opacity fold ([`fold_surface_opacity`])
+/// scores every fade in `faded` (boxes on `el`'s ancestor chain, `el`
+/// included, below an opacity of 1): each is below the box that ends the
+/// surface walk, and the fold reads the stack. Then the colours the pixel
+/// pass would sample are colours the element pass already computed, and a
+/// fade is no reason to read pixels: doub.ly's `opacity-80` footer note
+/// computes 4.92:1, and the glyph-core median of its 12px strokes printed
+/// 4.47. A fade at or above the surface's box, a surface the walk could not
+/// resolve, a pseudo-element surface, or a fold that gives up keeps the
+/// fade a reason, and so does a surface on a page ground that paints a
+/// picture ([`crate::browser::visual::page_ground_paints_picture`]).
+pub(crate) fn opacity_fold_scores_fades(dom: &dyn Dom, el: ElId, faded: &[ElId]) -> bool {
+    if faded.is_empty() {
+        return true;
+    }
+    let ink_el = dom.text_slot(el).unwrap_or(el);
+    let Some(ink) = parse_rgb_or_any(&dom.style(ink_el, "color")) else {
+        return false;
+    };
+    let rect = dom.rect(el);
+    let own = read_own_background_color(dom, el);
+    if own.map_or(true, |c| c.alpha_or_one() <= 0.5)
+        && (read_pseudo_surface_dom(dom, el, &rect).is_some() || read_pseudo_gradient_face(dom, el, &rect).is_some())
+    {
+        return false;
+    }
+    let font_size = {
+        let n = parse_float(&dom.style(ink_el, "fontSize"));
+        if num_truthy(n) {
+            n
+        } else {
+            16.0
+        }
+    };
+    let text_box = {
+        let r = dom.direct_text_rect(el).unwrap_or(rect);
+        Box2::new(r.left, r.top, r.width, r.height)
+    };
+    let surface = resolve_text_surface(dom, ink_el, &|_| false, text_box, font_size);
+    if surface.info.unresolved {
+        return false;
+    }
+    // On a page ground that carries a picture the fold composites over the
+    // ground's fill, which is not what the text sits on, and the fade is
+    // what makes the text a pixel candidate at all (the document's images
+    // add no reason of their own).
+    if on_page_ground(dom, surface.host) && crate::browser::visual::page_ground_paints_picture(dom) {
+        return false;
+    }
+    let below_host = |n: ElId| match surface.host {
+        None => true,
+        Some(host) => n != host && dom.contains(host, n),
+    };
+    if !faded.iter().all(|&n| below_host(n)) {
+        return false;
+    }
+    let mut effective_bg = surface.info.color;
+    fold_surface_opacity(dom, ink_el, &ink, &surface, &mut effective_bg).is_some()
 }
 
 /// The largest stop alpha, times the element's opacity, under which a
@@ -1337,7 +1620,12 @@ pub fn check_element_colors_dom(
     if (rect.height < 10.0 && !short_line) || (rect.width < 10.0 && !narrow_run) {
         return Vec::new();
     }
-    if dom.style(el, "visibility") == "hidden" || effective_opacity_dom(dom, el) <= 0.02 {
+    // A box a scroll or view timeline holds at 0 while the page sits at the
+    // top is read at the opacity its end keyframe sets: a visitor who
+    // scrolls to it reads it there.
+    if dom.style(el, "visibility") == "hidden"
+        || crate::browser::painted::effective_opacity_scrolled(dom, el) <= 0.02
+    {
         return Vec::new();
     }
     // A shadow host whose own text is slotted into its shadow tree paints
@@ -1384,12 +1672,20 @@ pub fn check_element_colors_dom(
     let mut surface_unresolved = surface.info.unresolved;
     let mut own_bg = read_own_background_color(dom, el);
     let mut pseudo_surface_read = false;
+    let mut pseudo_face: Option<(Vec<Rgba>, &'static str)> = None;
     if own_bg.map_or(true, |c| c.alpha_or_one() <= 0.5) {
         if let Some(pseudo_surface) = read_pseudo_surface_dom(dom, el, &rect) {
             own_bg = Some(pseudo_surface);
             effective_bg = Some(pseudo_surface);
             surface_unresolved = false;
             pseudo_surface_read = true;
+        } else if let Some((stops, which)) = read_pseudo_gradient_face(dom, el, &rect) {
+            effective_bg = None;
+            pseudo_surface_read = true;
+            // A face too busy to score is still what the text sits on: the
+            // verdict is withheld rather than taken against the host.
+            surface_unresolved = stops.is_none();
+            pseudo_face = stops.map(|s| (s, which));
         }
     }
     let font_weight = {
@@ -1411,8 +1707,13 @@ pub fn check_element_colors_dom(
             dom.style(el, "backgroundClip")
         }
     };
-    let (effective_bg_stops, bg_source, bg_source_host) =
-        if surface_unresolved || effective_bg.is_some() {
+    let (effective_bg_stops, bg_source, bg_source_host) = if let Some((stops, which)) = pseudo_face {
+        (
+            Some(stops),
+            Some(format!("gradient on {}{which}", surface_label(dom, el))),
+            Some(el.to_string()),
+        )
+    } else if surface_unresolved || effective_bg.is_some() {
             (None, None, None)
         } else {
             let stops = surface
@@ -1465,10 +1766,52 @@ pub fn check_element_colors_dom(
     // an element some verdict needs it for.
     let under_cell = std::cell::OnceCell::new();
     let under = || *under_cell.get_or_init(|| crate::browser::visual::layer_under_text_found(dom, el));
+    // The hit-test stacks never see a background image, so on a page ground
+    // that carries a picture they cannot confirm the ground's own fill
+    // either (`visual::page_ground_paints_picture`).
     let same_color_surface_is_unread = same_hex
-        && layers_at() != crate::browser::text_layers::TextLayers::Consistent
-        && (on_page_ground(dom, surface_host)
-            || under().0 != crate::browser::visual::LayerUnder::Ancestor);
+        && ((layers_at() != crate::browser::text_layers::TextLayers::Consistent
+            && (on_page_ground(dom, surface_host)
+                || under().0 != crate::browser::visual::LayerUnder::Ancestor))
+            || (on_page_ground(dom, surface_host) && crate::browser::visual::page_ground_paints_picture(dom)));
+    // What the glyphs and their surface paint: a filter on a box that holds
+    // the surface repaints both, and the verdicts read what it paints; one
+    // the engine cannot model leaves none (`ink_paint`). The structural tests
+    // below (the hit-test stacks, the climb) compare what the capture
+    // recorded, so only the verdicts read the painted colours.
+    let painted = {
+        let mut surface_colours: Vec<Rgba> =
+            if surface_unresolved { None } else { effective_bg }.into_iter().collect();
+        surface_colours.extend(effective_bg_stops.iter().flatten().copied());
+        ink_paint(dom, el, visible_text.or(text_color), &surface_colours, surface_host)
+    };
+    let painted_colours = match &painted {
+        InkPaint::Filtered(filters) => {
+            let through = |c: Option<Rgba>| match c {
+                Some(c) => through_filters(filters, &c).map(Some),
+                None => Some(None),
+            };
+            let stops = match &effective_bg_stops {
+                Some(stops) => stops
+                    .iter()
+                    .map(|c| through_filters(filters, c))
+                    .collect::<Option<Vec<_>>>()
+                    .map(Some),
+                None => Some(None),
+            };
+            match (through(text_color), through(visible_text), through(effective_bg), stops, through(own_bg)) {
+                (Some(ink), Some(visible), Some(bg), Some(stops), Some(own)) => Some((ink, visible, bg, stops, own)),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    let painted = match painted {
+        InkPaint::Filtered(_) if painted_colours.is_none() => InkPaint::Unknown,
+        other => other,
+    };
+    let (text_color, visible_text, effective_bg, effective_bg_stops, own_bg) = painted_colours
+        .unwrap_or((text_color, visible_text, effective_bg, effective_bg_stops, own_bg));
     let color_opts = ColorOpts {
         tag: tag.clone(),
         text_color,
@@ -1494,7 +1837,6 @@ pub fn check_element_colors_dom(
         bg_source_host,
         same_color_surface_is_unread,
     };
-    let resolved = color_opts.effective_bg;
     // A contrast verdict is about the surface the walk resolved. Where the
     // hit-test stacks say the text is covered at capture (a fixed banner over
     // it, a photo laid over an initial), or reads over paint the walk never
@@ -1596,21 +1938,7 @@ pub fn check_element_colors_dom(
     // The verdicts that score the computed `color` say nothing where the
     // glyphs paint another one (SVG text, a colour filter). Asked once, only
     // of an element that failed.
-    let other_ink = std::cell::OnceCell::new();
-    let ink_read = |h: &RuleHit| {
-        (h.id != "low-contrast" && h.id != "gray-on-color")
-            || !*other_ink.get_or_init(|| {
-                let mut surface_colours: Vec<Rgba> = color_opts.effective_bg.into_iter().collect();
-                surface_colours.extend(color_opts.effective_bg_stops.iter().flatten().copied());
-                ink_is_not_computed_colour(
-                    dom,
-                    el,
-                    color_opts.visible_text.or(text_color),
-                    &surface_colours,
-                    surface_host,
-                )
-            })
-    };
+    let ink_read = |h: &RuleHit| (h.id != "low-contrast" && h.id != "gray-on-color") || painted != InkPaint::Unknown;
     let mut findings = crate::checks::rules::check_colors_deduped_shaped(
         &color_opts,
         seen,
@@ -1618,7 +1946,7 @@ pub fn check_element_colors_dom(
         &is_decorative,
         &mut |h: &RuleHit| {
             ink_read(h)
-                && safe_tag_text_hit_stands(dom, el, h, resolved, under().0, &|| {
+                && safe_tag_text_hit_stands(dom, el, h, resolved_surface, under().0, &|| {
                     unread() == crate::browser::visual::UnreadVerdict::Fails
                 })
                 && verdict_stands(h)
@@ -8819,7 +9147,10 @@ mod tests {
         // The filter paints the grey ink white, or something unknown.
         assert!(!run("p", "grayscale(1) brightness(0) invert(1)", grey));
         assert!(!run("p", "url(\"#duotone\")", grey));
-        assert!(!run("band", "invert(1)", grey), "the band's fill and the ink both move");
+        // A filter on the band repaints its fill and the ink alike, and the
+        // verdict reads what it paints: #555555 on #0f0f0f.
+        assert!(run("band", "invert(1)", grey), "the band's fill and the ink both move");
+        assert!(!run("band", "url(\"#duotone\")", grey));
         // inven.co.kr: `grayscale(1)` over grey text on a grey band moves
         // neither, and a resting hover filter is the identity.
         assert!(run("p", "grayscale(1)", grey));
@@ -8827,6 +9158,190 @@ mod tests {
         assert!(run("p", "brightness(1)", grey));
         // A tinted ink that grayscale repaints is no longer the ink scored.
         assert!(!run("p", "grayscale(1)", "rgb(120, 190, 250)"));
+    }
+
+    /// sinter.systems 11706: `a.primary` is white on rgb(232, 197, 47) with
+    /// `filter: saturate(0.7)` on itself. The filter holds the button's own
+    /// fill, so it repaints the fill and the ink alike and the verdict reads
+    /// what it paints, 1.7:1 on #dcc45b, where it used to withhold it.
+    #[test]
+    fn a_filter_that_holds_the_surface_is_read_through() {
+        let run = |filter: &str, running: &[&str]| {
+            let (mut d, body) = page();
+            let a = d.add(Some(body), "a");
+            visible(&mut d, a);
+            d.add_text(a, "Talk with us");
+            d.set_rect(a, 51.0, 1895.0, 135.0, 40.0);
+            d.set_text_rect(a, 68.0, 1907.0, 67.0, 15.0);
+            d.set_styles(
+                a,
+                &[
+                    ("backgroundColor", "rgb(232, 197, 47)"),
+                    ("color", "rgb(255, 255, 255)"),
+                    ("fontSize", "13px"),
+                    ("fontWeight", "400"),
+                    ("filter", filter),
+                ],
+            );
+            d.set_running_animations(a, running);
+            colors(&d, a).into_iter().filter(|h| h.id == "low-contrast").collect::<Vec<_>>()
+        };
+        let hits = run("saturate(0.7)", &[]);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("text #ffffff on #dcc45b"), "{}", hits[0].snippet);
+        assert!(hits[0].snippet.starts_with("1.7:1"), "{}", hits[0].snippet);
+        // Unfiltered, the same pair is scored as computed.
+        assert!(run("none", &[])[0].snippet.contains("on #e8c52f"));
+        // A filter a running animation is moving, or one the engine cannot
+        // model, still leaves no verdict.
+        assert!(run("saturate(0.7)", &["filter"]).is_empty());
+        // A filter that moves the colours and blurs them is a locked preview
+        // (review B3): no verdict, as before.
+        assert!(run("blur(6px) saturate(0.7)", &[]).is_empty());
+        assert!(run("url(\"#duotone\") saturate(0.7)", &[]).is_empty());
+    }
+
+    /// observations-47 row 6, schlittermann.de 324399: the white tagline
+    /// sits on a crimson `bg.png` strip that `body` draws `repeat-x` at its
+    /// `auto` size over its white fill. The hit-test stacks name `body` and
+    /// never see the image, so they confirmed the `1.0:1` against the fill.
+    /// Ink in exactly the ground's colour over a page ground that carries a
+    /// picture takes no verdict; a small tile is a texture over the fill and
+    /// keeps it, as does any ink in another colour.
+    #[test]
+    fn ink_in_the_grounds_colour_over_a_page_picture_takes_no_verdict() {
+        let run = |image: &str, size: &str, ink: &str| {
+            let (mut d, body) = page();
+            d.set_styles(body, &[("backgroundImage", image), ("backgroundSize", size)]);
+            d.set_style(body, "background", &format!("rgb(255, 255, 255) {image} repeat-x scroll 50% 0% / {size}"));
+            let p = faint_copy(&mut d, body, ink, (632.0, 106.0, 335.0, 27.0));
+            let rect = d.rect(p);
+            for (x, y) in crate::browser::page_checks::occlusion_probe_points(&rect, 1280.0, 800.0) {
+                d.set_point(x, y, vec![p, body]);
+            }
+            reports_contrast(&colors(&d, p))
+        };
+        let strip = "url(\"https://schlittermann.de/theme/Cardinal/images/bg.png\")";
+        let white = "rgb(255, 255, 255)";
+        assert!(run("none", "auto", white), "a plain white page: the stacks confirm white on white");
+        assert!(!run(strip, "auto", white));
+        assert!(run(strip, "8px 8px", white), "a small tile is a texture over the fill");
+        assert!(run(strip, "auto", "rgb(225, 121, 121)"), "ink in another colour keeps its verdict");
+    }
+
+    /// observations-47 row 12, ardainc.com 322246: the CTA paints a conic
+    /// ring on itself (white at one stop) and, inside it, a dark
+    /// `linear-gradient` face under a 14% white highlight on an `::after` at
+    /// `z-index: -1` that its `isolation: isolate` keeps over the ring. The
+    /// near-white label was scored against the ring's white, "#f4f4f6 on
+    /// #ffffff". The face is what the label sits on.
+    #[test]
+    fn an_opaque_gradient_face_on_a_pseudo_is_the_surface() {
+        let run_with = |face: &str, isolation: &str, extra: &[(&str, &str)]| {
+            let (mut d, body) = page();
+            let a = d.add(Some(body), "a");
+            visible(&mut d, a);
+            d.add_text(a, "Book a demo");
+            d.set_rect(a, 45.0, 600.0, 566.0, 42.0);
+            d.set_text_rect(a, 272.0, 612.0, 89.0, 18.0);
+            d.set_styles(
+                a,
+                &[
+                    ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                    (
+                        "backgroundImage",
+                        "conic-gradient(from 256deg, rgb(38, 38, 44) 0deg, rgb(214, 214, 224) 78deg, rgb(255, 255, 255) 92deg, rgb(38, 38, 44) 360deg)",
+                    ),
+                    ("color", "rgb(244, 244, 246)"),
+                    ("fontSize", "14px"),
+                    ("fontWeight", "500"),
+                    ("position", "relative"),
+                    ("isolation", isolation),
+                ],
+            );
+            for (p, v) in [
+                ("content", "\"\""),
+                ("position", "absolute"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("backgroundImage", face),
+                ("top", "1.6px"),
+                ("left", "1.6px"),
+                ("width", "562.8px"),
+                ("height", "39.2px"),
+                ("zIndex", "-1"),
+                ("opacity", "1"),
+                ("display", "block"),
+            ] {
+                d.set_pseudo_style(a, "::after", p, v);
+            }
+            for (p, v) in extra {
+                d.set_pseudo_style(a, "::after", p, v);
+            }
+            colors(&d, a).into_iter().filter(|h| h.id == "low-contrast").collect::<Vec<_>>()
+        };
+        let run = |face: &str, isolation: &str| run_with(face, isolation, &[]);
+        let face = "radial-gradient(130% 130% at 50% 0px, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 46%), linear-gradient(rgb(29, 29, 35) 0%, rgb(11, 11, 15) 100%)";
+        assert!(run(face, "isolate").is_empty(), "{:?}", run(face, "isolate"));
+        // Where the capture cannot say the face paints over the box's own
+        // background, the walk's reading stands.
+        assert!(!run(face, "auto").is_empty());
+        // A face that lets the box show through is not read as a surface.
+        let thin = "linear-gradient(rgba(29, 29, 35, 0.5) 0%, rgb(11, 11, 15) 100%)";
+        assert!(!run(thin, "isolate").is_empty());
+        // A light face fails against the near-white label, printed on the face.
+        let light = "linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236))";
+        let hits = run(light, "isolate");
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("(gradient on a::after)"), "{}", hits[0].snippet);
+        // A light hover face parked out of sight at rest is not the surface
+        // (review B1): an explicit `opacity: 0`, `visibility: hidden`, a
+        // slide-in moved off the run or scaled to nothing, or a strip drawn
+        // once at a stated size. Each falls back to the walk, which reads
+        // the dark ring and passes the near-white label here as on main.
+        let hidden = [
+            vec![("opacity", "0")],
+            vec![("visibility", "hidden")],
+            vec![("transform", "matrix(0, 0, 0, 1, 0, 0)")],
+            vec![("translate", "-101% 0px")],
+            vec![("scale", "0")],
+            vec![(
+                "background",
+                "rgba(0, 0, 0, 0) linear-gradient(rgb(250, 250, 250), rgb(230, 230, 236)) no-repeat scroll 0% 0% / 100% 4px padding-box border-box",
+            )],
+            // Full size but parked below the run (review: placement).
+            vec![("top", "42px")],
+            // At `auto` or above, a positioned face paints over the label's
+            // own text, not under it (review: paint order).
+            vec![("zIndex", "auto")],
+            vec![("zIndex", "0")],
+            vec![("zIndex", "2")],
+        ];
+        for extra in &hidden {
+            let hits = run_with(light, "isolate", extra);
+            assert!(hits.iter().all(|h| !h.snippet.contains("::after")), "{extra:?}: {hits:?}");
+        }
+        // Stated at its default, the same face still reads.
+        let hits = run_with(light, "isolate", &[("opacity", "1"), ("visibility", "visible"), ("transform", "none"), ("translate", "none")]);
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        // A zero translate and a unit scale are the identity (review).
+        let hits = run_with(light, "isolate", &[("translate", "0px"), ("scale", "1")]);
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        // A face that combines into more colours than the cap is still the
+        // surface: the verdict is withheld, not taken against the ring.
+        // Light stops, so a face read stop by stop would fail the label.
+        let base: Vec<String> = (0..20).map(|i| 160 + 4 * i).map(|v| format!("rgb({v}, {v}, {v})")).collect();
+        let washes: Vec<String> = (0..15).map(|k| format!("rgba(255, {}, 0, 0.5)", 17 * k)).collect();
+        let busy = format!("linear-gradient({}), linear-gradient({})", washes.join(", "), base.join(", "));
+        assert!(run(&busy, "isolate").is_empty(), "{:?}", run(&busy, "isolate"));
+        assert!(!run(&busy, "auto").is_empty(), "the ring's verdict stands where the face is not read");
+        // Washes stack (review: layered gradients): two 30% white layers
+        // over black reach #828282, which fails the near-white label, where
+        // either one alone over black (#4d4d4d) passes.
+        let wash = "linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3))";
+        let stacked = format!("{wash}, {wash}, linear-gradient(rgb(0, 0, 0), rgb(0, 0, 0))");
+        let hits = run(&stacked, "isolate");
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        assert!(run(&format!("{wash}, linear-gradient(rgb(0, 0, 0), rgb(0, 0, 0))"), "isolate").is_empty());
     }
 
     #[test]
