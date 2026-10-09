@@ -178,6 +178,24 @@ function Thumb({ url }: { url?: string }) {
     // A file in one project must not pick up another project's DESIGN.md
     { id: 'detect-config-cross-project', verb: 'detect', workspace: 'detect-config', args: ['--json', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
 
+    // #1001: CSS var() fallbacks in a declared font stack are real design
+    // system fonts, not variable names split at the fallback comma.
+    {
+      id: 'detect-design-font-var-fallback-json', verb: 'detect',
+      setup: (ws) => {
+        fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"font-fallback"}\n');
+        fs.writeFileSync(
+          path.join(ws, 'DESIGN.md'),
+          '---\ntypography:\n  body:\n    fontFamily: "var(--font-jakarta, \'Plus Jakarta Sans\'), ui-sans-serif, sans-serif"\n---\n# Typography\n',
+        );
+        fs.writeFileSync(
+          path.join(ws, 'index.html'),
+          '<style>body { font-family: \'Plus Jakarta Sans\', sans-serif; }</style>\n<p>Declared type</p>\n',
+        );
+      },
+      args: ['--json', 'index.html'],
+    },
+
     // A DESIGN.md that declares a purple switches ai-color-palette's
     // purple/violet forms off for its project, in the static and the regex
     // engines alike, and text mode says so; a DESIGN.md without one changes

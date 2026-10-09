@@ -119,6 +119,27 @@ fn design_system_option_is_the_design_md_inputs() {
 }
 
 #[test]
+fn design_system_font_var_fallback_reaches_the_detect_export() {
+    let source = "body { font-family: 'Plus Jakarta Sans', sans-serif; }\n";
+    let options = serde_json::json!({
+        "designSystem": {
+            "frontmatter": {
+                "typography": {
+                    "body": {
+                        "fontFamily": "var(--font-jakarta, 'Plus Jakarta Sans'), ui-sans-serif, sans-serif"
+                    }
+                }
+            }
+        }
+    })
+    .to_string();
+
+    assert!(!ids(&detect_text_json(source, "a.css", &options))
+        .iter()
+        .any(|id| id == "design-system-font"));
+}
+
+#[test]
 fn installed_pack_reaches_the_exports() {
     let source = format!("{SOURCE}/* TODO(pack) real palette */\n");
     assert!(!ids(&detect_text_json(&source, "a.css", "{}"))

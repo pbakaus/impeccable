@@ -579,10 +579,34 @@ pub fn normalize_font_name(value: &str) -> String {
 /// JS `splitFontStack`.
 pub fn split_font_stack(stack: &str) -> Vec<String> {
     let t = IMPORTANT_TAIL_RE.replace(stack, "");
-    t.split(',')
-        .map(normalize_font_name)
+    split_top_level_args(&t)
+        .into_iter()
+        .map(|font| normalize_font_name(&font))
         .filter(|f| !f.is_empty())
         .collect()
+}
+
+fn split_declared_font_stack(stack: &str) -> Vec<String> {
+    let t = IMPORTANT_TAIL_RE.replace(stack, "");
+    let mut fonts = Vec::new();
+    for part in split_top_level_args(&t) {
+        let trimmed = js::trim(&part);
+        let is_var = trimmed
+            .get(..4)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("var("));
+        if is_var && trimmed.ends_with(')') {
+            let args = split_top_level_args(&trimmed[4..trimmed.len() - 1]);
+            if args.len() > 1 {
+                fonts.extend(split_declared_font_stack(&args[1..].join(",")));
+            }
+            continue;
+        }
+        let font = normalize_font_name(trimmed);
+        if !font.is_empty() {
+            fonts.push(font);
+        }
+    }
+    fonts
 }
 
 fn is_generic_font(font: &str) -> bool {
@@ -840,7 +864,7 @@ fn add_typography_fonts(out: &mut DesignSystem, typography: Option<&Value>) {
         let Some(Value::String(ff)) = role.get("fontFamily") else {
             continue;
         };
-        for font in split_font_stack(ff) {
+        for font in split_declared_font_stack(ff) {
             if !is_generic_font(&font) && !out.allowed_fonts.contains(&font) {
                 out.allowed_fonts.push(font);
             }
@@ -901,13 +925,29 @@ fn split_top_level_args(s: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut depth = 0i32;
     let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
     for ch in s.chars() {
-        if ch == '(' {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        if quote.is_some() && ch == '\\' {
+            current.push(ch);
+            escaped = true;
+            continue;
+        }
+        if quote == Some(ch) {
+            quote = None;
+        } else if quote.is_none() && (ch == '\'' || ch == '"') {
+            quote = Some(ch);
+        } else if quote.is_none() && ch == '(' {
             depth += 1;
-        } else if ch == ')' {
+        } else if quote.is_none() && ch == ')' {
             depth -= 1;
         }
-        if ch == ',' && depth == 0 {
+        if ch == ',' && depth == 0 && quote.is_none() {
             args.push(js::trim(&current).to_string());
             current.clear();
             continue;
@@ -2585,6 +2625,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn typography_var_fallback_declares_its_font_family() {
+        let md = "---\ntypography:\n  body:\n    fontFamily: \"var(--font-jakarta, 'Plus Jakarta Sans'), ui-sans-serif, sans-serif\"\n---\nbody";
+        let fm = parse_frontmatter(md).unwrap();
+        let ds = normalize_design_system(Some(&fm), None, None, None, false);
+
+        assert_eq!(ds.allowed_fonts, vec!["plus jakarta sans".to_string()]);
+        assert!(check_source_design_system(
+            "body { font-family: 'Plus Jakarta Sans', sans-serif; }",
+            "index.html",
+            Some(&ds),
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn typography_var_fallback_preserves_quoted_font_commas() {
+        let md = "---\ntypography:\n  body:\n    fontFamily: \"var(--font-brand, 'Foo, Bar'), sans-serif\"\n---\nbody";
+        let fm = parse_frontmatter(md).unwrap();
+        let ds = normalize_design_system(Some(&fm), None, None, None, false);
+
+        assert_eq!(ds.allowed_fonts, vec!["foo, bar".to_string()]);
+        assert!(check_source_design_system(
+            "body { font-family: 'Foo, Bar', sans-serif; }",
+            "index.html",
+            Some(&ds),
+        )
+        .is_empty());
+    }
+
     // upstream 1bcdf80f / #687: var() radius fallbacks leave the closing
     // paren on the final token; strip it so `8px)` is not read as unitless.
     #[test]
@@ -2616,5 +2686,3 @@ mod tests {
         assert_eq!(js_string(&parse_scalar("007")), "7");
     }
 }
-
-

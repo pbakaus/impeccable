@@ -172,14 +172,48 @@ pub fn normalize_browser_font_name(value: &str) -> String {
     crate::js::to_lower_case(&t)
 }
 
+fn split_browser_font_stack(stack: &str) -> Vec<String> {
+    let mut fonts = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaped = false;
+    for ch in stack.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            continue;
+        }
+        if quote.is_some() && ch == '\\' {
+            current.push(ch);
+            escaped = true;
+            continue;
+        }
+        if quote == Some(ch) {
+            quote = None;
+        } else if quote.is_none() && (ch == '\'' || ch == '"') {
+            quote = Some(ch);
+        }
+        if ch == ',' && quote.is_none() {
+            fonts.push(current.trim().to_string());
+            current.clear();
+            continue;
+        }
+        current.push(ch);
+    }
+    if !current.trim().is_empty() {
+        fonts.push(current.trim().to_string());
+    }
+    fonts
+}
+
 /// JS: index.mjs#browserPrimaryFont(stack)
 pub fn browser_primary_font(stack: &str) -> String {
     if stack.is_empty() || VAR_RE.is_match(stack) {
         return String::new();
     }
-    stack
-        .split(',')
-        .map(normalize_browser_font_name)
+    split_browser_font_stack(stack)
+        .into_iter()
+        .map(|font| normalize_browser_font_name(&font))
         .find(|font| !font.is_empty() && !crate::constants::GENERIC_FONTS.contains(&font.as_str()))
         .unwrap_or_default()
 }
@@ -3186,6 +3220,7 @@ mod tests {
     #[test]
     fn primary_font_and_normalization() {
         assert_eq!(browser_primary_font("\"Inter\", system-ui, sans-serif"), "inter");
+        assert_eq!(browser_primary_font("'Foo, Bar', sans-serif"), "foo, bar");
         assert_eq!(browser_primary_font("system-ui, sans-serif"), "");
         assert_eq!(browser_primary_font("system-ui, Roboto"), "roboto");
         assert_eq!(browser_primary_font("var(--font)"), "");
