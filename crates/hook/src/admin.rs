@@ -110,8 +110,7 @@ struct ManifestTarget {
     user_settings: bool,
 }
 
-fn claude_manifest() -> Value {
-    let cmd = CLAUDE_HOOK_COMMAND;
+fn claude_manifest_for_command(cmd: &str) -> Value {
     obj(vec![
         (
             "description",
@@ -133,6 +132,10 @@ fn claude_manifest() -> Value {
             ]),
         ),
     ])
+}
+
+fn claude_manifest() -> Value {
+    claude_manifest_for_command(CLAUDE_HOOK_COMMAND)
 }
 
 fn agents_manifest() -> Value {
@@ -685,7 +688,7 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
     let mut consent = Map::new();
     consent.insert("consent".into(), Value::from("accepted"));
     let local_target = write_hook_config(rt, cwd, &consent, true)?;
-    let repaired = repair_hook_manifests(cwd)?;
+    let repaired = repair_hook_manifests(rt, cwd)?;
     let mut parts = vec![
         format!(
             "Design hook enabled for this project (wrote {}).",
@@ -737,7 +740,7 @@ struct Repaired {
 }
 
 /// JS: repairHookManifests(cwd)
-fn repair_hook_manifests(cwd: &str) -> Result<Repaired, String> {
+fn repair_hook_manifests(rt: &Runtime, cwd: &str) -> Result<Repaired, String> {
     let mut result = Repaired {
         written: vec![],
         already: vec![],
@@ -745,19 +748,39 @@ fn repair_hook_manifests(cwd: &str) -> Result<Repaired, String> {
         skipped: vec![],
     };
     for target in HOOK_MANIFEST_TARGETS {
-        if !exists(&jsp::join(&[cwd, target.skill_rel])) {
-            continue;
-        }
-        let dest = jsp::join(&[cwd, target.dest_rel]);
+        let mut dest = jsp::join(&[cwd, target.dest_rel]);
         let shared_dest = target.shared_dest_rel.map(|s| jsp::join(&[cwd, s]));
+        let project_skill = jsp::join(&[cwd, target.skill_rel]);
+        let user_skill = jsp::join(&[&rt.homedir(), target.skill_rel]);
+        let (skill_root, user_scoped) = if exists(&project_skill) {
+            (project_skill, false)
+        } else if target.provider == ".claude"
+            && exists(&user_skill)
+            && (file_has_impeccable_hook_marker(&dest)
+                || shared_dest.as_ref().is_some_and(|path| file_has_impeccable_hook_marker(path)))
+        {
+            (user_skill, true)
+        } else {
+            continue;
+        };
         if let Some(sd) = &shared_dest {
             if file_has_impeccable_hook_marker(sd) {
                 prune_impeccable_hook_from_manifest(&dest)?;
-                result.already.push(target.provider.to_string());
-                continue;
+                if user_scoped {
+                    dest = sd.clone();
+                } else {
+                    result.already.push(target.provider.to_string());
+                    continue;
+                }
             }
         }
-        let fresh = (target.manifest)();
+        let fresh = if target.provider == ".claude" && user_scoped {
+            let launcher = jsp::join(&[&skill_root, "scripts", "impeccable"]);
+            let command = format!("{} hook", quote_command_arg(&launcher, rt.win32));
+            claude_manifest_for_command(&command)
+        } else {
+            (target.manifest)()
+        };
         let mut next = fresh.clone();
         let mut had_comments = false;
         if exists(&dest) {

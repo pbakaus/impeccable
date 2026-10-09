@@ -598,7 +598,7 @@ fn gemini_install_merges_into_commented_settings_and_force_never_wipes() {
     let original = "{\n  // pick a model\n  \"model\": {\"name\": \"gemini-3-pro\"},\n  /* MCP */ \"mcpServers\": {\"x\": {\"url\": \"http://a//b\"}}\n}\n";
     write(&settings, original);
     let sys = sys_with_home("/nonexistent-home");
-    copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None).unwrap();
+    copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None).unwrap();
     let merged: Value = serde_json::from_str(&read(&settings)).unwrap();
     assert_eq!(merged["model"]["name"], "gemini-3-pro");
     assert_eq!(merged["mcpServers"]["x"]["url"], "http://a//b");
@@ -607,8 +607,39 @@ fn gemini_install_merges_into_commented_settings_and_force_never_wipes() {
     // Truly malformed: refused without --force, and --force never replaces
     // the user's whole settings file with a hooks-only manifest.
     write(&settings, "{ \"model\": ");
-    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None).is_err());
-    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], true, None).is_err());
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], false, None, None).is_err());
+    assert!(copy_provider_hooks(&sys, &bundle, &project, &[".gemini"], true, None, None).is_err());
     assert_eq!(read(&settings), "{ \"model\": ");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn user_scope_keeps_project_hook_when_bundle_has_no_replacement() {
+    let dir = tmp_dir("claude-user-hook-missing-bundle-manifest");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let home = jsp::join(&[&root, "home"]);
+    let project = jsp::join(&[&root, "project"]);
+    let project_manifest = jsp::join(&[&project, ".claude", "settings.local.json"]);
+    write(
+        &project_manifest,
+        r#"{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
+    );
+    let sys = sys_with_home(&home);
+
+    let written = copy_provider_hooks(
+        &sys,
+        &bundle,
+        &project,
+        &[".claude"],
+        false,
+        Some(&home),
+        Some(&project),
+    )
+    .unwrap();
+
+    assert!(written.is_empty());
+    assert!(std::path::Path::new(&project_manifest).exists());
+    assert!(!std::path::Path::new(&jsp::join(&[&home, ".claude", "settings.json"])).exists());
     let _ = std::fs::remove_dir_all(&dir);
 }

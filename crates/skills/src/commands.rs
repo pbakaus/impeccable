@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::bundle::{self, download};
 use crate::engine_binary::install_engine_binaries;
-use crate::hook_manifest::{self, copy_provider_hooks, hook_installed_for_provider, HOOK_EXPLAINER};
+use crate::hook_manifest::{self, copy_provider_hooks, hook_installed_for_provider, hook_installed_for_provider_at_scope, HOOK_EXPLAINER};
 use crate::prompt::{CheckboxOption, Prompt, RadioOption};
 use crate::providers::*;
 use crate::util::{self, pad_end, utf16_len, utf16_prefix};
@@ -589,7 +589,14 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             }
             let mut updated = 0usize;
             let missing_hook_targets: Vec<&'static str> = if want_hooks {
-                hook_targets.iter().copied().filter(|p| !hook_installed_for_provider(&hook_root, p)).collect()
+                hook_targets
+                    .iter()
+                    .copied()
+                    .filter(|p| {
+                        let manifest_root = if scope == Scope::User && *p == ".claude" { &install_root } else { &hook_root };
+                        !hook_installed_for_provider_at_scope(manifest_root, p, scope == Scope::User)
+                    })
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -640,7 +647,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             }
 
             let written_hook_targets = if !missing_hook_targets.is_empty() {
-                copy_provider_hooks(&sys, &bdir, &hook_root, &missing_hook_targets, false, Some(&install_root))?
+                copy_provider_hooks(&sys, &bdir, &hook_root, &missing_hook_targets, false, Some(&install_root), None)?
             } else {
                 Vec::new()
             };
@@ -702,7 +709,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         let agents = bundle::copy_provider_agents(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
         bundle::copy_provider_commands(&sys, &bundle_dir, &install_root, &targets, scope_opt);
         let hooks = if want_hooks {
-            copy_provider_hooks(&sys, &bundle_dir, &hook_root, &targets, force, Some(&install_root))?
+            copy_provider_hooks(&sys, &bundle_dir, &hook_root, &targets, force, Some(&install_root), None)?
         } else {
             Vec::new()
         };
@@ -831,7 +838,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
             hook_manifest::repair_stale_hook_manifests(&sys, &root, &copy_providers, None).map_err(Flow::Throw)?;
             let want_hooks = install_hooks && decide_hook_install(&mut prompt, io, &root, &copy_providers, yes)?;
             let hook_targets = if want_hooks {
-                copy_provider_hooks(&sys, &tmp_dir, &root, &copy_providers, force, None).map_err(Flow::Throw)?
+                copy_provider_hooks(&sys, &tmp_dir, &root, &copy_providers, force, None, Some(&project_root)).map_err(Flow::Throw)?
             } else {
                 Vec::new()
             };
@@ -887,7 +894,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         hook_manifest::repair_stale_hook_manifests(&sys, &root, &copy_providers, None).map_err(Flow::Throw)?;
         let want_hooks = install_hooks && decide_hook_install(&mut prompt, io, &root, &providers, yes)?;
         let hook_targets = if want_hooks {
-            copy_provider_hooks(&sys, &tmp_dir, &root, &providers, force, None).map_err(Flow::Throw)?
+            copy_provider_hooks(&sys, &tmp_dir, &root, &providers, force, None, Some(&project_root)).map_err(Flow::Throw)?
         } else {
             Vec::new()
         };

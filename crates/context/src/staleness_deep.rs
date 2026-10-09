@@ -236,16 +236,37 @@ fn resolve_hook_script_path(token: &str, root: &str) -> Option<String> {
 }
 
 /// JS: checkHookInstallation
-pub fn check_hook_installation(project_root: &str, repo_root: Option<&str>, provider_id: &str) -> Vec<Finding> {
+pub fn check_hook_installation(
+    project_root: &str,
+    repo_root: Option<&str>,
+    provider_id: &str,
+    user_root: Option<&str>,
+) -> Vec<Finding> {
     let mut out = Vec::new();
     let manifests = crate::context_cli::hook_manifests_for(provider_id);
     if manifests.is_empty() {
         return out;
     }
-    let roots = unique_roots(project_root, repo_root);
+    let project_roots = unique_roots(project_root, repo_root);
+    let mut manifest_roots = project_roots.clone();
+    let mut user_manifest_root: Option<String> = None;
+    if provider_id == "claude-code" {
+        if let Some(root) = user_root.filter(|root| !root.is_empty()) {
+            let root = jsp::resolve(root, &[]);
+            if !manifest_roots.contains(&root) {
+                user_manifest_root = Some(root.clone());
+                manifest_roots.push(root);
+            }
+        }
+    }
     let mut installed_at: Option<String> = None;
-    for root in &roots {
-        for rel in manifests {
+    for root in &manifest_roots {
+        let root_manifests: &[&str] = if user_manifest_root.as_deref() == Some(root.as_str()) {
+            &[".claude/settings.json"]
+        } else {
+            manifests
+        };
+        for rel in root_manifests {
             let mp = jsp::join(&[root, rel]);
             let Some(raw) = read_json(&mp) else { continue };
             let Some(hooks) = raw.get("hooks") else { continue };
@@ -285,7 +306,7 @@ pub fn check_hook_installation(project_root: &str, repo_root: Option<&str>, prov
         }
     }
     if let Some(ia) = installed_at {
-        for root in &roots {
+        for root in &project_roots {
             for name in ["config.json", "config.local.json"] {
                 let cp = jsp::join(&[root, ".impeccable", name]);
                 let Some(raw) = read_json(&cp) else { continue };
@@ -473,7 +494,7 @@ mod tests {
             ".claude/settings.local.json",
             r#"{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
         );
-        assert!(check_hook_installation(&root, None, "claude-code").is_empty());
+        assert!(check_hook_installation(&root, None, "claude-code", None).is_empty());
 
         // Launcher form pointing at a missing launcher: reported.
         write(
@@ -481,7 +502,7 @@ mod tests {
             ".claude/settings.local.json",
             r#"{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.other/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
         );
-        let f = check_hook_installation(&root, None, "claude-code");
+        let f = check_hook_installation(&root, None, "claude-code", None);
         assert_eq!(f.len(), 1, "{f:?}");
         assert_eq!(f[0].id, "hook-script-missing");
 
@@ -491,10 +512,54 @@ mod tests {
             ".claude/settings.local.json",
             r#"{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"node \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs\""}]}]}}"#,
         );
-        let f = check_hook_installation(&root, None, "claude-code");
+        let f = check_hook_installation(&root, None, "claude-code", None);
         assert_eq!(f.len(), 1, "{f:?}");
         write(&root, ".claude/skills/impeccable/scripts/hook.mjs", "");
-        assert!(check_hook_installation(&root, None, "claude-code").is_empty());
+        assert!(check_hook_installation(&root, None, "claude-code", None).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn user_scope_claude_hook_is_checked_from_home() {
+        let root = tmp();
+        let project = crate::jsp::join(&[&root, "project"]);
+        let home = crate::jsp::join(&[&root, "home"]);
+        std::fs::create_dir_all(&project).unwrap();
+        let launcher = crate::jsp::join(&[
+            &home,
+            ".claude",
+            "skills",
+            "impeccable",
+            "scripts",
+            "impeccable",
+        ]);
+        write(&home, ".claude/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+        write(
+            &home,
+            ".claude/settings.json",
+            &serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [{
+                        "hooks": [{
+                            "type": "command",
+                            "command": format!("\"{launcher}\" hook"),
+                        }],
+                    }],
+                },
+            })
+            .to_string(),
+        );
+        write(
+            &home,
+            ".claude/settings.local.json",
+            r#"{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"\"/missing/user-local/impeccable\" hook"}]}]}}"#,
+        );
+        assert!(check_hook_installation(&project, None, "claude-code", Some(&home)).is_empty());
+
+        std::fs::remove_file(&launcher).unwrap();
+        let findings = check_hook_installation(&project, None, "claude-code", Some(&home));
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].id, "hook-script-missing");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
