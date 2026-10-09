@@ -34,6 +34,19 @@ pub fn overflow_x(dom: &dyn Dom, el: ElId) -> String {
     dom.style(el, "overflow").split_whitespace().next().unwrap_or("").to_string()
 }
 
+/// `overflow-y`, from the shorthand when the capture recorded no longhand:
+/// its second value, or its only one.
+pub fn overflow_y(dom: &dyn Dom, el: ElId) -> String {
+    let y = dom.style(el, "overflowY");
+    if !y.is_empty() {
+        return y;
+    }
+    let shorthand = dom.style(el, "overflow");
+    let mut values = shorthand.split_whitespace();
+    let first = values.next().unwrap_or("");
+    values.next().unwrap_or(first).to_string()
+}
+
 /// Whether `el` clips or scrolls its content on the x axis.
 pub fn clips_x(dom: &dyn Dom, el: ElId) -> bool {
     matches!(overflow_x(dom, el).as_str(), "hidden" | "clip" | "auto" | "scroll")

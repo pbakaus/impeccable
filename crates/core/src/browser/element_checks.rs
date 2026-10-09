@@ -3493,23 +3493,86 @@ fn generated_content_has_text(content: &str) -> bool {
 /// arrow icon parked past a link, a decoration layer) adds nothing, as an
 /// absolutely positioned child with no text adds nothing.
 fn generated_content_unmeasured(dom: &dyn Dom, el: ElId) -> bool {
-    PSEUDOS.iter().any(|which| {
-        if !pseudo_present(dom, el, which) {
-            return false;
-        }
-        let content = pseudo_str(dom, el, which, "content");
-        if content == "normal" || pseudo_str(dom, el, which, "display") == "none" {
-            return false;
-        }
-        if generated_content_has_text(&content) {
+    PSEUDOS.iter().any(|which| pseudo_unmeasured(dom, el, which))
+}
+
+/// [`generated_content_unmeasured`] for one pseudo-element.
+fn pseudo_unmeasured(dom: &dyn Dom, el: ElId, which: &str) -> bool {
+    if !pseudo_present(dom, el, which) {
+        return false;
+    }
+    let content = pseudo_str(dom, el, which, "content");
+    if content == "normal" || pseudo_str(dom, el, which, "display") == "none" {
+        return false;
+    }
+    if generated_content_has_text(&content) {
+        return true;
+    }
+    let position = pseudo_str(dom, el, which, "position");
+    if position == "absolute" || position == "fixed" {
+        return false;
+    }
+    content.contains("url(") || pseudo_px(dom, el, which, "width") > 0.0
+}
+
+/// Whether every unmeasured `::before` and `::after` on `el` generates one
+/// glyph and nothing else: an icon font's character (`content: "\e90a"`),
+/// at most two characters so a glyph and its variation selector count as
+/// one. An icon is a glyph's width, not a run of words that could spill.
+/// A counter, an attribute, an image or a longer string is not.
+fn generated_content_is_one_glyph(dom: &dyn Dom, el: ElId) -> bool {
+    PSEUDOS.iter().all(|which| {
+        if !pseudo_unmeasured(dom, el, which) {
             return true;
         }
-        let position = pseudo_str(dom, el, which, "position");
-        if position == "absolute" || position == "fixed" {
+        let content = pseudo_str(dom, el, which, "content");
+        if content.contains("url(") || content.contains("counter") || content.contains("attr(") {
             return false;
         }
-        content.contains("url(") || pseudo_px(dom, el, which, "width") > 0.0
+        let parts: Vec<&str> = content.split(['"', '\'']).collect();
+        // A quoted string and nothing else: `"x"` splits into three parts.
+        parts.len() == 3
+            && parts[0].trim().is_empty()
+            && parts[2].trim().is_empty()
+            && (1..=2).contains(&parts[1].chars().count())
     })
+}
+
+/// Whether `el` clips on the y axis and its own text lies wholly above or
+/// below the box it clips to, as do the rects of everything its descendants
+/// paint: none of it is seen, so nothing it spills on the x axis is seen
+/// either. That is icon-font image replacement written on the y axis
+/// (valero.com's 30px social links, `height: 30px; overflow: hidden`, a
+/// block `::before` glyph, and the label "Youtube" laid out 3px below the
+/// clip), the twin of the `text-indent: -9999px` form. Generated content the
+/// engine cannot measure stops the answer unless it is one glyph per
+/// pseudo-element, which sits inside the box it is the icon of.
+fn text_clipped_away_on_y(
+    dom: &dyn Dom,
+    el: ElId,
+    rect: &Rect,
+    extents: &[Rect],
+    descendants_unmeasured: bool,
+) -> bool {
+    if extents.is_empty() || descendants_unmeasured || !generates_box(dom, el) {
+        return false;
+    }
+    if !matches!(crate::browser::text_geometry::overflow_y(dom, el).as_str(), "hidden" | "clip") {
+        return false;
+    }
+    let client = dom.client_height(el);
+    let border_top = style_px(dom, el, "borderTopWidth");
+    let top = rect.top + if border_top.is_finite() { border_top } else { 0.0 };
+    if !(client.is_finite() && client > 0.0 && top.is_finite()) {
+        return false;
+    }
+    let bottom = top + client;
+    if generated_content_unmeasured(dom, el) && !generated_content_is_one_glyph(dom, el) {
+        return false;
+    }
+    extents
+        .iter()
+        .all(|r| r.all_finite() && (r.bottom <= top || r.top >= bottom))
 }
 
 /// The rects of what `el`'s descendants paint, for deciding whether its
@@ -3603,9 +3666,12 @@ fn painted_overflow_extent(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<(f64,
     if own.width > 0.0 && own.height > 0.0 {
         extents.push(own);
     }
-    let mut unmeasured = generated_content_unmeasured(dom, el);
-    painted_descendant_extents(dom, el, &mut extents, &mut unmeasured);
-    if unmeasured {
+    let mut descendants_unmeasured = false;
+    painted_descendant_extents(dom, el, &mut extents, &mut descendants_unmeasured);
+    if text_clipped_away_on_y(dom, el, rect, &extents, descendants_unmeasured) {
+        return None;
+    }
+    if descendants_unmeasured || generated_content_unmeasured(dom, el) {
         return Some(scroll_extent());
     }
     // A box that clips paints none of what lies wholly outside it.
@@ -3854,6 +3920,66 @@ fn generates_box(dom: &dyn Dom, el: ElId) -> bool {
     display != "inline" && display != "contents"
 }
 
+/// The contrast at or under which text and the surface it sits on read as one
+/// colour: no glyph of it shows.
+const INK_MATCHES_SURFACE_RATIO: f64 = 1.05;
+
+/// Whether `el`'s text is painted in the colour of the surface under it, so
+/// none of it shows and neither does anything it spills: valero.com's phone
+/// menu button holds a white "Toggle Navigation" label on a white header,
+/// and the label running past the window's edge is not a spill anyone
+/// sees. Every fact has to be read, or the text counts as seen: one ink for
+/// all of the element's text (no element inside it carries text), no text
+/// shadow or stroke to outline the glyphs, an opaque surface the background
+/// walk resolves without an image, and hit-test stacks that confirm the
+/// text sits on that surface ([`TextLayers::Consistent`]), the test the
+/// contrast check asks before it trusts a 1.0:1 on the page ground.
+fn ink_matches_its_surface(dom: &dyn Dom, el: ElId) -> bool {
+    if js::trim(&dom.text_content(el)) != js::trim(&direct_text(dom, el)) {
+        return false;
+    }
+    if dom.style(el, "textShadow") != "none" || parse_float(&dom.style(el, "webkitTextStrokeWidth")) != 0.0 {
+        return false;
+    }
+    let fill = dom.style(el, "webkitTextFillColor");
+    let ink_raw = if fill.is_empty() || fill == "currentcolor" { dom.style(el, "color") } else { fill };
+    let Some(ink) = parse_rgb_or_any(&ink_raw) else {
+        return false;
+    };
+    let rect = dom.rect(el);
+    let text = dom.direct_text_rect(el).unwrap_or(rect);
+    if !(text.all_finite() && text.width > 0.0 && text.height > 0.0) {
+        return false;
+    }
+    let font_size = {
+        let n = style_px(dom, el, "fontSize");
+        if n.is_finite() && n > 0.0 {
+            n
+        } else {
+            16.0
+        }
+    };
+    let surface = resolve_text_surface(
+        dom,
+        el,
+        &|_| false,
+        Box2::new(text.left, text.top, text.width, text.height),
+        font_size,
+    );
+    if surface.info.unresolved || surface.samples.is_some() || surface.gradient_host.is_some() {
+        return false;
+    }
+    let Some(bg) = surface.info.color.filter(|c| c.alpha_or_one() >= 0.999) else {
+        return false;
+    };
+    let ink = if ink.alpha_or_one() < 1.0 { composite_color_over(&ink, &bg) } else { ink };
+    if crate::color::contrast_ratio(&ink, &bg) > INK_MATCHES_SURFACE_RATIO {
+        return false;
+    }
+    crate::browser::text_layers::layers_at_text(dom, el, surface.host, Some(bg))
+        == crate::browser::text_layers::TextLayers::Consistent
+}
+
 /// JS: checks.mjs#checkElementTextOverflowDOM(el)
 pub fn check_element_text_overflow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
@@ -3903,6 +4029,9 @@ pub fn check_element_text_overflow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
         };
         let content_left = rect.left + dom.client_left(el);
         if !spill_does_harm(dom, el, (content_left, content_left + client_width), reach) {
+            return Vec::new();
+        }
+        if ink_matches_its_surface(dom, el) {
             return Vec::new();
         }
         return vec![RuleHit::new(
@@ -7302,6 +7431,96 @@ mod tests {
         // With visible overflow the label really lands 9,999px away.
         d.set_styles(tab, &[("overflow", "visible"), ("overflowX", "visible"), ("overflowY", "visible")]);
         assert_eq!(check_element_text_overflow_dom(&d, tab).len(), 1);
+    }
+
+    /// observations-47 row 2: valero.com's icon-font social links clip on
+    /// the y axis. The 30px link holds a block `::before` glyph and lays the
+    /// label "Youtube" out 3px below its clip, so the 54px the label runs
+    /// past the box on x is never painted.
+    #[test]
+    fn text_overflow_skips_a_label_clipped_away_on_y() {
+        let (mut d, body) = page();
+        let link = d.add(Some(body), "a");
+        visible(&mut d, link);
+        d.set_attr(link, "class", "icon-youtube");
+        d.add_text(link, "Youtube");
+        d.set_rect(link, 48.0, 600.0, 30.0, 30.0);
+        d.el_mut(link).client_width = 30.0;
+        d.el_mut(link).client_height = 30.0;
+        d.el_mut(link).scroll_width = 84.0;
+        d.set_styles(link, &[("display", "block"), ("overflow", "hidden"), ("overflowX", "hidden"), ("overflowY", "hidden"), ("position", "static"), ("fontSize", "24px"), ("borderTopWidth", "0px")]);
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
+        d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
+        d.set_pseudo_style(link, "::before", "display", "block");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "the label sits below the clip");
+
+        // Without a y clip the label shows below the box, and its spill with it.
+        d.set_style(link, "overflowY", "visible");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "no y clip");
+        d.set_style(link, "overflowY", "hidden");
+        // The shorthand alone says the same.
+        d.set_styles(link, &[("overflowY", ""), ("overflow", "hidden")]);
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "the shorthand clips y");
+        d.set_style(link, "overflowY", "hidden");
+        // A label that reaches into the box is seen.
+        d.set_text_rect(link, 48.0, 620.0, 84.0, 25.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "the label crosses the clip");
+        d.set_text_rect(link, 48.0, 633.0, 84.0, 25.0);
+        // Generated words, not a glyph, may themselves spill: taken as read.
+        d.set_pseudo_style(link, "::before", "content", "\"Watch us on Youtube\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "generated words");
+        d.set_pseudo_style(link, "::before", "content", "counter(item)");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a counter");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
+        // A child whose text sits inside the box is seen.
+        let note = d.add(Some(link), "span");
+        visible(&mut d, note);
+        d.set_style(note, "position", "static");
+        d.add_text(note, "New");
+        d.set_rect(note, 48.0, 605.0, 70.0, 20.0);
+        d.set_text_rect(note, 48.0, 605.0, 70.0, 20.0);
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a child's text inside the clip");
+    }
+
+    /// observations-47 row 2: valero.com's phone menu button sets its
+    /// "Toggle Navigation" label in white on the white page, and the label
+    /// runs past the window's edge. None of it is seen.
+    #[test]
+    fn text_overflow_skips_text_inked_in_its_surface_colour() {
+        let (mut d, body) = page();
+        d.inner_width = 390.0;
+        let button = d.add(Some(body), "button");
+        visible(&mut d, button);
+        d.set_attr(button, "class", "menu-toggle");
+        d.add_text(button, "Toggle Navigation");
+        d.set_rect(button, 340.0, 30.0, 40.0, 32.0);
+        d.el_mut(button).client_width = 40.0;
+        d.el_mut(button).client_height = 32.0;
+        d.el_mut(button).scroll_width = 83.0;
+        d.set_styles(button, &[("display", "block"), ("overflow", "visible"), ("overflowX", "visible"), ("overflowY", "visible"), ("position", "absolute"), ("fontSize", "14.4px"), ("color", "rgb(255, 255, 255)"), ("backgroundColor", "rgba(0, 0, 0, 0)"), ("textShadow", "none"), ("webkitTextStrokeWidth", "0px")]);
+        d.set_text_rect(button, 354.0, 40.0, 69.0, 31.0);
+        assert!(check_element_text_overflow_dom(&d, button).is_empty(), "white on white");
+
+        // The control: the same label in a colour the page shows.
+        d.set_style(button, "color", "rgb(0, 112, 171)");
+        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a blue label");
+        d.set_style(button, "color", "rgb(255, 255, 255)");
+        // A text shadow outlines white glyphs on white.
+        d.set_style(button, "textShadow", "rgb(0, 0, 0) 0px 1px 2px");
+        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a text shadow");
+        d.set_style(button, "textShadow", "none");
+        // A style the capture did not record is not read as no shadow.
+        d.set_style(button, "textShadow", "");
+        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "an unrecorded shadow");
+        d.set_style(button, "textShadow", "none");
+        // A child in another ink carries text the surface does not hide.
+        let word = d.add(Some(button), "span");
+        visible(&mut d, word);
+        d.set_styles(word, &[("position", "static"), ("color", "rgb(0, 0, 0)")]);
+        d.add_text(word, "Menu");
+        d.set_rect(word, 354.0, 56.0, 40.0, 15.0);
+        d.set_text_rect(word, 354.0, 56.0, 40.0, 15.0);
+        assert_eq!(check_element_text_overflow_dom(&d, button).len(), 1, "a child with its own text");
     }
 
     /// walkthroughs-20 miss 4a: `overflow-x: hidden` computes the shorthand to

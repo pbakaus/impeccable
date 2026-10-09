@@ -306,6 +306,8 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "pass-under-hairline",
             "pass-hover-tooltip",
             "pass-corner-badge",
+            "pass-icon-label-below-clip",
+            "pass-ink-matches-surface",
         ],
         "text-overflow",
     );

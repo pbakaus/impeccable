@@ -52,9 +52,19 @@
     .truncate { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
     .flag-pseudo-suffix::after { content: " and a long generated suffix that runs past the box"; }
+    .icon-link { display: block; width: 30px; height: 30px; overflow: hidden; font-size: 24px; line-height: 24px; white-space: nowrap; color: #036; }
+    .icon-link::before { content: "\2605"; display: block; width: 30px; height: 30px; margin-bottom: 4px; line-height: 30px; text-align: center; }
   </style>
 </head>
 <body>
+  <!-- PASS: a label set in the page's own white that runs off the side of
+       the window (valero.com's phone menu button keeps a white "Toggle
+       Navigation" label on its white header). None of it shows, so neither
+       does its spill. It sits in the first viewport, where the hit tests
+       can confirm the surface under it. -->
+  <div style="margin-left: calc(100vw - 100px); width: 60px; height: 24px">
+    <div class="pass-ink-matches-surface" style="white-space: nowrap; color: #fff; line-height: 24px">Toggle navigation</div>
+  </div>
   <div class="cols">
     <!-- FLAG column: content forced wider than its box with no scroll
          affordance, cut off by the column's clip -->
@@ -104,6 +114,10 @@
       <a class="box pass-ripple" href="#" style="display: inline-flex; position: relative; overflow: hidden; width: 120px">Shop now<span style="position: absolute; display: block; width: 340px; height: 340px; left: -110px; top: -150px"></span></a>
       <a class="box pass-image-replacement" href="#" style="display: block; overflow: hidden; text-indent: -9999px; height: 20px">Internet access plans</a>
       <div class="box pass-reserve">Durable streams on <span style="display: inline-block; min-width: 220px">storage</span></div>
+      <!-- Icon-font image replacement on the y axis (valero.com's social
+           links): a block ::before glyph fills the 30px clip and the label
+           lays out below it, so none of its width is painted. -->
+      <a class="icon-link pass-icon-label-below-clip" href="#">Youtube</a>
       <!-- scrollWidth counts absolutely positioned descendants too. A hover
            tooltip parked above a platform name at opacity 0 (clipto.com) and
            a badge pinned past a tab's corner (coachcall.ai's "Popular") are
