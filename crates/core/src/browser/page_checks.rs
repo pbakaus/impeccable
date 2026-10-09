@@ -1979,6 +1979,12 @@ pub fn check_heading_rhythm_dom(dom: &dyn Dom) -> Vec<ElFinding> {
         if !is_visible_flow(h) {
             continue;
         }
+        // A heading inside a quotation is a pull quote set large, not a
+        // section heading (tau.ac.il's `blockquote > h2`, 120 characters
+        // on three lines): it heads nothing, and counts toward no minimum.
+        if closest_or_none(dom, h, "blockquote, q").is_some() {
+            continue;
+        }
         // A heading nobody sees at rest (a slide parked past its track, a
         // carousel clone, a tab panel off to the side) sets no rhythm and
         // counts toward no page minimum.

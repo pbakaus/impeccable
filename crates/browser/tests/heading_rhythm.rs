@@ -11,7 +11,8 @@
 //! image that covers it; a link or date closing the block above and a
 //! heading's own icon or accent bar keep reporting. Round 7's equal-gaps
 //! call (r7-t1) reports a heading spaced evenly under running prose, and an
-//! even gap under one line or with more room above still passes.
+//! even gap under one line or with more room above still passes. A heading
+//! inside a `blockquote` is a pull quote and sets no rhythm.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
