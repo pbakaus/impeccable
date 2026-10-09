@@ -2178,15 +2178,17 @@ mod tests {
     #[test]
     fn a_routed_pixel_pair_reports_once_per_page() {
         let link = |text: &str| json!({"selector": "a", "text": text, "textColor": {"r": 51.0, "g": 51.0, "b": 51.0, "a": 1.0}});
+        // The snippet the pixel pass writes for these links.
         let snippet = |text: &str| {
-            format!("pixel contrast 4.48:1 median 4.48:1 (need 4.5:1) on image background, unread layer \"{text}\"")
+            screenshot_contrast::pixel_contrast_snippet(4.48, 4.48, &json!(4.5), "image background, unread layer", &format!(" \"{text}\""))
         };
         let mut seen = Vec::new();
         assert!(keep_pixel_finding(&mut seen, &link("로그인"), true, "warning", &snippet("로그인")));
         assert!(!keep_pixel_finding(&mut seen, &link("회원가입"), true, "warning", &snippet("회원가입")));
         // Another ratio, or another ink, is another pair.
-        let other = "pixel contrast 3.9:1 median 3.9:1 (need 4.5:1) on image background, unread layer \"고객센터\"";
-        assert!(keep_pixel_finding(&mut seen, &link("고객센터"), true, "warning", other));
+        let other = screenshot_contrast::pixel_contrast_snippet(3.9, 3.9, &json!(4.5), "image background, unread layer", " \"고객센터\"");
+        assert!(other.starts_with("pixel contrast 3.9:1"), "{other}");
+        assert!(keep_pixel_finding(&mut seen, &link("고객센터"), true, "warning", &other));
         let red = json!({"selector": "a", "text": "장바구니", "textColor": {"r": 200.0, "g": 0.0, "b": 0.0, "a": 1.0}});
         assert!(keep_pixel_finding(&mut seen, &red, true, "warning", &snippet("장바구니")));
         // The first budget always reports.

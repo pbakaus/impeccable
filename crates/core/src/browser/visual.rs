@@ -246,6 +246,11 @@ const LAYER_MAX_DEPTH: usize = 6;
 /// whole run, past [`LAYER_MAX_DEPTH`]: a slider nests its hero photo a dozen
 /// wrappers down (visitabudhabi.ae's `<picture>` is 16 boxes under the white
 /// page wrapper it paints over), and every box on the way covers the text.
+/// Narrower by design: past [`LAYER_MAX_DEPTH`] a `display: contents` or
+/// zero-height wrapper ends the chain, and children are visited in reverse
+/// document order, not z-order, so a deep stack of slides told apart only by
+/// a `clip-path` may answer with an inactive slide's paint. A picture routes
+/// to the pixels, which bounds the harm; a fill from such a slide would not.
 const LAYER_MAX_COVER_DEPTH: usize = 24;
 const LAYER_MAX_CHILDREN: usize = 64;
 const LAYER_MAX_NODES: usize = 1024;

@@ -613,7 +613,7 @@ fn measure_candidate(
 /// The pixel pass's snippet. The verdict and the median print against the
 /// threshold ([`impeccable_core::color::ratio_label`]), so a verdict just
 /// under the bar never reads as the bar itself.
-fn pixel_contrast_snippet(
+pub(crate) fn pixel_contrast_snippet(
     measured: f64,
     median: f64,
     threshold: &Value,
