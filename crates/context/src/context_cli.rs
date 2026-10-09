@@ -806,7 +806,8 @@ mod user_scope_hook_tests {
             self_cmd: "impeccable".to_string(),
         };
         let mut env = Env::new();
-        env.insert("HOME".to_string(), home);
+        env.insert("HOME".to_string(), home.clone());
+        env.insert("USERPROFILE".to_string(), home);
 
         assert_eq!(automatic_hook_mode(&ctx, &project, &env, &provider), "stop");
         let _ = std::fs::remove_dir_all(root);

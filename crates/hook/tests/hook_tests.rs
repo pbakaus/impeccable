@@ -2345,8 +2345,16 @@ fn admin_on_repairs_project_manifest_from_user_scope_claude_skill() {
     assert!(out.contains("Installed or repaired hook manifests for: .claude."), "{out}");
     let settings: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
     let command = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+    let expected_launcher = jsp::join(&[
+        &home_text,
+        ".claude",
+        "skills",
+        "impeccable",
+        "scripts",
+        "impeccable",
+    ]);
     assert!(
-        command.contains(&format!("{home_text}/.claude/skills/impeccable/scripts/impeccable")),
+        command.contains(&expected_launcher),
         "user-scope launcher missing from repaired command: {command}"
     );
     assert!(!command.contains("CLAUDE_PROJECT_DIR"), "{command}");
@@ -2376,8 +2384,16 @@ fn admin_on_repairs_shared_project_manifest_from_user_scope_claude_skill() {
     let shared: Value = serde_json::from_str(&t.read(".claude/settings.json")).unwrap();
     assert_eq!(shared["model"], "claude-sonnet-5");
     let command = shared["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+    let expected_launcher = jsp::join(&[
+        &home_text,
+        ".claude",
+        "skills",
+        "impeccable",
+        "scripts",
+        "impeccable",
+    ]);
     assert!(
-        command.contains(&format!("{home_text}/.claude/skills/impeccable/scripts/impeccable")),
+        command.contains(&expected_launcher),
         "user-scope launcher missing from repaired shared command: {command}"
     );
     assert!(!command.contains("CLAUDE_PROJECT_DIR"), "{command}");

@@ -522,10 +522,17 @@ mod tests {
     #[test]
     fn user_scope_claude_hook_is_checked_from_home() {
         let root = tmp();
-        let project = format!("{root}/project");
-        let home = format!("{root}/home");
+        let project = crate::jsp::join(&[&root, "project"]);
+        let home = crate::jsp::join(&[&root, "home"]);
         std::fs::create_dir_all(&project).unwrap();
-        let launcher = format!("{home}/.claude/skills/impeccable/scripts/impeccable");
+        let launcher = crate::jsp::join(&[
+            &home,
+            ".claude",
+            "skills",
+            "impeccable",
+            "scripts",
+            "impeccable",
+        ]);
         write(&home, ".claude/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
         write(
             &home,
