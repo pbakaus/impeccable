@@ -19,11 +19,11 @@
         "zod": "^4.3.6",
       },
       "optionalDependencies": {
-        "@impeccable/cli-darwin-arm64": "0.1.12",
-        "@impeccable/cli-darwin-x64": "0.1.12",
-        "@impeccable/cli-linux-arm64": "0.1.12",
-        "@impeccable/cli-linux-x64": "0.1.12",
-        "@impeccable/cli-windows-x64": "0.1.12",
+        "@impeccable/cli-darwin-arm64": "0.1.14",
+        "@impeccable/cli-darwin-x64": "0.1.14",
+        "@impeccable/cli-linux-arm64": "0.1.14",
+        "@impeccable/cli-linux-x64": "0.1.14",
+        "@impeccable/cli-windows-x64": "0.1.14",
       },
     },
   },
@@ -72,15 +72,15 @@
 
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 
-    "@impeccable/cli-darwin-arm64": ["@impeccable/cli-darwin-arm64@0.1.12", "", { "os": "darwin", "cpu": "arm64", "bin": { "impeccable-darwin-arm64": "bin/impeccable" } }, "sha512-+Z7GVusXlA8lzAZv1hUlGzu07ZWWQymAZ7Dr0wokMkhSg6IIYCrfQnaQsT+aHwqNx7xAgop+ZaAYFF2fPyazLQ=="],
+    "@impeccable/cli-darwin-arm64": ["@impeccable/cli-darwin-arm64@0.1.14", "", { "os": "darwin", "cpu": "arm64", "bin": { "impeccable-darwin-arm64": "bin/impeccable" } }, "sha512-GXT7Av5yaBcmj88xVtkABV9ftwkG8oWszAcIbb+s2C0mQiniskdZrTcqElAZ29iT3FcLMfQtkWlhwd9V41Qvcg=="],
 
-    "@impeccable/cli-darwin-x64": ["@impeccable/cli-darwin-x64@0.1.12", "", { "os": "darwin", "cpu": "x64", "bin": { "impeccable-darwin-x64": "bin/impeccable" } }, "sha512-27aBr9qEfWcw/pU8j8CeawWjS8yrLp571C2I9P9+44dTLvr8eyq4dFT8aBtuCoBzbsAUe4bLfkZkyihll6RoHA=="],
+    "@impeccable/cli-darwin-x64": ["@impeccable/cli-darwin-x64@0.1.14", "", { "os": "darwin", "cpu": "x64", "bin": { "impeccable-darwin-x64": "bin/impeccable" } }, "sha512-9YKJ6m331oF22EmJGvvatFezFj8Jec4OmL9QPg1emg6D6RpQ5hF2E0xou3tVRjDZoQ3tR9qazDBkyzJoR+wPbw=="],
 
-    "@impeccable/cli-linux-arm64": ["@impeccable/cli-linux-arm64@0.1.12", "", { "os": "linux", "cpu": "arm64", "bin": { "impeccable-linux-arm64": "bin/impeccable" } }, "sha512-r21oBpjcRRxf6AjTvZYWpUKDxh/zfFTT0IKll9TOZLhXyYS/ARoTHBi05SNdFMb1U+OoeFhltNdr8UzgPF04NA=="],
+    "@impeccable/cli-linux-arm64": ["@impeccable/cli-linux-arm64@0.1.14", "", { "os": "linux", "cpu": "arm64", "bin": { "impeccable-linux-arm64": "bin/impeccable" } }, "sha512-vjd6MelytaV15RK5hUWZ0aZFqiuBmqNO6silgb5g9G3ivplvQLL2pBvjXOayUchH9//1xRu9LxpFiS5ApZboZA=="],
 
-    "@impeccable/cli-linux-x64": ["@impeccable/cli-linux-x64@0.1.12", "", { "os": "linux", "cpu": "x64", "bin": { "impeccable-linux-x64": "bin/impeccable" } }, "sha512-sTo4KQWd/wRF0jA+PpwbnTeFSWucpl3xEgoxblsU4ZMs6BI0j4hlpg6bAnMY24zue1V/J476a5M2zsO+qoqALw=="],
+    "@impeccable/cli-linux-x64": ["@impeccable/cli-linux-x64@0.1.14", "", { "os": "linux", "cpu": "x64", "bin": { "impeccable-linux-x64": "bin/impeccable" } }, "sha512-f23x5t+pYPDkbt17oMAAcjmTSxexFfNYLZZ4ik/UeGLq1jiPCP6F17IWzBxOzj0C1lAHzOzSlrc7V8+57jMAtA=="],
 
-    "@impeccable/cli-windows-x64": ["@impeccable/cli-windows-x64@0.1.12", "", { "os": "win32", "cpu": "x64", "bin": { "impeccable-windows-x64": "bin/impeccable.exe" } }, "sha512-5IC1x37am9utzcksEfQzaIRROEeZ5KHFrWX13TC6PTLOp2MiafewDVgsEnttxVmrGzT0PDtzVoh/Y6SVpyv7rQ=="],
+    "@impeccable/cli-windows-x64": ["@impeccable/cli-windows-x64@0.1.14", "", { "os": "win32", "cpu": "x64", "bin": { "impeccable-windows-x64": "bin/impeccable.exe" } }, "sha512-dTM/MSNNf+lBL9ILxuT2fICAD6mfeSdKtCg7ubIDvK5Sapr3n3snkJQkBN8PUjwzyCZAQPZPcV7deXatStYTCA=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
