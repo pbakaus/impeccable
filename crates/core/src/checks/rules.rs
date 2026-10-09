@@ -1098,6 +1098,16 @@ const GRAY_ON_COLOR_DARK_LUMINANCE: f64 = 0.01;
 /// (`#1e002f`, 0.005, spread 47) read as black, while a dark navy (`#001c47`,
 /// 0.013), a dark petrol (`#002733`, 0.017) and a very dark blue with a wide
 /// spread (`#00004d`, 0.005, spread 77) still read as colour.
+///
+/// A pale tint is the other end. The channel spread grows with the hue
+/// however faint it is, so cream `#feeed4` spreads 42 and clears the bar,
+/// while the eye reads it as an off-white: OKLCH puts it at L 0.955 and
+/// C 0.038, and `#fde6ba` at L 0.933, C 0.062 (glowcase.app 321836, a 6:1
+/// grey-brown on cream that both judges call legible). At OKLCH lightness
+/// [`GRAY_ON_COLOR_PALE_LIGHTNESS`] and above the background needs chroma
+/// [`GRAY_ON_COLOR_PALE_CHROMA`] as well: amber-300 `#fcd34d` (C 0.153)
+/// and a saturated yellow still read as colour, amber-100 `#fef3c7`
+/// (C 0.06) and blue-100 `#dbeafe` (C 0.04) do not.
 fn background_reads_as_colour(bg: &Rgba) -> bool {
     let lum = relative_luminance(bg);
     let scale = if lum >= GRAY_ON_COLOR_DARK_LUMINANCE {
@@ -1105,8 +1115,18 @@ fn background_reads_as_colour(bg: &Rgba) -> bool {
     } else {
         (GRAY_ON_COLOR_DARK_LUMINANCE / math_max(lum, 1e-4)).sqrt()
     };
-    has_chroma(Some(bg), Some(GRAY_ON_COLOR_BG_SPREAD * scale))
+    if !has_chroma(Some(bg), Some(GRAY_ON_COLOR_BG_SPREAD * scale)) {
+        return false;
+    }
+    let (lightness, chroma) = crate::color::rgb_to_oklch_lc(bg);
+    lightness < GRAY_ON_COLOR_PALE_LIGHTNESS || chroma >= GRAY_ON_COLOR_PALE_CHROMA
 }
+
+/// The OKLCH lightness at and above which a background is a pale tint, and
+/// reads as colour only with [`GRAY_ON_COLOR_PALE_CHROMA`].
+const GRAY_ON_COLOR_PALE_LIGHTNESS: f64 = 0.9;
+/// The OKLCH chroma a pale tint needs to read as colour.
+const GRAY_ON_COLOR_PALE_CHROMA: f64 = 0.09;
 
 fn contrast_findings(opts: &ColorOpts, text_color: &Rgba) -> Vec<RuleHit> {
     // Glyphs inked at (nearly) zero alpha paint nothing: a `color:
@@ -2244,6 +2264,22 @@ mod tests {
         // At or above a luminance of 0.01 the bar is the old 40.
         assert!(background_reads_as_colour(&rgb(16.0, 185.0, 129.0)));
         assert!(!background_reads_as_colour(&rgb(120.0, 140.0, 150.0)));
+    }
+
+    /// glowcase.app 321836: grey-brown on cream reads as near-neutral.
+    #[test]
+    fn gray_on_color_pale_tints_need_chroma() {
+        let hex = |h: &str| crate::color::parse_any_color(Some(h)).unwrap();
+        // Pale tints a hue spreads past 40 that the eye reads as off-white.
+        for pale in ["#feeed4", "#fde6ba", "#fef3c7", "#dbeafe"] {
+            assert!(!background_reads_as_colour(&hex(pale)), "{pale}");
+        }
+        // Pale colours with chroma, and the oracle's should-flag fills.
+        for colour in ["#fcd34d", "#ffff00", "#fde68a", "#1e3a8a", "#115e59", "#10b981"] {
+            assert!(background_reads_as_colour(&hex(colour)), "{colour}");
+        }
+        let (l, c) = crate::color::rgb_to_oklch_lc(&hex("#feeed4"));
+        assert!((l - 0.955).abs() < 0.005 && (c - 0.038).abs() < 0.005, "{l} {c}");
     }
 
     #[test]

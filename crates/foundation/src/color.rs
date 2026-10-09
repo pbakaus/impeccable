@@ -490,6 +490,22 @@ pub fn oklab_to_rgb(l: f64, a: f64, b: f64) -> Rgba {
     )
 }
 
+/// A colour's OKLab lightness and chroma, `(L, C)`: the inverse of
+/// [`oklab_to_rgb`] for the sRGB gamut, alpha ignored. Lightness runs 0..1;
+/// chroma is about 0.37 at most for sRGB.
+pub fn rgb_to_oklch_lc(c: &Rgba) -> (f64, f64) {
+    let r = decode_srgb_channel(c.r / 255.0);
+    let g = decode_srgb_channel(c.g / 255.0);
+    let b = decode_srgb_channel(c.b / 255.0);
+    let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
+    let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
+    let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
+    let lightness = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
+    let a = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    let bb = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    (lightness, (a * a + bb * bb).sqrt())
+}
+
 /// JS `oklchToRgb(L, C, H)`.
 pub fn oklch_to_rgb(l: f64, c: f64, h: f64) -> Rgba {
     let h_rad = (h * std::f64::consts::PI) / 180.0;
