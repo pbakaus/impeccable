@@ -2105,8 +2105,25 @@ fn dominant_type_role_size(role: &str, samples: &[f64]) -> Option<f64> {
             .map(|(size, _)| *size)
             .reduce(math_max);
     }
+    // A near tie with the larger size second settles nothing either for a
+    // heading level under the h1: midilibre.fr sets 48 h2s at 16px (teaser
+    // titles) and 41 at 24px (section titles), and the 16px mode put the
+    // h2s level with the body. The level stays out as in an exact tie. The
+    // h1 and the body keep their most frequent size.
+    if role != "h1"
+        && role != "body"
+        && ranked.len() > 1
+        && ranked[1].1 >= ranked[0].1 * (1.0 - TYPE_ROLE_NEAR_TIE)
+        && ranked[1].0 > ranked[0].0
+    {
+        return None;
+    }
     ranked.first().map(|(size, _)| *size)
 }
+
+/// How close in count, as a share of the most frequent size, a larger
+/// second size has to come before a heading role has no settled size.
+const TYPE_ROLE_NEAR_TIE: f64 = 0.25;
 
 /// JS: checks.mjs#checkFlatTypeHierarchySamples
 pub fn check_flat_type_hierarchy_samples(samples: &[TypeSample]) -> Vec<RuleHit> {
@@ -2545,6 +2562,34 @@ mod tests {
         let hits = check_flat_type_hierarchy_samples(&samples(&otto));
         assert_eq!(hits.len(), 1, "a tied minority role stays out: {hits:?}");
         assert!(hits[0].snippet.starts_with("Role sizes: h4 12px, body 14px, h1 16px, h3 16px"), "{hits:?}");
+    }
+
+    /// midilibre.fr 324492: 48 h2 teaser titles at 16px and 41 section
+    /// titles at 24px. The 16px mode put the h2s level with the body.
+    #[test]
+    fn flat_type_hierarchy_leaves_out_a_near_tied_heading_level() {
+        let mut page = vec![("h1", 16.0)];
+        page.extend([("body", 16.0); 300]);
+        page.extend([("h2", 16.0); 48]);
+        page.extend([("h2", 24.0); 41]);
+        page.extend([("h3", 18.0); 6]);
+        assert!(check_flat_type_hierarchy_samples(&samples(&page)).is_empty(), "the h2 level drops out");
+        // A clear majority still settles the level.
+        let mut clear = vec![("h1", 16.0)];
+        clear.extend([("body", 16.0); 300]);
+        clear.extend([("h2", 16.0); 48]);
+        clear.extend([("h2", 24.0); 30]);
+        clear.extend([("h3", 18.0); 6]);
+        assert_eq!(check_flat_type_hierarchy_samples(&samples(&clear)).len(), 1);
+        // A near tie whose larger size comes first settles on it, as before.
+        let mut larger_first = vec![("h1", 16.0)];
+        larger_first.extend([("body", 16.0); 300]);
+        larger_first.extend([("h2", 17.0); 48]);
+        larger_first.extend([("h2", 16.0); 41]);
+        larger_first.extend([("h3", 18.0); 6]);
+        let hits = check_flat_type_hierarchy_samples(&samples(&larger_first));
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("h2 17px"), "{hits:?}");
     }
 
     #[test]
