@@ -527,15 +527,35 @@ pub fn layers_at_text(
 /// it need for the picture to hide what is under it.
 const PICTURE_COVER_MIN_OPACITY: f64 = 0.95;
 
+/// How far the picture's box may sit from the avatar box on each side.
+const AVATAR_BOX_SLACK: f64 = 3.0;
+
+/// The largest avatar box, on either axis.
+const AVATAR_MAX_SIDE: f64 = 160.0;
+
+/// The most characters initials run to, for a box larger than an avatar.
+const AVATAR_MAX_TEXT: usize = 3;
+
 /// Whether a later sibling of `el` lays a loaded picture over all of `el`'s
-/// text: thingstohave.app's avatar initials (`Avatar__Fallback`) under the
-/// avatar photo its next sibling holds. The sibling is drawn over `el`
-/// (neither sets a `z-index`, and the sibling is positioned or `el` is not)
-/// and is painted; the picture is an `<img>` the capture saw complete with a
-/// size of its own, sized to cover (`object-fit` `fill` or `cover`), whose
-/// box covers the text within a pixel, and which neither it nor any box up
-/// to the sibling fades below [`PICTURE_COVER_MIN_OPACITY`]. An image whose
-/// load state was not recorded covers nothing.
+/// text in the shape of an avatar: thingstohave.app's initials
+/// (`Avatar__Fallback`) under the photo the next sibling holds. The engine
+/// cannot see an image's alpha, and transparent pictures are common exactly
+/// where they lie over text (grain and texture overlays, frames, cut-out
+/// product shots), so the test keeps to the shape it was built for:
+///
+/// - the picture's box matches the box of `el`'s parent within
+///   [`AVATAR_BOX_SLACK`] on every side, and that box is no larger than
+///   [`AVATAR_MAX_SIDE`] on either axis or `el`'s text is at most
+///   [`AVATAR_MAX_TEXT`] characters (initials);
+/// - the picture is an `<img>` the capture saw complete with a size of its
+///   own, whose source does not end in `.svg` or `.png`, sized to cover
+///   (`object-fit` `fill` or `cover`), covering the text within a pixel, and
+///   which neither it nor any box up to the sibling fades below
+///   [`PICTURE_COVER_MIN_OPACITY`];
+/// - the sibling is drawn over `el` (neither sets a `z-index`, and the
+///   sibling is positioned or `el` is not) and is painted.
+///
+/// An image whose load state was not recorded covers nothing.
 fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
     let Some(parent) = dom.parent(el) else { return false };
     let text = dom
@@ -543,6 +563,14 @@ fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
         .filter(|r| r.all_finite() && r.width > 0.0 && r.height > 0.0)
         .unwrap_or_else(|| dom.rect(el));
     if !text.all_finite() || text.width <= 0.0 || text.height <= 0.0 {
+        return false;
+    }
+    let host = dom.rect(parent);
+    if !host.all_finite() {
+        return false;
+    }
+    let small = host.width <= AVATAR_MAX_SIDE && host.height <= AVATAR_MAX_SIDE;
+    if !small && js::trim(&dom.text_content(el)).chars().count() > AVATAR_MAX_TEXT {
         return false;
     }
     let positioned = |e: ElId| !matches!(dom.style(e, "position").as_str(), "static" | "");
@@ -574,7 +602,24 @@ fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
             if !loaded || !matches!(dom.style(img, "objectFit").as_str(), "fill" | "cover" | "") {
                 return false;
             }
+            let src = dom
+                .image_current_src(img)
+                .or_else(|| dom.attr(img, "src"))
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let path = src.split(['?', '#']).next().unwrap_or("");
+            if path.ends_with(".svg") || path.ends_with(".png") {
+                return false;
+            }
             let r = dom.rect(img);
+            let matches_host = r.all_finite()
+                && (r.left - host.left).abs() <= AVATAR_BOX_SLACK
+                && (r.top - host.top).abs() <= AVATAR_BOX_SLACK
+                && (r.right - host.right).abs() <= AVATAR_BOX_SLACK
+                && (r.bottom - host.bottom).abs() <= AVATAR_BOX_SLACK;
+            if !matches_host {
+                return false;
+            }
             let covers = r.all_finite()
                 && r.left <= text.left + 1.0
                 && r.top <= text.top + 1.0

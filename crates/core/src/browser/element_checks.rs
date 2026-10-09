@@ -8421,7 +8421,7 @@ mod tests {
     /// there, so the tree says it.
     #[test]
     fn a_loaded_photo_over_initials_below_the_fold_leaves_them_unscored() {
-        let run = |complete: Option<bool>, top: f64, img_width: f64| {
+        let run_src = |complete: Option<bool>, top: f64, img_width: f64, src: &str| {
             let (mut d, body) = page();
             let avatar = bare_box(&mut d, body, "div", (665.0, top, 35.0, 35.0));
             d.set_style(avatar, "position", "relative");
@@ -8433,14 +8433,42 @@ mod tests {
             d.set_styles(img, &[("opacity", "1"), ("objectFit", "cover")]);
             d.el_mut(img).image_complete = complete;
             d.el_mut(img).image_natural_size = Some((96.0, 96.0));
+            d.set_attr(img, "src", src);
             colors(&d, initial)
         };
+        let run = |complete: Option<bool>, top: f64, img_width: f64| {
+            run_src(complete, top, img_width, "/avatars/sophia.webp")
+        };
         assert!(!reports_contrast(&run(Some(true), 1334.0, 35.0)));
+        // A PNG or SVG may be transparent.
+        assert!(reports_contrast(&run_src(Some(true), 1334.0, 35.0, "/avatars/sophia.png?v=2")));
+        assert!(reports_contrast(&run_src(Some(true), 1334.0, 35.0, "/avatars/sophia.svg")));
         // A photo still loading, or not recorded, or covering only part of
         // the initials, leaves the verdict.
         assert!(reports_contrast(&run(Some(false), 1334.0, 35.0)));
         assert!(reports_contrast(&run(None, 1334.0, 35.0)));
         assert!(reports_contrast(&run(Some(true), 1334.0, 12.0)));
+    }
+
+    /// A transparent grain overlay laid over a section below the fold: the
+    /// engine cannot see its alpha, and it is no avatar, so the muted copy
+    /// under it keeps its verdict.
+    #[test]
+    fn a_grain_overlay_below_the_fold_does_not_cover_the_text() {
+        let run = |src: &str| {
+            let (mut d, body) = page();
+            let section = bare_box(&mut d, body, "section", (0.0, 1400.0, 1280.0, 400.0));
+            d.set_style(section, "position", "relative");
+            let p = faint_copy(&mut d, section, "rgb(220, 220, 220)", (40.0, 1500.0, 600.0, 28.0));
+            let grain = bare_box(&mut d, section, "img", (0.0, 1400.0, 1280.0, 400.0));
+            d.set_styles(grain, &[("position", "absolute"), ("zIndex", "auto"), ("opacity", "1"), ("objectFit", "cover")]);
+            d.set_attr(grain, "src", src);
+            d.el_mut(grain).image_complete = Some(true);
+            d.el_mut(grain).image_natural_size = Some((512.0, 512.0));
+            colors(&d, p)
+        };
+        assert!(reports_contrast(&run("/textures/grain.png")));
+        assert!(reports_contrast(&run("/textures/grain.webp")));
     }
 
     #[test]
