@@ -646,7 +646,7 @@ pub fn fixed_box_clippable_by(dom: &dyn Dom, el: ElId, container: ElId) -> bool 
 /// removes it: the screen-reader-only utility. Its content is laid out, and
 /// can overlap the pixel the box keeps, but none of it is seen. The rect is
 /// read first, so the common case costs one read.
-fn is_visually_hidden_box(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn is_visually_hidden_box(dom: &dyn Dom, el: ElId) -> bool {
     let r = dom.rect(el);
     if !r.all_finite() || r.width > 1.0 || r.height > 1.0 {
         return false;

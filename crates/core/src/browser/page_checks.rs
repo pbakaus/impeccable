@@ -262,10 +262,16 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
 pub const TYPE_HIERARCHY_SKIP_SELECTOR: &str =
     ".impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip, [id^=\"impeccable-live-\"]";
 
-/// JS: checks.mjs#isRenderedTypeElement over a live DOM.
+/// JS: checks.mjs#isRenderedTypeElement over a live DOM, plus the
+/// screen-reader-only utility: a heading in a 1px box its `clip` or
+/// `clip-path: inset()` removes, or inside one (kingkong.tech's `h1.sr-only`
+/// and its 1px SEO block of 16px headings), sets no size a visitor sees.
 fn is_rendered_type_element(dom: &dyn Dom, el: ElId) -> bool {
     for current in ancestors_inclusive(dom, el) {
         if dom.hidden_prop(current) || dom.attr(current, "hidden").is_some() {
+            return false;
+        }
+        if super::painted::is_visually_hidden_box(dom, current) {
             return false;
         }
         let display = js::to_lower_case(&dom.style(current, "display"));
@@ -4274,6 +4280,40 @@ mod tests {
         d.add_text(h1, "text");
         d.set_style(h1, "fontSize", "18px");
         assert!(check_typography(&d).is_empty());
+
+        // kingkong.tech: the h1 a reader sees nothing of is screen-reader
+        // only (1px, `clip-path: inset(50%)`), and so is a 1px SEO block
+        // (`clip: rect(0, 0, 0, 0)`) holding a 16px h2. Neither sets a size;
+        // the hero's 40px h2 does.
+        let build = |hide: bool| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            for (tag, size) in [("p", "16px"), ("p", "16px"), ("h2", "40px")] {
+                let el = d.add(Some(body), tag);
+                d.add_text(el, "text");
+                d.set_style(el, "fontSize", size);
+                d.set_rect(el, 0.0, 0.0, 600.0, 40.0);
+            }
+            let h1 = d.add(Some(body), "h1");
+            d.add_text(h1, "KingKong Technology");
+            d.set_styles(h1, &[("fontSize", "16px"), ("position", "absolute"), ("clipPath", "inset(50%)")]);
+            d.set_rect(h1, -1.0, 60.0, if hide { 1.0 } else { 400.0 }, if hide { 1.0 } else { 20.0 });
+            let seo = d.add(Some(body), "div");
+            d.set_styles(seo, &[("position", "absolute"), ("clip", "rect(0px, 0px, 0px, 0px)")]);
+            d.set_rect(seo, 0.0, 61.0, if hide { 1.0 } else { 400.0 }, if hide { 1.0 } else { 200.0 });
+            for _ in 0..3 {
+                let h2 = d.add(Some(seo), "h2");
+                d.add_text(h2, "Encoders");
+                d.set_style(h2, "fontSize", "16px");
+                d.set_rect(h2, 0.0, 61.0, 1.0, 20.0);
+            }
+            d
+        };
+        assert!(check_typography(&build(true)).is_empty());
+        // Boxes the clip does not remove are type like any other.
+        let f = check_typography(&build(false));
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!(f[0].type_, "flat-type-hierarchy");
     }
 
     /// rtx.com: closed mega-nav panels, `ul.esds-mega-nav__dropdown-level2`
