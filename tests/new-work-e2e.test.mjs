@@ -772,6 +772,17 @@ describe('new-work-e2e: serve-question decision page', () => {
       assert.match(flipped.out, /BUILD PATH FLIPPED: comp/);
       makeFakeImage(dir, 'timetable comp', 'assigned.webp');
       await page.waitForSelector('.card[data-id="assigned"] .media img.comp:not([hidden])', { timeout: 15000 });
+      // Back to code with the comp landed: the sketch is the face again and
+      // the comp leaves the card, so screen and answer agree.
+      await page.click('.bp-opt[data-bp="code"]');
+      await page.waitForSelector('.card[data-id="assigned"] .media.html:not([hidden])');
+      assert.equal(await page.$('.card[data-id="assigned"] .media img.comp'), null, 'the landed comp leaves the face');
+      // And to comp again: the landed comp is back and the sketch hides.
+      await page.click('.bp-opt[data-bp="comp"]');
+      await page.waitForSelector('#bp-confirm:not([hidden])');
+      await page.click('#bp-confirm [data-confirm]');
+      await page.waitForSelector('.card[data-id="assigned"] .media img.comp:not([hidden])', { timeout: 15000 });
+      assert.ok(await page.$('.media.html[hidden]'), 'comp hides the sketch again');
       await page.click('.card[data-id="assigned"] .face.front button.choose');
       const collected = await waitLoop(cwd, key, { poll: 10 });
       await context.close();
