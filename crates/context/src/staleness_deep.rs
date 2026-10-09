@@ -537,10 +537,17 @@ mod tests {
         write(
             &home,
             ".claude/settings.json",
-            &format!(
-                r#"{{"hooks":{{"PostToolUse":[{{"hooks":[{{"type":"command","command":"\"{}\" hook"}}]}}]}}}}"#,
-                launcher
-            ),
+            &serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [{
+                        "hooks": [{
+                            "type": "command",
+                            "command": format!("\"{launcher}\" hook"),
+                        }],
+                    }],
+                },
+            })
+            .to_string(),
         );
         write(
             &home,

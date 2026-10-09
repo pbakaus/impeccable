@@ -768,10 +768,17 @@ mod user_scope_hook_tests {
         std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
         std::fs::write(
             settings,
-            format!(
-                r#"{{"hooks":{{"PostToolUse":[{{"hooks":[{{"type":"command","command":"\"{}\" hook"}}]}}]}}}}"#,
-                launcher.to_string_lossy()
-            ),
+            serde_json::json!({
+                "hooks": {
+                    "PostToolUse": [{
+                        "hooks": [{
+                            "type": "command",
+                            "command": format!("\"{}\" hook", launcher.to_string_lossy()),
+                        }],
+                    }],
+                },
+            })
+            .to_string(),
         )
         .unwrap();
 
