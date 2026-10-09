@@ -541,7 +541,7 @@ pub fn check_html_patterns_with(
         let start = retreat_utf16(style_text, gm.start(), 200);
         let end = advance_utf16(style_text, gm.end(), 200);
         let context = &style_text[start..end];
-        if GRADIENT_CI_RE.is_match(context) {
+        if GRADIENT_CI_RE.is_match(context) && !context_gradients_are_one_colour(context) {
             findings.push(pf(
                 "gradient-text",
                 "background-clip: text + gradient".to_string(),
@@ -749,6 +749,42 @@ pub fn check_html_patterns_with(
     }
 
     findings
+}
+
+/// Whether every gradient function written in a declaration's context
+/// paints one colour ([`crate::checks::rules::gradient_stops_are_one_colour`]):
+/// a `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)` clipped to
+/// text is solid type. With no gradient function read in full, no.
+fn context_gradients_are_one_colour(context: &str) -> bool {
+    let lower = context.to_ascii_lowercase();
+    let mut found = 0usize;
+    let mut from = 0usize;
+    while let Some(rel) = lower[from..].find("gradient(") {
+        let open = from + rel + "gradient".len();
+        let mut depth = 0i32;
+        let mut close = None;
+        for (i, c) in context[open..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(open + i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(close) = close else { return false };
+        let function = format!("linear-gradient{}", &context[open..=close]);
+        if !crate::checks::rules::gradient_stops_are_one_colour(&function) {
+            return false;
+        }
+        found += 1;
+        from = close + 1;
+    }
+    found > 0
 }
 
 #[cfg(test)]

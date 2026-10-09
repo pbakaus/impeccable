@@ -832,7 +832,13 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
         }
     }
 
-    if bg_clip == "text" && !bg_image.is_empty() && bg_image.contains("gradient") {
+    // A gradient whose stops are all one colour is a fill: the type is solid
+    // (cochat.ai's `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`).
+    if bg_clip == "text"
+        && !bg_image.is_empty()
+        && bg_image.contains("gradient")
+        && !gradient_stops_are_one_colour(bg_image)
+    {
         findings.push(RuleHit::new(
             "gradient-text",
             "background-clip: text + gradient".to_string(),
@@ -1069,6 +1075,25 @@ fn resolved_bg_matches_text(opts: &ColorOpts, text_color: &Rgba) -> bool {
     opts.effective_bg_stops
         .as_deref()
         .map_or(false, |stops| stops.iter().any(same))
+}
+
+/// The channel distance under which two gradient stops are one colour.
+const GRADIENT_ONE_COLOUR_DELTA: f64 = 12.0;
+
+/// Whether every stop of a gradient value is the same colour (within
+/// [`GRADIENT_ONE_COLOUR_DELTA`] on each channel and alpha). Two stops at
+/// least are needed to say so; with fewer, or stops that cannot be read,
+/// no.
+pub fn gradient_stops_are_one_colour(image: &str) -> bool {
+    let stops = crate::color::parse_gradient_colors(Some(image));
+    let Some(first) = stops.first() else { return false };
+    stops.len() >= 2
+        && stops.iter().all(|c| {
+            (c.r - first.r).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.g - first.g).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.b - first.b).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.alpha_or_one() - first.alpha_or_one()).abs() * 255.0 < GRADIENT_ONE_COLOUR_DELTA
+        })
 }
 
 /// Whether a computed `background-clip` clips the background to the text:

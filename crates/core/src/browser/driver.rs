@@ -4135,7 +4135,7 @@ mod page_level_form_tests {
     }
 
     #[test]
-    fn a_one_colour_ramp_and_a_shimmer_paint_no_gradient_text() {
+    fn a_one_colour_ramp_paints_no_gradient_text_and_a_two_layer_clip_is_read() {
         // cochat.ai 322270: a gradient between two equal stops is solid type.
         let (mut d, body) = page("");
         let h2 = d.add(Some(body), "h2");
@@ -4152,37 +4152,28 @@ mod page_level_form_tests {
         );
         assert!(details(&scan(&d), "gradient-text").is_empty());
 
-        // ardainc.com 322257: two layers clipped to the text (`text, text`),
-        // a dark band swept over one grey. The stylesheet form names it too.
-        let shimmer_page = |running: bool| {
-            let (mut d, body) = page(
-                ".shimmer{background-image:linear-gradient(90deg,transparent,#111,transparent),linear-gradient(#777,#777);-webkit-background-clip:text;background-clip:text;color:transparent}",
-            );
-            let p = d.add(Some(body), "p");
-            d.add_selector(p, ".shimmer");
-            d.add_text(p, "Loading data");
-            d.set_rect(p, 0.0, 0.0, 120.0, 22.0);
-            d.set_styles(
-                p,
-                &[
-                    (
-                        "backgroundImage",
-                        "linear-gradient(90deg, rgba(0, 0, 0, 0) 40%, rgb(17, 17, 17), rgba(0, 0, 0, 0) 60%), linear-gradient(rgb(119, 119, 119), rgb(119, 119, 119))",
-                    ),
-                    ("webkitBackgroundClip", "text, text"),
-                    ("backgroundClip", "text, text"),
-                    ("fontSize", "16px"),
-                ],
-            );
-            if running {
-                d.set_running_animations(p, &["background-position-x", "background-position-y"]);
-            }
-            (d, p)
-        };
-        let (d, _) = shimmer_page(true);
-        assert!(details(&scan(&d), "gradient-text").is_empty());
-        // Held still, the band is a ramp on the text, read on the element.
-        let (d, p) = shimmer_page(false);
+        // ardainc.com 322257: two layers clipped to the text (`text, text`)
+        // are read on the element, as one clip is. Whether an animated
+        // highlight over one grey is the tell is taste call r9-t4.
+        let (mut d, body) = page(
+            ".shimmer{background-image:linear-gradient(90deg,transparent,#111,transparent),linear-gradient(#777,#777);-webkit-background-clip:text;background-clip:text;color:transparent}",
+        );
+        let p = d.add(Some(body), "p");
+        d.add_selector(p, ".shimmer");
+        d.add_text(p, "How it works");
+        d.set_rect(p, 0.0, 0.0, 120.0, 22.0);
+        d.set_styles(
+            p,
+            &[
+                (
+                    "backgroundImage",
+                    "linear-gradient(90deg, rgba(0, 0, 0, 0) 40%, rgb(17, 17, 17), rgba(0, 0, 0, 0) 60%), linear-gradient(rgb(119, 119, 119), rgb(119, 119, 119))",
+                ),
+                ("webkitBackgroundClip", "text, text"),
+                ("backgroundClip", "text, text"),
+                ("fontSize", "16px"),
+            ],
+        );
         assert_eq!(
             details(&scan(&d), "gradient-text"),
             vec![(p, "background-clip: text + gradient".to_string())]

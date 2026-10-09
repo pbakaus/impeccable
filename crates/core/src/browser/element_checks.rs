@@ -1286,13 +1286,9 @@ fn samples_are_one_colour(samples: &[Rgba]) -> bool {
 /// headings see a quarter of theirs: geometry cannot tell the judged misfire
 /// from the tell.
 ///
-/// Two clips paint no ramp at all. A gradient whose stops are one colour
+/// A gradient whose stops are one colour paints no ramp: it is a fill
 /// (cochat.ai's `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`
-/// headline, solid black type) is a fill. And a loading shimmer: a stack
-/// whose bottom layer is one opaque colour, with the layers above it swept
-/// across by a running `background-position` animation (ardainc.com's
-/// `p.shimmer` labels, grey type a dark band passes over). The type rests
-/// in the bottom layer's colour; what moves is a highlight, not a ramp.
+/// headline, solid black type).
 pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
     let image = dom.style(el, "backgroundImage");
     let stops = parse_gradient_colors(Some(&image));
@@ -1303,27 +1299,7 @@ pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
     if strongest * own_opacity(dom, el) < GRADIENT_TEXT_MIN_STOP_ALPHA {
         return false;
     }
-    if stops.len() >= 2 && samples_are_one_colour(&stops) {
-        return false;
-    }
-    !is_shimmer_over_one_colour(dom, el, &image)
-}
-
-/// A gradient stack whose bottom layer is one opaque colour and whose
-/// `background-position` is animated at capture. Where the animations are
-/// not recorded, no.
-fn is_shimmer_over_one_colour(dom: &dyn Dom, el: ElId, image: &str) -> bool {
-    let layers = crate::color::split_top_level_commas(image);
-    if layers.len() < 2 {
-        return false;
-    }
-    let base = parse_gradient_colors(layers.last().map(String::as_str));
-    if base.len() < 2 || !samples_are_one_colour(&base) || base[0].alpha_or_one() < 0.95 {
-        return false;
-    }
-    dom.running_animation_properties(el).is_some_and(|props| {
-        props.iter().any(|p| js::to_lower_case(p).starts_with("background-position"))
-    })
+    !crate::checks::rules::gradient_stops_are_one_colour(&image)
 }
 
 /// The smallest type [`box_holds_a_text_line`] reads as a line of text.

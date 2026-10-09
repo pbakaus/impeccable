@@ -1794,7 +1794,7 @@ fn candidate_text_reads_at_rest(dom: &dyn Dom, el: ElId) -> bool {
             a
         }
     };
-    if js::trim(&clip) != "text" {
+    if !crate::checks::rules::background_clips_to_text(&clip) {
         let ink_gone = parse_rgb_or_any(&dom.style(el, "color"))
             .map_or(false, |c| c.alpha_or_one() <= TRANSPARENT_INK_FLOOR);
         if ink_gone || text_fill_is_transparent(&dom.style(el, "webkitTextFillColor")) {
