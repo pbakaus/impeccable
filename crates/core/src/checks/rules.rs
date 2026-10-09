@@ -2135,11 +2135,14 @@ fn dominant_type_role_size(role: &str, samples: &[f64]) -> Option<f64> {
     // titles) and 41 at 24px (section titles), and the 16px mode put the
     // h2s level with the body. The level stays out as in an exact tie. The
     // h1 and the body keep their most frequent size.
+    // Only two sizes a full step apart straddle the ladder: telekom.de's h2s
+    // at 21 and 24px, or joongang.co.kr's at 14 and 16px, are flat at either
+    // size, and the most frequent stands for the level as before.
     if role != "h1"
         && role != "body"
         && ranked.len() > 1
         && ranked[1].1 >= ranked[0].1 * (1.0 - TYPE_ROLE_NEAR_TIE)
-        && ranked[1].0 > ranked[0].0
+        && ranked[1].0 >= ranked[0].0 * TYPE_HIERARCHY_MIN_STEP_RATIO
     {
         return None;
     }
@@ -2606,6 +2609,16 @@ mod tests {
         clear.extend([("h2", 24.0); 30]);
         clear.extend([("h3", 18.0); 6]);
         assert_eq!(check_flat_type_hierarchy_samples(&samples(&clear)).len(), 1);
+        // A near tie between two sizes under a step apart is flat either way,
+        // and still reports.
+        let mut flat_tie = vec![("h1", 16.0)];
+        flat_tie.extend([("body", 16.0); 300]);
+        flat_tie.extend([("h2", 16.0); 48]);
+        flat_tie.extend([("h2", 17.0); 41]);
+        flat_tie.extend([("h3", 18.0); 6]);
+        let hits = check_flat_type_hierarchy_samples(&samples(&flat_tie));
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("h2 16px"), "{hits:?}");
         // A near tie whose larger size comes first settles on it, as before.
         let mut larger_first = vec![("h1", 16.0)];
         larger_first.extend([("body", 16.0); 300]);
