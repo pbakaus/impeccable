@@ -2051,8 +2051,11 @@ fn covering_ground(dom: &dyn Dom, body: ElId) -> Option<crate::color::Rgba> {
             }
             // A box with no measured rect covers nothing: what it would have
             // covered counts as the body's.
+            // Only the part of the band over the body counts: a full-width
+            // section shifted aside leaves the body showing beside it.
             let r = dom.rect(child);
-            if !r.all_finite() || r.height <= 0.0 || r.width < GROUND_COVER_MIN_SHARE * body_rect.width {
+            let over_body = r.right.min(body_rect.right) - r.left.max(body_rect.left);
+            if !r.all_finite() || r.height <= 0.0 || over_body < GROUND_COVER_MIN_SHARE * body_rect.width {
                 continue;
             }
             let image = dom.style(child, "backgroundImage");
@@ -2560,10 +2563,16 @@ fn closed_container(dom: &dyn Dom, el: ElId, closed_ids: &std::collections::Hash
     false
 }
 
-/// Whether `el` holds the page rather than an overlay on it: a `main`
-/// (or `role="main"`) or an `h1` inside it, or at least half of the
-/// document's text.
+/// Whether `el` holds the page rather than an overlay on it: it is, or
+/// holds, a `main` (or `role="main"`) or an `h1`, or it holds at least half
+/// of the document's text.
 fn holds_the_page(dom: &dyn Dom, el: ElId) -> bool {
+    if tag_lower(dom, el) == "main"
+        || tag_lower(dom, el) == "h1"
+        || dom.attr(el, "role").is_some_and(|r| js::trim(&r).eq_ignore_ascii_case("main"))
+    {
+        return true;
+    }
     if dom.query_one(Some(el), "main, [role=\"main\"], h1").ok().flatten().is_some() {
         return true;
     }
@@ -3817,8 +3826,11 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
             // The same words set again in the same face at the same origin
             // (schlittermann.de's logo, `a.logo` laid exactly over the first
             // word of `span.logo2`) draw the glyphs the victim draws: an
-            // overprint, not a collision a reader sees.
-            if overprints(dom, top, el) {
+            // overprint, not a collision a reader sees. Only the glyphs are
+            // exempt: a box whose own fill or borders hide the words after
+            // the ones it redraws still covers them.
+            let top_style = ElStyle { dom, el: top };
+            if !is_opaque_decorated_box(Some(&top_style)) && overprints(dom, top, el) {
                 continue;
             }
             let top_own_text = !element_direct_text(dom, top).is_empty()
@@ -3826,7 +3838,6 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
                 && glyphs_may_cover(top_glyphs, victim_glyphs.as_ref(), x, y);
             let top_in_svg = closest_or_none(dom, top, "svg").is_some();
             let top_has_text = top_own_text || top_in_svg;
-            let top_style = ElStyle { dom, el: top };
             // A box paints its fill and borders inside its own rect. Where the
             // box the page answered with is not at the point in the capture,
             // the page moved between the capture and the answer: a carousel
@@ -6194,6 +6205,9 @@ mod tests {
         assert_eq!(run_with(0.0, "52px", &[("fontVariant", "tabular-nums")]).len(), 1);
         // A glyph property the capture did not record is unknown.
         assert_eq!(run_with(0.0, "52px", &[("wordSpacing", "")]).len(), 1);
+        // The logo's own opaque fill hides the words after the one it
+        // redraws.
+        assert_eq!(run_with(0.0, "52px", &[("backgroundColor", "rgb(255, 255, 255)")]).len(), 1);
     }
 
     /// v0-orbit-internal-app: a KPI label clipped by its squeezed card to the
@@ -7246,6 +7260,21 @@ mod tests {
             check_cream_palette(&d)
         };
         assert_eq!(faded.len(), 1);
+        // A full-width band shifted half a page aside leaves the cream
+        // showing beside it.
+        let shifted = {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.inner_width = 1280.0;
+            d.set_style(body, "backgroundColor", "rgb(245, 242, 236)");
+            d.set_rect(html, 0.0, 0.0, 1280.0, 1000.0);
+            d.set_rect(body, 0.0, 0.0, 1280.0, 1000.0);
+            let band = d.add(Some(body), "section");
+            d.set_styles(band, &[("backgroundColor", dark), ("backgroundImage", "none")]);
+            d.set_rect(band, 640.0, 0.0, 1280.0, 1000.0);
+            check_cream_palette(&d)
+        };
+        assert_eq!(shifted.len(), 1);
         // A band with no measured rect covers nothing.
         let f = build(&[(dark, 800.0), (grey, f64::NAN)], 5700.0);
         assert_eq!(f.len(), 1);
@@ -7335,6 +7364,19 @@ mod tests {
         assert_eq!(shell(false, "Your orders, your saved items and your account"), 46.0);
         // A short overlay beside more page text is still closed interface.
         assert_eq!(shell(false, "Hi"), 0.0);
+        // The layer that is itself the `main` holds the page too.
+        let main_layer = {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.inner_width = 390.0;
+            d.inner_height = 844.0;
+            hidden_box(&mut d, body, "p", &[], "visible text on the page around the dialog");
+            let app = hidden_box(&mut d, body, "main", &hidden_fixed, "Short");
+            d.set_rect(app, 0.0, 0.0, 390.0, 844.0);
+            mark_body_descendants(&mut d);
+            measure_hidden_text_dom(&d).hidden_chars
+        };
+        assert_eq!(main_layer, 5.0);
     }
 
     /// hse.de (287847, 287911): the mobile menu at opacity 0, `position:

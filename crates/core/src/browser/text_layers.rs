@@ -632,9 +632,11 @@ fn covered_by_a_later_picture(dom: &dyn Dom, el: ElId) -> bool {
             if !covers || !super::painted::painted_at_capture(dom, img) {
                 return false;
             }
+            // A `z-index` on the picture or a box under the sibling can put
+            // it behind the initials.
             let mut cur = Some(img);
             while let Some(c) = cur {
-                if !opaque(c) {
+                if !opaque(c) || !z_auto(c) {
                     return false;
                 }
                 if c == sib {

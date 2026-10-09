@@ -2748,9 +2748,18 @@ fn share_left_by_covering_media(dom: &dyn Dom, el: ElId, rect: &Rect) -> f64 {
             // autoplay is blocked or the source fails; its poster paints
             // from the start.
             "video" => dom.attr(media, "poster").is_some_and(|v| !js::trim(&v).is_empty()),
+            // A PNG or SVG may be a transparent texture the glow shows
+            // through; the engine cannot see its alpha.
             "img" => {
+                let src = dom
+                    .image_current_src(media)
+                    .or_else(|| dom.attr(media, "src"))
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                let path = src.split(['?', '#']).next().unwrap_or("");
                 dom.image_complete(media) == Some(true)
                     && dom.image_natural_size(media).is_some_and(|(w, h)| w > 0.0 && h > 0.0)
+                    && !(path.ends_with(".png") || path.ends_with(".svg"))
             }
             _ => false,
         };
@@ -6743,6 +6752,26 @@ mod tests {
         assert_eq!(run("block", "2", "1"), 0);
     }
 
+    /// A loaded image over the glow covers it unless it may be a
+    /// transparent texture: a PNG or SVG.
+    #[test]
+    fn radial_spotlight_sees_through_a_png_or_svg_texture() {
+        let run = |src: &str| {
+            let (mut d, section, glow) =
+                dark_page_with_glow("radial-gradient(circle, rgba(171, 151, 116, 0.35) 0%, transparent 28%)");
+            let img = d.add(Some(section), "img");
+            d.set_attr(img, "src", src);
+            d.el_mut(img).image_complete = Some(true);
+            d.el_mut(img).image_natural_size = Some((1600.0, 1000.0));
+            d.set_styles(img, &[("position", "absolute"), ("opacity", "1"), ("objectFit", "cover")]);
+            d.set_rect(img, 0.0, 0.0, 803.0, 502.0);
+            check_element_radial_spotlight_dom(&d, glow).len()
+        };
+        assert_eq!(run("/images/hero.jpg"), 0);
+        assert_eq!(run("/images/grain.png?v=3"), 1);
+        assert_eq!(run("/images/noise.svg"), 1);
+    }
+
     #[test]
     fn radial_spotlight_measures_a_hero_painted_with_a_gradient() {
         // The commonest way to build this pattern: a glow layer over a hero
@@ -8481,7 +8510,7 @@ mod tests {
     /// decides whether the photo paints over the initials.
     #[test]
     fn a_photo_ordered_before_the_initials_does_not_cover_them() {
-        let run = |initial_order: &str, wrap_order: &str| {
+        let run_z = |initial_order: &str, wrap_order: &str, img_z: &str| {
             let (mut d, body) = page();
             let top = 1334.0;
             let avatar = bare_box(&mut d, body, "div", (665.0, top, 35.0, 35.0));
@@ -8491,13 +8520,16 @@ mod tests {
             let wrap = bare_box(&mut d, avatar, "div", (665.0, top, 35.0, 35.0));
             d.set_styles(wrap, &[("position", "relative"), ("zIndex", "auto"), ("opacity", "1"), ("order", wrap_order)]);
             let img = bare_box(&mut d, wrap, "img", (665.0, top, 35.0, 35.0));
-            d.set_styles(img, &[("opacity", "1"), ("objectFit", "cover")]);
+            d.set_styles(img, &[("opacity", "1"), ("objectFit", "cover"), ("zIndex", img_z)]);
             d.el_mut(img).image_complete = Some(true);
             d.el_mut(img).image_natural_size = Some((96.0, 96.0));
             d.set_attr(img, "src", "/avatars/sophia.webp");
             reports_contrast(&colors(&d, initial))
         };
+        let run = |initial_order: &str, wrap_order: &str| run_z(initial_order, wrap_order, "auto");
         assert!(!run("0", "0"));
+        // A photo at `z-index: -1` paints behind the initials.
+        assert!(run_z("0", "0", "-1"));
         assert!(run("1", "0"));
         assert!(run("0", ""));
     }

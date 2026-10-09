@@ -761,8 +761,7 @@ pub fn under_1px(font_size: &str) -> bool {
 /// chain that flips on its own (`m33` below 0; a flat ancestor could undo or
 /// redo the flip, as a flip card inside a mirrored wrapper does), a chain
 /// deeper than the walk reads, a property the capture did not record, an
-/// individual `rotate` or `scale` on the face or an individual `rotate`
-/// above it, a transform that does not parse as a matrix, a perspective term
+/// individual `rotate` or `scale` on the face or above it, a transform that does not parse as a matrix, a perspective term
 /// inside one, and a normal close to edge-on ([`FACING_AWAY_MIN`], or
 /// [`FACING_AWAY_MIN_UNDER_PERSPECTIVE`] under an ancestor that sets
 /// `perspective`, where a face off to the side can show past edge-on). The
@@ -787,7 +786,7 @@ fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
     let mut steps = 0;
     while let Some(a) = up {
         steps += 1;
-        if steps > MAX_ANCESTORS || !individual_none(a, "rotate") {
+        if steps > MAX_ANCESTORS || !individual_none(a, "rotate") || !individual_none(a, "scale") {
             return false;
         }
         let p = dom.style(a, "perspective");
@@ -2329,6 +2328,10 @@ mod tests {
         d.set_style(card, "rotate", "y 180deg");
         assert_eq!(why(&d, copy), None);
         d.set_style(card, "rotate", "none");
+        // So may an individual `scale` above it (`scale: 1 1 -1` flips z).
+        d.set_style(card, "scale", "1 1 -1");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "scale", "none");
 
         // cochat.ai's page-flip book: the whole book is tilted a few degrees
         // towards the viewer (and scaled), which leaves the back of each leaf
