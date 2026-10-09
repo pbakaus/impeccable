@@ -28,7 +28,7 @@ use crate::checks::rules::{
     parse_font_weight, type_hierarchy_role, RuleHit,
     TypeSample, TYPE_HIERARCHY_SELECTOR,
 };
-use crate::color::parse_any_color;
+use crate::color::{composite_color_over, parse_any_color, Rgba};
 use crate::constants::{is_brand_font_on_own_domain, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
 use crate::js::{self, math_max, math_min, math_round, number_to_string, parse_float, to_fixed};
 use crate::js_ext_a::num_truthy;
@@ -362,17 +362,74 @@ fn shows_border_or_shadow(dom: &dyn Dom, el: ElId) -> bool {
         l.alpha >= crate::checks::measures::FAINT_PAINT_ALPHA
             && (l.x != 0.0 || l.y != 0.0 || l.blur > 0.0 || l.spread != 0.0)
     });
-    casts_shadow
-        || ["Top", "Right", "Bottom", "Left"].iter().any(|side| {
-            let width = parse_float(&dom.style(el, &format!("border{side}Width")));
-            let style = dom.style(el, &format!("border{side}Style"));
-            let color = dom.style(el, &format!("border{side}Color"));
-            width >= 0.5
-                && style != "none"
-                && style != "hidden"
-                && crate::checks::measures::css_color_alpha(Some(&color))
-                    >= crate::checks::measures::FAINT_PAINT_ALPHA
-        })
+    casts_shadow || ["Top", "Right", "Bottom", "Left"].iter().any(|side| border_side_shows(dom, el, side, None))
+}
+
+/// The surface under `el` its borders are judged against: the painted
+/// ancestor fill ([`super::element_checks::painted_surface_under`]), when
+/// the text the box holds reads on it at 3:1 or better (the first few
+/// elements with text of their own, or the box's own ink when it holds
+/// none). Text that does not read on the surface says the climb missed what
+/// paints there: arbiproseller's feature cards hold white copy on a dark
+/// layer the climb does not see, over a white `body`. Then no border is
+/// judged, and each counts as before.
+fn edge_surface_under(dom: &dyn Dom, el: ElId) -> Option<Rgba> {
+    const MAX_INKS: usize = 8;
+    let surface = super::element_checks::painted_surface_under(dom, el)?;
+    let mut holders: Vec<ElId> = std::iter::once(el)
+        .chain(dom.query_all(Some(el), "*").unwrap_or_default())
+        .filter(|&n| !js::trim(&direct_text(dom, n)).is_empty())
+        .take(MAX_INKS)
+        .collect();
+    if holders.is_empty() {
+        holders.push(el);
+    }
+    for n in holders {
+        let ink = parse_any_color(Some(&dom.style(n, "color")))?;
+        let ink = composite_color_over(&ink, &surface);
+        if crate::color::contrast_ratio(&ink, &surface) < 3.0 {
+            return None;
+        }
+    }
+    Some(surface)
+}
+
+/// How far, on some channel, a border composited over the box has to sit
+/// from the surface under the box before it draws an edge a reader sees.
+const CARD_EDGE_MIN_CHANNEL_DELTA: f64 = 8.0;
+
+/// Whether `el`'s border on `side` draws: half a pixel wide or more, in a
+/// style that draws, in a colour that is not transparent, and, where the
+/// surface under the box is known, a colour that composited over the box
+/// sits [`CARD_EDGE_MIN_CHANNEL_DELTA`] from that surface on some channel.
+/// v0-ai-video-playground.vercel.app's shell draws its border at OKLab L
+/// 0.16 and half alpha on a black page: a border by the computed style,
+/// and no edge on screen. Where the surface cannot be read, the border
+/// counts as before. Only [`card_edge_sides`] passes a surface: whether an
+/// inner box shows a border at all (r4-p16) is read from the computed
+/// style alone, so a white panel with a `gray-100` hairline on `gray-50`
+/// keeps its border there.
+fn border_side_shows(dom: &dyn Dom, el: ElId, side: &str, surface: Option<&Rgba>) -> bool {
+    let width = parse_float(&dom.style(el, &format!("border{side}Width")));
+    let style = dom.style(el, &format!("border{side}Style"));
+    let color = dom.style(el, &format!("border{side}Color"));
+    if !(width >= 0.5
+        && style != "none"
+        && style != "hidden"
+        && crate::checks::measures::css_color_alpha(Some(&color))
+            >= crate::checks::measures::FAINT_PAINT_ALPHA)
+    {
+        return false;
+    }
+    let (Some(surface), Some(edge)) = (surface, parse_any_color(Some(&color))) else {
+        return true;
+    };
+    let under = super::element_checks::own_fill_over(dom, el, surface);
+    let shown = composite_color_over(&edge, &under);
+    math_max(
+        math_max((shown.r - surface.r).abs(), (shown.g - surface.g).abs()),
+        (shown.b - surface.b).abs(),
+    ) >= CARD_EDGE_MIN_CHANNEL_DELTA
 }
 
 /// Any corner of a computed `border-radius` above zero.
@@ -392,15 +449,9 @@ fn card_edge_sides(
     layers: &[crate::checks::measures::ShadowLayer],
 ) -> usize {
     let mut sides = [false; 4];
+    let surface = edge_surface_under(dom, el);
     for (i, side) in ["Top", "Right", "Bottom", "Left"].iter().enumerate() {
-        let width = parse_float(&dom.style(el, &format!("border{side}Width")));
-        let style = dom.style(el, &format!("border{side}Style"));
-        let color = dom.style(el, &format!("border{side}Color"));
-        sides[i] = width >= 0.5
-            && style != "none"
-            && style != "hidden"
-            && crate::checks::measures::css_color_alpha(Some(&color))
-                >= crate::checks::measures::FAINT_PAINT_ALPHA;
+        sides[i] = border_side_shows(dom, el, side, surface.as_ref());
     }
     for layer in layers {
         if layer.inset || layer.alpha < crate::checks::measures::FAINT_PAINT_ALPHA {
@@ -457,6 +508,16 @@ fn is_single_line_label_box(dom: &dyn Dom, el: ElId, rect: &Rect) -> bool {
     };
     if !line_height.is_finite() || line_height <= 0.0 {
         return false;
+    }
+    // A box set to a fixed height (loova.ai's 34px "Accept All" button,
+    // centred by flex with no padding) holds its one line in more room than
+    // the padding says. A box with no element child whose text renders on
+    // one line is a label too, up to three lines tall.
+    if dom.children(el).is_empty()
+        && rect.height <= line_height * 3.0
+        && dom.text_line_rects(el).is_some_and(|lines| lines.len() == 1)
+    {
+        return true;
     }
     let chrome = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"]
         .iter()
@@ -6363,6 +6424,71 @@ mod tests {
         d.set_styles(el, &[("fontSize", "16px"), ("lineHeight", "24px"), ("paddingTop", "16px"), ("paddingBottom", "16px")]);
         d.add_text(el, "An inner card with copy of its own");
         el
+    }
+
+    /// loova.ai's consent banner: a 34px "Accept All" button with no padding,
+    /// its one line centred by flex. v0-ai-video-playground.vercel.app: a
+    /// shell whose border, OKLab L 0.16 at half alpha on black, draws no edge.
+    #[test]
+    fn nested_cards_skip_fixed_height_labels_and_borders_nobody_sees() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let card = d.add(Some(body), "div");
+        outlined(&mut d, card, "16px");
+        d.set_rect(card, 0.0, 0.0, 600.0, 200.0);
+        d.add_text(card, "We use cookies to improve your experience");
+        let button = d.add(Some(card), "div");
+        outlined(&mut d, button, "6px");
+        d.set_rect(button, 400.0, 13.0, 114.0, 34.0);
+        d.set_styles(button, &[("fontSize", "14px"), ("lineHeight", "normal"), ("paddingTop", "0px"), ("paddingBottom", "0px")]);
+        d.add_text(button, "Accept All");
+        // Without recorded lines the box reads as two lines tall, as before.
+        assert_eq!(check_layout(&d).len(), 1, "no line rects: base behaviour");
+        d.set_text_lines(button, &[(425.0, 20.5, 64.0, 19.0)]);
+        assert!(check_layout(&d).is_empty(), "one rendered line in a fixed-height box");
+        // A box with an element child is not read this way.
+        let icon = d.add(Some(button), "span");
+        d.set_rect(icon, 495.0, 22.0, 12.0, 12.0);
+        assert_eq!(check_layout(&d).len(), 1, "a box with a child element");
+
+        let dark_page = |border: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(0, 0, 0)");
+            let shell = d.add(Some(body), "div");
+            outlined(&mut d, shell, "14px");
+            d.set_style(shell, "backgroundColor", "rgba(0, 0, 0, 0.5)");
+            for side in ["Top", "Right", "Bottom", "Left"] {
+                d.set_style(shell, &format!("border{side}Color"), border);
+            }
+            d.set_style(shell, "color", "rgb(240, 240, 240)");
+            d.set_rect(shell, 12.0, 12.0, 1256.0, 776.0);
+            d.add_text(shell, "Video playground workspace");
+            let panel = outlined_card(&mut d, shell, (37.0, 127.0, 1206.0, 300.0));
+            d.set_style(panel, "backgroundColor", "rgb(12, 12, 12)");
+            d.set_style(panel, "color", "rgb(240, 240, 240)");
+            for side in ["Top", "Right", "Bottom", "Left"] {
+                d.set_style(panel, &format!("border{side}Color"), "rgb(60, 60, 60)");
+            }
+            (d, panel)
+        };
+        // oklab(0.16 0 0 / 0.5) composites to about 7 on black.
+        let (d, _) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+        assert!(check_layout(&d).is_empty(), "the shell's border draws no edge");
+        let (d, panel) = dark_page("rgba(255, 255, 255, 0.1)");
+        let f = check_layout(&d);
+        assert_eq!(f.len(), 1, "a white/10 border draws one: {f:?}");
+        assert_eq!(f[0].el, Some(panel));
+        // White copy on a surface the climb reads as near-white says the
+        // climb missed the dark layer under the card: its border is not
+        // judged, and counts.
+        let (mut d, panel) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+        let body = d.body().unwrap();
+        d.set_style(body, "backgroundColor", "rgb(250, 250, 250)");
+        let shell = d.parent(panel).unwrap();
+        d.set_style(shell, "backgroundColor", "rgba(0, 0, 0, 0)");
+        assert!(super::edge_surface_under(&d, shell).is_none(), "white copy on a white surface");
+        assert_eq!(check_layout(&d).len(), 1, "an unreadable surface keeps the border");
     }
 
     /// auradeballet.com's `border-t` footer, vibe-audit-lab.base44.app's
