@@ -888,7 +888,8 @@ fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
 }
 
 /// How deep into `el`'s box an edge is drawn on every side by an inset
-/// `box-shadow` ring (the largest spread of a visible inset layer) or by an
+/// `box-shadow` ring (the largest spread of a visible inset layer, less its
+/// larger offset) or by an
 /// outline a negative `outline-offset` pulls inside the box (the offset's
 /// depth). Infinite when the capture recorded neither value, so callers keep
 /// their base reading.
@@ -931,8 +932,17 @@ fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> f64 {
                 .filter(|w| w.ends_with("px"))
                 .map(parse_float)
                 .collect();
-            if let Some(spread) = lengths.get(3).copied().filter(|v| v.is_finite() && *v > 0.0) {
-                depth = js::math_max(depth, spread);
+            // An offset shifts the ring: `inset 8px 0 0 1px` draws 9px on
+            // the left and nothing on the right. The depth drawn on every
+            // side is the spread less the larger offset.
+            let (Some(&x), Some(&y), Some(&spread)) =
+                (lengths.first(), lengths.get(1), lengths.get(3))
+            else {
+                continue;
+            };
+            let ring = spread - js::math_max(x.abs(), y.abs());
+            if ring.is_finite() && ring > 0.0 {
+                depth = js::math_max(depth, ring);
             }
         }
     }
@@ -3429,6 +3439,10 @@ mod tests {
         assert_eq!(flush(&d).len(), 1, "an inset ring");
         d.set_style(row, "boxShadow", "rgba(0, 0, 0, 0) 0px 0px 0px 1px inset");
         assert!(flush(&d).is_empty(), "a transparent ring draws nothing");
+        // An offset ring is not drawn on every side: `inset 0 8px 0 1px`
+        // draws 9px along the top and nothing along the bottom.
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 0px 8px 0px 1px inset");
+        assert!(flush(&d).is_empty(), "an offset inset shadow is not a ring");
         d.set_style(row, "boxShadow", "rgb(0, 0, 0) 0px 4px 12px 0px");
         assert!(flush(&d).is_empty(), "an outer shadow draws no inner edge");
         d.set_style(row, "boxShadow", "none");
