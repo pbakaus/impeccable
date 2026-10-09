@@ -235,6 +235,11 @@ const MEDIA_TAGS: &[&str] = &["img", "picture", "video", "canvas"];
 const LAYER_MAX_LEVELS: usize = 32;
 const LAYER_MAX_SIBLINGS: usize = 32;
 const LAYER_MAX_DEPTH: usize = 6;
+/// How deep [`layer_in_box`] follows a chain of boxes that each cover the
+/// whole run, past [`LAYER_MAX_DEPTH`]: a slider nests its hero photo a dozen
+/// wrappers down (visitabudhabi.ae's `<picture>` is 16 boxes under the white
+/// page wrapper it paints over), and every box on the way covers the text.
+const LAYER_MAX_COVER_DEPTH: usize = 24;
 const LAYER_MAX_CHILDREN: usize = 64;
 const LAYER_MAX_NODES: usize = 1024;
 
@@ -972,12 +977,24 @@ fn layer_in_box(
     if covers && beneath && !skipped && MEDIA_TAGS.contains(&tag_lower(dom, node).as_str()) {
         return Some((Paint::Picture, node));
     }
-    if depth < LAYER_MAX_DEPTH && (covers || overflow_visible(dom, node)) {
+    // Past the first levels, only a chain of boxes that each cover the run is
+    // followed: those are the wrappers a picture sits in, and a box that does
+    // not cover the run says nothing about the paint under all of it.
+    let deep = depth >= LAYER_MAX_DEPTH;
+    if (depth < LAYER_MAX_DEPTH && (covers || overflow_visible(dom, node)))
+        || (depth < LAYER_MAX_COVER_DEPTH && covers)
+    {
         let children = dom.children(node);
         let reaching = children
             .iter()
             .rev()
-            .filter(|&&child| may_reach_text(dom, child, text))
+            .filter(|&&child| {
+                if deep {
+                    rect_covers(&dom.rect(child), text)
+                } else {
+                    may_reach_text(dom, child, text)
+                }
+            })
             .take(LAYER_MAX_CHILDREN);
         for &child in reaching {
             if let Some(paint) =
@@ -4643,6 +4660,65 @@ mod tests {
         // climb reaches the page, and only the hit test is left to answer.
         let (d, overline, img) = build("block");
         assert_ne!(layer_under_text_found(&d, overline).1, Some(img));
+    }
+
+    /// observations-47 row 5, visitabudhabi.ae 324008: the header's links sit
+    /// on a translucent bar over the hero photo, which a slider nests 16
+    /// boxes inside the white page wrapper it paints over (a `z-index:
+    /// -1111` layer inside the wrapper's own stacking context). The climb
+    /// follows the chain of wrappers that each cover the run past its usual
+    /// depth and finds the photo, where it used to stop and read the
+    /// wrapper's white. A chain that stops covering the run is not followed
+    /// that deep.
+    #[test]
+    fn the_climb_follows_covering_wrappers_down_to_a_deep_picture() {
+        let build = |depth: usize, gap_at: Option<usize>| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
+            let header = d.add(Some(body), "header");
+            d.set_styles(header, &[("position", "fixed"), ("zIndex", "10"), ("display", "block")]);
+            d.set_rect(header, 0.0, 0.0, 1280.0, 106.0);
+            let link = d.add(Some(header), "a");
+            d.add_text(link, "Partners");
+            d.set_styles(link, &[("display", "block"), ("color", "rgb(255, 255, 255)"), ("fontSize", "11px")]);
+            d.set_rect(link, 40.0, 7.0, 49.0, 13.0);
+            d.set_text_rect(link, 40.0, 7.0, 49.0, 13.0);
+            let wrapper = d.add(Some(body), "div");
+            d.set_styles(
+                wrapper,
+                &[("position", "relative"), ("zIndex", "2"), ("display", "block"), ("backgroundColor", "rgb(255, 255, 255)")],
+            );
+            d.set_rect(wrapper, 0.0, 0.0, 1280.0, 4689.0);
+            let mut parent = wrapper;
+            for level in 0..depth {
+                let next = d.add(Some(parent), "div");
+                let z = if level == 0 { "-1111" } else { "auto" };
+                d.set_styles(next, &[("position", "relative"), ("zIndex", z), ("display", "block")]);
+                if gap_at == Some(level) {
+                    d.set_rect(next, 0.0, 200.0, 1280.0, 600.0);
+                } else {
+                    d.set_rect(next, 0.0, 0.0, 1280.0, 801.0);
+                }
+                parent = next;
+            }
+            let img = d.add(Some(parent), "img");
+            d.set_styles(img, &[("position", "absolute"), ("display", "block")]);
+            d.set_rect(img, 0.0, 0.0, 1280.0, 802.0);
+            (d, link, img)
+        };
+        let (d, link, img) = build(15, None);
+        assert_eq!(layer_under_text_found(&d, link), (LayerUnder::Picture, Some(img)));
+        // Within the usual depth the photo was always found.
+        let (d, link, img) = build(4, None);
+        assert_eq!(layer_under_text_found(&d, link), (LayerUnder::Picture, Some(img)));
+        // A wrapper deep in the chain that does not cover the run ends it,
+        // and the climb reads the wrapper's white as before.
+        let (d, link, _) = build(15, Some(10));
+        assert!(matches!(layer_under_text_found(&d, link).0, LayerUnder::Detached(_)));
+        // So does a chain deeper than the bound.
+        let (d, link, _) = build(LAYER_MAX_COVER_DEPTH + 2, None);
+        assert!(matches!(layer_under_text_found(&d, link).0, LayerUnder::Detached(_)));
     }
 
     /// observations-42 row 12, telekom.de: a consent notice scrolls its list
