@@ -395,7 +395,9 @@ fn unpainted_walk(
             }
         }
         OwnOpacity::Counts => {
-            if effective_opacity_dom(dom, el) <= TRANSPARENT_FLOOR {
+            // A box a scroll timeline holds at 0 at the top of the page is
+            // read at the opacity a visitor who scrolls to it meets.
+            if effective_opacity_scrolled(dom, el) <= TRANSPARENT_FLOOR {
                 return Some(Unpainted::Transparent);
             }
         }
@@ -1425,6 +1427,65 @@ pub fn opacity_held_by_scroll_timeline(dom: &dyn Dom, el: ElId, style_text: &str
         }
     }
     false
+}
+
+/// The opacity `el` shows once a visitor scrolls to it, where a scroll or
+/// view timeline holds it at 0 while the page sits at the top
+/// ([`opacity_held_by_scroll_timeline`], read from the computed
+/// `animation-timeline` alone): the opacity its end keyframe sets.
+/// opencodex.me's `p.lp-disclaimer` runs `ocx-fade-up` on `view()` and is
+/// read at 0 at capture, though a visitor who scrolls to it reads it at 1.
+/// `None` where the box is not at the transparent floor, where nothing holds
+/// it, and wherever the end frame cannot be read for certain: more than one
+/// animation setting opacity, a composition other than `replace`, a
+/// direction other than `normal` or `reverse`, an end keyframe that sets no
+/// opacity. Those keep the opacity the capture read.
+pub(crate) fn scroll_held_end_opacity(dom: &dyn Dom, el: ElId) -> Option<f64> {
+    let raw = js::parse_float(&dom.style(el, "opacity"));
+    if !(raw.is_finite() && raw <= TRANSPARENT_FLOOR) {
+        return None;
+    }
+    if !opacity_held_by_scroll_timeline(dom, el, "") {
+        return None;
+    }
+    let entry = sole_opacity_entry(dom, el)?;
+    let timeline = js::to_lower_case(js::trim(&entry.timeline));
+    if !(timeline.starts_with("scroll(") || timeline.starts_with("view(") || timeline.starts_with("--")) {
+        return None;
+    }
+    if !(entry.composition.is_empty() || entry.composition == "replace") {
+        return None;
+    }
+    let at = match entry.direction.as_str() {
+        "" | "normal" => 1.0,
+        "reverse" => 0.0,
+        _ => return None,
+    };
+    opacity_at_offset(dom, &entry.name, at).map(|o| o.clamp(0.0, 1.0))
+}
+
+/// [`effective_opacity_dom`] as a visitor who scrolls meets the box: a box a
+/// scroll or view timeline holds at 0 counts at its end keyframe's opacity
+/// ([`scroll_held_end_opacity`]). Every other box counts as captured.
+pub fn effective_opacity_scrolled(dom: &dyn Dom, el: ElId) -> f64 {
+    let mut o = 1.0f64;
+    let mut cur = Some(el);
+    while let Some(c) = cur {
+        let raw = dom.style(c, "opacity");
+        let v = scroll_held_end_opacity(dom, c).unwrap_or_else(|| {
+            if raw.is_empty() {
+                1.0
+            } else {
+                js::parse_float(&raw)
+            }
+        });
+        o *= v;
+        if o <= TRANSPARENT_FLOOR {
+            return 0.0;
+        }
+        cur = dom.parent(c);
+    }
+    o
 }
 
 /// Whether `el`, an absolutely positioned box with area, lies wholly outside
@@ -2922,6 +2983,66 @@ mod tests {
         d.set_style(block, "animationName", "lab-rise, lab-grow");
         d.set_style(block, "animationTimeline", "view()");
         assert!(opacity_held_by_scroll_timeline(&d, block, css), "one timeline repeats for every name");
+    }
+
+    /// opencodex.me 11728: `p.lp-disclaimer` runs `ocx-fade-up` (0% at
+    /// opacity 0, 100% at 1) on `view()` and is read at 0 at the top of the
+    /// page. A visitor who scrolls to it reads it at its end keyframe, so the
+    /// Text gate and the contrast check count it there; anything the engine
+    /// cannot read for certain keeps the opacity the capture read.
+    #[test]
+    fn a_box_held_at_zero_by_a_scroll_timeline_counts_at_its_end_keyframe() {
+        let (mut d, body) = page();
+        set_keyframes(&mut d, "ocx-fade-up", &[("0%", &[("opacity", "0")]), ("100%", &[("opacity", "1")])]);
+        let wrap = d.add(Some(body), "div");
+        d.set_rect(wrap, 100.0, 3000.0, 600.0, 80.0);
+        let p = d.add(Some(wrap), "p");
+        d.set_rect(p, 124.0, 3010.0, 540.0, 58.0);
+        d.set_styles(
+            p,
+            &[
+                ("opacity", "0"),
+                ("animationName", "ocx-fade-up"),
+                ("animationTimeline", "view()"),
+                ("animationFillMode", "both"),
+                ("animationDirection", "normal"),
+                ("animationComposition", "replace"),
+            ],
+        );
+        assert_eq!(scroll_held_end_opacity(&d, p), None, "a probe that read no animations");
+        assert_eq!(effective_opacity_scrolled(&d, p), 0.0);
+        d.set_running_animations(p, &["opacity", "transform"]);
+        assert_eq!(scroll_held_end_opacity(&d, p), Some(1.0));
+        assert_eq!(effective_opacity_scrolled(&d, p), 1.0);
+        assert_eq!(effective_opacity_dom(&d, p), 0.0, "the captured opacity is unchanged");
+        assert_ne!(unpainted_at_capture(&d, p, OwnOpacity::Counts), Some(Unpainted::Transparent));
+
+        // A held wrapper fades its text the same way.
+        let child = d.add(Some(p), "span");
+        assert_eq!(effective_opacity_scrolled(&d, child), 1.0);
+
+        // A reversed run ends on its first frame, which shows nothing.
+        d.set_style(p, "animationDirection", "reverse");
+        assert_eq!(scroll_held_end_opacity(&d, p), Some(0.0));
+        assert_eq!(unpainted_at_capture(&d, p, OwnOpacity::Counts), Some(Unpainted::Transparent));
+        // A direction or composition it cannot read keeps the captured 0.
+        d.set_style(p, "animationDirection", "alternate");
+        assert_eq!(scroll_held_end_opacity(&d, p), None);
+        d.set_style(p, "animationDirection", "normal");
+        d.set_style(p, "animationComposition", "add");
+        assert_eq!(scroll_held_end_opacity(&d, p), None);
+        d.set_style(p, "animationComposition", "replace");
+        // The document timeline is a reveal that never ran, not this.
+        d.set_style(p, "animationTimeline", "auto");
+        assert_eq!(scroll_held_end_opacity(&d, p), None);
+        d.set_style(p, "animationTimeline", "view()");
+        // A box not at the transparent floor is read as captured.
+        d.set_style(p, "opacity", "0.4");
+        assert_eq!(scroll_held_end_opacity(&d, p), None);
+        // An end keyframe that sets no opacity cannot be read.
+        d.set_style(p, "opacity", "0");
+        set_keyframes(&mut d, "ocx-fade-up", &[("0%", &[("opacity", "0")]), ("100%", &[("transform", "none")])]);
+        assert_eq!(scroll_held_end_opacity(&d, p), None);
     }
 
     /// directus.io: a closed FAQ row hides its overflow at 76px and parks the

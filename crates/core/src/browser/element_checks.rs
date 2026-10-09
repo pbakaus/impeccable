@@ -1195,7 +1195,9 @@ fn fold_surface_opacity(
         }
         let fill = surface.overlays.iter().find(|(n, _)| *n == c).map(|(_, f)| *f);
         let opacity = opacity_of(dom, c);
-        let opacity = if opacity < 0.999 && !opacity_at_rest(dom, c, opacity) {
+        let opacity = if let Some(end) = crate::browser::painted::scroll_held_end_opacity(dom, c) {
+            end
+        } else if opacity < 0.999 && !opacity_at_rest(dom, c, opacity) {
             1.0
         } else {
             opacity
@@ -1337,7 +1339,12 @@ pub fn check_element_colors_dom(
     if (rect.height < 10.0 && !short_line) || (rect.width < 10.0 && !narrow_run) {
         return Vec::new();
     }
-    if dom.style(el, "visibility") == "hidden" || effective_opacity_dom(dom, el) <= 0.02 {
+    // A box a scroll or view timeline holds at 0 while the page sits at the
+    // top is read at the opacity its end keyframe sets: a visitor who
+    // scrolls to it reads it there.
+    if dom.style(el, "visibility") == "hidden"
+        || crate::browser::painted::effective_opacity_scrolled(dom, el) <= 0.02
+    {
         return Vec::new();
     }
     // A shadow host whose own text is slotted into its shadow tree paints
