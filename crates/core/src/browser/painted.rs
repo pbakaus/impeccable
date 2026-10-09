@@ -707,12 +707,19 @@ pub fn under_1px(font_size: &str) -> bool {
 
 /// Whether `node` is a face turned away under `backface-visibility: hidden`:
 /// its own `transform` is a 3D matrix that points its front away from the
-/// viewer (a negative z scale, as `rotateY(180deg)` gives), and nothing above
-/// it rotates in 3D, which could turn it back (a flip card's inner box on
-/// hover). A property the capture did not record, an individual `rotate` or
-/// `scale` on the face, or a 3D transform above it keeps the element. The
-/// walk calls this for the element and each ancestor, so a face hides its
-/// whole subtree; only a face found reads the chain above it.
+/// viewer (a negative z scale, as `rotateY(180deg)` gives), and the
+/// transforms above it do not turn it back. The face's normal is carried up
+/// through every ancestor's `transform` and has to end up pointing away: a
+/// book tilted a few degrees towards the viewer (cochat.ai's page-flip
+/// mockup, `m33` 0.99) leaves the back of each leaf facing away, and a flip
+/// card's inner box turned by 180 degrees (a flip on hover caught flipped)
+/// turns the back face towards the viewer. A property the capture did not
+/// record, an individual `rotate` or `scale` on the face, an individual
+/// `rotate` above it, a transform that does not parse as a matrix, a
+/// perspective term inside one, or a normal that ends up nearly edge-on
+/// keeps the element. The walk calls this for the element and each
+/// ancestor, so a face hides its whole subtree; only a face found reads the
+/// chain above it.
 fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
     if dom.style(node, "backfaceVisibility") != "hidden" || !faces_away(&dom.style(node, "transform")) {
         return false;
@@ -721,14 +728,58 @@ fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
     if !(individual_none(node, "rotate") && individual_none(node, "scale")) {
         return false;
     }
+    let Some(mut normal) = linear_part(&dom.style(node, "transform")).map(|m| [m[2][0], m[2][1], m[2][2]])
+    else {
+        return false;
+    };
+    // `normal` is the face's z axis; each ancestor's linear part is applied
+    // to it on the way up.
     let mut up = dom.parent(node);
     while let Some(a) = up {
-        if dom.style(a, "transform").starts_with("matrix3d(") || !individual_none(a, "rotate") {
+        if !individual_none(a, "rotate") {
             return false;
+        }
+        let t = dom.style(a, "transform");
+        let t = js::trim(&t);
+        if !(t.is_empty() || t == "none") {
+            let Some(m) = linear_part(t) else { return false };
+            // `m[c][r]`: column `c`, row `r`.
+            normal = [
+                m[0][0] * normal[0] + m[1][0] * normal[1] + m[2][0] * normal[2],
+                m[0][1] * normal[0] + m[1][1] * normal[1] + m[2][1] * normal[2],
+                m[0][2] * normal[0] + m[1][2] * normal[1] + m[2][2] * normal[2],
+            ];
         }
         up = dom.parent(a);
     }
-    true
+    let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    length > 0.0 && normal[2] / length < -FACING_AWAY_MIN
+}
+
+/// How far past edge-on a face's normal has to point away from the viewer
+/// (the z component of the unit normal) to count as turned away. A face
+/// close to edge-on can be shown or hidden by the perspective the capture
+/// does not model.
+const FACING_AWAY_MIN: f64 = 0.1;
+
+/// The linear part of a computed `transform` (`matrix()` or `matrix3d()`),
+/// column by column, or `None` for anything else, or for a `matrix3d()`
+/// carrying a perspective term.
+fn linear_part(transform: &str) -> Option<[[f64; 3]; 3]> {
+    let parse = |body: &str| -> Option<Vec<f64>> {
+        let values: Vec<f64> = body.split(',').map(|v| js::parse_float(js::trim(v))).collect();
+        values.iter().all(|v| v.is_finite()).then_some(values)
+    };
+    if let Some(body) = transform.strip_prefix("matrix3d(").and_then(|b| b.strip_suffix(')')) {
+        let v = parse(body)?;
+        if v.len() != 16 || v[3] != 0.0 || v[7] != 0.0 || v[11] != 0.0 {
+            return None;
+        }
+        return Some([[v[0], v[1], v[2]], [v[4], v[5], v[6]], [v[8], v[9], v[10]]]);
+    }
+    let body = transform.strip_prefix("matrix(").and_then(|b| b.strip_suffix(')'))?;
+    let v = parse(body)?;
+    (v.len() == 6).then(|| [[v[0], v[1], 0.0], [v[2], v[3], 0.0], [0.0, 0.0, 1.0]])
 }
 
 /// Whether a computed `transform` is a 3D matrix whose z axis points away
@@ -2010,6 +2061,29 @@ mod tests {
         d.set_style(card, "transform", "none");
         d.set_style(card, "rotate", "y 180deg");
         assert_eq!(why(&d, copy), None);
+        d.set_style(card, "rotate", "none");
+
+        // cochat.ai's page-flip book: the whole book is tilted a few degrees
+        // towards the viewer (and scaled), which leaves the back of each leaf
+        // facing away.
+        const TILTED_BOOK: &str = "matrix3d(1.3797, -0.0286851, -0.00352209, 0, 0.0289005, 1.36941, 0.168143, 0, 0, -0.121869, 0.992546, 0, 153.3, 0, 0, 1)";
+        d.set_style(card, "transform", TILTED_BOOK);
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        // A 2D transform above it turns nothing towards the viewer either.
+        d.set_style(body, "transform", "matrix(0.5, 0.2, -0.2, 0.5, 10, 10)");
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        d.set_style(body, "transform", "none");
+        // A quarter turn about y leaves the face edge-on, which the
+        // perspective the capture does not model could show either way; a
+        // perspective term, or a transform that does not parse as a matrix,
+        // says nothing.
+        d.set_style(card, "transform", "matrix3d(0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, -0.001, 0, 0, 0, 1)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "rotateX(5deg)");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "none");
 
         // A 2D mirror turns nothing away.
         d.set_style(card, "rotate", "none");
