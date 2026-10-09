@@ -718,19 +718,29 @@ pub fn under_1px(font_size: &str) -> bool {
 /// Whether `node` is a face turned away under `backface-visibility: hidden`:
 /// its own `transform` is a 3D matrix that points its front away from the
 /// viewer (a negative z scale, as `rotateY(180deg)` gives), and the
-/// transforms above it do not turn it back. The face's normal is carried up
-/// through every ancestor's `transform` and has to end up pointing away: a
-/// book tilted a few degrees towards the viewer (cochat.ai's page-flip
-/// mockup, `m33` 0.99) leaves the back of each leaf facing away, and a flip
-/// card's inner box turned by 180 degrees (a flip on hover caught flipped)
-/// turns the back face towards the viewer. A property the capture did not
-/// record, an individual `rotate` or `scale` on the face, an individual
-/// `rotate` above it, a transform that does not parse as a matrix, a
-/// perspective term inside one, or a normal that ends up nearly edge-on
-/// keeps the element. The walk calls this for the element and each
-/// ancestor, so a face hides its whole subtree; only a face found reads the
-/// chain above it.
+/// transforms above it do not turn it back. The linear parts of the face's
+/// transform and of every ancestor's are multiplied, and the face is away
+/// when the product's normal (the third row of its inverse, which is what a
+/// browser tests: Chromium's `IsBackFaceVisible` takes the sign of
+/// `cofactor33 * det`) points away from the viewer. A book tilted a few
+/// degrees towards the viewer (cochat.ai's page-flip mockup, `m33` 0.99)
+/// leaves the back of each leaf facing away.
+///
+/// The capture records neither `transform-style` nor how far a 3D context
+/// reaches, so the product assumes one context, and every case that
+/// assumption could get wrong keeps the element: a second matrix in the
+/// chain that flips on its own (`m33` below 0; a flat ancestor could undo or
+/// redo the flip, as a flip card inside a mirrored wrapper does), a chain
+/// deeper than the walk reads, a property the capture did not record, an
+/// individual `rotate` or `scale` on the face or an individual `rotate`
+/// above it, a transform that does not parse as a matrix, a perspective term
+/// inside one, and a normal close to edge-on ([`FACING_AWAY_MIN`], or
+/// [`FACING_AWAY_MIN_UNDER_PERSPECTIVE`] under an ancestor that sets
+/// `perspective`, where a face off to the side can show past edge-on). The
+/// walk calls this for the element and each ancestor, so a face hides its
+/// whole subtree; only a face found reads the chain above it.
 fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 256;
     if dom.style(node, "backfaceVisibility") != "hidden" || !faces_away(&dom.style(node, "transform")) {
         return false;
     }
@@ -738,39 +748,90 @@ fn turned_away(dom: &dyn Dom, node: ElId) -> bool {
     if !(individual_none(node, "rotate") && individual_none(node, "scale")) {
         return false;
     }
-    let Some(mut normal) = linear_part(&dom.style(node, "transform")).map(|m| [m[2][0], m[2][1], m[2][2]])
-    else {
+    let Some(face) = linear_part(&dom.style(node, "transform")) else {
         return false;
     };
-    // `normal` is the face's z axis; each ancestor's linear part is applied
-    // to it on the way up.
+    // Row-major products: `total = ancestor_n * ... * ancestor_1 * face`.
+    let mut total = rows(&face);
+    let mut perspective = false;
     let mut up = dom.parent(node);
+    let mut steps = 0;
     while let Some(a) = up {
-        if !individual_none(a, "rotate") {
+        steps += 1;
+        if steps > MAX_ANCESTORS || !individual_none(a, "rotate") {
             return false;
         }
+        let p = dom.style(a, "perspective");
+        perspective |= !(p.is_empty() || p == "none");
         let t = dom.style(a, "transform");
         let t = js::trim(&t);
         if !(t.is_empty() || t == "none") {
             let Some(m) = linear_part(t) else { return false };
-            // `m[c][r]`: column `c`, row `r`.
-            normal = [
-                m[0][0] * normal[0] + m[1][0] * normal[1] + m[2][0] * normal[2],
-                m[0][1] * normal[0] + m[1][1] * normal[1] + m[2][1] * normal[2],
-                m[0][2] * normal[0] + m[1][2] * normal[1] + m[2][2] * normal[2],
-            ];
+            if m[2][2] < 0.0 {
+                return false;
+            }
+            total = multiply(&rows(&m), &total);
         }
         up = dom.parent(a);
     }
+    let Some(inverse) = invert(&total) else { return false };
+    let normal = inverse[2];
     let length = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-    length > 0.0 && normal[2] / length < -FACING_AWAY_MIN
+    let floor = if perspective { FACING_AWAY_MIN_UNDER_PERSPECTIVE } else { FACING_AWAY_MIN };
+    length > 0.0 && normal[2] / length < -floor
 }
 
 /// How far past edge-on a face's normal has to point away from the viewer
-/// (the z component of the unit normal) to count as turned away. A face
-/// close to edge-on can be shown or hidden by the perspective the capture
-/// does not model.
+/// (the z component of the unit normal) to count as turned away.
 const FACING_AWAY_MIN: f64 = 0.1;
+
+/// The same under an ancestor that sets `perspective`, which the capture
+/// does not model: a face off to the side of the perspective origin shows
+/// although its normal points a little away.
+const FACING_AWAY_MIN_UNDER_PERSPECTIVE: f64 = 0.3;
+
+/// A column-major linear part (`m[c][r]`) as rows.
+fn rows(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut r = [[0.0; 3]; 3];
+    for (c, col) in m.iter().enumerate() {
+        for (i, v) in col.iter().enumerate() {
+            r[i][c] = *v;
+        }
+    }
+    r
+}
+
+fn multiply(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut out = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            out[i][j] = (0..3).map(|k| a[i][k] * b[k][j]).sum();
+        }
+    }
+    out
+}
+
+/// The inverse of a 3x3 matrix, `None` when it is singular.
+fn invert(m: &[[f64; 3]; 3]) -> Option<[[f64; 3]; 3]> {
+    let c = |r0: usize, r1: usize, c0: usize, c1: usize| m[r0][c0] * m[r1][c1] - m[r0][c1] * m[r1][c0];
+    let cof = [
+        [c(1, 2, 1, 2), -c(1, 2, 0, 2), c(1, 2, 0, 1)],
+        [-c(0, 2, 1, 2), c(0, 2, 0, 2), -c(0, 2, 0, 1)],
+        [c(0, 1, 1, 2), -c(0, 1, 0, 2), c(0, 1, 0, 1)],
+    ];
+    let det = m[0][0] * cof[0][0] + m[0][1] * cof[0][1] + m[0][2] * cof[0][2];
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return None;
+    }
+    // inverse = adjugate / det, the adjugate being the cofactors transposed.
+    let mut inv = [[0.0; 3]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            inv[i][j] = cof[j][i] / det;
+        }
+    }
+    Some(inv)
+}
 
 /// The linear part of a computed `transform` (`matrix()` or `matrix3d()`),
 /// column by column, or `None` for anything else, or for a `matrix3d()`
@@ -2099,6 +2160,28 @@ mod tests {
         assert_eq!(why(&d, p), None);
     }
 
+    fn rotate_y(deg: f64) -> [[f64; 3]; 3] {
+        let (s, c) = deg.to_radians().sin_cos();
+        [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
+    }
+
+    fn rotate_x(deg: f64) -> [[f64; 3]; 3] {
+        let (s, c) = deg.to_radians().sin_cos();
+        [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]
+    }
+
+    fn mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+        multiply(a, b)
+    }
+
+    /// A row-major linear part as the computed `matrix3d()` (column-major).
+    fn matrix3d(r: &[[f64; 3]; 3]) -> String {
+        format!(
+            "matrix3d({}, {}, {}, 0, {}, {}, {}, 0, {}, {}, {}, 0, 0, 0, 0, 1)",
+            r[0][0], r[1][0], r[2][0], r[0][1], r[1][1], r[2][1], r[0][2], r[1][2], r[2][2]
+        )
+    }
+
     /// aisdr.com's guide cards: the back of each is `rotateY(180deg)` under
     /// `backface-visibility: hidden`.
     #[test]
@@ -2159,6 +2242,35 @@ mod tests {
         assert_eq!(why(&d, copy), None);
         d.set_style(card, "transform", "rotateX(5deg)");
         assert_eq!(why(&d, copy), None);
+        d.set_style(card, "transform", "none");
+
+        // Intermediate card angles over the 180-degree back: at 60 degrees
+        // the back still faces away; at 120 the card's own matrix flips,
+        // and with two flips in the chain nothing is decided.
+        d.set_style(card, "transform", &matrix3d(&rotate_y(60.0)));
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway));
+        d.set_style(card, "transform", &matrix3d(&rotate_y(120.0)));
+        assert_eq!(why(&d, copy), None);
+        // A flipped flip card inside a mirrored wrapper (two flips): kept,
+        // since a flat wrapper would show it.
+        d.set_style(card, "transform", FLIPPED);
+        d.set_style(body, "transform", FLIPPED);
+        assert_eq!(why(&d, copy), None);
+        d.set_style(body, "transform", "none");
+        // A non-uniform scale under a 3D rotation turns the normal, not the
+        // z axis: a face at rotateX(150deg) under rotateX(-60deg)
+        // scaleY(0.2) faces the viewer.
+        d.set_style(back, "transform", &matrix3d(&rotate_x(150.0)));
+        let squashed = mul(&rotate_x(-60.0), &[[1.0, 0.0, 0.0], [0.0, 0.2, 0.0], [0.0, 0.0, 1.0]]);
+        d.set_style(card, "transform", &matrix3d(&squashed));
+        assert_eq!(why(&d, copy), None);
+        // Under perspective, a face a little past edge-on is kept.
+        d.set_style(back, "transform", FLIPPED);
+        d.set_style(card, "transform", &matrix3d(&rotate_y(75.0)));
+        assert_eq!(why(&d, copy), Some(Unpainted::TurnedAway), "cos 255 = -0.26 past the plain floor");
+        d.set_style(body, "perspective", "1000px");
+        assert_eq!(why(&d, copy), None);
+        d.set_style(body, "perspective", "none");
         d.set_style(card, "transform", "none");
 
         // A 2D mirror turns nothing away.
