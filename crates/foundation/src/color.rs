@@ -77,25 +77,46 @@ re!(
     NEUTRAL_RGB,
     format!(r"rgba?\(({D}+),{WS}*({D}+),{WS}*({D}+)")
 );
+/// A CSS `<number>` as Chrome serializes computed channels: an optional
+/// sign, digits with an optional point, and an optional exponent. Chrome
+/// writes a channel that rounds near zero as `-1.04907e-8`, which a bare
+/// `[0-9.]+` token cuts at the mantissa.
+const NUM: &str = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?";
+/// [`NUM`] without a sign, for lightness, chroma and alpha.
+const UNUM: &str = r"(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?";
+
+// The neutral patterns are channel-delimited: they end every captured
+// channel (and its optional `%`) on white space, a slash or the closing
+// paren, and need white space (or a `%`) between channels, so a channel can
+// never be read from the tail of the one before it (`oklab(0.0999998 ...)`
+// once read `8` as `a`) or stop at an exponent's mantissa. A percentage
+// channel (valid authored CSS, never a computed value) is scaled to the
+// space's reference range before the threshold.
 re!(
     NEUTRAL_OKLCH,
-    format!(r"{}\({WS}*[0-9.]+%?{WS}*([0-9.\-]+)", ci("oklch"))
+    format!(
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?)(?:{WS}|/|\))",
+        ci("oklch")
+    )
 );
 re!(
     NEUTRAL_LCH,
-    format!(r"{}\({WS}*[0-9.]+%?{WS}*([0-9.\-]+)", ci("lch"))
+    format!(
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?)(?:{WS}|/|\))",
+        ci("lch")
+    )
 );
 re!(
     NEUTRAL_OKLAB,
     format!(
-        r"{}\({WS}*[0-9.]+%?{WS}*([0-9.\-]+){WS}+([0-9.\-]+)",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?){WS}+({NUM})(%?)(?:{WS}|/|\))",
         ci("oklab")
     )
 );
 re!(
     NEUTRAL_LAB,
     format!(
-        r"{}\({WS}*[0-9.]+%?{WS}*([0-9.\-]+){WS}+([0-9.\-]+)",
+        r"{}\({WS}*{UNUM}(?:%{WS}*|{WS}+)({NUM})(%?){WS}+({NUM})(%?)(?:{WS}|/|\))",
         ci("lab")
     )
 );
@@ -128,20 +149,30 @@ pub fn is_neutral_color(color: Option<&str>) -> bool {
         let b = string_to_number(grp(&m, 3).unwrap());
         return (math_max3(r, g, b) - math_min3(r, g, b)) < 30.0;
     }
+    // A channel and its `%`, scaled so 100% is `full` (CSS Color 4's
+    // reference ranges).
+    let channel = |m: &regex::Captures, i: usize, full: f64| {
+        let v = parse_float(grp(m, i).unwrap());
+        if grp(m, i + 1) == Some("%") {
+            v / 100.0 * full
+        } else {
+            v
+        }
+    };
     if let Some(m) = caps(&NEUTRAL_OKLCH, color) {
-        return parse_float(grp(&m, 1).unwrap()) < 0.02;
+        return channel(&m, 1, 0.4) < 0.02;
     }
     if let Some(m) = caps(&NEUTRAL_LCH, color) {
-        return parse_float(grp(&m, 1).unwrap()) < 3.0;
+        return channel(&m, 1, 150.0) < 3.0;
     }
     if let Some(m) = caps(&NEUTRAL_OKLAB, color) {
-        let a = parse_float(grp(&m, 1).unwrap());
-        let b = parse_float(grp(&m, 2).unwrap());
+        let a = channel(&m, 1, 0.4);
+        let b = channel(&m, 3, 0.4);
         return math_hypot(&[a, b]) < 0.02;
     }
     if let Some(m) = caps(&NEUTRAL_LAB, color) {
-        let a = parse_float(grp(&m, 1).unwrap());
-        let b = parse_float(grp(&m, 2).unwrap());
+        let a = channel(&m, 1, 125.0);
+        let b = channel(&m, 3, 125.0);
         return math_hypot(&[a, b]) < 3.0;
     }
     if let Some(m) = caps(&NEUTRAL_HSL, color) {
@@ -826,7 +857,7 @@ re!(ANY_HEX, r"^#([0-9a-fA-F]{3,8})$".to_string());
 re!(
     ANY_OKLCH,
     format!(
-        r"{}\({WS}*([0-9.]+)(%?){WS}*[{WSC},]*{WS}*([0-9.]+){WS}*[{WSC},]+{WS}*([\-0-9.]+)(?:{})?(?:{WS}*/{WS}*([0-9.]+)(%)?)?{WS}*\)",
+        r"{}\({WS}*({UNUM})(%?){WS}*[{WSC},]*{WS}*({UNUM}){WS}*[{WSC},]+{WS}*({NUM})(?:{})?(?:{WS}*/{WS}*({UNUM})(%)?)?{WS}*\)",
         ci("oklch"),
         ci("deg"),
         WSC = js::WS_CHARS
@@ -835,14 +866,14 @@ re!(
 re!(
     ANY_OKLAB,
     format!(
-        r"{}\({WS}*([0-9.]+)(%?){WS}+(-?[0-9.]+)(%?){WS}+(-?[0-9.]+)(%?)(?:{WS}*/{WS}*([0-9.]+)(%)?)?{WS}*\)",
+        r"{}\({WS}*({UNUM})(%?){WS}+({NUM})(%?){WS}+({NUM})(%?)(?:{WS}*/{WS}*({UNUM})(%)?)?{WS}*\)",
         ci("oklab")
     )
 );
 re!(
     ANY_LCH,
     format!(
-        r"^{}\({WS}*([0-9.]+%?|{none}){WS}+([0-9.]+%?|{none}){WS}+(-?[0-9.]+)(?:{deg})?(?:{WS}*/{WS}*([0-9.]+%?|{none}))?{WS}*\)$",
+        r"^{}\({WS}*({UNUM}%?|{none}){WS}+({UNUM}%?|{none}){WS}+({NUM})(?:{deg})?(?:{WS}*/{WS}*({UNUM}%?|{none}))?{WS}*\)$",
         ci("lch"),
         none = ci("none"),
         deg = ci("deg")
@@ -851,7 +882,7 @@ re!(
 re!(
     ANY_LAB,
     format!(
-        r"^{}\({WS}*([0-9.]+%?|{none}){WS}+(-?[0-9.]+%?|{none}){WS}+(-?[0-9.]+%?|{none})(?:{WS}*/{WS}*([0-9.]+%?|{none}))?{WS}*\)$",
+        r"^{}\({WS}*({UNUM}%?|{none}){WS}+({NUM}%?|{none}){WS}+({NUM}%?|{none})(?:{WS}*/{WS}*({UNUM}%?|{none}))?{WS}*\)$",
         ci("lab"),
         none = ci("none")
     )
@@ -1214,5 +1245,70 @@ mod tests {
         );
         assert_eq!(parse_any_color(Some("Constructor")), None);
         assert!(is_no_paint_color_value(None));
+    }
+
+    /// Chrome serializes a computed channel that rounds near zero with an
+    /// exponent (Tailwind v4's `bg-secondary/10` computes to
+    /// `oklab(0.6 -0.12 -1.04907e-8 / 0.1)`). Every pattern that reads
+    /// computed numbers takes the exponent; the value parses as the same
+    /// colour written out in full.
+    #[test]
+    fn computed_channels_with_exponents_parse() {
+        let same = |a: &str, b: &str| {
+            let x = parse_any_color(Some(a)).unwrap_or_else(|| panic!("{a} did not parse"));
+            let y = parse_any_color(Some(b)).unwrap_or_else(|| panic!("{b} did not parse"));
+            assert_eq!(x, y, "{a} against {b}");
+        };
+        same(
+            "oklab(0.6 -0.12 -1.04907e-8 / 0.1)",
+            "oklab(0.6 -0.12 -0.0000000104907 / 0.1)",
+        );
+        same("oklab(0.6 -0.12 1E-8)", "oklab(0.6 -0.12 0.00000001)");
+        same("oklab(1.2e-5 0 0)", "oklab(0.000012 0 0)");
+        same("oklch(0.6 1e-7 180)", "oklch(0.6 0.0000001 180)");
+        same("oklch(0.6 0.1 1.8e+2)", "oklch(0.6 0.1 180)");
+        same("oklch(0.6 0.1 180 / 5e-1)", "oklch(0.6 0.1 180 / 0.5)");
+        same("lab(50 -2.5e-6 30)", "lab(50 -0.0000025 30)");
+        same("lab(50 20 -3e-7 / 0.5)", "lab(50 20 -0.0000003 / 0.5)");
+        same("lch(50 1e-6 120)", "lch(50 0.000001 120)");
+        same("lch(50 30 -1.2e2)", "lch(50 30 -120)");
+        // The teal is teal, not the black a mantissa-only read would give.
+        let teal = parse_any_color(Some("oklab(0.6 -0.12 -1.04907e-8 / 0.1)")).unwrap();
+        assert!(teal.g > teal.r + 40.0, "{teal:?}");
+        // Plain decimals are unchanged.
+        same("oklab(0.5 0.1 -0.1)", "oklab(0.5 0.1 -0.1)");
+        assert!(parse_any_color(Some("oklab(0.5 0.1e -0.1)")).is_none());
+    }
+
+    /// The neutral test reads whole channels: a near-black whose `a` and `b`
+    /// carry exponents is neutral, and the lightness's last digit is never
+    /// read as `a`.
+    #[test]
+    fn neutral_channels_read_whole_numbers() {
+        let n = |s: &str| is_neutral_color(Some(s));
+        assert!(n("oklab(0.0999998 -9.79751e-7 0.00000233948 / 0.95)"));
+        assert!(n("oklab(0.5 1e-3 -2E-3)"));
+        assert!(!n("oklab(0.5 -1.2e-1 0.01)"));
+        assert!(n("oklch(0.6 1e-7 180)"));
+        assert!(!n("oklch(0.6 1.5e-1 180)"));
+        assert!(n("oklch(60% 0.01 180)"));
+        assert!(n("lab(50 -2.5e-6 1e-6)"));
+        assert!(!n("lab(50 2.5e1 1e-6)"));
+        assert!(n("lch(50 1e-6 120)"));
+        assert!(!n("lch(50 3e1 120)"));
+        // Percent chroma and a/b (authored CSS) scale to the reference
+        // range: 100% is 0.4 in oklch and oklab, 150 in lch, 125 in lab.
+        assert!(n("oklch(70% 0% 0)"));
+        assert!(n("lch(50% 0% 0)"));
+        assert!(n("lab(50 1% 1%)"));
+        assert!(n("oklab(50% 2% -1%)"));
+        assert!(!n("oklch(70% 40% 30)"));
+        assert!(!n("lch(50% 20% 30)"));
+        assert!(!n("oklab(50% 20% 0%)"));
+        // Decimals behave as before.
+        assert!(n("oklab(0.5 0.01 -0.01)"));
+        assert!(!n("oklab(0.5 0.1 -0.1)"));
+        assert!(!n("oklch(0.7 0.15 30)"));
+        assert!(n("lch(50 2 30)"));
     }
 }
