@@ -10,7 +10,11 @@
   .blob { width: 320px; height: 320px; background: #c33; clip-path: polygon(50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%, 30% 98%, 18% 86%, 6% 78%, 2% 62%, 0% 48%, 6% 34%, 12% 20%, 22% 10%, 36% 4%); }
   /* FLAG: shorthand path() drawing a silhouette in CSS */
   .silhouette { width: 300px; height: 400px; background: #222; clip-path: path('M150 0 C 180 40, 220 60, 230 120 C 240 180, 200 220, 210 280 C 220 340, 180 400, 150 400 C 120 400, 80 340, 90 280 C 100 220, 60 180, 70 120 C 80 60, 120 40, 150 0 Z'); }
-  /* FLAG: inline style variant */
+  /* FLAG: inline style variant (twice in the body; the same declaration reports once) */
+  /* FLAG: a wave divider: straight top and sides, a curved bottom */
+  .wave { width: 1440px; height: 360px; background: #0e7490; color: #fff; clip-path: path('M0 0 H1440 V300 C1260 360 1080 240 900 300 C720 360 540 240 360 300 C180 360 90 260 0 300 Z'); }
+  /* FLAG: a torn bottom edge, levels in no order */
+  .torn { width: 400px; height: 200px; background: #444; color: #fff; clip-path: polygon(0 0, 100% 0, 100% 96%, 95% 100%, 90% 97%, 85% 100%, 80% 96%, 75% 99%, 70% 96%, 65% 100%, 60% 97%, 55% 99%, 50% 96%, 0 96%); }
 
   /* PASS: rectangular / geometric clips */
   .cut-corner { clip-path: polygon(0 0, 100% 0, 100% 85%, 85% 100%, 0 100%); }
@@ -21,6 +25,8 @@
   /* PASS: a stair-stepped pixel corner. Twelve vertices, all off the 25%
      grid, but every edge runs horizontal or vertical: a notched rectangle. */
   .pixel-notch { clip-path: polygon(4px 0%, calc(100% - 4px) 0%, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0% calc(100% - 4px), 0% 4px, 4px 4px); }
+  /* PASS: a ribbon whose ends zigzag: two x levels per end, even y steps */
+  .tape-edges { width: 160px; height: 32px; background: #e11d48; color: #fff; clip-path: polygon(0% 0%, 100% 0%, 100% 20%, 96% 40%, 100% 60%, 96% 80%, 100% 100%, 0% 100%, 4% 80%, 0% 60%, 4% 40%, 0% 20%); }
   /* PASS: circle / ellipse / inset primitives */
   .avatar { clip-path: circle(50% at 50% 50%); }
   .pill { clip-path: inset(0 round 999px); }
@@ -33,6 +39,12 @@
   <div class="blob">Blob</div>
   <div class="silhouette">Silhouette</div>
   <div style="width:200px;height:200px;background:#333;clip-path:polygon(48% 2%, 60% 6%, 71% 12%, 80% 21%, 88% 33%, 93% 46%, 94% 60%, 90% 73%, 82% 84%, 70% 93%, 56% 98%, 42% 97%, 29% 92%, 18% 83%, 10% 71%, 5% 58%, 5% 44%, 9% 31%, 17% 20%, 27% 11%, 38% 5%)">Inline blob</div>
+  <div style="width:200px;height:200px;background:#333;color:#fff;clip-path:polygon(48% 2%, 60% 6%, 71% 12%, 80% 21%, 88% 33%, 93% 46%, 94% 60%, 90% 73%, 82% 84%, 70% 93%, 56% 98%, 42% 97%, 29% 92%, 18% 83%, 10% 71%, 5% 58%, 5% 44%, 9% 31%, 17% 20%, 27% 11%, 38% 5%)">Inline blob again</div>
+  <div class="wave">Wave divider</div>
+  <div class="torn">Torn edge</div>
+  <div class="tape-edges">Recommended</div>
+  <a href="#" style="display:inline-block;width:135px;height:40px;background:#111;color:#fff;clip-path: path(&quot;M 25.2 0 L 110.003 0 c 10.4993 0 15.7489 0 19.429 2.6738 a 14 14 0 0 1 4.9854 6.7023 c 0.7856 2.2452 0.7856 5.0381 0.7856 10.6239 L 135.203 20 c 0 5.5858 0 8.3787 -0.7856 10.6239 a 14 14 0 0 1 -4.9854 6.7023 c -3.6801 2.6738 -8.9297 2.6738 -19.429 2.6738 L 25.2 40 c -10.4993 0 -15.7489 0 -19.429 -2.6738 a 14 14 0 0 1 -4.9854 -6.7023 c -0.7856 -2.2452 -0.7856 -5.0381 -0.7856 -10.6239 L 0 20 c 0 -5.5858 0 -8.3787 0.7856 -10.6239 a 14 14 0 0 1 4.9854 -6.7023 c 3.6801 -2.6738 8.9297 -2.6738 19.429 -2.6738 Z&quot;);">Talk with us</a>
+  <a href="#" style="display:inline-block;width:135px;height:40px;background:#111;color:#fff;clip-path: path(&quot;M 25.2 0 L 110.003 0 c 10.4993 0 15.7489 0 19.429 2.6738 a 14 14 0 0 1 4.9854 6.7023 c 0.7856 2.2452 0.7856 5.0381 0.7856 10.6239 L 135.203 20 c 0 5.5858 0 8.3787 -0.7856 10.6239 a 14 14 0 0 1 -4.9854 6.7023 c -3.6801 2.6738 -8.9297 2.6738 -19.429 2.6738 L 25.2 40 c -10.4993 0 -15.7489 0 -19.429 -2.6738 a 14 14 0 0 1 -4.9854 -6.7023 c -0.7856 -2.2452 -0.7856 -5.0381 -0.7856 -10.6239 L 0 20 c 0 -5.5858 0 -8.3787 0.7856 -10.6239 a 14 14 0 0 1 4.9854 -6.7023 c 3.6801 -2.6738 8.9297 -2.6738 19.429 -2.6738 Z&quot;);">Explore</a>
   <div class="cut-corner">Cut corner</div>
   <div class="diagonal-band">Diagonal band</div>
   <div class="hexagon">Hexagon</div>

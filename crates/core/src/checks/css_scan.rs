@@ -2057,17 +2057,52 @@ fn polygon_is_zigzag(body: &str) -> bool {
         }
     };
     let (dx, dy) = (distinct(&xs), distinct(&ys));
-    ((2..=4).contains(&dx.len()) && even_steps(&dy)) || ((2..=4).contains(&dy.len()) && even_steps(&dx))
+    let xv: Vec<f64> = xs.iter().map(|(n, _)| *n).collect();
+    let yv: Vec<f64> = ys.iter().map(|(n, _)| *n).collect();
+    ((2..=4).contains(&dx.len()) && even_steps(&dy) && teeth_alternate(&yv, dy[1] - dy[0], &xv))
+        || ((2..=4).contains(&dy.len()) && even_steps(&dx) && teeth_alternate(&xv, dx[1] - dx[0], &yv))
+}
+
+/// Whether the vertices that advance one step at a time along `along` swing
+/// back and forth on `across` like teeth: every swing the same size, each
+/// one the other way from the last, at least three of them. A torn edge
+/// with levels in no order (96%, 97%, 99%, 100%) swings by uneven amounts.
+fn teeth_alternate(along: &[f64], step: f64, across: &[f64]) -> bool {
+    let n = along.len();
+    let mut swings = 0usize;
+    let mut last: Option<f64> = None;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        if ((along[j] - along[i]).abs() - step).abs() > 0.5 {
+            // A side that is not one tooth step ends the run.
+            last = None;
+            continue;
+        }
+        let swing = across[j] - across[i];
+        if swing.abs() < 0.01 {
+            continue;
+        }
+        if let Some(prev) = last {
+            if prev.signum() == swing.signum() || (prev.abs() - swing.abs()).abs() > 0.5 {
+                return false;
+            }
+        }
+        last = Some(swing);
+        swings += 1;
+    }
+    swings >= 3
 }
 
 re!(PATH_TOKEN_RE, r"[A-Za-z]|[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?".to_string());
 
 /// Whether a `path()` body draws a rounded rectangle: every straight
 /// segment (`L`, `H`, `V`, a closing `Z`) runs along an edge of the box the
-/// path's points span, and the straight segments reach at least three of its
-/// four edges. sinter.systems' smooth-corner buttons are squircles drawn
-/// that way: four straight sides joined by curves. A blob has no straight
-/// side, or one. Path data the reader cannot follow answers no.
+/// path's points span, the straight segments reach all four of its edges,
+/// and each run of curves between them joins two adjacent edges, turning a
+/// corner. sinter.systems' smooth-corner buttons are squircles drawn that
+/// way. A blob has no straight side, or one; a wave divider (straight top
+/// and sides, a curved bottom) has three, and its curves run along one
+/// edge. Path data the reader cannot follow answers no.
 fn path_is_rounded_rectangle(body: &str) -> bool {
     // Path data holds no parentheses: the body ends at the first one. An
     // inline style escapes the quotes, and a fill rule may lead.
@@ -2081,7 +2116,8 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
     let data = data.trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace());
     let tokens: Vec<&str> = PATH_TOKEN_RE.find_iter(data).map(|m| m.as_str()).collect();
     let mut points: Vec<(f64, f64)> = Vec::new();
-    let mut lines: Vec<((f64, f64), (f64, f64))> = Vec::new();
+    // Every segment in drawing order: start, end, and whether it is straight.
+    let mut segments: Vec<((f64, f64), (f64, f64), bool)> = Vec::new();
     let (mut cur, mut start) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64));
     let mut i = 0usize;
     let mut cmd: Option<char> = None;
@@ -2093,7 +2129,7 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
             i += 1;
             if c == 'Z' || c == 'z' {
                 if cur != start {
-                    lines.push((cur, start));
+                    segments.push((cur, start, true));
                 }
                 cur = start;
                 points.push(cur);
@@ -2134,17 +2170,18 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
                 // Pairs after a moveto are implicit linetos.
                 cmd = Some(if rel { 'l' } else { 'L' });
             }
-            'L' | 'H' | 'V' => {
-                if end != cur {
-                    lines.push((cur, end));
-                }
-            }
-            _ => {}
+            // A straight command of zero length still ends a run of curves:
+            // a squircle written as `c ... L 146.016 20` where the curve
+            // already reached (146.016, 20) is two corners, not one curve.
+            'L' | 'H' | 'V' => segments.push((cur, end, true)),
+            _ => segments.push((cur, end, false)),
         }
         cur = end;
         points.push(cur);
     }
-    if lines.len() < 3 || points.is_empty() {
+    // A zero-length side still marks the edge it sits on.
+    let lines: Vec<_> = segments.iter().filter(|s| s.2).map(|s| (s.0, s.1)).collect();
+    if lines.len() < 4 || points.is_empty() {
         return false;
     }
     let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
@@ -2171,7 +2208,40 @@ fn path_is_rounded_rectangle(body: &str) -> bool {
         };
         edges[side] = true;
     }
-    edges.iter().filter(|e| **e).count() >= 3
+    if !edges.iter().all(|e| *e) {
+        return false;
+    }
+    // Each run of curves between two straight sides turns a corner: it
+    // starts on one edge and ends on an edge next to it (top or bottom to
+    // left or right). A wave along an edge starts and ends on the same one.
+    let on_edges = |p: (f64, f64)| -> Vec<usize> {
+        let mut e = Vec::new();
+        if near(p.1, min_y) { e.push(0) }
+        if near(p.0, max_x) { e.push(1) }
+        if near(p.1, max_y) { e.push(2) }
+        if near(p.0, min_x) { e.push(3) }
+        e
+    };
+    let Some(first_line) = segments.iter().position(|s| s.2) else { return false };
+    let n = segments.len();
+    let mut run: Option<((f64, f64), (f64, f64))> = None;
+    for k in 1..=n {
+        let seg = segments[(first_line + k) % n];
+        if seg.2 {
+            if let Some((a, b)) = run.take() {
+                let (ea, eb) = (on_edges(a), on_edges(b));
+                if !ea.iter().any(|x| eb.iter().any(|y| x % 2 != y % 2)) {
+                    return false;
+                }
+            }
+        } else {
+            run = Some(match run {
+                Some((a, _)) => (a, seg.1),
+                None => (seg.0, seg.1),
+            });
+        }
+    }
+    true
 }
 
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
@@ -2880,6 +2950,9 @@ mod tests {
         assert!(!polygon_is_zigzag("0% 0%, 100% 0%, 100% 13%, 96% 40%, 100% 62%, 96% 80%, 100% 100%, 0% 100%, 4% 77%, 0% 60%, 4% 31%, 0% 20%"));
         // A coordinate that is not a plain number answers no.
         assert!(!polygon_is_zigzag("0 0, calc(100% - 4px) 0, 100% 20%, 0 100%"));
+        // A torn bottom edge with a few levels in no order is not teeth.
+        let torn = ".t{clip-path:polygon(0 0, 100% 0, 100% 96%, 95% 100%, 90% 97%, 85% 100%, 80% 96%, 75% 99%, 70% 96%, 65% 100%, 60% 97%, 55% 99%, 50% 96%, 0 96%)}";
+        assert_eq!(scan_css_text_for_organic_clip_path(torn).len(), 1);
     }
 
     /// sinter.systems 321980: smooth-corner buttons clip to a squircle, an
@@ -2892,11 +2965,18 @@ mod tests {
         );
         assert!(scan_css_text_for_organic_clip_path(&page).is_empty());
         assert!(path_is_rounded_rectangle(&format!("'{squircle}')")));
+        // The same squircle where a corner's curve lands exactly where the
+        // straight side ends: a zero-length side still parts the corners.
+        let wide = squircle.replace("110.003", "120.816").replace("135.203", "146.016");
+        assert!(path_is_rounded_rectangle(&format!("'{wide}')")));
         assert!(path_is_rounded_rectangle("evenodd, 'M10 0H90Q100 0 100 10V90Q100 100 90 100H10Q0 100 0 90V10Q0 0 10 0Z')"));
         // A blob of curves, and a curved shape with one flat side, still report.
         let blob = ".b{clip-path:path('M50 0 C80 0 100 20 100 50 C100 80 80 100 50 100 C20 100 0 80 0 50 C0 20 20 0 50 0 Z')}";
         assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
         assert!(!path_is_rounded_rectangle("'M0 100 L100 100 C100 40 70 0 50 0 C30 0 0 40 0 100 Z')"));
+        // A wave divider: straight top and sides, curves along the bottom.
+        let wave = ".hero{clip-path:path('M0 0 H1440 V300 C1260 360 1080 240 900 300 C720 360 540 240 360 300 C180 360 90 260 0 300 Z')}";
+        assert_eq!(scan_css_text_for_organic_clip_path(wave).len(), 1);
         // The same organic declaration twice reports once.
         let twice = format!("{blob}{blob}");
         assert_eq!(scan_css_text_for_organic_clip_path(&twice).len(), 1);
