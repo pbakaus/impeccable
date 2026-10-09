@@ -3507,11 +3507,28 @@ fn buried_under_answer(dom: &dyn Dom, stack: &[ElId], victim: ElId) -> bool {
 /// are a moving ticker track.
 const MARQUEE_TRACK_MAX_DEPTH: usize = 4;
 
-/// JS: checks.mjs#checkTextOcclusionDOM()
-/// Whether `top` sets the words `victim` starts with again, in the same
-/// face, size and weight, from the same origin (within a pixel), so its
-/// glyphs land on the victim's own. Both have to carry text of their own and
-/// a measured text rect; anything unmeasured is no overprint.
+/// The computed properties that decide which glyphs a run draws and where:
+/// two runs are an overprint only where every one is recorded and equal.
+const OVERPRINT_GLYPH_PROPS: &[&str] = &[
+    "fontFamily",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "fontStretch",
+    "fontVariantCaps",
+    "fontFeatureSettings",
+    "letterSpacing",
+    "wordSpacing",
+    "textTransform",
+];
+
+/// Whether `top` sets the words `victim` starts with again, drawing the same
+/// glyphs from the same origin (within a pixel), so its glyphs land on the
+/// victim's own. Both have to carry text of their own and a measured text
+/// rect, and every property in [`OVERPRINT_GLYPH_PROPS`] has to be recorded
+/// on both and equal: `text-transform: uppercase` over the same DOM text
+/// draws other glyphs, and a value the capture did not record is unknown,
+/// which keeps the collision.
 fn overprints(dom: &dyn Dom, top: ElId, victim: ElId) -> bool {
     let same_origin = match (dom.direct_text_rect(top), dom.direct_text_rect(victim)) {
         (Some(a), Some(b)) if a.all_finite() && b.all_finite() => {
@@ -3520,9 +3537,10 @@ fn overprints(dom: &dyn Dom, top: ElId, victim: ElId) -> bool {
         _ => false,
     };
     if !same_origin
-        || ["fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing"]
-            .iter()
-            .any(|p| dom.style(top, p) != dom.style(victim, p))
+        || !OVERPRINT_GLYPH_PROPS.iter().all(|p| {
+            let v = dom.style(top, p);
+            !v.is_empty() && v == dom.style(victim, p)
+        })
     {
         return false;
     }
@@ -3531,6 +3549,7 @@ fn overprints(dom: &dyn Dom, top: ElId, victim: ElId) -> bool {
     !top_text.is_empty() && victim_text.starts_with(top_text.as_str())
 }
 
+/// JS: checks.mjs#checkTextOcclusionDOM()
 pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
     let mut findings = Vec::new();
     let mut seen_victims: Vec<ElId> = Vec::new();
@@ -6122,28 +6141,46 @@ mod tests {
     /// face and size, exactly over the first word of `span.logo2`.
     #[test]
     fn text_occlusion_skips_an_exact_overprint() {
-        let run = |shift: f64, size: &str| {
+        const GLYPHS: &[(&str, &str)] = &[
+            ("fontWeight", "400"),
+            ("fontStyle", "normal"),
+            ("fontStretch", "100%"),
+            ("fontVariantCaps", "normal"),
+            ("fontFeatureSettings", "normal"),
+            ("letterSpacing", "normal"),
+            ("wordSpacing", "0px"),
+            ("textTransform", "none"),
+        ];
+        let run_with = |shift: f64, size: &str, extra: &[(&str, &str)]| {
             let mut d = FakeDom::new();
             let (_h, body) = d.with_page();
             let tagline = d.add(Some(body), "span");
             d.set_styles(tagline, PROBE_BASE);
             d.set_styles(tagline, &[("position", "absolute"), ("fontSize", "52px"), ("fontFamily", "Arial")]);
+            d.set_styles(tagline, GLYPHS);
             d.set_rect(tagline, 190.0, 80.0, 777.0, 60.0);
             d.set_text_rect(tagline, 190.0, 81.0, 442.0, 58.0);
             d.add_text(tagline, "Schlittermann");
             let logo = d.add(Some(body), "a");
             d.set_styles(logo, PROBE_BASE);
+            d.set_styles(logo, GLYPHS);
             d.set_styles(logo, &[("position", "absolute"), ("fontSize", size), ("fontFamily", "Arial")]);
+            d.set_styles(logo, extra);
             d.set_rect(logo, 190.0 + shift, 80.0, 442.0, 60.0);
             d.set_text_rect(logo, 190.0 + shift, 81.0, 442.0, 58.0);
             d.add_text(logo, "Schlittermann");
             mark_body_descendants(&mut d);
             check_text_occlusion_dom(&d)
         };
+        let run = |shift: f64, size: &str| run_with(shift, size, &[]);
         assert!(run(0.0, "52px").is_empty());
         // Moved off the origin, or set at another size, the logo collides.
         assert_eq!(run(30.0, "52px").len(), 1);
         assert_eq!(run(0.0, "48px").len(), 1);
+        // Upper-cased, the same DOM text draws other glyphs.
+        assert_eq!(run_with(0.0, "52px", &[("textTransform", "uppercase")]).len(), 1);
+        // A glyph property the capture did not record is unknown.
+        assert_eq!(run_with(0.0, "52px", &[("wordSpacing", "")]).len(), 1);
     }
 
     /// v0-orbit-internal-app: a KPI label clipped by its squeezed card to the

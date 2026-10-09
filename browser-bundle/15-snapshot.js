@@ -30,7 +30,7 @@ const __SNAP_STYLE_PROPS = [
   "borderTopColor", "borderTopWidth", "borderTopStyle", "bottom", "boxShadow",
   "clip", "clip-path", "clipPath", "color", "colorScheme", "contain", "content",
   "contentVisibility", "cssFloat", "direction", "display", "filter", "flexWrap", "float",
-  "fontFamily", "fontSize",
+  "fontFamily", "fontFeatureSettings", "fontSize", "fontStretch",
   "fontStyle", "fontVariant", "fontVariantCaps", "fontWeight", "height",
   "hyphens", "inlineSize", "inset", "insetBlock", "insetBlockEnd",
   "insetBlockStart", "insetInline", "insetInlineEnd", "insetInlineStart",
@@ -48,7 +48,7 @@ const __SNAP_STYLE_PROPS = [
   "visibility", "webkitBackgroundClip", "webkitClipPath", "webkitHyphens",
   "webkitLineClamp", "webkitMaskImage", "webkitTextFillColor",
   "webkitTextStrokeColor", "webkitTextStrokeWidth", "whiteSpace", "width", "willChange", "wordBreak",
-  "zIndex",
+  "wordSpacing", "zIndex",
 ];
 // `::before` / `::after` properties, recorded where `content` is set.
 const __SNAP_PSEUDO_PROPS = [
