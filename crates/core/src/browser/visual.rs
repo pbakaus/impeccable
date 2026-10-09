@@ -128,6 +128,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         add(&mut reasons, "text shadow");
     }
 
+    let mut faded: Vec<ElId> = Vec::new();
     let mut current = Some(el);
     while let Some(cur) = current {
         // A `display: contents` box paints nothing (Framer's page root at
@@ -149,6 +150,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         }
         if parse_float(&dom.style(cur, "opacity")) < 0.99 {
             add(&mut reasons, "opacity stack");
+            faded.push(cur);
         }
         let mix = dom.style(cur, "mixBlendMode");
         if !mix.is_empty() && mix != "normal" {
@@ -181,6 +183,11 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
             break;
         }
         current = dom.parent(cur);
+    }
+    // A fade the element pass folds into the colours it scores is no reason
+    // to read pixels (`opacity_fold_scores_fades`).
+    if !faded.is_empty() && super::element_checks::opacity_fold_scores_fades(dom, el, &faded) {
+        reasons.retain(|r| r != "opacity stack");
     }
 
     let sample_rect = dom.direct_text_rect(el).unwrap_or_else(|| dom.rect(el));
@@ -3643,6 +3650,43 @@ mod tests {
         // A line half over a light band and half over a dark one.
         assert_eq!(sampled_verdict(&[2.0, 2.1, 2.2, 12.0, 12.5, 13.0, 13.5]), 2.0);
         assert_eq!(sampled_verdict(&[3.0]), 3.0);
+    }
+
+    /// observations-47 row 10, doub.ly 323592: an `opacity-80` footer note
+    /// over the page's near-black. The element pass folds the fade into the
+    /// ink and passes it at 4.92:1, so the fade is no reason to read pixels
+    /// (the glyph-core median of its 12px strokes printed 4.47). A fade on
+    /// the box that paints the surface fades the surface too, over paint the
+    /// walk never read, and stays a reason.
+    #[test]
+    fn a_fade_the_element_pass_folds_is_no_reason_to_read_pixels() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        for n in [html, body] {
+            d.set_styles(n, &[("backgroundColor", "rgb(5, 5, 7)"), ("backgroundImage", "none"), ("opacity", "1")]);
+        }
+        let footer = d.add(Some(body), "footer");
+        d.set_styles(footer, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("backgroundImage", "none")]);
+        d.set_rect(footer, 0.0, 1500.0, 1280.0, 170.0);
+        let p = d.add(Some(footer), "p");
+        d.add_text(p, "Not affiliated with The Mechanical Licensing Collective.");
+        d.set_styles(
+            p,
+            &[
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("backgroundImage", "none"),
+                ("color", "rgb(154, 152, 173)"),
+                ("fontSize", "12px"),
+                ("opacity", "0.8"),
+            ],
+        );
+        d.set_rect(p, 84.0, 1591.0, 768.0, 39.0);
+        d.set_text_rect(p, 84.0, 1592.0, 753.0, 34.0);
+        assert!(collect_visual_contrast_reasons(&d, p).is_empty());
+        // The fade on the surface's own box.
+        d.set_style(p, "opacity", "1");
+        d.set_styles(footer, &[("backgroundColor", "rgb(20, 20, 24)"), ("opacity", "0.8")]);
+        assert_eq!(collect_visual_contrast_reasons(&d, p), vec!["opacity stack".to_string()]);
     }
 
     #[test]

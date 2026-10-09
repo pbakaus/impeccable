@@ -1369,6 +1369,56 @@ fn fold_surface_opacity(
     Some(fg)
 }
 
+/// Whether the element pass's opacity fold ([`fold_surface_opacity`])
+/// scores every fade in `faded` (boxes on `el`'s ancestor chain, `el`
+/// included, below an opacity of 1): each is below the box that ends the
+/// surface walk, and the fold reads the stack. Then the colours the pixel
+/// pass would sample are colours the element pass already computed, and a
+/// fade is no reason to read pixels: doub.ly's `opacity-80` footer note
+/// computes 4.92:1, and the glyph-core median of its 12px strokes printed
+/// 4.47. A fade at or above the surface's box, a surface the walk could not
+/// resolve, a pseudo-element surface, or a fold that gives up keeps the
+/// fade a reason.
+pub(crate) fn opacity_fold_scores_fades(dom: &dyn Dom, el: ElId, faded: &[ElId]) -> bool {
+    if faded.is_empty() {
+        return true;
+    }
+    let ink_el = dom.text_slot(el).unwrap_or(el);
+    let Some(ink) = parse_rgb_or_any(&dom.style(ink_el, "color")) else {
+        return false;
+    };
+    let rect = dom.rect(el);
+    let own = read_own_background_color(dom, el);
+    if own.map_or(true, |c| c.alpha_or_one() <= 0.5) && read_pseudo_surface_dom(dom, el, &rect).is_some() {
+        return false;
+    }
+    let font_size = {
+        let n = parse_float(&dom.style(ink_el, "fontSize"));
+        if num_truthy(n) {
+            n
+        } else {
+            16.0
+        }
+    };
+    let text_box = {
+        let r = dom.direct_text_rect(el).unwrap_or(rect);
+        Box2::new(r.left, r.top, r.width, r.height)
+    };
+    let surface = resolve_text_surface(dom, ink_el, &|_| false, text_box, font_size);
+    if surface.info.unresolved {
+        return false;
+    }
+    let below_host = |n: ElId| match surface.host {
+        None => true,
+        Some(host) => n != host && dom.contains(host, n),
+    };
+    if !faded.iter().all(|&n| below_host(n)) {
+        return false;
+    }
+    let mut effective_bg = surface.info.color;
+    fold_surface_opacity(dom, ink_el, &ink, &surface, &mut effective_bg).is_some()
+}
+
 /// The largest stop alpha, times the element's opacity, under which a
 /// gradient clipped to text is a watermark rather than coloured type:
 /// vestra.ai's `span.lp-wm` paints its ramp at 6 to 8%.
