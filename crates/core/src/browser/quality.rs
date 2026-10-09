@@ -887,19 +887,20 @@ fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
     count.total()
 }
 
-/// How deep into `el`'s box an edge is drawn on every side by an inset
-/// `box-shadow` ring (the largest spread of a visible inset layer, less its
-/// larger offset) or by an
-/// outline a negative `outline-offset` pulls inside the box (the offset's
-/// depth). Infinite when the capture recorded neither value, so callers keep
-/// their base reading.
-fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> f64 {
+/// How deep into `el`'s box an edge is drawn on each side, `[top, right,
+/// bottom, left]`, by an inset `box-shadow` (a visible inset layer's spread,
+/// moved by its offset: `inset 1px 0 0 1px` draws 2px on the left, 1px on the
+/// top and bottom and nothing on the right) or by an outline a negative
+/// `outline-offset` pulls inside the box (the offset's depth on every side).
+/// Infinite when the capture recorded neither value, so callers keep their
+/// base reading.
+fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> [f64; 4] {
     let shadow = dom.style(el, "boxShadow");
     let offset = dom.style(el, "outlineOffset");
     if shadow.is_empty() || offset.is_empty() {
-        return f64::INFINITY;
+        return [f64::INFINITY; 4];
     }
-    let mut depth: f64 = 0.0;
+    let mut depth = [0.0f64; 4];
     if shadow != "none" {
         // Layers split on commas outside parentheses.
         let mut layers = Vec::new();
@@ -932,17 +933,18 @@ fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> f64 {
                 .filter(|w| w.ends_with("px"))
                 .map(parse_float)
                 .collect();
-            // An offset shifts the ring: `inset 8px 0 0 1px` draws 9px on
-            // the left and nothing on the right. The depth drawn on every
-            // side is the spread less the larger offset.
+            // The shadow is the padding box shrunk by the spread and moved
+            // by the offset; what it leaves uncovered is drawn. An offset
+            // deepens one side and thins the other.
             let (Some(&x), Some(&y), Some(&spread)) =
                 (lengths.first(), lengths.get(1), lengths.get(3))
             else {
                 continue;
             };
-            let ring = spread - js::math_max(x.abs(), y.abs());
-            if ring.is_finite() && ring > 0.0 {
-                depth = js::math_max(depth, ring);
+            for (side, d) in [spread + y, spread - x, spread - y, spread + x].into_iter().enumerate() {
+                if d.is_finite() && d > 0.0 {
+                    depth[side] = js::math_max(depth[side], d);
+                }
             }
         }
     }
@@ -956,7 +958,9 @@ fn drawn_inner_edge(dom: &dyn Dom, el: ElId) -> f64 {
         && !matches!(style.as_str(), "" | "none" | "hidden")
         && !css_color_is_transparent(Some(&dom.style(el, "outlineColor")))
     {
-        depth = js::math_max(depth, -offset);
+        for d in &mut depth {
+            *d = js::math_max(*d, -offset);
+        }
     }
     depth
 }
@@ -1004,7 +1008,8 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
     // drawn without limit, which keeps the threshold's edge flush there as
     // it always was.
     let inner_edge = drawn_inner_edge(dom, el);
-    let border_drawn: [f64; 4] = ["Top", "Right", "Bottom", "Left"].map(|side| {
+    let border_drawn: [f64; 4] = std::array::from_fn(|i| {
+        let side = ["Top", "Right", "Bottom", "Left"][i];
         let width = parse_float(&dom.style(el, &format!("border{side}Width")));
         let color = dom.style(el, &format!("border{side}Color"));
         let border = if !width.is_finite() || color.is_empty() {
@@ -1014,7 +1019,7 @@ pub fn text_descendants_flush_sides(dom: &dyn Dom, el: ElId, rect: &Rect) -> [bo
         } else {
             0.0
         };
-        js::math_max(border, inner_edge)
+        js::math_max(border, inner_edge[i])
     });
     let candidates = dom.query_all(Some(el), TEXT_EDGE_QUERY).unwrap_or_default();
     for node in candidates {
@@ -3439,10 +3444,17 @@ mod tests {
         assert_eq!(flush(&d).len(), 1, "an inset ring");
         d.set_style(row, "boxShadow", "rgba(0, 0, 0, 0) 0px 0px 0px 1px inset");
         assert!(flush(&d).is_empty(), "a transparent ring draws nothing");
-        // An offset ring is not drawn on every side: `inset 0 8px 0 1px`
-        // draws 9px along the top and nothing along the bottom.
+        // An offset moves the edge: `inset 0 8px 0 1px` draws 9px along
+        // the top and nothing along the bottom, and `inset 1px 0 0 1px`
+        // still draws 1px along the top and bottom.
         d.set_style(row, "boxShadow", "rgb(229, 231, 235) 0px 8px 0px 1px inset");
-        assert!(flush(&d).is_empty(), "an offset inset shadow is not a ring");
+        assert_eq!(
+            flush(&d),
+            vec!["<div> \"border\": children flush against bg on top (no inset)".to_string()],
+            "only the top is drawn"
+        );
+        d.set_style(row, "boxShadow", "rgb(229, 231, 235) 1px 0px 0px 1px inset");
+        assert_eq!(flush(&d).len(), 1, "a sideways offset keeps the top and bottom edges");
         d.set_style(row, "boxShadow", "rgb(0, 0, 0) 0px 4px 12px 0px");
         assert!(flush(&d).is_empty(), "an outer shadow draws no inner edge");
         d.set_style(row, "boxShadow", "none");
