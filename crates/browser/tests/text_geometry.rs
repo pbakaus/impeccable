@@ -296,6 +296,7 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "flag-under-positioned-image",
             "flag-under-positioned-box",
             "flag-icon-label-crosses-clip",
+            "flag-icon-label-in-clip-margin",
         ],
         &[
             "pass-ripple",

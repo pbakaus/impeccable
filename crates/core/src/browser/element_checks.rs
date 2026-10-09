@@ -3516,10 +3516,12 @@ fn pseudo_unmeasured(dom: &dyn Dom, el: ElId, which: &str) -> bool {
 }
 
 /// Whether every unmeasured `::before` and `::after` on `el` generates one
-/// glyph and nothing else: an icon font's character (`content: "\e90a"`),
-/// at most two characters so a glyph and its variation selector count as
-/// one. An icon is a glyph's width, not a run of words that could spill.
-/// A counter, an attribute, an image or a longer string is not.
+/// icon glyph and nothing else: a symbol or an icon font's private-use
+/// character (`content: "\e90a"`, `"\2605"`), with a variation selector
+/// after it allowed. An icon is one glyph's width, not a run of words that
+/// could spill. A letter or digit is not an icon (`"WW"` in a large face can
+/// run past a 30px box), nor is a counter, an attribute, an image or a
+/// longer string.
 fn generated_content_is_one_glyph(dom: &dyn Dom, el: ElId) -> bool {
     PSEUDOS.iter().all(|which| {
         if !pseudo_unmeasured(dom, el, which) {
@@ -3531,10 +3533,14 @@ fn generated_content_is_one_glyph(dom: &dyn Dom, el: ElId) -> bool {
         }
         let parts: Vec<&str> = content.split(['"', '\'']).collect();
         // A quoted string and nothing else: `"x"` splits into three parts.
-        parts.len() == 3
-            && parts[0].trim().is_empty()
-            && parts[2].trim().is_empty()
-            && (1..=2).contains(&parts[1].chars().count())
+        if !(parts.len() == 3 && parts[0].trim().is_empty() && parts[2].trim().is_empty()) {
+            return false;
+        }
+        let mut glyphs = parts[1].chars().filter(|c| !('\u{fe00}'..='\u{fe0f}').contains(c));
+        matches!(
+            (glyphs.next(), glyphs.next()),
+            (Some(c), None) if !c.is_alphanumeric() && !c.is_whitespace() && !c.is_control()
+        )
     })
 }
 
@@ -7442,6 +7448,12 @@ mod tests {
         assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "generated words");
         d.set_pseudo_style(link, "::before", "content", "counter(item)");
         assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "a counter");
+        d.set_pseudo_style(link, "::before", "content", "\"WW\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "letters are not an icon");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{2605}\u{2605}\"");
+        assert_eq!(check_element_text_overflow_dom(&d, link).len(), 1, "two glyphs");
+        d.set_pseudo_style(link, "::before", "content", "\"\u{2605}\u{fe0f}\"");
+        assert!(check_element_text_overflow_dom(&d, link).is_empty(), "a symbol and its variation selector");
         d.set_pseudo_style(link, "::before", "content", "\"\u{e90a}\"");
         // A child whose text sits inside the box is seen.
         let note = d.add(Some(link), "span");
