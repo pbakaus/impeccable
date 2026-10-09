@@ -1428,7 +1428,7 @@ fn clipped_gradients_all_silent(dom: &dyn Dom) -> bool {
 fn computes_clipped_gradient(dom: &dyn Dom, el: ElId) -> bool {
     let clip = dom.style(el, "webkitBackgroundClip");
     let clip = if clip.is_empty() { dom.style(el, "backgroundClip") } else { clip };
-    clip == "text" && dom.style(el, "backgroundImage").contains("gradient")
+    crate::checks::rules::background_clips_to_text(&clip) && dom.style(el, "backgroundImage").contains("gradient")
 }
 
 fn clipped_gradient_silent(dom: &dyn Dom, el: ElId) -> bool {
@@ -4078,6 +4078,61 @@ mod page_level_form_tests {
         assert_eq!(
             details(&scan(&d), "gradient-text"),
             vec![(body, "background-clip: text + gradient".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_one_colour_ramp_and_a_shimmer_paint_no_gradient_text() {
+        // cochat.ai 322270: a gradient between two equal stops is solid type.
+        let (mut d, body) = page("");
+        let h2 = d.add(Some(body), "h2");
+        d.add_text(h2, "Your AI workspace");
+        d.set_rect(h2, 0.0, 0.0, 400.0, 60.0);
+        d.set_styles(
+            h2,
+            &[
+                ("backgroundImage", "linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)"),
+                ("webkitBackgroundClip", "text"),
+                ("backgroundClip", "text"),
+                ("fontSize", "48px"),
+            ],
+        );
+        assert!(details(&scan(&d), "gradient-text").is_empty());
+
+        // ardainc.com 322257: two layers clipped to the text (`text, text`),
+        // a dark band swept over one grey. The stylesheet form names it too.
+        let shimmer_page = |running: bool| {
+            let (mut d, body) = page(
+                ".shimmer{background-image:linear-gradient(90deg,transparent,#111,transparent),linear-gradient(#777,#777);-webkit-background-clip:text;background-clip:text;color:transparent}",
+            );
+            let p = d.add(Some(body), "p");
+            d.add_selector(p, ".shimmer");
+            d.add_text(p, "Loading data");
+            d.set_rect(p, 0.0, 0.0, 120.0, 22.0);
+            d.set_styles(
+                p,
+                &[
+                    (
+                        "backgroundImage",
+                        "linear-gradient(90deg, rgba(0, 0, 0, 0) 40%, rgb(17, 17, 17), rgba(0, 0, 0, 0) 60%), linear-gradient(rgb(119, 119, 119), rgb(119, 119, 119))",
+                    ),
+                    ("webkitBackgroundClip", "text, text"),
+                    ("backgroundClip", "text, text"),
+                    ("fontSize", "16px"),
+                ],
+            );
+            if running {
+                d.set_running_animations(p, &["background-position-x", "background-position-y"]);
+            }
+            (d, p)
+        };
+        let (d, _) = shimmer_page(true);
+        assert!(details(&scan(&d), "gradient-text").is_empty());
+        // Held still, the band is a ramp on the text, read on the element.
+        let (d, p) = shimmer_page(false);
+        assert_eq!(
+            details(&scan(&d), "gradient-text"),
+            vec![(p, "background-clip: text + gradient".to_string())]
         );
     }
 

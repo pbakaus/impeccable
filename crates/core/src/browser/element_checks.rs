@@ -684,8 +684,8 @@ fn text_clipped_by_an_ancestor(dom: &dyn Dom, el: ElId) -> bool {
     let mut cur = dom.parent(el);
     for _ in 0..MAX_ANCESTORS {
         let Some(c) = cur else { return false };
-        if js::trim(&dom.style(c, "webkitBackgroundClip")) == "text"
-            || js::trim(&dom.style(c, "backgroundClip")) == "text"
+        if crate::checks::rules::background_clips_to_text(&dom.style(c, "webkitBackgroundClip"))
+            || crate::checks::rules::background_clips_to_text(&dom.style(c, "backgroundClip"))
         {
             return true;
         }
@@ -1285,6 +1285,14 @@ fn samples_are_one_colour(samples: &[Rgba]) -> bool {
 /// ramp, 28 levels on the green channel, and coachcall.ai's centred short
 /// headings see a quarter of theirs: geometry cannot tell the judged misfire
 /// from the tell.
+///
+/// Two clips paint no ramp at all. A gradient whose stops are one colour
+/// (cochat.ai's `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`
+/// headline, solid black type) is a fill. And a loading shimmer: a stack
+/// whose bottom layer is one opaque colour, with the layers above it swept
+/// across by a running `background-position` animation (ardainc.com's
+/// `p.shimmer` labels, grey type a dark band passes over). The type rests
+/// in the bottom layer's colour; what moves is a highlight, not a ramp.
 pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
     let image = dom.style(el, "backgroundImage");
     let stops = parse_gradient_colors(Some(&image));
@@ -1292,7 +1300,30 @@ pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
         return true;
     }
     let strongest = stops.iter().map(|c| c.alpha_or_one()).fold(0.0, f64::max);
-    strongest * own_opacity(dom, el) >= GRADIENT_TEXT_MIN_STOP_ALPHA
+    if strongest * own_opacity(dom, el) < GRADIENT_TEXT_MIN_STOP_ALPHA {
+        return false;
+    }
+    if stops.len() >= 2 && samples_are_one_colour(&stops) {
+        return false;
+    }
+    !is_shimmer_over_one_colour(dom, el, &image)
+}
+
+/// A gradient stack whose bottom layer is one opaque colour and whose
+/// `background-position` is animated at capture. Where the animations are
+/// not recorded, no.
+fn is_shimmer_over_one_colour(dom: &dyn Dom, el: ElId, image: &str) -> bool {
+    let layers = crate::color::split_top_level_commas(image);
+    if layers.len() < 2 {
+        return false;
+    }
+    let base = parse_gradient_colors(layers.last().map(String::as_str));
+    if base.len() < 2 || !samples_are_one_colour(&base) || base[0].alpha_or_one() < 0.95 {
+        return false;
+    }
+    dom.running_animation_properties(el).is_some_and(|props| {
+        props.iter().any(|p| js::to_lower_case(p).starts_with("background-position"))
+    })
 }
 
 /// The smallest type [`box_holds_a_text_line`] reads as a line of text.
@@ -1403,14 +1434,14 @@ pub fn check_element_colors_dom(
     // A family named as a bold cut is bold for the large-text bar (r5-p31).
     let font_weight =
         crate::checks::rules::contrast_font_weight(font_weight, &dom.style(ink_el, "fontFamily"));
-    let bg_clip = {
+    let bg_clip = crate::checks::rules::background_clip_for_checks({
         let a = dom.style(el, "webkitBackgroundClip");
         if !a.is_empty() {
             a
         } else {
             dom.style(el, "backgroundClip")
         }
-    };
+    });
     let (effective_bg_stops, bg_source, bg_source_host) =
         if surface_unresolved || effective_bg.is_some() {
             (None, None, None)

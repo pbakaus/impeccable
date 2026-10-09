@@ -687,8 +687,8 @@ fn text_clipped_by_an_ancestor(el: &StaticElement<'_>) -> bool {
     for _ in 0..MAX_ANCESTORS {
         let Some(c) = cur else { return false };
         let style = c.style();
-        if js::trim(sv(style, "webkitBackgroundClip")) == "text"
-            || js::trim(sv(style, "backgroundClip")) == "text"
+        if impeccable_core::checks::rules::background_clips_to_text(sv(style, "webkitBackgroundClip"))
+            || impeccable_core::checks::rules::background_clips_to_text(sv(style, "backgroundClip"))
         {
             return true;
         }
@@ -1104,14 +1104,15 @@ pub fn check_element_colors(
     };
     let font_weight =
         impeccable_core::checks::rules::contrast_font_weight(font_weight, sv(style, "fontFamily"));
-    let bg_clip = {
+    let bg_clip = impeccable_core::checks::rules::background_clip_for_checks({
         let a = sv(style, "webkitBackgroundClip");
         if !a.is_empty() {
             a
         } else {
             sv(style, "backgroundClip")
         }
-    };
+    }
+    .to_string());
     let color_opts = ColorOpts {
         tag: tag.to_string(),
         text_color,
