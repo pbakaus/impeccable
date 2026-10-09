@@ -472,10 +472,11 @@ pub fn is_monospace_family(font_family: &str) -> bool {
             .any(|w| matches!(w, "mono" | "monospace" | "monospaced" | "sfmono"))
 }
 
-/// How many em dashes `body` sets: each `—`, and each `--` written in its
-/// place (two hyphens and no more, followed by a non-space). A longer run of
-/// hyphens is a rule, not a dash: terminal output and ASCII tables in a
-/// `<pre>` draw `----- Global (CDN) -----` (vps.dance's 139 of 140 "em
+/// How many em dashes `body` sets: each `—`, each `--` written in its place
+/// (two hyphens and no more, followed by a non-space), and each `---` set
+/// between two letters or digits (the LaTeX and SmartyPants spelling). Any
+/// other longer run of hyphens is a rule, not a dash: terminal output and
+/// ASCII tables in a `<pre>` draw `----- Global (CDN) -----` (vps.dance's 139 of 140 "em
 /// dashes"), and a JS-era count that consumed the run two at a time read
 /// `----x` as two dashes.
 pub fn count_em_dashes(body: &str) -> usize {
@@ -491,7 +492,17 @@ pub fn count_em_dashes(body: &str) -> usize {
             while i < chars.len() && chars[i] == '-' {
                 i += 1;
             }
-            if i - start == 2 && i < chars.len() && !js::is_js_whitespace(chars[i]) {
+            let run = i - start;
+            let next = chars.get(i).copied();
+            if run == 2 && next.is_some_and(|c| !js::is_js_whitespace(c)) {
+                count += 1;
+            } else if run == 3
+                && start > 0
+                && chars[start - 1].is_alphanumeric()
+                && next.is_some_and(char::is_alphanumeric)
+            {
+                // `word---word` is the em dash of LaTeX and SmartyPants
+                // left unconverted; a table rule `|---|` is not.
                 count += 1;
             }
         } else {
@@ -659,6 +670,9 @@ mod tests {
         // A run longer than two is a rule, not a dash.
         assert_eq!(count_em_dashes("----x"), 0);
         assert_eq!(count_em_dashes("---x"), 0);
+        assert_eq!(count_em_dashes("word---word"), 1);
+        assert_eq!(count_em_dashes("|---|---|"), 0);
+        assert_eq!(count_em_dashes("word----word"), 0);
         assert_eq!(count_em_dashes("----- Global (CDN) -----"), 0);
         assert_eq!(count_em_dashes("a--b ---- c--d"), 2);
         assert_eq!(count_em_dashes("--"), 0);
