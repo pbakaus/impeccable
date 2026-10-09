@@ -4391,8 +4391,14 @@ mod tests {
     /// one-shot slide in from the right, 79px past a 390px viewport.
     #[test]
     fn text_in_a_box_mid_slide_is_not_measured_against_the_viewport() {
+        use impeccable_foundation::browser::dom::KeyframeFrame;
         let copy = "Our care teams meet people where they are, and that changes what health looks like.";
-        let run = |running: Option<Vec<&str>>, iterations: &str| {
+        let frame = |decls: &[(&str, &str)]| KeyframeFrame {
+            decls: decls.iter().map(|(p, v)| (p.to_string(), v.to_string())).collect(),
+        };
+        // `mover` takes the animation (or transition) and its running
+        // properties; `wrapper` says whether a wrapper holds the quote.
+        let run = |running: Option<Vec<&str>>, styles: &[(&str, &str)], on_wrapper: bool| {
             let mut d = FakeDom::new();
             let (html, body) = d.with_page();
             d.inner_width = 390.0;
@@ -4400,25 +4406,47 @@ mod tests {
             d.el_mut(html).client_width = 390.0;
             d.el_mut(html).scroll_width = 469.0;
             d.set_rect(body, 0.0, 0.0, 390.0, 2400.0);
-            let quote = d.add(Some(body), "div");
-            d.set_styles(
-                quote,
-                &[("position", "relative"), ("animationName", "quote-appear-right"), ("animationIterationCount", iterations)],
+            d.keyframes.insert(
+                "quote-appear-right".into(),
+                vec![frame(&[("opacity", "0"), ("right", "-96%")]), frame(&[("opacity", "1"), ("right", "0px")])],
             );
+            d.keyframes.insert(
+                "fade-up".into(),
+                vec![frame(&[("opacity", "0"), ("transform", "translateY(20px)")]), frame(&[("opacity", "1"), ("transform", "none")])],
+            );
+            let wrapper = d.add(Some(body), "main");
+            d.set_rect(wrapper, 0.0, 0.0, 390.0, 2400.0);
+            let quote = d.add(Some(wrapper), "div");
+            d.set_style(quote, "position", "relative");
             d.set_rect(quote, 119.0, 700.0, 350.0, 320.0);
-            d.el_mut(quote).running_animations = running.map(|r| r.into_iter().map(String::from).collect());
+            let mover = if on_wrapper { wrapper } else { quote };
+            d.set_styles(mover, styles);
+            d.el_mut(mover).running_animations = running.map(|r| r.into_iter().map(String::from).collect());
             let p = text_el(&mut d, quote, "p", copy, "16px");
             d.set_style(p, "lineHeight", "24px");
             d.set_rect(p, 143.0, 724.0, 310.0, 96.0);
             d.set_text_rect(p, 143.0, 724.0, 310.0, 96.0);
             check_page_overflow_dom(&d).len()
         };
-        assert_eq!(run(Some(vec!["right", "opacity"]), "1"), 0);
+        let slide = [("animationName", "quote-appear-right"), ("animationIterationCount", "1")];
+        assert_eq!(run(Some(vec!["right", "opacity"]), &slide, false), 0);
+        // A transition that names the property traces it too.
+        let eased = [("transitionProperty", "left"), ("transitionDuration", "0.4s")];
+        assert_eq!(run(Some(vec!["left"]), &eased, false), 0);
         // At rest, or in a loop, the box stands where it was measured.
-        assert_eq!(run(Some(vec!["opacity"]), "1"), 1);
-        assert_eq!(run(Some(vec!["right"]), "infinite"), 1);
+        assert_eq!(run(Some(vec!["opacity"]), &slide, false), 1);
+        let looped = [("animationName", "quote-appear-right"), ("animationIterationCount", "infinite")];
+        assert_eq!(run(Some(vec!["right"]), &looped, false), 1);
         // A recording that did not read running animations.
-        assert_eq!(run(None, "1"), 1);
+        assert_eq!(run(None, &slide, false), 1);
+        // A fade-up on an ancestor moves the text vertically only: the
+        // overflow is real whatever frame the entrance was caught at.
+        let fade_up = [("animationName", "fade-up"), ("animationIterationCount", "1"), ("transform", "matrix(1, 0, 0, 1, 0, 12)")];
+        assert_eq!(run(Some(vec!["transform", "opacity"]), &fade_up, true), 1);
+        // A transform moved by script (a Web Animations loop) with no CSS
+        // animation or transition to trace it is unknown.
+        let untraced = [("transform", "matrix(1, 0, 0, 1, -40, 0)")];
+        assert_eq!(run(Some(vec!["transform"]), &untraced, false), 1);
     }
 
     /// Taste call r4-p20 (observations-25 issue 8): text past the viewport

@@ -1188,13 +1188,17 @@ fn is_state_layer(dom: &dyn Dom, el: ElId) -> bool {
 
 /// Whether a box above `el` is caught part way through a reveal: below full
 /// opacity, displaced (a `transform` other than the identity, or a
-/// `translate`, `scale` or `rotate` that moves it), and declaring an
-/// `opacity` transition. Both values are ones the box leaves when its state
-/// changes (fastsocial.co's `[data-reveal]` cards at `opacity: 0.6;
-/// transform: scale(0.996) translateY(3.7px)` with a 0.7s opacity
-/// transition, an image inside fading in with them). The raster's own
-/// transform is not asked: a picture held faint that also floats would read
-/// the same.
+/// `translate`, `scale` or `rotate` that moves it), declaring a transition
+/// that names `opacity` itself (`all` does not count: utility CSS and
+/// hover styles declare it everywhere), and showing that the frame is one
+/// between two values. That last is either an `opacity` the capture saw
+/// running on the box, or an opacity off the 0.01 grid authors write
+/// (fastsocial.co's `[data-reveal]` cards at `opacity: 0.600778; transform:
+/// scale(0.99568) translateY(3.74px)` with a 0.7s opacity transition, an
+/// image inside fading in with them). A watermark held at `opacity: .08`
+/// and centred with a transform, or a dimmed carousel slide at `.5`, is a
+/// value at rest. The raster's own transform is not asked: a picture held
+/// faint that also floats would read the same.
 fn inside_a_reveal_in_progress(dom: &dyn Dom, el: ElId) -> bool {
     const MAX_ANCESTORS: usize = 64;
     let mut cur = dom.parent(el);
@@ -1206,14 +1210,35 @@ fn inside_a_reveal_in_progress(dom: &dyn Dom, el: ElId) -> bool {
         let opacity = js::parse_float(&dom.style(c, "opacity"));
         if opacity.is_finite()
             && opacity < 0.999
-            && declares_transition_of(dom, c, "opacity")
+            && declares_transition_naming(dom, c, "opacity")
             && super::element_checks::visibly_displaced(dom, c)
+            && (opacity_in_motion(dom, c) || off_authored_grid(opacity))
         {
             return true;
         }
         cur = dom.parent(c);
     }
     false
+}
+
+/// Whether an opacity lies off the hundredths an author writes: a value
+/// interpolated between two states (0.600778), not one set (0.6, .08).
+fn off_authored_grid(opacity: f64) -> bool {
+    let hundredths = opacity * 100.0;
+    (hundredths - hundredths.round()).abs() > 0.01
+}
+
+/// Whether `el` declares a transition of `property` by name, with a duration
+/// above 0. `all` does not count.
+fn declares_transition_naming(dom: &dyn Dom, el: ElId, property: &str) -> bool {
+    let props = dom.style(el, "transitionProperty");
+    let durations = dom.style(el, "transitionDuration");
+    let durations: Vec<&str> = durations.split(',').map(js::trim).collect();
+    props
+        .split(',')
+        .map(js::trim)
+        .enumerate()
+        .any(|(i, p)| p == property && css_time_seconds(durations[i % durations.len()]) > 0.0)
 }
 
 /// Whether an animation or transition running on the element at capture
@@ -1486,39 +1511,83 @@ pub(crate) fn loops_in_motion(dom: &dyn Dom, el: ElId) -> bool {
     })
 }
 
-/// Whether `el` or an ancestor is caught part way through a move that ends:
-/// an animation or transition the capture saw running on the box moves its
-/// position (`left`, `right`, `top`, `bottom`, an `inset` or `margin`
-/// longhand, `transform`, `translate`), and no animation on that box loops
-/// or follows a scroll timeline. elevancehealth.com's quote slides in from
-/// the right (`quote-appear-right`, one run, `right` from -96%) and the
+/// Whether `el` or an ancestor is caught part way through a sideways move
+/// that ends: the capture saw an animation or transition running on the box
+/// that moves it on the x axis (`left`, `right`, `margin-left`,
+/// `margin-right`, an `inset-inline` longhand, or a `transform` or
+/// `translate` whose current x offset is not 0), and the page traces that
+/// move to something that stops: a finite CSS animation, on the document
+/// timeline and not paused, whose keyframes set the property, or a
+/// transition that names it. elevancehealth.com's quote slides in from the
+/// right (`quote-appear-right`, one run, `right` from -96% to 0) and the
 /// capture caught it 79px past the viewport's edge, where no visitor finds
-/// it once the slide ends. A rule about where a box stands against the
-/// viewport says nothing about such a frame. A recording that did not read
-/// running animations answers no.
+/// it once the slide ends.
+///
+/// A vertical move (a fade-up's `translateY`, `top`) cannot change where
+/// text meets the side of the viewport and does not count. A running
+/// property the page does not trace (a Web Animations API loop, which a
+/// marquee library starts from script) is unknown, and the box stands where
+/// it was measured, as it does where the recording did not read running
+/// animations.
 pub(crate) fn moves_mid_animation(dom: &dyn Dom, el: ElId) -> bool {
     const MAX_ANCESTORS: usize = 64;
-    let moves = |p: &str| {
-        matches!(p, "left" | "right" | "top" | "bottom" | "transform" | "translate")
-            || p.starts_with("inset")
-            || p.starts_with("margin")
-    };
     let mut cur = Some(el);
     for _ in 0..MAX_ANCESTORS {
         let Some(c) = cur else { return false };
         if Some(c) == dom.body() || Some(c) == dom.document_element() {
             return false;
         }
-        if dom.running_animation_properties(c).is_some_and(|props| props.iter().any(|p| moves(p)))
-            && animation_entries(dom, c)
-                .iter()
-                .all(|e| e.iterations != "infinite" && (e.timeline.is_empty() || e.timeline == "auto"))
-        {
-            return true;
+        if let Some(props) = dom.running_animation_properties(c) {
+            if props.iter().any(|p| moves_sideways(dom, c, p) && traced_to_an_end(dom, c, p)) {
+                return true;
+            }
         }
         cur = dom.parent(c);
     }
     false
+}
+
+/// Whether a running property `p` moves `el` on the x axis at capture.
+fn moves_sideways(dom: &dyn Dom, el: ElId, p: &str) -> bool {
+    match p {
+        "left" | "right" | "margin-left" | "margin-right" => true,
+        _ if p.starts_with("inset-inline") => true,
+        "transform" => {
+            let t = js::trim(&dom.style(el, "transform")).replace(' ', "");
+            let x = if let Some(body) = t.strip_prefix("matrix3d(").and_then(|b| b.strip_suffix(')')) {
+                body.split(',').nth(12).map(js::parse_float)
+            } else if let Some(body) = t.strip_prefix("matrix(").and_then(|b| b.strip_suffix(')')) {
+                body.split(',').nth(4).map(js::parse_float)
+            } else {
+                None
+            };
+            x.is_some_and(|x| x.is_finite() && x.abs() >= 1.0)
+        }
+        "translate" => {
+            let t = dom.style(el, "translate");
+            t.split_whitespace().next().map(js::parse_float).is_some_and(|x| x.is_finite() && x.abs() >= 1.0)
+        }
+        _ => false,
+    }
+}
+
+/// Whether the page traces the running property `p` on `el` to a move that
+/// stops: a finite CSS animation on the document timeline, not paused,
+/// whose keyframes set `p`, or a transition that names `p`.
+fn traced_to_an_end(dom: &dyn Dom, el: ElId, p: &str) -> bool {
+    if declares_transition_naming(dom, el, p) {
+        return true;
+    }
+    animation_entries(dom, el).iter().any(|e| {
+        let count = js::parse_float(&e.iterations);
+        count.is_finite()
+            && count >= 1.0
+            && (e.timeline.is_empty() || e.timeline == "auto")
+            && e.play_state != "paused"
+            && dom
+                .keyframes(&e.name)
+                .is_some_and(|frames| frames.iter().any(|f| f.decls.iter().any(|(prop, _)| prop == p)))
+    })
 }
 
 /// Whether `el` (when `include_self`) or an ancestor fades out for good
@@ -2381,9 +2450,6 @@ mod tests {
         assert_eq!(why(&d, cell), None);
     }
 
-    /// zigzag.kr (`data-loaded="false"`), thairath.co.th
-    /// (react-lazy-load-image-component before its `-loaded` class) and
-    /// jyes.com.tw (jQuery lazyload's `fadeIn` in its first frames).
     /// fastsocial.co (323161): an image at 0.057 inside a `[data-reveal]`
     /// card caught mid-reveal (0.6 opacity, nudged by a transform, with an
     /// opacity transition). Its own float animation moves it too, which on
@@ -2408,14 +2474,56 @@ mod tests {
         assert_eq!(raster(&d, img), Some(Unpainted::StateLayer));
         // At rest: the card at full opacity, or not displaced, or with no
         // opacity transition, leaves the image held faint.
-        for (prop, value) in [("opacity", "1"), ("transform", "none"), ("transitionProperty", "transform")] {
+        for (prop, value) in [
+            ("opacity", "1"),
+            ("transform", "none"),
+            ("transitionProperty", "transform"),
+            // `all` is everywhere; it says nothing about a reveal.
+            ("transitionProperty", "all"),
+            // An authored value is a state at rest.
+            ("opacity", "0.6"),
+        ] {
             let was = d.style(card, prop);
             d.set_style(card, prop, value);
             assert_eq!(raster(&d, img), None, "{prop}: {value}");
             d.set_style(card, prop, &was);
         }
+        // An authored value the capture saw moving is a frame of a fade.
+        d.set_style(card, "opacity", "0.6");
+        d.el_mut(card).running_animations = Some(vec!["opacity".to_string()]);
+        assert_eq!(raster(&d, img), Some(Unpainted::StateLayer));
     }
 
+    /// The classic buried raster: a faint watermark image in a box centred
+    /// with a transform, dimmed to `opacity: .5`, with `transition: all
+    /// .3s` (a dimmed carousel slide reads the same). It is at rest.
+    #[test]
+    fn a_watermark_with_a_transition_stays_buried() {
+        let (mut d, body) = page();
+        let mark = d.add(Some(body), "div");
+        d.set_styles(
+            mark,
+            &[
+                ("position", "absolute"),
+                ("opacity", "0.5"),
+                ("transform", "matrix(1, 0, 0, 1, -200, -150)"),
+                ("transitionProperty", "all"),
+                ("transitionDuration", "0.3s"),
+            ],
+        );
+        d.set_rect(mark, 440.0, 250.0, 400.0, 300.0);
+        let img = d.add(Some(mark), "img");
+        d.set_style(img, "opacity", "0.1");
+        d.set_rect(img, 440.0, 250.0, 400.0, 300.0);
+        assert_eq!(raster(&d, img), None);
+        // Naming opacity does not make an authored .5 a frame.
+        d.set_style(mark, "transitionProperty", "opacity, transform");
+        assert_eq!(raster(&d, img), None);
+    }
+
+    /// zigzag.kr (`data-loaded="false"`), thairath.co.th
+    /// (react-lazy-load-image-component before its `-loaded` class) and
+    /// jyes.com.tw (jQuery lazyload's `fadeIn` in its first frames).
     #[test]
     fn a_lazy_image_a_library_has_not_shown_is_a_state_layer() {
         let (mut d, body) = page();
