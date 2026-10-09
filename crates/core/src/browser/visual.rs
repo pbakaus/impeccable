@@ -120,7 +120,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         }
     };
     let own_bg_image = dom.style(el, "backgroundImage");
-    if bg_clip == "text" && !own_bg_image.is_empty() && own_bg_image != "none" {
+    if crate::checks::rules::background_clips_to_text(&bg_clip) && !own_bg_image.is_empty() && own_bg_image != "none" {
         add(&mut reasons, "background-clip text");
     }
     let text_shadow = dom.style(el, "textShadow");
@@ -1794,7 +1794,7 @@ fn candidate_text_reads_at_rest(dom: &dyn Dom, el: ElId) -> bool {
             a
         }
     };
-    if js::trim(&clip) != "text" {
+    if !crate::checks::rules::background_clips_to_text(&clip) {
         let ink_gone = parse_rgb_or_any(&dom.style(el, "color"))
             .map_or(false, |c| c.alpha_or_one() <= TRANSPARENT_INK_FLOOR);
         if ink_gone || text_fill_is_transparent(&dom.style(el, "webkitTextFillColor")) {

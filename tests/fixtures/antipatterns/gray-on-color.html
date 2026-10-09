@@ -15,6 +15,9 @@
   (`#393939`, `#413c38`, `text-gray-800`) is the dark neutral, while
   `#4b5563` (0.34) and `text-gray-600` are still gray. Every Tailwind neutral
   at `-700` and darker sits under that floor, every `-600` and lighter over it.
+  A pale tint is not colour either: at OKLCH lightness 0.9 and above a
+  background also needs chroma 0.09, so cream `#feeed4` (C 0.038) and
+  amber-100 `#fef3c7` (C 0.06) carry gray ink as an off-white would.
 -->
 <style>
   body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #ffffff; color: #111111; }
@@ -39,6 +42,8 @@
     <div class="swatch" id="pass-near-black-on-yellow" style="background: #ffc224; color: #393939">Near-black copy on a yellow card is the dark neutral ink.</div>
     <div class="swatch" id="pass-warm-near-black-on-green" style="background: #38e07b; color: #413c38">Warm near-black copy on a green button is the dark neutral ink.</div>
     <div class="swatch text-gray-800 bg-yellow-400" id="pass-tailwind-gray-800">A gray-800 utility on a yellow fill is near-black ink.</div>
+    <div class="swatch" id="pass-gray-on-cream" style="background: #feeed4; color: #685a54">Grey-brown copy on a pale cream band reads as near-neutral.</div>
+    <div class="swatch" id="pass-gray-on-amber-100" style="background: #fef3c7; color: #4b5563">Gray copy on an amber-100 tint reads as gray on off-white.</div>
     <div class="swatch" id="pass-gray-on-neutral-panel" style="background: #f3f4f6; color: #4b5563">Gray copy on a pale neutral panel has no colour to wash out against.</div>
   </section>
 </body>

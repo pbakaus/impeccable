@@ -107,7 +107,33 @@ fn is_in_control(dom: &dyn Dom, el: ElId) -> bool {
     }
     false
 }
-const FURNITURE: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer, [class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
+const FURNITURE_ELEMENTS: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer";
+const FURNITURE_CLASSES: &str = "[class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
+
+/// Whether `el` is, or sits in, page furniture: navigation, a table cell, a
+/// caption, a footer, or a box whose class names one (a label, a chip, a
+/// breadcrumb). The class markers are not read off `html`, which holds the
+/// page's script state flags: schlittermann.de's `html.js-nav-ready` made
+/// every element on the page navigation, a 10px sentence among them.
+/// `body` is still read: letour.fr's `body.has-breadcrumb` is a state flag
+/// too, but the 10px team names it reaches in the ranking rows are ones both
+/// judges called harmful (run 35, 218586).
+fn is_furniture(dom: &dyn Dom, el: ElId) -> bool {
+    if matches_or_closest(dom, el, FURNITURE_ELEMENTS) {
+        return true;
+    }
+    let mut cur = Some(el);
+    while let Some(c) = cur {
+        if tag_lower(dom, c) == "html" {
+            return false;
+        }
+        if matches_or_false(dom, c, FURNITURE_CLASSES) {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
 const SMALLPRINT: &str = "small, footer, [class*=\"legal\" i], [class*=\"copyright\" i], [class*=\"fineprint\" i], [class*=\"fine-print\" i], [class*=\"smallprint\" i], [class*=\"small-print\" i], [class*=\"disclaimer\" i], [class*=\"disclosure\" i], [class*=\"footnote\" i]";
 const TEXT_EDGE_QUERY: &str =
     "a, button, code, dd, dt, figcaption, h1, h2, h3, h4, h5, h6, li, p, pre, span, td, th";
@@ -2095,7 +2121,7 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
             let is_exempt_context = is_code_run || matches_or_closest(dom, el, EXEMPT_CONTEXT);
             if !is_exempt_context && !is_visually_hidden(dom, el) {
                 let is_interactive = is_in_control(dom, el);
-                let is_furniture = matches_or_closest(dom, el, FURNITURE);
+                let is_furniture = is_furniture(dom, el);
                 let is_smallprint = matches_or_closest(dom, el, SMALLPRINT);
                 let floor = if !is_interactive && is_smallprint {
                     SMALLPRINT_TEXT_FLOOR_PX
@@ -2161,9 +2187,8 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     // it as plainly and take the same exemption, at any
                     // length and over any number of lines (mialight.app's
                     // caption that wraps on a phone). Every letter has to be
-                    // a capital for that, so a CJK line with one Latin
-                    // acronym in it stays running text unless it is a short
-                    // label on one line.
+                    // a capital for that: a line with one Latin acronym in
+                    // it is not a capitals label.
                     // A link or button label is read at a glance too
                     // (lpga.or.jp's bold CJK "Instagram" link), held to the
                     // same size on one line.
@@ -2175,7 +2200,12 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     let caps_label = st("textTransform") == "uppercase"
                         || (!lowered
                             && (typed_caps_text(dom, el) || typed_caps_label(dom, el, q.line_height_px, false)));
-                    if !caps_label && !control_label {
+                    // Han, kana and Hangul sit in square cells and are set
+                    // with open tracking by convention, as the crushed
+                    // tracking check below already reads them
+                    // (weathernews.jp's FAQ titles at 0.10em).
+                    let cjk = is_cjk_text(&collapse_ws(js::trim(&dom.text_content(el))));
+                    if !caps_label && !control_label && !cjk {
                         findings.push(RuleHit::new(
                             "wide-tracking",
                             format!("letter-spacing: {}em on body text", to_fixed(tracking_em, 2)),
@@ -2763,6 +2793,29 @@ mod tests {
         d.add_text(nav_link, "[7]");
         d.add_selector(nav_link, INTERACTIVE);
         assert!(ui(&d, nav_link));
+    }
+
+    /// schlittermann.de: `html.js-nav-ready` is a script state flag, not
+    /// navigation around every element on the page.
+    #[test]
+    fn furniture_class_markers_are_not_read_off_html() {
+        let undersized = |d: &FakeDom, el: ElId| {
+            check_element_quality_dom(d, el, &BrowserConfig::default())
+                .iter()
+                .any(|h| h.id == "undersized-ui-text")
+        };
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.add_selector(html, FURNITURE_CLASSES);
+        let note = text_el(&mut d, body, "p", "For mails we never asked for and will never read", "10px");
+        d.set_rect(note, 40.0, 400.0, 600.0, 14.0);
+        assert!(!undersized(&d, note), "a sentence under html.js-nav-ready");
+        // A box inside the page whose class names navigation still counts.
+        let nav = d.add(Some(body), "div");
+        d.add_selector(nav, FURNITURE_CLASSES);
+        let item = text_el(&mut d, nav, "span", "Linux support and consulting since 1997", "10px");
+        d.set_rect(item, 40.0, 500.0, 300.0, 14.0);
+        assert!(undersized(&d, item));
     }
 
     fn text_el(d: &mut FakeDom, body: ElId, tag: &str, text: &str, font: &str) -> ElId {
@@ -4956,8 +5009,9 @@ mod tests {
         assert_eq!(ids, vec!["wide-tracking"]);
         d.set_style(s, "textTransform", "none");
 
-        // A long line of Hangul with one Latin acronym in capitals is running
-        // text: the short-label reading needs one line inside the label length.
+        // A long line of Hangul with one Latin acronym in capitals is not a
+        // capitals label, but it is CJK text, which takes open tracking by
+        // convention (observations-47 row 21): no finding.
         let long = text_el(
             &mut d,
             body,
@@ -4969,6 +5023,19 @@ mod tests {
         d.set_styles(long, &[("lineHeight", "26px"), ("letterSpacing", "2px")]);
         d.els[long as usize].direct_text_rect = Some(Rect::from_xywh(40.0, 300.0, 600.0, 52.0));
         let hits = check_element_quality_dom(&d, long, &BrowserConfig::default());
+        assert!(hits.iter().all(|h| h.id != "wide-tracking"), "{hits:?}");
+        // The same run in Latin letters is running text, tracked wide.
+        let latin = text_el(
+            &mut d,
+            body,
+            "p",
+            "Support hours run Monday to Friday, from nine in the morning until six (KST)",
+            "16px",
+        );
+        d.set_rect(latin, 40.0, 500.0, 600.0, 52.0);
+        d.set_styles(latin, &[("lineHeight", "26px"), ("letterSpacing", "2px")]);
+        d.els[latin as usize].direct_text_rect = Some(Rect::from_xywh(40.0, 500.0, 600.0, 52.0));
+        let hits = check_element_quality_dom(&d, latin, &BrowserConfig::default());
         let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
         assert_eq!(ids, vec!["wide-tracking"], "{hits:?}");
         assert_eq!(hits[0].snippet, "letter-spacing: 0.13em on body text");

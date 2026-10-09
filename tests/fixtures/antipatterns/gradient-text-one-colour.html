@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gradient text fixture: one-colour ramps</title>
+<!--
+  gradient-text names type painted with a gradient clipped to the glyphs. A
+  gradient whose stops are all one colour paints solid type (cochat.ai sets
+  headlines with `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`
+  as a theme default), so it is a fill, not the tell.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #ffffff; color: #111111; }
+  h2 { font-size: 40px; line-height: 48px; margin: 0 0 24px; width: 640px; }
+</style>
+</head>
+<body>
+  <section aria-label="Should flag">
+    <h2 id="flag-ramp" style="background-image: linear-gradient(90deg, #db2777, #7c3aed); -webkit-background-clip: text; background-clip: text; color: transparent">Other assistants guess. We verify.</h2>
+  </section>
+  <section aria-label="Should pass">
+    <h2 id="pass-one-colour" style="background-image: linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%); -webkit-background-clip: text; background-clip: text; color: transparent">One in four citations misrepresents its source.</h2>
+  </section>
+</body>
+</html>

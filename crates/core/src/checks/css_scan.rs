@@ -1995,9 +1995,373 @@ fn polygon_is_rectilinear(body: &str) -> bool {
     })
 }
 
+/// One polygon coordinate as a number and its unit, when it is a plain
+/// length or percentage (`96%`, `4px`, `0`). A `calc()` or a variable is not.
+fn polygon_coordinate_number(token: &str) -> Option<(f64, String)> {
+    let t = js::trim(token).to_ascii_lowercase();
+    let unit_start = t.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-' || c == '+')).unwrap_or(t.len());
+    let value: f64 = t[..unit_start].parse().ok()?;
+    let unit = &t[unit_start..];
+    if !unit.chars().all(|c| c.is_ascii_alphabetic() || c == '%') {
+        return None;
+    }
+    // A zero is a zero in any unit.
+    Some((value, if value == 0.0 { String::new() } else { unit.to_string() }))
+}
+
+/// Whether a `polygon()` body is a zigzag edge: its vertices take two to
+/// four distinct values on one axis and step evenly along the other.
+/// presswhisper.com's tape ribbon (`100% 20%, 96% 40%, 100% 60%, 96% 80%,
+/// ...`) notches both ends that way; a hand-drawn contour wanders on both
+/// axes. A coordinate that is not a plain number answers no.
+fn polygon_is_zigzag(body: &str) -> bool {
+    let mut xs: Vec<(f64, String)> = Vec::new();
+    let mut ys: Vec<(f64, String)> = Vec::new();
+    for (i, point) in split_top_level(body, |c| c == ',').into_iter().enumerate() {
+        let coords = split_top_level(point, char::is_whitespace);
+        if i == 0 && coords.len() == 1 && matches!(js::to_lower_case(coords[0]).as_str(), "nonzero" | "evenodd") {
+            continue;
+        }
+        let [x, y] = coords.as_slice() else {
+            return false;
+        };
+        let (Some(x), Some(y)) = (polygon_coordinate_number(x), polygon_coordinate_number(y)) else {
+            return false;
+        };
+        xs.push(x);
+        ys.push(y);
+    }
+    // One unit per axis, so the values compare.
+    let one_unit = |v: &[(f64, String)]| {
+        let mut units = v.iter().map(|(_, u)| u.as_str()).filter(|u| !u.is_empty());
+        let first = units.next();
+        units.all(|u| Some(u) == first)
+    };
+    if xs.len() < 3 || !one_unit(&xs) || !one_unit(&ys) {
+        return false;
+    }
+    let distinct = |v: &[(f64, String)]| {
+        let mut d: Vec<f64> = Vec::new();
+        for (n, _) in v {
+            if !d.iter().any(|x| (x - n).abs() < 0.01) {
+                d.push(*n);
+            }
+        }
+        d.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        d
+    };
+    let even_steps = |d: &[f64]| {
+        d.len() >= 3 && {
+            let step = d[1] - d[0];
+            step > 0.0 && d.windows(2).all(|w| ((w[1] - w[0]) - step).abs() <= 0.5)
+        }
+    };
+    let (dx, dy) = (distinct(&xs), distinct(&ys));
+    let xv: Vec<f64> = xs.iter().map(|(n, _)| *n).collect();
+    let yv: Vec<f64> = ys.iter().map(|(n, _)| *n).collect();
+    ((2..=4).contains(&dx.len()) && even_steps(&dy) && teeth_alternate(&yv, dy[1] - dy[0], &xv))
+        || ((2..=4).contains(&dy.len()) && even_steps(&dx) && teeth_alternate(&xv, dx[1] - dx[0], &yv))
+}
+
+/// Whether the vertices that advance one step at a time along `along` swing
+/// back and forth on `across` like teeth: every swing the same size, each
+/// one the other way from the last, at least three of them. A torn edge
+/// with levels in no order (96%, 97%, 99%, 100%) swings by uneven amounts.
+fn teeth_alternate(along: &[f64], step: f64, across: &[f64]) -> bool {
+    let n = along.len();
+    let mut swings = 0usize;
+    let mut last: Option<f64> = None;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        if ((along[j] - along[i]).abs() - step).abs() > 0.5 {
+            // A side that is not one tooth step ends the run.
+            last = None;
+            continue;
+        }
+        let swing = across[j] - across[i];
+        if swing.abs() < 0.01 {
+            continue;
+        }
+        if let Some(prev) = last {
+            if prev.signum() == swing.signum() || (prev.abs() - swing.abs()).abs() > 0.5 {
+                return false;
+            }
+        }
+        last = Some(swing);
+        swings += 1;
+    }
+    swings >= 3
+}
+
+re!(PATH_TOKEN_RE, r"[A-Za-z]|[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?".to_string());
+
+/// Whether a `path()` body draws a rounded rectangle: every straight
+/// segment (`L`, `H`, `V`, a closing `Z`) runs along an edge of the box the
+/// path's points span, the straight segments reach all four of its edges,
+/// and each run of curves between them joins two adjacent edges, turning a
+/// corner. sinter.systems' smooth-corner buttons are squircles drawn that
+/// way. A blob has no straight side, or one; a wave divider (straight top
+/// and sides, a curved bottom) has three, and its curves run along one
+/// edge. The box is spanned by points sampled along every curve as well as
+/// the segment ends, so a curve that bulges outside the straight sides
+/// moves the box off them. Path data the reader cannot follow answers no.
+fn path_is_rounded_rectangle(body: &str) -> bool {
+    // Path data holds no parentheses: the body ends at the first one. An
+    // inline style escapes the quotes, and a fill rule may lead.
+    let data = body.split(')').next().unwrap_or("").replace("&quot;", "\"");
+    let data = match data.rfind(',') {
+        Some(i) if data[..i].trim().trim_matches(|c| c == '"' || c == '\'').chars().all(|c| c.is_ascii_alphabetic()) => {
+            data[i + 1..].to_string()
+        }
+        _ => data,
+    };
+    let data = data.trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace());
+    let tokens: Vec<&str> = PATH_TOKEN_RE.find_iter(data).map(|m| m.as_str()).collect();
+    let mut points: Vec<(f64, f64)> = Vec::new();
+    // Every segment in drawing order: start, end, and whether it is straight.
+    let mut segments: Vec<((f64, f64), (f64, f64), bool)> = Vec::new();
+    let (mut cur, mut start) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64));
+    // The last cubic or quadratic control point, for `S` and `T` to reflect.
+    let mut last_cubic: Option<(f64, f64)> = None;
+    let mut last_quad: Option<(f64, f64)> = None;
+    let mut i = 0usize;
+    let mut cmd: Option<char> = None;
+    while i < tokens.len() {
+        let tok = tokens[i];
+        let c = tok.chars().next().unwrap_or(' ');
+        if c.is_ascii_alphabetic() {
+            cmd = Some(c);
+            i += 1;
+            if c == 'Z' || c == 'z' {
+                last_cubic = None;
+                last_quad = None;
+                if cur != start {
+                    segments.push((cur, start, true));
+                }
+                cur = start;
+                points.push(cur);
+                cmd = None;
+            }
+            continue;
+        }
+        let Some(command) = cmd else { return false };
+        let arity = match command.to_ascii_uppercase() {
+            'M' | 'L' | 'T' => 2,
+            'H' | 'V' => 1,
+            'C' => 6,
+            'S' | 'Q' => 4,
+            'A' => 7,
+            _ => return false,
+        };
+        if i + arity > tokens.len() {
+            return false;
+        }
+        let mut args = Vec::with_capacity(arity);
+        for t in &tokens[i..i + arity] {
+            match t.parse::<f64>() {
+                Ok(v) if v.is_finite() => args.push(v),
+                _ => return false,
+            }
+        }
+        i += arity;
+        let rel = command.is_ascii_lowercase();
+        let base = if rel { cur } else { (0.0, 0.0) };
+        let end = match command.to_ascii_uppercase() {
+            'H' => (if rel { cur.0 + args[0] } else { args[0] }, cur.1),
+            'V' => (cur.0, if rel { cur.1 + args[0] } else { args[0] }),
+            _ => (base.0 + args[arity - 2], base.1 + args[arity - 1]),
+        };
+        let at = |k: usize| (base.0 + args[k], base.1 + args[k + 1]);
+        let reflect = |c: Option<(f64, f64)>| c.map_or(cur, |c| (2.0 * cur.0 - c.0, 2.0 * cur.1 - c.1));
+        let (mut cubic, mut quad) = (None, None);
+        match command.to_ascii_uppercase() {
+            'C' => {
+                let (c1, c2) = (at(0), at(2));
+                points.extend(sample_cubic(cur, c1, c2, end));
+                cubic = Some(c2);
+            }
+            'S' => {
+                let (c1, c2) = (reflect(last_cubic), at(0));
+                points.extend(sample_cubic(cur, c1, c2, end));
+                cubic = Some(c2);
+            }
+            'Q' => {
+                let c = at(0);
+                points.extend(sample_cubic(cur, lerp(cur, c, 2.0 / 3.0), lerp(end, c, 2.0 / 3.0), end));
+                quad = Some(c);
+            }
+            'T' => {
+                let c = reflect(last_quad);
+                points.extend(sample_cubic(cur, lerp(cur, c, 2.0 / 3.0), lerp(end, c, 2.0 / 3.0), end));
+                quad = Some(c);
+            }
+            'A' => points.extend(sample_arc(cur, args[0], args[1], args[2], args[3] != 0.0, args[4] != 0.0, end)),
+            _ => {}
+        }
+        last_cubic = cubic;
+        last_quad = quad;
+        match command.to_ascii_uppercase() {
+            'M' => {
+                start = end;
+                // Pairs after a moveto are implicit linetos.
+                cmd = Some(if rel { 'l' } else { 'L' });
+            }
+            // A straight command of zero length still ends a run of curves:
+            // a squircle written as `c ... L 146.016 20` where the curve
+            // already reached (146.016, 20) is two corners, not one curve.
+            'L' | 'H' | 'V' => segments.push((cur, end, true)),
+            _ => segments.push((cur, end, false)),
+        }
+        cur = end;
+        points.push(cur);
+    }
+    // A zero-length side still marks the edge it sits on.
+    let lines: Vec<_> = segments.iter().filter(|s| s.2).map(|s| (s.0, s.1)).collect();
+    if lines.len() < 4 || points.is_empty() {
+        return false;
+    }
+    let (mut min_x, mut max_x, mut min_y, mut max_y) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+    for (x, y) in &points {
+        min_x = min_x.min(*x);
+        max_x = max_x.max(*x);
+        min_y = min_y.min(*y);
+        max_y = max_y.max(*y);
+    }
+    let tol = 0.01 * (max_x - min_x).max(max_y - min_y).max(1.0);
+    let near = |a: f64, b: f64| (a - b).abs() <= tol;
+    let mut edges = [false; 4];
+    for (a, b) in &lines {
+        let side = if near(a.1, min_y) && near(b.1, min_y) {
+            0
+        } else if near(a.0, max_x) && near(b.0, max_x) {
+            1
+        } else if near(a.1, max_y) && near(b.1, max_y) {
+            2
+        } else if near(a.0, min_x) && near(b.0, min_x) {
+            3
+        } else {
+            return false;
+        };
+        edges[side] = true;
+    }
+    if !edges.iter().all(|e| *e) {
+        return false;
+    }
+    // Each run of curves between two straight sides turns a corner: it
+    // starts on one edge and ends on an edge next to it (top or bottom to
+    // left or right). A wave along an edge starts and ends on the same one.
+    let on_edges = |p: (f64, f64)| -> Vec<usize> {
+        let mut e = Vec::new();
+        if near(p.1, min_y) { e.push(0) }
+        if near(p.0, max_x) { e.push(1) }
+        if near(p.1, max_y) { e.push(2) }
+        if near(p.0, min_x) { e.push(3) }
+        e
+    };
+    let Some(first_line) = segments.iter().position(|s| s.2) else { return false };
+    let n = segments.len();
+    let mut run: Option<((f64, f64), (f64, f64))> = None;
+    for k in 1..=n {
+        let seg = segments[(first_line + k) % n];
+        if seg.2 {
+            if let Some((a, b)) = run.take() {
+                let (ea, eb) = (on_edges(a), on_edges(b));
+                if !ea.iter().any(|x| eb.iter().any(|y| x % 2 != y % 2)) {
+                    return false;
+                }
+            }
+        } else {
+            run = Some(match run {
+                Some((a, _)) => (a, seg.1),
+                None => (seg.0, seg.1),
+            });
+        }
+    }
+    true
+}
+
+const CURVE_SAMPLES: usize = 16;
+
+fn lerp(a: (f64, f64), b: (f64, f64), t: f64) -> (f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
+}
+
+/// Points along a cubic Bezier, its ends excluded.
+fn sample_cubic(p0: (f64, f64), p1: (f64, f64), p2: (f64, f64), p3: (f64, f64)) -> Vec<(f64, f64)> {
+    (1..CURVE_SAMPLES)
+        .map(|k| {
+            let t = k as f64 / CURVE_SAMPLES as f64;
+            let u = 1.0 - t;
+            let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            (a * p0.0 + b * p1.0 + c * p2.0 + d * p3.0, a * p0.1 + b * p1.1 + c * p2.1 + d * p3.1)
+        })
+        .collect()
+}
+
+/// Points along an SVG elliptical arc, its ends excluded (the endpoint to
+/// centre conversion of SVG 1.1 F.6.5, radii scaled up when too small).
+fn sample_arc(
+    from: (f64, f64),
+    rx: f64,
+    ry: f64,
+    rotation_deg: f64,
+    large: bool,
+    sweep: bool,
+    to: (f64, f64),
+) -> Vec<(f64, f64)> {
+    let (mut rx, mut ry) = (rx.abs(), ry.abs());
+    if from == to || rx == 0.0 || ry == 0.0 {
+        return Vec::new();
+    }
+    let phi = rotation_deg.to_radians();
+    let (sin, cos) = phi.sin_cos();
+    let (dx, dy) = ((from.0 - to.0) / 2.0, (from.1 - to.1) / 2.0);
+    let (x1, y1) = (cos * dx + sin * dy, -sin * dx + cos * dy);
+    let lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
+    if lambda > 1.0 {
+        rx *= lambda.sqrt();
+        ry *= lambda.sqrt();
+    }
+    let num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+    let den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+    let mut coef = if den == 0.0 { 0.0 } else { (num / den).max(0.0).sqrt() };
+    if large == sweep {
+        coef = -coef;
+    }
+    let (cx1, cy1) = (coef * rx * y1 / ry, -coef * ry * x1 / rx);
+    let (cx, cy) = (
+        cos * cx1 - sin * cy1 + (from.0 + to.0) / 2.0,
+        sin * cx1 + cos * cy1 + (from.1 + to.1) / 2.0,
+    );
+    let angle = |ux: f64, uy: f64| uy.atan2(ux);
+    let theta1 = angle((x1 - cx1) / rx, (y1 - cy1) / ry);
+    let mut delta = angle((-x1 - cx1) / rx, (-y1 - cy1) / ry) - theta1;
+    let tau = std::f64::consts::TAU;
+    if sweep && delta < 0.0 {
+        delta += tau;
+    } else if !sweep && delta > 0.0 {
+        delta -= tau;
+    }
+    (1..CURVE_SAMPLES)
+        .map(|k| {
+            let t = theta1 + delta * k as f64 / CURVE_SAMPLES as f64;
+            let (ex, ey) = (rx * t.cos(), ry * t.sin());
+            (cos * ex - sin * ey + cx, sin * ex + cos * ey + cy)
+        })
+        .collect()
+}
+
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
+///
+/// The same declaration repeated (one inline style per button) reports once
+/// per selector.
 pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFinding> {
-    let mut findings = Vec::new();
+    let mut findings: Vec<PatternFinding> = Vec::new();
+    let push = |findings: &mut Vec<PatternFinding>, f: PatternFinding| {
+        if !findings.iter().any(|g| g.snippet == f.snippet && g.selector == f.selector) {
+            findings.push(f);
+        }
+    };
     for m in ORGANIC_CLIP_RE.captures_iter(style_text) {
         let kind = js::to_lower_case(&m[1]);
         let body = m.get(2).map(|g| g.as_str()).unwrap_or("");
@@ -2007,10 +2371,10 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
             // not a rectilinear M/L/Z outline; letters in path data are only
             // commands
             let curves = CURVE_CMD_RE.find_iter(body).count();
-            if curves < 3 {
+            if curves < 3 || path_is_rounded_rectangle(body) {
                 continue;
             }
-            findings.push(PatternFinding {
+            push(&mut findings, PatternFinding {
                 id: "organic-clip-path".to_string(),
                 snippet: format!("clip-path: path() with {curves} curve segments"),
                 selector: enclosing_css_selector(style_text, index),
@@ -2041,10 +2405,10 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
         if off_grid < points.len() {
             continue;
         }
-        if polygon_is_rectilinear(body) {
+        if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
             continue;
         }
-        findings.push(PatternFinding {
+        push(&mut findings, PatternFinding {
             id: "organic-clip-path".to_string(),
             snippet: format!(
                 "clip-path: polygon() with {} vertices approximating an organic contour",
@@ -2677,6 +3041,59 @@ mod tests {
         assert!(!polygon_is_rectilinear("0 0, 10px, 10px 10px, 0 10px)"));
         let blob = ".b{clip-path:polygon(50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%)}";
         assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
+    }
+
+    /// presswhisper.com 323796: a tape ribbon with zigzag ends.
+    #[test]
+    fn zigzag_polygons_are_geometric() {
+        let tape = ".tape-edges { clip-path: polygon(0% 0%, 100% 0%, 100% 20%, 96% 40%, 100% 60%, 96% 80%, 100% 100%, 0% 100%, 4% 80%, 0% 60%, 4% 40%, 0% 20%); }";
+        assert!(scan_css_text_for_organic_clip_path(tape).is_empty());
+        // A torn top edge: evenly stepped x, a few y values.
+        assert!(polygon_is_zigzag("0 10%, 10% 0, 20% 10%, 30% 0, 40% 10%, 50% 0, 60% 10%, 70% 0, 80% 10%, 90% 0, 100% 10%, 100% 100%, 0 100%"));
+        // Mixed units on one axis do not compare.
+        assert!(!polygon_is_zigzag("0 10px, 10% 0, 20% 10%, 30% 0, 40% 10px, 50% 0, 60% 10px, 70% 0, 80% 10px, 90% 0, 100% 10px, 100% 100%, 0 100%"));
+        // A blob wanders on both axes; uneven steps are not a zigzag.
+        assert!(!polygon_is_zigzag("50% 0%, 61% 8%, 74% 6%, 82% 16%, 94% 22%, 96% 36%, 100% 50%, 92% 63%, 88% 78%, 74% 88%, 60% 100%, 46% 96%"));
+        assert!(!polygon_is_zigzag("0% 0%, 100% 0%, 100% 13%, 96% 40%, 100% 62%, 96% 80%, 100% 100%, 0% 100%, 4% 77%, 0% 60%, 4% 31%, 0% 20%"));
+        // A coordinate that is not a plain number answers no.
+        assert!(!polygon_is_zigzag("0 0, calc(100% - 4px) 0, 100% 20%, 0 100%"));
+        // A torn bottom edge with a few levels in no order is not teeth.
+        let torn = ".t{clip-path:polygon(0 0, 100% 0, 100% 96%, 95% 100%, 90% 97%, 85% 100%, 80% 96%, 75% 99%, 70% 96%, 65% 100%, 60% 97%, 55% 99%, 50% 96%, 0 96%)}";
+        assert_eq!(scan_css_text_for_organic_clip_path(torn).len(), 1);
+    }
+
+    /// sinter.systems 321980: smooth-corner buttons clip to a squircle, an
+    /// inline style per button.
+    #[test]
+    fn squircle_paths_are_rounded_rectangles() {
+        let squircle = "M 25.2 0 L 110.003 0 c 10.4993 0 15.7489 0 19.429 2.6738 a 14 14 0 0 1 4.9854 6.7023 c 0.7856 2.2452 0.7856 5.0381 0.7856 10.6239 L 135.203 20 c 0 5.5858 0 8.3787 -0.7856 10.6239 a 14 14 0 0 1 -4.9854 6.7023 c -3.6801 2.6738 -8.9297 2.6738 -19.429 2.6738 L 25.2 40 c -10.4993 0 -15.7489 0 -19.429 -2.6738 a 14 14 0 0 1 -4.9854 -6.7023 c -0.7856 -2.2452 -0.7856 -5.0381 -0.7856 -10.6239 L 0 20 c 0 -5.5858 0 -8.3787 0.7856 -10.6239 a 14 14 0 0 1 4.9854 -6.7023 c 3.6801 -2.6738 8.9297 -2.6738 19.429 -2.6738 Z";
+        let page = format!(
+            "<a style=\"clip-path: path(&quot;{squircle}&quot;);\">Talk</a><a style=\"clip-path: path(&quot;{squircle}&quot;);\">Explore</a>"
+        );
+        assert!(scan_css_text_for_organic_clip_path(&page).is_empty());
+        assert!(path_is_rounded_rectangle(&format!("'{squircle}')")));
+        // The same squircle where a corner's curve lands exactly where the
+        // straight side ends: a zero-length side still parts the corners.
+        let wide = squircle.replace("110.003", "120.816").replace("135.203", "146.016");
+        assert!(path_is_rounded_rectangle(&format!("'{wide}')")));
+        assert!(path_is_rounded_rectangle("evenodd, 'M10 0H90Q100 0 100 10V90Q100 100 90 100H10Q0 100 0 90V10Q0 0 10 0Z')"));
+        // A blob of curves, and a curved shape with one flat side, still report.
+        let blob = ".b{clip-path:path('M50 0 C80 0 100 20 100 50 C100 80 80 100 50 100 C20 100 0 80 0 50 C0 20 20 0 50 0 Z')}";
+        assert_eq!(scan_css_text_for_organic_clip_path(blob).len(), 1);
+        assert!(!path_is_rounded_rectangle("'M0 100 L100 100 C100 40 70 0 50 0 C30 0 0 40 0 100 Z')"));
+        // Straight sides joined by curves that bulge far outside them.
+        assert!(!path_is_rounded_rectangle(
+            "'M20 0 H80 C150 -50 150 50 100 20 V80 C150 150 50 150 80 100 H20 C-50 150 -50 50 0 80 V20 C-50 -50 50 -50 20 0 Z')"
+        ));
+        // Corner arcs that take the long way round, outside the box.
+        assert!(!path_is_rounded_rectangle("'M10 0H90A10 10 0 1 1 100 10V90A10 10 0 1 1 90 100H10A10 10 0 1 1 0 90V10A10 10 0 1 1 10 0Z')"));
+        assert!(path_is_rounded_rectangle("'M10 0H90A10 10 0 0 1 100 10V90A10 10 0 0 1 90 100H10A10 10 0 0 1 0 90V10A10 10 0 0 1 10 0Z')"));
+        // A wave divider: straight top and sides, curves along the bottom.
+        let wave = ".hero{clip-path:path('M0 0 H1440 V300 C1260 360 1080 240 900 300 C720 360 540 240 360 300 C180 360 90 260 0 300 Z')}";
+        assert_eq!(scan_css_text_for_organic_clip_path(wave).len(), 1);
+        // The same organic declaration twice reports once.
+        let twice = format!("{blob}{blob}");
+        assert_eq!(scan_css_text_for_organic_clip_path(&twice).len(), 1);
     }
 
     #[test]

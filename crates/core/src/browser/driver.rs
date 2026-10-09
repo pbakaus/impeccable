@@ -1277,6 +1277,33 @@ fn drop_covered_class_forms(findings: &mut Vec<BrowserFinding>) {
     drop_covered_palette_forms(findings);
 }
 
+/// The contrast below which an element's text is as good as gone: its size
+/// is not what a reader misses. Read off the ratio low-contrast prints, at
+/// one decimal this far under its bar ([`crate::color::ratio_label`]): a
+/// printed `1.2` is a measured ratio under 1.25 and a printed `1.3` is not,
+/// so the cutoff on the printed value is exactly the cutoff on the measured
+/// one.
+const VANISHING_INK_RATIO: f64 = 1.25;
+
+/// Text the element's own low-contrast finding scores under
+/// [`VANISHING_INK_RATIO`] belongs to that finding alone: `tiny-text` and
+/// `undersized-ui-text` on the same element report a size nobody can see
+/// (vps.dance's `p.nid`, #eee on #f8f8f8 at 1.07:1). Where low-contrast did
+/// not report on the element, or its verdict is provisional (handed to the
+/// pixel pass, turned off, ignored inline), the size findings stand.
+fn drop_size_findings_on_vanishing_ink(findings: &mut Vec<BrowserFinding>) {
+    let vanishes = findings.iter().any(|f| {
+        f.type_ == "low-contrast"
+            && f.detail
+                .split_once(':')
+                .and_then(|(ratio, _)| ratio.trim().parse::<f64>().ok())
+                .is_some_and(|ratio| ratio < VANISHING_INK_RATIO)
+    });
+    if vanishes {
+        findings.retain(|f| f.type_ != "tiny-text" && f.type_ != "undersized-ui-text");
+    }
+}
+
 /// ai-color-palette reports one finding per element and concern. Its class
 /// forms (`Purple/violet gradient (Tailwind)`, `text-purple-600 on heading`)
 /// name what its computed forms read off the same element, so a computed
@@ -1428,6 +1455,8 @@ fn clipped_gradients_all_silent(dom: &dyn Dom) -> bool {
 fn computes_clipped_gradient(dom: &dyn Dom, el: ElId) -> bool {
     let clip = dom.style(el, "webkitBackgroundClip");
     let clip = if clip.is_empty() { dom.style(el, "backgroundClip") } else { clip };
+    // A multi-layer `text, text` clip is not read here: whether ardainc's
+    // shimmer eyebrows report per element waits on taste call r9-t4.
     clip == "text" && dom.style(el, "backgroundImage").contains("gradient")
 }
 
@@ -2478,6 +2507,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let mut design_seen = DesignSeen::default();
     // One page, one set of already-reported SAFE_TAGS text colours.
     let mut color_seen = crate::checks::rules::SafeTagTextSeen::default();
+    let mut vanishing_ink_candidates: std::collections::HashSet<ElId> = std::collections::HashSet::new();
     // The AI palette is read over the whole page: neon ink on a near-black
     // ground waits here until a second tell hue turns up somewhere, so one
     // deliberate accent stays an accent (REN-405).
@@ -2582,6 +2612,14 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         }
         let findings: Vec<BrowserFinding> =
             findings.into_iter().filter(|f| rule_ok(&f.type_)).collect();
+        // Only a low-contrast finding the element keeps speaks for its size
+        // findings: one the configuration turned off is gone by now, one an
+        // inline ignore drops is not counted, and a verdict handed to the
+        // pixel pass may be replaced there. The drop waits until the colour
+        // claims settle below, where a later copy can withdraw this one.
+        if !scoped_ignore_active(dom, el, "low-contrast") && super::visual::routed_reason(dom, el).is_none() {
+            vanishing_ink_candidates.insert(el);
+        }
         add_browser_findings(dom, &mut groups, el, findings);
 
         // Hero eyebrow: highlight the previous sibling instead.
@@ -2604,6 +2642,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
             g.findings
                 .retain(|f| !(f.type_ == "low-contrast" && f.detail == snippet));
         }
+    }
+    // With the colour claims settled, a low-contrast finding still on an
+    // element speaks for its size findings.
+    for g in groups.iter_mut().filter(|g| vanishing_ink_candidates.contains(&g.el)) {
+        drop_size_findings_on_vanishing_ink(&mut g.findings);
     }
     drop_brand_hue_headings(dom, &mut groups);
     groups.retain(|g| !g.findings.is_empty());
@@ -3990,6 +4033,92 @@ mod page_level_form_tests {
         assert_eq!(kept, vec!["background-clip: text + gradient", "animate-bounce (Tailwind)"]);
     }
 
+    /// vps.dance's `p.nid`: #eee on #f8f8f8 at 1.1:1, a size nobody sees.
+    #[test]
+    fn size_findings_defer_to_a_low_contrast_finding_under_1_3() {
+        let run = |ratio: &str| {
+            let mut findings = vec![
+                BrowserFinding::new("low-contrast", &format!("{ratio}:1 (need 4.5:1) — text #eeeeee on #f8f8f8")),
+                BrowserFinding::new("undersized-ui-text", "10px functional text \"bwhkg\" (below 11px floor)"),
+                BrowserFinding::new("tiny-text", "10px body text"),
+            ];
+            drop_size_findings_on_vanishing_ink(&mut findings);
+            findings.into_iter().map(|f| f.type_).collect::<Vec<_>>()
+        };
+        assert_eq!(run("1.1"), vec!["low-contrast"]);
+        assert_eq!(run("1.3"), vec!["low-contrast", "undersized-ui-text", "tiny-text"]);
+        assert_eq!(run("2.5"), vec!["low-contrast", "undersized-ui-text", "tiny-text"]);
+        // With no contrast finding on the element the size findings stand.
+        let mut alone = vec![BrowserFinding::new("tiny-text", "10px body text")];
+        drop_size_findings_on_vanishing_ink(&mut alone);
+        assert_eq!(alone.len(), 1);
+    }
+
+    /// The drop rides on the low-contrast finding the element keeps: with
+    /// that rule turned off, the size findings stand.
+    #[test]
+    fn vanishing_ink_needs_a_low_contrast_finding_that_is_kept() {
+        let build = || {
+            let (mut d, body) = page("");
+            d.set_style(body, "backgroundColor", "rgb(248, 248, 248)");
+            let p = d.add(Some(body), "p");
+            d.add_text(p, "Node bwhkg served this page from the edge cache");
+            d.set_rect(p, 40.0, 40.0, 400.0, 14.0);
+            d.set_styles(
+                p,
+                &[("color", "rgb(238, 238, 238)"), ("fontSize", "10px"), ("lineHeight", "14px"), ("backgroundColor", "rgba(0, 0, 0, 0)")],
+            );
+            (d, p)
+        };
+        let ids = |r: &CollectResult, el: ElId| -> Vec<String> {
+            r.groups.iter().filter(|g| g.el == el).flat_map(|g| g.findings.iter().map(|f| f.type_.clone())).collect()
+        };
+        let (d, p) = build();
+        let all = ids(&scan(&d), p);
+        assert!(all.iter().any(|t| t == "low-contrast"), "{all:?}");
+        assert!(!all.iter().any(|t| t == "tiny-text" || t == "undersized-ui-text"), "{all:?}");
+        let config = BrowserConfig {
+            extension_mode: true,
+            disabled_rules: vec!["low-contrast".to_string()],
+            ..BrowserConfig::default()
+        };
+        let off = ids(&collect_browser_findings(&d, &config), p);
+        assert!(off.iter().any(|t| t == "tiny-text"), "{off:?}");
+    }
+
+    /// A copy cut by the page's edge claims its colour pair until a copy
+    /// wholly on screen wears it, and then its low-contrast finding is
+    /// withdrawn. Its size findings were never the later copy's to drop:
+    /// they stand once the claim moves on.
+    #[test]
+    fn vanishing_ink_waits_for_the_colour_claims_to_settle() {
+        let (mut d, body) = page("");
+        d.set_style(body, "backgroundColor", "rgb(248, 248, 248)");
+        let copy = |d: &mut FakeDom, x: f64, size: &str| {
+            let p = d.add(Some(body), "span");
+            d.add_text(p, "Node bwhkg served this page from the edge cache");
+            d.set_rect(p, x, 40.0, 400.0, 14.0);
+            d.set_styles(
+                p,
+                &[("color", "rgb(238, 238, 238)"), ("fontSize", size), ("lineHeight", "14px"), ("backgroundColor", "rgba(0, 0, 0, 0)")],
+            );
+            p
+        };
+        let cut = copy(&mut d, -30.0, "10px");
+        let ids = |r: &CollectResult, el: ElId| -> Vec<String> {
+            r.groups.iter().filter(|g| g.el == el).flat_map(|g| g.findings.iter().map(|f| f.type_.clone())).collect()
+        };
+        let alone = ids(&scan(&d), cut);
+        assert!(alone.iter().any(|t| t == "low-contrast"), "{alone:?}");
+        assert!(!alone.iter().any(|t| t == "tiny-text"), "{alone:?}");
+        let whole = copy(&mut d, 40.0, "16px");
+        let r = scan(&d);
+        assert!(ids(&r, whole).iter().any(|t| t == "low-contrast"));
+        let settled = ids(&r, cut);
+        assert!(!settled.iter().any(|t| t == "low-contrast"), "the whole copy took the pair: {settled:?}");
+        assert!(settled.iter().any(|t| t == "tiny-text"), "{settled:?}");
+    }
+
     #[test]
     fn a_bounce_class_form_defers_only_to_the_animation_it_names() {
         // animate-bounce computes to `animation: bounce`: one declaration.
@@ -4045,6 +4174,52 @@ mod page_level_form_tests {
         let logo = d.add(Some(body), "div");
         d.add_selector(logo, ".logo");
         d.set_rect(logo, 0.0, 0.0, 120.0, 40.0);
+        assert_eq!(
+            details(&scan(&d), "gradient-text"),
+            vec![(body, "background-clip: text + gradient".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_one_colour_ramp_paints_no_gradient_text_and_a_two_layer_clip_stays_on_body() {
+        // cochat.ai 322270: a gradient between two equal stops is solid type.
+        let (mut d, body) = page("");
+        let h2 = d.add(Some(body), "h2");
+        d.add_text(h2, "Your AI workspace");
+        d.set_rect(h2, 0.0, 0.0, 400.0, 60.0);
+        d.set_styles(
+            h2,
+            &[
+                ("backgroundImage", "linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)"),
+                ("webkitBackgroundClip", "text"),
+                ("backgroundClip", "text"),
+                ("fontSize", "48px"),
+            ],
+        );
+        assert!(details(&scan(&d), "gradient-text").is_empty());
+
+        // ardainc.com 322257: two layers clipped to the text (`text, text`)
+        // are left as on main, reported once by the stylesheet form on body:
+        // reading them on the element waits on taste call r9-t4.
+        let (mut d, body) = page(
+            ".shimmer{background-image:linear-gradient(90deg,transparent,#111,transparent),linear-gradient(#777,#777);-webkit-background-clip:text;background-clip:text;color:transparent}",
+        );
+        let p = d.add(Some(body), "p");
+        d.add_selector(p, ".shimmer");
+        d.add_text(p, "How it works");
+        d.set_rect(p, 0.0, 0.0, 120.0, 22.0);
+        d.set_styles(
+            p,
+            &[
+                (
+                    "backgroundImage",
+                    "linear-gradient(90deg, rgba(0, 0, 0, 0) 40%, rgb(17, 17, 17), rgba(0, 0, 0, 0) 60%), linear-gradient(rgb(119, 119, 119), rgb(119, 119, 119))",
+                ),
+                ("webkitBackgroundClip", "text, text"),
+                ("backgroundClip", "text, text"),
+                ("fontSize", "16px"),
+            ],
+        );
         assert_eq!(
             details(&scan(&d), "gradient-text"),
             vec![(body, "background-clip: text + gradient".to_string())]

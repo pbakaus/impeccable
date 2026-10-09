@@ -335,7 +335,7 @@ pub fn tracking_is_crushed(tracking_em: f64, font_size_px: f64) -> bool {
 /// and the test stays cheap on long text.
 const SCRIPT_SAMPLE_CHARS: usize = 256;
 
-fn is_cjk_char(c: char) -> bool {
+pub(crate) fn is_cjk_char(c: char) -> bool {
     matches!(
         c as u32,
         0x1100..=0x11FF        // Hangul Jamo

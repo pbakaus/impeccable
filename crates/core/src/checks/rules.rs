@@ -832,7 +832,13 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
         }
     }
 
-    if bg_clip == "text" && !bg_image.is_empty() && bg_image.contains("gradient") {
+    // A gradient whose stops are all one colour is a fill: the type is solid
+    // (cochat.ai's `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`).
+    if bg_clip == "text"
+        && !bg_image.is_empty()
+        && bg_image.contains("gradient")
+        && !gradient_stops_are_one_colour(bg_image)
+    {
         findings.push(RuleHit::new(
             "gradient-text",
             "background-clip: text + gradient".to_string(),
@@ -1071,6 +1077,140 @@ fn resolved_bg_matches_text(opts: &ColorOpts, text_color: &Rgba) -> bool {
         .map_or(false, |stops| stops.iter().any(same))
 }
 
+/// The channel distance under which two gradient stops are one colour.
+const GRADIENT_ONE_COLOUR_DELTA: f64 = 12.0;
+
+/// Whether every stop of a gradient value is the same colour (within
+/// [`GRADIENT_ONE_COLOUR_DELTA`] on each channel and alpha). Two stops at
+/// least are needed to say so; with fewer, or any stop that cannot be read
+/// ([`gradient_stops_all_readable`]), no.
+pub fn gradient_stops_are_one_colour(image: &str) -> bool {
+    if !gradient_stops_all_readable(image) {
+        return false;
+    }
+    let stops = crate::color::parse_gradient_colors(Some(image));
+    let Some(first) = stops.first() else { return false };
+    stops.len() >= 2
+        && stops.iter().all(|c| {
+            (c.r - first.r).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.g - first.g).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.b - first.b).abs() < GRADIENT_ONE_COLOUR_DELTA
+                && (c.alpha_or_one() - first.alpha_or_one()).abs() * 255.0 < GRADIENT_ONE_COLOUR_DELTA
+        })
+}
+
+/// Whether every colour stop the value's gradients author is one
+/// [`crate::color::parse_gradient_colors`] reads: a hex colour or a colour
+/// function. That parse drops what it cannot resolve, so
+/// `linear-gradient(#111, var(--accent), #111)` would read as two `#111`
+/// stops. The first argument may set the direction, shape or colour space;
+/// a lone length or percentage is a transition hint. Anything else (a
+/// `var()`, a named colour) is a stop the parse did not see.
+pub fn gradient_stops_all_readable(image: &str) -> bool {
+    let lower = js::to_lower_case(image);
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("gradient(") {
+        let body_start = at + "gradient(".len();
+        let body = &rest[body_start..];
+        let mut depth = 0i32;
+        let mut end = body.len();
+        for (i, ch) in body.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' if depth == 0 => {
+                    end = i;
+                    break;
+                }
+                ')' => depth -= 1,
+                _ => {}
+            }
+        }
+        let mut args = Vec::new();
+        let (mut depth, mut from) = (0i32, 0usize);
+        for (i, ch) in body[..end].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    args.push(body[from..i].trim());
+                    from = i + 1;
+                }
+                _ => {}
+            }
+        }
+        args.push(body[from..end].trim());
+        for (i, arg) in args.iter().enumerate() {
+            if gradient_arg_is_colour(arg) || is_transition_hint(arg) {
+                continue;
+            }
+            if i == 0 && gradient_arg_is_geometry(arg) {
+                continue;
+            }
+            return false;
+        }
+        rest = &body[end.min(body.len())..];
+    }
+    true
+}
+
+/// Whether a gradient argument opens with a colour the parse resolves: a
+/// hex colour, or a colour function `parse_any_color` reads
+/// (`rgb(var(--accent-rgb))` is a stop the parse drops).
+fn gradient_arg_is_colour(arg: &str) -> bool {
+    let token = if arg.starts_with('#') {
+        arg.split_whitespace().next().unwrap_or("")
+    } else if crate::color::COLOR_FUNCTION_NAMES
+        .iter()
+        .any(|name| arg.strip_prefix(name).is_some_and(|tail| tail.starts_with('(')))
+    {
+        let mut depth = 0i32;
+        let mut end = arg.len();
+        for (i, ch) in arg.char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        &arg[..end]
+    } else {
+        return false;
+    };
+    crate::color::parse_any_color(Some(token)).is_some()
+}
+
+fn is_transition_hint(arg: &str) -> bool {
+    !arg.is_empty() && !arg.contains(' ') && arg.starts_with(|c: char| c.is_ascii_digit() || c == '.' || c == '-')
+}
+
+fn gradient_arg_is_geometry(arg: &str) -> bool {
+    arg.starts_with("to ")
+        || arg.starts_with("from ")
+        || arg.starts_with("at ")
+        || arg.starts_with("in ")
+        || arg.contains(" at ")
+        || arg.contains(" in ")
+        || ["circle", "ellipse", "closest-", "farthest-"].iter().any(|w| arg.contains(w))
+        || ["deg", "rad", "grad", "turn"]
+            .iter()
+            .any(|u| arg.strip_suffix(u).is_some_and(|n| n.trim_start_matches('-').parse::<f64>().is_ok()))
+}
+
+/// Whether a computed `background-clip` clips the background to the text:
+/// `text`, or one `text` per layer (`text, text`, which a stack of two
+/// gradients under `bg-clip-text` computes). A stack that clips any layer to
+/// a box paints that layer as a fill, and is not read as clipped text.
+pub fn background_clips_to_text(value: &str) -> bool {
+    let mut layers = value.split(',').map(js::trim).peekable();
+    layers.peek().is_some() && layers.all(|layer| layer == "text")
+}
+
 /// The alpha at or below which an ink paints no glyph a reader could see.
 pub(crate) const TRANSPARENT_INK_FLOOR: f64 = 0.02;
 
@@ -1098,6 +1238,16 @@ const GRAY_ON_COLOR_DARK_LUMINANCE: f64 = 0.01;
 /// (`#1e002f`, 0.005, spread 47) read as black, while a dark navy (`#001c47`,
 /// 0.013), a dark petrol (`#002733`, 0.017) and a very dark blue with a wide
 /// spread (`#00004d`, 0.005, spread 77) still read as colour.
+///
+/// A pale tint is the other end. The channel spread grows with the hue
+/// however faint it is, so cream `#feeed4` spreads 42 and clears the bar,
+/// while the eye reads it as an off-white: OKLCH puts it at L 0.955 and
+/// C 0.038, and `#fde6ba` at L 0.933, C 0.062 (glowcase.app 321836, a 6:1
+/// grey-brown on cream that both judges call legible). At OKLCH lightness
+/// [`GRAY_ON_COLOR_PALE_LIGHTNESS`] and above the background needs chroma
+/// [`GRAY_ON_COLOR_PALE_CHROMA`] as well: amber-300 `#fcd34d` (C 0.153)
+/// and a saturated yellow still read as colour, amber-100 `#fef3c7`
+/// (C 0.06) and blue-100 `#dbeafe` (C 0.04) do not.
 fn background_reads_as_colour(bg: &Rgba) -> bool {
     let lum = relative_luminance(bg);
     let scale = if lum >= GRAY_ON_COLOR_DARK_LUMINANCE {
@@ -1105,8 +1255,18 @@ fn background_reads_as_colour(bg: &Rgba) -> bool {
     } else {
         (GRAY_ON_COLOR_DARK_LUMINANCE / math_max(lum, 1e-4)).sqrt()
     };
-    has_chroma(Some(bg), Some(GRAY_ON_COLOR_BG_SPREAD * scale))
+    if !has_chroma(Some(bg), Some(GRAY_ON_COLOR_BG_SPREAD * scale)) {
+        return false;
+    }
+    let (lightness, chroma) = crate::color::rgb_to_oklch_lc(bg);
+    lightness < GRAY_ON_COLOR_PALE_LIGHTNESS || chroma >= GRAY_ON_COLOR_PALE_CHROMA
 }
+
+/// The OKLCH lightness at and above which a background is a pale tint, and
+/// reads as colour only with [`GRAY_ON_COLOR_PALE_CHROMA`].
+const GRAY_ON_COLOR_PALE_LIGHTNESS: f64 = 0.9;
+/// The OKLCH chroma a pale tint needs to read as colour.
+const GRAY_ON_COLOR_PALE_CHROMA: f64 = 0.09;
 
 fn contrast_findings(opts: &ColorOpts, text_color: &Rgba) -> Vec<RuleHit> {
     // Glyphs inked at (nearly) zero alpha paint nothing: a `color:
@@ -2065,8 +2225,28 @@ fn dominant_type_role_size(role: &str, samples: &[f64]) -> Option<f64> {
             .map(|(size, _)| *size)
             .reduce(math_max);
     }
+    // A near tie with the larger size second settles nothing either for a
+    // heading level under the h1: midilibre.fr sets 48 h2s at 16px (teaser
+    // titles) and 41 at 24px (section titles), and the 16px mode put the
+    // h2s level with the body. The level stays out as in an exact tie. The
+    // h1 and the body keep their most frequent size.
+    // Only two sizes a full step apart straddle the ladder: telekom.de's h2s
+    // at 21 and 24px, or joongang.co.kr's at 14 and 16px, are flat at either
+    // size, and the most frequent stands for the level as before.
+    if role != "h1"
+        && role != "body"
+        && ranked.len() > 1
+        && ranked[1].1 >= ranked[0].1 * (1.0 - TYPE_ROLE_NEAR_TIE)
+        && ranked[1].0 >= ranked[0].0 * TYPE_HIERARCHY_MIN_STEP_RATIO
+    {
+        return None;
+    }
     ranked.first().map(|(size, _)| *size)
 }
+
+/// How close in count, as a share of the most frequent size, a larger
+/// second size has to come before a heading role has no settled size.
+const TYPE_ROLE_NEAR_TIE: f64 = 0.25;
 
 /// JS: checks.mjs#checkFlatTypeHierarchySamples
 pub fn check_flat_type_hierarchy_samples(samples: &[TypeSample]) -> Vec<RuleHit> {
@@ -2185,6 +2365,19 @@ pub fn check_flat_type_hierarchy_samples(samples: &[TypeSample]) -> Vec<RuleHit>
 mod tests {
     use super::*;
 
+    #[test]
+    fn one_colour_gradient_needs_every_stop_read() {
+        assert!(gradient_stops_are_one_colour("linear-gradient(#111, #111)"));
+        assert!(gradient_stops_are_one_colour("linear-gradient(to right, rgb(17, 17, 17) 0%, 40%, #111 100%)"));
+        assert!(gradient_stops_are_one_colour("conic-gradient(from 90deg at 50% 50%, #111, #121212)"));
+        assert!(gradient_stops_are_one_colour("radial-gradient(circle at top, #111, #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, var(--accent), #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(180deg, #111, red, #111)"));
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, #f0f)"));
+        // A colour function the parse cannot read is a stop it dropped.
+        assert!(!gradient_stops_are_one_colour("linear-gradient(#111, rgb(var(--accent-rgb)), #111)"));
+    }
+
     fn rgb(r: f64, g: f64, b: f64) -> Rgba {
         Rgba::new(r, g, b, 1.0)
     }
@@ -2244,6 +2437,22 @@ mod tests {
         // At or above a luminance of 0.01 the bar is the old 40.
         assert!(background_reads_as_colour(&rgb(16.0, 185.0, 129.0)));
         assert!(!background_reads_as_colour(&rgb(120.0, 140.0, 150.0)));
+    }
+
+    /// glowcase.app 321836: grey-brown on cream reads as near-neutral.
+    #[test]
+    fn gray_on_color_pale_tints_need_chroma() {
+        let hex = |h: &str| crate::color::parse_any_color(Some(h)).unwrap();
+        // Pale tints a hue spreads past 40 that the eye reads as off-white.
+        for pale in ["#feeed4", "#fde6ba", "#fef3c7", "#dbeafe"] {
+            assert!(!background_reads_as_colour(&hex(pale)), "{pale}");
+        }
+        // Pale colours with chroma, and the oracle's should-flag fills.
+        for colour in ["#fcd34d", "#ffff00", "#fde68a", "#1e3a8a", "#115e59", "#10b981"] {
+            assert!(background_reads_as_colour(&hex(colour)), "{colour}");
+        }
+        let (l, c) = crate::color::rgb_to_oklch_lc(&hex("#feeed4"));
+        assert!((l - 0.955).abs() < 0.005 && (c - 0.038).abs() < 0.005, "{l} {c}");
     }
 
     #[test]
@@ -2489,6 +2698,44 @@ mod tests {
         let hits = check_flat_type_hierarchy_samples(&samples(&otto));
         assert_eq!(hits.len(), 1, "a tied minority role stays out: {hits:?}");
         assert!(hits[0].snippet.starts_with("Role sizes: h4 12px, body 14px, h1 16px, h3 16px"), "{hits:?}");
+    }
+
+    /// midilibre.fr 324492: 48 h2 teaser titles at 16px and 41 section
+    /// titles at 24px. The 16px mode put the h2s level with the body.
+    #[test]
+    fn flat_type_hierarchy_leaves_out_a_near_tied_heading_level() {
+        let mut page = vec![("h1", 16.0)];
+        page.extend([("body", 16.0); 300]);
+        page.extend([("h2", 16.0); 48]);
+        page.extend([("h2", 24.0); 41]);
+        page.extend([("h3", 18.0); 6]);
+        assert!(check_flat_type_hierarchy_samples(&samples(&page)).is_empty(), "the h2 level drops out");
+        // A clear majority still settles the level.
+        let mut clear = vec![("h1", 16.0)];
+        clear.extend([("body", 16.0); 300]);
+        clear.extend([("h2", 16.0); 48]);
+        clear.extend([("h2", 24.0); 30]);
+        clear.extend([("h3", 18.0); 6]);
+        assert_eq!(check_flat_type_hierarchy_samples(&samples(&clear)).len(), 1);
+        // A near tie between two sizes under a step apart is flat either way,
+        // and still reports.
+        let mut flat_tie = vec![("h1", 16.0)];
+        flat_tie.extend([("body", 16.0); 300]);
+        flat_tie.extend([("h2", 16.0); 48]);
+        flat_tie.extend([("h2", 17.0); 41]);
+        flat_tie.extend([("h3", 18.0); 6]);
+        let hits = check_flat_type_hierarchy_samples(&samples(&flat_tie));
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("h2 16px"), "{hits:?}");
+        // A near tie whose larger size comes first settles on it, as before.
+        let mut larger_first = vec![("h1", 16.0)];
+        larger_first.extend([("body", 16.0); 300]);
+        larger_first.extend([("h2", 17.0); 48]);
+        larger_first.extend([("h2", 16.0); 41]);
+        larger_first.extend([("h3", 18.0); 6]);
+        let hits = check_flat_type_hierarchy_samples(&samples(&larger_first));
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].snippet.contains("h2 17px"), "{hits:?}");
     }
 
     #[test]

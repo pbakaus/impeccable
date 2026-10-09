@@ -510,7 +510,9 @@ const PAGINATION_PARTS: &[&str] =
     &["bullet", "bullets", "indicator", "indicators", "pager", "pagination"];
 /// Tags a demo frame is never read from, and where the walk up ends.
 const FRAME_STOP_TAGS: &[&str] = &["html", "body", "main"];
-/// Landmarks that are never themselves a frame; the walk passes through.
+/// Landmarks that are never themselves a frame by scale, tilt, size or a
+/// caption; the walk passes through. A window drawn on one is still read by
+/// its traffic lights ([`is_traffic_light_window`]).
 const FRAME_SKIP_TAGS: &[&str] = &["section", "article", "header", "footer", "nav"];
 /// Controls whose text keeps its severity inside a demo frame.
 const DEMO_CONTROL_TAGS: &[&str] = &["button", "select", "textarea", "input", "summary", "label"];
@@ -615,30 +617,104 @@ fn bar_has_preview_caption<N: ContextNode>(bar: &N) -> bool {
     false
 }
 
-/// A box whose first child is a title bar carrying three dots at its left,
-/// or a preview caption (then the box must be drawn as a frame).
-fn is_demo_window<N: ContextNode>(c: &N) -> bool {
+/// The box's first child when it reads as a title bar: it spans the box at
+/// its top, and the box is at least twice its height.
+fn title_bar<N: ContextNode>(c: &N) -> Option<N> {
     let kids = c.children();
-    let Some(bar) = kids.first() else { return false };
+    let bar = kids.first()?.clone();
     if kids.len() < 2 {
-        return false;
+        return None;
     }
     if let (Some(b), Some(w)) = (bar.rect(), c.rect()) {
         let spans = b.2 >= w.2 * 0.6;
         let at_top = (b.1 - w.1).abs() <= 24.0;
         let is_bar = (12.0..=TITLE_BAR_MAX_PX).contains(&b.3) && w.3 >= b.3 * 2.0;
         if !(spans && at_top && is_bar && w.2 >= FRAME_MIN_WIDTH_PX) {
-            return false;
+            return None;
         }
     }
-    if let Some(trio) = find_dot_trio(bar) {
-        // Traffic lights sit at the bar's leading edge.
-        return match (trio[2].rect(), bar.rect()) {
-            (Some(d), Some(b)) => d.0 + d.2 <= b.0 + b.2 * 0.5,
-            _ => true,
-        };
+    Some(bar)
+}
+
+/// Three dots at the title bar's leading edge: `Some(true)` when the bar
+/// carries them there, `Some(false)` when its dots sit elsewhere, `None`
+/// when it has no dot trio.
+fn bar_leads_with_traffic_lights<N: ContextNode>(bar: &N) -> Option<bool> {
+    let trio = find_dot_trio(bar)?;
+    // Traffic lights sit at the bar's leading edge.
+    Some(match (trio[2].rect(), bar.rect()) {
+        (Some(d), Some(b)) => d.0 + d.2 <= b.0 + b.2 * 0.5,
+        _ => true,
+    })
+}
+
+/// A box whose first child is a title bar carrying three dots at its left,
+/// or a preview caption (then the box must be drawn as a frame).
+fn is_demo_window<N: ContextNode>(c: &N) -> bool {
+    let Some(bar) = title_bar(c) else { return false };
+    if let Some(leads) = bar_leads_with_traffic_lights(&bar) {
+        return leads;
     }
-    is_frame_box(c) && bar_has_preview_caption(bar)
+    is_frame_box(c) && bar_has_preview_caption(&bar)
+}
+
+/// A window drawn by its traffic lights alone: a title bar with three dots
+/// at its leading edge. The one demo-window test a landmark is asked
+/// ([`FRAME_SKIP_TAGS`]): glowcase.app draws its product tour on an
+/// `<article>` with a 44px title bar and three dots, and a page's own
+/// article, section or header does not open with a row of traffic lights.
+/// The preview-caption form stays off landmarks, where a section's first
+/// child is often a heading band.
+fn is_traffic_light_window<N: ContextNode>(c: &N) -> bool {
+    title_bar(c).is_some_and(|bar| bar_leads_with_traffic_lights(&bar) == Some(true))
+        && !landmark_holds_the_page(c)
+}
+
+/// Whether a landmark is the page's own content rather than a drawing on
+/// it: it holds the page's `h1`, or at least half the page's text. A blog
+/// theme that draws its post as a macOS window keeps the post's findings at
+/// their own severity.
+fn landmark_holds_the_page<N: ContextNode>(c: &N) -> bool {
+    const MAX_VISITED: usize = 2000;
+    let mut stack = c.children();
+    let mut visited = 0usize;
+    while let Some(n) = stack.pop() {
+        visited += 1;
+        if visited > MAX_VISITED {
+            // Too large to be a drawing.
+            return true;
+        }
+        if n.tag() == "h1" {
+            return true;
+        }
+        stack.extend(n.children());
+    }
+    let mut root = c.clone();
+    while let Some(p) = root.parent() {
+        root = p;
+    }
+    let own = rendered_text_chars(c);
+    let page = rendered_text_chars(&root);
+    page > 0 && own * 2 >= page
+}
+
+/// Elements whose text is source, not words on the page.
+const SOURCE_TEXT_TAGS: &[&str] = &["script", "style", "noscript", "template"];
+
+/// The non-whitespace characters of the text `n` and its descendants put
+/// on the page. `textContent` would count a `<script>` bundle or a
+/// `<style>` sheet, which can outweigh a page's whole copy.
+fn rendered_text_chars<N: ContextNode>(n: &N) -> usize {
+    let mut count = 0usize;
+    let mut stack = vec![n.clone()];
+    while let Some(e) = stack.pop() {
+        if SOURCE_TEXT_TAGS.contains(&e.tag().as_str()) {
+            continue;
+        }
+        count += e.direct_text().chars().filter(|ch| !ch.is_whitespace()).count();
+        stack.extend(e.children());
+    }
+    count
 }
 
 /// A device frame that is tilted in 3D, or drawn as a frame and scaled down.
@@ -769,6 +845,11 @@ fn framed_walk<N: ContextNode>(el: &N, mut passed_frame: bool) -> Option<Frame> 
         {
             return Some(Frame::Chrome);
         }
+        // A landmark is never a frame by its scale, tilt or size, but a
+        // window drawn on one still has its traffic lights.
+        if depth > 0 && FRAME_SKIP_TAGS.contains(&tag.as_str()) && is_traffic_light_window(&c) {
+            return Some(Frame::Chrome);
+        }
         if depth > 0 && !FRAME_SKIP_TAGS.contains(&tag.as_str()) && is_sized_frame_box(&c) {
             // r8-t1: the panel carries a sample caption.
             if has_sample_caption_on(&c) {
@@ -800,10 +881,13 @@ fn framed_walk<N: ContextNode>(el: &N, mut passed_frame: bool) -> Option<Frame> 
 /// tilted in 3D, or a frame box under a wrapper scaled into the frame
 /// range, or a frame box with a sample caption on it or beside it. `nested-cards` asks it of an inner card, which can be the
 /// window itself (stroq.dev's editor window inside a card), as well as
-/// asking [`in_framed_demo`] (decision r6-t3-nested-cards-mockups).
+/// asking [`in_framed_demo`] (decision r6-t3-nested-cards-mockups). A
+/// landmark counts only as a window with traffic lights.
 pub fn is_demo_frame<N: ContextNode>(el: &N) -> bool {
-    !FRAME_SKIP_TAGS.contains(&el.tag().as_str())
-        && !has_part(&el.class_list(), SLIDE_PARTS)
+    if FRAME_SKIP_TAGS.contains(&el.tag().as_str()) {
+        return !has_part(&el.class_list(), SLIDE_PARTS) && is_traffic_light_window(el);
+    }
+    !has_part(&el.class_list(), SLIDE_PARTS)
         && (is_transformed_frame(el)
             || is_demo_window(el)
             // maritime.sh's window is the frame box; the scale sits on a
@@ -1429,6 +1513,53 @@ mod tests {
         assert_eq!(rotate_property("x 10deg"), None);
         assert_eq!(rotate_property("none"), None);
         assert_eq!(read_transform("none"), TransformRead::default());
+    }
+
+    #[test]
+    fn a_window_drawn_on_a_landmark_is_read_by_its_traffic_lights() {
+        // glowcase.app 321817: the product tour is an `<article>` with a
+        // 44px title bar and three dots.
+        let (_t, body) = Tree::new();
+        body.add("p").text("Glowcase turns your product into an interactive demo that buyers explore on their own.");
+        let (win, _bar, label) = window(&body);
+        (win.0).0.borrow_mut()[win.1].tag = "article".into();
+        assert!(in_framed_demo(&label));
+        assert!(is_demo_frame(&win));
+        // The same window holding the page's h1 is the page's own post.
+        let h1 = win.add("h1").text("Notes");
+        assert!(!in_framed_demo(&label));
+        (h1.0).0.borrow_mut()[h1.1].tag = "h2".into();
+        assert!(in_framed_demo(&label));
+        // Holding most of the page's text, it is the page too.
+        let (_t, body) = Tree::new();
+        let (win, _bar, label) = window(&body);
+        (win.0).0.borrow_mut()[win.1].tag = "article".into();
+        assert!(!in_framed_demo(&label), "the only text on the page");
+        // A script bundle or a style sheet is not text on the page.
+        body.add("script").text(&"window.__APP_STATE__ = {};".repeat(200));
+        body.add("style").text(&".a { color: red; }".repeat(200));
+        assert!(!in_framed_demo(&label), "the only words on the page, beside a bundle");
+        // A section whose title bar carries a preview caption but no dots
+        // stays a landmark the walk passes through.
+        let (_t, body) = Tree::new();
+        let sec = body.add("section").rect(0.0, 0.0, 600.0, 400.0).style("borderTopWidth", "1px");
+        let head = sec.add("div").rect(0.0, 0.0, 600.0, 36.0);
+        head.add("span").text("Live preview").font(10.0);
+        let pane = sec.add("div").rect(0.0, 36.0, 600.0, 364.0);
+        let plain = pane.add("span").text("847 results").font(9.0);
+        assert!(!in_framed_demo(&plain));
+        assert!(!is_demo_frame(&sec));
+        // Dots at the trailing edge of a landmark's bar are not traffic lights.
+        let (_t, body) = Tree::new();
+        let art = body.add("article").rect(0.0, 0.0, 600.0, 400.0);
+        let bar = art.add("div").rect(0.0, 0.0, 600.0, 36.0);
+        let lights = bar.add("div").rect(500.0, 12.0, 42.0, 10.0);
+        for i in 0..3 {
+            dot(&lights, 500.0 + 16.0 * i as f64);
+        }
+        let pane = art.add("div").rect(0.0, 36.0, 600.0, 364.0);
+        let text = pane.add("span").text("847 results").font(9.0);
+        assert!(!in_framed_demo(&text));
     }
 
     #[test]

@@ -28,7 +28,7 @@ use crate::checks::rules::{
     parse_font_weight, type_hierarchy_role, RuleHit,
     TypeSample, TYPE_HIERARCHY_SELECTOR,
 };
-use crate::color::parse_any_color;
+use crate::color::{composite_color_over, parse_any_color, Rgba};
 use crate::constants::{is_brand_font_on_own_domain, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
 use crate::js::{self, math_max, math_min, math_round, number_to_string, parse_float, to_fixed};
 use crate::js_ext_a::num_truthy;
@@ -134,6 +134,47 @@ fn direct_text_chars(dom: &dyn Dom, el: ElId) -> f64 {
         .sum()
 }
 
+/// The letters of `el`'s own text nodes, and how many of them are Han, kana
+/// or Hangul: `(letters, cjk)`. Digits, punctuation and spaces are neither.
+fn direct_text_letters(dom: &dyn Dom, el: ElId) -> (f64, f64) {
+    let (mut letters, mut cjk) = (0.0, 0.0);
+    for node in dom.direct_text_nodes(el) {
+        for c in node.chars().filter(|c| c.is_alphabetic()) {
+            letters += 1.0;
+            if crate::checks::text_rules::is_cjk_char(c) {
+                cjk += 1.0;
+            }
+        }
+    }
+    (letters, cjk)
+}
+
+/// The letters a page sets in text that has a box, for the CJK test in
+/// [`latin_face_on_a_cjk_page`].
+#[derive(Default)]
+struct LetterTally {
+    letters: f64,
+    cjk: f64,
+    /// Latin (non-CJK) letters per primary face.
+    latin_by_face: Vec<(String, f64)>,
+}
+
+/// Whether `font` heads the stack of a page written mostly in Han, kana or
+/// Hangul and sets under [`OVERUSED_FONT_MIN_CHAR_SHARE`] of its letters.
+/// None of the faces on the overused list has those glyphs: weathernews.jp
+/// names Arial first, and Hiragino and Meiryo set every Japanese letter
+/// (observations-47 row 14). Arial sets the Latin letters and the digits,
+/// about 12% of the characters, but a face is told by its letterforms, and
+/// it sets 3.6% of the letters. A page that is not mostly CJK is weighed by
+/// characters alone, as before.
+fn latin_face_on_a_cjk_page(font: &str, tally: &LetterTally) -> bool {
+    if !(tally.letters > 0.0) || tally.cjk * 2.0 <= tally.letters {
+        return false;
+    }
+    let latin = tally.latin_by_face.iter().find(|(k, _)| k == font).map_or(0.0, |(_, c)| *c);
+    latin / tally.letters < OVERUSED_FONT_MIN_CHAR_SHARE
+}
+
 /// Whether an element's text is laid out for a visitor: neither it nor an
 /// ancestor is `hidden`, `display: none`, `visibility: hidden` or
 /// `content-visibility: hidden`. Opacity is deliberately not read: copy
@@ -167,6 +208,7 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
     let mut total_text_elements = 0.0f64;
     let mut font_chars: Vec<(String, f64)> = Vec::new();
     let mut total_text_chars = 0.0f64;
+    let mut letter_tally = LetterTally::default();
     for el in dom
         .query_all(
             None,
@@ -183,7 +225,9 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
         // The characters each face sets in text that has a box: what
         // stands a finding down when the face it names sets next to none of
         // what a visitor reads (below).
-        let weight = if font_text_has_a_box(dom, el) { direct_text_chars(dom, el) } else { 0.0 };
+        let has_a_box = font_text_has_a_box(dom, el);
+        let weight = if has_a_box { direct_text_chars(dom, el) } else { 0.0 };
+        let (letters, cjk) = if has_a_box { direct_text_letters(dom, el) } else { (0.0, 0.0) };
         let ff = dom.style(el, "fontFamily");
         if ff.is_empty() {
             continue;
@@ -215,6 +259,15 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
             }
             total_text_chars += weight;
         }
+        if letters > 0.0 {
+            letter_tally.letters += letters;
+            letter_tally.cjk += cjk;
+            if let Some(slot) = letter_tally.latin_by_face.iter_mut().find(|(k, _)| k == primary) {
+                slot.1 += letters - cjk;
+            } else {
+                letter_tally.latin_by_face.push((primary.clone(), letters - cjk));
+            }
+        }
     }
 
     if total_text_elements >= 20.0 {
@@ -232,6 +285,7 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
                 if OVERUSED_FONTS.contains(&font.as_str())
                     && !is_brand_font_on_own_domain(font, Some(&hostname))
                     && !sets_next_to_none_of_the_text(font, &font_chars, total_text_chars)
+                    && !latin_face_on_a_cjk_page(font, &letter_tally)
                 {
                     findings.push(BrowserFinding::new(
                         "overused-font",
@@ -362,17 +416,111 @@ fn shows_border_or_shadow(dom: &dyn Dom, el: ElId) -> bool {
         l.alpha >= crate::checks::measures::FAINT_PAINT_ALPHA
             && (l.x != 0.0 || l.y != 0.0 || l.blur > 0.0 || l.spread != 0.0)
     });
-    casts_shadow
-        || ["Top", "Right", "Bottom", "Left"].iter().any(|side| {
-            let width = parse_float(&dom.style(el, &format!("border{side}Width")));
-            let style = dom.style(el, &format!("border{side}Style"));
-            let color = dom.style(el, &format!("border{side}Color"));
-            width >= 0.5
-                && style != "none"
-                && style != "hidden"
-                && crate::checks::measures::css_color_alpha(Some(&color))
-                    >= crate::checks::measures::FAINT_PAINT_ALPHA
-        })
+    casts_shadow || ["Top", "Right", "Bottom", "Left"].iter().any(|side| border_side_shows(dom, el, side, None))
+}
+
+/// The surface under `el` its borders are judged against: the painted
+/// ancestor fill ([`super::element_checks::painted_surface_under`]), when
+/// the text the box holds reads on it at 3:1 or better (the box's own ink
+/// and the first few elements with text of their own, found in a bounded
+/// walk; the box's own ink alone when it holds none). Text that does not
+/// read on the surface says the climb missed what paints there:
+/// arbiproseller's feature cards hold white copy on a dark layer the climb
+/// does not see, over a white `body`. Then no border is judged, and each
+/// counts as before.
+///
+/// The inks are read against the surface under the box, not the box's own
+/// fill or a nested one, so this is a sanity test on the surface, not a
+/// contrast verdict: where the text sits on a fill of its own and fails
+/// here, the border simply counts, the same as base behaviour.
+fn edge_surface_under(dom: &dyn Dom, el: ElId) -> Option<Rgba> {
+    const MAX_INKS: usize = 8;
+    const MAX_VISITED: usize = 64;
+    let surface = super::element_checks::painted_surface_under(dom, el)?;
+    let mut holders: Vec<ElId> = Vec::new();
+    let mut stack = vec![el];
+    let mut visited = 0usize;
+    while let Some(n) = stack.pop() {
+        visited += 1;
+        if visited > MAX_VISITED || holders.len() >= MAX_INKS {
+            break;
+        }
+        // A subtree that paints nothing says nothing about the surface.
+        if n != el && paints_no_subtree(dom, n) {
+            continue;
+        }
+        if !js::trim(&direct_text(dom, n)).is_empty() && paints_own_text(dom, n) {
+            holders.push(n);
+        }
+        // Children pushed in reverse so the walk reads in document order.
+        stack.extend(dom.children(n).into_iter().rev());
+    }
+    if holders.is_empty() {
+        holders.push(el);
+    }
+    for n in holders {
+        let ink = parse_any_color(Some(&dom.style(n, "color")))?;
+        let ink = composite_color_over(&ink, &surface);
+        if crate::color::contrast_ratio(&ink, &surface) < 3.0 {
+            return None;
+        }
+    }
+    Some(surface)
+}
+
+/// Whether nothing under `n` paints: `display: none`, `content-visibility:
+/// hidden`, or an opacity at zero. Read off `n` alone; the walk that asks
+/// starts under a box already gated as painted.
+fn paints_no_subtree(dom: &dyn Dom, n: ElId) -> bool {
+    dom.style(n, "display") == "none"
+        || js::to_lower_case(&dom.style(n, "contentVisibility")) == "hidden"
+        || parse_float(&dom.style(n, "opacity")) <= 0.01
+}
+
+/// Whether `n`'s own text paints: not `visibility: hidden` or `collapse`.
+/// Visibility inherits but a child can turn it back on, so a hidden node's
+/// subtree is still walked.
+fn paints_own_text(dom: &dyn Dom, n: ElId) -> bool {
+    let visibility = js::to_lower_case(&dom.style(n, "visibility"));
+    visibility != "hidden" && visibility != "collapse"
+}
+
+/// How far, on some channel, a border composited over the box has to sit
+/// from the surface under the box before it draws an edge a reader sees.
+const CARD_EDGE_MIN_CHANNEL_DELTA: f64 = 8.0;
+
+/// Whether `el`'s border on `side` draws: half a pixel wide or more, in a
+/// style that draws, in a colour that is not transparent, and, where the
+/// surface under the box is known, a colour that composited over the box
+/// sits [`CARD_EDGE_MIN_CHANNEL_DELTA`] from that surface on some channel.
+/// v0-ai-video-playground.vercel.app's shell draws its border at OKLab L
+/// 0.16 and half alpha on a black page: a border by the computed style,
+/// and no edge on screen. Where the surface cannot be read, the border
+/// counts as before. Only [`card_edge_sides`] passes a surface: whether an
+/// inner box shows a border at all (r4-p16) is read from the computed
+/// style alone, so a white panel with a `gray-100` hairline on `gray-50`
+/// keeps its border there.
+fn border_side_shows(dom: &dyn Dom, el: ElId, side: &str, surface: Option<&Rgba>) -> bool {
+    let width = parse_float(&dom.style(el, &format!("border{side}Width")));
+    let style = dom.style(el, &format!("border{side}Style"));
+    let color = dom.style(el, &format!("border{side}Color"));
+    if !(width >= 0.5
+        && style != "none"
+        && style != "hidden"
+        && crate::checks::measures::css_color_alpha(Some(&color))
+            >= crate::checks::measures::FAINT_PAINT_ALPHA)
+    {
+        return false;
+    }
+    let (Some(surface), Some(edge)) = (surface, parse_any_color(Some(&color))) else {
+        return true;
+    };
+    let under = super::element_checks::own_fill_over(dom, el, surface);
+    let shown = composite_color_over(&edge, &under);
+    math_max(
+        math_max((shown.r - surface.r).abs(), (shown.g - surface.g).abs()),
+        (shown.b - surface.b).abs(),
+    ) >= CARD_EDGE_MIN_CHANNEL_DELTA
 }
 
 /// Any corner of a computed `border-radius` above zero.
@@ -392,15 +540,9 @@ fn card_edge_sides(
     layers: &[crate::checks::measures::ShadowLayer],
 ) -> usize {
     let mut sides = [false; 4];
+    let surface = edge_surface_under(dom, el);
     for (i, side) in ["Top", "Right", "Bottom", "Left"].iter().enumerate() {
-        let width = parse_float(&dom.style(el, &format!("border{side}Width")));
-        let style = dom.style(el, &format!("border{side}Style"));
-        let color = dom.style(el, &format!("border{side}Color"));
-        sides[i] = width >= 0.5
-            && style != "none"
-            && style != "hidden"
-            && crate::checks::measures::css_color_alpha(Some(&color))
-                >= crate::checks::measures::FAINT_PAINT_ALPHA;
+        sides[i] = border_side_shows(dom, el, side, surface.as_ref());
     }
     for layer in layers {
         if layer.inset || layer.alpha < crate::checks::measures::FAINT_PAINT_ALPHA {
@@ -457,6 +599,16 @@ fn is_single_line_label_box(dom: &dyn Dom, el: ElId, rect: &Rect) -> bool {
     };
     if !line_height.is_finite() || line_height <= 0.0 {
         return false;
+    }
+    // A box set to a fixed height (loova.ai's 34px "Accept All" button,
+    // centred by flex with no padding) holds its one line in more room than
+    // the padding says. A box with no element child whose text renders on
+    // one line is a label too, up to three lines tall.
+    if dom.children(el).is_empty()
+        && rect.height <= line_height * 3.0
+        && dom.text_line_rects(el).is_some_and(|lines| lines.len() == 1)
+    {
+        return true;
     }
     let chrome = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"]
         .iter()
@@ -1916,6 +2068,12 @@ pub fn check_heading_rhythm_dom(dom: &dyn Dom) -> Vec<ElFinding> {
     let mut candidates: Vec<Cand> = Vec::new();
     for h in dom.query_all(None, "h2, h3, h4").unwrap_or_default() {
         if !is_visible_flow(h) {
+            continue;
+        }
+        // A heading inside a quotation is a pull quote set large, not a
+        // section heading (tau.ac.il's `blockquote > h2`, 120 characters
+        // on three lines): it heads nothing, and counts toward no minimum.
+        if closest_or_none(dom, h, "blockquote, q").is_some() {
             continue;
         }
         // A heading nobody sees at rest (a slide parked past its track, a
@@ -4193,6 +4351,30 @@ mod tests {
         assert_eq!(font_finding(&build("Label")).as_deref(), Some("Primary font: inter (80% of text)"));
     }
 
+    /// weathernews.jp: Arial heads a Japanese page's stack, and the CJK
+    /// faces after it set every Japanese letter. Arial sets the few Latin
+    /// letters, under one in twenty; digits name no face.
+    #[test]
+    fn a_latin_face_first_in_a_cjk_stack_sets_only_the_latin_letters() {
+        let build = |latin: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            for _ in 0..25 {
+                typeset(&mut d, body, "p", &format!("{latin} 2026年10月8日 全国の天気予報と防災情報、気象ニュースをお届けします"), "Arial, \"Hiragino Sans\", Meiryo, sans-serif");
+            }
+            d
+        };
+        // One Latin letter in 30: 3.3%.
+        assert_eq!(font_finding(&build("x")), None);
+        // A Latin page set in the same stack still names Arial.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for _ in 0..25 {
+            typeset(&mut d, body, "p", "Weather forecasts and alerts for today", "Arial, \"Hiragino Sans\", sans-serif");
+        }
+        assert_eq!(font_finding(&d).as_deref(), Some("Primary font: arial (100% of text)"));
+    }
+
     /// Only text with a box is weighed: the long copy in a closed drawer does
     /// not lift the face it is set in, and copy waiting for a scroll reveal
     /// at `opacity: 0` is weighed like any other.
@@ -6363,6 +6545,84 @@ mod tests {
         d.set_styles(el, &[("fontSize", "16px"), ("lineHeight", "24px"), ("paddingTop", "16px"), ("paddingBottom", "16px")]);
         d.add_text(el, "An inner card with copy of its own");
         el
+    }
+
+    /// loova.ai's consent banner: a 34px "Accept All" button with no padding,
+    /// its one line centred by flex. v0-ai-video-playground.vercel.app: a
+    /// shell whose border, OKLab L 0.16 at half alpha on black, draws no edge.
+    #[test]
+    fn nested_cards_skip_fixed_height_labels_and_borders_nobody_sees() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let card = d.add(Some(body), "div");
+        outlined(&mut d, card, "16px");
+        d.set_rect(card, 0.0, 0.0, 600.0, 200.0);
+        d.add_text(card, "We use cookies to improve your experience");
+        let button = d.add(Some(card), "div");
+        outlined(&mut d, button, "6px");
+        d.set_rect(button, 400.0, 13.0, 114.0, 34.0);
+        d.set_styles(button, &[("fontSize", "14px"), ("lineHeight", "normal"), ("paddingTop", "0px"), ("paddingBottom", "0px")]);
+        d.add_text(button, "Accept All");
+        // Without recorded lines the box reads as two lines tall, as before.
+        assert_eq!(check_layout(&d).len(), 1, "no line rects: base behaviour");
+        d.set_text_lines(button, &[(425.0, 20.5, 64.0, 19.0)]);
+        assert!(check_layout(&d).is_empty(), "one rendered line in a fixed-height box");
+        // A box with an element child is not read this way.
+        let icon = d.add(Some(button), "span");
+        d.set_rect(icon, 495.0, 22.0, 12.0, 12.0);
+        assert_eq!(check_layout(&d).len(), 1, "a box with a child element");
+
+        let dark_page = |border: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(0, 0, 0)");
+            let shell = d.add(Some(body), "div");
+            outlined(&mut d, shell, "14px");
+            d.set_style(shell, "backgroundColor", "rgba(0, 0, 0, 0.5)");
+            for side in ["Top", "Right", "Bottom", "Left"] {
+                d.set_style(shell, &format!("border{side}Color"), border);
+            }
+            d.set_style(shell, "color", "rgb(240, 240, 240)");
+            d.set_rect(shell, 12.0, 12.0, 1256.0, 776.0);
+            d.add_text(shell, "Video playground workspace");
+            let panel = outlined_card(&mut d, shell, (37.0, 127.0, 1206.0, 300.0));
+            d.set_style(panel, "backgroundColor", "rgb(12, 12, 12)");
+            d.set_style(panel, "color", "rgb(240, 240, 240)");
+            for side in ["Top", "Right", "Bottom", "Left"] {
+                d.set_style(panel, &format!("border{side}Color"), "rgb(60, 60, 60)");
+            }
+            (d, panel)
+        };
+        // oklab(0.16 0 0 / 0.5) composites to about 7 on black.
+        let (d, _) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+        assert!(check_layout(&d).is_empty(), "the shell's border draws no edge");
+        // A descendant that paints nothing is no evidence about the surface:
+        // its unreadable ink does not make the shell's border count.
+        for (prop, value) in [("display", "none"), ("visibility", "hidden"), ("opacity", "0")] {
+            let (mut d, panel) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+            let shell = d.parent(panel).unwrap();
+            let hidden = d.add(Some(shell), "span");
+            d.set_style(hidden, "color", "rgb(10, 10, 10)");
+            d.add_text(hidden, "Dark copy nobody sees");
+            assert!(super::edge_surface_under(&d, shell).is_none(), "painted dark copy spoils the surface");
+            d.set_style(hidden, prop, value);
+            assert!(super::edge_surface_under(&d, shell).is_some(), "{prop}: {value}");
+            assert!(check_layout(&d).is_empty(), "{prop}: {value}");
+        }
+        let (d, panel) = dark_page("rgba(255, 255, 255, 0.1)");
+        let f = check_layout(&d);
+        assert_eq!(f.len(), 1, "a white/10 border draws one: {f:?}");
+        assert_eq!(f[0].el, Some(panel));
+        // White copy on a surface the climb reads as near-white says the
+        // climb missed the dark layer under the card: its border is not
+        // judged, and counts.
+        let (mut d, panel) = dark_page("oklab(0.16 -0.00000158697 0.00000374019 / 0.5)");
+        let body = d.body().unwrap();
+        d.set_style(body, "backgroundColor", "rgb(250, 250, 250)");
+        let shell = d.parent(panel).unwrap();
+        d.set_style(shell, "backgroundColor", "rgba(0, 0, 0, 0)");
+        assert!(super::edge_surface_under(&d, shell).is_none(), "white copy on a white surface");
+        assert_eq!(check_layout(&d).len(), 1, "an unreadable surface keeps the border");
     }
 
     /// auradeballet.com's `border-t` footer, vibe-audit-lab.base44.app's

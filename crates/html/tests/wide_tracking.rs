@@ -80,10 +80,19 @@ fn typed_capitals_past_label_length_take_the_uppercase_exemption() {
         ),
         0
     );
-    // A long run with one Latin acronym among uncased letters is running text.
+    // A long run of Hangul with one Latin acronym is not a capitals label,
+    // but CJK text takes open tracking by convention (observations-47 row
+    // 21), as the browser engine reads it.
     assert_eq!(
         tracking_hits(
             r#"<p class="run" style="letter-spacing: 0.12em">고객센터 운영 시간은 월요일부터 금요일까지 오전 아홉 시부터 오후 여섯 시까지입니다 (KST)</p>"#
+        ),
+        0
+    );
+    // The same run in Latin letters is running text.
+    assert_eq!(
+        tracking_hits(
+            r#"<p class="run" style="letter-spacing: 0.12em">Support hours run Monday to Friday, from nine in the morning until six (KST)</p>"#
         ),
         1
     );

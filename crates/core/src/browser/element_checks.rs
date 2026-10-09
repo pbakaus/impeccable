@@ -684,8 +684,8 @@ fn text_clipped_by_an_ancestor(dom: &dyn Dom, el: ElId) -> bool {
     let mut cur = dom.parent(el);
     for _ in 0..MAX_ANCESTORS {
         let Some(c) = cur else { return false };
-        if js::trim(&dom.style(c, "webkitBackgroundClip")) == "text"
-            || js::trim(&dom.style(c, "backgroundClip")) == "text"
+        if crate::checks::rules::background_clips_to_text(&dom.style(c, "webkitBackgroundClip"))
+            || crate::checks::rules::background_clips_to_text(&dom.style(c, "backgroundClip"))
         {
             return true;
         }
@@ -1285,6 +1285,10 @@ fn samples_are_one_colour(samples: &[Rgba]) -> bool {
 /// ramp, 28 levels on the green channel, and coachcall.ai's centred short
 /// headings see a quarter of theirs: geometry cannot tell the judged misfire
 /// from the tell.
+///
+/// A gradient whose stops are one colour paints no ramp: it is a fill
+/// (cochat.ai's `linear-gradient(rgb(14, 15, 18) 0%, rgb(14, 15, 18) 53%)`
+/// headline, solid black type).
 pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
     let image = dom.style(el, "backgroundImage");
     let stops = parse_gradient_colors(Some(&image));
@@ -1292,7 +1296,10 @@ pub(crate) fn gradient_text_paints_a_ramp(dom: &dyn Dom, el: ElId) -> bool {
         return true;
     }
     let strongest = stops.iter().map(|c| c.alpha_or_one()).fold(0.0, f64::max);
-    strongest * own_opacity(dom, el) >= GRADIENT_TEXT_MIN_STOP_ALPHA
+    if strongest * own_opacity(dom, el) < GRADIENT_TEXT_MIN_STOP_ALPHA {
+        return false;
+    }
+    !crate::checks::rules::gradient_stops_are_one_colour(&image)
 }
 
 /// The smallest type [`box_holds_a_text_line`] reads as a line of text.
