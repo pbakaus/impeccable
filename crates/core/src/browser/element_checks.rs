@@ -529,17 +529,21 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
     None
 }
 
+/// The most colours a layered pseudo face may combine into before it is
+/// read as too busy to score stop by stop.
+const FACE_COLOURS_MAX: usize = 256;
+
 /// The colours an opaque gradient face drawn by a positioned `::before` or
 /// `::after` puts under the whole text run, where it paints over the box's
 /// own background (its `z-index` puts it there, as an `isolate` button's
 /// `::after { z-index: -1 }` does): the stops of its bottom layer, every one
-/// opaque, plus each of them under each translucent stop of the layers above
-/// it. ardainc.com's CTA draws a dark `linear-gradient` face, under a 14%
+/// opaque, plus what each translucent layer above makes of every colour the
+/// layers beneath it show, bottom-up. ardainc.com's CTA draws a dark `linear-gradient` face, under a 14%
 /// white highlight, inside a 1.6px conic ring on the button itself, and the
 /// walk scored its near-white label against the ring's white stop.
 ///
-/// Every translucent wash is composited over every base stop, wherever on
-/// the face the wash is drawn, so a highlight far from the label still adds
+/// Every translucent wash is composited over every colour beneath it,
+/// wherever on the face the wash is drawn, so a highlight far from the label still adds
 /// its lighter colours to the stops the verdict takes the worst of: a
 /// light-on-light face can fail where the label itself passes.
 ///
@@ -641,14 +645,27 @@ pub(crate) fn read_pseudo_gradient_face(dom: &dyn Dom, el: ElId, rect: &Rect) ->
         if !crate::browser::visual::pseudo_face_under_text(dom, el, which, &text) {
             continue;
         }
+        // Bottom-up: each translucent layer lands on every colour the layers
+        // beneath it can show, so two 30% white washes over black reach
+        // #828282 where one alone stops at #4d4d4d. A colour under no wash
+        // stays, since a wash need not be drawn over the whole face.
         let mut colours: Vec<Rgba> = base.iter().map(|c| Rgba { a: Some(1.0), ..*c }).collect();
-        for wash in washes.iter().flatten().filter_map(|s| s.color) {
-            if wash.alpha_or_one() <= 0.05 {
-                continue;
+        for layer in washes.iter().rev() {
+            let below = colours.clone();
+            for wash in layer.iter().filter_map(|s| s.color) {
+                if wash.alpha_or_one() <= 0.05 {
+                    continue;
+                }
+                for b in &below {
+                    let c = composite_color_over(&wash, b);
+                    if !colours.contains(&c) {
+                        colours.push(c);
+                    }
+                }
             }
-            for b in &base {
-                colours.push(composite_color_over(&wash, &Rgba { a: Some(1.0), ..*b }));
-            }
+        }
+        if colours.len() > FACE_COLOURS_MAX {
+            continue;
         }
         return Some((colours, which));
     }
@@ -9286,6 +9303,14 @@ mod tests {
         // Stated at its default, the same face still reads.
         let hits = run_with(light, "isolate", &[("opacity", "1"), ("visibility", "visible"), ("transform", "none"), ("translate", "none")]);
         assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        // Washes stack (review: layered gradients): two 30% white layers
+        // over black reach #828282, which fails the near-white label, where
+        // either one alone over black (#4d4d4d) passes.
+        let wash = "linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.3))";
+        let stacked = format!("{wash}, {wash}, linear-gradient(rgb(0, 0, 0), rgb(0, 0, 0))");
+        let hits = run(&stacked, "isolate");
+        assert!(hits.iter().any(|h| h.snippet.contains("(gradient on a::after)")), "{hits:?}");
+        assert!(run(&format!("{wash}, linear-gradient(rgb(0, 0, 0), rgb(0, 0, 0))"), "isolate").is_empty());
     }
 
     #[test]
