@@ -1285,7 +1285,8 @@ const VANISHING_INK_RATIO: f64 = 1.3;
 /// [`VANISHING_INK_RATIO`] belongs to that finding alone: `tiny-text` and
 /// `undersized-ui-text` on the same element report a size nobody can see
 /// (vps.dance's `p.nid`, #eee on #f8f8f8 at 1.07:1). Where low-contrast did
-/// not report on the element, the size findings stand.
+/// not report on the element, or its verdict is provisional (handed to the
+/// pixel pass, turned off, ignored inline), the size findings stand.
 fn drop_size_findings_on_vanishing_ink(findings: &mut Vec<BrowserFinding>) {
     let vanishes = findings.iter().any(|f| {
         f.type_ == "low-contrast"
@@ -2593,7 +2594,6 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         // them to score.
         super::painted::retain_painted(dom, el, &mut findings);
         drop_covered_class_forms(&mut findings);
-        drop_size_findings_on_vanishing_ink(&mut findings);
         findings.retain(|f| {
             palette_finding_role(f)
                 .is_none_or(|role| !category_hues.is_category_colour(dom, el, role))
@@ -2603,8 +2603,15 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         if let Some(pack) = config.rule_pack {
             findings.extend(pack.check_element_dom(dom, el));
         }
-        let findings: Vec<BrowserFinding> =
+        let mut findings: Vec<BrowserFinding> =
             findings.into_iter().filter(|f| rule_ok(&f.type_)).collect();
+        // Only a low-contrast finding the element keeps speaks for its size
+        // findings: one the configuration turned off is gone by now, one an
+        // inline ignore drops is not counted, and a verdict handed to the
+        // pixel pass may be replaced there.
+        if !scoped_ignore_active(dom, el, "low-contrast") && super::visual::routed_reason(dom, el).is_none() {
+            drop_size_findings_on_vanishing_ink(&mut findings);
+        }
         add_browser_findings(dom, &mut groups, el, findings);
 
         // Hero eyebrow: highlight the previous sibling instead.
@@ -4032,6 +4039,38 @@ mod page_level_form_tests {
         let mut alone = vec![BrowserFinding::new("tiny-text", "10px body text")];
         drop_size_findings_on_vanishing_ink(&mut alone);
         assert_eq!(alone.len(), 1);
+    }
+
+    /// The drop rides on the low-contrast finding the element keeps: with
+    /// that rule turned off, the size findings stand.
+    #[test]
+    fn vanishing_ink_needs_a_low_contrast_finding_that_is_kept() {
+        let build = || {
+            let (mut d, body) = page("");
+            d.set_style(body, "backgroundColor", "rgb(248, 248, 248)");
+            let p = d.add(Some(body), "p");
+            d.add_text(p, "Node bwhkg served this page from the edge cache");
+            d.set_rect(p, 40.0, 40.0, 400.0, 14.0);
+            d.set_styles(
+                p,
+                &[("color", "rgb(238, 238, 238)"), ("fontSize", "10px"), ("lineHeight", "14px"), ("backgroundColor", "rgba(0, 0, 0, 0)")],
+            );
+            (d, p)
+        };
+        let ids = |r: &CollectResult, el: ElId| -> Vec<String> {
+            r.groups.iter().filter(|g| g.el == el).flat_map(|g| g.findings.iter().map(|f| f.type_.clone())).collect()
+        };
+        let (d, p) = build();
+        let all = ids(&scan(&d), p);
+        assert!(all.iter().any(|t| t == "low-contrast"), "{all:?}");
+        assert!(!all.iter().any(|t| t == "tiny-text" || t == "undersized-ui-text"), "{all:?}");
+        let config = BrowserConfig {
+            extension_mode: true,
+            disabled_rules: vec!["low-contrast".to_string()],
+            ..BrowserConfig::default()
+        };
+        let off = ids(&collect_browser_findings(&d, &config), p);
+        assert!(off.iter().any(|t| t == "tiny-text"), "{off:?}");
     }
 
     #[test]
