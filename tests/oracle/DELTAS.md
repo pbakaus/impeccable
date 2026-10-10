@@ -7030,3 +7030,13 @@ Re-recorded from the binary and reviewed by hand, 28 goldens, one or two lines e
 
 Review round, same day, 19 goldens re-recorded. The surface roll body (`PROMOTED_SURFACE`) asks for each card's HTML sketch with the wireframe as the fallback, where it still asked for the wireframe outright; the sketch line names `htmlFrame` for phone and native surfaces; `question-schema` documents `htmlFrame`. A hand now records `startedAt` (normalized to `<EPOCH>`) and, when the round declares any, `sketches`, which moves `question-update-comps-next`'s hand file by that one key.
 
+## Hard offset shadow advisory (#929)
+
+Added four reviewed goldens: the new fixture in JSON/text modes, plus an isolated
+advisory-only target with and without `--no-advisory`. The fixture has exactly
+four `hard-offset-shadow` advisory findings and exits 0. The isolated case also
+exits 0, and its `--no-advisory` control returns `[]`. None of the existing
+individual fixture goldens changed. Three directory goldens were refreshed after
+confirming the only finding-array additions were the four new advisories, with
+no removals. The primary count remains 945; the advisory count is 164 → 168.
+Frozen function-level vectors were not regenerated.

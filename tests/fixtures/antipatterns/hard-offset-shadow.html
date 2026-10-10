@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Hard offset shadow advisory fixture</title>
+<style>
+body { margin:32px; background:#fff; color:#222; font:16px/1.5 Georgia,serif; }
+main { display:grid; grid-template-columns:280px 280px; gap:40px; }
+.panel { width:220px; height:96px; padding:12px; margin:24px 0; background:#fff; }
+h1 { font-size:28px; } h2 { font-size:22px; } h3 { font-size:18px; margin:0; }
+#flag-0 { box-shadow:4px 4px 0 #333; }
+#flag-1 { box-shadow:-6px 6px 0 #333; }
+#flag-2 { box-shadow:5px 5px #333; }
+#flag-3 { box-shadow:rgba(0,0,0,0) 0 0 0 0, 4px 4px 0 #333, 0 8px 24px rgba(0,0,0,.12); }
+#pass-0 { box-shadow:0 4px 12px #333; }
+#pass-1 { box-shadow:inset 4px 4px 0 #333; }
+#pass-2 { box-shadow:0 0 0 4px #333; }
+#pass-3 { box-shadow:4px 4px 0 transparent; }
+#pass-4 { box-shadow:2px 2px 0 #333; }
+#pass-5 { box-shadow:4px 4px 0 -8px #333; }
+#pass-6 { box-shadow:4px 4px 0 #333; }
+#pass-7 { box-shadow:4px 4px 0 #333; }
+</style></head><body><h1>Hard offset shadow review</h1><main><section><h2>Should flag as advisory</h2><div class="panel" id="flag-0"><h3>Positive offset</h3></div>
+<div class="panel" id="flag-1"><h3>Negative offset</h3></div>
+<div class="panel" id="flag-2"><h3>Omitted blur</h3></div>
+<div class="panel" id="flag-3"><h3>Multiple layers</h3></div>
+</section><section><h2>Should pass</h2><div class="panel" id="pass-0" ><h3>Soft elevation</h3></div>
+<div class="panel" id="pass-1" ><h3>Inset treatment</h3></div>
+<div class="panel" id="pass-2" ><h3>Focus ring</h3></div>
+<div class="panel" id="pass-3" ><h3>Transparent layer</h3></div>
+<div class="panel" id="pass-4" ><h3>Small offset</h3></div>
+<div class="panel" id="pass-5" ><h3>Contracted shadow</h3></div>
+<div class="panel" id="pass-6" data-impeccable-ignore="hard-offset-shadow"><h3>Intentional neobrutalism</h3></div>
+<div class="panel" id="pass-7" style="opacity:0"><h3>Invisible element</h3></div>
+</section></main></body></html>

@@ -64,6 +64,12 @@ export default function cases() {
   }
 
   out.push(
+    ...[false, true].map(noAdvisory => ({
+      id: `detect-hard-offset-shadow-${noAdvisory ? 'no-advisory' : 'advisory'}`,
+      verb: 'detect',
+      args: ['--no-config', '--json', ...(noAdvisory ? ['--no-advisory'] : []), 'shadow.html'],
+      setup: ws => fs.writeFileSync(path.join(ws, 'shadow.html'), '<div style="width:220px;height:96px;color:#222;background:#fff;box-shadow:4px 4px 0 #333"></div>'),
+    })),
     { id: 'detect-dir-json-all-fixtures', verb: 'detect', args: ['--no-config', '--json', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },
     { id: 'detect-dir-text-all-fixtures', verb: 'detect', args: ['--no-config', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },
     { id: 'detect-dir-quiet-all-fixtures', verb: 'detect', args: ['--no-config', '--quiet', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },

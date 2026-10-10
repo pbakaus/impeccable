@@ -171,7 +171,7 @@ pub const TEXT_MIN_VISIBLE_SHARE: f64 = 0.25;
 /// slide parked past its track's clip) is not where a visitor meets how it
 /// animates (`bounce-easing`), the glow around it (`dark-glow`) or the
 /// palette it paints (`ai-color-palette`).
-pub const PAINT_GATED_BOX_RULES: &[&str] = &["ai-color-palette", "bounce-easing", "dark-glow"];
+pub const PAINT_GATED_BOX_RULES: &[&str] = &["ai-color-palette", "bounce-easing", "dark-glow", "hard-offset-shadow"];
 
 /// The rules whose page-level CSS-text form names the rule a selector
 /// declared: such a finding reports only when at least one element the

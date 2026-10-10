@@ -116,6 +116,7 @@ const STATIC_ELEMENT_RULES: &[(&str, &str)] = &[
     ("color-rules", "*"),
     ("hover-color-rules", "*"),
     ("dark-glow", "*"),
+    ("hard-offset-shadow", "*"),
     ("motion-rules", "*"),
     ("icon-tile-stack", "h1,h2,h3,h4,h5,h6"),
     ("stripe-child", "div,span"),
@@ -147,6 +148,7 @@ fn run_rule(
             let base = el.parent_element().unwrap_or(*el);
             check_element_glow(style, resolve_background(&base, None))
         }
+        "hard-offset-shadow" => crate::adapters::check_element_hard_offset_shadow(el),
         "motion-rules" => check_element_motion(tag, style),
         "icon-tile-stack" => check_element_icon_tile(el, tag),
         "stripe-child" => check_element_stripe_child(el, style),

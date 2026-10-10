@@ -90,6 +90,12 @@
     "description": "A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file."
   },
   {
+    "id": "hard-offset-shadow",
+    "name": "Hard offset shadow",
+    "category": "slop",
+    "description": "A visible, unblurred shadow displaced by at least 4px can belong to an intentional neobrutalist direction. Check whether it fits the intended design; this is a review prompt, not evidence of AI authorship or a request to remove it automatically. Waive intentional uses with data-impeccable-ignore=\"hard-offset-shadow\"."
+  },
+  {
     "id": "dark-glow",
     "name": "Glowing shadow accents",
     "category": "slop",
