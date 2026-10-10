@@ -3,10 +3,10 @@
  *
  * Routes messages between popup, DevTools panel, and content scripts.
  * Maintains per-tab state and updates the badge. Also owns the offscreen
- * document that hosts the WebAssembly rule core: the content script measures
- * the page (a snapshot), the offscreen document runs the rules over it, the
- * content script draws the result. Neither the popup nor the DevTools panel
- * see any of that; their messages are unchanged.
+ * document that hosts the WebAssembly rule core (a background-page iframe in
+ * Firefox): the content script measures the page (a snapshot), that document
+ * runs the rules over it, and the content script draws the result. Neither the
+ * popup nor the DevTools panel see any of that; their messages are unchanged.
  */
 
 // Per-tab state: { tabId: { findings, overlaysVisible, injected } }
@@ -75,25 +75,39 @@ async function buildScanConfig() {
   return config;
 }
 
-// The offscreen document hosting the WASM core. One per extension; created
-// on the first scan and kept (its rule core stays warm; a closed document
-// would pay the module load again on the next scan).
+// One rule-core document per extension, loaded lazily on the first scan.
+// Chrome's service worker uses an offscreen document. Firefox has a DOM-backed
+// background event page instead, so it can host the same extension document in
+// a hidden iframe. Both keep WASM under the extension CSP, not the scanned page's.
 let offscreenReady = null;
 async function ensureOffscreenDocument() {
   if (offscreenReady) return offscreenReady;
   offscreenReady = (async () => {
-    const contexts = await chrome.runtime.getContexts({
-      contextTypes: ['OFFSCREEN_DOCUMENT'],
-      documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
-    });
-    if (contexts.length === 0) {
-      await chrome.offscreen.createDocument({
-        url: OFFSCREEN_URL,
-        // The document exists to run WebAssembly, which no page-side world can
-        // under a strict page CSP; WORKERS is the closest listed reason.
-        reasons: ['WORKERS'],
-        justification: 'Runs the WebAssembly anti-pattern rule core over a page snapshot; page Content-Security-Policies block WebAssembly in content-script and page worlds.',
+    if (typeof chrome.offscreen?.createDocument === 'function') {
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT'],
+        documentUrls: [chrome.runtime.getURL(OFFSCREEN_URL)],
       });
+      if (contexts.length === 0) {
+        await chrome.offscreen.createDocument({
+          url: OFFSCREEN_URL,
+          // The document exists to run WebAssembly, which no page-side world can
+          // under a strict page CSP; WORKERS is the closest listed reason.
+          reasons: ['WORKERS'],
+          justification: 'Runs the WebAssembly anti-pattern rule core over a page snapshot; page Content-Security-Policies block WebAssembly in content-script and page worlds.',
+        });
+      }
+    } else {
+      // Firefox's getContexts exists, but OFFSCREEN_DOCUMENT is not a valid
+      // context type there. Do not call it on this path.
+      if (typeof document === 'undefined') throw new Error('No supported rule-core document host');
+      if (!document.getElementById('impeccable-core')) {
+        const frame = document.createElement('iframe');
+        frame.id = 'impeccable-core';
+        frame.hidden = true;
+        frame.src = chrome.runtime.getURL(OFFSCREEN_URL);
+        document.body.appendChild(frame);
+      }
     }
     // Wait for the core to be instantiated so the first scan does not race it.
     for (let attempt = 0; attempt < 50; attempt++) {
@@ -110,7 +124,7 @@ async function ensureOffscreenDocument() {
       }
       await new Promise(res => setTimeout(res, 50));
     }
-    throw new Error('offscreen core did not answer');
+    throw new Error('rule core did not answer');
   })();
   offscreenReady.catch(() => { offscreenReady = null; });
   return offscreenReady;

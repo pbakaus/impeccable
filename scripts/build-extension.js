@@ -16,11 +16,8 @@
  * declared as an event-page `scripts` entry (the universally-supported path on
  * Gecko), and `browser_specific_settings.gecko` is added for AMO signing.
  *
- * Firefox caveat: the shell runs the WebAssembly rule core in an extension
- * offscreen document, and Gecko has no `chrome.offscreen` API, so the Firefox
- * package builds and lints but cannot scan until that gap is closed. The
- * Firefox artifact is still produced so `web-ext lint` keeps covering the
- * shared shell.
+ * Chrome hosts the WebAssembly rule core in an offscreen document; Firefox
+ * loads the same document in a hidden iframe inside its background event page.
  *
  * Needs a Rust toolchain and wasm-pack for step 1. CI matrices that already
  * ran `cargo xtask bundle` can skip it with IMPECCABLE_EXTENSION_SKIP_BUNDLE=1,
@@ -151,9 +148,10 @@ const firefoxManifest = {
   ...chromeManifest,
   // Gecko supports MV3 via non-persistent event pages. Declaring `scripts`
   // (rather than `service_worker`) is the path supported across all MV3 Firefox
-  // releases; service-worker.js uses only top-level listeners + an in-memory
-  // Map, so it runs unchanged as an event page.
+  // releases. The shared worker hosts the rule core in a background-page
+  // iframe when Chrome's offscreen API is unavailable.
   background: { scripts: [serviceWorker] },
+  permissions: chromeManifest.permissions.filter(permission => permission !== 'offscreen'),
   // Required by AMO for signing/distribution. Ignored by Chrome.
   browser_specific_settings: {
     gecko: {
@@ -164,7 +162,7 @@ const firefoxManifest = {
       // everything else this extension uses (MV3 action, scripting, devtools,
       // object-form web_accessible_resources, storage.sync) landed long before.
       strict_min_version: '140.0',
-      // The rules run in the extension's own offscreen document; nothing is
+      // The rules run in the extension's own document; nothing is
       // transmitted off-device.
       data_collection_permissions: { required: ['none'] },
     },
@@ -188,9 +186,3 @@ console.log(`Staged ${path.relative(ROOT, ffStageDir)}/ (Firefox manifest)`);
 
 // STORE_LISTING.md is already filtered out of the stage dir above.
 packZip(path.join(DIST, 'extension-firefox.zip'), ffStageDir, ['*.DS_Store']);
-
-console.warn(
-  'Warning: the Firefox package cannot scan yet. The rule core runs in an ' +
-    'extension offscreen document and Gecko has no chrome.offscreen API. The ' +
-    'artifact is built so web-ext lint keeps covering the shared shell.',
-);
