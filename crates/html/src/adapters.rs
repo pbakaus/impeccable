@@ -1843,3 +1843,19 @@ pub fn check_element_clipped_overflow(el: &StaticElement<'_>, style: &StyleValue
     }
     Vec::new()
 }
+
+/// Only resolved, visible box shadows participate; reference assets and class
+/// names do not establish whether a neobrutalist treatment is intentional.
+pub fn check_element_hard_offset_shadow(el: &StaticElement<'_>) -> Vec<RuleHit> {
+    let mut current = Some(*el);
+    while let Some(node) = current {
+        if node.get_attribute("hidden").is_some() || sv(node.style(), "display") == "none" {
+            return Vec::new();
+        }
+        current = node.parent_element();
+    }
+    if matches!(sv(el.style(), "visibility"), "hidden" | "collapse") { return Vec::new(); }
+    impeccable_core::checks::hard_offset_shadow::check_hard_offset_shadow(
+        sv(el.style(), "boxShadow"), sv(el.style(), "color"), static_effective_opacity(el),
+    )
+}

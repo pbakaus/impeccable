@@ -181,6 +181,16 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         skill_guideline: Some("a produced material must survive to the screen"),
     },
     Antipattern {
+        id: "hard-offset-shadow",
+        category: "slop",
+        scopes: None,
+        severity: Some("advisory"),
+        name: "Hard offset shadow",
+        description: "A visible, unblurred shadow displaced by at least 4px can belong to an intentional neobrutalist direction. Check whether it fits the intended design; this is a review prompt, not evidence of AI authorship or a request to remove it automatically. Waive intentional uses with data-impeccable-ignore=\"hard-offset-shadow\".",
+        skill_section: Some("Depth"),
+        skill_guideline: Some("review hard offset shadows against the intended direction"),
+    },
+    Antipattern {
         id: "dark-glow",
         category: "slop",
         scopes: None,
@@ -819,7 +829,9 @@ mod tests {
 
     #[test]
     fn registry_shape() {
-        assert_eq!(ANTIPATTERNS.len(), 59);
+        assert_eq!(ANTIPATTERNS.len(), 60);
+        assert!(is_advisory_rule("hard-offset-shadow"));
+        assert!(!IMMEDIATE_TIER_RULES.contains(&"hard-offset-shadow"));
         assert_eq!(ANTIPATTERNS[0].id, "side-tab");
         assert_eq!(rule_scopes(), vec!["type", "layout"]);
         assert!(is_advisory_rule("em-dash-overuse"));

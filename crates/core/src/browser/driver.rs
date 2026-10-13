@@ -2506,6 +2506,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_colors_dom(dom, el, &mut color_seen)));
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));
+        findings.extend(hits(ec::check_element_hard_offset_shadow_dom(dom, el)));
         let mut palette = ec::check_element_ai_palette_dom(dom, el, design_system.as_ref());
         // A category colour neither reports nor votes. Its gradient hit is
         // withdrawn with the class forms below; the tell and the held ink

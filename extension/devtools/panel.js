@@ -109,15 +109,25 @@ function initSpotlightBlurToggle(currentValue) {
   });
 }
 
+const CATEGORY_LABELS = { slop: 'AI tells', quality: 'Quality issues', advisory: 'Advisories' };
+
+function presentationCategory(finding) {
+  // This geometric match asks about design intent; it cannot establish AI
+  // authorship. Keep the engine registry category stable for existing consumers.
+  if ((finding.type || finding.id) === 'hard-offset-shadow') return 'advisory';
+  return finding.category === 'slop' ? 'slop' : 'quality';
+}
+
 function renderSettings() {
   settingsList.innerHTML = '';
 
   const categories = {
     slop: { label: 'AI tells', items: [] },
     quality: { label: 'Quality', items: [] },
+    advisory: { label: 'Advisories', items: [] },
   };
   for (const ap of allAntipatterns) {
-    const cat = ap.category || 'quality';
+    const cat = presentationCategory(ap);
     (categories[cat] || categories.quality).items.push(ap);
   }
 
@@ -252,6 +262,7 @@ const FIX_SKILLS = {
 };
 
 function fixSkillFor(type) {
+  if (type === 'hard-offset-shadow') return '';
   const skills = FIX_SKILLS[type] || 'polish';
   // Prefix each comma-separated skill with a slash for clarity
   return skills.split(',').map(s => '/' + s.trim()).join(', ');
@@ -263,7 +274,9 @@ function uniqueSkillsForFindings(findings) {
   const counts = new Map();
   for (const item of findings) {
     for (const f of item.findings) {
-      const list = (FIX_SKILLS[f.type] || 'polish').split(',').map(s => '/' + s.trim());
+      const skills = fixSkillFor(f.type);
+      if (!skills) continue;
+      const list = skills.split(', ');
       for (const s of list) {
         counts.set(s, (counts.get(s) || 0) + 1);
       }
@@ -289,26 +302,18 @@ async function formatFindingsForCopy(findings) {
   if (url) lines.push(`URL: ${url}`);
   lines.push('');
 
-  const groups = { slop: [], quality: [] };
+  const groups = { slop: [], quality: [], advisory: [] };
   for (const item of findings) {
     for (const f of item.findings) {
-      const cat = f.category || 'quality';
+      const cat = presentationCategory(f);
       groups[cat].push({ ...f, selector: item.selector, isPageLevel: item.isPageLevel });
     }
   }
 
-  if (groups.slop.length) {
-    lines.push(`## AI tells (${groups.slop.length})`);
-    for (const f of groups.slop) {
-      const where = f.isPageLevel ? '_(page-level)_' : `\`${f.selector}\``;
-      lines.push(`- **${f.name}** at ${where}: ${f.detail}`);
-    }
-    lines.push('');
-  }
-
-  if (groups.quality.length) {
-    lines.push(`## Quality issues (${groups.quality.length})`);
-    for (const f of groups.quality) {
+  for (const [category, findings] of Object.entries(groups)) {
+    if (!findings.length) continue;
+    lines.push(`## ${CATEGORY_LABELS[category]} (${findings.length})`);
+    for (const f of findings) {
       const where = f.isPageLevel ? '_(page-level)_' : `\`${f.selector}\``;
       lines.push(`- **${f.name}** at ${where}: ${f.detail}`);
     }
@@ -337,7 +342,8 @@ async function formatSingleFindingForCopy(item, finding) {
   lines.push('');
   lines.push(finding.description);
   lines.push('');
-  lines.push(`Suggested Impeccable skill(s) to fix: ${fixSkillFor(finding.type)}`);
+  const skills = fixSkillFor(finding.type);
+  if (skills) lines.push(`Suggested Impeccable skill(s) to fix: ${skills}`);
   return lines.join('\n');
 }
 
@@ -406,10 +412,10 @@ function renderFindings(findings) {
   badge.classList.add('visible');
 
   // Group findings by category, then by anti-pattern type
-  const categories = { slop: new Map(), quality: new Map() };
+  const categories = { slop: new Map(), quality: new Map(), advisory: new Map() };
   for (const item of findings) {
     for (const f of item.findings) {
-      const cat = f.category || 'quality';
+      const cat = presentationCategory(f);
       const groups = categories[cat] || categories.quality;
       if (!groups.has(f.type)) {
         groups.set(f.type, { name: f.name, description: f.description, items: [] });
@@ -426,7 +432,6 @@ function renderFindings(findings) {
 
   container.innerHTML = '';
 
-  const CATEGORY_LABELS = { slop: 'AI tells', quality: 'Quality issues' };
   for (const [catKey, groups] of Object.entries(categories)) {
     if (groups.size === 0) continue;
 

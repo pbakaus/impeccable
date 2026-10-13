@@ -637,6 +637,7 @@ dependencies = [
 name = "impeccable-core"
 version = "0.1.14"
 dependencies = [
+ "cssparser",
  "impeccable-core",
  "impeccable-foundation",
  "once_cell",

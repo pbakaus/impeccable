@@ -7038,3 +7038,31 @@ Product decision (maintainer, 2026-10-11). Decision-page cards on direction and 
 Re-recorded from the binary and reviewed by hand, 38 goldens plus one new. Every change is one of the lines named above.
 
 Review round, 2026-10-12 (PR review). Seed references are now salted per user (`IMPECCABLE_SEED_SALT` pins it in the oracle), so every `seed-*` golden's `SEED REFERENCE` line carries a new value. The roll record names its seed by reference and drops `at` (its age is the file's mtime), so the `seed-*` goldens that snapshot `roll.json` show `"seed":"seed:<hex>"` where they showed the key and the time. `grounded` joins the card kinds, which adds it to the `question-schema` note and the `question-update-card-identity-missing` refusal. `question-update-comps-next` declares kinds on its cards, so it reaches NEXT again; the history lines that named it as an accepted delta no longer start with its id, so the case is checked, and its golden changes only by the payload digest. Re-recorded from the binary and reviewed by hand, 29 goldens.
+## Hard offset shadow advisory (#929)
+
+Added four reviewed goldens: the new fixture in JSON/text modes, plus an isolated
+advisory-only target with and without `--no-advisory`. The fixture has exactly
+four `hard-offset-shadow` advisory findings and exits 0. The isolated case also
+exits 0, and its `--no-advisory` control returns `[]`. None of the existing
+individual fixture goldens changed. Three directory goldens were refreshed after
+confirming the only finding-array additions were the four new advisories, with
+no removals. The primary count remains 945; the advisory count is 164 → 168.
+Frozen function-level vectors were not regenerated.
+
+
+## PR #998 color parsing follow-up
+
+Adds `detect-hard-offset-shadow-colors-advisory` and
+`detect-hard-offset-shadow-colors-no-advisory`. The new fixture covers red and gray
+named colors, HWB alpha, and nested color-mix, plus five pass controls. Review the
+new goldens for exactly four advisory findings and exit 0, and no findings with
+`--no-advisory`. No frozen function vectors are changed.
+
+## Recorded 2026-10-13: validate complete hard-offset shadow lists
+
+Added and manually reviewed `detect-hard-offset-shadow-lists-advisory` and
+`detect-hard-offset-shadow-lists-no-advisory`. The fixture contains eight invalid
+declarations (including a negative blur before or after an otherwise matching
+layer) and four valid mixed-layer controls. Only the four valid declarations
+produce advisories; the CLI exits 0. With `--no-advisory`, stdout is `[]` and the
+exit remains 0. No existing goldens or frozen function vectors were regenerated.

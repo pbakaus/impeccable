@@ -2032,6 +2032,14 @@ fn gradient_ancestor_average(dom: &dyn Dom, start: Option<ElId>) -> Option<Rgba>
     None
 }
 
+pub fn check_element_hard_offset_shadow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
+    crate::checks::hard_offset_shadow::check_hard_offset_shadow(
+        &dom.style(el, "boxShadow"),
+        &dom.style(el, "color"),
+        effective_opacity_dom(dom, el),
+    )
+}
+
 /// JS: checks.mjs#checkElementGlowDOM(el)
 pub fn check_element_glow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let box_shadow = {
