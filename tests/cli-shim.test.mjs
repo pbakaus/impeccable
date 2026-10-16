@@ -50,6 +50,7 @@ const ASSET_PATH = `/engine-v${VERSION}/${ASSET}`;
 // download is observable end to end.
 const PAYLOAD = Buffer.from('#!/bin/sh\necho "fake-engine $*"\n');
 const DIGEST = createHash('sha256').update(PAYLOAD).digest('hex');
+const posixOnly = { skip: process.platform === 'win32' ? 'fake engine is a POSIX shell script' : false };
 
 /** Every path the server was asked for since the last test started. */
 let requests = [];
@@ -151,7 +152,7 @@ function cacheEntries(home) {
   return out;
 }
 
-describe('npm shim download verification', { skip: process.platform === 'win32' ? 'posix only' : false }, () => {
+describe('npm shim download verification', () => {
   const cachedEntries = [path.join(VERSION, 'impeccable'), path.join(VERSION, 'impeccable.verified')];
 
   it('attributes GitHub storage outages to GitHub', async () => {
@@ -171,7 +172,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     assert.deepEqual(cacheEntries(res.home), []);
   });
 
-  it('caches and runs a download whose hash matches the manifest, and stamps it', async () => {
+  it('caches and runs a download whose hash matches the manifest, and stamps it', posixOnly, async () => {
     const res = await runShim(['hello']);
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /fake-engine hello/);
@@ -181,7 +182,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
 
   it('refuses before any request when the manifest has no line for the version', async () => {
     const res = await runShim(['hello'], { line: `0.0.0-other ${ASSET} ${DIGEST}` });
-    assert.equal(res.status, 127);
+    assert.equal(res.status, 127, res.stderr);
     assert.match(res.stderr, /no checksum for engine /);
     assert.match(res.stderr, /refusing the unverified download/);
     assert.deepEqual(requests, []);
@@ -190,13 +191,13 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
 
   it('refuses when the downloaded bytes do not match the manifest digest', async () => {
     const res = await runShim(['hello'], { line: `${VERSION} ${ASSET} ${'0'.repeat(64)}` });
-    assert.equal(res.status, 127);
+    assert.equal(res.status, 127, res.stderr);
     assert.match(res.stderr, /checksum mismatch downloading/);
     assert.deepEqual(requests, [ASSET_PATH]);
     assert.deepEqual(cacheEntries(res.home), []);
   });
 
-  it('hashes an unstamped cached binary once, stamps it and never downloads', async () => {
+  it('hashes an unstamped cached binary once, stamps it and never downloads', posixOnly, async () => {
     const res = await runShim(['hi'], { cached: PAYLOAD });
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /fake-engine hi/);
@@ -204,7 +205,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     assert.deepEqual(cacheEntries(res.home), cachedEntries);
   });
 
-  it('downloads again when an unstamped cached binary does not match the manifest', async () => {
+  it('downloads again when an unstamped cached binary does not match the manifest', posixOnly, async () => {
     const res = await runShim(['hi'], { cached: Buffer.from('#!/bin/sh\necho "tampered $*"\n') });
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stderr, /cannot verify the cached engine/);
@@ -275,7 +276,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     }
   });
 
-  it('prefers IMPECCABLE_BIN and never downloads', async () => {
+  it('prefers IMPECCABLE_BIN and never downloads', posixOnly, async () => {
     const { dir, shim } = stageShim();
     const bin = path.join(dir, 'preinstalled');
     fs.writeFileSync(bin, '#!/bin/sh\necho "preinstalled $*"\n', { mode: 0o755 });
@@ -292,7 +293,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   // optional dependency installed, the shim never reaches the cache or the
   // download. Those packages ship with every engine release, so a shim run
   // from a tree that has them takes this arm instead.
-  it('prefers an installed platform package and never downloads', async () => {
+  it('prefers an installed platform package and never downloads', posixOnly, async () => {
     const { dir, shim } = stageShim();
     const pkgDir = path.join(dir, 'node_modules', PLATFORM_PKG);
     fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
