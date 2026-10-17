@@ -562,6 +562,35 @@ fn unpainted_walk(
     outside_document(dom, &band, vis, viewport_w)
 }
 
+/// The ancestors of `el`, below the body, whose overflow can clip it, by
+/// the placement rules of [`unpainted_inside`]'s walk: an in-flow box is
+/// clipped by every ancestor, an absolute box only from its containing
+/// block up, a fixed box only from a containing ancestor up. An undecided
+/// ancestor is not taken as the containing block.
+pub(crate) fn clipping_ancestors(dom: &dyn Dom, el: ElId) -> Vec<ElId> {
+    let body = dom.body();
+    let root = dom.document_element();
+    let mut placement = Placement::of(dom, el);
+    let mut out = Vec::new();
+    let mut cur = dom.parent(el);
+    while let Some(p) = cur {
+        if Some(p) == body || Some(p) == root {
+            break;
+        }
+        let containment = if placement == Placement::InFlow {
+            Containment::DoesNot
+        } else {
+            contains_fixed(dom, p)
+        };
+        if placement.clipped_by(dom, p, containment) {
+            out.push(p);
+            placement = Placement::of(dom, p);
+        }
+        cur = dom.parent(p);
+    }
+    out
+}
+
 /// How an element's box is placed, which decides which ancestors clip it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Placement {
@@ -1575,6 +1604,39 @@ pub(crate) fn moves_mid_animation(dom: &dyn Dom, el: ElId) -> bool {
         cur = dom.parent(c);
     }
     false
+}
+
+/// Whether `el` or an ancestor is caught part way through a change of width
+/// that ends: the capture saw an animation or transition running on the box
+/// that sets `width`, `min-width`, `max-width` or an inline-size longhand,
+/// and the page traces it to something that stops ([`traced_to_an_end`]).
+/// lockheedmartin.com's section headings type themselves out (`typing`, one
+/// run, `width` from 0 to 100%), and a capture part way through reads the
+/// heading spilling out of a box that has not finished opening.
+pub(crate) fn resizes_mid_animation(dom: &dyn Dom, el: ElId) -> bool {
+    const MAX_ANCESTORS: usize = 64;
+    let mut cur = Some(el);
+    for _ in 0..MAX_ANCESTORS {
+        let Some(c) = cur else { return false };
+        if Some(c) == dom.body() || Some(c) == dom.document_element() {
+            return false;
+        }
+        if let Some(props) = dom.running_animation_properties(c) {
+            if props.iter().any(|p| sets_width(p) && traced_to_an_end(dom, c, p)) {
+                return true;
+            }
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
+
+/// Whether a running CSS property sets a box's width on the x axis.
+fn sets_width(p: &str) -> bool {
+    matches!(
+        p,
+        "width" | "min-width" | "max-width" | "inline-size" | "min-inline-size" | "max-inline-size"
+    )
 }
 
 /// Whether a running property `p` moves `el` on the x axis at capture.

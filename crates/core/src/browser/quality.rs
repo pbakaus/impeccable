@@ -1518,13 +1518,25 @@ pub fn body_text_gutter_floor(viewport_width: f64) -> f64 {
     }
 }
 
+/// Whether a `<header>` is a site header, a bar across the top of the page,
+/// rather than a wrapper around the first screen: it is no taller than the
+/// viewport. screen.movie's Framer page wraps its whole first screen,
+/// testimonial included, in a 1,411px `<header>` on an 844px phone, and the
+/// testimonial's lines run past both sides of the screen. A header whose
+/// height or viewport was not measured counts as a site header, as before.
+fn is_site_header(dom: &dyn Dom, header: ElId) -> bool {
+    let height = dom.rect(header).height;
+    let viewport = dom.inner_height();
+    !(height.is_finite() && viewport.is_finite() && viewport > 0.0 && height > viewport)
+}
+
 /// Where a paragraph's body text starts and ends on the x axis, as
 /// `body-text-viewport-edge` reads it, or `None` when the rule does not
 /// measure it: not a `<p>` or `<li>` (or prose written straight into a
 /// generic block, [`is_prose_block`]) of more than 40 characters, inside a
-/// `<nav>` or `<header>`, on its own fill, positioned, half the viewport wide
-/// or less, cut by a scroller or a moving track rather than the page, or
-/// wholly past either side of the viewport.
+/// `<nav>` or a site header ([`is_site_header`]), on its own fill,
+/// positioned, half the viewport wide or less, cut by a scroller or a moving
+/// track rather than the page, or wholly past either side of the viewport.
 ///
 /// Measured on the text where it can be: a centred or padded paragraph
 /// spans the viewport with its box while its glyphs keep a gutter, and a
@@ -1548,7 +1560,8 @@ fn body_text_edge_span(dom: &dyn Dom, q: &QualityInput) -> Option<(f64, f64)> {
     if !((has_direct_text || edge_prose) && q.text_len > 40 && (is_edge_tag || prose_block) && viewport_width > 0.0) {
         return None;
     }
-    let in_nav_header = closest_or_none(dom, el, "nav").is_some() || closest_or_none(dom, el, "header").is_some();
+    let in_nav_header = closest_or_none(dom, el, "nav").is_some()
+        || closest_or_none(dom, el, "header").is_some_and(|h| is_site_header(dom, h));
     let bg = st("backgroundColor");
     let has_own_bg = !bg.is_empty() && bg != "rgba(0, 0, 0, 0)" && bg != "transparent";
     let pos = st("position");
@@ -4664,6 +4677,35 @@ mod tests {
         );
         assert_eq!(at(&mut d, 1280.0, 12.0).len(), 1);
         assert!(at(&mut d, 1280.0, 16.0).is_empty());
+    }
+
+    /// screen.movie miss 437: a Framer page sets its whole first screen,
+    /// testimonial included, in a `<header>` 1,411px tall on an 844px phone.
+    /// That is not a site header, and its body text is measured. Text in a
+    /// header no taller than the viewport (a bar across the top) is not.
+    #[test]
+    fn viewport_edge_measures_text_in_a_header_taller_than_the_screen() {
+        let copy = "I have purchased dozens of screen recording tools over the years and this is the one I kept.";
+        let len = utf16_len(copy);
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        d.inner_width = 390.0;
+        d.inner_height = 844.0;
+        let header = d.add(Some(body), "header");
+        d.set_rect(header, 0.0, 0.0, 390.0, 1411.0);
+        let p = text_el(&mut d, header, "p", copy, "16px");
+        d.set_styles(p, &[("lineHeight", "24px"), ("paddingLeft", "8px"), ("paddingRight", "8px")]);
+        d.set_rect(p, 0.0, 1227.0, 390.0, 96.0);
+        d.set_text_rect(p, 8.0, 1229.0, 374.0, 92.0);
+        assert_eq!(
+            snippets(&d, p, "body-text-viewport-edge"),
+            vec![format!("<p> with {len}-char body bleeds to viewport edge (left 8px / right 8px)")]
+        );
+        d.set_rect(header, 0.0, 0.0, 390.0, 844.0);
+        assert!(snippets(&d, p, "body-text-viewport-edge").is_empty(), "a header one screen tall");
+        d.set_rect(header, 0.0, 0.0, 390.0, 1411.0);
+        d.inner_height = f64::NAN;
+        assert!(snippets(&d, p, "body-text-viewport-edge").is_empty(), "no viewport height");
     }
 
     /// elevancehealth.com (324856): a quote caught part way through its

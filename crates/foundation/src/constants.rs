@@ -104,6 +104,19 @@ pub const OVERUSED_FONTS: &[&str] = &[
     "recoleta",
 ];
 
+/// The [`OVERUSED_FONTS`] entry a lowercased face name spells, ignoring
+/// spaces, hyphens and underscores: the `geist` npm package registers its
+/// face as `GeistSans`, and a page can carry both that and `Geist Sans`.
+/// `None` for a face not on the list.
+pub fn overused_font_name(face: &str) -> Option<&'static str> {
+    let squash = |s: &str| -> String { s.chars().filter(|c| !matches!(c, ' ' | '-' | '_')).collect() };
+    let key = squash(face);
+    if key.is_empty() {
+        return None;
+    }
+    OVERUSED_FONTS.iter().copied().find(|f| squash(f) == key)
+}
+
 /// JS `GOOGLE_DOMAINS`.
 pub const GOOGLE_DOMAINS: &[&str] = &[
     "google.com",
@@ -256,5 +269,18 @@ mod tests {
         assert!(!is_brand_font_on_own_domain("geist", Some("notvercel.com")));
         assert!(!is_brand_font_on_own_domain("inter", Some("google.com")));
         assert!(!is_brand_font_on_own_domain("roboto", None));
+    }
+
+    #[test]
+    fn overused_font_name_merges_spellings() {
+        assert_eq!(overused_font_name("geistsans"), Some("geist sans"));
+        assert_eq!(overused_font_name("geist sans"), Some("geist sans"));
+        assert_eq!(overused_font_name("geist-mono"), Some("geist mono"));
+        assert_eq!(overused_font_name("space_grotesk"), Some("space grotesk"));
+        assert_eq!(overused_font_name("plusjakartasans"), Some("plus jakarta sans"));
+        assert_eq!(overused_font_name("inter"), Some("inter"));
+        assert_eq!(overused_font_name("intertight"), None);
+        assert_eq!(overused_font_name("geistsans fallback"), None);
+        assert_eq!(overused_font_name(""), None);
     }
 }

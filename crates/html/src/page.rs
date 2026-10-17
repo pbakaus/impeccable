@@ -20,7 +20,7 @@ use impeccable_core::checks::rules::{
 use impeccable_core::checks::text_rules::{
     is_repeated_text_container, REPEATED_TEXT_CONTAINER_TAGS, REPEATED_TEXT_SKIP_SELECTOR,
 };
-use impeccable_core::constants::{CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
+use impeccable_core::constants::{overused_font_name, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
 use impeccable_core::js::{self, number_to_string, parse_float};
 use impeccable_core::js_ext_b::{slice_utf16_prefix, utf16_len};
 use once_cell::sync::Lazy;
@@ -58,6 +58,7 @@ pub fn check_static_page_typography(doc: &StaticDocument) -> Vec<RuleHit> {
         let Some(primary) = primary else {
             continue;
         };
+        let primary = overused_font_name(&primary).map_or(primary, str::to_string);
         if OVERUSED_FONTS.contains(&primary.as_str()) && !overused_found.contains(&primary) {
             overused_found.push(primary);
         }

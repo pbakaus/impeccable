@@ -29,7 +29,7 @@ use crate::checks::rules::{
     TypeSample, TYPE_HIERARCHY_SELECTOR,
 };
 use crate::color::{composite_color_over, parse_any_color, Rgba};
-use crate::constants::{is_brand_font_on_own_domain, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
+use crate::constants::{is_brand_font_on_own_domain, overused_font_name, CSS_GENERIC_FONTS, OVERUSED_FONTS, SAFE_TAGS};
 use crate::js::{self, math_max, math_min, math_round, number_to_string, parse_float, to_fixed};
 use crate::js_ext_a::num_truthy;
 use crate::js_ext_b::{slice_utf16_prefix, utf16_len};
@@ -245,6 +245,9 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
         else {
             continue;
         };
+        // One face under two spellings (`GeistSans` from the `geist`
+        // package, `Geist Sans` elsewhere) is counted, and named, once.
+        let primary = &overused_font_name(primary).map_or_else(|| primary.clone(), str::to_string);
         if let Some(slot) = font_usage.iter_mut().find(|(k, _)| k == primary) {
             slot.1 += 1.0;
         } else {
@@ -567,7 +570,7 @@ fn card_edge_sides(
 /// an image or a gradient, or a colour that, composited over that surface,
 /// moves a channel by more than 3. Where the surface cannot be read, any
 /// colour that is not transparent counts, as it did before.
-fn fill_differs_from_surface(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn fill_differs_from_surface(dom: &dyn Dom, el: ElId) -> bool {
     let image = dom.style(el, "backgroundImage");
     if !image.is_empty() && image != "none" {
         return true;
@@ -4655,6 +4658,32 @@ mod tests {
 
     fn font_finding(d: &FakeDom) -> Option<String> {
         check_typography(d).into_iter().find(|f| f.type_ == "overused-font").map(|f| f.detail)
+    }
+
+    /// incredible.one: the `geist` package registers its face as
+    /// `GeistSans`, and the page's mockups set the same face as `Geist
+    /// Sans`. Both spellings name one listed face, counted together, so an
+    /// even split is not a tie between two faces.
+    #[test]
+    fn one_face_under_two_spellings_is_counted_once() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for _ in 0..10 {
+            typeset(&mut d, body, "p", "Copy set in the package face", "GeistSans, \"GeistSans Fallback\"");
+            typeset(&mut d, body, "span", "Mockup copy", "\"Geist Sans\", sans-serif");
+        }
+        for _ in 0..4 {
+            typeset(&mut d, body, "p", "Body copy in another face", "Georgia, serif");
+        }
+        assert_eq!(font_finding(&d).as_deref(), Some("Primary font: geist sans (83% of text)"));
+
+        // A face whose name only starts like a listed one is not that face.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        for _ in 0..20 {
+            typeset(&mut d, body, "p", "Copy", "\"Inter Tight\", sans-serif");
+        }
+        assert_eq!(font_finding(&d), None);
     }
 
     /// walla.co.il: Arial is "40% of text" by element and sets 2% of the

@@ -297,6 +297,9 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "flag-under-positioned-box",
             "flag-icon-label-crosses-clip",
             "flag-icon-label-in-clip-margin",
+            "flag-pre-unwrapped",
+            "flag-typing-at-rest",
+            "flag-label-past-button",
         ],
         &[
             "pass-ripple",
@@ -309,6 +312,17 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "pass-hover-tooltip",
             "pass-corner-badge",
             "pass-icon-label-below-clip",
+            "pass-pre",
+            "pass-pre-scroll",
+            "pass-typing-opening",
+            "pass-label-in-padding",
+            "pass-terminal-code",
+            "pass-excerpt-code",
+            "pass-chip-free-space",
+            "pass-highlighter-free-space",
+            "pass-padded-pre-clipped",
+            "pass-padded-pre-free-space",
+            "pass-pre-beside-clipped-text",
         ],
         "text-overflow",
     );
@@ -365,11 +379,11 @@ fn viewport_edge_at_phone_width() {
     let (page, edges): (Vec<_>, Vec<_>) = edges.into_iter().partition(|(_, sel)| sel == "body");
     assert_cases(
         &edges,
-        &["flag-phone-8", "flag-phone-11"],
-        &["pass-phone-12", "pass-phone-14", "pass-phone-24", "past-wide-item"],
+        &["flag-phone-8", "flag-phone-11", "flag-header-first-screen"],
+        &["pass-phone-12", "pass-phone-14", "pass-phone-24", "past-wide-item", "pass-site-header"],
         "body-text-viewport-edge",
     );
-    assert_eq!(edges.len(), 2, "{edges:?}");
+    assert_eq!(edges.len(), 3, "{edges:?}");
     assert_eq!(page.len(), 1, "{page:?}");
     assert!(
         page[0].0.starts_with("text runs past the right edge of the 390px viewport and is cut off: ul.wide-list reaches 114px past it")

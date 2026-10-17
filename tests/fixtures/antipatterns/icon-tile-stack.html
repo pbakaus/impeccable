@@ -215,6 +215,14 @@
 
       <div class="case">
         <div class="icon-tint">
+          <span>&#128221;</span>
+        </div>
+        <h3>Emoji In A Span</h3>
+        <p>The tile's one child is a span holding only an emoji.</p>
+      </div>
+
+      <div class="case">
+        <div class="icon-tint">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2855bd" stroke-width="1.5">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
@@ -310,6 +318,24 @@
         <div class="img-huge"></div>
         <h3>Huge Hero Image</h3>
         <p>The container is larger than the size cap.</p>
+      </div>
+
+      <!-- h: a tinted tile whose child span holds a word, not an emoji -->
+      <div class="case">
+        <div class="icon-tint">
+          <span>AI</span>
+        </div>
+        <h3>Word In A Span</h3>
+        <p>Two letters in a tile are a monogram, not an icon.</p>
+      </div>
+
+      <!-- i: a tinted tile whose only child is an emoji span that is hidden -->
+      <div class="case">
+        <div class="icon-tint">
+          <span hidden>&#128221;</span>
+        </div>
+        <h3>Hidden Emoji In A Span</h3>
+        <p>The emoji is never painted, so the tile holds no icon.</p>
       </div>
 
       <!-- g: a tile before the heading's wrapper, but far above the heading -->

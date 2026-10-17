@@ -299,8 +299,9 @@ fn label_collectors_climb_and_scale() {
             "Ring Tile",
             "Framer Card Heading",
             "Contents Wrapped Tile",
+            "Emoji In A Span",
         ],
-        &["Far From The Tile", "Sarah Chen", "Inline Side By Side"],
+        &["Far From The Tile", "Sarah Chen", "Inline Side By Side", "Word In A Span", "Hidden Emoji In A Span"],
     );
 
     let Some(findings) = scan("kicker-above-heading.html") else {
@@ -325,7 +326,7 @@ fn label_collectors_climb_and_scale() {
     assert_marks(
         &findings,
         "numbered-section-labels",
-        &["Alpha ships first", "Instant deployment", "Omega grows larger"],
-        &["Nu sits too close in size", "Epsilon reads large"],
+        &["Alpha ships first", "Instant deployment", "Omega grows larger", "Xi connects", "Omicron remembers"],
+        &["Nu sits too close in size", "Epsilon reads large", "Lambda sits in a card", "Pi keeps its card", "Rho sits in a linked card", "Sigma sits in a drawn wrapper", "Tau ranks first", "Upsilon ranks second"],
     );
 }
