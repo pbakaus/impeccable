@@ -59,6 +59,7 @@ pub struct StaticDocument {
     accent_dash: HashSet<NodeId>,
     pseudo_surface: HashMap<NodeId, Rgba>,
     pseudo_picture: HashSet<NodeId>,
+    pseudo_overlay: HashSet<NodeId>,
     selector_cache: RefCell<HashMap<String, Result<Selector, SelectorError>>>,
     unsupported_selectors: RefCell<Vec<String>>,
     /// Elements some applied declaration gave a border radius.
@@ -190,6 +191,7 @@ impl StaticDocument {
             accent_dash: HashSet::new(),
             pseudo_surface: HashMap::new(),
             pseudo_picture: HashSet::new(),
+            pseudo_overlay: HashSet::new(),
             selector_cache: RefCell::new(HashMap::new()),
             unsupported_selectors: RefCell::new(Vec::new()),
             radius_declared: HashSet::new(),
@@ -373,6 +375,16 @@ impl StaticDocument {
     /// paints a raster image: a hero photo drawn by a pseudo-element.
     pub fn set_pseudo_picture(&mut self, node: NodeId) {
         self.pseudo_picture.insert(node);
+    }
+    /// Mark a node whose `::before` or `::after` is stretched over it and
+    /// paints anything at all (a translucent fill, a gradient), even one too
+    /// faint or too varied to be read as a surface. The sampled-contrast
+    /// walk stops at such a node.
+    pub fn set_pseudo_overlay(&mut self, node: NodeId) {
+        self.pseudo_overlay.insert(node);
+    }
+    pub fn has_pseudo_overlay(&self, node: NodeId) -> bool {
+        self.pseudo_overlay.contains(&node)
     }
     pub fn has_pseudo_picture(&self, node: NodeId) -> bool {
         self.pseudo_picture.contains(&node)

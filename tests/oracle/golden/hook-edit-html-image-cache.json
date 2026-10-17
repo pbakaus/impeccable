@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[impeccable@1] Design hook scanned src/hero.html. No deterministic design-quality issues found. That does not mean the design is good: keep following the project design system and the impeccable skill guidance.\"}}",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "\n<WS>/src/hero.html\n  [low-contrast] sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 samples, median 1.1:1\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n1 anti-pattern found.\n",
+      "exit": 2,
+      "signal": null
+    },
+    {
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[impeccable@1] Design hook findings requiring review in src/hero.html (1 issue(s)):\\n- [low-contrast] Low contrast text. Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\\n\\nTriage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:\\n- Real design problem: fix it. Keep intentional design as designed.\\n- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `<HOOK_ADMIN_CMD> ignore-value <rule> \\\"<value>\\\" --reason \\\"<who decided: evidence>\\\"` with the pair shown on the finding line, or value \\\"*\\\" plus `--file <path>` when the line shows none. Write \\\"user confirmed\\\" in a reason only when the user did.\\n- Unsure: leave it as is and ask the user in one line.\\nSelf-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: /impeccable hooks.\"}}",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/hero.html\":{\"editCount\":1,\"findings\":[\"low-contrast:0:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample\"]}},\"footerShown\":true}}}"
+  }
+}

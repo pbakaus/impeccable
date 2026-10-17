@@ -12,4 +12,4 @@ pub mod tokenizer;
 
 pub use ast::{Important, Node};
 pub use generator::generate;
-pub use parser::{parse_stylesheet, ParseError};
+pub use parser::{parse_stylesheet, parse_value, ParseError};
