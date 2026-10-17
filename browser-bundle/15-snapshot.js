@@ -42,7 +42,7 @@ const __SNAP_STYLE_PROPS = [
   "paddingTop", "perspective", "pointerEvents", "position", "right", "rotate",
   "scale", "textAlign",
   "textDecoration", "textDecorationLine", "textIndent", "textOverflow",
-  "textShadow", "textTransform", "top", "transform", "transitionDuration",
+  "textShadow", "textTransform", "textWrap", "textWrapStyle", "top", "transform", "transitionDuration",
   "transitionProperty", "transitionTimingFunction", "translate", "unicodeBidi",
   "verticalAlign",
   "visibility", "webkitBackgroundClip", "webkitClipPath", "webkitHyphens",

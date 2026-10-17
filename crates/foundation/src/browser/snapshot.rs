@@ -174,6 +174,8 @@ pub const STYLE_PROPS: &[&str] = &[
     "textOverflow",
     "textShadow",
     "textTransform",
+    "textWrap",
+    "textWrapStyle",
     "top",
     "transform",
     "transitionDuration",

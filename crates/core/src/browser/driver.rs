@@ -2619,6 +2619,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_icon_tile_dom(dom, el)));
         findings.extend(hits(ec::check_element_italic_serif_dom(dom, el)));
         findings.extend(hits(q::check_element_quality_dom(dom, el, config)));
+        findings.extend(hits(super::line_breaks::check_element_line_breaks_dom(dom, el)));
         findings.extend(hits(ec::check_element_oversized_h1_dom(dom, el)));
         findings.extend(hits(ec::check_element_clipped_overflow_dom(dom, el)));
         findings.extend(hits(ec::check_element_gpt_border_shadow_dom(dom, el)));

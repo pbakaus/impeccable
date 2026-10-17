@@ -264,6 +264,18 @@
     "description": "In a column this narrow, justifying without hyphenation stretches the word spaces until vertical rivers of white run down the block. Use text-align: left, widen the measure, or enable hyphens: auto if you must justify. Scripts that justify on a character grid or by elongating glyphs, such as CJK, Thai and Arabic, are not affected and are not reported."
   },
   {
+    "id": "straggler",
+    "name": "Straggler",
+    "category": "quality",
+    "description": "The last line of this paragraph holds one word, which leaves a hole under the block. Set text-wrap: pretty on body copy (Chrome, Safari) to pull a word down beside it. Where a browser ignores it, edit the last sentence or bind the last two words with a no-break space. Keep it if the break is intended."
+  },
+  {
+    "id": "unbalanced-heading",
+    "name": "Unbalanced heading",
+    "category": "quality",
+    "description": "This heading wraps with its last line far shorter than the line above, often one word alone. Set text-wrap: balance on headings so the lines come out near even, or rewrite it to fit. Keep it if the break carries weight on purpose."
+  },
+  {
     "id": "tiny-text",
     "name": "Tiny body text",
     "category": "quality",

@@ -697,7 +697,7 @@ fn rendered_line_widths(dom: &dyn Dom, el: ElId) -> Option<Vec<f64>> {
     )
 }
 
-static COMBINING_OR_FORMAT_RE: Lazy<Regex> =
+pub(crate) static COMBINING_OR_FORMAT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"[\p{M}\p{Cf}]").expect("COMBINING_OR_FORMAT_RE"));
 
 /// The running count of [`rendered_text_len`], fed one text node at a time.
@@ -845,7 +845,7 @@ const REPLACED_TAGS: [&str; 11] =
     ["img", "svg", "video", "canvas", "iframe", "object", "embed", "input", "select", "textarea", "button"];
 
 /// An atomic inline box: a replaced element or an `inline-*` display.
-fn is_atomic_inline(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn is_atomic_inline(dom: &dyn Dom, el: ElId) -> bool {
     REPLACED_TAGS.contains(&tag_lower(dom, el).as_str())
         || js::to_lower_case(&dom.style(el, "display")).trim().starts_with("inline-")
 }
@@ -907,7 +907,7 @@ fn feed_rendered_text(dom: &dyn Dom, el: ElId, out: &mut RenderedTextCount) {
 /// (a `pre-wrap` span inside a normal paragraph keeps its spaces, which are
 /// on the line), and combining marks and format characters (zero-width
 /// joiners, soft hyphens) are left out.
-fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
+pub(crate) fn rendered_text_len(dom: &dyn Dom, el: ElId) -> usize {
     let mut count = RenderedTextCount::default();
     feed_rendered_text(dom, el, &mut count);
     count.total()

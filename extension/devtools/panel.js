@@ -246,6 +246,8 @@ const FIX_SKILLS = {
   'tight-leading':           'typeset',
   'skipped-heading':         'audit, harden',
   'justified-text':          'typeset',
+  'straggler':               'typeset',
+  'unbalanced-heading':      'typeset',
   'tiny-text':               'typeset',
   'all-caps-body':           'typeset',
   'wide-tracking':           'typeset',

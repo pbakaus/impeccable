@@ -471,6 +471,26 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         skill_guideline: None,
     },
     Antipattern {
+        id: "straggler",
+        category: "quality",
+        scopes: Some(&["type"]),
+        severity: Some("advisory"),
+        name: "Straggler",
+        description: "The last line of this paragraph holds one word, which leaves a hole under the block. Set text-wrap: pretty on body copy (Chrome, Safari) to pull a word down beside it. Where a browser ignores it, edit the last sentence or bind the last two words with a no-break space. Keep it if the break is intended.",
+        skill_section: None,
+        skill_guideline: None,
+    },
+    Antipattern {
+        id: "unbalanced-heading",
+        category: "quality",
+        scopes: Some(&["type"]),
+        severity: Some("advisory"),
+        name: "Unbalanced heading",
+        description: "This heading wraps with its last line far shorter than the line above, often one word alone. Set text-wrap: balance on headings so the lines come out near even, or rewrite it to fit. Keep it if the break carries weight on purpose.",
+        skill_section: None,
+        skill_guideline: None,
+    },
+    Antipattern {
         id: "tiny-text",
         category: "quality",
         scopes: Some(&["type"]),
@@ -819,7 +839,7 @@ mod tests {
 
     #[test]
     fn registry_shape() {
-        assert_eq!(ANTIPATTERNS.len(), 59);
+        assert_eq!(ANTIPATTERNS.len(), 61);
         assert_eq!(ANTIPATTERNS[0].id, "side-tab");
         assert_eq!(rule_scopes(), vec!["type", "layout"]);
         assert!(is_advisory_rule("em-dash-overuse"));

@@ -141,9 +141,11 @@ pub const PAINT_GATED_TEXT_RULES: &[&str] = &[
     "justified-text",
     "line-length",
     "low-contrast",
+    "straggler",
     "text-overflow",
     "tight-leading",
     "tiny-text",
+    "unbalanced-heading",
     "undersized-ui-text",
     "wide-tracking",
 ];
