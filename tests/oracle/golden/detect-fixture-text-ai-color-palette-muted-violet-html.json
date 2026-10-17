@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/ai-color-palette-muted-violet.html\n  [ai-color-palette] Purple/violet text (#7c3aed) on heading\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. A gradient in one of those hues is the tell on its own; flat neon ink on a dark ground is charged once a second tell hue joins it. Choose a distinctive, intentional palette.\n  [ai-color-palette] Purple/violet text (#7a6699) on heading\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. A gradient in one of those hues is the tell on its own; flat neon ink on a dark ground is charged once a second tell hue joins it. Choose a distinctive, intentional palette.\n  [ai-color-palette] Purple/violet accent colors detected\n    → Purple/violet gradients and cyan-on-dark are the most recognizable tells of AI-generated UIs. A gradient in one of those hues is the tell on its own; flat neon ink on a dark ground is charged once a second tell hue joins it. Choose a distinctive, intentional palette.\n\n3 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

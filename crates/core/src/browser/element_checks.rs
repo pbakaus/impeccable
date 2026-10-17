@@ -2917,6 +2917,7 @@ fn ai_palette_gradient_hit(
     let mut bridge = 0usize;
     let mut tell: Option<TellHue> = None;
     let mut purple = false;
+    let mut painted_stops: Vec<Rgba> = Vec::new();
     for c in &stops {
         // A stop DESIGN.md declares was picked; it is not the default
         // palette and takes no part in the count.
@@ -2930,6 +2931,7 @@ fn ai_palette_gradient_hit(
             continue;
         }
         painted += 1;
+        painted_stops.push(*c);
         if let Some(band) = TellHue::of(c) {
             in_band += 1;
             purple |= band == TellHue::Purple;
@@ -2941,6 +2943,9 @@ fn ai_palette_gradient_hit(
         }
     }
     let tell = tell?;
+    if is_fade_strip_on_own_fill(dom, el, &rect, &stops, &painted_stops) {
+        return None;
+    }
     // One stop grazing a band edge inside an otherwise warm or brand ramp is
     // that ramp's accident, not a violet-to-cyan palette.
     if in_band * 2 < painted {
@@ -2962,6 +2967,37 @@ fn ai_palette_gradient_hit(
             format!("{} gradient background", tell.label()),
         ),
     ))
+}
+
+/// Whether a gradient only fades the box's own fill in at an edge: every
+/// stop that paints colour is the box's opaque `background-color`, and that
+/// colour shows at half or more of the points sampled over the box.
+/// librairielorguaise.fr's network bar is `rgb(0, 53, 74)` with
+/// `linear-gradient(to top, white 0px, rgb(0, 53, 74) 7px)`: a 7px light
+/// edge on a 37px flat fill, read as a flat bar. A ramp that runs the box
+/// from white to the fill colour shows the fill at its far end only and
+/// still reports. Where the gradient cannot be sampled the stops decide, as
+/// before.
+fn is_fade_strip_on_own_fill(dom: &dyn Dom, el: ElId, rect: &Rect, stops: &[Rgba], painted: &[Rgba]) -> bool {
+    let near = |a: &Rgba, b: &Rgba| {
+        (a.r - b.r).abs() < RAMP_MIN_CHANNEL_DELTA
+            && (a.g - b.g).abs() < RAMP_MIN_CHANNEL_DELTA
+            && (a.b - b.b).abs() < RAMP_MIN_CHANNEL_DELTA
+    };
+    let Some(fill) = parse_any_color(Some(&dom.style(el, "backgroundColor"))) else {
+        return false;
+    };
+    if fill.alpha_or_one() < 1.0 || painted.is_empty() || stops.iter().any(|c| c.alpha_or_one() < 1.0) {
+        return false;
+    }
+    if !painted.iter().all(|c| near(c, &fill)) {
+        return false;
+    }
+    let UnderText::Paint(samples) = own_gradient_under(dom, el, rect) else {
+        return false;
+    };
+    let on_fill = samples.iter().filter(|c| c.alpha_or_one() >= 1.0 && near(c, &fill)).count();
+    !samples.is_empty() && on_fill * 2 >= samples.len()
 }
 
 /// The neon-text half: a run of glyphs the element paints itself, in band,
@@ -6980,6 +7016,41 @@ mod tests {
         let hits = palette_hits(&d, overlay);
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!(hits[0].snippet, "Purple/violet gradient background");
+    }
+
+    /// observations-1004 row 24 (librairielorguaise.fr 10046523): a 7px
+    /// light edge faded into a 37px bar's own flat fill is a flat bar. A
+    /// ramp that runs the box to the fill colour, a fade in another colour
+    /// and the same fade with no fill under it keep reporting.
+    #[test]
+    fn ai_palette_gradient_skips_a_fade_strip_on_its_own_fill() {
+        let (mut d, body) = page();
+        let bar = |d: &mut FakeDom, gradient: &str, fill: &str| {
+            let el = gradient_surface(d, body, gradient);
+            d.set_rect(el, 0.0, 0.0, 1280.0, 37.0);
+            d.set_styles(
+                el,
+                &[
+                    ("backgroundColor", fill),
+                    ("background", &format!("{fill} {gradient} repeat scroll 0% 0% / auto padding-box border-box")),
+                ],
+            );
+            el
+        };
+        let strip = "linear-gradient(to top, rgb(255, 255, 255) 0px, rgb(0, 53, 74) 7px)";
+        let teal = "rgb(0, 53, 74)";
+        let launchbar = bar(&mut d, strip, teal);
+        assert!(palette_hits(&d, launchbar).is_empty(), "a fade strip on its own fill");
+        // The same stops over the whole bar: a ramp from white to teal.
+        let ramp = bar(&mut d, "linear-gradient(to top, rgb(255, 255, 255) 0%, rgb(0, 53, 74) 100%)", teal);
+        assert_eq!(palette_hits(&d, ramp).len(), 1, "a ramp the box runs");
+        // A fill the gradient does not fade into.
+        let other = bar(&mut d, strip, "rgb(20, 20, 20)");
+        assert_eq!(palette_hits(&d, other).len(), 1, "another fill");
+        // No fill under it: the gradient is the surface.
+        let bare = gradient_surface(&mut d, body, strip);
+        d.set_rect(bare, 0.0, 0.0, 1280.0, 37.0);
+        assert_eq!(palette_hits(&d, bare).len(), 1, "no fill");
     }
 
     #[test]

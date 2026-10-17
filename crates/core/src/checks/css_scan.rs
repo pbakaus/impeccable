@@ -11,7 +11,7 @@ use crate::color::{
     color_to_hex, has_chroma, parse_any_color, relative_luminance, split_top_level_commas, Rgba,
 };
 
-use crate::js::{self, ci, math_min, number_to_string, parse_float, WS, WS_CHARS};
+use crate::js::{self, ci, math_max, math_min, number_to_string, parse_float, WS, WS_CHARS};
 
 use crate::js_ext_a::{
     advance_utf16, is_word_byte, last_index_of_byte, split_commas_outside_parens, split_ws,
@@ -2886,6 +2886,20 @@ re!(
     format!(r"{B}(?:w|h|size)-(?:1|1\.5|2|2\.5|3|3\.5|4){B}")
 );
 
+/// The longest side of a pulsing dot over its shortest.
+const PULSE_DOT_MAX_ASPECT: f64 = 1.5;
+
+/// The px size an unprefixed Tailwind spacing class (`w-2`, `h-1.5`) gives
+/// one side, at Tailwind's 4px step; `None` when the class names none.
+fn tw_side_px(cls: &str, side: &str) -> Option<f64> {
+    cls.split_ascii_whitespace().find_map(|token| {
+        let n = token.strip_prefix(side)?.strip_prefix('-')?;
+        (!n.is_empty() && n.bytes().all(|b| b.is_ascii_digit() || b == b'.'))
+            .then(|| parse_float(n) * 4.0)
+            .filter(|px| px.is_finite())
+    })
+}
+
 /// JS: checks.mjs#scanCssTextForPulsingDot. `markup` defaults to `content`.
 pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec<PatternFinding> {
     let markup = markup.unwrap_or(content);
@@ -2946,6 +2960,11 @@ pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec
         if w < 2.0 || h < 2.0 || w > 16.0 || h > 16.0 {
             continue;
         }
+        // A dot is about as wide as it is tall: a 3 by 6px bar with rounded
+        // ends (a waveform's bar) is not one, however round its radius.
+        if math_max(w, h) > PULSE_DOT_MAX_ASPECT * math_min(w, h) {
+            continue;
+        }
         let radius = resolve_var_refs(
             decls.get("border-radius").map(|s| s.as_str()).unwrap_or(""),
             &custom_props,
@@ -2994,6 +3013,16 @@ pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec
         }
         if !TW_TINY_SIZE_RE.is_match(cls) {
             continue;
+        }
+        // With both sides named, the dot gates of the declaration path
+        // apply: `w-1 h-4` is a 4 by 16px bar, not a dot.
+        if let (Some(w), Some(h)) = (tw_side_px(cls, "w"), tw_side_px(cls, "h")) {
+            if w < 2.0 || h < 2.0 || w > 16.0 || h > 16.0 {
+                continue;
+            }
+            if math_max(w, h) > PULSE_DOT_MAX_ASPECT * math_min(w, h) {
+                continue;
+            }
         }
         let key = format!("tw:{}", cls);
         if seen.contains(&key) {
@@ -3121,7 +3150,12 @@ mod tests {
     fn enclosing_selector_matches_node() {
         let cases: &[(&str, usize, Option<&str>)] = &[
             (".a { color: red }", 8, Some(".a")),
-            ("@media (x) { .b { c: d } }", 20, None),
+            // The first rule inside an at-rule block follows its brace
+            // (observations-1004 row 25: incredible.one's bounce rule).
+            ("@media (x) { .b { c: d } }", 20, Some(".b")),
+            ("@supports (x) { @media (y) {.b{c:d}} }", 32, Some(".b")),
+            ("@keyframes k { from { c: d } }", 22, None),
+            ("@keyframes k { 50% { c: d } }", 22, None),
             ("@media (x) { .b { c: d } }", 12, None),
             ("50% { c: d }", 6, None),
             ("from, to { c: d }", 12, None),
@@ -3133,6 +3167,16 @@ mod tests {
             ("<style>.q{r}", 10, None),
             (".a{b}.c{d}", 8, Some(".c")),
             (".a { b }", 0, None),
+            // Review of #1042: a nested style rule has no selector of its
+            // own (CSS nesting), whether it follows the parent's brace, a
+            // declaration, or an at-rule nested in the parent.
+            (".card { & > .s { c: d } }", 18, None),
+            (".card { c: d; .s { c: d } }", 21, None),
+            (".card { @media (x) { & .s { c: d } } }", 31, None),
+            ("@media (x) { .a{b} .c { d } }", 25, Some(".c")),
+            // A quoted or escaped brace opens no block.
+            (".q::before { content: \"{\"; } .gone { c: d }", 40, Some(".gone")),
+            (".q::before { content: '\\{'; } .gone { c: d }", 40, Some(".gone")),
         ];
         for (text, idx, want) in cases {
             assert_eq!(
@@ -3258,6 +3302,76 @@ mod tests {
         let m =
             collect_pulse_keyframes("@keyframes n {50%{transform: translateY(2px) scale(1.2)}}");
         assert_eq!(m.entries(), &[("n".to_string(), true)]);
+    }
+
+    /// observations-1004 row 25: keyframes that move their box 4px or more,
+    /// or change its height alone, are not a pulse, however they fade.
+    #[test]
+    fn pulse_keyframes_that_move_or_resize_are_not_pulses() {
+        let pulses = |css: &str| collect_pulse_keyframes(css).entries()[0].1;
+        // imageto3d.studio's library-node-float.
+        assert!(!pulses(
+            "@keyframes f { 0% { opacity: 0.35; transform: none; } 50% { opacity: 0.55; transform: translateY(-14px); } 100% { opacity: 0.35; transform: none; } }"
+        ));
+        assert!(!pulses("@keyframes f { 0%, 100% { opacity: .4; translate: 0 0 } 50% { opacity: 1; translate: 0 -8px } }"));
+        assert!(!pulses("@keyframes f { 0% { opacity: 1; transform: translate3d(0, 0, 0) } 50% { opacity: .5; transform: translate3d(0, 0.5rem, 0) } }"));
+        // juskoe's wavePulse.
+        assert!(!pulses(
+            "@keyframes w { 0% { opacity: 0.4; height: 4px; } 50% { opacity: 1; height: 16px; } 100% { opacity: 0.4; height: 4px; } }"
+        ));
+        // Review of round 11: real pulses that must stay pulses.
+        // A centred ring, its translation spelled two ways.
+        assert!(pulses(
+            "@keyframes r { 0% { transform: translate(-50%,-50%) scale(1); opacity: 1 } 100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0 } }"
+        ));
+        // A GPU layer hint against no translation.
+        assert!(pulses("@keyframes g { 0%,100% { transform: translateZ(0) scale(1) } 50% { transform: scale(1.4); opacity: .4 } }"));
+        // A ripple that grows both sides.
+        assert!(pulses("@keyframes p { 0% { width: 10px; height: 10px; opacity: 1 } 100% { width: 30px; height: 30px; opacity: 0 } }"));
+        // An online dot that breathes a pixel, and a typing indicator's 2px bob.
+        assert!(pulses("@keyframes b { 0%,100% { opacity: 1; transform: translateY(0) } 50% { opacity: .5; transform: translateY(-1px) } }"));
+        assert!(pulses("@keyframes ty { 0%,60%,100% { opacity: .35; transform: none } 30% { opacity: 1; transform: translateY(-2px) } }"));
+        // A percentage that changes cannot be read, and decides nothing.
+        assert!(pulses("@keyframes q { 0% { transform: translate(-50%, -50%); opacity: 1 } 100% { transform: translate(-50%, -60%); opacity: 0 } }"));
+        // Review of #1042: a percentage on one axis leaves the other read,
+        // so a centred float travels on y; a percentage that matches on
+        // both steps reads the px beside it.
+        assert!(!pulses("@keyframes c { 0%,100% { opacity: .4; transform: translate(-50%, 0) } 50% { opacity: 1; transform: translate(-50%, -14px) } }"));
+        assert!(!pulses("@keyframes c2 { 0%,100% { opacity: .4; transform: translate(-50%, -50%) } 50% { opacity: 1; transform: translate(-50%, -50%) translateY(-12px) } }"));
+        // A nested call cuts the arguments short: they decide nothing.
+        assert!(pulses("@keyframes c4 { 0%,100% { opacity: .4; transform: translate(calc(0px), 8px) } 50% { opacity: 1; transform: translate(0px, 8px) } }"));
+        assert!(pulses("@keyframes c3 { 0%,100% { opacity: .4; transform: translate(calc(-50% + 2px), 0) } 50% { opacity: 1; transform: translateX(-50%) } }"));
+        // One height, or one step that translates, decides nothing.
+        assert!(pulses("@keyframes h { 0%, 100% { opacity: .4; height: 8px } 50% { opacity: 1 } }"));
+        assert!(pulses("@keyframes s { 0% { opacity: 1 } 50% { opacity: .5; transform: translateY(6px) } }"));
+        // Review of #1042, second round: two spellings of one height are one
+        // size, and a matrix step's translation is unknown, not zero.
+        assert!(pulses("@keyframes e { 0%,100% { opacity: .4; height: 8px; width: 8px } 50% { opacity: 1; height: 8.0px; width: 8px } }"));
+        assert!(pulses("@keyframes m { 0%,100% { opacity: .4; transform: translateY(8px) } 50% { opacity: 1; transform: matrix(1, 0, 0, 1, 0, 8) } }"));
+    }
+
+    /// observations-1004 row 25 (juskoe 10047255): a pulsing box twice as
+    /// tall as it is wide is a bar, not a dot.
+    #[test]
+    fn a_pulsing_bar_is_not_a_dot() {
+        let dots = |w: &str, h: &str| {
+            scan_css_text_for_pulsing_dot(
+                &format!(".d{{width:{w};height:{h};border-radius:9999px;animation:blip 1s infinite}} @keyframes blip{{50%{{opacity:.3}}}}"),
+                None,
+            )
+            .len()
+        };
+        assert_eq!(dots("8px", "8px"), 1);
+        assert_eq!(dots("6px", "9px"), 1, "1.5 to 1");
+        assert_eq!(dots("3px", "6px"), 0, "a waveform bar");
+        assert_eq!(dots("12px", "4px"), 0, "a pill");
+        // Review of #1042: the utility-class form reads both sides too.
+        let tw = |cls: &str| scan_css_text_for_pulsing_dot("", Some(&format!("<span class=\"{cls}\"></span>"))).len();
+        assert_eq!(tw("animate-pulse w-2 h-2 rounded-full"), 1);
+        assert_eq!(tw("animate-ping size-2 rounded-full"), 1);
+        assert_eq!(tw("animate-pulse w-2 h-3 rounded-full"), 1, "1.5 to 1");
+        assert_eq!(tw("animate-pulse w-1 h-4 rounded-full"), 0, "a 4 by 16px bar");
+        assert_eq!(tw("animate-pulse w-1 h-12 rounded-full"), 0, "a tall bar");
     }
 
     #[test]

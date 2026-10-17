@@ -363,6 +363,32 @@ fn is_in_control(el: &StaticElement<'_>) -> bool {
     }
     false
 }
+/// Whether `el` is drawn as a button by its class, as the browser engine
+/// reads it: a class token `btn` or one ending in `-btn` / `_btn`, on the
+/// text's own box or a box around it holding no more text than one
+/// control, at most three boxes up, and the text is not fine print.
+fn is_button_label(el: &StaticElement<'_>) -> bool {
+    let names_button = |cls: &str| {
+        cls.split_ascii_whitespace().any(|token| {
+            let t = js::to_lower_case(token);
+            t == "btn" || t.ends_with("-btn") || t.ends_with("_btn")
+        })
+    };
+    let mut cur = Some(*el);
+    for _ in 0..3 {
+        let Some(c) = cur else { return false };
+        if !(c.contains(el) && el.contains(&c))
+            && utf16_len(js::trim(&collapse_ws(&c.text_content()))) > FOCUSABLE_CONTROL_MAX_CHARS
+        {
+            return false;
+        }
+        if c.get_attribute("class").is_some_and(|cls| names_button(cls)) {
+            return !crate::text_context::is_fine_print(el);
+        }
+        cur = c.parent_element();
+    }
+    false
+}
 const FURNITURE_ELEMENTS: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer";
 /// Class markers of page furniture. As in the browser engine, they are not
 /// read off `html`, which holds a page's script state flags
@@ -634,8 +660,16 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 // line-height: 1.3 exactly is never flagged for hitting the floor
                 // (46.8 / 36 is 1.2999999999999998 in binary floats).
                 let shown = js::math_round(ratio * 100.0) / 100.0;
+                // Preformatted monospace text is drawn line by line (box
+                // art, a code sample), as the browser engine reads it. This
+                // cascade carries no `white-space`, so a `pre` stands for it,
+                // monospace by the browser's default unless a face is set.
+                let family = sv(style, "fontFamily");
+                let is_code_run = el.closest("pre").is_some()
+                    && (family.is_empty() || impeccable_core::checks::text_rules::is_monospace_family(family));
                 if ratio > 0.0
                     && shown < 1.3
+                    && !is_code_run
                     && !is_non_rendered_text(el, tag, Some(style))
                     && !is_visually_hidden(el, style)
                     && !is_heading_text(el)
@@ -699,7 +733,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
             "caption",
             "figcaption",
         ];
-        let in_ui_context = el.closest(TINY_TEXT_UI_CONTEXT).is_some();
+        let in_ui_context = el.closest(TINY_TEXT_UI_CONTEXT).is_some() || is_button_label(el);
         let is_uppercase = sv_opt(style, "textTransform") == Some("uppercase");
         if !skip_tags.contains(&tag)
             && !in_ui_context
@@ -746,8 +780,9 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     UI_TEXT_FLOOR_PX
                 };
                 // A 0.1px tolerance under each floor, as the browser engine.
+                let drawn_as_button = is_button_label(el);
                 if is_under_ui_text_floor(font_size, floor)
-                    && (is_interactive || is_furniture || dt_len <= 20)
+                    && (is_interactive || is_furniture || drawn_as_button || dt_len <= 20)
                 {
                     let excerpt = slice_utf16_prefix(&direct_text, 40);
                     // A label with no reading job (taste call r5-p3) and

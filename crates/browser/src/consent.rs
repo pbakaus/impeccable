@@ -52,6 +52,12 @@
 //! screen). A site's own banner with generic classes (moe.gov.sa's
 //! `div.cookie-consent`, an Alpine.js dialog) stays: nothing in its markup
 //! tells it apart from any other dialog the site wrote.
+//!
+//! Run 1004 added Enzuzo on smartbi.ca: `div#ez-cookie-notification`
+//! (`enzuzo-cookiebanner-container`, `z-index` 2147483647) over the hero on
+//! both widths, its preference modal `div#enzuzo-modal-wrap`, and
+//! `ez-body-lock` on `<body>`, served by `app.enzuzo.com`'s
+//! `__enzuzo-cookiebar.js`.
 
 use serde_json::{json, Value};
 
@@ -248,6 +254,16 @@ pub const CONSENT_MANAGERS: &[ConsentManager] = &[
         backdrops: &[],
         html_lock_classes: &[],
         body_lock_classes: &[],
+        aria_hidden_marks: &[],
+    },
+    ConsentManager {
+        name: "Enzuzo",
+        // The banner and the preference modal, by the ids Enzuzo's cookie
+        // bar script gives them; it locks scrolling with a class on `<body>`.
+        roots: &["#ez-cookie-notification", "#enzuzo-modal-wrap"],
+        backdrops: &[],
+        html_lock_classes: &[],
+        body_lock_classes: &["ez-body-lock"],
         aria_hidden_marks: &[],
     },
     ConsentManager {
@@ -728,7 +744,7 @@ mod tests {
         for name in [
             "OneTrust", "Cookiebot", "Usercentrics", "TrustArc", "Didomi", "Quantcast Choice", "Sourcepoint",
             "Osano", "CookieYes", "Complianz", "iubenda", "Termly", "Axeptio", "Borlabs Cookie", "Klaro",
-            "Cookie Notice", "Shopify", "consentmanager", "Tealium", "Transcend",
+            "Cookie Notice", "Shopify", "consentmanager", "Tealium", "Transcend", "Enzuzo",
         ] {
             assert!(CONSENT_MANAGERS.iter().any(|m| m.name == name), "{name}");
         }

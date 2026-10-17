@@ -814,6 +814,10 @@ pub fn is_declared_purple(c: &Rgba) -> bool {
     (250.0..=320.0).contains(&hue)
 }
 
+/// The HSL saturation large non-heading text needs before its violet counts
+/// as the purple-text tell.
+const PURPLE_LARGE_TEXT_MIN_SATURATION: f64 = 0.3;
+
 /// JS: checks.mjs#checkColors
 pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
     let tag = opts.tag.as_str();
@@ -842,7 +846,13 @@ pub fn check_colors(opts: &ColorOpts) -> Vec<RuleHit> {
 
         if has_chroma(Some(&text_color), Some(50.0)) {
             let hue = get_hue(Some(&text_color));
-            if hue >= 260.0 && hue <= 310.0 && (is_heading_123(tag) || opts.font_size >= 20.0) {
+            // Large type that is not a heading reports only when it reads as
+            // purple: a muted lavender-gray subtitle (v0-memorial's
+            // `#7a6699`, HSL saturation 0.2) measures violet and reads as
+            // neutral secondary text.
+            let large_and_saturated = opts.font_size >= 20.0
+                && lightness_saturation(&text_color).1 >= PURPLE_LARGE_TEXT_MIN_SATURATION;
+            if hue >= 260.0 && hue <= 310.0 && (is_heading_123(tag) || large_and_saturated) {
                 findings.push(RuleHit::new(
                     "ai-color-palette",
                     format!(
@@ -3189,6 +3199,36 @@ mod tests {
             glyph.iter().all(|h| h.id != "low-contrast" && h.id != "gray-on-color"),
             "{glyph:?}"
         );
+    }
+
+    /// observations-1004 row 24 (v0-memorial 10046886): a 20px subtitle in
+    /// a muted lavender gray (`#7a6699`, HSL saturation 0.2) is neutral
+    /// text. A saturated violet at that size, and the muted one on an h2,
+    /// keep the purple-text finding.
+    #[test]
+    fn purple_text_on_large_copy_needs_saturation() {
+        let purple = |tag: &str, ink: Rgba| {
+            check_colors(&ColorOpts {
+                tag: tag.to_string(),
+                text_color: Some(ink),
+                effective_bg: Some(Rgba::new(255.0, 255.0, 255.0, 1.0)),
+                visible_text: Some(ink),
+                font_size: 20.0,
+                font_weight: 400.0,
+                has_direct_text: true,
+                bg_clip: Some("border-box".to_string()),
+                bg_image: Some("none".to_string()),
+                ..Default::default()
+            })
+            .into_iter()
+            .filter(|h| h.id == "ai-color-palette")
+            .count()
+        };
+        let muted = Rgba::new(122.0, 102.0, 153.0, 1.0);
+        let violet = Rgba::new(124.0, 58.0, 237.0, 1.0);
+        assert_eq!(purple("p", muted), 0, "muted lavender subtitle");
+        assert_eq!(purple("p", violet), 1, "violet-600 subtitle");
+        assert_eq!(purple("h2", muted), 1, "a heading keeps its reading");
     }
 
     #[test]

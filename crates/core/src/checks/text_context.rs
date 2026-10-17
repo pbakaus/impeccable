@@ -523,6 +523,10 @@ const DOT_SKIP_TAGS: &[&str] = &["a", "button", "input", "li", "svg", "img"];
 /// A title-bar dot's side, in px.
 const DOT_MIN_PX: f64 = 5.0;
 const DOT_MAX_PX: f64 = 16.0;
+/// The shortest first child that reads as a title bar, in px, and the
+/// shortest one that does when it carries a trio of dots.
+const TITLE_BAR_MIN_PX: f64 = 12.0;
+const TITLE_BAR_MIN_DOTS_PX: f64 = 8.0;
 /// The tallest first child that still reads as a title bar, in px.
 const TITLE_BAR_MAX_PX: f64 = 72.0;
 
@@ -628,7 +632,15 @@ fn title_bar<N: ContextNode>(c: &N) -> Option<N> {
     if let (Some(b), Some(w)) = (bar.rect(), c.rect()) {
         let spans = b.2 >= w.2 * 0.6;
         let at_top = (b.1 - w.1).abs() <= 24.0;
-        let is_bar = (12.0..=TITLE_BAR_MAX_PX).contains(&b.3) && w.3 >= b.3 * 2.0;
+        // A bar that carries traffic lights needs only to hold them: a phone
+        // layout shrinks smartbi.ca's 21px bar to 11px around 8px dots. A
+        // bar read by its caption needs room for a line of text.
+        let floor = if b.3 < TITLE_BAR_MIN_PX && find_dot_trio(&bar).is_some() {
+            TITLE_BAR_MIN_DOTS_PX
+        } else {
+            TITLE_BAR_MIN_PX
+        };
+        let is_bar = (floor..=TITLE_BAR_MAX_PX).contains(&b.3) && w.3 >= b.3 * 2.0;
         if !(spans && at_top && is_bar && w.2 >= FRAME_MIN_WIDTH_PX) {
             return None;
         }
@@ -1608,6 +1620,41 @@ mod tests {
         assert!(!in_framed_demo(&tab));
         let role = pane.add("div").attr("role", "tab").add("span").text("Codex").font(10.5);
         assert!(!in_framed_demo(&role));
+    }
+
+    /// observations-1004 row 15 (smartbi.ca 10047914): the phone layout
+    /// shrinks the title bar to 11px around 8px dots. A bar that short is a
+    /// title bar only by its dots; a caption needs the old 12px.
+    #[test]
+    fn a_short_title_bar_is_read_by_its_dots() {
+        let short_window = |bar_h: f64, dot_side: f64| {
+            let (_t, body) = Tree::new();
+            let win = body.add("div").rect(0.0, 0.0, 330.0, 239.0);
+            let bar = win.add("div").rect(0.0, 0.0, 310.0, bar_h);
+            let lights = bar.add("div").rect(0.0, 0.0, 34.0, bar_h);
+            for i in 0..3 {
+                lights
+                    .add("span")
+                    .rect(13.0 * i as f64, 1.5, dot_side, dot_side)
+                    .style("borderRadius", "9999px")
+                    .style("backgroundColor", "rgb(238, 58, 58)");
+            }
+            let label = win.add("div").rect(0.0, 20.0, 330.0, 219.0).add("span").text("-4.2%").font(10.0);
+            in_framed_demo(&label)
+        };
+        assert!(short_window(11.0, 8.0), "an 11px bar holding 8px dots");
+        assert!(short_window(8.0, 6.0), "the floor");
+        assert!(!short_window(7.0, 6.0), "under the floor");
+        // A caption in a bar that short is not read as a title bar.
+        let (_t, body) = Tree::new();
+        let frame = body
+            .add("div")
+            .rect(0.0, 0.0, 600.0, 400.0)
+            .style("borderRadius", "12px")
+            .style("boxShadow", "rgba(0, 0, 0, 0.2) 0px 8px 24px");
+        frame.add("div").rect(0.0, 0.0, 600.0, 11.0).add("span").text("Live preview");
+        let label = frame.add("div").rect(0.0, 11.0, 600.0, 389.0).add("span").text("Draft saved");
+        assert!(!in_framed_demo(&label), "an 11px caption bar");
     }
 
     #[test]

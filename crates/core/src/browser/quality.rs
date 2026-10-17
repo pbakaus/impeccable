@@ -107,6 +107,38 @@ fn is_in_control(dom: &dyn Dom, el: ElId) -> bool {
     }
     false
 }
+/// Whether a class token names a button: `btn` itself, or a name ending in
+/// `-btn`, `__btn` or `_btn` (`features-demo__btn`). A wrapper that holds
+/// buttons (`btn-group`, `hero-btns`) does not.
+fn class_names_button(class: &str) -> bool {
+    class.split_ascii_whitespace().any(|token| {
+        let t = js::to_lower_case(token);
+        t == "btn" || t.ends_with("-btn") || t.ends_with("_btn")
+    })
+}
+
+/// How many boxes up, the text's own box included, a button class is read.
+const BUTTON_BOX_LEVELS: usize = 3;
+
+/// Whether `el` is drawn as a button by its class: the class is on the
+/// text's own box, or on a box around it holding no more text than one
+/// control does ([`FOCUSABLE_CONTROL_MAX_CHARS`]). smartbi.ca's
+/// `span.features-demo__btn` is a pill with no role. A section that holds a
+/// button and its copy is not one.
+fn is_button_box(dom: &dyn Dom, el: ElId) -> bool {
+    let mut cur = Some(el);
+    for _ in 0..BUTTON_BOX_LEVELS {
+        let Some(c) = cur else { return false };
+        if c != el && utf16_len(js::trim(&collapse_ws(&dom.text_content(c)))) > FOCUSABLE_CONTROL_MAX_CHARS {
+            return false;
+        }
+        if dom.attr(c, "class").is_some_and(|cls| class_names_button(&cls)) {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
 const FURNITURE_ELEMENTS: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer";
 const FURNITURE_CLASSES: &str = "[class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
 
@@ -2156,7 +2188,22 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     let lines = text_line_count(bottom - text_rect.top, lh, font_size);
                     is_bold_title_leading(weight, Some(lines), clamped)
                 };
+                // Preformatted monospace text is drawn line by line, not
+                // set as prose: box-drawing art in a `<pre>` (`┌───┐`)
+                // needs its rows to touch, and a code sample keeps the
+                // leading its editor gives it. The run has to sit in a
+                // `pre`, `code` or `samp`, or draw with box characters: a
+                // chat transcript set in a monospace face at `pre-wrap` is
+                // prose, and `pre-line` keeps no spaces to align.
+                let is_code_run = || {
+                    let ws = st("whiteSpace");
+                    crate::checks::text_rules::is_monospace_family(&st("fontFamily"))
+                        && ((ws.starts_with("pre") && ws != "pre-line") || ws == "break-spaces")
+                        && (closest_or_none(dom, el, "pre, code, samp").is_some()
+                            || direct_text(dom, el).chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)))
+                };
                 if wraps
+                    && !is_code_run()
                     && !is_non_rendered_text(dom, el, tag)
                     && !is_visually_hidden(dom, el)
                     && !is_heading_text(dom, el)
@@ -2202,7 +2249,12 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
     // terminal mock), which is code whatever its class names.
     if has_direct_text && text_len > 20 && font_size < 12.0 {
         let skip_tags = ["sub", "sup", "code", "kbd", "samp", "var", "caption", "figcaption"];
-        let in_ui_context = closest_or_none(dom, el, TINY_TEXT_UI_CONTEXT).is_some();
+        // A label drawn as a button is UI, unless it is fine print, which
+        // stays tiny-text's advisory (r5-p27).
+        let button_label = || {
+            is_button_box(dom, el) && !*fine_print.get_or_init(|| super::text_context::is_fine_print_dom(dom, el))
+        };
+        let in_ui_context = closest_or_none(dom, el, TINY_TEXT_UI_CONTEXT).is_some() || button_label();
         let is_uppercase = st("textTransform") == "uppercase"
             || typed_caps_label(dom, el, q.line_height_px, true);
         let is_code_run = crate::checks::text_rules::is_monospace_family(&st("fontFamily"))
@@ -2258,8 +2310,15 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                 // Fluid type a hair under the floor (10.9688px against 11px)
                 // is not smaller text to a reader: the floor keeps a 0.1px
                 // tolerance under each value.
+                // A box whose class names a button (smartbi.ca's
+                // `span.features-demo__btn`, no role) is drawn as one, so its
+                // label is functional text at any length, and tiny-text
+                // leaves it to this rule. Fine print is not a label: it
+                // stays tiny-text's advisory (r5-p27).
+                let drawn_as_button = is_button_box(dom, el)
+                    && !*fine_print.get_or_init(|| super::text_context::is_fine_print_dom(dom, el));
                 if is_under_ui_text_floor(font_size, floor)
-                    && (is_interactive || is_furniture || dt_len <= 20)
+                    && (is_interactive || is_furniture || drawn_as_button || dt_len <= 20)
                 {
                     let excerpt = slice_utf16_prefix(&dt, 40);
                     // A label with no reading job (taste call r5-p3) and
@@ -5837,6 +5896,98 @@ mod tests {
         assert!(is_non_rendered_text(&d, s, "script"));
         d.set_style(s, "visibility", "collapse");
         assert!(is_non_rendered_text(&d, s, "span"));
+    }
+
+    /// observations-1004 row 14 (smartbi.ca 10048026): a 10px label in a
+    /// box whose class names a button is functional text, not body copy,
+    /// at any length. Review of round 11: the class is read as a token on
+    /// the text's box or a control-sized box around it, so a wrapper of
+    /// buttons and copy (`hero-btns`) changes nothing, and fine print stays
+    /// tiny-text's advisory (r5-p27).
+    #[test]
+    fn button_class_labels_are_functional_text() {
+        let found = |d: &FakeDom, el: ElId| -> Vec<String> {
+            check_element_quality_dom(d, el, &BrowserConfig::default())
+                .into_iter()
+                .filter(|h| h.id == "tiny-text" || h.id == "undersized-ui-text")
+                .map(|h| format!("{}{}: {}", h.id, if h.is_advisory() { " (advisory)" } else { "" }, h.snippet))
+                .collect()
+        };
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let label = text_el(&mut d, body, "span", "View the full analysis", "10px");
+        d.set_rect(label, 40.0, 100.0, 140.0, 14.0);
+        assert_eq!(found(&d, label), vec!["tiny-text: 10px body text"], "no class: body text");
+        d.set_attr(label, "class", "features-demo__btn features-demo__btn--p");
+        assert_eq!(
+            found(&d, label),
+            vec!["undersized-ui-text: 10px functional text \"View the full analysis\" (below 11px floor)"]
+        );
+        // The class on a control-sized box around the text counts too.
+        let pill = d.add(Some(body), "div");
+        d.set_attr(pill, "class", "btn");
+        let inner = text_el(&mut d, pill, "span", "Download the full report", "10px");
+        d.set_rect(inner, 40.0, 200.0, 140.0, 14.0);
+        assert_eq!(found(&d, inner).len(), 1);
+        assert!(found(&d, inner)[0].starts_with("undersized-ui-text"));
+
+        // A wrapper that holds buttons and copy names no button.
+        let hero = d.add(Some(body), "div");
+        d.set_attr(hero, "class", "hero-btns btn-group");
+        let note = text_el(&mut d, hero, "p", "Free for individual developers working on open source projects, with fair use limits.", "10px");
+        d.set_rect(note, 40.0, 300.0, 400.0, 14.0);
+        assert_eq!(found(&d, note), vec!["tiny-text: 10px body text"], "wrapper prose");
+        // Fine print in a button box stays tiny-text's advisory.
+        let cta = d.add(Some(body), "div");
+        d.set_attr(cta, "class", "cta-btn");
+        let legal = text_el(&mut d, cta, "small", "*Offer valid for new customers only.", "9px");
+        d.set_rect(legal, 40.0, 400.0, 300.0, 12.0);
+        let got = found(&d, legal);
+        assert_eq!(got, vec!["tiny-text (advisory): 9px body text"], "fine print in a button box");
+    }
+
+    /// observations-1004 row 22 (v0-saa-s-landing-page 10047450): box art
+    /// in a monospace `pre` is drawn line by line, and its rows touch on
+    /// purpose. Prose in a proportional face, or with its white space
+    /// collapsed, keeps the finding.
+    #[test]
+    fn tight_leading_skips_preformatted_monospace_runs() {
+        const ART: &str = "  ┌───┐  │ ◉ │  └─┬─┘    │    a box drawn in characters that runs long";
+        let leading = |d: &FakeDom, el: ElId| -> usize {
+            check_element_quality_dom(d, el, &BrowserConfig::default())
+                .into_iter()
+                .filter(|h| h.id == "tight-leading")
+                .count()
+        };
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let pre = text_el(&mut d, body, "pre", ART, "12px");
+        d.set_style(pre, "lineHeight", "15px");
+        d.set_rect(pre, 40.0, 100.0, 240.0, 75.0);
+        d.el_mut(pre).direct_text_rect = Some(Rect::from_xywh(40.0, 100.0, 240.0, 75.0));
+        assert_eq!(leading(&d, pre), 1, "no face recorded: as before");
+        d.set_styles(pre, &[("fontFamily", "ui-monospace, monospace"), ("whiteSpace", "pre")]);
+        assert_eq!(leading(&d, pre), 0, "box art in a monospace pre");
+        d.set_style(pre, "whiteSpace", "normal");
+        assert_eq!(leading(&d, pre), 1, "white space collapsed: set as prose");
+        d.set_styles(pre, &[("fontFamily", "Inter, sans-serif"), ("whiteSpace", "pre-wrap")]);
+        assert_eq!(leading(&d, pre), 1, "a proportional face");
+        // Review of round 11: a chat message in a monospace face at
+        // pre-wrap, outside any pre or code, is prose.
+        let msg = text_el(&mut d, body, "div", "Thanks, that worked. Could you also check why the second deploy failed last night?", "12px");
+        d.set_styles(msg, &[("lineHeight", "15px"), ("fontFamily", "ui-monospace, monospace"), ("whiteSpace", "pre-wrap")]);
+        d.set_rect(msg, 40.0, 300.0, 240.0, 75.0);
+        d.el_mut(msg).direct_text_rect = Some(Rect::from_xywh(40.0, 300.0, 240.0, 75.0));
+        assert_eq!(leading(&d, msg), 1, "a monospace chat message");
+        // The same run in a pre stays out; at pre-line it is prose again.
+        d.set_styles(pre, &[("fontFamily", "ui-monospace, monospace"), ("whiteSpace", "pre-line")]);
+        d.add_selector(pre, "pre, code, samp");
+        assert_eq!(leading(&d, pre), 1, "pre-line");
+        d.set_style(pre, "whiteSpace", "pre");
+        assert_eq!(leading(&d, pre), 0, "box art in a pre, by its ancestor too");
+        // break-spaces keeps its spaces as pre-wrap does.
+        d.set_style(pre, "whiteSpace", "break-spaces");
+        assert_eq!(leading(&d, pre), 0, "box art at break-spaces");
     }
 }
 

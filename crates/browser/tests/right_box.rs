@@ -179,7 +179,7 @@ fn table_cells_are_not_cards() {
     let Some(engine) = engine() else { return };
     let port = serve();
     let found = findings(&engine, port, "edge-flush-cards-table.html", "edge-flush-cards");
-    assert_cases(&found, &["flag-card-rail"], &["pass-data-table", "table"], "edge-flush-cards");
+    assert_cases(&found, &["flag-card-rail"], &["pass-data-table", "table", "pass-inset-rail"], "edge-flush-cards");
 }
 
 #[test]

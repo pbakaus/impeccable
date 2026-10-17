@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bounce-easing unread custom property fixture</title>
+<!--
+  observations-1004 row 25 (incredible.one): an overshooting curve that is
+  only the value of a custom property no var() reads moves nothing. The
+  unread curve is declared first, so the stylesheet form reads past it to a
+  curve a rule uses. The static engine resolves no var(), so there only the
+  curve written into a transition reports.
+-->
+<style>
+  :root { --ease-spring-unused: cubic-bezier(.34, 1.56, .64, 1); --ease-pop: cubic-bezier(.2, 1.4, .4, 1); }
+  body { font-family: system-ui, sans-serif; font-size: 16px; }
+  .col { display: inline-block; width: 480px; vertical-align: top; }
+  .pop-badge { display: inline-block; padding: 4px 8px; transition: transform 300ms var(--ease-pop); }
+  .spring-card { padding: 12px; transition: transform 300ms cubic-bezier(.2, 1.4, .4, 1); }
+  .calm-badge { display: inline-block; padding: 4px 8px; transition: transform 300ms ease-out; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <h3>A badge that springs on a curve a rule reads</h3>
+  <div class="pop-badge">New</div>
+  <h3>A card that springs on a curve written into its transition</h3>
+  <div class="spring-card">Pro plan</div>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <h3>A spring curve defined and never read</h3>
+  <div class="calm-badge">Saved</div>
+</div>
+</body>
+</html>

@@ -10,16 +10,21 @@
 
   Should flag: the same boxes as cards in a rail.
 
+  Both scrollers paint a surface of their own, so the edge the cards touch
+  is drawn: an unpainted scroller inset in the page's gutter shows its first
+  card with the gutter around it (observations-1004 row 28).
+
   The static engine measures no scroll widths; edge-flush-cards never
   reports there.
 -->
 <style>
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #ffffff; margin: 24px; }
-  table { display: block; overflow-x: auto; width: 342px; margin: 0 0 32px; border-collapse: collapse; }
+  table { display: block; overflow-x: auto; width: 342px; margin: 0 0 32px; border-collapse: collapse; background: #fafafa; }
   th, td { min-width: 200px; height: 48px; padding: 8px 12px; border: 1px solid #d4d4d8; text-align: left; }
   th { background: #f4f4f5; }
-  .rail { display: flex; overflow-x: auto; width: 342px; margin: 0 0 32px; }
+  .rail { display: flex; overflow-x: auto; width: 342px; margin: 0 0 32px; background: #fafafa; }
+  .rail.pass-inset-rail { background: none; }
   .rail article { flex: 0 0 200px; height: 96px; padding: 8px 12px; border: 1px solid #d4d4d8; background: #f4f4f5; }
 </style>
 </head>
@@ -36,6 +41,14 @@
 </table>
 
 <div class="rail flag-card-rail">
+  <article>Planner</article>
+  <article>Reviewer</article>
+  <article>Runner</article>
+  <article>Reporter</article>
+</div>
+
+<!-- Should pass: the same rail painting nothing, 24px inside the viewport. -->
+<div class="rail pass-inset-rail">
   <article>Planner</article>
   <article>Reviewer</article>
   <article>Runner</article>

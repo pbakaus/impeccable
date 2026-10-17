@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pulsing-dot floats and bars fixture</title>
+<!--
+  observations-1004 row 25: keyframes that move their box (imageto3d.studio's
+  floating grid node) or change its height (juskoe's waveform bar) are not a
+  pulse, and a box twice as tall as it is wide is not a dot. Travel under
+  4px, a translation every step repeats however it is spaced, a zero
+  translation and a ripple that grows both sides still pulse (review of
+  round 11), and so does a typing indicator's 2px bob.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; }
+  .col { display: inline-block; width: 480px; vertical-align: top; position: relative; }
+
+  /* FLAG: a centred ring, the same translation at every step. */
+  .ring-dot { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: ring-pulse 2s ease-out infinite; }
+  @keyframes ring-pulse {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; }
+  }
+
+  /* FLAG: a centred ping, its translation spelled two ways. */
+  .ping-dot { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; animation: ping-mixed 2s infinite; }
+  @keyframes ping-mixed {
+    0% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+  }
+
+  /* FLAG: a GPU layer hint against no translation. */
+  .gpu-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: gpu-pulse 1.6s infinite; }
+  @keyframes gpu-pulse {
+    0%, 100% { transform: translateZ(0) scale(1); }
+    50% { transform: scale(1.4); opacity: 0.4; }
+  }
+
+  /* FLAG: a ripple that grows both sides. */
+  .ripple-dot { width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; animation: ripple-size 2s infinite; }
+  @keyframes ripple-size {
+    0% { width: 10px; height: 10px; opacity: 1; }
+    100% { width: 30px; height: 30px; opacity: 0; }
+  }
+
+  /* FLAG: an online dot that breathes a pixel. */
+  .breathe-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: breathe 2s infinite; }
+  @keyframes breathe {
+    0%, 100% { opacity: 1; transform: translateY(0); }
+    50% { opacity: 0.5; transform: translateY(-1px); }
+  }
+
+  /* FLAG: a typing indicator dot that bobs 2px. */
+  .typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #b0b4bf; animation: ty 1.2s ease-in-out infinite; }
+  @keyframes ty {
+    0%, 60%, 100% { opacity: 0.35; transform: none; }
+    30% { opacity: 1; transform: translateY(-2px); }
+  }
+
+  /* PASS: a node that floats as it fades. */
+  .float-node { width: 4px; height: 4px; border-radius: 50%; background: #94a3b8; animation: node-float 8s ease-in-out infinite; }
+  @keyframes node-float {
+    0% { opacity: 0.35; transform: none; }
+    50% { opacity: 0.55; transform: translateY(-14px); }
+    100% { opacity: 0.35; transform: none; }
+  }
+
+  /* PASS: a waveform bar that grows as it brightens. */
+  .wave-bar { display: inline-block; width: 3px; height: 6px; border-radius: 2px; background: #2e2d2d; animation: wave 0.8s ease-in-out infinite; }
+  @keyframes wave {
+    0% { opacity: 0.4; height: 4px; }
+    50% { opacity: 1; height: 16px; }
+    100% { opacity: 0.4; height: 4px; }
+  }
+
+  /* PASS: a bar on a plain opacity pulse is still not a dot. */
+  .blink-bar { display: inline-block; width: 3px; height: 8px; border-radius: 999px; background: #2e2d2d; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <h3>A centred ring pulse</h3>
+  <div style="position: relative; width: 40px; height: 40px;"><span class="ring-dot"></span></div>
+  <h3>A ping with mixed spacing</h3>
+  <div style="position: relative; width: 40px; height: 40px;"><span class="ping-dot"></span></div>
+  <h3>A layer hint, a ripple, a breathing dot</h3>
+  <span class="gpu-dot"></span> <span class="ripple-dot"></span> <span class="breathe-dot"></span>
+  <h3>A typing indicator</h3>
+  <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <h3>A floating node</h3>
+  <span class="float-node"></span>
+  <h3>Waveform bars</h3>
+  <span class="wave-bar"></span><span class="blink-bar"></span>
+</div>
+</body>
+</html>

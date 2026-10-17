@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>tight-leading preformatted fixture</title>
+<!--
+  observations-1004 row 22: box art in a monospace pre is drawn line by line,
+  and its rows touch on purpose (v0-saa-s-landing-page's region cards). Text
+  in a pre set in a proportional face is set as prose and keeps the floor.
+  Explicit pixel sizes and widths: the static engine does no layout.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; }
+  .col { display: inline-block; width: 480px; vertical-align: top; }
+  .prose-pre { width: 240px; font-family: Inter, sans-serif; font-size: 12px; line-height: 15px; white-space: pre-wrap; margin: 0; }
+  .box-art { width: 240px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 15px; white-space: pre; margin: 0; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <h3>Prose in a pre set in a proportional face</h3>
+  <pre class="prose-pre">A paragraph that a builder put in a pre to keep its line breaks, set in a proportional face at 1.25 and read as prose.</pre>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <h3>Box art in a monospace pre</h3>
+  <pre class="box-art">
+  ┌───┐  region node drawn with box characters
+  │ ◉ │  that has to touch from row to row
+  └─┬─┘
+    │
+</pre>
+</div>
+</body>
+</html>

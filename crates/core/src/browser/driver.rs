@@ -1185,6 +1185,49 @@ struct PatternItem {
     matches: Option<Vec<ElId>>,
 }
 
+/// Whether a pattern finding stands on the live page: `None` when its
+/// selector resolves to nothing, only to waived elements, only to elements
+/// nobody sees, or (for a style-text stripe) to no card rounded away from
+/// it; otherwise the elements its selector resolves to (`None` inside when
+/// it names no selector).
+fn pattern_finding_stands(
+    dom: &dyn Dom,
+    f: &crate::checks::css_scan::PatternFinding,
+) -> Option<Option<Vec<ElId>>> {
+    let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) else {
+        return Some(None);
+    };
+    let matches = selector_nodes_for_live_dom(dom, selector)?;
+    if matches.is_empty() {
+        return None;
+    }
+    if !matches.iter().any(|el| !scoped_ignore_active(dom, *el, &f.id)) {
+        return None;
+    }
+    // A motion, glow or dot declared for elements a visitor never
+    // sees (a loader at `display: none`, a progress bar inside a
+    // transparent wrapper, the rail of a stepper not drawn at this
+    // width) is not on the page.
+    if !super::painted::page_form_painted(dom, &f.id, &matches) {
+        return None;
+    }
+    // A stripe on any edge from the style-text scans reports only
+    // on a card rounded away from it, read off the elements it paints.
+    if let Some(side) = crate::checks::css_scan::side_stripe_index(f) {
+        let rounded = matches.iter().any(|&el| {
+            let corners = crate::checks::measures::parse_radius_corners(
+                Some(&dom.style(el, "borderRadius")),
+                dom.rect(el).width,
+            );
+            crate::checks::rules::is_rounded_away_from_side(corners.as_ref(), side)
+        });
+        if !rounded {
+            return None;
+        }
+    }
+    Some(Some(matches))
+}
+
 /// [`scoped_html_pattern_findings`] keeping each finding's selector and the
 /// elements it resolves to, plus the style corpus the pass read.
 fn html_pattern_items(
@@ -1200,8 +1243,13 @@ fn html_pattern_items(
         corpora.style_text.push('\n');
         corpora.style_text.push_str(&linked_css);
     }
-    let all =
-        crate::checks::html_patterns::check_html_patterns_with(&html, Some(&corpora), context);
+    // A rule that reports one candidate reports the first that stands here.
+    let all = crate::checks::html_patterns::check_html_patterns_picking(
+        &html,
+        Some(&corpora),
+        context,
+        &|f| pattern_finding_stands(dom, f).is_some(),
+    );
     let mut out = Vec::new();
     // Computed lazily: the accent check below is the only caller and it is
     // rare, so an unrelated page never pays for the sweep.
@@ -1220,40 +1268,9 @@ fn html_pattern_items(
                 continue;
             }
         }
-        let mut resolved: Option<Vec<ElId>> = None;
-        if let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) {
-            let Some(matches) = selector_nodes_for_live_dom(dom, selector) else {
-                continue;
-            };
-            if matches.is_empty() {
-                continue;
-            }
-            if !matches.iter().any(|el| !scoped_ignore_active(dom, *el, &f.id)) {
-                continue;
-            }
-            // A motion, glow or dot declared for elements a visitor never
-            // sees (a loader at `display: none`, a progress bar inside a
-            // transparent wrapper, the rail of a stepper not drawn at this
-            // width) is not on the page.
-            if !super::painted::page_form_painted(dom, &f.id, &matches) {
-                continue;
-            }
-            // A stripe on any edge from the style-text scans reports only
-            // on a card rounded away from it, read off the elements it paints.
-            if let Some(side) = crate::checks::css_scan::side_stripe_index(&f) {
-                let rounded = matches.iter().any(|&el| {
-                    let corners = crate::checks::measures::parse_radius_corners(
-                        Some(&dom.style(el, "borderRadius")),
-                        dom.rect(el).width,
-                    );
-                    crate::checks::rules::is_rounded_away_from_side(corners.as_ref(), side)
-                });
-                if !rounded {
-                    continue;
-                }
-            }
-            resolved = Some(matches);
-        }
+        let Some(resolved) = pattern_finding_stands(dom, &f) else {
+            continue;
+        };
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());
         if let Some(sev) = f.severity.as_ref().filter(|s| !s.is_empty()) {
             item.severity = Some(sev.clone());
@@ -2911,6 +2928,42 @@ mod tests {
             vec!["bounce-easing", "dark-glow", "organic-clip-path", "pulsing-dot", "repeating-stripes-gradient"]
         );
         assert_eq!(run(true), vec!["organic-clip-path"]);
+    }
+
+    /// Review of #1042: a rule that reports its first candidate reports the
+    /// first one the page shows. A stripe or glow declared inside an
+    /// `@media` block for an element that is not on the page does not hide
+    /// a later one that is painted.
+    #[test]
+    fn a_first_candidate_the_page_does_not_show_hides_nothing() {
+        let run = |later: bool| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.set_rect(html, 0.0, 0.0, 1280.0, 2000.0);
+            d.set_rect(body, 0.0, 0.0, 1280.0, 2000.0);
+            d.el_mut(html).scroll_width = 1280.0;
+            for (selector, y) in [(".stripes", 100.0), (".bar", 200.0)] {
+                let el = d.add(Some(body), "div");
+                d.add_selector(el, selector);
+                d.set_rect(el, 0.0, y, 200.0, 40.0);
+            }
+            let tail = if later {
+                ".stripes{background:repeating-linear-gradient(45deg,#000 0 2px,#fff 2px 4px)}\
+.bar{box-shadow:0 0 16px rgba(26, 58, 214, 0.8)}"
+            } else {
+                ""
+            };
+            d.html_for_patterns = format!(
+                "<html><head><style>\
+@media (min-width: 1024px) {{ .gone {{ background: repeating-linear-gradient(45deg,#000 0 2px,#fff 2px 4px); box-shadow: 0 0 16px rgba(26, 58, 214, 0.8) }} }}\
+{tail}</style></head><body><div class=\"stripes\"></div><div class=\"bar\"></div></body></html>"
+            );
+            let mut ids: Vec<String> = scoped_html_pattern_findings(&d).into_iter().map(|f| f.type_).collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(run(true), vec!["dark-glow", "repeating-stripes-gradient"]);
+        assert!(run(false).is_empty());
     }
 
     /// te.eg: `#5c2d91` section headings under a `#5c2d91` nav bar. The
