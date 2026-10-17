@@ -13,3 +13,5 @@ built binary at `bin/impeccable[.exe]` (executable), and publishes it under
 `optionalDependencies` must equal `ENGINE_VERSION`.
 
 Targets: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `windows-x64`.
+
+`windows-arm64` is prepared for the next engine and npm releases.

@@ -1,0 +1,17 @@
+{
+  "name": "@impeccable/cli-windows-arm64",
+  "version": "0.0.0-engine",
+  "description": "impeccable engine binary for windows-arm64. Installed as an optional dependency of the impeccable npm package; do not depend on it directly.",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://impeccable.style",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pbakaus/impeccable.git"
+  },
+  "os": ["win32"],
+  "cpu": ["arm64"],
+  "files": ["bin/", "LICENSE"],
+  "bin": {
+    "impeccable-windows-arm64": "bin/impeccable.exe"
+  }
+}

@@ -45,6 +45,7 @@ const ASSET_PATH = `/engine-v${VERSION}/${ASSET}`;
 // download is observable end to end.
 const PAYLOAD = Buffer.from('#!/bin/sh\necho "fake-engine $*"\n');
 const DIGEST = createHash('sha256').update(PAYLOAD).digest('hex');
+const posixOnly = { skip: process.platform === 'win32' ? 'fake engine is a POSIX shell script' : false };
 
 /** What the server answers for `<asset>.sha256` on the next request. */
 let sidecar = { status: 200, body: `${DIGEST}  ${ASSET}\n` };
@@ -135,8 +136,8 @@ function cacheEntries(home) {
   return out;
 }
 
-describe('npm shim download verification', { skip: process.platform === 'win32' ? 'posix only' : false }, () => {
-  it('caches and runs a download whose sidecar matches', async () => {
+describe('npm shim download verification', () => {
+  it('caches and runs a download whose sidecar matches', posixOnly, async () => {
     sidecar = { status: 200, body: `${DIGEST}  ${ASSET}\n` };
     const res = await runShim(['hello']);
     assert.equal(res.status, 0, res.stderr);
@@ -148,7 +149,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   it('refuses when the sidecar is missing', async () => {
     sidecar = { status: 404, body: '' };
     const res = await runShim();
-    assert.equal(res.status, 127);
+    assert.equal(res.status, 127, res.stderr);
     assert.match(res.stderr, /sidecar unavailable or empty/);
     assert.match(res.stderr, /refusing the unverified download/);
     assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
@@ -158,7 +159,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   it('refuses when the sidecar is empty', async () => {
     sidecar = { status: 200, body: '   \n' };
     const res = await runShim();
-    assert.equal(res.status, 127);
+    assert.equal(res.status, 127, res.stderr);
     assert.match(res.stderr, /sidecar unavailable or empty/);
     assert.match(res.stderr, /refusing the unverified download/);
     assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
@@ -168,7 +169,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   it('refuses when the sidecar hash does not match', async () => {
     sidecar = { status: 200, body: `${'0'.repeat(64)}  ${ASSET}\n` };
     const res = await runShim();
-    assert.equal(res.status, 127);
+    assert.equal(res.status, 127, res.stderr);
     assert.match(res.stderr, /checksum mismatch downloading/);
     assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
     assert.deepEqual(cacheEntries(res.home), []);
@@ -185,7 +186,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     }
   });
 
-  it('prefers IMPECCABLE_BIN and never downloads', async () => {
+  it('prefers IMPECCABLE_BIN and never downloads', posixOnly, async () => {
     sidecar = { status: 404, body: '' };
     const { dir, shim } = stageShim();
     const bin = path.join(dir, 'preinstalled');
@@ -203,7 +204,7 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   // optional dependency installed, the shim never reaches the cache or the
   // download. Those packages ship with every engine release, so a shim run
   // from a tree that has them takes this arm instead.
-  it('prefers an installed platform package and never downloads', async () => {
+  it('prefers an installed platform package and never downloads', posixOnly, async () => {
     sidecar = { status: 404, body: '' };
     const { dir, shim } = stageShim();
     const pkgDir = path.join(dir, 'node_modules', PLATFORM_PKG);

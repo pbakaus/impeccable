@@ -22,6 +22,15 @@ function template(target) {
 }
 
 describe('platform package templates', () => {
+  it('provides a native Windows ARM64 package for the next engine release', () => {
+    const pkg = stampTemplate(template('windows-arm64'), 'windows-arm64', VERSION);
+    assert.equal(pkg.name, '@impeccable/cli-windows-arm64');
+    assert.deepEqual(pkg.os, ['win32']);
+    assert.deepEqual(pkg.cpu, ['arm64']);
+    assert.deepEqual(pkg.bin, { 'impeccable-windows-arm64': 'bin/impeccable.exe' });
+    assert.ok(pkg.files.includes('bin/') && pkg.files.includes('LICENSE'));
+  });
+
   it('every target has a template whose bin points at bin/<binary> and whose name matches', () => {
     for (const target of ENGINE_TARGETS) {
       const stamped = stampTemplate(template(target), target, VERSION);
@@ -40,7 +49,7 @@ describe('platform package templates', () => {
   it('stages package.json, an executable binary, and the LICENSE', () => {
     const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ipp-stage-'));
     try {
-      for (const target of ['linux-x64', 'windows-x64']) {
+      for (const target of ['linux-x64', 'windows-x64', 'windows-arm64']) {
         const dir = stagePackage({
           target,
           version: VERSION,

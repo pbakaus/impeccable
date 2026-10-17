@@ -240,7 +240,7 @@ Two release kinds touch the runtime, in this order:
 
 1. **Engine** (`engine-v<ENGINE_VERSION>`): `bun run release:engine` verifies
    the version, the npm platform-package pins and a clean tree, then tags and
-   pushes; `.github/workflows/release-engine.yml` builds the five targets and
+   pushes; `.github/workflows/release-engine.yml` builds the six targets and
    publishes the binaries with `.sha256` sidecars. The launcher, the npm shim
    and `impeccable install` download from
    `github.com/pbakaus/impeccable/releases/download/engine-v<X>/`.
