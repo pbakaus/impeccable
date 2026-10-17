@@ -394,17 +394,101 @@ const MARGIN_KEYS: [&str; 4] = ["marginTop", "marginRight", "marginBottom", "mar
 /// (`table` > `tbody` > `tr` > `td`).
 const MAX_INSULATE_DEPTH: usize = 4;
 
+const TABLEISH_TAGS: &[&str] = &["TABLE", "TBODY", "THEAD", "TFOOT", "TR", "TD", "TH"];
+
+fn is_transparent_wrapper_static(el: &StaticElement<'_>, style: &StyleValues) -> bool {
+    if has_visible_background_boundary(style, el) {
+        return false;
+    }
+    let tag = js::to_upper_case(&el.tag_lower());
+    if TABLEISH_TAGS.contains(&tag.as_str()) {
+        return false;
+    }
+    // An out-of-flow overlay's padding insets the overlay itself, not the
+    // parent's box, so it can never speak for the parent's edges (the
+    // browser rule rejects these positions too).
+    let pos = js::to_lower_case(js::trim(sv(style, "position")));
+    if matches!(pos.as_str(), "fixed" | "absolute") {
+        return false;
+    }
+    // A scroll/clip container is a boundary of its own: its children may be
+    // clipped, not inset. Only layout can clear those (pass-table-wrap).
+    for key in ["overflow", "overflowX", "overflowY"] {
+        let v = js::to_lower_case(js::trim(sv(style, key)));
+        if matches!(
+            v.as_str(),
+            "scroll" | "auto" | "hidden" | "clip"
+        ) {
+            return false;
+        }
+    }
+    let bw = |k: &str| pf0(sv(style, k));
+    let border_w = [
+        bw("borderTopWidth"),
+        bw("borderRightWidth"),
+        bw("borderBottomWidth"),
+        bw("borderLeftWidth"),
+    ];
+    let bc = |k: &str| {
+        let value = sv(style, k);
+        has_unresolved_var(value) || css_color_is_transparent(Some(value))
+    };
+    if (border_w[0] > 0.0 && !bc("borderTopColor"))
+        || (border_w[1] > 0.0 && !bc("borderRightColor"))
+        || (border_w[2] > 0.0 && !bc("borderBottomColor"))
+        || (border_w[3] > 0.0 && !bc("borderLeftColor"))
+    {
+        return false;
+    }
+    let outline_w = pf0(sv(style, "outlineWidth"));
+    let outline_style_val = sv(style, "outlineStyle");
+    let outline_color_val = sv(style, "outlineColor");
+    let outline_visible = outline_w > 0.0
+        && !has_unresolved_var(outline_color_val)
+        && !css_color_is_transparent(Some(outline_color_val))
+        && !outline_style_val.is_empty()
+        && !has_unresolved_var(outline_style_val)
+        && outline_style_val != "none";
+    if outline_visible {
+        return false;
+    }
+    true
+}
+
 /// Whether `el` keeps the container's text off side `s`.
 ///
 /// An element that holds one element and no text of its own is a pass-through
 /// (`<h3>` around a padded `<button>`, `<a>` around a padded card), so the
 /// question goes to what it wraps: the padding that insets the text often sits
 /// a step or two below the container's own child. Where it holds several
-/// children the question stops, because any one of them can reach the edge on
-/// its own and the padding of another says nothing about it. The browser rule
+/// children the question usually stops, because any one of them can reach the
+/// edge on its own and the padding of another says nothing about it. The one
+/// exception is a transparent page-shell wrapper (issue #963): a single
+/// padding-free block holding several padded sections (`header`/`main`/
+/// `footer`) insets every side at its children, has no boundary of its own,
+/// and renders the same as the sections sitting directly in the coloured
+/// wrapper. There every child must insulate the side. Anything laid out
+/// side by side instead of stacked (flex rows, grids, tables, inline runs,
+/// marquees) still stops the walk: without layout there is no telling which
+/// child reaches a side, so a padded sibling must never clear another
+/// child's flush text. The browser rule
 /// measures where the glyphs land and needs none of this; the static scan has
 /// no layout, so it reads the declarations that would move them.
-fn insulates_side(el: &StaticElement<'_>, s: usize, font_size: Option<f64>, depth: usize) -> bool {
+///
+/// `margins_count` is false for the children of a multi-child transparent
+/// shell on a vertical side: the shell has no padding or border of its own,
+/// so a child's top/bottom margin collapses through it (and through the
+/// padding-free parent the shell sits in) out of the coloured box, inseting
+/// nothing the reader can see. Horizontal margins never collapse and always
+/// count. Single-child pass-throughs keep the caller's flag: their margin
+/// behavior is the pre-#963 rule.
+fn insulates_side(
+    el: &StaticElement<'_>,
+    s: usize,
+    font_size: Option<f64>,
+    depth: usize,
+    margins_count: bool,
+) -> bool {
     const CHILD_INSULATE_THRESHOLD: f64 = 4.0;
     let style = el.style();
     // A side this engine cannot resolve (an unresolved var(), or an em or %
@@ -412,7 +496,7 @@ fn insulates_side(el: &StaticElement<'_>, s: usize, font_size: Option<f64>, dept
     let insulates = |key: &str| {
         side_len(style, key, font_size).is_none_or(|v| v >= CHILD_INSULATE_THRESHOLD)
     };
-    if insulates(PAD_KEYS[s]) || insulates(MARGIN_KEYS[s]) {
+    if insulates(PAD_KEYS[s]) || (margins_count && insulates(MARGIN_KEYS[s])) {
         return true;
     }
     if depth == 0 || el.has_direct_text_longer_than(4) {
@@ -420,8 +504,38 @@ fn insulates_side(el: &StaticElement<'_>, s: usize, font_size: Option<f64>, dept
     }
     let children = el.children();
     match children.as_slice() {
-        [only] => insulates_side(only, s, font_size, depth - 1),
-        _ => false,
+        [only] => insulates_side(only, s, font_size, depth - 1, margins_count),
+        _ => {
+            if children.is_empty() || depth == 0 {
+                return false;
+            }
+            // #963: transparent shell holding several padded sections.
+            if !is_transparent_wrapper_static(el, style) {
+                return false;
+            }
+            // Only stacked block-level content: side-by-side children
+            // (flex rows, grids, inline runs, marquees) may each reach a
+            // different stretch of an edge, so their padding cannot speak
+            // for one another. A column flex stacks like blocks.
+            let display = js::to_lower_case(js::trim(sv(style, "display")));
+            let stacked = match display.as_str() {
+                "" | "block" | "flow-root" => true,
+                "flex" | "inline-flex" => {
+                    let dir = js::to_lower_case(js::trim(sv(style, "flexDirection")));
+                    matches!(dir.as_str(), "column" | "column-reverse")
+                }
+                _ => false,
+            };
+            if !stacked {
+                return false;
+            }
+            // Vertical margins collapse through this transparent shell;
+            // horizontal ones never do.
+            let child_margins = s == 1 || s == 3;
+            children
+                .iter()
+                .all(|c| insulates_side(c, s, font_size, depth - 1, child_margins))
+        }
     }
 }
 
@@ -555,7 +669,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 for s in 0..4 {
                     children_insulate[s] = children
                         .iter()
-                        .any(|c| insulates_side(c, s, font_size, MAX_INSULATE_DEPTH));
+                        .any(|c| insulates_side(c, s, font_size, MAX_INSULATE_DEPTH, true));
                 }
                 let side_names = ["top", "right", "bottom", "left"];
                 let mut flush_sides: Vec<&str> = Vec::new();

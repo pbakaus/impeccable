@@ -101,6 +101,31 @@ fn text_on_the_way_down_stops_the_walk() {
     );
 }
 
+/// Issue #963: a single padding-free wrapper holding several padded sections
+/// insets every side at its children and renders the same as the sections
+/// sitting directly in the coloured wrapper.
+#[test]
+fn transparent_shell_holding_padded_sections_does_not_flag() {
+    let style = "body { margin: 0; background: #eee; }
+         .page { background: #fff; }
+         header, main, footer { padding: 24px 32px; }";
+    let direct = page(
+        style,
+        "<div class=\"page\"><header><a href=\"#\">Home</a></header>\
+         <main><h1>Heading</h1><p>Body text.</p></main>\
+         <footer><p>Footer text.</p></footer></div>",
+    );
+    assert_eq!(scan(&direct), Vec::<String>::new());
+
+    let wrapped = page(
+        style,
+        "<div class=\"page\"><div class=\"inner\"><header><a href=\"#\">Home</a></header>\
+         <main><h1>Heading</h1><p>Body text.</p></main>\
+         <footer><p>Footer text.</p></footer></div></div>",
+    );
+    assert_eq!(scan(&wrapped), Vec::<String>::new());
+}
+
 /// White on an unpainted page is the canvas, not an edge; on a page that asks
 /// for a dark scheme the browser paints a dark canvas and the same card is a
 /// strong edge.
@@ -122,6 +147,45 @@ fn the_canvas_follows_the_colour_scheme() {
     assert_eq!(
         scan(&dark),
         vec!["<div> \"card\": children flush against bg on all sides (no inset)".to_string()]
+    );
+}
+
+/// An absolutely positioned overlay's padding insets the overlay itself, not
+/// the parent's box: it can never speak for the parent's edges. The walk must
+/// stop at it, exactly like the browser rule does.
+#[test]
+fn a_positioned_shell_does_not_clear_the_walk() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .rail { position: absolute; top: 0; left: 0; }
+         .rail p { margin: 0; padding: 24px; }",
+        "<div class=\"page\"><div class=\"rail\"><p>Rail one</p><p>Rail two</p></div></div>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<div> \"page\": children flush against bg on all sides (no inset)".to_string()]
+    );
+}
+
+/// A transparent shell does not stop margin collapse: the first and last
+/// vertical margins of its children collapse through it (and through a
+/// padding-free page) out of the coloured box, so the text touches the edge
+/// even though the declarations say 24px. Only padding (which never
+/// collapses) holds; horizontal margins never collapse either.
+#[test]
+fn margins_collapse_through_a_transparent_shell() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .inner { padding: 0; margin: 0; }
+         .inner p { margin: 24px 0; padding: 0 24px; }",
+        "<div class=\"page\"><div class=\"inner\">\
+         <p>First paragraph of copy.</p><p>Second paragraph of copy.</p></div></div>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<div> \"page\": children flush against bg on top/bottom (no inset)".to_string()]
     );
 }
 

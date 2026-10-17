@@ -315,6 +315,58 @@ fn raster_covers(dom: &dyn Dom, layer: ElId, r: &Rect) -> bool {
         .into_iter()
         .any(|n| paints(n) && covers(n))
 }
+/// A padding-free wrapper with no edge of its own (issue #963): no visible
+/// border, outline or background, no direct text, not a table part, not
+/// positioned, not a scroll/clip container. Its children render where its own
+/// box does, so the flush rule measures the inset at its children instead.
+fn is_transparent_shell_for_flush(dom: &dyn Dom, child: ElId) -> bool {
+    let t = tag_lower(dom, child);
+    if matches!(
+        t.as_str(),
+        "table" | "tbody" | "thead" | "tfoot" | "tr" | "td" | "th"
+    ) {
+        return false;
+    }
+    let pos = dom.style(child, "position");
+    if pos == "fixed" || pos == "absolute" {
+        return false;
+    }
+    for key in ["overflow", "overflowX", "overflowY"] {
+        let v = js::to_lower_case(js::trim(&dom.style(child, key)));
+        if matches!(v.as_str(), "scroll" | "auto" | "hidden" | "clip") {
+            return false;
+        }
+    }
+    let bw = |k: &str| style_px(dom, child, k);
+    if bw("borderTopWidth") > 0.0
+        && !css_color_is_transparent(Some(&dom.style(child, "borderTopColor")))
+        || bw("borderRightWidth") > 0.0
+            && !css_color_is_transparent(Some(&dom.style(child, "borderRightColor")))
+        || bw("borderBottomWidth") > 0.0
+            && !css_color_is_transparent(Some(&dom.style(child, "borderBottomColor")))
+        || bw("borderLeftWidth") > 0.0
+            && !css_color_is_transparent(Some(&dom.style(child, "borderLeftColor")))
+    {
+        return false;
+    }
+    let ow = style_px(dom, child, "outlineWidth");
+    let os = dom.style(child, "outlineStyle");
+    let oc = dom.style(child, "outlineColor");
+    if ow > 0.0
+        && !css_color_is_transparent(Some(&oc))
+        && !os.is_empty()
+        && os != "none"
+    {
+        return false;
+    }
+    if has_visible_background_boundary(dom, child) {
+        return false;
+    }
+    if has_meaningful_direct_text(dom, child) {
+        return false;
+    }
+    !dom.children(child).is_empty()
+}
 
 /// Whether the fill `el` paints lies on a layer painting the same colour: a
 /// sibling laid earlier (so painted under it) that covers it, of `el` or of
@@ -1948,19 +2000,34 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                 const OVERFLOW_TOLERANCE: f64 = 1.0;
                 let mut children_overflow = [false; 4];
                 let mut children_insulate = [false; 4];
+                // #963: a single padding-free wrapper with no edge of its own
+                // renders where its children do. Measure the inset at its
+                // children instead (one level, up to 3 deep for nested shells).
+                // Overflow stays on the direct children: a grandchild box that
+                // moved past the edge still lands its text on the edge, while
+                // a direct child past the edge is clipped, not snug.
+                // Insulation through an unwrapped shell needs every child to
+                // hold its side: stacked siblings must not cancel each
+                // other's flush text (one inset sibling clearing the edge for
+                // another whose text touches it).
+                let mut effective: Vec<ElId> = children.clone();
+                let mut unwrapped = false;
+                for _ in 0..3 {
+                    if effective.len() != 1 {
+                        break;
+                    }
+                    let only = effective[0];
+                    if !is_transparent_shell_for_flush(dom, only) {
+                        break;
+                    }
+                    let inner = dom.children(only);
+                    if inner.is_empty() {
+                        break;
+                    }
+                    effective = inner;
+                    unwrapped = true;
+                }
                 for &child in &children {
-                    let child_pad = [
-                        len(child, "paddingTop"),
-                        len(child, "paddingRight"),
-                        len(child, "paddingBottom"),
-                        len(child, "paddingLeft"),
-                    ];
-                    let child_margin = [
-                        len(child, "marginTop"),
-                        len(child, "marginRight"),
-                        len(child, "marginBottom"),
-                        len(child, "marginLeft"),
-                    ];
                     let cr = dom.rect(child);
                     if cr.width > 0.0 && cr.height > 0.0 {
                         if rect.top - cr.top > OVERFLOW_TOLERANCE {
@@ -1975,23 +2042,69 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                         if rect.left - cr.left > OVERFLOW_TOLERANCE {
                             children_overflow[3] = true;
                         }
+                    }
+                }
+                let mut eff_insulate: Vec<[bool; 4]> = Vec::with_capacity(effective.len());
+                for &child in &effective {
+                    let mut ins = [false; 4];
+                    let child_pad = [
+                        len(child, "paddingTop"),
+                        len(child, "paddingRight"),
+                        len(child, "paddingBottom"),
+                        len(child, "paddingLeft"),
+                    ];
+                    let child_margin = [
+                        len(child, "marginTop"),
+                        len(child, "marginRight"),
+                        len(child, "marginBottom"),
+                        len(child, "marginLeft"),
+                    ];
+                    let cr = dom.rect(child);
+                    if cr.width > 0.0 && cr.height > 0.0 {
                         if cr.top - rect.top >= CHILD_INSULATE_THRESHOLD {
-                            children_insulate[0] = true;
+                            ins[0] = true;
                         }
                         if rect.right - cr.right >= CHILD_INSULATE_THRESHOLD {
-                            children_insulate[1] = true;
+                            ins[1] = true;
                         }
                         if rect.bottom - cr.bottom >= CHILD_INSULATE_THRESHOLD {
-                            children_insulate[2] = true;
+                            ins[2] = true;
                         }
                         if cr.left - rect.left >= CHILD_INSULATE_THRESHOLD {
-                            children_insulate[3] = true;
+                            ins[3] = true;
+                        }
+                    }
+                    // A relatively positioned child can cancel its own
+                    // declared padding with an offset (`padding-left: 24px;
+                    // left: -24px` lands the glyphs on the edge), and an
+                    // out-of-flow child's declarations describe its own box,
+                    // not this one. For those the measured rect above is the
+                    // whole answer; only statically laid out children earn
+                    // clearance from their declarations.
+                    let child_pos = js::to_lower_case(js::trim(&dom.style(child, "position")));
+                    if matches!(child_pos.as_str(), "" | "static") {
+                        for s in 0..4 {
+                            if child_pad[s] >= CHILD_INSULATE_THRESHOLD
+                                || child_margin[s] >= CHILD_INSULATE_THRESHOLD
+                            {
+                                ins[s] = true;
+                            }
                         }
                     }
                     for s in 0..4 {
-                        if child_pad[s] >= CHILD_INSULATE_THRESHOLD
-                            || child_margin[s] >= CHILD_INSULATE_THRESHOLD
-                        {
+                        if ins[s] {
+                            // Direct children keep the historical any-child
+                            // clears; unwrapped shells are resolved below.
+                            if !unwrapped {
+                                children_insulate[s] = true;
+                            }
+                        }
+                    }
+                    eff_insulate.push(ins);
+                }
+                if unwrapped && !eff_insulate.is_empty() {
+                    for s in 0..4 {
+                        if eff_insulate.iter().all(|ins| ins[s]) {
                             children_insulate[s] = true;
                         }
                     }
@@ -3398,6 +3511,162 @@ mod tests {
         assert_eq!(
             hits[0].snippet,
             "<section> \"card-frame\": children flush against border on right/left (no inset)"
+        );
+    }
+
+    /// Stacked siblings behind one transparent shell must not clear each
+    /// other's flush edge: the second paragraph sits below the top edge and
+    /// the first sits above the bottom one, but each paragraph's own text
+    /// still touches its edge.
+    #[test]
+    fn flush_stacked_siblings_behind_a_shell_still_flag() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let row = d.add(Some(body), "div");
+        d.set_attr(row, "class", "stack");
+        d.set_rect(row, 0.0, 0.0, 600.0, 100.0);
+        d.set_styles(
+            row,
+            &[
+                ("position", "static"),
+                ("display", "block"),
+                ("borderTopWidth", "1px"),
+                ("borderRightWidth", "1px"),
+                ("borderBottomWidth", "1px"),
+                ("borderLeftWidth", "1px"),
+                ("borderTopColor", "rgb(200, 200, 200)"),
+                ("borderRightColor", "rgb(200, 200, 200)"),
+                ("borderBottomColor", "rgb(200, 200, 200)"),
+                ("borderLeftColor", "rgb(200, 200, 200)"),
+                ("outlineWidth", "0px"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "0px"),
+                ("fontSize", "16px"),
+            ],
+        );
+        let wrap = d.add(Some(row), "div");
+        d.set_rect(wrap, 0.0, 0.0, 600.0, 100.0);
+        d.set_styles(
+            wrap,
+            &[
+                ("display", "block"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "0px"),
+                ("marginTop", "0px"),
+                ("marginRight", "0px"),
+                ("marginBottom", "0px"),
+                ("marginLeft", "0px"),
+                ("fontSize", "16px"),
+            ],
+        );
+        let zero = [
+            ("paddingTop", "0px"),
+            ("paddingRight", "0px"),
+            ("paddingBottom", "0px"),
+            ("paddingLeft", "0px"),
+            ("marginTop", "0px"),
+            ("marginRight", "0px"),
+            ("marginBottom", "0px"),
+            ("marginLeft", "0px"),
+        ];
+        let p1 = text_el(&mut d, wrap, "p", "First paragraph touches the top edge", "16px");
+        d.set_rect(p1, 0.0, 0.0, 600.0, 50.0);
+        d.set_styles(p1, &zero);
+        d.set_text_rect(p1, 24.0, 1.0, 300.0, 18.0);
+        let p2 = text_el(&mut d, wrap, "p", "Second paragraph touches the bottom edge", "16px");
+        d.set_rect(p2, 0.0, 50.0, 600.0, 50.0);
+        d.set_styles(p2, &zero);
+        d.set_text_rect(p2, 24.0, 81.0, 300.0, 18.0);
+        let hits = check_element_quality_dom(&d, row, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].snippet,
+            "<div> \"stack\": children flush against border on top/bottom (no inset)"
+        );
+    }
+
+    /// A relatively positioned child can cancel its own declared padding with
+    /// an offset: `padding-left: 24px; left: -24px` lands the glyphs on the
+    /// edge the padding claims to hold them off. The measured rect already
+    /// shows where the box went; the declarations of a positioned child say
+    /// nothing about that, so only the rect may clear the side.
+    #[test]
+    fn flush_ignores_padding_a_relative_offset_cancels() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let card = d.add(Some(body), "div");
+        d.set_attr(card, "class", "card");
+        d.set_rect(card, 0.0, 0.0, 600.0, 100.0);
+        d.set_styles(
+            card,
+            &[
+                ("position", "static"),
+                ("display", "block"),
+                ("borderTopWidth", "1px"),
+                ("borderRightWidth", "1px"),
+                ("borderBottomWidth", "1px"),
+                ("borderLeftWidth", "1px"),
+                ("borderTopColor", "rgb(200, 200, 200)"),
+                ("borderRightColor", "rgb(200, 200, 200)"),
+                ("borderBottomColor", "rgb(200, 200, 200)"),
+                ("borderLeftColor", "rgb(200, 200, 200)"),
+                ("outlineWidth", "0px"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "0px"),
+                ("fontSize", "16px"),
+            ],
+        );
+        let shell = d.add(Some(card), "div");
+        d.set_rect(shell, 0.0, 0.0, 600.0, 100.0);
+        d.set_styles(
+            shell,
+            &[
+                ("display", "block"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "0px"),
+                ("marginTop", "0px"),
+                ("marginRight", "0px"),
+                ("marginBottom", "0px"),
+                ("marginLeft", "0px"),
+                ("fontSize", "16px"),
+            ],
+        );
+        let p = text_el(&mut d, shell, "p", "Copy the offset pulled onto the rule", "16px");
+        // The padding would hold the glyphs 24px in; the relative offset
+        // moves the whole box 24px left, putting them on the card's edge.
+        d.set_styles(
+            p,
+            &[
+                ("position", "relative"),
+                ("paddingTop", "0px"),
+                ("paddingRight", "0px"),
+                ("paddingBottom", "0px"),
+                ("paddingLeft", "24px"),
+                ("marginTop", "0px"),
+                ("marginRight", "0px"),
+                ("marginBottom", "0px"),
+                ("marginLeft", "0px"),
+            ],
+        );
+        d.set_rect(p, -24.0, 0.0, 600.0, 100.0);
+        d.set_text_rect(p, 0.0, 20.0, 300.0, 18.0);
+        let hits = check_element_quality_dom(&d, card, &BrowserConfig::default());
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(
+            hits[0].snippet,
+            "<div> \"card\": children flush against border on left (no inset)"
         );
     }
 
