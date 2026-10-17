@@ -547,7 +547,7 @@ fn is_styled_control(opts: &ColorOpts, bg_image: &str) -> bool {
 /// Whether `check_colors` answers from `safe_tag_text_contrast` rather than
 /// from the full pass, which is the set of findings the per-page dedupe
 /// owns.
-fn scores_safe_tag_text(opts: &ColorOpts) -> bool {
+pub(crate) fn scores_safe_tag_text(opts: &ColorOpts) -> bool {
     set_has(SAFE_TAGS, opts.tag.as_str())
         && !is_styled_control(opts, opts.bg_image.as_deref().unwrap_or(""))
 }
@@ -1053,7 +1053,15 @@ fn safe_tag_text_contrast(opts: &ColorOpts) -> Vec<RuleHit> {
     let Some(text_color) = opts.text_color else {
         return Vec::new();
     };
-    if resolved_bg_matches_text(opts, &text_color) {
+    // The browser engine has layout, and says whether a surface in exactly
+    // the ink's colour is one the text does not sit on
+    // (`same_color_surface_is_unread`), as the full pass asks. Where the
+    // stacks confirm the text sits on it, the `1.0:1` is real: a white link
+    // on its white card (v0-memorialqrwebsitecode-90's "Start Chat"). The
+    // static engine has no layout, and the coincidence is all it has.
+    if resolved_bg_matches_text(opts, &text_color)
+        && (!opts.detector_is_browser || opts.same_color_surface_is_unread)
+    {
         return Vec::new();
     }
     contrast_findings(opts, &text_color)
@@ -2827,6 +2835,30 @@ mod tests {
         assert_eq!(check_colors_deduped(&span(0.7), &mut seen, &mut |_| true).len(), 1);
         assert_eq!(check_colors_deduped(&span(0.8), &mut seen, &mut |_| true).len(), 1);
         assert!(check_colors_deduped(&span(0.8), &mut seen, &mut |_| true).is_empty());
+    }
+
+    #[test]
+    fn the_safe_tag_guard_asks_the_browser_engine() {
+        let white = Rgba::new(255.0, 255.0, 255.0, 1.0);
+        let opts = |browser: bool, guard: bool| ColorOpts {
+            tag: "a".to_string(),
+            text_color: Some(white),
+            effective_bg: Some(white),
+            font_size: 18.0,
+            font_weight: 500.0,
+            has_direct_text: true,
+            paints_own_text: true,
+            detector_is_browser: browser,
+            same_color_surface_is_unread: guard,
+            ..Default::default()
+        };
+        let flags = |o: &ColorOpts| check_colors(o).iter().any(|h| h.id == "low-contrast");
+        // A white link on a white card the stacks confirm: reported.
+        assert!(flags(&opts(true, false)));
+        // The surface is one the text does not sit on, or the engine has no
+        // layout to say: no verdict.
+        assert!(!flags(&opts(true, true)));
+        assert!(!flags(&opts(false, false)));
     }
 
     #[test]

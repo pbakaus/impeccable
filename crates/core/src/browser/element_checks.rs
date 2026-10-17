@@ -181,6 +181,95 @@ fn collapse_ws(s: &str) -> String {
     WS_RUN.replace_all(s, " ").into_owned()
 }
 
+/// Whether `el`'s text is the whole visible content of the link or button
+/// around it (or that it is): the control's text is `el`'s text, and nothing
+/// else in the control paints, neither a picture, an icon or an SVG, nor a box
+/// with a fill, a background image or a border (a hamburger's bars). A box
+/// with no rendered area or at `visibility: hidden` paints nothing. Boxes
+/// that hold `el` do not count. Inside `el` (a link that owns its text
+/// beside an icon) a picture or an SVG counts, even one with a `<title>`,
+/// and so does any other box that paints and holds no text (a hamburger's
+/// bars, an icon-font `<i>`); a box of the label's own words (`<i>more</i>`)
+/// does not.
+fn sole_visible_label_of_control(dom: &dyn Dom, el: ElId) -> bool {
+    let Some(control) = closest_or_none(dom, el, "a, button, [role=\"button\"]") else {
+        return false;
+    };
+    let text = |n: ElId| collapse_ws(js::trim(&dom.text_content(n)));
+    let own = text(el);
+    if own.is_empty() || !visible_text_is(dom, control, el) {
+        return false;
+    }
+    let is_picture =
+        |n: ElId| matches!(tag_lower(dom, n).as_str(), "svg" | "img" | "picture" | "canvas" | "video" | "object" | "embed");
+    let paints = |n: ElId| {
+        // A box with no rendered area, or one hidden, paints nothing, an
+        // icon left in the markup at `display: none` included.
+        let r = dom.rect(n);
+        if !(r.width > 0.0 && r.height > 0.0) || matches!(dom.style(n, "visibility").as_str(), "hidden" | "collapse") {
+            return false;
+        }
+        if is_picture(n) || tag_lower(dom, n) == "i" {
+            return true;
+        }
+        let fill = parse_rgb_or_any(&dom.style(n, "backgroundColor")).is_some_and(|c| c.alpha_or_one() > 0.1);
+        let image = dom.style(n, "backgroundImage");
+        let image = !image.is_empty() && image != "none";
+        let border = ["Top", "Right", "Bottom", "Left"].iter().any(|side| {
+            parse_float(&dom.style(n, &format!("border{side}Width"))) > 0.0
+                && parse_rgb_or_any(&dom.style(n, &format!("border{side}Color"))).is_some_and(|c| c.alpha_or_one() > 0.1)
+        });
+        fill || image || border
+    };
+    dom.query_all(Some(control), "*")
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|&n| n != el && !dom.contains(n, el))
+        .all(|n| !(paints(n) && (!dom.contains(el, n) || is_picture(n) || text(n).is_empty())))
+}
+
+/// Whether the text a visitor sees in `control` is `el`'s text, whitespace
+/// aside: the control's text with the text of every descendant that renders
+/// none taken out (a box at `display: none`, an SVG `<title>`, a script, a
+/// style or a template, and the own text of a box at `visibility: hidden`).
+fn visible_text_is(dom: &dyn Dom, control: ElId, el: ElId) -> bool {
+    let squash = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let own = squash(&dom.text_content(el));
+    let mut visible = squash(&dom.text_content(control));
+    if visible == own {
+        return true;
+    }
+    let mut removed: Vec<ElId> = Vec::new();
+    for n in dom.query_all(Some(control), "*").unwrap_or_default() {
+        if n == el || dom.contains(n, el) || dom.contains(el, n) || removed.iter().any(|&r| dom.contains(r, n)) {
+            continue;
+        }
+        // A box that renders none hides its whole subtree. `visibility:
+        // hidden` hides only the box's own text, since a descendant can set
+        // `visibility: visible` again and paint; each descendant answers for
+        // itself (visibility inherits, so a hidden one reads hidden too).
+        let subtree = matches!(tag_lower(dom, n).as_str(), "title" | "script" | "style" | "template")
+            || dom.style(n, "display") == "none";
+        let own_only = !subtree && matches!(dom.style(n, "visibility").as_str(), "hidden" | "collapse");
+        let hidden = if subtree {
+            vec![squash(&dom.text_content(n))]
+        } else if own_only {
+            dom.direct_text_nodes(n).iter().map(|t| squash(t)).collect()
+        } else {
+            continue;
+        };
+        for h in hidden.iter().filter(|h| !h.is_empty()) {
+            if let Some(at) = visible.find(h.as_str()) {
+                visible.replace_range(at..at + h.len(), "");
+            }
+        }
+        if subtree {
+            removed.push(n);
+        }
+    }
+    visible == own
+}
+
 /// JS `Math.round(x)` rendered as `${...}`.
 fn round_str(x: f64) -> String {
     number_to_string(math_round(x))
@@ -1107,6 +1196,11 @@ fn opacity_of(dom: &dyn Dom, el: ElId) -> f64 {
     }
 }
 
+/// The fill alpha from which a translucent box the contrast walk folds over
+/// what lies below it is, to the hit-test stacks, the surface its text sits
+/// on: it shows at most a twentieth of what is under it.
+const STACKS_HOST_MIN_ALPHA: f64 = 0.95;
+
 /// The opacity under which a box that is also moving reads as the first
 /// frames of a reveal rather than a faded box at rest.
 const REVEAL_OPACITY: f64 = 0.1;
@@ -1125,6 +1219,9 @@ const REVEAL_WILL_CHANGE: &[&str] = &["opacity", "filter", "transform", "transla
 ///   `opacity` or its `filter`;
 /// - it is blurred (`filter: blur()` with a radius above 0), which no reader
 ///   is asked to read through;
+/// - a paused loop that takes it out of sight every cycle holds it below
+///   full opacity ([`crate::browser::painted::paused_mid_loop`]): a page that
+///   pauses its loops off screen plays them once a visitor arrives;
 /// - its opacity is under [`REVEAL_OPACITY`] while it is moved or about to
 ///   be (a `transform` other than the identity, `translate`, `scale` or
 ///   `rotate` other than `none`, a `will-change` naming one of them): a box
@@ -1149,6 +1246,9 @@ fn opacity_at_rest(dom: &dyn Dom, el: ElId, opacity: f64) -> bool {
         return false;
     }
     if has_active_blur(&dom.style(el, "filter")) {
+        return false;
+    }
+    if crate::browser::painted::paused_mid_loop(dom, el) {
         return false;
     }
     if crate::browser::painted::declares_transition_of(dom, el, "opacity") && visibly_displaced(dom, el) {
@@ -1590,11 +1690,15 @@ pub(crate) fn is_identity_matrix(t: &str) -> bool {
 /// fade, and `effective_bg` is replaced by what the fold says the surface
 /// looks like. A box caught mid-reveal (`opacity_at_rest`) fades nothing.
 /// The opacity [`fold_surface_opacity`] reads for one box: the end keyframe
-/// for a box a scroll or view timeline holds (`scroll_held_end_opacity`),
-/// 1 for a box caught mid-reveal (`opacity_at_rest`), else what was captured.
+/// for a box a scroll or view timeline holds (`scroll_held_end_opacity`) or
+/// a timed entrance caught at 0 holds (`entrance_end_opacity`), the same
+/// settled value the visibility gates count; 1 for a box caught mid-reveal
+/// (`opacity_at_rest`), else what was captured.
 fn fold_opacity_of(dom: &dyn Dom, c: ElId) -> f64 {
     let opacity = opacity_of(dom, c);
-    if let Some(end) = crate::browser::painted::scroll_held_end_opacity(dom, c) {
+    if let Some(end) = crate::browser::painted::scroll_held_end_opacity(dom, c)
+        .or_else(|| crate::browser::painted::entrance_end_opacity(dom, c))
+    {
         end
     } else if opacity < 0.999 && !opacity_at_rest(dom, c, opacity) {
         1.0
@@ -1957,10 +2061,26 @@ pub fn check_element_colors_dom(
     };
     let resolved_surface = if surface_unresolved { None } else { effective_bg };
     let surface_host = if pseudo_surface_read { Some(el) } else { surface.host };
+    // The walk reads a fill under 0.99 alpha as a wash over what lies below
+    // it, and its colour is folded over that. To the hit-test stacks a fill
+    // at least [`STACKS_HOST_MIN_ALPHA`] opaque is the surface the text sits
+    // on: juskoe.vercel.app's nav pill (`rgba(255, 255, 255, 0.95)`) took the
+    // page ground as the walk's host, and the stacks read the pill under the
+    // links as paint the walk never read. The colour scored is unchanged.
+    let stacks_host = if pseudo_surface_read {
+        surface_host
+    } else {
+        surface
+            .overlays
+            .iter()
+            .find(|(_, fill)| fill.alpha_or_one() >= STACKS_HOST_MIN_ALPHA)
+            .map(|(node, _)| *node)
+            .or(surface_host)
+    };
     let layers = std::cell::OnceCell::new();
     let layers_at = || {
         *layers.get_or_init(|| {
-            crate::browser::text_layers::layers_at_text(dom, el, surface_host, resolved_surface)
+            crate::browser::text_layers::layers_at_text(dom, el, stacks_host, resolved_surface)
         })
     };
     // A surface in exactly the text's own colour. Where the hit-test stacks
@@ -1991,6 +2111,18 @@ pub fn check_element_colors_dom(
             && (on_page_ground(dom, surface_host)
                 || under().0 != crate::browser::visual::LayerUnder::Ancestor))
             || (on_page_ground(dom, surface_host) && crate::browser::visual::page_ground_paints_picture(dom)));
+    // On the link and span path a surface in the ink's own colour is taken
+    // only for the whole visible label of a link or button on a box of the
+    // page's own (v0-memorialqrwebsitecode-90's white "Start Chat" on its
+    // white card, an invisible ghost link). The page ground is the walk's
+    // fallback, and the stacks confirm it for text whose real ground the
+    // capture does not record (a browser's dark JSON viewer read as the white
+    // canvas). A label beside an icon in the same control (valero.com's white
+    // "Toggle Navigation" in its bars button, a hidden "Menu" in a white
+    // header) or a span outside any control ("Opens in a new tab") is text
+    // the page hides on purpose. The full pass keeps its own reading.
+    let safe_tag_same_hex_dropped =
+        same_hex && (on_page_ground(dom, surface_host) || !sole_visible_label_of_control(dom, el));
     // What the glyphs and their surface paint: a filter on a box that holds
     // the surface repaints both, and the verdicts read what it paints; one
     // the engine cannot model leaves none (`ink_paint`). The structural tests
@@ -2063,7 +2195,7 @@ pub fn check_element_colors_dom(
     };
     let (text_color, visible_text, effective_bg, effective_bg_stops, own_bg) = painted_colours
         .unwrap_or((text_color, visible_text, effective_bg, effective_bg_stops, own_bg));
-    let color_opts = ColorOpts {
+    let mut color_opts = ColorOpts {
         tag: tag.clone(),
         text_color,
         bg_color: own_bg,
@@ -2088,6 +2220,11 @@ pub fn check_element_colors_dom(
         bg_source_host,
         same_color_surface_is_unread,
     };
+    // Only on the link and span path: a styled control takes the full pass,
+    // which keeps its own reading of the page ground.
+    if safe_tag_same_hex_dropped && crate::checks::rules::scores_safe_tag_text(&color_opts) {
+        color_opts.same_color_surface_is_unread = true;
+    }
     // A contrast verdict is about the surface the walk resolved. Where the
     // hit-test stacks say the text is covered at capture (a fixed banner over
     // it, a photo laid over an initial), or reads over paint the walk never
@@ -5391,6 +5528,59 @@ mod tests {
             .collect()
     }
 
+    /// iubcr.vercel.app (10046936): a notification row on `notif-cycle 9s
+    /// infinite`, paused while its section is off screen, read at 0.21. It
+    /// is a frame of the loop, so the fold does not blend it and the pixel
+    /// pass does not read it; the same row at rest at 0.21 still fades.
+    #[test]
+    fn a_paused_loop_through_nothing_is_not_at_rest() {
+        let (mut d, wrap, word) = muted_text_in_wrapper("span", "New announcement", "rgb(10, 16, 21)");
+        d.keyframes.insert(
+            "notif-cycle".into(),
+            vec![
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "1".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0".into())] },
+            ],
+        );
+        d.set_styles(
+            wrap,
+            &[
+                ("opacity", "0.210098"),
+                ("animationName", "notif-cycle"),
+                ("animationIterationCount", "infinite"),
+                ("animationPlayState", "paused"),
+            ],
+        );
+        d.set_running_animations(wrap, &[]);
+        assert!(low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
+        assert!(super::caught_mid_reveal(&d, word));
+        // Not paused, and with nothing recorded running, the row is at rest
+        // at 0.21 and fades.
+        d.set_style(wrap, "animationPlayState", "running");
+        assert!(!low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
+        assert!(!super::caught_mid_reveal(&d, word));
+        d.set_style(wrap, "animationPlayState", "paused");
+        // Review of #1044: a loop that adds to the box's own opacity never
+        // takes it out of sight, so the row is at rest and fades.
+        d.set_style(wrap, "animationComposition", "add");
+        assert!(!low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
+        assert!(!super::caught_mid_reveal(&d, word));
+        d.set_style(wrap, "animationComposition", "replace");
+        assert!(super::caught_mid_reveal(&d, word));
+        // A loop that only breathes, and a paused loop at full opacity, are
+        // at rest.
+        d.keyframes.insert(
+            "notif-cycle".into(),
+            vec![
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0.2".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "1".into())] },
+            ],
+        );
+        assert!(!low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
+        assert!(!super::caught_mid_reveal(&d, word));
+    }
+
     #[test]
     fn a_faded_box_at_rest_blends_and_a_reveal_mid_frame_does_not() {
         // The accordion header: dark ink inside a box held at half opacity.
@@ -5635,8 +5825,141 @@ mod tests {
     fn a_background_the_walk_read_as_the_text_colour_is_not_a_report() {
         // White label over a hero photo: the background walk sees through the
         // image to the page's own white and would report 1.0:1.
+        let (mut d, wrap, label) = muted_text_in_wrapper("span", "EN", "rgb(255, 255, 255)");
+        let photo = d.add(Some(wrap), "img");
+        visible(&mut d, photo);
+        d.set_styles(photo, &[("position", "absolute")]);
+        d.set_rect(photo, 0.0, 0.0, 300.0, 40.0);
+        let body = d.body().unwrap();
+        stack_at_text(&mut d, label, vec![label, photo, wrap, body]);
+        assert!(colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        // Where the stacks confirm the label sits on the page's white, it is
+        // still the walk's fallback (a dark JSON viewer, a hidden label in a
+        // white header), and a link or span takes no verdict. On a card of
+        // the page's own that the stacks confirm, the `1.0:1` is real.
         let (d, _wrap, label) = muted_text_in_wrapper("span", "EN", "rgb(255, 255, 255)");
-        assert!(colors(&d, label).is_empty());
+        assert!(colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        // A styled control on the page ground takes the full pass, which
+        // keeps its verdict where the stacks confirm the page.
+        let (mut d, _wrap, button) = muted_text_in_wrapper("a", "Start Chat", "rgb(255, 255, 255)");
+        d.set_style(button, "backgroundColor", "rgba(255, 255, 255, 0.6)");
+        assert!(
+            colors(&d, button).iter().any(|h| h.snippet.contains("#ffffff on #ffffff")),
+            "{:?}",
+            colors(&d, button)
+        );
+        let (mut d, wrap, label) = muted_text_in_wrapper("a", "Start Chat", "rgb(255, 255, 255)");
+        d.set_style(wrap, "backgroundColor", "rgb(255, 255, 255)");
+        assert!(
+            colors(&d, label).iter().any(|h| h.snippet.contains("#ffffff on #ffffff")),
+            "{:?}",
+            colors(&d, label)
+        );
+        // A label the page hides on purpose: beside the bars of its menu
+        // button, or a span in no control at all, on a white header.
+        let (mut d, wrap, button) = muted_text_in_wrapper("button", "", "rgb(17, 17, 17)");
+        d.set_style(wrap, "backgroundColor", "rgb(255, 255, 255)");
+        let label = d.add(Some(button), "span");
+        visible(&mut d, label);
+        d.add_text(label, "Menu");
+        d.set_rect(label, 0.0, 0.0, 40.0, 20.0);
+        d.set_styles(label, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("color", "rgb(255, 255, 255)"), ("fontSize", "14px"), ("fontWeight", "400")]);
+        assert!(!colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        // Review of #1044: text the control holds but does not render (a
+        // span at `display: none`, one at `visibility: hidden`) is not part
+        // of what a visitor reads, so the label is still the whole of it;
+        // the same words shown are not.
+        let helper = d.add(Some(button), "span");
+        d.add_text(helper, "Help");
+        d.set_style(helper, "display", "none");
+        assert!(!colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        d.set_styles(helper, &[("display", "inline"), ("visibility", "hidden")]);
+        assert!(!colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        // A child of the hidden span that shows itself again is read.
+        let shown = d.add(Some(helper), "span");
+        d.add_text(shown, "Now");
+        d.set_style(shown, "visibility", "visible");
+        assert!(colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        d.set_style(shown, "visibility", "hidden");
+        assert!(!colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        d.set_style(helper, "visibility", "visible");
+        assert!(colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        d.set_style(helper, "display", "none");
+        let bars = d.add(Some(button), "span");
+        visible(&mut d, bars);
+        d.set_rect(bars, 48.0, 3.0, 20.0, 14.0);
+        d.set_styles(bars, &[("borderTopWidth", "2px"), ("borderTopColor", "rgb(17, 17, 17)")]);
+        assert!(colors(&d, label).is_empty(), "{:?}", colors(&d, label));
+        let (mut d, wrap, span) = muted_text_in_wrapper("span", "Opens in a new tab", "rgb(254, 254, 254)");
+        d.set_style(wrap, "backgroundColor", "rgb(254, 254, 254)");
+        assert!(colors(&d, span).is_empty(), "{:?}", colors(&d, span));
+        // A link that owns its text beside an icon inside it, on a white
+        // header: the icon is what the link shows, and the white text is
+        // hidden on purpose. A box of its own words (`<i>`) is still label.
+        let (mut d, wrap, link) = muted_text_in_wrapper("a", "Menu", "rgb(255, 255, 255)");
+        d.set_style(wrap, "backgroundColor", "rgb(255, 255, 255)");
+        let em = d.add(Some(link), "i");
+        visible(&mut d, em);
+        d.add_text(em, "now");
+        d.set_rect(em, 40.0, 0.0, 30.0, 20.0);
+        assert!(!colors(&d, link).is_empty(), "{:?}", colors(&d, link));
+        let icon = d.add(Some(link), "svg");
+        visible(&mut d, icon);
+        // Left in the markup but not rendered, the icon paints nothing and
+        // the link's text is still its whole label.
+        assert!(!colors(&d, link).is_empty(), "{:?}", colors(&d, link));
+        d.set_rect(icon, 96.0, 2.0, 16.0, 16.0);
+        d.set_style(icon, "visibility", "hidden");
+        assert!(!colors(&d, link).is_empty(), "{:?}", colors(&d, link));
+        d.set_style(icon, "visibility", "visible");
+        assert!(colors(&d, link).is_empty(), "{:?}", colors(&d, link));
+        // An SVG that names itself with a `<title>` is still the icon.
+        let title = d.add(Some(icon), "title");
+        d.add_text(title, "Open menu");
+        assert!(colors(&d, link).is_empty(), "{:?}", colors(&d, link));
+    }
+
+    /// An entrance caught at 0 that settles faint: the visibility gate counts
+    /// the box at its end frame (0.2), and the contrast fold must read the
+    /// same value, not the 1 it gives a box caught mid-reveal.
+    #[test]
+    fn a_timed_entrance_that_settles_faint_is_scored_faded() {
+        let (mut d, wrap, word) = muted_text_in_wrapper("span", "Settled copy", "rgb(10, 16, 21)");
+        d.keyframes.insert(
+            "fade-in".into(),
+            vec![
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0.2".into())] },
+            ],
+        );
+        d.keyframe_keys.insert("fade-in".into(), vec!["0%".into(), "100%".into()]);
+        d.set_styles(
+            wrap,
+            &[
+                ("opacity", "0"),
+                ("animationName", "fade-in"),
+                ("animationIterationCount", "1"),
+                ("animationFillMode", "forwards"),
+                ("animationDirection", "normal"),
+                ("animationDuration", "0.6s"),
+                ("animationDelay", "2s"),
+                ("animationTimeline", "auto"),
+                ("animationPlayState", "running"),
+                ("animationComposition", "replace"),
+            ],
+        );
+        d.set_running_animations(wrap, &["opacity"]);
+        assert_eq!(crate::browser::painted::entrance_end_opacity(&d, wrap), Some(0.2));
+        assert!(!low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
+        // The same entrance settling at 1 is scored at full strength.
+        d.keyframes.insert(
+            "fade-in".into(),
+            vec![
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "1".into())] },
+            ],
+        );
+        assert!(low_contrast(&colors(&d, word)).is_empty(), "{:?}", colors(&d, word));
     }
 
     #[test]
@@ -6073,6 +6396,39 @@ mod tests {
         for (x, y) in crate::browser::page_checks::occlusion_probe_points(&rect, vw, vh) {
             d.set_point(x, y, stack.clone());
         }
+    }
+
+    /// juskoe.vercel.app (1002252): nav links at `rgba(46, 45, 45, 0.55)` on
+    /// a fixed pill whose fill is `rgba(255, 255, 255, 0.95)` with a backdrop
+    /// blur, over a violet hero. The walk folds the pill over the page and
+    /// ends there; the stacks meet the pill first, and it is the surface the
+    /// links sit on, so their verdict stands (the live capture prints 3.4:1;
+    /// here the climb also finds the hero and prints the pill over it). Ink
+    /// that reads on the pill still passes.
+    #[test]
+    fn a_near_opaque_pill_is_the_surface_the_stacks_meet() {
+        let nav = |alpha: &str, ink: &str| {
+            let (mut d, body) = page();
+            let hero = bare_box(&mut d, body, "section", (0.0, 0.0, 1280.0, 600.0));
+            d.set_style(hero, "backgroundImage", "linear-gradient(rgb(124, 58, 237), rgb(20, 10, 40))");
+            let bar = bare_box(&mut d, body, "nav", (260.0, 20.0, 760.0, 56.0));
+            d.set_styles(bar, &[("position", "fixed"), ("zIndex", "50")]);
+            let pill = bare_box(&mut d, bar, "div", (260.0, 20.0, 760.0, 56.0));
+            d.set_styles(
+                pill,
+                &[
+                    ("backgroundColor", &format!("rgba(255, 255, 255, {alpha})")),
+                    ("backdropFilter", "blur(20px)"),
+                    ("position", "relative"),
+                ],
+            );
+            let a = muted_link(&mut d, pill, ink, (300.0, 38.0, 120.0, 20.0));
+            stack_at_text(&mut d, a, vec![a, pill, bar, hero, body]);
+            low_contrast(&colors(&d, a))
+        };
+        let near_opaque = nav("0.95", "rgba(46, 45, 45, 0.55)");
+        assert_eq!(near_opaque.len(), 1, "{near_opaque:?}");
+        assert!(nav("0.95", "rgb(46, 45, 45)").is_empty());
     }
 
     #[test]

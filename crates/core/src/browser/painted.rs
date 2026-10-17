@@ -1541,6 +1541,35 @@ pub(crate) fn loops_in_motion(dom: &dyn Dom, el: ElId) -> bool {
     })
 }
 
+/// Whether `el` is held part way through a loop that takes it out of sight
+/// every cycle, by a paused animation: the box's only animation setting
+/// `opacity` is paired with an `infinite` iteration count and
+/// `animation-play-state: paused`, a keyframe takes it to
+/// [`LOOP_VANISH_OPACITY`] or under, and the capture read it below full
+/// opacity. iubcr.vercel.app pauses its notification rows (`notif-cycle 9s
+/// infinite`) while their section is off screen and plays them once a
+/// visitor reaches it; the capture read a row at 0.21, a frame of the loop
+/// and not the state it shows. A paused box is not running, so
+/// [`loops_in_motion`] never sees it. A box at full opacity, a loop that
+/// only breathes, a loop that adds to or accumulates on the box's own
+/// opacity, and keyframes the capture could not read answer no.
+pub(crate) fn paused_mid_loop(dom: &dyn Dom, el: ElId) -> bool {
+    let opacity = js::parse_float(&dom.style(el, "opacity"));
+    if !(opacity.is_finite() && opacity < 0.999) {
+        return false;
+    }
+    // Under `add` or `accumulate` the frames combine with the box's own
+    // opacity, so a frame at 0 does not take it out of sight.
+    sole_opacity_entry(dom, el).is_some_and(|entry| {
+        entry.iterations == "infinite"
+            && entry.play_state == "paused"
+            && (entry.composition.is_empty() || entry.composition == "replace")
+            && dom
+                .keyframes(&entry.name)
+                .is_some_and(|frames| frames.iter().filter_map(frame_opacity).any(|o| o <= LOOP_VANISH_OPACITY))
+    })
+}
+
 /// Whether `el` or an ancestor is caught part way through a sideways move
 /// that ends: the capture saw an animation or transition running on the box
 /// that moves it on the x axis (`left`, `right`, `margin-left`,
@@ -1915,15 +1944,36 @@ pub(crate) fn scroll_held_end_opacity(dom: &dyn Dom, el: ElId) -> Option<f64> {
     opacity_at_offset(dom, &entry.name, at).map(|o| o.clamp(0.0, 1.0))
 }
 
-/// [`effective_opacity_dom`] as a visitor who scrolls meets the box: a box a
-/// scroll or view timeline holds at 0 counts at its end keyframe's opacity
-/// ([`scroll_held_end_opacity`]). Every other box counts as captured.
+/// The opacity `el` holds once a timed entrance running at capture has
+/// played, where the capture caught it at the transparent floor: the box's
+/// only animation setting `opacity` runs once on the document timeline,
+/// holds its end frame, and ends within [`ANIMATION_END_MAX_SECONDS`]
+/// ([`held_end_opacity`]). rezyco.com's call-to-action block runs
+/// `landing-actions-reveal 0.6s 2.45s forwards` and was read at 0, before
+/// its delay was out; every visitor meets it at 1. `None` for a box above the
+/// floor, one no running animation moves, a loop, a paused or scroll-driven
+/// animation, one that hands the box back to its own style when it ends,
+/// and one whose end frame sets no opacity: those keep the captured value.
+pub(crate) fn entrance_end_opacity(dom: &dyn Dom, el: ElId) -> Option<f64> {
+    let raw = js::parse_float(&dom.style(el, "opacity"));
+    if !(raw.is_finite() && raw <= TRANSPARENT_FLOOR) || !opacity_in_motion(dom, el) {
+        return None;
+    }
+    let entry = sole_opacity_entry(dom, el)?;
+    held_end_opacity(dom, &entry).map(|o| o.clamp(0.0, 1.0))
+}
+
+/// [`effective_opacity_dom`] as a visitor meets the box once it settles: a
+/// box a scroll or view timeline holds at 0 counts at its end keyframe's
+/// opacity ([`scroll_held_end_opacity`]), and so does a box a timed entrance
+/// running at capture holds at 0 ([`entrance_end_opacity`]). Every other box
+/// counts as captured.
 pub fn effective_opacity_scrolled(dom: &dyn Dom, el: ElId) -> f64 {
     let mut o = 1.0f64;
     let mut cur = Some(el);
     while let Some(c) = cur {
         let raw = dom.style(c, "opacity");
-        let v = scroll_held_end_opacity(dom, c).unwrap_or_else(|| {
+        let v = scroll_held_end_opacity(dom, c).or_else(|| entrance_end_opacity(dom, c)).unwrap_or_else(|| {
             if raw.is_empty() {
                 1.0
             } else {
@@ -3698,6 +3748,61 @@ mod tests {
         d.set_style(p, "opacity", "0");
         set_keyframes(&mut d, "ocx-fade-up", &[("0%", &[("opacity", "0")]), ("100%", &[("transform", "none")])]);
         assert_eq!(scroll_held_end_opacity(&d, p), None);
+    }
+
+    /// rezyco.com (1002344): the call-to-action block runs
+    /// `landing-actions-reveal 0.6s 2.45s forwards` (0% at opacity 0, 100% at
+    /// 1) and was read at 0, its delay not yet out. Every visitor meets it at
+    /// its end frame, so the Box and Text gates and the contrast check count
+    /// it there; an entrance that does not hold its end, a loop, a paused run
+    /// and one that ends after a minute keep the captured 0.
+    #[test]
+    fn a_timed_entrance_caught_at_zero_counts_at_its_end_frame() {
+        let (mut d, body) = page();
+        set_keyframes(
+            &mut d,
+            "landing-actions-reveal",
+            &[("0%", &[("opacity", "0")]), ("99%", &[("pointer-events", "none")]), ("100%", &[("opacity", "1")])],
+        );
+        let actions = d.add(Some(body), "div");
+        d.set_rect(actions, 480.0, 535.0, 320.0, 214.0);
+        one_shot(&mut d, actions, "landing-actions-reveal", "forwards");
+        d.set_styles(actions, &[("opacity", "0"), ("animationDuration", "0.6s"), ("animationDelay", "2.45s")]);
+        let button = d.add(Some(actions), "button");
+        d.set_rect(button, 480.0, 535.0, 320.0, 48.0);
+        assert_eq!(entrance_end_opacity(&d, actions), Some(1.0));
+        assert_eq!(effective_opacity_scrolled(&d, button), 1.0);
+        assert_eq!(effective_opacity_dom(&d, button), 0.0, "the captured opacity is unchanged");
+        assert_eq!(unpainted_for(&d, button, PaintGate::Box), None);
+
+        let gone = |d: &FakeDom| unpainted_for(d, button, PaintGate::Box) == Some(Unpainted::Transparent);
+        // Handed back to its own style at the end: what it shows then is unknown.
+        d.set_style(actions, "animationFillMode", "none");
+        assert!(gone(&d));
+        d.set_style(actions, "animationFillMode", "both");
+        assert!(!gone(&d));
+        // A loop, a paused run, a run the capture did not see moving opacity,
+        // and one that ends past a minute.
+        d.set_style(actions, "animationIterationCount", "infinite");
+        assert!(gone(&d));
+        d.set_style(actions, "animationIterationCount", "1");
+        d.set_style(actions, "animationPlayState", "paused");
+        assert!(gone(&d));
+        d.set_style(actions, "animationPlayState", "running");
+        d.set_running_animations(actions, &["transform"]);
+        assert!(gone(&d));
+        d.set_running_animations(actions, &["opacity"]);
+        d.set_style(actions, "animationDelay", "61s");
+        assert!(gone(&d));
+        d.set_style(actions, "animationDelay", "2.45s");
+        // An entrance that ends at 0 shows nothing, and one caught above the
+        // floor is read as captured.
+        set_keyframes(&mut d, "landing-actions-reveal", &[("0%", &[("opacity", "1")]), ("100%", &[("opacity", "0")])]);
+        assert!(gone(&d));
+        set_keyframes(&mut d, "landing-actions-reveal", &[("0%", &[("opacity", "0")]), ("100%", &[("opacity", "1")])]);
+        d.set_style(actions, "opacity", "0.5");
+        assert_eq!(entrance_end_opacity(&d, actions), None);
+        assert_eq!(effective_opacity_scrolled(&d, button), 0.5);
     }
 
     /// directus.io: a closed FAQ row hides its overflow at 76px and parks the

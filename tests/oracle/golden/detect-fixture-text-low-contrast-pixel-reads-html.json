@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/low-contrast-pixel-reads.html\n  [low-contrast] 2.8:1 (need 4.5:1) — text #fbfaf8 on #979797\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 2.8:1 (need 4.5:1) — text #fbfaf8 on #979797\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [dark-glow] Zero-offset text-shadow glow (#f472b6)\n    → Colored glow shadows — a zero-offset chromatic halo (box- or text-shadow) on any background, or any colored blurred shadow on a dark background — are the default \"cool\" look of AI-generated UIs. Use neutral elevation shadows and subtle, purposeful lighting instead.\n  [dark-glow] Zero-offset text-shadow glow (#f472b6)\n    → Colored glow shadows — a zero-offset chromatic halo (box- or text-shadow) on any background, or any colored blurred shadow on a dark background — are the default \"cool\" look of AI-generated UIs. Use neutral elevation shadows and subtle, purposeful lighting instead.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

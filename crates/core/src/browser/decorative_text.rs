@@ -3,7 +3,8 @@
 
 use crate::checks::decorative_text::{
     avatar_sized, centred_in, classify_decorative_text, is_mockup_marker, is_signature_marker,
-    DecorativeShape, DecorativeTextFacts, MOCKUP_MARKER_SKIP_TAGS,
+    is_wordmark_size, DecorativeShape, DecorativeTextFacts, MOCKUP_MARKER_SKIP_TAGS, WORDMARK_H1_PATH_MIN_PX, WORDMARK_MAX_OPACITY,
+    WORDMARK_MIN_PX,
 };
 use super::dom::{class_attr, closest_or_none, pf0, tag_lower, Dom, ElId};
 use crate::color::{parse_any_color, parse_rgb, Rgba};
@@ -149,18 +150,96 @@ fn marked_signature(dom: &dyn Dom, el: ElId) -> bool {
     })
 }
 
+/// How much of its ink `el` shows once it settles: its effective opacity as
+/// the paint gates count it (a box a scroll timeline or a timed entrance
+/// holds at 0 at its end frame, [`super::painted::effective_opacity_scrolled`])
+/// times its colour's alpha. A heading caught mid-entrance is not a faint
+/// wordmark. A colour that does not parse counts as opaque.
+fn shown_opacity(dom: &dyn Dom, el: ElId) -> f64 {
+    let ink = parse_rgb_or_any(&dom.style(el, "color")).map_or(1.0, |c| c.alpha_or_one());
+    super::painted::effective_opacity_scrolled(dom, el) * ink
+}
+
+/// The names the site goes by: its host name run together and without its
+/// top-level label (`screen.movie` gives `screenmovie` and `screen`), its
+/// `og:site_name` or `application-name`, its title, and the title's first
+/// and last parts between separators (`Incredible · AI that does tasks`
+/// gives `Incredible`).
+fn site_names(dom: &dyn Dom) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let host = js::to_lower_case(&dom.hostname());
+    let host = host.strip_prefix("www.").unwrap_or(&host);
+    let labels: Vec<&str> = host.split('.').filter(|l| !l.is_empty()).collect();
+    if !labels.is_empty() {
+        names.push(labels.concat());
+        if labels.len() > 1 {
+            names.push(labels[..labels.len() - 1].concat());
+        }
+    }
+    for selector in ["meta[property=\"og:site_name\"]", "meta[name=\"application-name\"]"] {
+        for meta in dom.query_all(None, selector).unwrap_or_default() {
+            if let Some(content) = dom.attr(meta, "content") {
+                names.push(content);
+            }
+        }
+    }
+    if let Some(title) = dom.query_one(None, "title").ok().flatten() {
+        let title = collapsed_text(dom, title);
+        // The site's name opens or closes a title (`Incredible · AI that
+        // does tasks`, `Pricing | Acme`); a part in the middle is a page or
+        // section name. A hyphen joins words (`e-commerce`) and separates
+        // nothing here.
+        let parts: Vec<String> = title
+            .split(['|', '·', '•', '—', '–', ':'])
+            .map(|part| js::trim(part).to_string())
+            .filter(|part| !part.is_empty())
+            .collect();
+        if parts.len() > 1 {
+            names.push(parts[0].clone());
+            names.push(parts[parts.len() - 1].clone());
+        }
+        names.push(title);
+    }
+    names
+}
+
 /// What the `Dom` says about one element's text.
 pub fn decorative_text_facts_dom(dom: &dyn Dom, el: ElId) -> DecorativeTextFacts {
     let text = collapsed_text(dom, el);
-    let control_label = closest_or_none(dom, el, CONTROL_SELECTOR)
-        .is_some_and(|c| collapsed_text(dom, c) == text);
+    let control = closest_or_none(dom, el, CONTROL_SELECTOR);
+    let control_label = control.is_some_and(|c| collapsed_text(dom, c) == text);
     let (picture_ancestor, mockup_ancestor) = marked_mockup(dom, el);
+    let font_size_px = pf0(&dom.style(el, "fontSize"));
+    // The page's `h1` sizes decide only type between the h1 path's floor and
+    // the plain display floor; the walk over the page is skipped for the
+    // rest, which is nearly every text the checks ask about.
+    let largest_h1_px = if (WORDMARK_H1_PATH_MIN_PX..WORDMARK_MIN_PX).contains(&font_size_px) {
+        dom.query_all(None, "h1")
+            .unwrap_or_default()
+            .into_iter()
+            .map(|h| pf0(&dom.style(h, "fontSize")))
+            .fold(0.0, f64::max)
+    } else {
+        0.0
+    };
+    let display = is_wordmark_size(font_size_px, largest_h1_px);
+    let shown_opacity = if display { shown_opacity(dom, el) } else { 1.0 };
+    let site_names = if display && shown_opacity <= WORDMARK_MAX_OPACITY {
+        site_names(dom)
+    } else {
+        Vec::new()
+    };
     DecorativeTextFacts {
+        font_size_px,
+        largest_h1_px,
+        shown_opacity,
+        site_names,
         avatar_box: !text.is_empty() && text.chars().count() <= 3 && in_avatar_box(dom, el, &text),
         in_kbd: closest_or_none(dom, el, "kbd").is_some(),
         font_family: dom.style(el, "fontFamily"),
         in_heading: closest_or_none(dom, el, HEADING_SELECTOR).is_some(),
         control_label,
+        in_control: control.is_some(),
         signature_marked: marked_signature(dom, el),
         mockup_ancestor,
         picture_ancestor,
@@ -202,6 +281,90 @@ mod tests {
         d2.set_styles(tile, &[("backgroundColor", "rgb(19, 130, 232)")]);
         d2.set_rect(tile, 0.0, 0.0, 40.0, 40.0);
         assert_eq!(decorative_text_shape_dom(&d2, tile), None);
+    }
+
+    /// The page's `h1` sizes are read only for type the h1 path can decide:
+    /// body text and plain display type skip the walk over the page.
+    #[test]
+    fn the_h1_walk_runs_only_where_it_decides() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let h1 = d.add(Some(body), "h1");
+        d.add_text(h1, "Title");
+        d.set_style(h1, "fontSize", "30px");
+        let p = d.add(Some(body), "p");
+        d.add_text(p, "Body copy");
+        for (size, h1_read) in [("14px", 0.0), ("96px", 30.0), ("160px", 0.0)] {
+            d.set_style(p, "fontSize", size);
+            assert_eq!(decorative_text_facts_dom(&d, p).largest_h1_px, h1_read, "{size}");
+        }
+    }
+
+    /// incredible.one (10048155): `span.br-footer-monogram`, "Incredible" at
+    /// 272px in `rgba(0, 0, 0, 0.07)`, the site's `og:site_name`.
+    #[test]
+    fn a_faint_footer_wordmark_is_decorative() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.hostname = "www.incredible.one".into();
+        let head = d.add(Some(html), "head");
+        let title = d.add(Some(head), "title");
+        d.add_text(title, "Incredible · AI that does tasks on your computer");
+        let h1 = d.add(Some(body), "h1");
+        d.add_text(h1, "Do more with less");
+        d.set_style(h1, "fontSize", "64px");
+        let footer = d.add(Some(body), "footer");
+        let mark = d.add(Some(footer), "span");
+        d.add_text(mark, "Incredible");
+        d.set_styles(mark, &[("fontSize", "272.102px"), ("color", "rgba(0, 0, 0, 0.07)")]);
+        d.set_rect(mark, 42.0, 10411.0, 1173.0, 201.0);
+        assert_eq!(decorative_text_shape_dom(&d, mark), Some(DecorativeShape::Wordmark));
+        // The same name in ink a reader is meant to read is not.
+        d.set_style(mark, "color", "rgba(0, 0, 0, 0.6)");
+        assert_eq!(decorative_text_shape_dom(&d, mark), None);
+        // Faded by its box rather than its colour, it is.
+        d.set_style(mark, "color", "rgb(255, 255, 255)");
+        d.set_style(footer, "opacity", "0.1");
+        assert_eq!(decorative_text_shape_dom(&d, mark), Some(DecorativeShape::Wordmark));
+        // Caught at 0 by a timed entrance that settles at 1, it is the name
+        // in full ink, not a faint wordmark.
+        d.keyframes.insert(
+            "reveal".into(),
+            vec![
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "0".into())] },
+                crate::browser::dom::KeyframeFrame { decls: vec![("opacity".into(), "1".into())] },
+            ],
+        );
+        d.keyframe_keys.insert("reveal".into(), vec!["0%".into(), "100%".into()]);
+        d.set_styles(
+            footer,
+            &[
+                ("opacity", "0"),
+                ("animationName", "reveal"),
+                ("animationIterationCount", "1"),
+                ("animationFillMode", "forwards"),
+                ("animationDirection", "normal"),
+                ("animationDuration", "0.6s"),
+                ("animationDelay", "1s"),
+                ("animationTimeline", "auto"),
+                ("animationPlayState", "running"),
+                ("animationComposition", "replace"),
+            ],
+        );
+        d.set_running_animations(footer, &["opacity"]);
+        assert_eq!(decorative_text_shape_dom(&d, mark), None);
+        // A section name in the middle of a title is not the site's name,
+        // and a hyphen separates nothing.
+        d.add_text(title, " | Blog | Latest");
+        let blog = d.add(Some(footer), "span");
+        d.add_text(blog, "Blog");
+        d.set_styles(blog, &[("fontSize", "272.102px"), ("color", "rgb(255, 255, 255)")]);
+        assert_eq!(decorative_text_shape_dom(&d, blog), None);
+        // Another word at the same size and opacity is not the site's name.
+        let other = d.add(Some(footer), "span");
+        d.add_text(other, "Tasks");
+        d.set_styles(other, &[("fontSize", "272.102px"), ("color", "rgb(255, 255, 255)")]);
+        assert_eq!(decorative_text_shape_dom(&d, other), None);
     }
 
     #[test]

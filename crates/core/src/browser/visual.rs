@@ -170,12 +170,23 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         // surface that ends this walk: shadcn's `bg-background/95
         // backdrop-blur` sticky header. Its backdrop filter blocks nothing,
         // so it keeps the candidate under a reason no pass refuses.
+        //
+        // A fill from [`BACKDROP_NEAR_OPAQUE_ALPHA`] up shows at most a fifth
+        // of the blur, so the rendered pixels are mostly the panel's own and
+        // the pixel pass reads them as a reader does (smartbi.ca's header at
+        // 0.94, imageto3d.studio's glass tabs at 0.82). The sampled pass
+        // cannot model the blur, so it still refuses such a box, and the
+        // walk goes on past it to whatever the blur shows.
         let backdrop = dom.style(cur, "backdropFilter");
         if !backdrop.is_empty() && backdrop != "none" {
+            let near_opaque = parse_rgb_or_any(&dom.style(cur, "backgroundColor"))
+                .is_some_and(|bg| bg.alpha_or_one() >= BACKDROP_NEAR_OPAQUE_ALPHA);
             add(
                 &mut reasons,
                 if solid_bg.is_some() {
                     "backdrop filter under an opaque fill"
+                } else if near_opaque {
+                    BACKDROP_UNDER_NEAR_OPAQUE_FILL
                 } else {
                     "backdrop filter"
                 },
@@ -232,6 +243,51 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         }
     }
     reasons
+}
+
+/// The fill alpha from which a box's own colour, not what its backdrop
+/// filter paints under it, is most of what the box shows: at least four
+/// fifths of every pixel.
+pub const BACKDROP_NEAR_OPAQUE_ALPHA: f64 = 0.8;
+
+/// The reason a backdrop filter under a fill from
+/// [`BACKDROP_NEAR_OPAQUE_ALPHA`] up gives: the pixel pass reads it, the
+/// sampled pass does not.
+pub const BACKDROP_UNDER_NEAR_OPAQUE_FILL: &str = "backdrop filter under a near-opaque fill";
+
+/// How far, as a WCAG ratio, every `text-shadow` layer composited over the
+/// ink has to sit from the ink for the halo to separate the glyphs from
+/// their ground ([`halo_separates_ink`]).
+pub const HALO_MIN_SEPARATION: f64 = 2.0;
+
+/// Whether every layer of `el`'s `text-shadow` stands apart from its ink:
+/// composited over the ink colour, each layer reaches
+/// [`HALO_MIN_SEPARATION`]. rhem.ai's `rgba(34, 35, 33, 0.55) 0 2px 12px`
+/// under near-white copy does, and a reader sees the copy over it. A glow in
+/// the ink's own colour (neon text), a white glow under white copy, a dark
+/// drop shadow under grey copy, a layer with no colour of its own (it takes
+/// `currentColor`) and a shadow that does not parse do not: under the glyphs
+/// such a layer is either the ink again or hidden by the glyph, and it says
+/// nothing about the ground a reader sees. The pixel pass keeps a halo in its
+/// second shot only when this holds.
+pub fn halo_separates_ink(dom: &dyn Dom, el: ElId) -> bool {
+    let Some(ink) = parse_rgb_or_any(&dom.style(el, "color")) else {
+        return false;
+    };
+    let ink = Rgba { a: Some(1.0), ..ink };
+    let shadow = dom.style(el, "textShadow");
+    let shadow = js::trim(&shadow);
+    if shadow.is_empty() || shadow == "none" {
+        return false;
+    }
+    let layers = crate::js_ext_a::split_commas_outside_parens(shadow);
+    !layers.is_empty()
+        && layers.iter().all(|layer| {
+            crate::checks::rules::find_shadow_color(layer)
+                .and_then(|info| info.color)
+                .and_then(|c| blend_rgba(Some(&c), Some(&ink)))
+                .is_some_and(|over| contrast_ratio(&ink, &over) >= HALO_MIN_SEPARATION)
+        })
 }
 
 /// Replaced boxes that paint a picture rather than a colour.
@@ -2151,6 +2207,7 @@ fn candidate_value(dom: &dyn Dom, el: ElId, tag: &str, direct: &str, rect: &Rect
                     | "blend mode"
                     | "filter"
                     | "backdrop filter"
+                    | BACKDROP_UNDER_NEAR_OPAQUE_FILL
                     | "background-clip text"
                     | "text outline"
             )
@@ -2175,6 +2232,11 @@ fn candidate_value(dom: &dyn Dom, el: ElId, tag: &str, direct: &str, rect: &Rect
     // pass; the key is only written when it holds.
     if super::decorative_text::is_decorative_text_dom(dom, el) {
         m.insert("decorative".into(), Value::Bool(true));
+    }
+    // A halo that separates the glyphs from their ground may stay in the
+    // pixel pass's second shot; the key is only written when it holds.
+    if reasons.iter().any(|r| r == "text shadow") && halo_separates_ink(dom, el) {
+        m.insert("haloSeparates".into(), Value::Bool(true));
     }
     if let Some(identity) = identity {
         m.insert("match".into(), identity);
@@ -3259,6 +3321,7 @@ pub fn prepare_analysis(dom: &dyn Dom, candidate: &Value) -> Prepared {
                 | "blend mode"
                 | "filter"
                 | "backdrop filter"
+                | BACKDROP_UNDER_NEAR_OPAQUE_FILL
                 | "opacity stack"
                 | "text shadow"
                 | "unread layer"
@@ -3521,6 +3584,9 @@ const GLYPH_BODY_COVERAGE: f64 = 0.75;
 /// page repainted between the two screenshots (a video, a carousel, a reveal
 /// animation) and no pixel pair is a glyph over its background.
 const GLYPH_CHURN_SHARE: f64 = 0.55;
+/// The reason [`pixel_contrast_verdict`] gives where most of the clip
+/// changed between the two shots.
+pub const BOX_REPAINTED: &str = "box repainted between captures";
 /// Hiding text moves every pixel it painted the same way: toward the surface
 /// under it. A box where a large minority moved the other way holds something
 /// that arrived or left between the captures — text mid-animation leaves its
@@ -3579,7 +3645,7 @@ pub fn pixel_contrast_verdict(
         return PixelContrastOutcome::Unresolved("too few glyph pixels");
     }
     if clip_pixels > 0 && pixels.len() as f64 > clip_pixels as f64 * GLYPH_CHURN_SHARE {
-        return PixelContrastOutcome::Unresolved("box repainted between captures");
+        return PixelContrastOutcome::Unresolved(BOX_REPAINTED);
     }
     let darkened = pixels.iter().filter(|p| p.darkened).count();
     let minority = darkened.min(pixels.len() - darkened);
@@ -3899,6 +3965,74 @@ mod tests {
         d.set_styles(header, &[("backgroundColor", "rgb(0, 0, 0)"), ("backdropFilter", "none"), ("display", "contents")]);
         let reasons = collect_visual_contrast_reasons(&d, p);
         assert!(reasons.iter().any(|r| r == "image background"), "{reasons:?}");
+    }
+
+    /// A halo is kept for the pixels' second reading only where every layer
+    /// stands apart from the ink: rhem.ai's dark halo under near-white copy,
+    /// not a neon glow in the ink's colour or a drop shadow under grey copy.
+    #[test]
+    fn a_halo_separates_ink_only_when_every_layer_stands_apart() {
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        let p = d.add(Some(body), "p");
+        let halo = |d: &mut FakeDom, ink: &str, shadow: &str| {
+            d.set_styles(p, &[("color", ink), ("textShadow", shadow)]);
+            halo_separates_ink(d, p)
+        };
+        assert!(halo(&mut d, "rgb(251, 250, 248)", "rgba(34, 35, 33, 0.55) 0px 2px 12px"));
+        assert!(halo(&mut d, "rgb(255, 255, 255)", "rgba(0, 0, 0, 0.624) 0px 0px 10px"));
+        assert!(!halo(
+            &mut d,
+            "rgb(244, 114, 182)",
+            "rgb(244, 114, 182) 0px 0px 4px, rgb(244, 114, 182) 0px 0px 10px, rgb(219, 39, 119) 0px 0px 20px"
+        ));
+        assert!(!halo(&mut d, "rgb(117, 117, 117)", "rgba(0, 0, 0, 0.3) 0px 2px 4px"));
+        assert!(!halo(&mut d, "rgb(255, 255, 255)", "rgba(255, 255, 255, 0.9) 0px 0px 8px"));
+        // One layer in the ink's colour is enough to keep the halo hidden.
+        assert!(!halo(&mut d, "rgb(255, 255, 255)", "rgba(0, 0, 0, 0.6) 0px 0px 10px, rgb(255, 255, 255) 0px 0px 2px"));
+        assert!(!halo(&mut d, "rgb(255, 255, 255)", "none"));
+    }
+
+    /// smartbi.ca's header (`rgba(18, 36, 44, 0.94)` with `blur(12px)`) and
+    /// imageto3d.studio's glass tabs (0.82 with `blur(24px)` over a photo):
+    /// the panel's own fill is most of every pixel, so the pixels read the
+    /// text, and the sampled pass, which cannot model the blur, does not.
+    #[test]
+    fn a_backdrop_filter_under_a_near_opaque_fill_is_read_by_the_pixels() {
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        let wrap = d.add(Some(body), "div");
+        d.set_style(wrap, "backgroundImage", "url(\"/hero.jpg\")");
+        let header = d.add(Some(wrap), "header");
+        d.set_styles(header, &[("backgroundColor", "rgba(18, 36, 44, 0.94)"), ("backdropFilter", "blur(12px)")]);
+        let p = d.add(Some(header), "p");
+        d.add_text(p, "FR");
+        d.set_styles(p, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("color", "rgba(255, 255, 255, 0.4)"), ("fontSize", "13px")]);
+        d.set_rect(p, 10.0, 10.0, 40.0, 16.0);
+        for alpha in ["0.94", "0.82", "0.8"] {
+            d.set_style(header, "backgroundColor", &format!("rgba(18, 36, 44, {alpha})"));
+            let reasons = collect_visual_contrast_reasons(&d, p);
+            assert!(reasons.iter().any(|r| r == BACKDROP_UNDER_NEAR_OPAQUE_FILL), "{alpha}: {reasons:?}");
+            // The walk goes on to the photo the blur shows.
+            assert!(reasons.iter().any(|r| r == "image background"), "{alpha}: {reasons:?}");
+            assert!(pixel_contrast_blocked(&reasons).is_none(), "{alpha}: {reasons:?}");
+            let candidate = json!({ "selector": "p", "reasons": reasons });
+            match prepare_analysis(&d, &candidate) {
+                Prepared::Early { early } => assert_eq!(
+                    early["reason"],
+                    format!("{BACKDROP_UNDER_NEAR_OPAQUE_FILL} needs screenshot pixels"),
+                    "{alpha}"
+                ),
+                other => panic!("{alpha}: {other:?}"),
+            }
+        }
+        // Under four fifths the blur is too much of what shows.
+        d.set_style(header, "backgroundColor", "rgba(18, 36, 44, 0.79)");
+        let reasons = collect_visual_contrast_reasons(&d, p);
+        assert_eq!(pixel_contrast_blocked(&reasons).as_deref(), Some("backdrop filter"), "{reasons:?}");
+        d.set_style(header, "backgroundColor", "rgba(0, 0, 0, 0)");
+        let reasons = collect_visual_contrast_reasons(&d, p);
+        assert_eq!(pixel_contrast_blocked(&reasons).as_deref(), Some("backdrop filter"), "{reasons:?}");
     }
 
     #[test]
