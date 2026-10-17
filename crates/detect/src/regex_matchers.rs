@@ -7,7 +7,8 @@ use impeccable_core::checks::css_scan::{
     CssHostIndex,
 };
 use impeccable_core::checks::rules::{
-    find_gray_on_color_bg, find_solid_chromatic_bg, is_near_black_neutral_class, DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
+    find_gray_on_color_bg, find_solid_chromatic_bg, is_near_black_neutral_class, is_radius_property,
+    DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
 };
 use impeccable_core::color::is_neutral_color;
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
@@ -863,6 +864,26 @@ fn brace_scope_corners(
     index: usize,
     base: DeclaredCorners,
 ) -> DeclaredCorners {
+    let (chunks, unknown) = brace_scope_statements(source, i, index);
+    let mut corners = if unknown {
+        DeclaredCorners::unknown()
+    } else {
+        base
+    };
+    for (statements, theme_scale) in chunks.iter().rev() {
+        apply_statements(&mut corners, statements, *theme_scale);
+    }
+    corners
+}
+
+/// The statement chunks [`brace_scope_corners`] reads, innermost scope first,
+/// each with whether it is a theme-scale object, and whether the walk could
+/// not name the element.
+fn brace_scope_statements(
+    source: &SourceText,
+    i: usize,
+    index: usize,
+) -> (Vec<(Vec<String>, bool)>, bool) {
     let text = source.text.as_str();
     let b = text.as_bytes();
     let (mut start, mut end, mut open) = block_bounds(b, source.line_starts[i] + index);
@@ -898,19 +919,11 @@ fn brace_scope_corners(
         }
         (start, end, open) = block_bounds(b, selector_start);
     }
-    let mut corners = if unknown {
-        DeclaredCorners::unknown()
-    } else {
-        base
-    };
-    for &(s, e, object) in chunks.iter().rev() {
-        apply_statements(
-            &mut corners,
-            &split_statements(&text[s..e], object),
-            object && theme_scale,
-        );
-    }
-    corners
+    let chunks = chunks
+        .iter()
+        .map(|&(s, e, object)| (split_statements(&text[s..e], object), object && theme_scale))
+        .collect();
+    (chunks, unknown)
 }
 
 /// The indentation-syntax Sass reading of [`brace_scope_corners`]: the lines
@@ -921,6 +934,21 @@ fn brace_scope_corners(
 /// Otherwise the statements apply over `base`: the cascade's `0`, or unknown
 /// corners to learn which ones the scope declares.
 fn sass_scope_corners(source: &SourceText, i: usize, base: DeclaredCorners) -> DeclaredCorners {
+    let (chunks, unknown) = sass_scope_statements(source, i);
+    let mut corners = if unknown {
+        DeclaredCorners::unknown()
+    } else {
+        base
+    };
+    for statements in chunks.iter().rev() {
+        apply_statements(&mut corners, statements, false);
+    }
+    corners
+}
+
+/// The statement chunks [`sass_scope_corners`] reads, innermost scope first,
+/// and whether an interpolated parent selector made the scope unknown.
+fn sass_scope_statements(source: &SourceText, i: usize) -> (Vec<Vec<String>>, bool) {
     let indent = |l: &str| l.len() - l.trim_start().len();
     let blank = |l: &str| l.trim().is_empty();
     let mut chunks: Vec<Vec<String>> = Vec::new();
@@ -981,15 +1009,7 @@ fn sass_scope_corners(source: &SourceText, i: usize, base: DeclaredCorners) -> D
         }
         at = pj;
     }
-    let mut corners = if unknown {
-        DeclaredCorners::unknown()
-    } else {
-        base
-    };
-    for statements in chunks.iter().rev() {
-        apply_statements(&mut corners, statements, false);
-    }
-    corners
+    (chunks, unknown)
 }
 
 /// Whether a `side-tab` match is the stripe-child form: a narrow coloured
@@ -1087,6 +1107,107 @@ pub fn side_tab_known_square_in_sheet<'s>(
     index
         .get_or_init(|| CssHostIndex::new(index_text))
         .is_declaration_known_square(source.offset(i, m.index), side, sheet)
+}
+
+/// Whether some statement declares a radius. A statement that might bring
+/// one in unseen (a mixin, `@apply`) is not one.
+fn declares_radius(statements: &[String]) -> bool {
+    statements.iter().any(|s| {
+        !is_unseen_declaration_source(s)
+            && split_declaration(s).is_some_and(|(prop, _)| is_radius_property(&prop))
+    })
+}
+
+/// The text a stylesheet index is built on for the match at `at` on line `i`:
+/// the source itself in stylesheet text, a component file's blanked `<style>`
+/// text (`style_text`) when the match sits inside one, `None` in markup.
+pub fn style_index_text<'s>(
+    block_context: bool,
+    source: &'s SourceText,
+    i: usize,
+    at: usize,
+    style_text: Option<&'s (String, Vec<(usize, usize)>)>,
+) -> Option<&'s str> {
+    if block_context {
+        return Some(source.text());
+    }
+    let pos = source.offset(i, at);
+    let (text, spans) = style_text?;
+    spans
+        .iter()
+        .any(|(s, e)| *s <= pos && pos <= *e)
+        .then_some(text.as_str())
+}
+
+/// What a file contributes to [`Scope::element_declares_radius`]: the pieces
+/// to read a match's own element, built only when a matcher asks.
+pub struct ElementSource<'a, 's> {
+    pub lines: &'a [&'a str],
+    pub source: &'s once_cell::unsync::OnceCell<SourceText>,
+    pub index: &'a once_cell::unsync::OnceCell<CssHostIndex<'s>>,
+    pub i: usize,
+    pub block_context: bool,
+    pub sass: bool,
+    pub style_text: Option<&'s (String, Vec<(usize, usize)>)>,
+}
+
+/// What a [`Matcher`]'s `test` reads: dereferenced it is the match's context
+/// text, the line or in stylesheet text the lines around it, and
+/// [`element_declares_radius`](Self::element_declares_radius) answers from
+/// the stylesheet instead of the distance between lines.
+pub struct Scope<'a, 's> {
+    text: &'a str,
+    element: Option<ElementSource<'a, 's>>,
+}
+
+impl<'a, 's> Scope<'a, 's> {
+    /// A scope over markup text alone.
+    #[cfg(test)]
+    pub fn line(text: &'a str) -> Self {
+        Scope { text, element: None }
+    }
+
+    pub fn in_file(text: &'a str, element: ElementSource<'a, 's>) -> Self {
+        Scope {
+            text,
+            element: Some(element),
+        }
+    }
+
+    /// Whether a radius declaration styles the match's own element, or `None`
+    /// where the match is in markup and has no stylesheet to read. Braces
+    /// syntax reads the match's own rule scope, so a radius on a
+    /// pseudo-element rule that holds the accent counts, and asks the
+    /// stylesheet's [`CssHostIndex`] for the rules tied to the match's box,
+    /// the way side-tab does. Indented Sass reads its own scope. A scope the
+    /// reader cannot see through asserts nothing.
+    pub fn element_declares_radius(&self, m: &MatchCtx) -> Option<bool> {
+        let e = self.element.as_ref()?;
+        let source = e.source.get_or_init(|| SourceText::new(e.lines));
+        let index_text = style_index_text(e.block_context, source, e.i, m.index, e.style_text)?;
+        if e.sass {
+            let (chunks, _) = sass_scope_statements(source, e.i);
+            return Some(chunks.iter().any(|c| declares_radius(c)));
+        }
+        let index = e.index.get_or_init(|| CssHostIndex::new(index_text));
+        let pos = source.offset(e.i, m.index);
+        // With no brace or template quote before it the text around the match
+        // is not one scope; the index holds a template's top-level declarations.
+        let in_block = block_bounds(source.text().as_bytes(), pos).0 > 0;
+        let own_scope = in_block && {
+            let (chunks, _) = brace_scope_statements(source, e.i, m.index);
+            chunks.iter().any(|(statements, _)| declares_radius(statements))
+        };
+        Some(own_scope || index.declaration_declares_radius(pos))
+    }
+}
+
+impl std::ops::Deref for Scope<'_, '_> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.text
+    }
 }
 
 re!(MARKUP_TAG_NAME_RE, r"^<([A-Za-z][-\w.:]*)".to_string());
@@ -1258,7 +1379,7 @@ pub struct Matcher {
     pub id: &'static str,
     /// Match every occurrence on one line, in order.
     pub find_all: fn(&str) -> Vec<MatchCtx>,
-    pub test: fn(&MatchCtx, &str) -> bool,
+    pub test: fn(&MatchCtx, &Scope) -> bool,
     pub fmt: fn(&MatchCtx, &str) -> String,
 }
 
@@ -1770,7 +1891,12 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "border-accent-on-rounded",
             find_all: |l| all(&BORDER_ACCENT_CSS_RE, l),
-            test: |m, line| num(m.g(1)) >= 3.0 && has_border_radius(line),
+            test: |m, scope| {
+                num(m.g(1)) >= 3.0
+                    && scope
+                        .element_declares_radius(m)
+                        .unwrap_or_else(|| has_border_radius(scope))
+            },
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
@@ -2261,7 +2387,7 @@ mod tests {
         let mut out = vec![];
         for m in REGEX_MATCHERS.iter().filter(|m| m.id == id) {
             for c in (m.find_all)(line) {
-                if (m.test)(&c, line) {
+                if (m.test)(&c, &Scope::line(line)) {
                     out.push((m.fmt)(&c, line));
                 }
             }

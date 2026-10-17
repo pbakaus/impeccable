@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n1 file scanned with regex matching only (.css).\nRules that need a parsed page (tiny-text, low-contrast and other element rules) did not run on them; findings are an undercount, not a clean bill of health.\nFor the full check, scan the running dev server (npx impeccable detect http://localhost:PORT) or a static site's built .html.\n\n<REPO>/tests/fixtures/antipatterns/border-accent-blank-lines.css\n  line 10: [border-accent-on-rounded] border-bottom: 3px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 14: [border-accent-on-rounded] border-bottom: 4px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 24: [border-accent-on-rounded] border-bottom: 5px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 34: [border-accent-on-rounded] border-bottom: 6px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n  line 40: [border-accent-on-rounded] border-top: 9px solid\n    → Thick accent border on a rounded card — the border clashes with the rounded corners. Remove the border or the border-radius.\n\n5 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

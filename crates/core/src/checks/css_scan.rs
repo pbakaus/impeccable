@@ -4,8 +4,8 @@
 //! `crate::js_ext_a::utf16_index`) and/or a `selector`.
 
 use crate::checks::rules::{
-    extract_shadow_lengths, find_shadow_color, glow_is_perceptible, DeclaredCorners, ANY, B, D,
-    NOMINAL_CARD_WIDTH_PX,
+    extract_shadow_lengths, find_shadow_color, glow_is_perceptible, is_radius_property,
+    DeclaredCorners, ANY, B, D, NOMINAL_CARD_WIDTH_PX,
 };
 use crate::color::{
     color_to_hex, has_chroma, parse_any_color, relative_luminance, split_top_level_commas, Rgba,
@@ -1534,6 +1534,33 @@ impl<'a> CssHostIndex<'a> {
         corners
     }
 
+    /// Whether a radius declaration styles the box the declaration at `pos`
+    /// sits on, the stylesheet reading side-tab takes: a rule
+    /// [`tied_rules`](Self::tied_rules) ties to the box's hosts sets one, so
+    /// `.card` rules and grouped selectors count and a compound that adds to
+    /// the host (`.card.is-active`) does not. A pseudo-element's own rules
+    /// count too: the host forms name its element, the block's selectors as
+    /// written name the pseudo-element itself. A statement that might bring a
+    /// radius in unseen (a mixin, `@apply`) is not one.
+    pub fn declaration_declares_radius(&self, pos: usize) -> bool {
+        let Some(mut hosts) = self.declaration_hosts(pos) else {
+            return false;
+        };
+        if let Some(Some(b)) = self.declaration_block(pos) {
+            for selector in &self.hosts[b] {
+                if !hosts.contains(selector) {
+                    hosts.push(selector.clone());
+                }
+            }
+        }
+        self.tied_rules(&hosts).iter().any(|id| {
+            self.rules[*id]
+                .decls
+                .iter()
+                .any(|d| matches!(d, RadiusDecl::Set(prop, _) if is_radius_property(prop)))
+        })
+    }
+
     /// The radius rules naming one of `hosts`, in source order: what
     /// [`corners_for_hosts`](Self::corners_for_hosts) applies.
     fn tied_rules(&self, hosts: &[String]) -> Vec<usize> {
@@ -1623,22 +1650,35 @@ impl<'a> CssHostIndex<'a> {
         side: usize,
         sheet: &DeclaredCorners,
     ) -> bool {
+        self.hosts_known_square(self.declaration_hosts(pos), side, sheet)
+    }
+
+    /// The host selectors of the box the declaration at `pos` (a byte offset
+    /// into the text the index was built on) styles: the innermost block
+    /// around it, or `&` at the top level of a CSS-in-JS template. `None`
+    /// when the box cannot be named: the declaration or an enclosing selector
+    /// is interpolated.
+    pub fn declaration_hosts(&self, pos: usize) -> Option<Vec<String>> {
+        match self.declaration_block(pos)? {
+            None => Some(vec!["&".to_string()]),
+            Some(b) if self.hosts_unknown[b] => None,
+            Some(b) => Some(self.host_forms(&self.hosts[b])),
+        }
+    }
+
+    /// The innermost block around the declaration at `pos`, `Some(None)` at
+    /// the top level, `None` inside an interpolation the walk read as text.
+    fn declaration_block(&self, pos: usize) -> Option<Option<usize>> {
         let pos = self.content_offset(pos);
         if self
             .interpolations
             .iter()
             .any(|(start, end)| *start <= pos && pos <= *end)
         {
-            return false;
+            return None;
         }
         let before = self.opens.partition_point(|open| *open < pos);
-        let block = (0..before).rev().find(|b| self.closes[*b] >= pos);
-        let hosts = match block {
-            None => Some(vec!["&".to_string()]),
-            Some(b) if self.hosts_unknown[b] => None,
-            Some(b) => Some(self.host_forms(&self.hosts[b])),
-        };
-        self.hosts_known_square(hosts, side, sheet)
+        Some((0..before).rev().find(|b| self.closes[*b] >= pos))
     }
 
     /// [`side_stripe_on_rounded_host`](Self::side_stripe_on_rounded_host)'s

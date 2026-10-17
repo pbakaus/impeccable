@@ -19,8 +19,8 @@ use crate::profiler::{profile_findings, profile_step, DetectorProfile, ProfileMe
 use crate::regex_matchers::{
     analyzer_rule_id, is_neutral_authored_color, sass_sheet_corners,
     is_stripe_child_match, side_tab_known_square_in_sheet, side_tab_markup_known_square,
-    side_tab_rounded_in_scope,
-    MatchCtx, SourceText,
+    side_tab_rounded_in_scope, style_index_text,
+    ElementSource, MatchCtx, Scope, SourceText,
     REGEX_ANALYZERS, REGEX_MATCHERS, TEXT_CONTENT_ANALYZER_IDS,
 };
 use crate::util::{line_of_offset, re, ANY, B, D, W, WS, WS_CHARS};
@@ -1365,7 +1365,12 @@ impl<'a> FileSheet<'a> {
                 }
                 let spans: Vec<(usize, usize)> = STYLE_TAG_RE
                     .captures_iter(self.source)
-                    .filter_map(|c| c.get(1).map(|m| (m.start(), m.end())))
+                    .filter_map(|c| {
+                        let (tag, body) = (c.get(0)?, c.get(1)?);
+                        let opening = &self.source[tag.start()..body.start()];
+                        // An indented-Sass block is read by its own pass.
+                        (!SASS_STYLE_TAG_RE.is_match(opening)).then(|| (body.start(), body.end()))
+                    })
                     .collect();
                 if spans.is_empty() {
                     return None;
@@ -1426,11 +1431,18 @@ impl<'a> FileSheet<'a> {
 pub struct Block {
     pub content: String,
     pub start_line: usize,
+    /// An indented-syntax block: a `<style lang="sass">` tag.
+    pub sass: bool,
 }
 
 re!(
     STYLE_TAG_RE,
     format!("<{s}[^>]*>({ANY}*?)</{s}>", s = ci("style"))
+);
+
+re!(
+    SASS_STYLE_TAG_RE,
+    r#"(?i)\blang\s*=\s*["']?sass["'\s>]"#.to_string()
 );
 
 /// JS: detect-text.mjs#extractStyleBlocks
@@ -1441,9 +1453,13 @@ pub fn extract_style_blocks(content: &str, ext: &str) -> Vec<Block> {
     }
     STYLE_TAG_RE
         .captures_iter(content)
-        .map(|m| Block {
-            content: m[1].to_string(),
-            start_line: line_of_offset(content, m.get(0).unwrap().start()) + 1,
+        .map(|m| {
+            let (tag, body) = (m.get(0).unwrap(), m.get(1).unwrap());
+            Block {
+                content: body.as_str().to_string(),
+                start_line: line_of_offset(content, tag.start()) + 1,
+                sass: SASS_STYLE_TAG_RE.is_match(&content[tag.start()..body.start()]),
+            }
         })
         .collect()
 }
@@ -1691,6 +1707,7 @@ pub fn extract_css_in_js(content: &str, ext: &str) -> Vec<Block> {
             Block {
                 content: chars[t.content_start..t.content_end].iter().collect(),
                 start_line: before.split('\n').count(),
+                sass: false,
             }
         })
         .collect()
@@ -1722,12 +1739,12 @@ pub fn run_regex_matchers(
     file_path: &str,
     line_offset: usize,
     block_context: bool,
+    sass: bool,
     profile: Option<&DetectorProfile>,
     phase: &str,
     sheet: Option<&FileSheet>,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
-    let sass = file_path.to_ascii_lowercase().ends_with(".sass");
     // The joined text the side-tab scope reader walks, built once per file,
     // and the stylesheet index over it, built on the first accent it gates.
     let source = once_cell::unsync::OnceCell::new();
@@ -1749,26 +1766,33 @@ pub fn run_regex_matchers(
                     line.to_string()
                 };
                 for m in ctxs {
+                    let scope = Scope::in_file(
+                        &context,
+                        ElementSource {
+                            lines,
+                            source: &source,
+                            index: &index,
+                            i,
+                            block_context,
+                            sass,
+                            style_text: sheet.and_then(|sheet| sheet.style_text()),
+                        },
+                    );
                     // A side accent drops only on a box known square: the
                     // declarations around the match read square, and in
                     // stylesheet text the stylesheet agrees.
-                    if (matcher.test)(&m, &context)
+                    if (matcher.test)(&m, &scope)
                         && (matcher.id != "side-tab" || is_stripe_child_match(&m) || {
                             let source = source.get_or_init(|| SourceText::new(lines));
                             side_tab_rounded_in_scope(&m, source, i, sass)
                                 || sheet.is_some_and(|sheet| {
-                                    let index_text = if block_context {
-                                        Some(source.text())
-                                    } else {
-                                        let pos = source.offset(i, m.index);
-                                        sheet.style_text().and_then(|(text, spans)| {
-                                            spans
-                                                .iter()
-                                                .any(|(s, e)| *s <= pos && pos <= *e)
-                                                .then_some(text.as_str())
-                                        })
-                                    };
-                                    match index_text {
+                                    match style_index_text(
+                                        block_context,
+                                        source,
+                                        i,
+                                        m.index,
+                                        sheet.style_text(),
+                                    ) {
                                         Some(text) => !side_tab_known_square_in_sheet(
                                             &m,
                                             source,
@@ -1796,7 +1820,7 @@ pub fn run_regex_matchers(
                         matches.push(finding(
                             matcher.id,
                             file_path,
-                            &(matcher.fmt)(&m, &context),
+                            &(matcher.fmt)(&m, &scope),
                             (i + 1 + line_offset) as f64,
                         ));
                     }
@@ -1897,6 +1921,7 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
         file_path,
         0,
         css_like,
+        file_path.to_ascii_lowercase().ends_with(".sass"),
         profile,
         "source",
         Some(&sheet),
@@ -1950,6 +1975,7 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
             file_path,
             block.start_line - 1,
             true,
+            block.sass,
             profile,
             "style-block",
             Some(&sheet),
@@ -1986,6 +2012,7 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
             file_path,
             block.start_line - 1,
             true,
+            false,
             profile,
             "css-in-js",
             Some(&sheet),
@@ -2216,6 +2243,101 @@ function Thumb({ url }: { url?: string }) {
             scan(".t { box-shadow: inset 0 4px 0 #6366f1; border-radius: 0 0 8px 8px; }").len(),
             1
         );
+    }
+
+    /// A stylesheet border accent is rounded when a radius declaration styles
+    /// its own element, wherever the rule sits: blank lines change nothing,
+    /// and a mixin that might carry a radius is not one.
+    #[test]
+    fn border_accent_radius_follows_the_element_not_the_line_distance() {
+        let at = |src: &str, path: &str| -> usize {
+            detect_text(src, path, &TextOptions::default())
+                .into_iter()
+                .filter(|f| f.antipattern == "border-accent-on-rounded")
+                .count()
+        };
+        let accents = |src: &str| at(src, "/x/a.css");
+        let gap = "\n".repeat(6);
+        let accent = ".card { border-bottom: 3px solid #d0342c; }";
+        let radius = ".card { border-radius: 12px; }";
+        assert_eq!(accents(&format!("{accent}\n{radius}\n")), 1);
+        assert_eq!(accents(&format!("{accent}{gap}{radius}\n")), 1);
+        assert_eq!(
+            accents(&format!(
+                ".card {{\n  border-bottom: 3px solid #d0342c;\n{}  border-radius: 12px;\n}}\n",
+                "  color: red;\n".repeat(5)
+            )),
+            1
+        );
+        assert_eq!(
+            accents(&format!(
+                "{radius}{gap}.card.is-active {{ border-bottom: 3px solid #d0342c; }}\n"
+            )),
+            1
+        );
+        let tabs = ".tabs { border-bottom: 3px solid #d0342c; }";
+        let zoom = ".zoom { border-radius: 12px; }";
+        assert_eq!(accents(&format!("{tabs}{gap}{zoom}\n")), 0);
+        assert_eq!(accents(&format!("{tabs} {zoom}\n")), 0);
+        assert_eq!(
+            accents(&format!(
+                "{tabs}\n@media (min-width: 1px) {{\n  .tabs {{ border-radius: 12px; }}\n}}\n"
+            )),
+            1
+        );
+        // A mixin that might carry a radius, or one that is not a radius,
+        // never asserts one.
+        let bar = "border-bottom: 3px solid #d0342c;";
+        let include = format!(".card {{ @include border-radius(8px); {bar} }}\n");
+        assert_eq!(at(&include, "/x/a.scss"), 0);
+        assert_eq!(at(&format!(".card\n  +border-radius(8px)\n  {bar}\n"), "/x/a.sass"), 0);
+        assert_eq!(accents(&format!(".card {{ @apply rounded-lg; {bar} }}\n")), 0);
+        assert_eq!(accents(&format!(".btn {{ --btn-border-radius: 6px; {bar} }}\n")), 0);
+        assert_eq!(at(&format!(".b {{ $card-radius: 8px; }} .b {{ {bar} }}\n"), "/x/a.scss"), 0);
+        assert_eq!(at(&format!(".b {{ @card-radius: 8px; {bar} }}\n"), "/x/a.less"), 0);
+        assert_eq!(accents(&format!(".card {{ {bar} border-top-left-radius: 8px; }}\n")), 1);
+        let tab = format!(".tab-#{{$n}} {{ {bar} }}{gap}.tab-#{{$n}} {{ border-radius: 8px; }}\n");
+        assert_eq!(at(&tab, "/x/a.scss"), 0);
+        let styled = |body: &str| format!("const A = styled.div`\n  {body}\n`;\n");
+        let mixed = styled(&format!("${{mixin}};\n  {bar}\n  border-radius: 12px;"));
+        assert_eq!(at(&mixed, "/x/a.tsx"), 1);
+        // A radius on a compound that adds to the accent's host does not
+        // round it, the way side-tab reads; the reverse does (above). A
+        // pseudo-element rule holding the accent reads its own block.
+        let specific = format!("{accent}{gap}.card.is-active {{ border-radius: 8px; }}\n");
+        assert_eq!(accents(&specific), 0);
+        let tab = ".tab::after { border-top: 4px solid #d0342c; border-radius: 4px 4px 0 0; }";
+        assert_eq!(accents(&format!("{tab}\n")), 1);
+        assert_eq!(accents(&format!("{accent}{gap}.card::after {{ border-radius: 8px; }}\n")), 0);
+        let split = format!(
+            ".tab::after {{ border-top: 4px solid #d0342c; }}{gap}.tab::after {{ border-radius: 8px; }}\n"
+        );
+        assert_eq!(accents(&split), 1);
+        // A component file's `<style>` block reads the same way.
+        let vue = |rules: &str| {
+            format!("<template><div class=\"tabs\" /></template>\n<style>\n{rules}\n</style>\n")
+        };
+        assert_eq!(at(&vue(&format!("{tabs} {zoom}")), "/x/a.vue"), 0);
+        assert_eq!(at(&vue(&format!("{tabs} .tabs {{ border-radius: 12px; }}")), "/x/a.vue"), 1);
+        // Indented Sass, in a file or a `lang="sass"` block, reads the
+        // accent's own scope, however far the radius.
+        let far = format!(".card\n  {bar}\n{}  border-radius: 12px\n", "  color: red\n".repeat(5));
+        assert_eq!(at(&far, "/x/a.sass"), 1);
+        let sass_vue = |rules: &str| {
+            format!("<template><div /></template>\n<style lang=\"sass\">\n{rules}</style>\n")
+        };
+        assert_eq!(at(&sass_vue(&far), "/x/a.vue"), 1);
+        let cross = format!(".x\n  border-radius: 12px\n\n\n\n\n\n.card\n  {bar}\n");
+        assert_eq!(at(&sass_vue(&cross), "/x/a.vue"), 0);
+        // A syntax with no braces is not read as one scope.
+        let stylus = format!(
+            "<style lang=\"stylus\">\n.card\n  border-bottom: 3px solid red\n{gap}.zoom\n  border-radius: 12px\n</style>\n"
+        );
+        assert_eq!(at(&stylus, "/x/a.vue"), 0);
+        // Known limit: indented Stylus has no reader of its own, so even a
+        // radius in the accent's own rule is not seen there.
+        let own = "<style lang=\"stylus\">\n.card\n  border-bottom: 3px solid red\n  border-radius: 12px\n</style>\n";
+        assert_eq!(at(own, "/x/a.vue"), 0);
     }
 
     /// Every text-engine producer of `side-tab` answers a square box and a
