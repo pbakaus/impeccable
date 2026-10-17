@@ -85,7 +85,16 @@
     }
 
     function id8() {
-      if (crypto?.randomUUID) return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+      // randomUUID is secure-context only (issue #1055); getRandomValues is not.
+      try {
+        if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+      } catch { /* fall through */ }
+      try {
+        if (typeof crypto?.getRandomValues === 'function') {
+          const bytes = crypto.getRandomValues(new Uint8Array(4));
+          return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        }
+      } catch { /* fall through */ }
       return (Math.random().toString(16).slice(2) + Date.now().toString(16)).slice(0, 8);
     }
 

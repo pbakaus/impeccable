@@ -1238,4 +1238,24 @@ describe('live-browser source contracts', () => {
       assert.doesNotMatch(handler, /e\.key === 'Enter'(?! && !isImeKeydown\(e\))/);
     }
   });
+
+  // Issue #1055: secure-context-only APIs must not be called unguarded, or
+  // live mode dies on plain-HTTP LAN / Tailscale / custom-hostname origins.
+  it('never calls crypto.randomUUID directly in the live overlay', () => {
+    assert.doesNotMatch(SOURCE, /crypto\.randomUUID\(/);
+  });
+
+  it('guards navigator.clipboard and falls back to execCommand copy', () => {
+    const body = SOURCE.match(/function copyToClipboard\(text\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    assert.match(body, /navigator\.clipboard && typeof navigator\.clipboard\.writeText === 'function'/);
+    assert.match(body, /copyToClipboardFallback\(text\)/);
+    assert.match(SOURCE, /document\.execCommand\('copy'\)/);
+  });
+
+  it('resets the init guard when session state cannot be created', () => {
+    const boot = SOURCE.slice(0, SOURCE.indexOf('const HIGHLIGHT_TRANSITION'));
+    assert.match(boot, /catch \(err\) \{[\s\S]*?__IMPECCABLE_LIVE_INIT__ = false;/);
+  });
 });
+

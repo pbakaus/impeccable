@@ -14,11 +14,17 @@ function createMemoryStorage() {
   };
 }
 
-function loadFactory() {
-  const context = vm.createContext({});
+function loadSession(globals = {}) {
+  const context = vm.createContext(globals);
   vm.runInContext(readFileSync(SCRIPT, 'utf-8'), context);
-  return context.__IMPECCABLE_LIVE_SESSION__.createLiveBrowserSessionState;
+  return context.__IMPECCABLE_LIVE_SESSION__;
 }
+
+function loadFactory() {
+  return loadSession().createLiveBrowserSessionState;
+}
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe('live-browser-session state helper', () => {
   it('issues a fresh checkpoint revision when storage is ahead of this instance', () => {
@@ -47,5 +53,37 @@ describe('live-browser-session state helper', () => {
 
     second.saveSession({ id: 'session-a' });
     assert.equal(second.loadSession().checkpointRevision, 2);
+  });
+
+  // Issue #1055: plain-HTTP origins that are not localhost (LAN IP, Tailscale,
+  // custom hostname) are not secure contexts, so crypto.randomUUID is absent.
+  it('creates session state on an insecure origin where crypto.randomUUID is missing', () => {
+    let calls = 0;
+    const insecureCrypto = {
+      getRandomValues(bytes) { calls += 1; for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 37 + 11) & 0xff; return bytes; },
+    };
+    const session = loadSession({ crypto: insecureCrypto });
+    const state = session.createLiveBrowserSessionState({ prefix: 'impeccable-live', storage: createMemoryStorage() });
+    assert.match(state.owner, /^[0-9a-f]{8}$/);
+    assert.ok(calls > 0, 'getRandomValues backs the id when randomUUID is missing');
+    assert.match(session.randomUUID(), UUID_V4);
+  });
+
+  it('builds a v4 UUID from Math.random when there is no crypto at all', () => {
+    const session = loadSession({});
+    assert.match(session.randomUUID(null), UUID_V4);
+    assert.match(session.randomId8(null), /^[0-9a-f]{8}$/);
+    const state = session.createLiveBrowserSessionState({ prefix: 'impeccable-live', storage: createMemoryStorage() });
+    assert.match(state.owner, /^[0-9a-f]{8}$/);
+  });
+
+  it('prefers crypto.randomUUID where the context provides it', () => {
+    const session = loadSession({ crypto: { randomUUID: () => 'abcdef01-2345-4678-9abc-def012345678' } });
+    assert.equal(session.randomId8(), 'abcdef01');
+  });
+
+  it('falls through when randomUUID throws', () => {
+    const session = loadSession({ crypto: { randomUUID() { throw new TypeError('not allowed'); } } });
+    assert.match(session.randomUUID(), UUID_V4);
   });
 });
