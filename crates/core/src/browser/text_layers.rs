@@ -510,7 +510,7 @@ pub fn layers_at_text(
     if points.is_empty() || points.len() * 2 < occlusion_grid_size(&rect) {
         // Below the fold no point is answered, but one layer can be read off
         // the tree: a loaded picture a later sibling lays over the text.
-        if rect.top >= vh && covered_by_a_later_picture(dom, el) {
+        if rect.top >= vh && (covered_by_a_later_picture(dom, el) || covered_by_a_later_fill(dom, el)) {
             return TextLayers::Covered;
         }
         return TextLayers::Undecided;
@@ -599,6 +599,223 @@ pub(crate) fn visible_through_clips(dom: &dyn Dom, el: ElId, top: ElId) -> crate
         cur = dom.parent(c);
     }
     r
+}
+
+/// The fill alpha, times the opacity of every box from the fill up to the
+/// sibling that holds it, a box needs to hide the text under it.
+const FILL_COVER_MIN_ALPHA: f64 = 0.95;
+
+/// How many ancestors of the text [`covered_by_a_later_fill`] climbs.
+const FILL_COVER_MAX_DEPTH: usize = 16;
+
+/// How many elements [`covered_by_a_later_fill`] reads before it gives up
+/// and answers no.
+const FILL_COVER_BUDGET: usize = 3000;
+
+/// Whether a later layer lays an opaque fill over all of `el`'s text:
+/// kipper.com's demo frame, whose "load the demo" button (`position:
+/// absolute; inset: 0`, after the poster that holds a fake chat input) sets
+/// an opaque white card over the input's placeholder. Every one of these
+/// holds:
+///
+/// - `el` and each ancestor up to the one whose later sibling holds the
+///   fill sets no `z-index` (at most [`FILL_COVER_MAX_DEPTH`] levels);
+/// - that sibling paints after it ([`super::painted::later_sibling_paints_after`])
+///   and is painted at capture;
+/// - the fill box, or a box between it and the sibling, is positioned, and
+///   none of them sets a `z-index`, so the fill paints in a positioned layer
+///   after the text's (a static block's background paints under the text of
+///   earlier blocks);
+/// - the fill's `background-color` alpha, times the opacity of every box
+///   from the fill up to the sibling, is [`FILL_COVER_MIN_ALPHA`] or more,
+///   its background is clipped to the border or padding box, and it is
+///   painted at capture;
+/// - every box from the fill up to the sibling has no mask or clip-path, no
+///   `filter`, and `mix-blend-mode: normal`, and neither the fill nor any
+///   ancestor is rotated or skewed;
+/// - the fill's box (its padding box when the background is clipped to
+///   it), cut to every overflow clip up to the sibling and inset by 0.3 of
+///   its largest corner radius, covers the text within a pixel.
+///
+/// A box the capture did not measure, or a search past
+/// [`FILL_COVER_BUDGET`] elements, covers nothing.
+fn covered_by_a_later_fill(dom: &dyn Dom, el: ElId) -> bool {
+    let text = dom
+        .direct_text_rect(el)
+        .filter(|r| r.all_finite() && r.width > 0.0 && r.height > 0.0)
+        .unwrap_or_else(|| dom.rect(el));
+    if !text.all_finite() || text.width <= 0.0 || text.height <= 0.0 {
+        return false;
+    }
+    let z_auto = |e: ElId| matches!(dom.style(e, "zIndex").as_str(), "auto" | "");
+    let positioned = |e: ElId| !matches!(dom.style(e, "position").as_str(), "static" | "");
+    let opaque = |e: ElId| {
+        let o = js::parse_float(&dom.style(e, "opacity"));
+        o.is_finite() && o >= FILL_COVER_MIN_ALPHA
+    };
+    let mut read = 0usize;
+    let body = dom.body();
+    let mut held = el;
+    for _ in 0..FILL_COVER_MAX_DEPTH {
+        if !z_auto(held) {
+            return false;
+        }
+        let Some(parent) = dom.parent(held) else { return false };
+        if Some(parent) == body || dom.document_element() == Some(parent) {
+            return false;
+        }
+        let siblings = dom.children(parent);
+        let Some(at) = siblings.iter().position(|&c| c == held) else { return false };
+        for &sib in &siblings[at + 1..] {
+            if !z_auto(sib)
+                || !super::painted::later_sibling_paints_after(dom, parent, held, sib)
+                || !super::painted::painted_at_capture(dom, sib)
+            {
+                continue;
+            }
+            let mut boxes = vec![sib];
+            boxes.extend(dom.query_all(Some(sib), "*").unwrap_or_default());
+            for fill in boxes {
+                read += 1;
+                if read > FILL_COVER_BUDGET {
+                    return false;
+                }
+                if fill_covers(dom, fill, sib, &text, &z_auto, &positioned, &opaque) {
+                    return true;
+                }
+            }
+        }
+        held = parent;
+    }
+    false
+}
+
+/// [`covered_by_a_later_fill`]'s test of one box `fill` inside `sib`.
+fn fill_covers(
+    dom: &dyn Dom,
+    fill: ElId,
+    sib: ElId,
+    text: &crate::browser::Rect,
+    z_auto: &dyn Fn(ElId) -> bool,
+    positioned: &dyn Fn(ElId) -> bool,
+    opaque: &dyn Fn(ElId) -> bool,
+) -> bool {
+    let Some(bg) = parse_rgb_or_any(&dom.style(fill, "backgroundColor")) else {
+        return false;
+    };
+    if bg.alpha_or_one() < FILL_COVER_MIN_ALPHA {
+        return false;
+    }
+    let clip = dom.style(fill, "backgroundClip");
+    let webkit_clip = dom.style(fill, "webkitBackgroundClip");
+    if !matches!(clip.as_str(), "" | "border-box" | "padding-box")
+        || !matches!(webkit_clip.as_str(), "" | "border-box" | "padding-box")
+    {
+        return false;
+    }
+    // A rotated or skewed fill paints less than its bounding box: the text
+    // can show in the corners the box adds.
+    if super::page_checks::drawn_tilted(dom, fill) {
+        return false;
+    }
+    let mut layered = false;
+    // The fill's alpha times every opacity up to the sibling: ten boxes at
+    // 0.96 each let 0.34 of the text through between them.
+    let mut alpha = bg.alpha_or_one();
+    let mut cur = Some(fill);
+    while let Some(c) = cur {
+        // A blend mode or a filter changes what the fill leaves of the text
+        // under it: a white card at `multiply` leaves it all.
+        let blend = dom.style(c, "mixBlendMode");
+        let filter = dom.style(c, "filter");
+        if !z_auto(c)
+            || !opaque(c)
+            || masked_or_clipped(dom, c)
+            || !matches!(blend.as_str(), "normal" | "")
+            || !matches!(filter.as_str(), "none" | "")
+        {
+            return false;
+        }
+        alpha *= js::parse_float(&dom.style(c, "opacity"));
+        if !(alpha >= FILL_COVER_MIN_ALPHA) {
+            return false;
+        }
+        layered |= positioned(c);
+        if c == sib {
+            break;
+        }
+        cur = dom.parent(c);
+    }
+    if !layered {
+        return false;
+    }
+    let mut r = visible_through_clips(dom, fill, sib);
+    // A fill clipped to the padding box leaves the border unpainted, and a
+    // transparent border shows the text under it.
+    if clip == "padding-box" || webkit_clip == "padding-box" {
+        let own = dom.rect(fill);
+        let border = |side: &str| js::parse_float(&dom.style(fill, &format!("border{side}Width")));
+        let (t, rt, b, l) = (border("Top"), border("Right"), border("Bottom"), border("Left"));
+        if ![t, rt, b, l].iter().all(|w| w.is_finite() && *w >= 0.0) {
+            return false;
+        }
+        r.left = r.left.max(own.left + l);
+        r.top = r.top.max(own.top + t);
+        r.right = r.right.min(own.right - rt);
+        r.bottom = r.bottom.min(own.bottom - b);
+    }
+    if !r.all_finite() {
+        return false;
+    }
+    // A rounded overflow clip between the fill and the sibling cuts the
+    // fill's corners as its own radius would: a square fill inside a rounded
+    // `overflow: hidden` card leaves the text under the card's corners.
+    let Some(mut radius) = largest_corner_radius(&dom.style(fill, "borderRadius")) else {
+        return false;
+    };
+    if fill != sib {
+        let mut cur = dom.parent(fill);
+        while let Some(c) = cur {
+            if super::painted::clips_contents(&dom.style(c, "display")) {
+                let (ox, oy) = super::painted::overflow_axes(dom, c);
+                if super::painted::clips(&ox) || super::painted::clips(&oy) {
+                    let Some(cr) = largest_corner_radius(&dom.style(c, "borderRadius")) else {
+                        return false;
+                    };
+                    radius = radius.max(cr);
+                }
+            }
+            if c == sib {
+                break;
+            }
+            cur = dom.parent(c);
+        }
+    }
+    let inset = 0.3 * radius;
+    let covers = r.left + inset <= text.left + 1.0
+        && r.top + inset <= text.top + 1.0
+        && r.right - inset >= text.right - 1.0
+        && r.bottom - inset >= text.bottom - 1.0;
+    covers && super::painted::painted_at_capture(dom, fill)
+}
+
+/// The largest radius a computed `border-radius` names in pixels: `0px` or
+/// an empty value is 0. `None` for a percentage or any other unit, which the
+/// box's size would have to resolve.
+fn largest_corner_radius(value: &str) -> Option<f64> {
+    let mut max = 0.0f64;
+    for token in value.split(|c: char| c.is_ascii_whitespace() || c == '/') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let v = token.strip_suffix("px").map(js::parse_float)?;
+        if !v.is_finite() || v < 0.0 {
+            return None;
+        }
+        max = max.max(v);
+    }
+    Some(max)
 }
 
 /// How far the picture's box may sit from the avatar box on each side.

@@ -1607,6 +1607,14 @@ fn body_text_edge_span(dom: &dyn Dom, q: &QualityInput) -> Option<(f64, f64)> {
         None if has_direct_text && !prose_block => (rect.left, rect.right),
         None => return None,
     };
+    // Text in a fixed bar laid over the page (a consent bar, a notice) is
+    // chrome, as the element's own fixed position is, and its gutter is the
+    // bar's business, unless the words reach the screen's edge itself.
+    if in_a_fixed_bar(dom, el)
+        && js::math_min(left, viewport_width - right) >= FIXED_BAR_EDGE_FLOOR_PX
+    {
+        return None;
+    }
     // Text wholly past either side of the viewport meets no edge a reader
     // sees: a desktop column laid out past a phone viewport, a list parked
     // 800px to the right.
@@ -1615,6 +1623,45 @@ fn body_text_edge_span(dom: &dyn Dom, q: &QualityInput) -> Option<(f64, f64)> {
     } else {
         None
     }
+}
+
+/// How close to the screen's edge text in a fixed bar may sit and still be
+/// left to the bar: nearer than this, the words touch the edge and report.
+const FIXED_BAR_EDGE_FLOOR_PX: f64 = 4.0;
+
+/// The share of the viewport's height under which a fixed ancestor is a bar
+/// laid over the page rather than a layer that holds it.
+const FIXED_BAR_MAX_VIEWPORT_SHARE: f64 = 0.5;
+
+/// Whether an ancestor of `el` is a fixed bar: `position: fixed`, measured,
+/// and shorter than half the viewport's height. klimaschutz-niedersachsen.de
+/// (a cookiefirst bar, 196px of an 800px window) and lockheedmartin.com
+/// (`#cookie-bar`, 92px of 844px) set their consent copy in a `<p>` inside a
+/// fixed bar that runs to the window's sides. A fixed layer as tall as the
+/// window is how a smooth-scroll library holds the whole page, so its prose
+/// is still measured, and so is a fixed ancestor the capture did not measure
+/// or a window whose height is unknown. A sticky ancestor is not taken: a
+/// sticky panel holds reading prose in scroll-driven layouts.
+fn in_a_fixed_bar(dom: &dyn Dom, el: ElId) -> bool {
+    let vh = dom.inner_height();
+    if !(vh.is_finite() && vh > 0.0) {
+        return false;
+    }
+    let body = dom.body();
+    let mut cur = dom.parent(el);
+    while let Some(c) = cur {
+        if Some(c) == body {
+            break;
+        }
+        if dom.style(c, "position") == "fixed" {
+            let r = dom.rect(c);
+            if r.all_finite() && r.height > 0.0 && r.height < vh * FIXED_BAR_MAX_VIEWPORT_SHARE {
+                return true;
+            }
+        }
+        cur = dom.parent(c);
+    }
+    false
 }
 
 /// The hit, at advisory severity when `advisory` holds.
@@ -2424,6 +2471,36 @@ fn quality_input(dom: &dyn Dom, el: ElId, line_max: f64) -> QualityInput {
     }
 }
 
+/// The elements whose text is code or markup, never shown as words.
+const CODE_TEXT_SELECTOR: &str = "script, style, template, noscript";
+
+/// `el`'s `textContent` without the text of `script`, `style`, `template`
+/// and `noscript` descendants. munsifdaily.in writes the Islamic date into
+/// an h5 with an inline `<script>`, so the heading's text content starts
+/// with `document.write(...)`, which no reader sees.
+fn text_without_code(dom: &dyn Dom, el: ElId) -> String {
+    if dom.query_all(Some(el), CODE_TEXT_SELECTOR).unwrap_or_default().is_empty() {
+        return dom.text_content(el);
+    }
+    // Node by node, so a script's text is dropped where the script sits and
+    // the same words shown elsewhere in the heading stay.
+    fn walk(dom: &dyn Dom, el: ElId, out: &mut String) {
+        for child in dom.child_nodes(el) {
+            match child {
+                DomChild::Text(text) => out.push_str(&text),
+                DomChild::Element(c) => {
+                    if !dom.matches(c, CODE_TEXT_SELECTOR).unwrap_or(false) {
+                        walk(dom, c, out);
+                    }
+                }
+            }
+        }
+    }
+    let mut out = String::new();
+    walk(dom, el, &mut out);
+    out
+}
+
 /// What counts as the page's footer for `skipped-heading`: the element, the
 /// landmark role, or the conventional id.
 pub const FOOTER_SELECTOR: &str = "footer, [role=\"contentinfo\"], #footer";
@@ -2449,7 +2526,7 @@ pub fn check_page_quality_from_doc(dom: &dyn Dom) -> Vec<RuleHit> {
         // JS `parseInt(h.tagName[1])`
         let level = js::parse_int(&tag.chars().nth(1).map(|c| c.to_string()).unwrap_or_default(), 10);
         let level = if level.is_nan() { 0 } else { level as i64 };
-        let text = slice_utf16_prefix(&collapse_ws(js::trim(&dom.text_content(h))), 60);
+        let text = slice_utf16_prefix(&collapse_ws(js::trim(&text_without_code(dom, h))), 60);
         let footer = dom.closest(h, FOOTER_SELECTOR).ok().flatten();
         let opens_footer = footer.is_some() && footer != prev_footer;
         let into_footer = footer.is_some() && (opens_footer || prev_opens_footer);
@@ -4628,6 +4705,51 @@ mod tests {
         assert!(snippets(&d, li, "body-text-viewport-edge").is_empty());
     }
 
+    /// klimaschutz-niedersachsen.de (10046611) and lockheedmartin.com
+    /// (10046701): consent copy in a `<p>` inside a fixed bar at the window's
+    /// sides. A fixed layer as tall as the window (a smooth-scroll page)
+    /// still measures its prose, and so does a bar the capture did not
+    /// measure.
+    #[test]
+    fn viewport_edge_skips_text_in_a_fixed_bar() {
+        let copy = "We use cookies to measure how the site is used and to improve it for every visitor.";
+        let len = utf16_len(copy);
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        d.inner_width = 1280.0;
+        d.inner_height = 800.0;
+        let bar = d.add(Some(body), "div");
+        d.set_style(bar, "position", "fixed");
+        d.set_rect(bar, 0.0, 604.0, 1280.0, 196.0);
+        let p = text_el(&mut d, bar, "p", copy, "12px");
+        d.set_style(p, "lineHeight", "16px");
+        d.set_rect(p, 15.0, 672.0, 716.0, 34.0);
+        d.set_text_rect(p, 15.0, 673.0, 700.0, 32.0);
+        assert!(snippets(&d, p, "body-text-viewport-edge").is_empty(), "consent bar");
+        // Words that touch the screen's edge report inside a bar too.
+        d.set_rect(p, 0.0, 672.0, 716.0, 34.0);
+        d.set_text_rect(p, 2.0, 673.0, 700.0, 32.0);
+        assert_eq!(
+            snippets(&d, p, "body-text-viewport-edge"),
+            vec![format!("<p> with {len}-char body bleeds to viewport edge (left 0px)")],
+            "touching"
+        );
+        d.set_rect(p, 15.0, 672.0, 716.0, 34.0);
+        d.set_text_rect(p, 15.0, 673.0, 700.0, 32.0);
+        // The same copy in a window-tall fixed layer reports.
+        d.set_rect(bar, 0.0, 0.0, 1280.0, 800.0);
+        let want = vec![format!("<p> with {len}-char body bleeds to viewport edge (left 15px)")];
+        assert_eq!(snippets(&d, p, "body-text-viewport-edge"), want, "page layer");
+        // So does a bar with no measured box, and a static wrapper.
+        d.set_rect(bar, 0.0, 0.0, 0.0, 0.0);
+        assert_eq!(snippets(&d, p, "body-text-viewport-edge"), want, "unmeasured");
+        d.set_rect(bar, 0.0, 604.0, 1280.0, 196.0);
+        d.set_style(bar, "position", "static");
+        assert_eq!(snippets(&d, p, "body-text-viewport-edge"), want, "static");
+        d.set_style(bar, "position", "sticky");
+        assert_eq!(snippets(&d, p, "body-text-viewport-edge"), want, "sticky");
+    }
+
     /// Taste call r3-34: at 480px or less the gutter floor is 12px, above it
     /// 16px. rtx.com keeps a consistent 12px at 390px; text 8px from a
     /// phone's edge still reports.
@@ -5750,6 +5872,34 @@ mod tests {
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].type_, "skipped-heading");
         assert_eq!(f[0].detail, "<h1> \"Title here\" followed by <h3> \"Sub\" (missing h2)");
+
+        // munsifdaily.in (10046594): the h5 writes its date with an inline
+        // script, whose source is not a word on the page.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let h2 = d.add(Some(body), "h2");
+        d.add_text(h2, "E-Paper");
+        let h5 = d.add(Some(body), "h5");
+        let script = d.add(Some(h5), "script");
+        d.add_text(script, "document.write(writeIslamicDate(-1));");
+        d.add_text(h5, "28 Rabi-uthani 1448 AH");
+        let f = check_page_quality_dom(&d);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].detail, "<h2> \"E-Paper\" followed by <h5> \"28 Rabi-uthani 1448 AH\" (missing h3)");
+
+        // Script source that repeats a shown word removes the script's
+        // copy, not the word.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let h1 = d.add(Some(body), "h1");
+        d.add_text(h1, "Title");
+        let h3 = d.add(Some(body), "h3");
+        d.add_text(h3, "true facts");
+        let script = d.add(Some(h3), "script");
+        d.add_text(script, "true");
+        let f = check_page_quality_dom(&d);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].detail, "<h1> \"Title\" followed by <h3> \"true facts\" (missing h2)");
     }
 
     /// r5-p29: a skip into the footer is chrome; a skip in the content, and

@@ -71,7 +71,7 @@ pub enum Unpainted {
     /// The box has no width or no height, and none of its content shows past
     /// that edge.
     NoArea,
-    /// A text measurement's text is set at a font size under 1px, and no
+    /// A text measurement's text is set at a font size of 1px or less, and no
     /// descendant sets it larger: a Slick dot's `font-size: 0` label, a link
     /// laid over a card whose words only a screen reader reads.
     NoFontSize,
@@ -724,26 +724,51 @@ fn no_text(dom: &dyn Dom, el: ElId) -> Option<Unpainted> {
 /// the resource fails to load, which a capture does not record.
 const FALLBACK_HOST_TAGS: &[&str] = &["audio", "canvas", "iframe", "video"];
 
-/// A text measurement whose text is set under 1px: the element's computed
-/// font size parses below 1px, and no descendant that carries text of its own
-/// sets a size of 1px or more (the gap-collapsing `font-size: 0` on a row of
-/// inline blocks, whose children set their own). A size that does not parse
-/// keeps the finding. The subtree is read only once the element's own size
-/// is under 1px.
+/// A text measurement whose text is set at 1px or less: the element's
+/// computed font size parses to 1px or under, and no descendant that carries
+/// text of its own sets a larger size (the gap-collapsing `font-size: 0` on a
+/// row of inline blocks, whose children set their own). A glyph a pixel tall
+/// is a dot, not a letter: uni-hannover.de hides a "Die LUH auf Mastodon"
+/// link with an inline `font-size: 1px` in a static 9x1 box that no clip
+/// removes. A size that does not parse keeps the finding. The subtree is read
+/// only once the element's own size is that small. A size a transform draws
+/// larger is read at the drawn size ([`drawn_enlargement`]): `font-size: 1px`
+/// under `transform: scale(16)` paints 16px letters.
 fn no_font_size(dom: &dyn Dom, el: ElId) -> Option<Unpainted> {
-    if !under_1px(&dom.style(el, "fontSize")) {
+    if !at_most_1px(&dom.style(el, "fontSize")) {
+        return None;
+    }
+    let drawn = js::parse_float(&dom.style(el, "fontSize")) * drawn_enlargement(dom, el);
+    if !(drawn <= 1.0) {
         return None;
     }
     let sized_text = dom.query_all(Some(el), "*").unwrap_or_default().into_iter().any(|d| {
-        has_direct_text_longer_than(dom, d, 0) && !under_1px(&dom.style(d, "fontSize"))
+        has_direct_text_longer_than(dom, d, 0) && !at_most_1px(&dom.style(d, "fontSize"))
     });
     (!sized_text).then_some(Unpainted::NoFontSize)
 }
 
-/// A computed `font-size` that parses to a size under 1px.
-pub fn under_1px(font_size: &str) -> bool {
+/// How much larger than its layout box `el` is drawn: the smaller of its
+/// on-screen width over its layout width and its on-screen height over its
+/// layout height, when a transform enlarges it on both axes by more than a
+/// twentieth, else 1 (also when a layout size was not recorded). A rotation
+/// grows one side of the bounding box and shrinks the other, so a wide 1px
+/// line turned upright reads as not enlarged.
+fn drawn_enlargement(dom: &dyn Dom, el: ElId) -> f64 {
+    let r = dom.rect(el);
+    let (lw, lh) = (dom.offset_width(el), dom.offset_height(el));
+    if !(lw.is_finite() && lw > 0.0 && lh.is_finite() && lh > 0.0 && r.width.is_finite() && r.height.is_finite()) {
+        return 1.0;
+    }
+    let scale = (r.width / lw).min(r.height / lh);
+    if scale > 1.05 { scale } else { 1.0 }
+}
+
+/// A computed `font-size` that parses to 1px or less: a size no glyph can be
+/// read at.
+pub fn at_most_1px(font_size: &str) -> bool {
     let n = js::parse_float(font_size);
-    n.is_finite() && n < 1.0
+    n.is_finite() && n <= 1.0
 }
 
 /// Whether `node` is a face turned away under `backface-visibility: hidden`:
@@ -1059,6 +1084,73 @@ fn is_script_scroll_frame(dom: &dyn Dom, p: ElId, cr: &Rect, viewport_h: f64) ->
         && cr.height >= fold - 1.0
         && has_overflow(dom.scroll_height(p), dom.client_height(p))
         && !capped_by_max_height(dom, p, cr, js::math_max(fold, viewport_h))
+        && content_runs_past(dom, p, cr)
+}
+
+/// How many descendants [`content_runs_past`] reads before it stops and
+/// answers yes.
+const IN_FLOW_WALK_BUDGET: usize = 2000;
+
+/// The share of the frame's height an absolutely placed box has to take to
+/// count as content a script moves through the frame.
+const PLACED_CONTENT_MIN_SHARE: f64 = 0.5;
+
+/// Whether content a script could scroll through `p` runs past its bottom
+/// edge (`frame`): a descendant in `p`'s flow whose box ends more than a
+/// pixel below it, or an absolutely placed box that starts inside it, runs
+/// past it, and is at least half as tall as it. A scroll library moves one
+/// wrapper that holds the page, in flow or placed; incredible.one's pinned
+/// stage (a sticky section at `overflow: hidden`) holds a placed screen,
+/// 707px of its 800, that it lifts into view as the page scrolls. A map
+/// holds its markers as small absolutely placed boxes: chefsspecial.app's
+/// Mapbox box (896x800, `overflow: hidden`) records a scroll height of 1,626
+/// from markers placed below its edge, and those are clipped, not scrolled
+/// to. A placed box under half the frame's height is not read further; a
+/// taller one (a wrapper at `inset: 0`) is read like the frame's own flow,
+/// and a fixed one adds nothing.
+/// A box the capture did not measure, text of `p`'s own, or a walk past
+/// [`IN_FLOW_WALK_BUDGET`] answers yes, which keeps the frame.
+fn content_runs_past(dom: &dyn Dom, p: ElId, frame: &Rect) -> bool {
+    // Text of its own may be what runs past; the capture measures no text
+    // node, so that keeps the frame too.
+    if has_direct_text_longer_than(dom, p, 0) {
+        return true;
+    }
+    let bottom = frame.bottom;
+    let mut stack = dom.children(p);
+    let mut read = 0usize;
+    while let Some(c) = stack.pop() {
+        read += 1;
+        if read > IN_FLOW_WALK_BUDGET {
+            return true;
+        }
+        let r = dom.rect(c);
+        if !r.all_finite() {
+            return true;
+        }
+        match dom.style(c, "position").as_str() {
+            "fixed" => continue,
+            "absolute" => {
+                if r.height < frame.height * PLACED_CONTENT_MIN_SHARE {
+                    continue;
+                }
+                if r.top < bottom - 1.0 && r.bottom > bottom + 1.0 {
+                    return true;
+                }
+                // A placed wrapper that fills the frame (`position: absolute;
+                // inset: 0`, as some smooth-scroll setups hold the page) holds
+                // the content in its own flow: read it.
+                stack.extend(dom.children(c));
+                continue;
+            }
+            _ => {}
+        }
+        if r.bottom > bottom + 1.0 {
+            return true;
+        }
+        stack.extend(dom.children(c));
+    }
+    false
 }
 
 /// Whether a box stands at its `max-height`: a "read more" panel held at
@@ -2423,7 +2515,7 @@ mod tests {
 
     /// jyes.com.tw's Slick dots: the label of each dot is `font-size: 0`.
     #[test]
-    fn text_set_under_1px_is_not_painted_for_text_rules() {
+    fn text_set_at_1px_or_less_is_not_painted_for_text_rules() {
         let (mut d, body) = page();
         let dot = d.add(Some(body), "button");
         d.set_style(dot, "fontSize", "0px");
@@ -2449,9 +2541,39 @@ mod tests {
         // A size that does not parse keeps the text.
         d.set_style(dot, "fontSize", "");
         assert_eq!(text(&d, dot), None);
-        assert!(under_1px("0.5px"));
-        assert!(!under_1px("1px"));
-        assert!(!under_1px(""));
+        assert!(at_most_1px("0.5px"));
+        assert!(!at_most_1px(""));
+
+        // uni-hannover.de (10046522): a link hidden with an inline
+        // `font-size: 1px` in a static 9x1 box nothing clips. Its should-flag
+        // twin is the same link at 2px, which still paints marks.
+        let hidden = d.add(Some(body), "a");
+        d.set_style(hidden, "fontSize", "1px");
+        d.set_rect(hidden, 76.0, 5895.0, 9.0, 1.0);
+        d.add_text(hidden, "Die LUH auf Mastodon");
+        assert_eq!(text(&d, hidden), Some(Unpainted::NoFontSize));
+        assert!(at_most_1px("1px"));
+        // The same 1px text drawn sixteen times larger by a transform paints
+        // readable letters.
+        let enlarged = d.add(Some(body), "span");
+        d.set_style(enlarged, "fontSize", "1px");
+        d.set_rect(enlarged, 76.0, 400.0, 160.0, 16.0);
+        d.el_mut(enlarged).offset_width = 10.0;
+        d.el_mut(enlarged).offset_height = 1.0;
+        d.add_text(enlarged, "Scaled label");
+        assert_eq!(text(&d, enlarged), None);
+        d.el_mut(enlarged).offset_height = 16.0;
+        assert_eq!(text(&d, enlarged), Some(Unpainted::NoFontSize));
+        // A 160 by 1px line turned upright has a tall bounding box but the
+        // same letters: no enlargement.
+        d.set_rect(enlarged, 76.0, 400.0, 1.0, 160.0);
+        d.el_mut(enlarged).offset_width = 160.0;
+        d.el_mut(enlarged).offset_height = 1.0;
+        assert_eq!(text(&d, enlarged), Some(Unpainted::NoFontSize));
+        d.set_style(hidden, "fontSize", "2px");
+        d.set_rect(hidden, 76.0, 5895.0, 18.0, 2.0);
+        assert_eq!(text(&d, hidden), None);
+        assert!(!at_most_1px("1.5px"));
     }
 
     /// stroq.dev's "your browser does not support video" line inside the
@@ -3144,6 +3266,74 @@ mod tests {
         d.set_rect(shell, 0.0, 0.0, 1280.0, 800.0);
         d.el_mut(shell).client_height = 800.0;
         assert_eq!(why(&d, below), None);
+    }
+
+    /// chefsspecial.app (10047562): a Mapbox box 800px tall that hides its
+    /// overflow records a scroll height of 1,626 from markers placed below
+    /// its edge. They are absolutely placed in a static canvas container of
+    /// no height, so nothing in the box's flow runs past it: the markers
+    /// below the edge are clipped. The same box around an in-flow wrapper
+    /// that runs past it is a scroll frame.
+    #[test]
+    fn a_map_whose_overflow_is_placed_markers_is_not_a_scroll_frame() {
+        let (mut d, body) = page();
+        let map = d.add(Some(body), "div");
+        d.set_styles(map, &[("display", "block"), ("position", "relative"), ("overflowX", "hidden"), ("overflowY", "hidden")]);
+        d.set_rect(map, 0.0, 0.0, 896.0, 800.0);
+        d.el_mut(map).client_height = 800.0;
+        d.el_mut(map).scroll_height = Some(1626.0);
+        let canvas_box = d.add(Some(map), "div");
+        d.set_style(canvas_box, "display", "block");
+        d.set_rect(canvas_box, 0.0, 0.0, 896.0, 0.0);
+        let canvas = d.add(Some(canvas_box), "canvas");
+        d.set_style(canvas, "position", "absolute");
+        d.set_rect(canvas, 0.0, 0.0, 896.0, 800.0);
+        let marker = d.add(Some(canvas_box), "div");
+        d.set_style(marker, "position", "absolute");
+        d.set_rect(marker, 147.0, 860.0, 56.0, 56.0);
+        // The marker's count sits in a static box inside it, which is in
+        // the marker's flow, not the map's.
+        let pin = d.add(Some(marker), "div");
+        d.set_rect(pin, 165.0, 878.0, 20.0, 20.0);
+        let count = d.add(Some(pin), "div");
+        d.set_rect(count, 165.0, 878.0, 20.0, 20.0);
+        d.add_text(count, "12");
+        assert_eq!(why(&d, count), Some(Unpainted::ClippedOut));
+
+        // An in-flow wrapper that runs past the box makes it a frame again,
+        // and the same marker is kept.
+        let content = d.add(Some(map), "div");
+        d.set_rect(content, 0.0, 0.0, 896.0, 1626.0);
+        assert_eq!(why(&d, count), None);
+        // So does one the capture did not measure.
+        d.set_rect(content, f64::NAN, f64::NAN, f64::NAN, f64::NAN);
+        assert_eq!(why(&d, count), None);
+        // incredible.one (10048156): a pinned stage lifts a placed screen,
+        // most of the frame's height, that starts inside it and runs past.
+        d.set_rect(content, 0.0, 0.0, 896.0, 400.0);
+        assert_eq!(why(&d, count), Some(Unpainted::ClippedOut));
+        // A placed wrapper the frame's own height (`absolute; inset: 0`)
+        // holding in-flow content that runs past is a smooth-scroll frame.
+        let wrapper = d.add(Some(map), "div");
+        d.set_style(wrapper, "position", "absolute");
+        d.set_rect(wrapper, 0.0, 0.0, 896.0, 800.0);
+        let sections = d.add(Some(wrapper), "div");
+        d.set_rect(sections, 0.0, 0.0, 896.0, 2100.0);
+        assert_eq!(why(&d, count), None);
+        d.set_rect(sections, 0.0, 0.0, 896.0, 600.0);
+        assert_eq!(why(&d, count), Some(Unpainted::ClippedOut));
+
+        let screen = d.add(Some(map), "div");
+        d.set_style(screen, "position", "absolute");
+        d.set_rect(screen, 0.0, 700.0, 896.0, 707.0);
+        assert_eq!(why(&d, count), None);
+        // A small placed box across the edge (a marker half under it) is
+        // not that.
+        d.set_rect(screen, 0.0, 780.0, 56.0, 56.0);
+        assert_eq!(why(&d, count), Some(Unpainted::ClippedOut));
+        // And text the box holds of its own.
+        d.add_text(map, "Loading the map of every restaurant near you");
+        assert_eq!(why(&d, count), None);
     }
 
     /// smooth-scrollbar and Locomotive Scroll: a viewport-tall wrapper that

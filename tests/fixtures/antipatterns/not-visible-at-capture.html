@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Not visible at capture: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for text a visitor cannot see at capture (round 11, branch 1).
+
+       Should pass, each beside a should-flag twin that differs in the one
+       fact the engine reads:
+       - a curtain footer: a sticky layer anchored to the window's bottom at
+         z-index 0 that a page block at z-index 1 with an opaque fill covers
+         wherever a probe asks (text-occlusion). Twins: the same layer with a
+         link the page leaves showing, so the layer is on screen and the
+         covered link collides; and a layer pinned to the top at z-index 0
+         that the page buries for good, which is a collision too;
+       - a label in a pointer-events: none panel over an SVG drawing, where
+         the probe passes through to the drawing (text-occlusion). Twin: the
+         same panel over SVG text, which overlaps whichever is on top;
+       - consent copy 12px from the window's left edge in a fixed bar
+         (body-text-viewport-edge). Twin: the same copy in a sticky bar;
+       - a link set at 1px (undersized-ui-text). Twin: the same link at 2px;
+       - small numbered labels in a block at display: none beside headings
+         that show (numbered-section-labels). Twin: the same labels shown;
+       - a marker badge placed below a map that hides its overflow and holds
+         its markers absolutely placed (low-contrast). Twin: the same badge
+         below a frame whose in-flow content runs past it, which is how a
+         smooth-scroll library holds its page, and faint copy below the fold
+         of a frame whose content sits in a placed wrapper at inset 0;
+       - faint placeholder copy below the fold under an opaque card that a
+         later positioned button lays over it (low-contrast). Twin: the same
+         card in a static button, whose fill paints under the poster.
+
+       Each contrast case wears colours of its own, so the page's one report
+       of a colour pair never hides another. The occlusion cells sit in the
+       first 800px, since occlusion probes only points inside the viewport;
+       the below-the-fold cells start past 1000px.
+
+       The static HTML engine measures no boxes and runs no hit tests, so it
+       reports what it can see in both columns. The URL behaviour is pinned
+       by crates/browser/tests/not_visible_at_capture.rs. */
+
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; height: 5300px; position: relative; }
+    h2.case-title { position: absolute; margin: 0; font: 600 13px/17px system-ui; color: #333; }
+
+    /* Curtain layers, fixed at z-index 0, under page blocks at z-index 1. */
+    .curtain { position: sticky; bottom: 280px; height: 100px; z-index: 0; background: #2b46f9; }
+    .curtain-spacer { height: 5000px; }
+    .curtain-top { position: fixed; top: 580px; bottom: auto; left: 640px; width: 600px; height: 60px; z-index: 0; background: #2b46f9; }
+    .curtain-top a { position: absolute; top: 20px; left: 20px; font: 16px/20px system-ui; color: #ffffff; white-space: nowrap; }
+    .page-c { position: absolute; top: 570px; left: 640px; width: 300px; height: 80px; z-index: 1; background: #0a0b10; }
+    .page-c h3 { position: absolute; top: 20px; left: 20px; margin: 0; font: 600 24px/40px system-ui; color: #f5f5f2; white-space: nowrap; }
+    .curtain a { position: absolute; top: 30px; font: 16px/20px system-ui; color: #ffffff; white-space: nowrap; }
+    .curtain-a { margin-left: 20px; width: 560px; }
+    .curtain-b { margin-left: 640px; width: 600px; }
+    .page-block { position: absolute; top: 400px; height: 140px; z-index: 1; background: #0a0b10; }
+    .page-block h3 { position: absolute; top: 40px; left: 20px; margin: 0; font: 600 24px/40px system-ui; color: #f5f5f2; white-space: nowrap; }
+    .page-a { left: 20px; width: 560px; }
+    .page-b { left: 640px; width: 300px; }
+
+    /* A hint panel that ignores pointer events, over a drawing. */
+    .pe-wrap { position: absolute; top: 60px; width: 560px; height: 160px; }
+    .pe-wrap svg { position: absolute; top: 0; left: 0; width: 560px; height: 160px; }
+    .pe-panel { position: absolute; top: 12px; left: 12px; width: 240px; height: 120px; z-index: 1; pointer-events: none; background: rgba(20, 22, 40, 0.82); }
+    .pe-panel p { margin: 9px 0 0 13px; font: 700 13px/16px system-ui; letter-spacing: 1px; text-transform: uppercase; color: #ffffff; }
+    .pe-a { left: 20px; }
+    .pe-b { left: 640px; }
+
+    /* Links set too small to read. */
+    .tiny-links { position: absolute; top: 300px; left: 20px; width: 560px; }
+    .tiny-links a { color: #111; }
+
+    /* A consent bar fixed at the bottom of the window. */
+    .consent { position: fixed; left: 0; bottom: 0; width: 100%; height: 72px; background: #222; z-index: 5; }
+    .consent p, .sticky-bar p { margin: 0; padding: 12px 0 12px 12px; font: 12px/16px system-ui; color: #ffffff; }
+    .sticky-bar { position: sticky; top: 0; width: 100%; background: #333; }
+    .sticky-wrap { position: absolute; top: 3700px; left: 0; width: 100%; height: 400px; }
+
+    /* Numbered labels beside headings. */
+    .steps { position: absolute; left: 20px; width: 600px; }
+    .steps-hidden { top: 1000px; }
+    .steps-shown { top: 1400px; }
+    .steps section { margin: 0 0 24px; }
+    .steps .num { font: 700 11px/14px monospace; letter-spacing: 1px; color: #000; }
+    .steps-hidden .num { display: none; }
+    .steps h3 { margin: 4px 0 0; font: 600 28px/34px system-ui; }
+
+    /* A map that holds its markers absolutely placed. */
+    .map, .frame { position: absolute; top: 1900px; width: 600px; height: 800px; overflow: hidden; background: #e8eef0; }
+    .map { left: 20px; }
+    .frame { left: 640px; }
+    .map-canvas { position: static; height: 0; }
+    .frame-content { height: 1700px; }
+    .placed-frame { position: absolute; top: 4300px; left: 640px; width: 600px; height: 800px; overflow: hidden; background: #ffffff; }
+    .placed-inner { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+    .placed-content { height: 2100px; padding-top: 900px; }
+    .placed-content p { margin: 0; font: 14px/20px system-ui; color: #bbbbbb; }
+    .marker { position: absolute; width: 20px; height: 20px; border-radius: 50%; font: 700 12px/20px system-ui; text-align: center; color: #ffffff; }
+    .marker-a { left: 200px; top: 900px; background: #f9561f; }
+    .marker-b { left: 200px; top: 900px; background: #f85a20; }
+
+    /* A demo frame: a poster holding a chat input, and a button that lays
+       a card over it. */
+    .demo { position: absolute; top: 2900px; width: 325px; height: 300px; }
+    .demo-a { left: 20px; }
+    .demo-b { left: 640px; }
+    .poster { position: absolute; top: 0; left: 0; width: 325px; height: 300px; background: #faf9f7; }
+    .chat-row { position: absolute; top: 140px; left: 17px; width: 259px; height: 46px; background: #ffffff; }
+    .chat-row p { margin: 0; padding: 13px 17px; font: 13.5px/20px system-ui; }
+    .demo-a .chat-row p { color: #b4afa4; }
+    .demo-b .chat-row p { color: #b4afa5; }
+    .load { top: 0; left: 0; width: 325px; height: 300px; padding: 0; border: 0; background: transparent; }
+    .demo-a .load { position: absolute; }
+    .demo-b .load { position: static; display: block; }
+    .load-card { position: absolute; top: 120px; left: 4px; width: 316px; height: 85px; border-radius: 16px; background: #ffffff; font: 600 15px/85px system-ui; color: #111; }
+    .demo-b .load-card { position: static; display: block; margin: 120px 0 0 4px; }
+  </style>
+</head>
+<body>
+  <h2 class="case-title" style="top: 40px; left: 20px;">Should pass</h2>
+  <h2 class="case-title" style="top: 40px; left: 640px;">Should flag</h2>
+
+  <!-- A label in a pass-through panel over a drawing, and over SVG text. -->
+  <div class="pe-wrap pe-a">
+    <svg viewBox="0 0 560 160" aria-hidden="true"><rect x="0" y="0" width="560" height="160" fill="#1f2937"></rect><path d="M0 30 H560 M0 60 H560" stroke="#4b5563" stroke-width="20"></path></svg>
+    <div class="pe-panel"><p id="pass-pe-label">Canvas</p></div>
+  </div>
+  <div class="pe-wrap pe-b">
+    <svg viewBox="0 0 560 160" aria-hidden="true"><rect x="0" y="0" width="560" height="160" fill="#1f2937"></rect><text x="22" y="34" font-size="16" fill="#9ca3af">Input A Input A</text></svg>
+    <div class="pe-panel"><p id="flag-pe-label">Workbench</p></div>
+  </div>
+
+  <!-- A link at 1px and its twin at 2px. -->
+  <div class="tiny-links">
+    <a id="pass-1px-link" href="#mastodon" style="font-size: 1px;">Die LUH auf Mastodon</a>
+    <a id="flag-2px-link" href="#bluesky" style="font-size: 2px;">Die LUH auf Bluesky</a>
+  </div>
+
+  <!-- Page blocks over the curtain layers, which close the page below. -->
+  <div class="page-block page-a"><h3>Watch the agent catch it</h3></div>
+  <div class="page-block page-b"><h3>Every regression</h3></div>
+  <div class="curtain-top"><a id="flag-buried-header-link" href="#home">Home page</a></div>
+  <div class="page-c"><h3>Meet the agent</h3></div>
+
+  <!-- Numbered labels: hidden, then shown. -->
+  <div class="steps steps-hidden">
+    <section><span class="num">01</span><h3>Pass step one</h3></section>
+    <section><span class="num">02</span><h3>Pass step two</h3></section>
+    <section><span class="num">03</span><h3>Pass step three</h3></section>
+  </div>
+  <div class="steps steps-shown">
+    <section><span class="num">01</span><h3>Flag step one</h3></section>
+    <section><span class="num">02</span><h3>Flag step two</h3></section>
+    <section><span class="num">03</span><h3>Flag step three</h3></section>
+  </div>
+
+  <!-- A map's marker below its edge, and a frame's below its fold. -->
+  <div class="map">
+    <div class="map-canvas">
+      <div class="marker marker-a"><div id="pass-map-badge">12</div></div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-content">
+      <div class="marker marker-b"><div id="flag-frame-badge">14</div></div>
+    </div>
+  </div>
+
+  <!-- A smooth-scroll frame whose content sits in a placed wrapper. -->
+  <div class="placed-frame"><div class="placed-inner"><div class="placed-content"><p id="flag-placed-below">Selected case studies from the last year</p></div></div></div>
+
+  <!-- Demo frames below the fold. -->
+  <div class="demo demo-a">
+    <div class="poster"><div class="chat-row"><p id="pass-covered-placeholder">Reply to the agent</p></div></div>
+    <button class="load" type="button"><span class="load-card">Load the demo</span></button>
+  </div>
+  <div class="demo demo-b">
+    <div class="poster"><div class="chat-row"><p id="flag-shown-placeholder">Reply to the agent</p></div></div>
+    <button class="load" type="button"><span class="load-card">Load the demo</span></button>
+  </div>
+
+  <!-- A sticky bar far down the page. -->
+  <div class="sticky-wrap">
+    <div class="sticky-bar"><p id="flag-sticky-copy">We use cookies to measure how this site is used and to improve it for every visitor.</p></div>
+  </div>
+
+  <!-- Curtain layers: sticky to the window's bottom at z-index 0, after the
+       page's flow, so they sit under the page blocks above. -->
+  <div class="curtain-spacer"></div>
+  <div class="curtain curtain-a"><a id="pass-curtain-link" href="#privacy" style="left: 20px;">Privacy policy</a></div>
+  <div class="curtain curtain-b">
+    <a id="flag-curtain-link" href="#terms" style="left: 20px;">Terms of service</a>
+    <a class="seen" href="#contact" style="left: 420px;">Contact us</a>
+  </div>
+
+  <!-- A consent bar fixed to the bottom of the window. -->
+  <div class="consent"><p id="pass-consent-copy">We use cookies to measure how the site is used and to improve it for every visitor.</p></div>
+</body>
+</html>

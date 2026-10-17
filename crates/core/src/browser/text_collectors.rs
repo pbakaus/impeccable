@@ -351,6 +351,15 @@ pub fn collect_numbered_section_label_candidates(dom: &dyn Dom) -> Vec<NumberedL
         if is_kicker_card_context(dom, heading, label) || numbered_label_holds_media(dom, label) {
             continue;
         }
+        // A label or heading the layout does not render numbers nothing on
+        // screen: juskoe.vercel.app sets its 13px "01" to "03" in a
+        // `md:hidden` block, at `display: none` on desktop, beside headings
+        // that show. Only that is asked, not the whole Text gate: a label at
+        // opacity 0 in a scroll-driven stage (v0-applestylescroll's sticky
+        // feature panels) is one a visitor scrolls into view.
+        if not_displayed(dom, heading) || not_displayed(dom, label) {
+            continue;
+        }
         let label_text = {
             let t = clean_inline_text(dom, label);
             if t.is_empty() {
@@ -394,6 +403,27 @@ pub fn collect_numbered_section_label_candidates(dom: &dyn Dom) -> Vec<NumberedL
         });
     }
     candidates
+}
+
+/// Whether `el` or an ancestor is `display: none`, or `content-visibility:
+/// hidden` on a box it applies to: the layout renders none of `el`'s text at
+/// any scroll position (on `el` itself the box lays out, its words do not).
+/// A value the capture did not record renders.
+fn not_displayed(dom: &dyn Dom, el: ElId) -> bool {
+    let mut cur = Some(el);
+    while let Some(c) = cur {
+        let display = dom.style(c, "display");
+        if display == "none" {
+            return true;
+        }
+        if super::dom::content_visibility_applies(&display)
+            && js::to_lower_case(&dom.style(c, "contentVisibility")) == "hidden"
+        {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
 }
 
 /// The media that make a numbered label a picture rather than a section
@@ -940,6 +970,90 @@ mod tests {
             hits[0].snippet,
             "tiny numbered label \"01\" beside h2 \"Section number 1\" (2 on page)"
         );
+    }
+
+    /// juskoe.vercel.app (10047099): the small "01" to "03" labels sit in a
+    /// `md:hidden` block at `display: none` on desktop, beside headings a
+    /// visitor sees. The same labels shown report.
+    #[test]
+    fn numbered_labels_the_layout_does_not_render_are_not_counted() {
+        let build = |hide_labels: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            for (i, idx) in ["01", "02", "03"].iter().enumerate() {
+                let y = 100.0 + i as f64 * 300.0;
+                let sec = d.add(Some(body), "section");
+                d.set_rect(sec, 40.0, y, 600.0, 200.0);
+                let mobile = d.add(Some(sec), "div");
+                let label = d.add(Some(mobile), "span");
+                d.add_text(label, idx);
+                d.set_styles(
+                    label,
+                    &[
+                        ("fontSize", "13px"),
+                        ("letterSpacing", "1px"),
+                        ("fontWeight", "700"),
+                        ("fontFamily", "monospace"),
+                        ("textTransform", "none"),
+                        ("color", "rgb(0, 0, 0)"),
+                    ],
+                );
+                if hide_labels {
+                    d.set_style(mobile, "display", "none");
+                    for el in [mobile, label] {
+                        d.el_mut(el).check_visibility = Some(false);
+                        d.set_rect(el, 0.0, 0.0, 0.0, 0.0);
+                    }
+                } else {
+                    d.set_rect(mobile, 40.0, y, 600.0, 18.0);
+                    d.set_rect(label, 40.0, y, 20.0, 18.0);
+                    d.set_text_rect(label, 40.0, y, 20.0, 18.0);
+                }
+                let h = d.add(Some(sec), "h3");
+                d.add_text(h, &format!("Press a hotkey number {}", i + 1));
+                d.set_style(h, "fontSize", "28px");
+                d.set_rect(h, 40.0, y + 24.0, 600.0, 36.0);
+                d.set_text_rect(h, 40.0, y + 24.0, 400.0, 36.0);
+            }
+            d
+        };
+        assert_eq!(check_numbered_section_labels_dom(&build(false)).len(), 3);
+        assert!(check_numbered_section_labels_dom(&build(true)).is_empty());
+
+        // `content-visibility: hidden` on the label (the block before the
+        // heading) or the heading itself keeps its box and lays out none of
+        // its words.
+        let labels = |d: &FakeDom| -> Vec<ElId> {
+            d.query_all(None, "span").unwrap_or_default().into_iter().filter_map(|s| d.parent(s)).collect()
+        };
+        for on_heading in [false, true] {
+            let mut d = build(false);
+            let els = if on_heading { d.query_all(None, "h3").unwrap_or_default() } else { labels(&d) };
+            assert_eq!(els.len(), 3);
+            for el in els {
+                d.set_styles(el, &[("display", "block"), ("contentVisibility", "hidden")]);
+            }
+            assert!(check_numbered_section_labels_dom(&d).is_empty(), "on heading: {on_heading}");
+        }
+        // On a plain inline box it does nothing.
+        let mut d = build(false);
+        for el in labels(&d) {
+            d.set_styles(el, &[("display", "inline"), ("contentVisibility", "hidden")]);
+        }
+        assert_eq!(check_numbered_section_labels_dom(&d).len(), 3);
+
+        // v0-applestylescroll-momo.vercel.app (215483): the same labels in a
+        // scroll-driven stage at opacity 0, which a visitor scrolls into
+        // view, still count.
+        let mut d = build(false);
+        let stage_labels: Vec<ElId> = d
+            .query_all(None, "span")
+            .unwrap_or_default();
+        for label in stage_labels {
+            let mobile = d.parent(label).unwrap();
+            d.set_style(mobile, "opacity", "0");
+        }
+        assert_eq!(check_numbered_section_labels_dom(&d).len(), 3);
     }
 
     /// gig-connect-six.vercel.app: a capacity badge, a people icon and a

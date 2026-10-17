@@ -9439,6 +9439,91 @@ mod tests {
         assert!(run("0", ""));
     }
 
+    /// kipper.com (10048811): below the fold, a demo frame's poster holds a
+    /// fake chat input whose placeholder is faint, and the "load the demo"
+    /// button after it (`absolute; inset: 0`) lays an opaque white card over
+    /// the input. No point is asked down there; the tree says the card
+    /// paints over the placeholder.
+    #[test]
+    fn an_opaque_card_a_later_layer_lays_over_text_below_the_fold_covers_it() {
+        let run = |tweak: &dyn Fn(&mut FakeDom, ElId, ElId, ElId)| {
+            let (mut d, body) = page();
+            let top = 8427.0;
+            let frame = bare_box(&mut d, body, "div", (25.0, top, 325.0, 560.0));
+            d.set_style(frame, "position", "relative");
+            let poster = bare_box(&mut d, frame, "div", (25.0, top, 325.0, 560.0));
+            d.set_styles(poster, &[("position", "absolute"), ("zIndex", "auto"), ("opacity", "1")]);
+            let card = bare_box(&mut d, poster, "div", (41.0, top + 81.0, 293.0, 423.0));
+            d.set_styles(card, &[("position", "relative"), ("zIndex", "auto"), ("opacity", "1")]);
+            let row = bare_box(&mut d, card, "div", (58.0, top + 441.0, 259.0, 46.0));
+            d.set_styles(row, &[("backgroundColor", "rgb(255, 255, 255)"), ("zIndex", "auto"), ("opacity", "1")]);
+            let placeholder = faint_copy(&mut d, row, "rgb(180, 175, 164)", (75.0, top + 454.0, 105.0, 20.0));
+            d.set_styles(placeholder, &[("zIndex", "auto"), ("position", "static")]);
+            let button = bare_box(&mut d, frame, "button", (25.0, top, 325.0, 560.0));
+            d.set_styles(button, &[("position", "absolute"), ("zIndex", "auto"), ("opacity", "1")]);
+            let cover = bare_box(&mut d, button, "span", (29.0, top + 447.0, 316.0, 85.0));
+            d.set_styles(
+                cover,
+                &[
+                    ("backgroundColor", "rgb(255, 255, 255)"),
+                    ("borderRadius", "16px"),
+                    ("zIndex", "auto"),
+                    ("opacity", "1"),
+                    ("position", "static"),
+                ],
+            );
+            tweak(&mut d, button, cover, placeholder);
+            reports_contrast(&colors(&d, placeholder))
+        };
+        assert!(!run(&|_, _, _, _| {}));
+        // A static button: the card's fill paints with the block
+        // backgrounds, under the poster's positioned layer.
+        assert!(run(&|d, button, _, _| { d.set_style(button, "position", "static"); }));
+        // A z-index on the way, a fill that lets light through, a faded
+        // button, a mask, a card that misses part of the text, a radius
+        // that eats the corner the text sits in, a percentage radius, and a
+        // fill clipped to the text keep the verdict.
+        assert!(run(&|d, button, _, _| { d.set_style(button, "zIndex", "1"); }));
+        assert!(run(&|d, _, _, p| { d.set_style(p, "zIndex", "0"); }));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "backgroundColor", "rgba(255, 255, 255, 0.8)"); }));
+        assert!(run(&|d, button, _, _| { d.set_style(button, "opacity", "0.9"); }));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "maskImage", "linear-gradient(black, transparent)"); }));
+        assert!(run(&|d, _, cover, _| { d.set_rect(cover, 100.0, 8874.0, 245.0, 85.0); }));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "borderRadius", "160px"); }));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "borderRadius", "50%"); }));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "webkitBackgroundClip", "text"); }));
+        // A blend mode or a filter on the card changes what it leaves of the
+        // text: a white card at `multiply` leaves all of it.
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "mixBlendMode", "multiply"); }));
+        assert!(run(&|d, button, _, _| { d.set_style(button, "filter", "opacity(0.5)"); }));
+        // Opacities that each pass add up: 0.96 twice lets 0.08 through.
+        assert!(!run(&|d, button, _, _| { d.set_style(button, "opacity", "0.96"); }));
+        assert!(run(&|d, button, cover, _| {
+            d.set_style(button, "opacity", "0.96");
+            d.set_style(cover, "opacity", "0.96");
+        }));
+        // A fill clipped to its padding box under a thick transparent border
+        // leaves the text in the border showing; a thin border does not.
+        let bordered = |width: &'static str| {
+            move |d: &mut FakeDom, _: ElId, cover: ElId, _: ElId| {
+                d.set_style(cover, "backgroundClip", "padding-box");
+                for side in ["Top", "Right", "Bottom", "Left"] {
+                    d.set_style(cover, &format!("border{side}Width"), width);
+                }
+            }
+        };
+        assert!(!run(&bordered("0px")));
+        assert!(run(&bordered("40px")));
+        assert!(run(&|d, _, cover, _| { d.set_style(cover, "backgroundClip", "padding-box"); }));
+        // A rotated card, or one in a skewed button, paints less than the
+        // bounds the capture measured.
+        assert!(run(&|d, _, cover, _| {
+            d.set_style(cover, "transform", "matrix(0.707107, 0.707107, -0.707107, 0.707107, 0, 0)");
+        }));
+        assert!(run(&|d, button, _, _| { d.set_style(button, "transform", "matrix(1, 0, 0.3, 1, 0, 0)"); }));
+        assert!(!run(&|d, _, cover, _| { d.set_style(cover, "transform", "matrix(1, 0, 0, 1, 0, 4)"); }));
+    }
+
     /// A transparent grain overlay laid over a section below the fold: the
     /// engine cannot see its alpha, and it is no avatar, so the muted copy
     /// under it keeps its verdict.
