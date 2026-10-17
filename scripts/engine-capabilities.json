@@ -1,0 +1,270 @@
+{
+  "version": "0.1.15",
+  "tagCommit": "8384d86473513bfd5fbfd79bd1cf5b4b24204d63",
+  "coverage": "Reviewed documented names and option forms only. New capabilities require an audit of the exact release tag. Values describe token consumption, not runtime validity.",
+  "router": { "file": "crates/cli/src/main.rs", "symbol": "run" },
+  "aliases": { "context-signals": "signals", "hook-admin": "hooks", "ignore": "ignores" },
+  "commands": {
+    "context": {
+      "evidence": [{ "file": "crates/context/src/context_cli.rs", "symbol": "run" }, { "file": "crates/context/src/target_args.rs", "symbol": "parse_target_path" }],
+      "options": { "--target": { "values": 1, "form": "both", "value": "non-option" } }
+    },
+    "pin": {
+      "evidence": [{ "file": "crates/context/src/pin.rs", "symbol": "run" }],
+      "subcommands": {
+        "pin": { "evidence": [{ "file": "crates/context/src/pin.rs", "symbol": "run, action == pin" }] },
+        "unpin": { "evidence": [{ "file": "crates/context/src/pin.rs", "symbol": "run, action == unpin" }] }
+      }
+    },
+    "detect": {
+      "evidence": [{ "file": "crates/detect/src/cli.rs", "symbol": "detect_cli" }],
+      "options": {
+        "--json": { "values": 0, "form": "separate" },
+        "--no-config": { "values": 0, "form": "separate" },
+        "--scope": { "values": 1, "form": "both", "value": "non-long-option" }
+      }
+    },
+    "concept-seed": {
+      "evidence": [{ "file": "crates/context/src/concept_seed.rs", "symbol": "run, idx/val and SeedArgs" }],
+      "options": {
+        "--check-seed": { "values": 1, "form": "separate", "value": "any" },
+        "--scope": { "values": 1, "form": "separate", "value": "any" },
+        "--mode": { "values": 1, "form": "separate", "value": "any" }
+      }
+    },
+    "generate-image": {
+      "evidence": [{ "file": "crates/context/src/generate_image.rs", "symbol": "arg, run_with_api_base, --ref loop" }],
+      "options": {
+        "--ref": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--prompt-file": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--out": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--size": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--quality": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--background": { "values": 1, "form": "separate", "value": "non-long-option" }
+      }
+    },
+    "serve-question": {
+      "evidence": [{ "file": "crates/context/src/serve_question.rs", "symbol": "Args::arg, Args::has, run" }],
+      "options": {
+        "--schema": { "values": 0, "form": "separate" },
+        "--start": { "values": 0, "form": "separate" },
+        "--payload": { "values": 1, "form": "separate", "value": "non-long-option" }
+      }
+    },
+    "embed-prompt": {
+      "evidence": [{ "file": "crates/context/src/embed_prompt.rs", "symbol": "run, arg_of" }],
+      "options": {
+        "--prompt": { "values": 1, "form": "separate", "value": "any" },
+        "--prompt-file": { "values": 1, "form": "separate", "value": "any" },
+        "--scan": { "values": 0, "form": "separate" }
+      }
+    },
+    "comp-spec": {
+      "evidence": [{ "file": "crates/comp-verbs/src/comp_spec.rs", "symbol": "run" }, { "file": "crates/comp-verbs/src/util.rs", "symbol": "arg, flag" }],
+      "options": {
+        "--comp": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--regions": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--crop": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--plate-prompt": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--background": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--grid": { "values": 0, "form": "separate" },
+        "--print": { "values": 0, "form": "separate" },
+        "--inspect-map": { "values": 0, "form": "separate" },
+        "--schema": { "values": 0, "form": "separate" }
+      }
+    },
+    "comp-diff": {
+      "evidence": [{ "file": "crates/comp-verbs/src/comp_diff.rs", "symbol": "run" }, { "file": "crates/comp-verbs/src/util.rs", "symbol": "arg, arg_or" }],
+      "options": {
+        "--comp": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--build": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--spec": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--out-dir": { "values": 1, "form": "separate", "value": "non-long-option" }
+      }
+    },
+    "font-match": {
+      "evidence": [{ "file": "crates/comp-verbs/src/font_match.rs", "symbol": "run" }, { "file": "crates/comp-verbs/src/util.rs", "symbol": "arg" }],
+      "options": {
+        "--measure": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--rank": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--text": { "values": 1, "form": "separate", "value": "non-long-option" }
+      }
+    },
+    "build-phase": {
+      "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer" }, { "file": "crates/comp-verbs/src/util.rs", "symbol": "arg, flag" }],
+      "subcommands": {
+        "start": {
+          "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, start branch" }],
+          "options": {
+            "--direction": { "values": 1, "form": "separate", "value": "non-long-option" },
+            "--artifact": { "values": 1, "form": "separate", "value": "non-long-option" },
+            "--decision-comp": { "values": 1, "form": "separate", "value": "non-long-option" }
+          }
+        },
+        "advance": { "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, advance branch" }] },
+        "scaffold": { "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, scaffold branch" }] },
+        "record": {
+          "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, record branch" }],
+          "subcommands": { "hero": { "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, which == hero" }] } }
+        },
+        "finish": {
+          "evidence": [{ "file": "crates/comp-verbs/src/build_phase.rs", "symbol": "run_with_renderer, finish branch" }],
+          "options": { "--disposition": { "values": 1, "form": "separate", "value": "non-long-option" } }
+        }
+      }
+    },
+    "surface-brief": {
+      "evidence": [{ "file": "crates/context/src/surface_brief_cli.rs", "symbol": "run" }],
+      "subcommands": {
+        "read": { "evidence": [{ "file": "crates/context/src/surface_brief_cli.rs", "symbol": "run, read branch" }] },
+        "write": { "evidence": [{ "file": "crates/context/src/surface_brief_cli.rs", "symbol": "run, write branch" }] }
+      }
+    },
+    "critique-storage": {
+      "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run" }],
+      "subcommands": {
+        "slug": { "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run, slug branch" }] },
+        "write": { "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run, write branch" }] },
+        "trend": { "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run, trend branch" }] },
+        "close": { "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run, close branch" }] },
+        "latest": {
+          "evidence": [{ "file": "crates/context/src/critique_storage.rs", "symbol": "run, latest branch, format_is_json" }],
+          "options": { "--json": { "values": 0, "form": "separate" } }
+        }
+      }
+    },
+    "component-review": {
+      "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, arg" }],
+      "subcommands": {
+        "plan": { "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, plan branch" }] },
+        "capture": {
+          "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, capture branch" }],
+          "options": { "--manifest": { "values": 1, "form": "separate", "value": "any" } }
+        },
+        "verify": {
+          "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, verify branch" }],
+          "options": { "--manifest": { "values": 1, "form": "separate", "value": "any" } }
+        },
+        "serve": {
+          "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, serve branch" }],
+          "options": { "--session": { "values": 1, "form": "separate", "value": "any" } }
+        },
+        "status": {
+          "evidence": [{ "file": "crates/context/src/component_review/mod.rs", "symbol": "run_with_capturer, status branch" }],
+          "options": { "--session": { "values": 1, "form": "separate", "value": "any" } }
+        }
+      }
+    },
+    "doctor": {
+      "evidence": [{ "file": "crates/context/src/doctor.rs", "symbol": "parse_args" }],
+      "options": { "--json": { "values": 0, "form": "separate" }, "--fix": { "values": 0, "form": "separate" } }
+    },
+    "hooks": {
+      "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "run, ACTIONS" }],
+      "subcommands": {
+        "on": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "run, on branch" }] },
+        "off": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "run, off branch" }] },
+        "status": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "run, status branch" }] },
+        "reset": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "run, reset branch" }] },
+        "ignore-value": {
+          "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "parse_ignore_value_args, require_glob" }],
+          "options": {
+            "--shared": { "values": 0, "form": "separate" },
+            "--reason": { "values": "rest", "form": "both", "value": "non-long-option" },
+            "--file": { "values": 1, "form": "both", "value": "non-long-option" }
+          }
+        },
+        "ignore-rule": {
+          "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "parse_ignore_rule_args" }],
+          "options": { "--all-values": { "values": 0, "form": "separate" }, "--reason": { "values": "rest", "form": "both", "value": "non-long-option" } }
+        },
+        "ignore-file": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "parse_ignore_file_args" }] }
+      }
+    },
+    "ignores": { "evidence": [{ "file": "crates/detect/src/ignores.rs", "symbol": "run, default list action" }], "subcommands": {} },
+    "live": {
+      "evidence": [{ "file": "crates/live/src/lib.rs", "symbol": "run" }, { "file": "crates/live/src/live_boot.rs", "symbol": "run" }, { "file": "crates/context/src/target_args.rs", "symbol": "parse_target_path" }],
+      "options": { "--target": { "values": 1, "form": "both", "value": "non-option" } }
+    },
+    "live-poll": {
+      "evidence": [{ "file": "crates/live/src/live_poll.rs", "symbol": "parse_reply_args, run" }],
+      "options": {
+        "--reply": { "values": 2, "form": "separate", "value": "non-long-option" },
+        "--file": { "values": 1, "form": "separate", "value": "any" },
+        "--data": { "values": 1, "form": "separate", "value": "any" },
+        "--then-poll": { "values": 0, "form": "separate" }
+      }
+    },
+    "live-wrap": {
+      "evidence": [{ "file": "crates/live/src/live_wrap.rs", "symbol": "wrap_cli" }, { "file": "crates/live/src/wrap_common.rs", "symbol": "arg_val_eq" }],
+      "options": {
+        "--id": { "values": 1, "form": "both", "value": "any" },
+        "--count": { "values": 1, "form": "both", "value": "any" },
+        "--element-id": { "values": 1, "form": "both", "value": "any" },
+        "--classes": { "values": 1, "form": "both", "value": "any" },
+        "--tag": { "values": 1, "form": "both", "value": "any" },
+        "--text": { "values": 1, "form": "both", "value": "any" }
+      }
+    },
+    "live-insert": {
+      "evidence": [{ "file": "crates/live/src/live_insert.rs", "symbol": "insert_cli" }, { "file": "crates/live/src/wrap_common.rs", "symbol": "arg_val" }],
+      "options": {
+        "--id": { "values": 1, "form": "separate", "value": "any" },
+        "--count": { "values": 1, "form": "separate", "value": "any" },
+        "--position": { "values": 1, "form": "separate", "value": "any" },
+        "--element-id": { "values": 1, "form": "separate", "value": "any" },
+        "--classes": { "values": 1, "form": "separate", "value": "any" },
+        "--tag": { "values": 1, "form": "separate", "value": "any" },
+        "--text": { "values": 1, "form": "separate", "value": "any" }
+      }
+    },
+    "live-complete": {
+      "evidence": [{ "file": "crates/live/src/live_complete.rs", "symbol": "parse_args" }],
+      "options": { "--id": { "values": 1, "form": "both", "value": "any" }, "--discarded": { "values": 0, "form": "separate" } }
+    },
+    "live-resume": {
+      "evidence": [{ "file": "crates/live/src/live_resume.rs", "symbol": "parse_args" }],
+      "options": { "--id": { "values": 1, "form": "both", "value": "any" } }
+    },
+    "live-accept": {
+      "evidence": [{ "file": "crates/live/src/live_accept.rs", "symbol": "accept_cli" }, { "file": "crates/live/src/wrap_common.rs", "symbol": "arg_val" }],
+      "options": { "--page-url": { "values": 1, "form": "separate", "value": "any" } }
+    },
+    "live-inject": {
+      "evidence": [{ "file": "crates/live/src/live_inject.rs", "symbol": "inject_cli" }],
+      "options": { "--remove": { "values": 0, "form": "separate" } }
+    },
+    "live-server": {
+      "evidence": [{ "file": "crates/live/src/live_server.rs", "symbol": "run" }],
+      "options": { "--background": { "values": 0, "form": "separate" } },
+      "subcommands": { "stop": { "evidence": [{ "file": "crates/live/src/live_server.rs", "symbol": "run, stop branch" }] } }
+    },
+    "live-generate": {
+      "evidence": [{ "file": "crates/live/src/live_generate.rs", "symbol": "parse_flags, run, flag" }],
+      "options": {
+        "--target": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--dev-url": { "values": "optional", "form": "separate", "value": "non-long-option" },
+        "--selector": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--action": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--count": { "values": 1, "form": "separate", "value": "non-long-option" },
+        "--boot": { "values": 0, "form": "separate" },
+        "--wait-for-browser": { "values": 1, "form": "separate", "value": "non-long-option" }
+      }
+    },
+    "live-status": { "evidence": [{ "file": "crates/live/src/live_status.rs", "symbol": "run" }] },
+    "live-commit-manual-edits": { "evidence": [{ "file": "crates/live/src/live_commit_manual_edits.rs", "symbol": "run" }] },
+    "signals": { "evidence": [{ "file": "crates/context/src/signals.rs", "symbol": "run" }] },
+    "detect-csp": { "evidence": [{ "file": "crates/context/src/detect_csp.rs", "symbol": "run" }] },
+    "hook": { "evidence": [{ "file": "crates/hook/src/lib.rs", "symbol": "run_hook" }] },
+    "hook-before-edit": { "evidence": [{ "file": "crates/hook/src/lib.rs", "symbol": "run_hook_before_edit" }] },
+    "init": { "evidence": [{ "file": "crates/cli/src/main.rs", "symbol": "run, init guidance branch" }] },
+    "update": { "evidence": [{ "file": "crates/skills/src/lib.rs", "symbol": "run" }] }
+  },
+  "templates": [
+    { "file": "skill/SKILL.src.md", "text": "{{scripts_path}}/impeccable <verb>", "kind": "verb-template" },
+    { "file": "skill/reference/new-work.md", "text": "{{scripts_path}}/impeccable <verb>", "kind": "verb-template" },
+    { "file": "skill/reference/hooks.md", "text": "{{scripts_path}}/impeccable hooks <action> [args...]", "kind": "action-template", "paths": [["hooks", "on"], ["hooks", "off"], ["hooks", "status"], ["hooks", "ignore-rule"], ["hooks", "ignore-file"], ["hooks", "ignore-value"], ["hooks", "reset"]] },
+    { "file": "skill/reference/hooks.md", "text": "npx impeccable ignores ...", "kind": "argument-template", "paths": [["ignores"]] },
+    { "file": "skill/reference/critique.md", "text": "tab.dev.logs({ filter: \"impeccable\" })", "kind": "code-mention" }
+  ]
+}
