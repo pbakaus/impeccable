@@ -16,15 +16,15 @@ function fontRanges() {
 function failure(message: string) {
   const box = document.createElement('div');
   box.setAttribute('role', 'alert');
-  box.style.cssText = 'max-width:560px;margin:18vh auto 0;padding:0 0 0 18px;border-left:2px solid oklch(52% 0.16 35);color:oklch(22% 0 0);font:400 15px/1.55 var(--font-sans,Arial,sans-serif)';
+  box.style.cssText = 'max-width:560px;margin:18vh auto 0;padding:0 0 0 18px;border-left:2px solid var(--ks-vermilion,oklch(52% 0.16 35));color:var(--ks-text,oklch(22% 0 0));font:400 15px/1.55 var(--font-sans,Arial,sans-serif)';
   const eyebrow = document.createElement('p');
   eyebrow.textContent = 'Review unavailable';
-  eyebrow.style.cssText = 'margin:0 0 8px;font:400 11px/1.3 var(--font-mono,monospace);letter-spacing:.14em;text-transform:uppercase;color:oklch(46% 0 0)';
+  eyebrow.style.cssText = 'margin:0 0 8px;font:400 11px/1.3 var(--font-mono,monospace);letter-spacing:.14em;text-transform:uppercase;color:var(--ks-text-muted,oklch(46% 0 0))';
   const title = document.createElement('strong');
   title.textContent = 'The review could not be opened.';
-  title.style.cssText = 'display:block;font-weight:500;color:oklch(13% 0 0)';
+  title.style.cssText = 'display:block;font-weight:500;color:var(--ks-ink,oklch(13% 0 0))';
   const detail = document.createElement('p');
-  detail.style.cssText = 'margin:4px 0 18px;color:oklch(46% 0 0)';
+  detail.style.cssText = 'margin:4px 0 18px;color:var(--ks-text-muted,oklch(46% 0 0))';
   detail.textContent = `${message} If the review server stopped, ask the agent to serve the review again, then reload.`;
   const retry = document.createElement('button');
   retry.textContent = 'Reload';
@@ -36,7 +36,6 @@ function failure(message: string) {
 
 async function start() {
   fontRanges();
-  document.body.style.background='oklch(97.8% 0 0)';
   const host=document.getElementById('review')!;
   const response=await fetch('/packet',{cache:'no-store'});
   if(!response.ok)throw new Error('The review packet could not be loaded.');

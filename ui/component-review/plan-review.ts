@@ -104,7 +104,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   compImage.src = new URL(packet.comp.url, location.href).href;
   function compColour(c: PlanItem) {
     if (!surround.has(c.id) && compPixels) surround.set(c.id, medianColor(ringSamples(compPixels.data, compPixels.width, compPixels.height, c.box)) ?? '');
-    return surround.get(c.id) || packet.comp.background || 'var(--ks-paper-deep)';
+    return surround.get(c.id) || packet.comp.background || 'var(--review-media-deep)';
   }
   function isTransparent(c: PlanItem, src: string) {
     if (c.material?.alpha === 'transparent') return true;
@@ -229,7 +229,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   const genLayer = (c: PlanItem, src: string, cls = 'gen') => {
     const clear = isTransparent(c, src);
     const bd = backdrop[c.id] ?? 'comp';
-    const bg = !clear ? '' : bd === 'light' ? 'var(--ks-paper-raised)' : bd === 'dark' ? 'var(--ks-instrument)' : compColour(c);
+    const bg = !clear ? '' : bd === 'light' ? 'var(--review-media-raised)' : bd === 'dark' ? 'var(--ks-instrument)' : compColour(c);
     return `<span class="pic ${cls}" style="${bg ? `background:${esc(bg)}` : ''}"><img src="${url(src)}" alt="" draggable="false"></span>`;
   };
   function regionsOverlay(opts: { code: boolean; interactive: boolean }) {

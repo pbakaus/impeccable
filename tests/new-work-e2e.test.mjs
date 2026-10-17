@@ -137,10 +137,10 @@ function spawnSyncGen(prompt, out, size = null) {
 // serve-question interactive cycles
 // --------------------------------------------------------------------------
 describe('new-work-e2e: serve-question decision page', () => {
-  it('renders a light system-font picker without font or external requests', async () => {
+  it('renders a system-font picker without font or external requests', async () => {
     const cwd = makeWorkspace();
     const key = 'system-fonts';
-    const context = await browser.newContext({ colorScheme: 'dark' });
+    const context = await browser.newContext({ colorScheme: 'light' });
     const externalRequests = [];
     const fontResponses = [];
     try {
@@ -189,7 +189,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       });
       assert.equal(appearance.fonts, 0, 'no custom font faces');
       assert.match(appearance.family, /^system-ui,/);
-      assert.equal(appearance.scheme, 'light', 'picker stays light even with a dark OS preference');
+      assert.equal(appearance.scheme, 'light', 'picker preserves its light appearance under a light OS preference');
       assert.ok(appearance.logoPaths > 2, 'the brand mark and wordmark are vector outlines');
       assert.equal(appearance.logoText, 0, 'the logo does not depend on a font');
       assert.equal(appearance.leadBorder, appearance.kinpaku, 'lead outline uses default Kinpaku');

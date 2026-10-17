@@ -29,13 +29,16 @@ The user confirmed impeccable-site #34 (head eb5348e48fcd94d0d74895488b985988a40
 as the light-theme authority, with system fonts for the picker. This is a scoped adaptation,
 not a rewrite of the repository's global DESIGN.md. No new raster assets.
 
+Issue #873 approves following `prefers-color-scheme` for review chrome. Comps,
+captures, and their preview backgrounds retain their own colors in either theme.
+
 ## Built surface
 
 Recorded from `crates/context/src/question_page.rs`, rendered
 `.impeccable/review/after.html`, and the desktop/mobile captures alongside it.
 Finish reviewer disposition: **ship**, with no requested fixes.
 
-- **Paper and ink:** light-only chrome uses neutral paper (`oklch(97.8% 0 0)`),
+- **Paper and ink:** light chrome uses neutral paper (`oklch(97.8% 0 0)`),
   raised paper (`oklch(99.5% 0 0)`), ink headings (`oklch(13% 0 0)`), and body
   text (`oklch(22% 0 0)`). Dark instrument fills carry primary actions and image
   controls; gold appears in the logo, lead-card border, and active switch dot.

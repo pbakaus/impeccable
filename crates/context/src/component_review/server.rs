@@ -13,7 +13,7 @@ use std::{
 
 const JS: &str = include_str!("../../assets/component-review.js");
 const HTML: &str = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Component review · Impeccable</title><link rel='stylesheet' href='/review.css'></head><body><main id='review'></main><script src='/review.js' defer></script></body></html>";
-const CSS: &str = "@font-face{font-family:Albert Sans;src:url(/fonts/albertsans.ttf)}@font-face{font-family:Alumni Sans;src:url(/fonts/alumnisans.ttf)}@font-face{font-family:JetBrains Mono;src:url(/fonts/jetbrainsmono.ttf)}body{margin:0;background:#fafafa;--font-sans:'Albert Sans',Arial,sans-serif;--font-display:'Alumni Sans',Arial,sans-serif;--font-mono:'JetBrains Mono',monospace}body>p{padding:24px;font:16px var(--font-sans)}";
+const CSS: &str = concat!("@font-face{font-family:Albert Sans;src:url(/fonts/albertsans.ttf)}@font-face{font-family:Alumni Sans;src:url(/fonts/alumnisans.ttf)}@font-face{font-family:JetBrains Mono;src:url(/fonts/jetbrainsmono.ttf)}body{margin:0;color:var(--ks-text,#292929);background:var(--ks-paper,#fafafa);--font-sans:'Albert Sans',Arial,sans-serif;--font-display:'Alumni Sans',Arial,sans-serif;--font-mono:'JetBrains Mono',monospace}body>p{padding:24px;font:16px var(--font-sans)}", include_str!("../../../../ui/component-review/theme.css"));
 fn respond(req: tiny_http::Request, code: u16, body: Vec<u8>, mime: &str, csp: &str) {
     let mut response = tiny_http::Response::from_data(body).with_status_code(code);
     for (k, v) in [

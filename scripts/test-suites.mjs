@@ -237,20 +237,24 @@ export const SUITES = {
     ],
   },
   'new-work-e2e': {
-    description: 'Playwright smoke sweep of the new-work concept/serve-question decision page plus the offline fake image generator.',
+    description: 'Playwright smoke checks of native decision and review pages, plus the offline fake image generator.',
     optIn: true,
     needsPlaywright: true,
     triggers: [
       ...COMMON_INFRA_PATTERNS,
       /^ENGINE_VERSION$/,
       /^tests\/new-work-e2e(\.test\.mjs|\/)/,
+      /^tests\/review-theme\.test\.mjs$/,
+      /^ui\/component-review\//,
+      /^crates\/context\/src\/(question_page|serve_question)\.rs$/,
+      /^crates\/context\/src\/component_review\/server\.rs$/,
     ],
     commands: [
       {
         runner: 'node',
         timeoutMs: 600000,
         forceExit: true,
-        files: ['tests/new-work-e2e.test.mjs'],
+        files: ['tests/new-work-e2e.test.mjs', 'tests/review-theme.test.mjs'],
       },
     ],
   },

@@ -5,6 +5,11 @@
 tests/fixtures/** -text
 tests/oracle/** -text
 
+# The review bundle embeds CSS as text. Keep its input and generated output
+# byte-identical when a Windows checkout would otherwise convert them to CRLF.
+ui/component-review/theme.css text eol=lf
+crates/context/assets/component-review.js text eol=lf
+
 # Machine-written files that a line diff cannot usefully show. `-diff` makes
 # `git diff`, `git show` and `git log -p` print "Binary files differ" instead
 # of the content; `linguist-generated` collapses them in GitHub's PR view.

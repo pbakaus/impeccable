@@ -43,6 +43,7 @@ jobs:
       framework: ${{ steps.plan.outputs.framework }}
       cli_remote_e2e: ${{ steps.plan.outputs.cli_remote_e2e }}
       live_e2e: ${{ steps.plan.outputs.live_e2e }}
+      new_work_e2e: ${{ steps.plan.outputs.new_work_e2e }}
       live_e2e_accept_cleanup: ${{ steps.plan.outputs.live_e2e_accept_cleanup }}
       skill_behavior: ${{ steps.plan.outputs.skill_behavior }}
       live_svelte_adapter_deepseek: ${{ steps.plan.outputs.live_svelte_adapter_deepseek }}
@@ -284,7 +285,7 @@ jobs:
   oracle:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.new_work_e2e == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -314,6 +315,14 @@ jobs:
         env:
           IMPECCABLE_BIN: ${{ github.workspace }}/target/release/impeccable
         run: node tests/oracle/run.mjs
+
+      - name: Install review test browser
+        run: bunx playwright install --with-deps chromium
+
+      - name: Verify review workflows and system themes
+        env:
+          IMPECCABLE_BIN: ${{ github.workspace }}/target/release/impeccable
+        run: node --test --test-timeout=180000 tests/new-work-e2e.test.mjs tests/review-theme.test.mjs
 
   # Release-order guard (triage decision D4). Verifies that the engine release for
   # the pinned ENGINE_VERSION is fully published — the five dist binaries + .sha256
