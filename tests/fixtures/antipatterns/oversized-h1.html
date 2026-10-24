@@ -16,6 +16,11 @@
     <section class="col flag">
       <h1 style="font-size: 96px">A sweeping product headline that runs on far too long to sit at this size</h1>
       <h1 style="font-size: 80px">Everything your whole team needs to launch quickly and finally rest at night</h1>
+      <!-- Absolute units resolve at 96px to the inch: 60pt is 80px, 1.2in is 115.2px, 3cm is 113.4px.
+           Read as ems, the inch and centimetre rows were 19px and 48px and slipped under the rule. -->
+      <h1 style="font-size: 60pt">A print-sheet headline set in points that runs on far too long to sit at this size</h1>
+      <h1 style="font-size: 1.2in">Another headline, this one set in inches, that stretches well past where it should stop</h1>
+      <h1 style="font-size: 3cm">A third headline set in centimetres that keeps going long after its point is made</h1>
     </section>
 
     <!-- PASS column: punchy short headlines at display size (a valid choice), and a long headline at a sane size -->
@@ -23,6 +28,12 @@
       <h1 style="font-size: 168px">Bold.</h1>
       <h1 style="font-size: 120px">Ship faster</h1>
       <h1 style="font-size: 40px">A perfectly ordinary headline that is reasonably long but set at a sane, readable size</h1>
+      <!-- Absolute units at a sane size: 30pt is 40px, 10mm is 37.8px, 40Q is 37.8px, 2.5pc is 40px.
+           Read as ems, the first three were 480px, 160px and 640px and flagged as display type. -->
+      <h1 style="font-size: 30pt">A perfectly ordinary print headline set in points, long but at a readable size</h1>
+      <h1 style="font-size: 10mm">Another ordinary headline, set in millimetres, that is long yet stays readable</h1>
+      <h1 style="font-size: 40Q">A third ordinary headline set in quarter millimetres, long but easy to read</h1>
+      <h1 style="font-size: 2.5pc">A fourth ordinary headline set in picas that is reasonably long but stays sane</h1>
     </section>
   </div>
 </body>
