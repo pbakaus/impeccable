@@ -122,7 +122,8 @@ fn save_state(io: &Io, state: &Value) {
 }
 
 /// The seed reference the state records for `--direction`: a reference
-/// (`seed:` + 16 lowercase hex) or `none` as given, a raw seed key as the
+/// (`seed:` + 16 lowercase hex), `none`, or `pinned` (a user- or
+/// brief-pinned direction that skipped the roll) as given, a raw seed key as the
 /// reference the shared locator gives it (`impeccable_common::seed::
 /// reference_for_key`, the same answer concept-seed printed for that key),
 /// so the build state never holds the key the roll API saw. With no
@@ -130,7 +131,7 @@ fn save_state(io: &Io, state: &Value) {
 /// never an unsalted hash. The direction is only ever shown, never
 /// resolved, so nothing is lost.
 fn seed_reference(io: &Io, v: &str) -> String {
-    if v == "none" || impeccable_common::seed::parse_reference(v).is_some() {
+    if v == "none" || v == "pinned" || impeccable_common::seed::parse_reference(v).is_some() {
         return v.to_string();
     }
     let home = io.home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
@@ -2939,7 +2940,11 @@ fn next_instruction(io: &Io, state: &Value) -> String {
     let bp = state.get("breakpoint").and_then(Value::as_str);
     match phase {
         "comps" => {
-            let dir = direction.map(|d| format!(" (seed {d})")).unwrap_or_default();
+            let dir = match direction {
+                Some("pinned") => " (pinned, no roll)".to_string(),
+                Some(d) => format!(" (seed {d})"),
+                None => String::new(),
+            };
             if let Some(chosen) = decision_comp(state) {
                 return format!("Comp round for the chosen direction{dir}: read reference/visualize.md. The chosen decision comp {chosen} is compositional option one; it stays where it is and is never regenerated. Generate two more compositional comps of the requested surface at its viewport into {MOCKS_DIR}/ (each with a prompt sidecar), put all three in front of the user, and set \"approved\": true in the chosen comp's sidecar ({chosen}.json when they keep option one). Then {s} build-phase advance. No page code before this closes.");
             }
@@ -2987,12 +2992,17 @@ mod transparency_guidance_tests {
         let r = seed_reference(&pinned, "3f9a1c2e");
         assert_eq!(r, impeccable_common::seed::reference("test-salt", "3f9a1c2e"), "the reference concept-seed prints");
         assert_eq!(seed_reference(&pinned, "none"), "none");
+        // A pinned direction never rolled, so it is never hashed as a key.
+        assert_eq!(seed_reference(&pinned, "pinned"), "pinned");
+        let pinned_next = next_instruction(&io, &new_state(None, None, None, Some("pinned")));
+        assert!(pinned_next.starts_with("Comp round for the chosen direction (pinned, no roll):"), "{pinned_next}");
         // No salt on this machine: a raw key is recorded as no seed, never as an unsalted hash.
         let bad_home = dir.join("bad-home");
         std::fs::create_dir_all(bad_home.join(".impeccable")).unwrap();
         std::fs::write(bad_home.join(".impeccable/seed-salt"), "corrupt").unwrap();
         let (nosalt, _) = Io::captured("", dir.clone(), [("HOME".to_string(), bad_home.to_string_lossy().into_owned()), ("USERPROFILE".to_string(), bad_home.to_string_lossy().into_owned())].into_iter().collect());
         assert_eq!(seed_reference(&nosalt, "3f9a1c2e"), "none");
+        assert_eq!(seed_reference(&nosalt, "pinned"), "pinned");
         assert!(r.starts_with("seed:") && r.len() == 21 && !r.contains("3f9a1c2e"), "{r}");
         save_state(&io, &new_state(None, None, None, Some("seed-1")));
         let ignore = dir.join(".impeccable/build/.gitignore");

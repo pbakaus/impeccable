@@ -167,7 +167,7 @@ Projects help you organize your work and collaborate with your team.
 
 ## Empty State Design
 
-Every empty state needs:
+Every first-use empty state needs:
 
 ### What Will Be Here
 "Your recent projects will appear here"
@@ -195,7 +195,7 @@ Illustration or icon (not just text on blank page)
 
 ### Technical approaches:
 
-**Tooltip libraries**: Tippy.js, Popper.js
+**Tooltip libraries**: Tippy.js, Floating UI
 **Tour libraries**: Intro.js, Shepherd.js, React Joyride
 **Modal patterns**: Focus trap, backdrop, ESC to close
 **Progress tracking**: LocalStorage for "seen" states
