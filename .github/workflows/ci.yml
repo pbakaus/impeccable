@@ -349,6 +349,18 @@ jobs:
         id: check
         run: node scripts/check-engine-release.mjs
 
+      - name: Check documented commands against the pinned engine release
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const version = fs.readFileSync('ENGINE_VERSION', 'utf8').trim();
+          if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('ENGINE_VERSION must be an exact x.y.z version.');
+          const tag = `refs/tags/engine-v${version}`;
+          execFileSync('git', ['fetch', '--no-tags', 'https://github.com/pbakaus/impeccable.git', `${tag}:${tag}`], { stdio: 'inherit' });
+          execFileSync(process.execPath, ['scripts/check-engine-docs.mjs'], { stdio: 'inherit' });
+          NODE
+
       - name: Annotate missing engine release
         # Only when the check itself failed, so a checkout or setup failure keeps its own error.
         if: failure() && steps.check.outcome == 'failure'
