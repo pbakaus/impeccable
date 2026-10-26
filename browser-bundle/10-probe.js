@@ -185,6 +185,12 @@ const __impeccableDom = {
     // producer carries it too; both routes read the same corpus.
     return __snapLinkedStylesheetText();
   },
+  // Dom::text_wrap_pretty_supported as -1 / 0 / 1, as check_visibility
+  // travels; the helper lives in 15-snapshot.js beside the CSSOM walk.
+  text_wrap_pretty_supported() {
+    const v = __snapTextWrapPrettySupported();
+    return v === null ? -1 : (v ? 1 : 0);
+  },
   document_html_for_patterns() {
     const docClone = document.documentElement.cloneNode(true);
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) node.remove();

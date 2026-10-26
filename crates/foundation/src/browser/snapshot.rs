@@ -501,6 +501,10 @@ pub struct Snapshot {
     /// shadow trees.
     #[serde(rename = "shadow", default)]
     pub shadow_trees_recorded: bool,
+    /// [`Dom::text_wrap_pretty_supported`], `__snapTextWrapPrettySupported()`
+    /// in `15-snapshot.js`.
+    #[serde(rename = "prettyWrap", default)]
+    pub pretty_wrap: Option<bool>,
     /// Derived on load: column index per style property name.
     #[serde(skip)]
     style_index: HashMap<String, usize>,
@@ -834,6 +838,9 @@ impl Dom for SnapshotDom {
     }
     fn hostname(&self) -> String {
         self.snap.hostname.clone()
+    }
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        self.snap.pretty_wrap
     }
     fn element_from_point(&self, x: f64, y: f64) -> Option<ElId> {
         self.hit(x, y).and_then(|(top, _)| top)
@@ -1270,6 +1277,15 @@ mod tests {
         assert!(!d.contains(3, 6));
         assert!(!snap(SMALL).shadow_trees_recorded());
         assert_eq!(snap(SMALL).flat_parent(5), Some(4));
+    }
+
+    /// The wire name is `prettyWrap`; a capture without it, or with `null`,
+    /// did not ask, and nothing else pins the spelling both sides agree on.
+    #[test]
+    fn the_pretty_wrap_flag_rides_the_capture() {
+        let json = SMALL.replacen("\"v\": 1,", "\"v\": 1, \"prettyWrap\": false,", 1);
+        assert_eq!(snap(&json).text_wrap_pretty_supported(), Some(false));
+        assert_eq!(snap(SMALL).text_wrap_pretty_supported(), None);
     }
 
     const SMALL: &str = r#"{

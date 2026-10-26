@@ -304,6 +304,15 @@ function __snapStyleRuleAppliesToLiveMatches(rule, matches) {
   }
 }
 
+// Dom::text_wrap_pretty_supported (crates/foundation/src/browser/dom.rs):
+// null where CSS.supports is missing, and the consumer then trusts the
+// computed style.
+function __snapTextWrapPrettySupported() {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return null;
+  try { return CSS.supports('text-wrap', 'pretty') || CSS.supports('text-wrap-style', 'pretty'); }
+  catch { return null; }
+}
+
 function __snapConditionalCssRuleIsActive(rule) {
   const type = Number(rule?.type);
   const constructorName = rule?.constructor?.name || '';
@@ -886,6 +895,7 @@ const __impeccableSnapshot = {
       keyframes: __snapKeyframes(keyframeKeys),
       keyframeKeys,
       linkedCss: __snapLinkedStylesheetText(),
+      prettyWrap: __snapTextWrapPrettySupported(),
       styleProps: __SNAP_STYLE_PROPS,
       pseudoProps: __SNAP_PSEUDO_PROPS,
       strings,

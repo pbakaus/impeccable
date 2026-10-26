@@ -76,6 +76,8 @@ pub struct FakeDom {
     /// A recording made before shadow trees were captured
     /// ([`Dom::shadow_trees_recorded`] answers `false`).
     pub shadow_trees_unrecorded: bool,
+    /// [`Dom::text_wrap_pretty_supported`]; `None` is a probe that did not ask.
+    pub text_wrap_pretty_supported: Option<bool>,
     pub els: Vec<FakeEl>,
     pub document_element: Option<ElId>,
     pub body: Option<ElId>,
@@ -597,6 +599,9 @@ impl Dom for FakeDom {
     }
     fn shadow_trees_recorded(&self) -> bool {
         !self.shadow_trees_unrecorded
+    }
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        self.text_wrap_pretty_supported
     }
     fn pseudo_style(&self, el: ElId, pseudo: &str, prop: &str) -> Option<String> {
         let e = &self.els[el as usize];

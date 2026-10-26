@@ -122,6 +122,17 @@ pub trait Dom {
     fn linked_stylesheet_text(&self) -> String {
         String::new()
     }
+    /// Whether the browser applies `text-wrap: pretty`: `CSS.supports` on
+    /// the shorthand or on the `text-wrap-style` longhand (Chrome before 130
+    /// knew only the former). Firefox parses no `pretty`, drops the
+    /// declaration before the CSSOM sees it and computes `auto`, so a rule
+    /// that read the computed style alone could not tell "never set" from
+    /// "set and dropped" (issue #1136). `None` where the probe did not ask
+    /// (a capture older than the flag, a page without `CSS.supports`); a
+    /// caller then trusts the computed style.
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        None
+    }
 
     // ── element identity / tree ───────────────────────────────────────
     /// `el.tagName` (uppercase for HTML elements, as-is for SVG/foreign).
