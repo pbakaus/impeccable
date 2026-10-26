@@ -9,7 +9,7 @@ use crate::util::{
     rel_fwd, Env,
 };
 use impeccable_common::Io;
-use impeccable_context::context::resolve_project_root;
+use impeccable_context::context::{resolve_context, resolve_project_root};
 use impeccable_context::target_args::TargetOptions;
 use impeccable_context::util::homedir;
 
@@ -297,6 +297,22 @@ pub fn resolve_roots(cwd: &str, target_path: Option<&str>, env: &Env) -> RootsRe
     let design_path = walk_up(&app_root, &effective_repo_root, env, |dir| {
         find_context_file(dir, &DESIGN_NAMES)
     });
+    // #1022: the app/repo walk-up is live's own addition, and it never saw the
+    // `IMPECCABLE_CONTEXT_DIR` fallback that `impeccable context` resolves, so a
+    // project keeping its documents out of the app tree gated the boot on
+    // context_missing. Pair-missing only, exactly like `resolve_context`.
+    let (product_path, design_path) = if product_path.is_none() && design_path.is_none() {
+        let resolved = resolve_context(
+            &abs_cwd,
+            &TargetOptions {
+                target_path: abs_target.clone(),
+            },
+            env,
+        );
+        (resolved.product_path, resolved.design_path)
+    } else {
+        (product_path, design_path)
+    };
     let context_root = product_path
         .as_deref()
         .map(jsp::dirname)
@@ -509,4 +525,91 @@ pub fn enter_live_root(args: &mut Vec<String>, io: &mut Io) -> Result<Option<Roo
         io.cwd = std::path::PathBuf::from(&app_root);
     }
     Ok(Some(manifest))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_file(path: &str, body: &str) {
+        std::fs::create_dir_all(jsp::dirname(path)).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    fn fixture(tag: &str) -> (String, Env) {
+        let base = std::env::temp_dir().join(format!(
+            "impeccable-live-roots-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let env: Env = [("HOME".to_string(), "/nonexistent-home".to_string())]
+            .into_iter()
+            .collect();
+        (base.to_string_lossy().into_owned(), env)
+    }
+
+    /// A dev-server app root with no context document anywhere in it or above.
+    fn bare_app(tmp: &str) -> String {
+        let app = jsp::join(&[tmp, "app"]);
+        write_file(
+            &jsp::join(&[&app, "index.html"]),
+            "<!doctype html><title>app</title>\n",
+        );
+        write_file(
+            &jsp::join(&[&app, "package.json"]),
+            "{ \"name\": \"app\" }\n",
+        );
+        app
+    }
+
+    // #1022: live resolves PRODUCT.md / DESIGN.md through the same resolver as
+    // `impeccable context`, so an out-of-tree IMPECCABLE_CONTEXT_DIR is honored
+    // instead of the boot gating on context_missing.
+    #[test]
+    fn resolve_roots_honors_the_context_env_dir() {
+        let (tmp, mut env) = fixture("env-dir");
+        let app = bare_app(&tmp);
+        let ctx = jsp::join(&[&tmp, "governance", "context"]);
+        write_file(&jsp::join(&[&ctx, "PRODUCT.md"]), "# Product\n");
+        write_file(&jsp::join(&[&ctx, "DESIGN.md"]), "# Design\n");
+        env.insert("IMPECCABLE_CONTEXT_DIR".to_string(), ctx.clone());
+
+        let RootsResult::Manifest(manifest) = resolve_roots(&app, None, &env) else {
+            panic!("expected a roots manifest");
+        };
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(
+            manifest.product_path.as_deref(),
+            Some(jsp::join(&[&ctx, "PRODUCT.md"]).as_str())
+        );
+        assert_eq!(
+            manifest.design_path.as_deref(),
+            Some(jsp::join(&[&ctx, "DESIGN.md"]).as_str())
+        );
+        assert_eq!(manifest.context_root.as_deref(), Some(ctx.as_str()));
+    }
+
+    // The env dir is a fallback for the pair, exactly as in `impeccable context`:
+    // a document found by the app walk-up keeps its own path.
+    #[test]
+    fn env_dir_does_not_override_a_walked_up_product() {
+        let (tmp, mut env) = fixture("env-no-override");
+        let app = bare_app(&tmp);
+        write_file(&jsp::join(&[&app, "PRODUCT.md"]), "# Product in app\n");
+        let ctx = jsp::join(&[&tmp, "elsewhere"]);
+        write_file(&jsp::join(&[&ctx, "PRODUCT.md"]), "# Should not load\n");
+        write_file(&jsp::join(&[&ctx, "DESIGN.md"]), "# Design elsewhere\n");
+        env.insert("IMPECCABLE_CONTEXT_DIR".to_string(), ctx.clone());
+
+        let RootsResult::Manifest(manifest) = resolve_roots(&app, None, &env) else {
+            panic!("expected a roots manifest");
+        };
+        let _ = std::fs::remove_dir_all(&tmp);
+        assert_eq!(
+            manifest.product_path.as_deref(),
+            Some(jsp::join(&[&app, "PRODUCT.md"]).as_str())
+        );
+        assert_eq!(manifest.design_path, None);
+    }
 }
