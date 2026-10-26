@@ -103,56 +103,94 @@ static CSS_COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"/\*[\s\S]*?\*/").
 /// Whether the author set `text-wrap: pretty` and the browser dropped it
 /// (issue #1136): the page flag says `pretty` is not applied, and the raw
 /// text still declares it, in the `style` attribute of `el` or an ancestor or
-/// in a `<style>` rule whose selector matches one of them. Linked
-/// stylesheets, `@import` and shadow-tree styles are not read.
-fn pretty_wrap_dropped(dom: &dyn Dom, el: ElId, rules: &PrettyWrapRules) -> bool {
+/// in a `<style>` rule whose selector matches one of them. The nearest
+/// element up the chain that declares `text-wrap` at all decides, by the last
+/// declaration that reaches it (an `!important` one first, the `style`
+/// attribute after the `<style>` rules, specificity not weighed), so an
+/// explicit reset keeps the finding. Linked stylesheets, `@import` and
+/// shadow-tree styles are not read.
+fn pretty_wrap_dropped(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> bool {
     if dom.text_wrap_pretty_supported() != Some(false) {
         return false;
     }
-    let chain = ancestors_inclusive(dom, el);
-    chain.iter().any(|&c| dom.attr(c, "style").is_some_and(|s| declares_pretty_wrap(&s)))
-        || rules.selectors(dom).iter().any(|sel| chain.iter().any(|&c| matches_or_false(dom, c, sel)))
+    for c in ancestors_inclusive(dom, el) {
+        let mut decls: Vec<WrapDecl> = rules
+            .declarations(dom)
+            .iter()
+            .filter(|(selector, _)| matches_or_false(dom, c, selector))
+            .map(|(_, decl)| *decl)
+            .collect();
+        if let Some(style) = dom.attr(c, "style") {
+            decls.extend(wrap_decls(&style));
+        }
+        if let Some(winner) = winning_decl(&decls) {
+            return winner.pretty;
+        }
+    }
+    false
 }
 
-/// Whether a declaration's value holds `pretty`: `wrap pretty` and
-/// `pretty!important` count.
-fn holds_pretty(value: &str) -> bool {
-    value.split(|c: char| c.is_whitespace() || c == '!').any(|t| t.eq_ignore_ascii_case("pretty"))
+/// A `text-wrap` or `text-wrap-style` declaration: whether its value holds
+/// `pretty` (`wrap pretty` and `pretty!important` do) and whether it is
+/// `!important`.
+#[derive(Debug, Clone, Copy)]
+struct WrapDecl {
+    pretty: bool,
+    important: bool,
 }
 
-/// Whether a declaration list sets `text-wrap` or `text-wrap-style` to `pretty`.
-fn declares_pretty_wrap(declarations: &str) -> bool {
-    PRETTY_WRAP_RE.captures_iter(declarations).any(|c| holds_pretty(&c[1]))
+fn wrap_decl(value: &str) -> WrapDecl {
+    let mut parts = value.split('!');
+    let pretty = parts.next().is_some_and(|v| v.split_whitespace().any(|t| t.eq_ignore_ascii_case("pretty")));
+    let important = parts.any(|t| t.trim().eq_ignore_ascii_case("important"));
+    WrapDecl { pretty, important }
 }
 
-/// The selectors of the `<style>` rules on the page that set `pretty`, read
-/// once per scan and only when a straggler candidate first asks in a browser
-/// that dropped them. Each declaration's rule is the one
-/// [`enclosing_css_selector`] names: a rule under a grouping at-rule counts
-/// (its condition is not evaluated), a rule nested in a style rule does not.
+/// The `text-wrap` declarations of one declaration list (a `style`
+/// attribute), in order, comments removed first so a commented-out one does
+/// not count.
+fn wrap_decls(declarations: &str) -> Vec<WrapDecl> {
+    let text = CSS_COMMENT_RE.replace_all(declarations, "");
+    PRETTY_WRAP_RE.captures_iter(&text).map(|c| wrap_decl(&c[1])).collect()
+}
+
+/// The declaration that wins among those reaching one element: the last
+/// `!important` one, else the last.
+fn winning_decl(decls: &[WrapDecl]) -> Option<WrapDecl> {
+    decls.iter().rev().find(|d| d.important).or(decls.last()).copied()
+}
+
+/// The `text-wrap` declarations of the page's `<style>` rules with the
+/// selector of each, in source order, read once per scan and only when a
+/// straggler candidate first asks in a browser that dropped `pretty`. Each
+/// declaration's rule is the one [`enclosing_css_selector`] names: a rule
+/// under a grouping at-rule counts (its condition is not evaluated), a rule
+/// nested in a style rule does not.
 #[derive(Debug, Default)]
-pub struct PrettyWrapRules(std::cell::OnceCell<Vec<String>>);
+pub struct TextWrapRules(std::cell::OnceCell<Vec<(String, WrapDecl)>>);
 
-impl PrettyWrapRules {
-    fn selectors(&self, dom: &dyn Dom) -> &[String] {
+impl TextWrapRules {
+    fn declarations(&self, dom: &dyn Dom) -> &[(String, WrapDecl)] {
         self.0.get_or_init(|| {
             dom.query_all(None, "style")
                 .unwrap_or_default()
                 .into_iter()
-                .flat_map(|style| pretty_wrap_selectors(&dom.text_content(style)))
+                .flat_map(|style| text_wrap_rules(&dom.text_content(style)))
                 .collect()
         })
     }
 }
 
-/// The selector of every rule in `css` whose declarations set `pretty`, its
-/// comments removed first so a commented-out declaration names no rule.
-fn pretty_wrap_selectors(css: &str) -> Vec<String> {
+/// Every `text-wrap` declaration in `css` with its rule's selector, comments
+/// removed first so a commented-out declaration names no rule.
+fn text_wrap_rules(css: &str) -> Vec<(String, WrapDecl)> {
     let css = CSS_COMMENT_RE.replace_all(css, "");
     PRETTY_WRAP_RE
         .captures_iter(&css)
-        .filter(|c| holds_pretty(&c[1]))
-        .filter_map(|c| enclosing_css_selector(&css, c.get(1).map_or(0, |m| m.start())))
+        .filter_map(|c| {
+            let value = c.get(1).unwrap();
+            Some((enclosing_css_selector(&css, value.start())?, wrap_decl(value.as_str())))
+        })
         .collect()
 }
 
@@ -293,7 +331,7 @@ fn chars_per_px(dom: &dyn Dom, el: ElId, widths: &[f64]) -> Option<f64> {
 /// alone when the word before it ended on another row. A count of the
 /// characters on the last line could not say so: narrow letters fit two
 /// words in the room the estimate gave one.
-fn check_straggler(dom: &dyn Dom, el: ElId, rules: &PrettyWrapRules) -> Option<RuleHit> {
+fn check_straggler(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> Option<RuleHit> {
     if wraps_with(dom, el, "pretty") || breaks_are_authored(dom, el) {
         return None;
     }
@@ -372,12 +410,12 @@ fn check_unbalanced_heading(dom: &dyn Dom, el: ElId) -> Option<RuleHit> {
 
 /// The line-break rules for one element.
 pub fn check_element_line_breaks_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
-    check_element_line_breaks_dom_with(dom, el, &PrettyWrapRules::default())
+    check_element_line_breaks_dom_with(dom, el, &TextWrapRules::default())
 }
 
-/// [`check_element_line_breaks_dom`] sharing one page's [`PrettyWrapRules`]
+/// [`check_element_line_breaks_dom`] sharing one page's [`TextWrapRules`]
 /// across its elements.
-pub fn check_element_line_breaks_dom_with(dom: &dyn Dom, el: ElId, rules: &PrettyWrapRules) -> Vec<RuleHit> {
+pub fn check_element_line_breaks_dom_with(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
     let hit = if is_heading_tag(&tag) {
         check_unbalanced_heading(dom, el)
@@ -798,9 +836,10 @@ mod tests {
         .is_empty());
     }
 
-    /// A rule that does not reach the paragraph, or a browser that applies
-    /// `pretty` (or a capture that never asked), leaves the finding alone: the
-    /// computed style is the word there.
+    /// A rule that does not reach the paragraph, a `pretty` the author
+    /// commented out or wrote over, an explicit reset on the paragraph under
+    /// an ancestor's `pretty`, or a browser that applies `pretty` (or a
+    /// capture that never asked) leaves the finding alone.
     #[test]
     fn a_pretty_elsewhere_or_in_a_browser_that_applies_it_still_flags() {
         for flag in [Some(false), None, Some(true)] {
@@ -816,6 +855,26 @@ mod tests {
                 assert_eq!(ids(&d, p), ["straggler"], "{flag:?}");
             }
         }
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.text_wrap_pretty_supported = Some(false);
+        let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        for style in ["/* text-wrap: pretty */", "text-wrap: pretty; text-wrap: auto"] {
+            d.set_attr(p, "style", style);
+            assert_eq!(ids(&d, p), ["straggler"], "{style}");
+        }
+        // `body { text-wrap: pretty }` with the paragraph reset inline.
+        let sheet = d.add(Some(html), "style");
+        d.add_text(sheet, "body { text-wrap: pretty }");
+        d.set_attr(p, "style", "text-wrap: auto");
+        assert_eq!(ids(&d, p), ["straggler"]);
+        // The reset in a later rule of the paragraph's own.
+        d.set_attr(p, "style", "");
+        d.add_text(sheet, " p { text-wrap-style: auto }");
+        assert_eq!(ids(&d, p), ["straggler"]);
+        // An `!important` pretty outlives a later reset.
+        d.set_attr(p, "style", "text-wrap: pretty !important; text-wrap: auto");
+        assert!(ids(&d, p).is_empty());
     }
 
     /// Minified CSS writes `pretty!important`, a comment may hold a dead
@@ -823,8 +882,10 @@ mod tests {
     /// declaration names its own rule: under a grouping at-rule, not nested
     /// in a style rule.
     #[test]
-    fn pretty_wrap_selectors_reads_rules_not_substrings() {
+    fn text_wrap_rules_reads_rules_not_substrings() {
         let css = r#".a { color: red; /* text-wrap: pretty */ } /* p { text-wrap: pretty } */ @font-face { font-family: x } @supports (display: grid) { .b, .c { text-wrap: pretty } } .d { text-wrap: balance } p{text-wrap:pretty!important} .e { content: "\""; } .f { text-wrap: pretty; & p { color: red } } .g { .x { text-wrap: pretty } } :root { --text-wrap: pretty }"#;
-        assert_eq!(pretty_wrap_selectors(css), [".b, .c", "p", ".f"]);
+        let rules = text_wrap_rules(css);
+        let rules: Vec<(&str, bool, bool)> = rules.iter().map(|(sel, d)| (sel.as_str(), d.pretty, d.important)).collect();
+        assert_eq!(rules, [(".b, .c", true, false), (".d", false, false), ("p", true, true), (".f", true, false)]);
     }
 }

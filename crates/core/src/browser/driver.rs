@@ -2806,7 +2806,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let body_key = body.unwrap_or(0);
 
     let glow_text = ec::GlowTextRects::default();
-    let pretty_wrap = super::line_breaks::PrettyWrapRules::default();
+    let pretty_wrap = super::line_breaks::TextWrapRules::default();
     // Product mockups the page declares are not content (decision 1 of round
     // 13), and boxes labelled as a screenshot report as advisory (r13-t5).
     let mockups = super::hidden_mockup::HiddenMockups::scan(dom);
