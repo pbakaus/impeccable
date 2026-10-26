@@ -75,3 +75,37 @@ fn dsh_home_outside_home_falls_back_to_dot_dsh() {
     let found = dsh_detections(&sys, &project);
     assert_eq!(found, vec![jsp::join(&[&home, ".dsh"])]);
 }
+
+#[test]
+fn devin_config_dir_only_setup_is_detected() {
+    let home = temp_root("devin-config-detect");
+    let project = temp_root("devin-config-project");
+    let devin_dir = jsp::join(&[&home, ".config", "devin"]);
+    std::fs::create_dir_all(&devin_dir).unwrap();
+    let sys = sys_with(&home, &[]);
+
+    let found: Vec<String> = sys
+        .collect_install_detections(&project)
+        .into_iter()
+        .filter(|d| d.provider == ".devin" && d.scope == Scope::User)
+        .map(|d| d.found_path)
+        .collect();
+    assert_eq!(found, vec![devin_dir]);
+}
+
+#[test]
+fn opencode_config_dir_only_setup_is_detected() {
+    let home = temp_root("opencode-config-detect");
+    let project = temp_root("opencode-config-project");
+    let opencode_dir = jsp::join(&[&home, ".config", "opencode"]);
+    std::fs::create_dir_all(&opencode_dir).unwrap();
+    let sys = sys_with(&home, &[]);
+
+    let found: Vec<String> = sys
+        .collect_install_detections(&project)
+        .into_iter()
+        .filter(|d| d.provider == ".opencode" && d.scope == Scope::User)
+        .map(|d| d.found_path)
+        .collect();
+    assert_eq!(found, vec![opencode_dir]);
+}

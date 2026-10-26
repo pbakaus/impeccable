@@ -8,7 +8,7 @@ use crate::util::{self, jsp, Env};
 pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
-    ".claude", ".cursor", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
+    ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
     ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
 ];
 
@@ -23,6 +23,7 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("cursor", ".cursor"),
     ("deepseek", ".dsh"),
     ("deepseek-harness", ".dsh"),
+    ("devin", ".devin"),
     ("dsh", ".dsh"),
     ("gemini", ".gemini"),
     ("github", ".github"),
@@ -41,6 +42,7 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("trae", ".trae"),
     ("trae-cn", ".trae-cn"),
     ("vibe", ".vibe"),
+    ("windsurf", ".devin"),
 ];
 
 const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
@@ -48,6 +50,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".agents", "Codex CLI", "codex"),
     (".claude", "Claude Code", "claude"),
     (".cursor", "Cursor", "cursor"),
+    (".devin", "Devin", "devin"),
     (".dsh", "DeepSeek Harness", "dsh"),
     (".gemini", "Gemini CLI", "gemini"),
     (".github", "GitHub Copilot", "github"),
@@ -65,7 +68,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
 ];
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
-    "antigravity", "claude", "codex", "cursor", "dsh", "gemini", "github", "grok", "hermes", "kiro",
+    "antigravity", "claude", "codex", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
     "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
 ];
 
@@ -81,6 +84,20 @@ pub fn opencode_global_config_dir(env: &Env, home: &str) -> String {
         return jsp::join(&[v, "opencode"]);
     }
     jsp::join(&[home, ".config", "opencode"])
+}
+
+/// Devin CLI and Desktop share one global config dir: `%APPDATA%\devin` on
+/// Windows, else `$XDG_CONFIG_HOME/devin`, else `~/.config/devin`.
+pub fn devin_global_config_dir(env: &Env, _cwd: &str, home: &str) -> String {
+    if cfg!(windows) {
+        if let Some(v) = env.get("APPDATA").filter(|v| !v.is_empty()) {
+            return jsp::join(&[v, "devin"]);
+        }
+    }
+    if let Some(v) = env.get("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        return jsp::join(&[v, "devin"]);
+    }
+    jsp::join(&[home, ".config", "devin"])
 }
 
 /// JS: hermesGlobalHome(home): honor $HERMES_HOME only when it sits under
@@ -119,6 +136,7 @@ pub fn dsh_global_home(env: &Env, cwd: &str, home: &str) -> String {
 fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) -> Option<String> {
     match provider {
         ".agent" => Some(jsp::join(&[home, ".gemini", "config", "skills"])),
+        ".devin" => Some(jsp::join(&[&devin_global_config_dir(env, cwd, home), "skills"])),
         ".dsh" => Some(jsp::join(&[&dsh_global_home(env, cwd, home), "skills"])),
         ".hermes" => Some(jsp::join(&[&hermes_global_home(env, cwd, home), "skills"])),
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
@@ -129,7 +147,7 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
 }
 
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
+    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -337,7 +355,7 @@ impl Sys {
                 has_real_skills: has_real_skill_entries(&jsp::join(&[root, provider, "skills"])),
             });
         }
-        // Shared probe pair for env-relocated config dirs (OpenCode, DSH):
+        // Shared probe pair for env-relocated config dirs (OpenCode, DSH, Devin):
         // the harness-specific user skills dir plus a direct
         // `<config-dir>/skills` fallback.
         let config_dir_detection = |provider: &'static str, found: String| {
@@ -357,11 +375,8 @@ impl Sys {
                     ]);
                     (found, probes)
                 }
-                Hint::OpencodeConfig(provider) => {
-                    config_dir_detection(provider, opencode_global_config_dir(&self.env, home))
-                }
-                Hint::DshHome(provider) => {
-                    config_dir_detection(provider, dsh_global_home(&self.env, &self.cwd, home))
+                Hint::ConfigDir(dir, provider) => {
+                    config_dir_detection(provider, dir(&self.env, &self.cwd, home))
                 }
             };
             if !util::exists(&found_path) {
@@ -450,17 +465,19 @@ pub enum UpdateTarget {
 
 enum Hint {
     Home(&'static str, &'static str),
-    OpencodeConfig(&'static str),
-    /// `$DSH_HOME` relocates the whole config root, so detection must probe
-    /// the resolved home (which falls back to `~/.dsh`) rather than a fixed
-    /// relative path; a plain `Home` hint would miss a DSH_HOME-only setup.
-    DshHome(&'static str),
+    /// Config root resolved from `(env, cwd, home)`, for harnesses whose root
+    /// an env var or OS convention relocates.
+    ConfigDir(fn(&Env, &str, &str) -> String, &'static str),
+}
+
+fn opencode_hint_dir(env: &Env, _cwd: &str, home: &str) -> String {
+    opencode_global_config_dir(env, home)
 }
 
 impl Hint {
     fn provider(&self) -> &'static str {
         match self {
-            Hint::Home(_, p) | Hint::OpencodeConfig(p) | Hint::DshHome(p) => p,
+            Hint::Home(_, p) | Hint::ConfigDir(_, p) => p,
         }
     }
 }
@@ -473,13 +490,18 @@ const GLOBAL_HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".claude", ".claude"),
     Hint::Home(".codex", ".agents"),
     Hint::Home(".cursor", ".cursor"),
-    Hint::DshHome(".dsh"),
+    Hint::Home(".codeium/windsurf", ".devin"),
+    Hint::ConfigDir(devin_global_config_dir, ".devin"),
+    // `$DSH_HOME` relocates the whole config root, so detection must probe
+    // the resolved home (which falls back to `~/.dsh`) rather than a fixed
+    // relative path; a plain `Home` hint would miss a DSH_HOME-only setup.
+    Hint::ConfigDir(dsh_global_home, ".dsh"),
     Hint::Home(".gemini", ".gemini"),
     Hint::Home(".grok", ".grok"),
     Hint::Home(".hermes", ".hermes"),
     Hint::Home(".kiro", ".kiro"),
     Hint::Home(".opencode", ".opencode"),
-    Hint::OpencodeConfig(".opencode"),
+    Hint::ConfigDir(opencode_hint_dir, ".opencode"),
     Hint::Home(".pi", ".pi"),
     Hint::Home(".omp", ".omp"),
     Hint::Home(".qoder", ".qoder"),
@@ -811,6 +833,23 @@ mod tests {
         assert_eq!(sys.user_provider_skills_dir(&home, ".omp"), jsp::join(&[&home, ".omp", "agent", "skills"]));
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".omp", Some(Scope::Project)), vec![jsp::join(&["/project", ".omp", "skills"])]);
 
+    }
+
+    #[test]
+    fn devin_provider_resolves_paths() {
+        assert_eq!(normalize_provider_name("devin"), Some(".devin"));
+        assert_eq!(normalize_provider_name("windsurf"), Some(".devin"));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
+        if !cfg!(windows) {
+            assert_eq!(sys.user_provider_skills_dir(home, ".devin"), jsp::join(&[home, ".config", "devin", "skills"]));
+            let mut env = Env::new();
+            env.insert("XDG_CONFIG_HOME".into(), "/xdg".into());
+            let sys = Sys { env, cwd: home.into(), home: home.into() };
+            assert_eq!(sys.user_provider_skills_dir(home, ".devin"), jsp::join(&["/xdg", "devin", "skills"]));
+        }
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".devin", Some(Scope::Project)), vec![jsp::join(&["/project", ".devin", "skills"])]);
     }
 
     #[test]

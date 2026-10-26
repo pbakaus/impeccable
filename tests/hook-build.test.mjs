@@ -265,6 +265,7 @@ describe('hook manifest builders', () => {
     assert.ok(hooksJsonFor('grok'));
     assert.ok(hooksJsonFor('gemini'));
     assert.equal(hooksJsonFor('omp'), null);
+    assert.equal(hooksJsonFor('devin'), null);
     assert.equal(hooksJsonFor('unrecognized'), null);
   });
 });

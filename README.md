@@ -129,7 +129,7 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `devin`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
 
 To update later:
 
@@ -206,6 +206,16 @@ cp -r dist/dsh/.dsh/skills/* "${DSH_HOME:-$HOME/.dsh}/skills/"
 ```
 
 The CLI honors `DSH_HOME` only when it resolves inside your home directory (or to home itself); otherwise it uses `~/.dsh`. An outside-home manual copy is not managed by `impeccable install/update`.
+
+**Devin:**
+```bash
+# Project-specific (Devin web, CLI, and Desktop all read .devin/skills/)
+cp -r dist/devin/.devin your-project/
+
+# Or global (Devin CLI and Desktop; use %APPDATA%\devin\skills on Windows)
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/devin/skills"
+cp -r dist/devin/.devin/skills/* "${XDG_CONFIG_HOME:-$HOME/.config}/devin/skills/"
+```
 
 **Hermes Agent:**
 ```bash
@@ -496,6 +506,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Cursor](https://cursor.com)
 - [Claude Code](https://claude.ai/code)
 - [GitHub Copilot](https://github.com/features/copilot)
+- [Devin](https://devin.ai)
 - [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 - [Codex CLI](https://github.com/openai/codex)

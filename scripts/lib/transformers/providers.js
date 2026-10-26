@@ -212,4 +212,18 @@ export const PROVIDERS = {
     // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
   },
+  devin: {
+    provider: 'devin',
+    providerTags: ['devin'],
+    configDir: '.devin',
+    displayName: 'Devin',
+    // Devin (web, CLI, Desktop) reads name, description, argument-hint, triggers,
+    // model, subagent, agent, permissions, allowed-tools. user-invocable is
+    // omitted: triggers already defaults to user and model. allowed-tools is
+    // omitted: the CLI docs call it an auto-approve list, the web docs a
+    // restriction, and our Claude-syntax entries match no Devin tool. The CLI
+    // has hooks (.devin/hooks.v1.json) and subagent profiles (.devin/agents/,
+    // Devin tool names), neither targeted yet: no emitHooks, no agentFormat.
+    frontmatterFields: ['argument-hint', 'license', 'compatibility', 'metadata'],
+  },
 };

@@ -668,6 +668,7 @@ This folder contains skills for all supported tools:
 
   .cursor/    -> Cursor
   .claude/    -> Claude Code
+  .devin/     -> Devin
   .dsh/       -> DeepSeek Harness
   .gemini/    -> Gemini CLI
   .codex/     -> Codex custom agents (Codex skills use .agents/)
