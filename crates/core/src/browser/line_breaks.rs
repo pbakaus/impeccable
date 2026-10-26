@@ -107,8 +107,9 @@ static CSS_COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"/\*[\s\S]*?\*/").
 /// element up the chain that declares `text-wrap` at all decides, by the last
 /// declaration that reaches it (an `!important` one first, the `style`
 /// attribute after the `<style>` rules, specificity not weighed), so an
-/// explicit reset keeps the finding. Linked stylesheets, `@import` and
-/// shadow-tree styles are not read.
+/// explicit reset keeps the finding; `inherit` and `unset` pass the decision
+/// to the ancestor. Linked stylesheets, `@import` and shadow-tree styles are
+/// not read.
 fn pretty_wrap_dropped(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> bool {
     if dom.text_wrap_pretty_supported() != Some(false) {
         return false;
@@ -123,27 +124,44 @@ fn pretty_wrap_dropped(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> bool {
         if let Some(style) = dom.attr(c, "style") {
             decls.extend(wrap_decls(&style));
         }
-        if let Some(winner) = winning_decl(&decls) {
-            return winner.pretty;
+        match winning_decl(&decls).map(|d| d.wrap) {
+            Some(Wrap::Pretty) => return true,
+            Some(Wrap::Other) => return false,
+            Some(Wrap::Inherit) | None => {}
         }
     }
     false
 }
 
-/// A `text-wrap` or `text-wrap-style` declaration: whether its value holds
-/// `pretty` (`wrap pretty` and `pretty!important` do) and whether it is
-/// `!important`.
+/// What a `text-wrap` or `text-wrap-style` value asks for: `pretty` (`wrap
+/// pretty` and `pretty!important` do), the ancestor's choice (`inherit`,
+/// `unset`), or another wrap.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Wrap {
+    Pretty,
+    Inherit,
+    Other,
+}
+
+/// One declaration: its value and whether it is `!important`.
 #[derive(Debug, Clone, Copy)]
 struct WrapDecl {
-    pretty: bool,
+    wrap: Wrap,
     important: bool,
 }
 
 fn wrap_decl(value: &str) -> WrapDecl {
     let mut parts = value.split('!');
-    let pretty = parts.next().is_some_and(|v| v.split_whitespace().any(|t| t.eq_ignore_ascii_case("pretty")));
-    let important = parts.any(|t| t.trim().eq_ignore_ascii_case("important"));
-    WrapDecl { pretty, important }
+    let tokens: Vec<&str> = parts.next().unwrap_or("").split_whitespace().collect();
+    let has = |word: &str| tokens.iter().any(|t| t.eq_ignore_ascii_case(word));
+    let wrap = if has("pretty") {
+        Wrap::Pretty
+    } else if has("inherit") || has("unset") {
+        Wrap::Inherit
+    } else {
+        Wrap::Other
+    };
+    WrapDecl { wrap, important: parts.any(|t| t.trim().eq_ignore_ascii_case("important")) }
 }
 
 /// The `text-wrap` declarations of one declaration list (a `style`
@@ -875,6 +893,30 @@ mod tests {
         // An `!important` pretty outlives a later reset.
         d.set_attr(p, "style", "text-wrap: pretty !important; text-wrap: auto");
         assert!(ids(&d, p).is_empty());
+        // `inherit` hands the decision to an ancestor that declares nothing.
+        d.add_text(sheet, " body { text-wrap: auto }");
+        d.set_attr(p, "style", "text-wrap: inherit");
+        assert_eq!(ids(&d, p), ["straggler"]);
+    }
+
+    /// `body { text-wrap: pretty }` reaches a paragraph that says `inherit`
+    /// or `unset`, inline or in a rule of its own: the author kept the
+    /// ancestor's choice, so the finding stands down.
+    #[test]
+    fn an_inherited_pretty_stands_straggler_down() {
+        for own in ["text-wrap: inherit", "text-wrap-style: unset"] {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.text_wrap_pretty_supported = Some(false);
+            let sheet = d.add(Some(html), "style");
+            d.add_text(sheet, "body { text-wrap: pretty }");
+            let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+            d.set_attr(p, "style", own);
+            assert!(ids(&d, p).is_empty(), "{own}");
+            d.set_attr(p, "style", "");
+            d.add_text(sheet, &format!(" p {{ {own} }}"));
+            assert!(ids(&d, p).is_empty(), "{own}");
+        }
     }
 
     /// Minified CSS writes `pretty!important`, a comment may hold a dead
@@ -885,7 +927,10 @@ mod tests {
     fn text_wrap_rules_reads_rules_not_substrings() {
         let css = r#".a { color: red; /* text-wrap: pretty */ } /* p { text-wrap: pretty } */ @font-face { font-family: x } @supports (display: grid) { .b, .c { text-wrap: pretty } } .d { text-wrap: balance } p{text-wrap:pretty!important} .e { content: "\""; } .f { text-wrap: pretty; & p { color: red } } .g { .x { text-wrap: pretty } } :root { --text-wrap: pretty }"#;
         let rules = text_wrap_rules(css);
-        let rules: Vec<(&str, bool, bool)> = rules.iter().map(|(sel, d)| (sel.as_str(), d.pretty, d.important)).collect();
-        assert_eq!(rules, [(".b, .c", true, false), (".d", false, false), ("p", true, true), (".f", true, false)]);
+        let rules: Vec<(&str, Wrap, bool)> = rules.iter().map(|(sel, d)| (sel.as_str(), d.wrap, d.important)).collect();
+        assert_eq!(
+            rules,
+            [(".b, .c", Wrap::Pretty, false), (".d", Wrap::Other, false), ("p", Wrap::Pretty, true), (".f", Wrap::Pretty, false)]
+        );
     }
 }
