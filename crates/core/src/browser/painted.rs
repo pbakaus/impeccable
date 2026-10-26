@@ -40,7 +40,6 @@
 
 use super::dom::{class_attr, has_direct_text_longer_than, tag_lower, Dom, ElId, Rect};
 use super::element_checks::effective_opacity_dom;
-use super::page_checks::is_dialog_el;
 use super::text_geometry::{phrasing_text_extent, runs_a_track_inside};
 use super::BrowserFinding;
 use crate::checks::measures::{clipped_by_inset, clipped_by_rect};
@@ -51,8 +50,8 @@ use crate::js;
 pub enum Unpainted {
     /// `display: none` or `content-visibility: hidden` on an ancestor, or
     /// `visibility: hidden` / `checkVisibility()` false on the element, or
-    /// the element or an ancestor is a dialog switched off with `inert`
-    /// ([`closed_inert_dialog`]).
+    /// the element or an ancestor carries `inert` under an opaque layer
+    /// stacked above it ([`buried_inert`]).
     NotRendered,
     /// The element's effective opacity is at or near 0.
     Transparent,
@@ -686,7 +685,7 @@ fn unpainted_walk(
     if turned_away(dom, el) {
         return Some(Unpainted::TurnedAway);
     }
-    if closed_inert_dialog(dom, el) {
+    if buried_inert(dom, el, el) {
         return Some(Unpainted::NotRendered);
     }
 
@@ -775,7 +774,7 @@ fn unpainted_walk(
         if turned_away(dom, p) {
             return Some(Unpainted::TurnedAway);
         }
-        if closed_inert_dialog(dom, p) {
+        if buried_inert(dom, el, p) {
             return Some(Unpainted::NotRendered);
         }
         if masked_out(p) {
@@ -855,34 +854,54 @@ fn unpainted_walk(
     outside_document(dom, &band, vis, viewport_w)
 }
 
-/// Whether `el` is a dialog (a `<dialog>`, `role="dialog"` or
-/// `"alertdialog"`, or `aria-modal="true"`) that carries `inert` itself and
-/// that an opaque layer stacked above it holds whole: a closed off-canvas
-/// menu its script switched off and left laid out under the page. ktk.de's
+/// Whether `root` (`el` or one of its ancestors) carries `inert` itself and
+/// an opaque layer stacked above `el` holds `root` whole: a closed off-canvas
+/// menu its script switched off and left laid out under the page, or a view
+/// an app keeps mounted, inert, under a route overlay (issue #950: an in-flow
+/// wrapper under `position: absolute; z-index: 40`, white). ktk.de's
 /// mmenu.js drawer (`nav#menumobile`, observations-1006 row 1) is fixed at
 /// `z-index: 0` under its sibling `div.mm-page` (`relative`, `z-index: 1`,
 /// white, holding the drawer's whole box). `inert` keeps the drawer out of
 /// every hit-test stack, so neither the paint walk nor the occlusion probe
 /// sees it covered; the stacking and the boxes the capture records do.
-/// An inert dialog nothing buries (a parent dialog a library marks inert
-/// while a nested confirm is open, a panel inert during a transition) is on
-/// screen and keeps its text, and so does `inert` on anything that is not a
-/// dialog (the page behind an open modal).
-fn closed_inert_dialog(dom: &dyn Dom, el: ElId) -> bool {
-    dom.attr(el, "inert").is_some() && is_dialog_el(dom, el) && buried_by_an_opaque_sibling(dom, el)
+/// An inert box nothing buries (a parent dialog a library marks inert while
+/// a nested confirm is open, a panel inert during a transition, the page
+/// behind a modal over a translucent backdrop) is on screen and keeps its
+/// text. The stacking is read from `el`, so a header fixed above the cover
+/// inside an inert view keeps its text too. Not read: a cover's `clip-path`
+/// or mask, and the top layer.
+fn buried_inert(dom: &dyn Dom, el: ElId, root: ElId) -> bool {
+    dom.attr(root, "inert").is_some() && buried_by_an_opaque_sibling(dom, el, root)
 }
 
 /// The z-index a box's branch stacks at among its siblings, read on the way
 /// from `el` up to `branch` (an ancestor-or-self of `el`): the outermost
-/// positioned box with a numeric `z-index` decides; a branch with a
-/// positioned box and no number stacks at 0. `None` for a branch with no
-/// positioned box, or a `z-index` the capture did not record, which no
-/// sibling is known to cover.
+/// positioned box with a numeric `z-index` decides; a branch with no number
+/// stacks at 0, as an in-flow branch does in tree order. `None` for a
+/// `z-index` the capture did not record, or a number on a box that is not
+/// positioned (a flex or grid item stacks by it), which no sibling is known
+/// to cover. A box that opens a stacking context keeps the levels inside it
+/// there: the branch stacks at the box's own level. Where the capture cannot
+/// tell whether a box opens one ([`opens_stacking_context`]), a level read
+/// inside it is unknown too.
 fn branch_z(dom: &dyn Dom, el: ElId, branch: ElId) -> Option<f64> {
     let mut level: Option<f64> = None;
     let mut cur = Some(el);
     while let Some(n) = cur {
-        if is_positioned(dom, n) {
+        if n != el {
+            match super::visual::opens_stacking_context(dom, n) {
+                Some(true) => level = None,
+                Some(false) => {}
+                None if level.is_some_and(|v| v != 0.0) => return None,
+                None => {}
+            }
+        }
+        if !is_positioned(dom, n) {
+            let v = js::parse_float(js::trim(&dom.style(n, "zIndex")));
+            if v.is_finite() && v != 0.0 {
+                return None;
+            }
+        } else {
             let z = js::trim(&dom.style(n, "zIndex")).to_string();
             if z.is_empty() {
                 return None;
@@ -902,24 +921,30 @@ fn branch_z(dom: &dyn Dom, el: ElId, branch: ElId) -> Option<f64> {
         }
         cur = dom.parent(n);
     }
-    level
+    Some(level.unwrap_or(0.0))
 }
 
-/// Whether a sibling of `dialog` or of one of its ancestors covers it for
+/// Whether a sibling of `root` or of one of its ancestors covers it for
 /// good: positioned, filled with an opaque `background-color` (alpha 0.95 or
-/// more) at an effective opacity of 0.95 or more, its box holding the
-/// dialog's box within 1px, and stacked above the dialog's branch (a higher
-/// z-index, or the same one later in tree order). Only the siblings
-/// themselves are read, not their descendants; anything unmeasured or
-/// unrecorded covers nothing.
-fn buried_by_an_opaque_sibling(dom: &dyn Dom, dialog: ElId) -> bool {
-    let d = dom.rect(dialog);
+/// more) at an effective opacity of 0.95 or more, its box holding `root`'s
+/// box within 1px and what of `el`'s box shows ([`shown_band`]), and stacked
+/// above the branch `el` paints in (a higher z-index, or the same one later
+/// in tree order). Only the siblings themselves are read, not their
+/// descendants; anything unmeasured or unrecorded covers nothing.
+fn buried_by_an_opaque_sibling(dom: &dyn Dom, el: ElId, root: ElId) -> bool {
+    let d = dom.rect(root);
     if !d.all_finite() || d.width <= 0.0 || d.height <= 0.0 {
         return false;
     }
-    let mut branch = dialog;
+    let Some(shown) = shown_band(dom, el) else {
+        return false;
+    };
+    let holds = |r: &Rect, b: &Rect| {
+        r.left <= b.left + 1.0 && r.top <= b.top + 1.0 && r.right >= b.right - 1.0 && r.bottom >= b.bottom - 1.0
+    };
+    let mut branch = root;
     while let Some(parent) = dom.parent(branch) {
-        let Some(own) = branch_z(dom, dialog, branch) else {
+        let Some(own) = branch_z(dom, el, branch) else {
             branch = parent;
             continue;
         };
@@ -946,13 +971,7 @@ fn buried_by_an_opaque_sibling(dom: &dyn Dom, dialog: ElId) -> bool {
             let opaque = super::element_checks::parse_rgb_or_any(&dom.style(sib, "backgroundColor"))
                 .is_some_and(|c| c.alpha_or_one() >= 0.95)
                 && effective_opacity_dom(dom, sib) >= 0.95;
-            if opaque
-                && r.all_finite()
-                && r.left <= d.left + 1.0
-                && r.top <= d.top + 1.0
-                && r.right >= d.right - 1.0
-                && r.bottom >= d.bottom - 1.0
-            {
+            if opaque && r.all_finite() && holds(&r, &d) && shown.as_ref().map_or(true, |b| holds(&r, b)) {
                 return true;
             }
         }
@@ -962,6 +981,37 @@ fn buried_by_an_opaque_sibling(dom: &dyn Dom, dialog: ElId) -> bool {
         branch = parent;
     }
     false
+}
+
+/// What of `el`'s box shows: its box cut, axis by axis, to every ancestor
+/// whose overflow clips it ([`clipping_ancestors`]). A clip is read at the
+/// ancestor's border box, a little past its padding box, so the band is
+/// never smaller than what shows. `None` when `el` is unmeasured; `Some(None)`
+/// when the clips leave nothing of it.
+fn shown_band(dom: &dyn Dom, el: ElId) -> Option<Option<Rect>> {
+    let r = dom.rect(el);
+    if !r.all_finite() {
+        return None;
+    }
+    let (mut left, mut top, mut right, mut bottom) = (r.left, r.top, r.right, r.bottom);
+    for c in clipping_ancestors(dom, el) {
+        let b = dom.rect(c);
+        if !b.all_finite() {
+            continue;
+        }
+        if clips(&crate::browser::text_geometry::overflow_x(dom, c)) {
+            left = js::math_max(left, b.left);
+            right = js::math_min(right, b.right);
+        }
+        if clips(&crate::browser::text_geometry::overflow_y(dom, c)) {
+            top = js::math_max(top, b.top);
+            bottom = js::math_min(bottom, b.bottom);
+        }
+    }
+    if right < left || bottom < top {
+        return Some(None);
+    }
+    Some(Some(Rect::from_xywh(left, top, right - left, bottom - top)))
 }
 
 /// The ancestors of `el`, below the body, whose overflow can clip it, by
@@ -3197,6 +3247,17 @@ mod tests {
         d.set_styles(el, RESOLVED_INITIAL);
     }
 
+    /// The computed values a browser reports for the stacking-context
+    /// properties [`branch_z`] reads when none is set.
+    const FLAT: &[(&str, &str)] = &[
+        ("isolation", "auto"),
+        ("mixBlendMode", "normal"),
+        ("clipPath", "none"),
+        ("maskImage", "none"),
+        ("webkitMaskImage", "none"),
+        ("opacity", "1"),
+    ];
+
     fn page() -> (FakeDom, ElId) {
         let mut d = FakeDom::new();
         let (html, body) = d.with_page();
@@ -3224,8 +3285,8 @@ mod tests {
     /// `nav#menumobile` (`role=dialog`, `aria-modal=true`, `inert`, fixed at
     /// `z-index: 0`), laid out on screen under its sibling page sheet
     /// (`relative`, `z-index: 1`, white). Nothing in it is painted for the
-    /// text rules. An inert dialog nothing buries is on screen, and `inert`
-    /// alone is not a dialog switched off.
+    /// text rules. An inert dialog nothing buries is on screen, and so is
+    /// any other inert box nothing buries.
     #[test]
     fn a_dialog_switched_off_with_inert_is_not_painted() {
         // (drawer, link, sheet)
@@ -3256,6 +3317,8 @@ mod tests {
         assert_eq!(why(&d, nav), Some(Unpainted::NotRendered));
         // The same drawer open: no `inert`, and its text is painted.
         d.el_mut(nav).attrs.retain(|(n, _)| n != "inert");
+        let panel = d.parent(link).expect("panel");
+        d.el_mut(panel).attrs.retain(|(n, _)| n != "inert");
         assert_eq!(text(&d, link), None);
         // A `<dialog>` or `role=alertdialog` switched off the same way.
         let (d2, _, link2, _) = build("dialog", None);
@@ -3333,7 +3396,7 @@ mod tests {
         assert_eq!(text(&d, copy), None, "a nested confirm over part of it");
 
         // The page behind an open modal is `inert` and shown, and so is
-        // `inert` on anything that is not a dialog.
+        // any other inert box nothing buries.
         let main = d.add(Some(body), "main");
         d.set_attr(main, "inert", "");
         d.set_rect(main, 0.0, 0.0, 1280.0, 2000.0);
@@ -3349,6 +3412,160 @@ mod tests {
         d.set_rect(note, 10.0, 2110.0, 280.0, 20.0);
         d.add_text(note, "Related reading");
         assert_eq!(text(&d, note), None);
+    }
+
+    /// Issue #950: an app route overlay (`position: absolute`, `z-index:
+    /// 40`, white) laid over a workspace view the app keeps mounted under
+    /// it, inside an in-flow wrapper switched off with `inert`. Nothing in
+    /// the view is painted, for the text rules or for its boxes. Without
+    /// `inert`, or with nothing opaque holding it, the view keeps its text.
+    #[test]
+    fn an_inert_view_an_opaque_overlay_buries_is_not_painted() {
+        // (overlay, wrapper, card, status)
+        let build = |inert: bool, overlay_first: bool| {
+            let (mut d, body) = page();
+            let app = d.add(Some(body), "div");
+            d.set_styles(app, &[("position", "absolute"), ("zIndex", "auto")]);
+            d.set_rect(app, 20.0, 70.0, 360.0, 340.0);
+            let add_overlay = |d: &mut FakeDom| {
+                let overlay = d.add(Some(app), "main");
+                d.set_styles(overlay, &[("position", "absolute"), ("zIndex", "40"), ("backgroundColor", "rgb(255, 255, 255)"), ("opacity", "1")]);
+                d.set_rect(overlay, 20.0, 70.0, 360.0, 340.0);
+                overlay
+            };
+            let first = overlay_first.then(|| add_overlay(&mut d));
+            let wrap = d.add(Some(app), "div");
+            if inert {
+                d.set_attr(wrap, "inert", "");
+            }
+            resolved(&mut d, wrap);
+            d.set_rect(wrap, 20.0, 70.0, 360.0, 200.0);
+            let aside = d.add(Some(wrap), "aside");
+            d.set_rect(aside, 30.0, 80.0, 300.0, 180.0);
+            let card = d.add(Some(aside), "div");
+            d.set_rect(card, 47.0, 97.0, 266.0, 90.0);
+            d.add_text(card, "Workspace Amber holds three panes.");
+            let status = d.add(Some(aside), "div");
+            d.set_rect(status, 47.0, 199.0, 266.0, 44.0);
+            d.add_text(status, "Status text against its edge.");
+            let overlay = first.unwrap_or_else(|| add_overlay(&mut d));
+            (d, overlay, wrap, card, status)
+        };
+        let (d, _, wrap, card, status) = build(true, false);
+        assert_eq!(text(&d, status), Some(Unpainted::NotRendered));
+        assert_eq!(why(&d, card), Some(Unpainted::NotRendered));
+        assert_eq!(why(&d, wrap), Some(Unpainted::NotRendered));
+
+        // Should-flag twins: the same view without `inert`, under a
+        // translucent overlay, one that holds only part of it, one stacked
+        // below, one whose z-index the capture did not record, and one at
+        // `z-index: auto` earlier in tree order.
+        let (d, _, _, card, status) = build(false, false);
+        assert_eq!(text(&d, status), None, "not inert");
+        assert_eq!(why(&d, card), None, "not inert");
+        let (mut d, overlay, _, card, status) = build(true, false);
+        d.set_style(overlay, "backgroundColor", "rgba(255, 255, 255, 0.5)");
+        assert_eq!(text(&d, status), None, "translucent overlay");
+        assert_eq!(why(&d, card), None, "translucent overlay");
+        d.set_style(overlay, "backgroundColor", "rgb(255, 255, 255)");
+        d.set_rect(overlay, 20.0, 70.0, 360.0, 100.0);
+        assert_eq!(text(&d, status), None, "overlay holds part of it");
+        d.set_rect(overlay, 20.0, 70.0, 360.0, 340.0);
+        d.set_style(overlay, "zIndex", "-1");
+        assert_eq!(text(&d, status), None, "overlay below");
+        d.set_style(overlay, "zIndex", "");
+        assert_eq!(text(&d, status), None, "unrecorded z-index");
+        d.set_style(overlay, "zIndex", "auto");
+        assert_eq!(text(&d, status), Some(Unpainted::NotRendered), "same level, overlay later");
+        let (mut d, overlay, _, _, status) = build(true, true);
+        d.set_style(overlay, "zIndex", "auto");
+        assert_eq!(text(&d, status), None, "same level, overlay earlier");
+        // A bar the view fixes above the overlay is on screen, read through
+        // boxes that say they open no stacking context.
+        let (mut d, _, wrap, _, _) = build(true, false);
+        d.set_styles(wrap, FLAT);
+        let app = d.parent(wrap).expect("app");
+        d.set_styles(app, FLAT);
+        let bar = d.add(Some(wrap), "div");
+        d.set_styles(bar, &[("position", "fixed"), ("zIndex", "50")]);
+        d.set_rect(bar, 20.0, 70.0, 360.0, 40.0);
+        let label = d.add(Some(bar), "span");
+        d.set_rect(label, 30.0, 80.0, 120.0, 20.0);
+        d.add_text(label, "Build running");
+        assert_eq!(text(&d, label), None, "bar above the overlay");
+        // So is a flex item stacked by its own z-index, which no position
+        // reads.
+        let (mut d, _, wrap, _, status) = build(true, false);
+        d.set_style(wrap, "zIndex", "50");
+        assert_eq!(text(&d, status), None, "flex item stacked above");
+        // An in-flow inert dialog stacks at 0 like any other branch.
+        let (mut d, _, wrap, _, status) = build(true, false);
+        d.set_attr(wrap, "role", "dialog");
+        assert_eq!(text(&d, status), Some(Unpainted::NotRendered), "in-flow dialog");
+    }
+
+    /// The cover must hold what of an inert view shows, not only the inert
+    /// box: a child an inert wrapper lets overflow past the cover is on
+    /// screen, while one the wrapper clips at the cover's edge is not. And a
+    /// `z-index` inside a box that opens its own stacking context stacks
+    /// only inside it: a child at `z-index: -2` in an inert `isolation:
+    /// isolate` wrapper paints at the wrapper's level, over a cover at -1.
+    #[test]
+    fn an_inert_view_is_buried_only_where_the_cover_holds_what_shows() {
+        // (overlay, wrapper, card, status): a 200px-tall app and its cover,
+        // over an inert wrapper as tall whose sidebar runs 300px.
+        let build = || {
+            let (mut d, body) = page();
+            let app = d.add(Some(body), "div");
+            d.set_styles(app, &[("position", "absolute"), ("zIndex", "auto")]);
+            d.set_styles(app, FLAT);
+            d.set_rect(app, 20.0, 70.0, 360.0, 200.0);
+            let wrap = d.add(Some(app), "div");
+            d.set_attr(wrap, "inert", "");
+            resolved(&mut d, wrap);
+            d.set_styles(wrap, FLAT);
+            d.set_rect(wrap, 20.0, 70.0, 360.0, 200.0);
+            let aside = d.add(Some(wrap), "aside");
+            d.set_styles(aside, FLAT);
+            d.set_rect(aside, 30.0, 80.0, 300.0, 300.0);
+            let card = d.add(Some(aside), "div");
+            d.set_rect(card, 47.0, 97.0, 266.0, 90.0);
+            d.add_text(card, "Workspace Amber holds three panes.");
+            let status = d.add(Some(aside), "div");
+            d.set_rect(status, 47.0, 300.0, 266.0, 44.0);
+            d.add_text(status, "Status text past the cover's edge.");
+            let overlay = d.add(Some(app), "main");
+            d.set_styles(overlay, &[("position", "absolute"), ("zIndex", "40"), ("backgroundColor", "rgb(255, 255, 255)"), ("opacity", "1")]);
+            d.set_rect(overlay, 20.0, 70.0, 360.0, 200.0);
+            (d, overlay, wrap, card, status)
+        };
+
+        // Visible overflow: the status below the cover is on screen; the
+        // card the cover holds is not.
+        let (d, _, _, card, status) = build();
+        assert_eq!(text(&d, status), None, "overflows past the cover");
+        assert_eq!(why(&d, status), None, "overflows past the cover");
+        assert_eq!(why(&d, card), Some(Unpainted::NotRendered), "held by the cover");
+
+        // The wrapper clips at the cover's edge: a card taller than the
+        // cover shows only the part the cover holds.
+        let (mut d, _, wrap, card, _) = build();
+        d.set_styles(wrap, &[("overflowX", "hidden"), ("overflowY", "hidden")]);
+        d.set_rect(card, 47.0, 97.0, 266.0, 260.0);
+        assert_eq!(why(&d, card), Some(Unpainted::NotRendered), "clipped at the cover");
+
+        // A child at -2 inside an isolated wrapper, over a cover at -1.
+        let (mut d, overlay, wrap, card, _) = build();
+        d.set_style(overlay, "zIndex", "-1");
+        let aside = d.parent(card).expect("aside");
+        d.set_styles(aside, &[("position", "absolute"), ("zIndex", "-2")]);
+        assert_eq!(why(&d, card), Some(Unpainted::NotRendered), "the wrapper opens no context");
+        d.set_style(wrap, "isolation", "isolate");
+        assert_eq!(why(&d, card), None, "isolated wrapper over the cover");
+        // A wrapper whose stacking the capture did not record leaves the
+        // child's level unknown, which nothing is known to cover.
+        d.set_style(wrap, "isolation", "");
+        assert_eq!(why(&d, card), None, "unrecorded isolation");
     }
 
     /// reachmcp.com (observations-1006 row 18): a logo chip 89% inside a
