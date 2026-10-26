@@ -102,6 +102,18 @@ describe('skill reference authoring contracts', () => {
     );
   });
 
+  it('sizes the hand by the verdicts, never by a requested count', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const handComposition = newWork.match(
+      /A hand holds at most three full-card challengers[\s\S]*?Add one card for your own top-ranked grounded candidate/,
+    )?.[0] ?? '';
+
+    assert.match(handComposition, /follows the verdicts, never a number the user named/);
+    assert.match(handComposition, /say in one line why it is smaller, and offer a re-roll/);
+    assert.match(handComposition, /A declined challenger is never promoted to fill a slot/);
+    assert.match(handComposition, /standing exit does not count toward a requested number once the user has seen and rejected it/);
+  });
+
   it('keeps touch-gesture verification in the adapt, audit, and harden references', () => {
     const adapt = readFileSync(join(ROOT, 'skill/reference/adapt.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const audit = readFileSync(join(ROOT, 'skill/reference/audit.md'), 'utf-8').replace(/\r\n?/g, '\n');
