@@ -841,14 +841,30 @@ mod tests {
         assert_eq!(normalize_provider_name("windsurf"), Some(".devin"));
 
         let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
-        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
-        if !cfg!(windows) {
-            assert_eq!(sys.user_provider_skills_dir(home, ".devin"), jsp::join(&[home, ".config", "devin", "skills"]));
+        let appdata = if cfg!(windows) { r"C:\Users\u\AppData\Roaming" } else { "/appdata" };
+        let xdg = if cfg!(windows) { r"C:\xdg" } else { "/xdg" };
+        let with_env = |pairs: &[(&str, &str)]| {
             let mut env = Env::new();
-            env.insert("XDG_CONFIG_HOME".into(), "/xdg".into());
-            let sys = Sys { env, cwd: home.into(), home: home.into() };
-            assert_eq!(sys.user_provider_skills_dir(home, ".devin"), jsp::join(&["/xdg", "devin", "skills"]));
-        }
+            for (k, v) in pairs {
+                env.insert((*k).into(), (*v).into());
+            }
+            Sys { env, cwd: home.into(), home: home.into() }
+        };
+        let skills_dir = |sys: &Sys| sys.user_provider_skills_dir(home, ".devin");
+
+        // Neither variable: ~/.config/devin on every OS.
+        assert_eq!(skills_dir(&with_env(&[])), jsp::join(&[home, ".config", "devin", "skills"]));
+        // XDG_CONFIG_HOME alone relocates the root on every OS.
+        assert_eq!(skills_dir(&with_env(&[("XDG_CONFIG_HOME", xdg)])), jsp::join(&[xdg, "devin", "skills"]));
+        // APPDATA wins over XDG_CONFIG_HOME on Windows and is ignored elsewhere.
+        let both = skills_dir(&with_env(&[("APPDATA", appdata), ("XDG_CONFIG_HOME", xdg)]));
+        let expected_root = if cfg!(windows) { appdata } else { xdg };
+        assert_eq!(both, jsp::join(&[expected_root, "devin", "skills"]));
+        let appdata_only = skills_dir(&with_env(&[("APPDATA", appdata)]));
+        let expected = if cfg!(windows) { jsp::join(&[appdata, "devin", "skills"]) } else { jsp::join(&[home, ".config", "devin", "skills"]) };
+        assert_eq!(appdata_only, expected);
+
+        let sys = with_env(&[]);
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".devin", Some(Scope::Project)), vec![jsp::join(&["/project", ".devin", "skills"])]);
     }
 
