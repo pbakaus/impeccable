@@ -18,6 +18,7 @@ Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral V
 | DeepSeek Harness | https://github.com/deepseek-ai/deepseek-harness |
 | Gemini CLI | https://geminicli.com/docs/cli/skills/ |
 | Codex CLI | https://developers.openai.com/codex/skills |
+| Replit Agent | https://docs.replit.com/replitai/skills |
 | GitHub Copilot (Agents) | https://code.visualstudio.com/docs/copilot/customization/agent-skills |
 | Kiro | https://kiro.dev/docs/skills/ |
 | OpenCode | https://opencode.ai/docs/skills/ |
@@ -93,6 +94,7 @@ Notes:
 | DeepSeek Harness | `.dsh/skills/` (project), `~/.dsh/skills/` (global; `$DSH_HOME/skills` when set) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 | Gemini CLI | `.gemini/skills/` | `.agents/skills/` |
 | Codex CLI | `.agents/skills/` (primary) | - |
+| Replit Agent | `.agents/skills/` (primary, shared with Codex CLI) | - |
 | GitHub Copilot | `.github/skills/` | `.agents/skills/`, `.claude/skills/` |
 | Kiro | `.kiro/skills/` | - |
 | OpenCode | `.opencode/skills/` | `.agents/skills/`, `.claude/skills/` |

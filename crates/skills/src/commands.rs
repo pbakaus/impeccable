@@ -225,7 +225,7 @@ pub fn format_install_detection_lines(sys: &Sys, prompt: &Prompt, project_root: 
             vec![message]
         };
     }
-    let names: Vec<String> = detections.iter().map(|d| provider_display_name(d.provider)).collect();
+    let names: Vec<String> = detections.iter().map(|d| d.label().to_string()).collect();
     let paths: Vec<String> = detections.iter().map(|d| sys.format_path_for_display(&d.found_path)).collect();
     let name_width = names.iter().map(|n| utf16_len(n)).max().unwrap_or(0);
     let heading = if styled {
@@ -253,46 +253,52 @@ fn print_install_detections(sys: &Sys, prompt: &Prompt, io: &mut Io, project_roo
 }
 
 /// JS: providerPromptOptions()
-fn provider_prompt_options() -> Vec<(&'static str, CheckboxOption)> {
+fn provider_prompt_options() -> Vec<(&'static str, &'static str, CheckboxOption)> {
     PROVIDER_INPUT_ORDER
         .iter()
         .map(|input| {
-            let provider = normalize_provider_name(input).unwrap_or(input);
-            let label = provider_display_name(provider);
+            let (provider, label) = harness_display_name(input).expect("every picker input has a PROVIDER_DISPLAY row");
+            let label = label.to_string();
             let hint = format!("({provider}/skills)");
             let search_text = format!("{label} {input} {provider} {hint}");
-            (provider, CheckboxOption { label, hint: Some(hint), search_text })
+            (*input, provider, CheckboxOption { label, hint: Some(hint), search_text })
         })
         .collect()
 }
 
 /// JS: promptForProviders(defaultProviders)
-fn prompt_for_providers(prompt: &mut Prompt, io: &mut Io, default_providers: &[&'static str]) -> R<Vec<&'static str>> {
+fn prompt_for_providers(prompt: &mut Prompt, io: &mut Io, defaults: &[&Detection]) -> R<Vec<&'static str>> {
     if prompt.interactive() {
         let options = provider_prompt_options();
         let selected: Vec<usize> = options
             .iter()
             .enumerate()
-            .filter(|(_, (p, _))| default_providers.contains(p))
+            .filter(|(_, (harness, _, _))| defaults.iter().any(|d| d.harness == *harness))
             .map(|(i, _)| i)
             .collect();
         let boxes: Vec<CheckboxOption> = options
             .iter()
-            .map(|(_, o)| CheckboxOption { label: o.label.clone(), hint: o.hint.clone(), search_text: o.search_text.clone() })
+            .map(|(_, _, o)| CheckboxOption { label: o.label.clone(), hint: o.hint.clone(), search_text: o.search_text.clone() })
             .collect();
         let chosen = prompt.checkbox(io, "Select harnesses", &boxes, &selected)?;
-        return Ok(chosen.into_iter().map(|i| options[i].0).collect());
+        let mut providers: Vec<&'static str> = Vec::new();
+        for i in chosen {
+            if !providers.contains(&options[i].1) {
+                providers.push(options[i].1);
+            }
+        }
+        return Ok(providers);
     }
     let choices = PROVIDER_INPUT_ORDER.join(", ");
-    let suffix = if !default_providers.is_empty() {
-        format!(" [blank keeps {}]", format_provider_list(default_providers))
+    let suffix = if !defaults.is_empty() {
+        format!(" [blank keeps {}]", unique_harnesses(defaults).join(", "))
     } else {
         String::new()
     };
     loop {
         let answer = prompt.ask(io, &format!("Select harnesses (comma-separated: {choices}){suffix}: "))?;
-        if answer.is_empty() && !default_providers.is_empty() {
-            return Ok(default_providers.to_vec());
+        if answer.is_empty() && !defaults.is_empty() {
+            return Ok(unique_providers(defaults));
         }
         let (providers, invalid) = parse_provider_list(&answer);
         if !invalid.is_empty() {
@@ -313,17 +319,18 @@ enum DetectedMode {
 }
 
 /// JS: promptDetectedInstallMode(detectedProviders)
-fn prompt_detected_install_mode(prompt: &mut Prompt, io: &mut Io, detected: &[&'static str]) -> R<DetectedMode> {
+fn prompt_detected_install_mode(prompt: &mut Prompt, io: &mut Io, detected: &[&Detection]) -> R<DetectedMode> {
+    let detected_names = unique_harnesses(detected).join(", ");
     if prompt.interactive() {
         let options = [
-            RadioOption { label: "Detected only".to_string(), hint: Some(format!("({})", format_provider_list(detected))) },
+            RadioOption { label: "Detected only".to_string(), hint: Some(format!("({detected_names})")) },
             RadioOption { label: "Customize...".to_string(), hint: None },
         ];
         let index = prompt.radio(io, "Install for detected harnesses only, or add more?", &options, 0)?;
         return Ok(if index == 0 { DetectedMode::Detected } else { DetectedMode::Add });
     }
     loop {
-        let answer = prompt.ask(io, &format!("Install target: [1] Detected only ({})  [2] Customize [1]: ", format_provider_list(detected)))?;
+        let answer = prompt.ask(io, &format!("Install target: [1] Detected only ({detected_names})  [2] Customize [1]: "))?;
         if answer.is_empty() || ["1", "detected", "detected only", "only", "d"].contains(&answer.as_str()) {
             return Ok(DetectedMode::Detected);
         }
@@ -355,17 +362,14 @@ fn choose_install_providers(sys: &Sys, prompt: &mut Prompt, io: &mut Io, project
         return Ok(ProviderChoice { targets: sys.resolve_install_targets(project_root, None), detections, explicit: false });
     }
     print_install_detections(sys, prompt, io, project_root, &detections);
-    let detected = default_detected_providers(&detections);
-    if detected.is_empty() {
+    let defaults = default_detections(&detections);
+    if defaults.is_empty() {
         let targets = prompt_for_providers(prompt, io, &[])?;
         return Ok(ProviderChoice { targets, detections, explicit: false });
     }
-    let mode = prompt_detected_install_mode(prompt, io, &detected)?;
-    if mode == DetectedMode::Add {
-        let targets = prompt_for_providers(prompt, io, &detected)?;
-        return Ok(ProviderChoice { targets, detections, explicit: false });
-    }
-    Ok(ProviderChoice { targets: detected, detections, explicit: false })
+    let mode = prompt_detected_install_mode(prompt, io, &defaults)?;
+    let targets = if mode == DetectedMode::Add { prompt_for_providers(prompt, io, &defaults)? } else { unique_providers(&defaults) };
+    Ok(ProviderChoice { targets, detections, explicit: false })
 }
 
 /// JS: chooseInstallScope(projectRoot, targets, detections, {yes, scopeValue})
