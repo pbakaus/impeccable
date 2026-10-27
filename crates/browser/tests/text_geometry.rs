@@ -220,6 +220,10 @@ fn the_text_geometry_rules_measure_the_text() {
             "clamped-regular-blurb",
             "bold-clipped-summary",
             "flex-long-run",
+            // Absolute units resolve at 96px to the inch: 12pt over 15.5pt
+            // is 1.29x and 0.2in over 0.256in is 1.28x.
+            "print-pt-run",
+            "print-in-run",
         ],
         &[
             "items-row",
@@ -229,10 +233,14 @@ fn the_text_geometry_rules_measure_the_text() {
             "bold-ticker-link",
             "clamped-exact-title",
             "clamped-video-title",
+            // Print-sheet leading in cm, in and pt clears the floor.
+            "print-cm-copy",
+            "print-in-copy",
+            "print-pt-copy",
         ],
         "tight-leading",
     );
-    assert_eq!(leading.len(), 10, "the ten flag cases: {leading:?}");
+    assert_eq!(leading.len(), 12, "the twelve flag cases: {leading:?}");
     // The same short runs in a row that does not wrap, and in grid cells,
     // wrap inside their items and keep the floor.
     let runs = findings(&engine, port, "tight-leading-runs.html", "tight-leading");
