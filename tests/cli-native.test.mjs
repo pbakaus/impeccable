@@ -44,12 +44,12 @@ test('native engine package, download, cache, and skill installation', {
   }
   const digest = createHash('sha256').update(binary).digest('hex');
   const asset = new URL(assetUrl(VERSION, TARGET, 'http://localhost')).pathname;
-  let sidecar = `${digest}  impeccable-${TARGET}\n`;
+  const assetName = path.posix.basename(asset);
+  const manifestLine = `${VERSION} ${assetName} ${digest}\n`;
   const requests = [];
   const server = http.createServer((req, res) => {
     requests.push(req.url);
     if (req.url === asset) res.end(binary);
-    else if (req.url === `${asset}.sha256` && sidecar !== null) res.end(sidecar);
     else { res.writeHead(404); res.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -58,7 +58,7 @@ test('native engine package, download, cache, and skill installation', {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-native-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  function stage(name) {
+  function stage(name, line = manifestLine) {
     requests.length = 0;
     const dir = path.join(root, name);
     const shim = path.join(dir, 'cli', 'bin', 'cli.js');
@@ -67,6 +67,11 @@ test('native engine package, download, cache, and skill installation', {
     fs.mkdirSync(home);
     fs.copyFileSync(path.join(ROOT, 'cli', 'bin', 'cli.js'), shim);
     fs.copyFileSync(path.join(ROOT, 'package.json'), path.join(dir, 'package.json'));
+    if (line !== null) {
+      const scripts = path.join(dir, 'skill', 'scripts');
+      fs.mkdirSync(scripts, { recursive: true });
+      fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), line);
+    }
     const env = {
       ...process.env, HOME: home, USERPROFILE: home, IMPECCABLE_HOME: home,
       IMPECCABLE_DOWNLOAD_BASE: base,
@@ -102,37 +107,38 @@ test('native engine package, download, cache, and skill installation', {
     fs.mkdirSync(path.join(skill, 'scripts'), { recursive: true });
     fs.writeFileSync(path.join(skill, 'SKILL.md'), '---\nname: impeccable\ndescription: Native install test\n---\n');
     fs.writeFileSync(path.join(skill, 'scripts', 'VERSION'), `${VERSION}\n`);
+    fs.writeFileSync(path.join(skill, 'scripts', 'engine-checksums.txt'), manifestLine);
     fixture.env.IMPECCABLE_BUNDLE_PATH = path.join(fixture.dir, 'bundle');
     const installed = await fixture.run(['install', '--providers=claude', '--project', '--no-hooks', '--yes']);
     assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
     assert.match(installed.stdout, new RegExp(`Installed impeccable engine v${VERSION.replaceAll('.', '\\.')} \\(${TARGET}\\)`));
     const installedBin = path.join(fixture.dir, '.claude', 'skills', 'impeccable', 'scripts', 'bin', TARGET, EXE);
     assert.deepEqual(fs.readFileSync(installedBin), binary);
-    assert.deepEqual(requests, [asset, `${asset}.sha256`]);
+    assert.deepEqual(requests, [asset]);
   });
 
   await t.test('downloads the native asset, verifies it, and reuses the cache', async () => {
     const fixture = stage('download');
     assertProbe(await fixture.run(['engine-probe']));
-    assert.deepEqual(requests, [asset, `${asset}.sha256`]);
+    assert.deepEqual(requests, [asset]);
     assert.deepEqual(fs.readFileSync(fixture.cached), binary);
+    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), digest);
     requests.length = 0;
     assertProbe(await fixture.run(['engine-probe']));
     assert.deepEqual(requests, []);
   });
 
-  for (const [name, value, error] of [
-    ['missing checksum', null, /sidecar unavailable or empty/],
-    ['empty checksum', ' \n', /sidecar unavailable or empty/],
-    ['wrong checksum', '0'.repeat(64), /checksum mismatch/],
+  for (const [name, line, error, expectedRequests] of [
+    ['missing checksum manifest', null, /no checksum for engine /, []],
+    ['empty checksum manifest', '', /no checksum for engine /, []],
+    ['wrong checksum', `${VERSION} ${assetName} ${'0'.repeat(64)}\n`, /checksum mismatch/, [asset]],
   ]) {
     await t.test(`refuses a native download with ${name}`, async () => {
-      const fixture = stage(name);
-      sidecar = value;
+      const fixture = stage(name, line);
       const result = await fixture.run(['engine-probe']);
       assert.equal(result.status, 127, result.stderr);
       assert.match(result.stderr, error);
-      assert.deepEqual(requests, [asset, `${asset}.sha256`]);
+      assert.deepEqual(requests, expectedRequests);
       assert.equal(fs.existsSync(path.join(fixture.home, 'bin')), false);
     });
   }

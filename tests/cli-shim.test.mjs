@@ -54,6 +54,7 @@ const posixOnly = { skip: process.platform === 'win32' ? 'fake engine is a POSIX
 
 /** Every path the server was asked for since the last test started. */
 let requests = [];
+let unfinishedResponse = false;
 let server;
 let base;
 let responseStatus = 200;
@@ -62,7 +63,13 @@ before(async () => {
   server = http.createServer((req, res) => {
     requests.push(req.url);
     if (req.url === ASSET_PATH) {
-      if (responseStatus !== 200) { res.writeHead(responseStatus); res.end(); return; }
+      if (responseStatus !== 200) {
+        res.writeHead(responseStatus);
+        // An unfinished error body: the shim must not wait for it to end.
+        if (unfinishedResponse) { res.write('unavailable'); return; }
+        res.end();
+        return;
+      }
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       res.end(PAYLOAD);
       return;
@@ -76,7 +83,11 @@ before(async () => {
 
 after(() => new Promise((resolve) => server.close(resolve)));
 
-beforeEach(() => { requests = []; responseStatus = 200; });
+beforeEach(() => {
+  requests = [];
+  responseStatus = 200;
+  unfinishedResponse = false;
+});
 
 /**
  * A throwaway copy of the shim at `<tmp>/cli/bin/cli.js`, with the repo's
@@ -100,13 +111,14 @@ function stageShim(line = `${VERSION} ${ASSET} ${DIGEST}`) {
  * server lives in this process, so a synchronous spawn would block the event
  * loop and the child's fetch would never be answered.
  */
-function run(shim, args, env) {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [shim, ...args], { env });
+function run(shim, args, env, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [shim, ...args], { env, timeout, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
+    child.on('error', reject);
     child.on('close', (status) => resolve({ status, stdout, stderr }));
   });
 }
@@ -116,7 +128,7 @@ function run(shim, args, env) {
  * binary that is unstamped, or stamped with `stamp` and aged `stampAge` ms.
  * `nodeOptions` and `exe` let a case pose as another platform.
  */
-async function runShim(args = ['engine-probe'], { line, cached, stamp, stampAge = 0, exe = 'impeccable', nodeOptions } = {}) {
+async function runShim(args = ['engine-probe'], { line, cached, stamp, stampAge = 0, exe = 'impeccable', nodeOptions, timeout } = {}) {
   const { dir, shim } = stageShim(line);
   if (cached) {
     const bin = path.join(dir, 'bin', VERSION, exe);
@@ -133,7 +145,7 @@ async function runShim(args = ['engine-probe'], { line, cached, stamp, stampAge 
   const env = { ...process.env, IMPECCABLE_HOME: dir, IMPECCABLE_DOWNLOAD_BASE: base };
   delete env.IMPECCABLE_BIN;
   if (nodeOptions) env.NODE_OPTIONS = nodeOptions;
-  return { ...(await run(shim, args, env)), home: dir };
+  return { ...(await run(shim, args, env, timeout)), home: dir };
 }
 
 /** Everything under the cache dir, so a refusal can be shown to leave no trace. */
@@ -197,6 +209,27 @@ describe('npm shim download verification', () => {
     assert.deepEqual(cacheEntries(res.home), []);
   });
 
+  it('exits after an HTTP error without waiting for its unfinished response body', async () => {
+    responseStatus = 404;
+    unfinishedResponse = true;
+    const res = await runShim(['engine-probe'], { timeout: 3000 });
+    assert.equal(res.status, 127, res.stderr);
+    assert.match(res.stderr, /no binary for /);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), []);
+  });
+
+  it('reports a 5xx and exits without waiting for its unfinished response body', async () => {
+    responseStatus = 503;
+    unfinishedResponse = true;
+    const res = await runShim(['engine-probe'], { timeout: 3000 });
+    assert.equal(res.status, 127, res.stderr);
+    assert.match(res.stderr, /could not download engine .*HTTP 503/);
+    assert.match(res.stderr, /no binary for /);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), []);
+  });
+
   it('hashes an unstamped cached binary once, stamps it and never downloads', posixOnly, async () => {
     const res = await runShim(['hi'], { cached: PAYLOAD });
     assert.equal(res.status, 0, res.stderr);
@@ -216,7 +249,7 @@ describe('npm shim download verification', () => {
   });
 
   for (const [what, stamp] of [['is empty', ''], ['holds another digest', `${'0'.repeat(64)} ${PAYLOAD.length}`], ['predates the size field', DIGEST]]) {
-    it(`rehashes a cached binary whose stamp ${what}, rewrites it and never downloads`, async () => {
+    it(`rehashes a cached binary whose stamp ${what}, rewrites it and never downloads`, posixOnly, async () => {
       const res = await runShim(['hi'], { cached: PAYLOAD, stamp });
       assert.equal(res.status, 0, res.stderr);
       assert.match(res.stdout, /fake-engine hi/);
@@ -231,7 +264,7 @@ describe('npm shim download verification', () => {
     ['written after its stamp', `${DIGEST} ${tampered.length}\n`, 60000],
     ['moved in with an older mtime', `${DIGEST} ${PAYLOAD.length}\n`, 0],
   ]) {
-    it(`downloads again when a cached binary was ${how}`, async () => {
+    it(`downloads again when a cached binary was ${how}`, posixOnly, async () => {
       const res = await runShim(['hi'], { cached: tampered, stamp, stampAge });
       assert.equal(res.status, 0, res.stderr);
       assert.match(res.stderr, /cannot verify the cached engine/);
@@ -242,7 +275,7 @@ describe('npm shim download verification', () => {
     });
   }
 
-  it('runs a cached binary on a good stamp without hashing it', async () => {
+  it('runs a cached binary on a good stamp without hashing it', posixOnly, async () => {
     const digest = '1'.repeat(64);
     const res = await runShim(['hi'], { line: `${VERSION} ${ASSET} ${digest}`, cached: PAYLOAD, stamp: `${digest} ${PAYLOAD.length}\n` });
     assert.equal(res.status, 0, res.stderr);
@@ -251,7 +284,7 @@ describe('npm shim download verification', () => {
     assert.deepEqual(requests, []);
   });
 
-  it('accepts the x64 digest for a cached engine on Windows on ARM, like the launchers', async () => {
+  it('accepts the x64 digest for a cached engine on Windows on ARM, like the launchers', posixOnly, async () => {
     const posing = "Object.defineProperty(process,'platform',{value:'win32'});Object.defineProperty(process,'arch',{value:'arm64'});";
     const res = await runShim(['hi'], {
       line: `${VERSION} impeccable-windows-x64.exe ${DIGEST}`,

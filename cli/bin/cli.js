@@ -75,6 +75,9 @@ async function download() {
         : `${host} is failing right now (HTTP ${res.status}), a server error on ${host}'s side. Try again later.`;
       process.stderr.write(`impeccable: could not download engine ${VERSION}: ${detail}\n`);
     }
+    // Release every rejected response, 5xx included, so an unfinished error
+    // body cannot hold the shim open while main() exits naturally.
+    await res.body?.cancel();
     return null;
   }
   const buf = Buffer.from(await res.arrayBuffer());
