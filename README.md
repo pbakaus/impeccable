@@ -9,15 +9,15 @@ npx impeccable install      # from your project root
 
 Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs); every section below links to the page that goes deeper.
 
-| Before | After Impeccable |
-|---|---|
-| ![A generic dark dashboard: purple accent, four identical stat cards with icon tiles, a gradient line chart](https://github.com/pbakaus/impeccable/raw/main/docs/images/readme-before.webp) | ![The same dashboard rebuilt: a headline stating what changed this week, an alert for a failed run, one dominant metric, ranked models and category bars](https://github.com/pbakaus/impeccable/raw/main/docs/images/readme-after.webp) |
+<!-- TODO(readme-hero): before/after or live-mode GIF goes here. Use absolute
+     https://github.com/pbakaus/impeccable/raw/main/... URLs; the Cursor plugin
+     build copies this README where relative paths don't resolve. -->
 
 For a full project, see the [Neo Mirai case study](https://impeccable.style/cases/neo-mirai): a conference site taken from mockup to shipped page.
 
 ## Why
 
-Every model learned frontend from the same SaaS templates, so every agent ships the same tells: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading. The dashboard on the left has most of them.
+Every model learned frontend from the same SaaS templates, so every agent ships the same tells: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
 
 Impeccable gives your agent three things it lacks:
 
