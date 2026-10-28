@@ -13,7 +13,7 @@ Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Gemini CLI, Grok Buil
 |---|---|
 | ![Villa Castagneto built without Impeccable: cream background, a thin serif headline with an italic accent, two pill buttons, and flat vector illustrations in rounded cards](https://github.com/pbakaus/impeccable/raw/main/docs/images/readme-without.webp) | ![Villa Castagneto built with Impeccable: a full-bleed engraved night scene of the villa on its cliff above the sea, a condensed cream and vermilion headline, and a month strip along the bottom](https://github.com/pbakaus/impeccable/raw/main/docs/images/readme-with.webp) |
 
-Same brief, a fourteen-room family guesthouse on the Ligurian coast. Without Impeccable, Fable 5.1 builds the tasteful default: cream page, thin serif, italic accent, pill buttons. With it, the page is built around one picture: the house at night, seen from the water.
+Same model (Fable 5.1), same brief: a fourteen-room family guesthouse on the Ligurian coast. Without Impeccable, it builds the tasteful default: cream page, thin serif, italic accent, pill buttons. With it, the page is built around one picture: the house at night, seen from the water.
 
 For a full project, see the [Neo Mirai case study](https://impeccable.style/cases/neo-mirai): a conference site taken from mockup to shipped page.
 
