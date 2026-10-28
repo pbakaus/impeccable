@@ -2,12 +2,15 @@
 
 The design vocabulary for your coding agent. Steer with `polish` and `bolder`, review with `critique` and `audit`, and catch AI slop before it ships.
 
+From your project root:
+
 ```bash
-npx impeccable install      # from your project root
-/impeccable init            # then, inside your coding agent
+npx impeccable install
 ```
 
-Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs); every section below links to the page that goes deeper.
+Reload your coding tool, then run `/impeccable init` in your agent (`$impeccable init` on Codex).
+
+Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
 
 | Without Impeccable | With Impeccable |
 |---|---|
@@ -19,17 +22,17 @@ For a full project, see the [Neo Mirai case study](https://impeccable.style/case
 
 ## Why
 
-Every model learned frontend from the same SaaS templates, so every agent ships the same tells: Inter for everything, purple-to-blue gradients, cards nested in cards, gray text on colored backgrounds, the rounded-square icon tile above every heading.
+Inter for everything. Purple-to-blue gradients. Cards nested in cards, gray text on colored backgrounds, a rounded-square icon tile above every heading. Ask an agent for a page with no other guidance and these show up again and again, across models and projects.
 
-Impeccable gives your agent three things it lacks:
+- **Words for what you want.** "Make it pop" leaves your agent to guess. `/impeccable bolder the pricing cards` loads a playbook written for that one move and points it at one target.
+- **A reviewer.** `critique` scores the design against usability heuristics and ranks what to fix first. `audit` checks accessibility, performance, theming, and responsive behavior, with findings ranked P0 (blocking) to P3 (polish).
+- **A slop detector.** 62 deterministic rules flag the tells above, plus quality problems like cramped padding and skipped headings. No LLM, no API key.
 
-- **Words for what you want.** "Make it pop" is a wish. `/impeccable bolder the pricing cards` is an instruction your agent knows how to carry out, backed by a reference written for exactly that move.
-- **A reviewer.** `critique` scores hierarchy, clarity, and cognitive load like a design lead would. `audit` checks accessibility, performance, theming, and responsive behavior and returns a P0 to P3 report.
-- **A slop detector.** 62 deterministic detector rules flag the tells above, plus general quality problems like cramped padding, skipped headings, and small touch targets. They run in your agent after every edit, in CI, and in the browser, with no LLM and no API key.
+Impeccable is strongest on interfaces that already exist: point it at a page or a component and iterate. It builds new pages too; see [Build something new](https://impeccable.style/docs/new-work) for how to get the most out of that harder mode. To start, pick one component:
 
-Impeccable is strongest on interfaces that already exist: point it at a page or a component and iterate. It builds new pages too; see [Build something new](https://impeccable.style/docs/new-work) for how to get the most out of that harder mode.
-
-Impeccable started from Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) skill.
+```
+/impeccable critique the pricing cards
+```
 
 ## How it works
 
@@ -50,13 +53,13 @@ Or just describe what you want: `/impeccable redo this hero section`. Narrow tar
 
 | | Commands |
 |---|---|
-| **Steer** | `bolder` amplifies safe designs · `quieter` tones down loud ones · `distill` strips to the essence · `colorize` adds strategic color · `typeset` fixes fonts, hierarchy, and sizing · `layout` fixes spacing and rhythm · `animate` adds purposeful motion · `delight` adds personality · `overdrive` goes for shaders, spring physics, and scroll-driven effects |
+| **Steer** | `bolder` amplifies safe designs · `quieter` tones down loud ones · `distill` removes what the page doesn't need · `colorize` brings color to a gray interface · `typeset` fixes fonts, hierarchy, and sizing · `layout` fixes spacing and rhythm · `animate` adds transitions and interaction feedback · `delight` adds personality · `overdrive` goes for shaders, spring physics, and scroll-driven effects |
 | **Review** | `critique` is a scored UX review · `audit` is a technical quality report |
 | **Finish** | `polish` is the final pass before shipping · `harden` covers errors, i18n, overflow, and edge cases · `clarify` rewrites unclear copy · `adapt` handles screen sizes and devices · `optimize` fixes loading and rendering performance · `onboard` designs first-run flows and empty states |
 | **Iterate live** | `live` lets you pick an element in the browser and cycle through variants · `generate` produces variants of a named element without manual picking |
 | **Plan and set up** | `shape` plans UX before code · `init` writes `PRODUCT.md` · `document` writes `DESIGN.md` · `extract` pulls repeated patterns into your design system |
 
-Type `/impeccable` alone to see the list in your agent. `craft` is a deprecated alias for a plain build request. Each command has its own page: [impeccable.style/docs](https://impeccable.style/docs).
+The 24th, `craft`, is a deprecated alias for a plain build request. Type `/impeccable` alone to see the list in your agent. Each command has its own page: [impeccable.style/docs](https://impeccable.style/docs).
 
 On Codex, open `/skills` or type `$impeccable` instead of the slash command.
 
@@ -68,7 +71,7 @@ Live mode edits a local checkout only; don't inject it into a deployed site or w
 
 ## Three ways to run the detector
 
-**In your agent.** On Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, the installer offers a design hook that scans every UI file your agent edits and hands the findings back to the agent. [Automatic design checks](https://impeccable.style/docs/hooks).
+**In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).
 
 **In CI or your terminal.** The CLI needs no agent:
 
@@ -80,7 +83,9 @@ npx impeccable detect --github src/          # GitHub Actions annotations
 npx impeccable detect --list-rules           # every rule with its id and description
 ```
 
-Exit code `2` means findings, `1` means a target couldn't be scanned. Silence a rule for the repo with `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`, or for one file with a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. A clean run is evidence, not proof; look at the rendered page too. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
+Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`.
+
+Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
 
 **In your browser.** The [Chrome extension](https://chromewebstore.google.com/detail/impeccable/bdkgmiklpdmaojlpflclinlofgjfpabf) overlays the same findings on any live page, yours or anyone else's. [Review with a visual overlay](https://impeccable.style/tutorials/critique-with-overlay).
 
@@ -90,11 +95,11 @@ Exit code `2` means findings, `1` means a target couldn't be scanned. Silence a 
 npx impeccable install
 ```
 
-The installer detects your coding tools, asks whether to install for this project or globally, and offers the design hook where your tool supports one. Reload your tool afterward. `npx impeccable update` refreshes an existing install. For scripts, pass `--providers=claude,codex,cursor` and `--scope=project|global`.
+The installer detects your coding tools, asks whether to install for this project or globally, and offers the design hook where your tool supports one. Accept the hook. Reload your tool afterward. `npx impeccable update` refreshes an existing install. For scripts, pass `--providers=claude,codex,cursor` and `--scope=project|global`.
 
 Two tools need a trust step before the hook runs. In Codex, open `/hooks` and approve the project hook (again after an update that changes it). In Grok Build, run `/hooks-trust` or launch with `--trust`. [Allow the hook in your harness](https://impeccable.style/docs/hooks#allow-the-hook-in-your-harness).
 
-Node is only needed for `npx`. The skill itself runs a small self-contained engine binary that ships next to it or downloads once into `~/.impeccable/bin/`.
+Node is only needed for `npx`. The skill itself runs a self-contained engine binary that ships next to it or downloads once into `~/.impeccable/bin/`.
 
 <details>
 <summary><b>Claude Code, Copilot, and Grok plugins</b></summary>
@@ -157,7 +162,10 @@ Notes:
 
 ## Project files and git
 
-Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/*.md`. Everything else is screenshots, caches, and runtime state. Add this to your `.gitignore`:
+Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/*.md`. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
+
+<details>
+<summary><b>Copy the <code>.gitignore</code> entries</b></summary>
 
 ```gitignore
 # impeccable-ignore-start
@@ -185,15 +193,19 @@ Impeccable writes its working files under `.impeccable/`. A few are shared proje
 # impeccable-ignore-end
 ```
 
+</details>
+
 The folders that hold decision-round state (`.impeccable/questions/`, `.impeccable/mocks/worlds/`) also ignore themselves. A `.gitignore` can't untrack a file git already tracks; if you committed one earlier, run `git rm --cached <path>`.
 
 ## Good to know
 
-**Build path.** For new landing pages and showcase surfaces, Impeccable can generate a full-fidelity comp first and build to match it (bolder, slower), or build straight in code (leaner, faster). App screens and documents are always built in code. `init` asks once and saves the answer as `buildPath` in `.impeccable/config.json`; every decision page has a toggle to override it for one session. The choice only appears when your harness can generate images. [Image generation](https://impeccable.style/docs/image-generation) · [Configuration](https://impeccable.style/docs/config).
+**Build path.** For new landing pages and showcase surfaces, Impeccable can generate a full-fidelity comp first and build to match it (bolder, slower), or build straight in code (leaner, faster). App screens and documents are always built in code. `init` asks once and saves the answer as `buildPath` in `.impeccable/config.json`; the decision page lets you override it for one session. The choice only appears when your harness can generate images. [Image generation](https://impeccable.style/docs/image-generation) · [Configuration](https://impeccable.style/docs/config).
 
-**Hooks run outside model approval.** In Claude Code, installed command hooks run even when you deny the model's own commands, so the first edit can download the engine. Review installed hooks before unattended runs, or pass `--settings '{"disableAllHooks": true}'` to turn them off for a run. The installer leaves hook entries it didn't add alone. Something broken? `/impeccable doctor` finds stale context files, unused settings, and broken hooks. [Fix setup problems](https://impeccable.style/docs/doctor).
+**Hooks run outside model approval.** In Claude Code, installed command hooks run even when you deny the model's own commands, so the first edit can download the engine. Review installed hooks before unattended runs, or pass `--settings '{"disableAllHooks": true}'` to turn them off for a run. The installer leaves hook entries it didn't add alone.
 
-**Telemetry.** When a new design starts, the skill asks impeccable.style to deal a hand of visual directions from its catalog. That request is the feature, so it always happens. Unless you opt out, it also records anonymously which hand was shown and which card won, so the catalog learns what works. Your project name, files, code, and `PRODUCT.md` are never sent. Turn it off with `npx impeccable telemetry off`, `DO_NOT_TRACK=1`, or `"telemetry": false` in `.impeccable/config.json` for the whole project. The full list of what is sent is on the [privacy page](https://impeccable.style/privacy).
+**Something broken?** `/impeccable doctor` finds stale context files, unused settings, and broken hooks. [Fix setup problems](https://impeccable.style/docs/doctor).
+
+**Telemetry.** When a new design starts, the skill fetches a set of visual directions from the impeccable.style catalog. Turning telemetry off doesn't stop that request; it stops the anonymous record of which directions were shown and which one you picked, which is how the catalog learns what works. Your project name, files, code, and `PRODUCT.md` are never sent. Disable telemetry with `npx impeccable telemetry off`, `DO_NOT_TRACK=1`, or `"telemetry": false` in `.impeccable/config.json` for the whole project. The full list of what is sent is on the [privacy page](https://impeccable.style/privacy).
 
 ## Community
 
@@ -203,7 +215,7 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE). Impeccable started from Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) skill.
 
 ---
 
