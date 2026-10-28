@@ -55,7 +55,8 @@ fn one_text_colour_reports_once_per_gradient_box_not_per_label() {
     // Two links on one header: one report.
     let header: Vec<&String> = snippets.iter().filter(|s| s.contains("#cbd5e0")).collect();
     assert_eq!(header.len(), 1, "{snippets:?}");
-    assert!(header[0].ends_with("(gradient on nav.pale-header)"), "{header:?}");
+    // The second link wears the same pair and is counted (r14-t2).
+    assert!(header[0].ends_with("(gradient on nav.pale-header) (and 1 more)"), "{header:?}");
     // Amber and lime tiles share `div.feature-tile`: two reports. The navy
     // tile beside them passes.
     let tiles = snippets.iter().filter(|s| s.contains("text #fdfdfd")).count();
@@ -65,7 +66,8 @@ fn one_text_colour_reports_once_per_gradient_box_not_per_label() {
 #[test]
 fn identical_tiles_on_one_gradient_stay_one_report() {
     // Separate boxes whose snippet is the same colour pair on the same label
-    // are reported once, as before the per-box key.
+    // are reported once, as before the per-box key, and the report counts
+    // the other two (r14-t2).
     let html = r#"<!DOCTYPE html>
 <html><head><style>
 body { background: #ffffff; }
@@ -84,7 +86,7 @@ body { background: #ffffff; }
     assert_eq!(
         snippets,
         vec![
-            "1.7:1 (need 3:1) — text #ffffff on #fbbf24 (gradient on div.tile)".to_string(),
+            "1.7:1 (need 3:1) — text #ffffff on #fbbf24 (gradient on div.tile) (and 2 more)".to_string(),
             "1.5:1 (need 3:1) — text #ffffff on #a3e635 (gradient on div.tile)".to_string(),
         ],
         "{snippets:?}"

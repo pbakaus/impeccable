@@ -131,4 +131,23 @@ fn each_declaration_reports_once_where_it_paints() {
             ("radial-halo", "radial-gradient halo (#8fd8f2 → transparent) on dark page"),
         ])
     );
+
+    // The white canvas (observations-1010 row 4): html and body paint
+    // nothing, so a dark player box is not a dark page, and the glow in a
+    // template no element computes does not report. The base engine
+    // reports it "on dark page". A script's string is not markup.
+    assert_eq!(scan(&engine, port, "page-level-forms-white-canvas.html"), pairs(&[]));
+    // The twins: the same page whose ground something else paints dark.
+    for twin in [
+        "page-level-forms-dark-root.html",
+        "page-level-forms-dark-contents.html",
+        "page-level-forms-dark-pseudo.html",
+        "page-level-forms-dark-meta.html",
+    ] {
+        assert_eq!(
+            scan(&engine, port, twin),
+            pairs(&[("dark-glow", "Colored box-shadow glow (#667eea) on dark page")]),
+            "{twin}"
+        );
+    }
 }

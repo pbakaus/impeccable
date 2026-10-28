@@ -127,6 +127,12 @@ pub struct ServerState {
     pub manual_edit_activity: Option<Value>,
     pub next_manual_edit_seq: i64,
     pub pending_apply_deferreds: Vec<(String, ApplyDeferred)>,
+    /// Pages whose Apply has started but not yet queued its event or written
+    /// its transaction (the evidence build runs outside the lock). `None`
+    /// is a commit of every page. A ref-scoped discard must refuse while
+    /// the page is listed, or it could drop an op the commit's snapshot
+    /// still carries.
+    pub commits_in_progress: Vec<Option<String>>,
     /// Held-open agent targets keyed by targetId, in arrival order.
     pub pending_agent_targets: Vec<(String, AgentTargetPending)>,
     pub next_agent_target_timer_gen: u64,
@@ -236,6 +242,23 @@ pub fn truthy(v: Option<&Value>) -> bool {
 }
 
 impl ServerState {
+    pub fn begin_commit(&mut self, page_url: Option<&str>) {
+        self.commits_in_progress.push(page_url.map(String::from));
+    }
+
+    pub fn end_commit(&mut self, page_url: Option<&str>) {
+        let key = page_url.map(String::from);
+        if let Some(i) = self.commits_in_progress.iter().position(|p| *p == key) {
+            self.commits_in_progress.remove(i);
+        }
+    }
+
+    pub fn commit_in_progress_for(&self, page_url: &str) -> bool {
+        self.commits_in_progress
+            .iter()
+            .any(|p| p.as_deref().map(|pu| pu == page_url).unwrap_or(true))
+    }
+
     pub fn log_out(&self, s: &str) {
         let _ = self.log_tx.send((false, s.to_string()));
     }

@@ -732,9 +732,9 @@ fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
 
     // An older global install left the portable form behind: not installed.
     write(&manifest, &github_bundle_manifest().to_string());
-    assert!(hook_installed_for_provider(&project, ".github"));
-    assert!(!hook_installed_for_provider_at_scope(&project, ".github", true));
-    assert!(hook_installed_for_provider_at_scope(&project, ".github", false));
+    assert!(hook_installed_for_provider(&sys, &project, ".github"));
+    assert!(!hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", false));
 
     let written = copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
     assert_eq!(written, [".github"]);
@@ -748,13 +748,13 @@ fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
     };
     assert_eq!(after["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
     assert_eq!(after["hooks"]["postToolUse"][0]["bash"], Value::String(expected));
-    assert!(hook_installed_for_provider_at_scope(&project, ".github", true));
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
 
     // A project that ships its own Copilot skill keeps the committed,
     // portable manifest even when the user installs globally.
     write(&skill_launcher(&project, ".github"), "#!/bin/sh\n");
     write(&manifest, &github_bundle_manifest().to_string());
-    assert!(hook_installed_for_provider_at_scope(&project, ".github", true));
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
     copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
     let kept: Value = serde_json::from_str(&read(&manifest)).unwrap();
     assert_eq!(kept["hooks"]["postToolUse"].as_array().unwrap().len(), 1);

@@ -179,6 +179,34 @@
         <button type="button" style="width: 96px; height: 32px">Upgrade</button>
       </div>
     </div>
+
+    <!-- One panel, one finding (taste call r14-t5): pgportal.gov.in's FAQ
+         panel held 18 bordered rows and reported 18 times. The first row
+         reports and counts the other two, `(and 2 more)`. -->
+    <div class="case card border rounded-2xl" id="flag-faq-outer">
+      <p>Frequently asked questions about filing a grievance.</p>
+      <div class="inner border rounded-xl" id="flag-faq-first"><p>How do I file a grievance online?</p><p>Sign in, choose the ministry and describe the issue.</p></div>
+      <div class="inner border rounded-xl" id="flag-faq-second"><p>How do I track a grievance I filed?</p><p>Use the registration number from your receipt.</p></div>
+      <div class="inner border rounded-xl" id="flag-faq-third"><p>Can I appeal a closed grievance?</p><p>Yes, within thirty days of the closing date.</p></div>
+    </div>
+
+    <!-- An inline ignore on the first row waives that row only: the second
+         reports and counts the third (URL engine; the file scan reads no
+         element for a page-level finding). -->
+    <div class="case card border rounded-2xl" id="flag-tiles-outer">
+      <p>Industry codes this service covers.</p>
+      <div class="inner border rounded-xl" id="pass-tiles-ignored" data-impeccable-ignore="nested-cards"><p>541511 Custom programming</p><p>Waived by the page for this tile.</p></div>
+      <div class="inner border rounded-xl" id="flag-tiles-second"><p>541512 Systems design</p><p>A second line makes it a surface.</p></div>
+      <div class="inner border rounded-xl" id="flag-tiles-third"><p>541519 Other computer services</p><p>A second line makes it a surface.</p></div>
+    </div>
+
+    <!-- A mockup's inner card (advisory) and a plain inner card in one panel
+         stay two findings: an advisory card never speaks for a counted one. -->
+    <div class="case card border rounded-2xl" id="flag-mixed-outer">
+      <p>Billing overview with a picture of the plan screen.</p>
+      <div class="inner border rounded-xl" id="flag-mixed-plain"><p>Your next invoice is due on June 3.</p><p>A second line makes it a surface.</p></div>
+      <div role="img" aria-label="The billing screen"><div class="inner border rounded-xl" id="adv-mixed-picture"><p>Pro plan, renews on June 3</p><p>A second line makes it a surface.</p></div></div>
+    </div>
   </section>
 
   <section class="pass" aria-label="Should pass">

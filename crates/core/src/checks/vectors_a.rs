@@ -169,6 +169,7 @@ pub fn call(module: &str, fn_name: &str, args: &[Value]) -> Option<Value> {
                     }),
                     _ => None,
                 },
+                box_size: None,
             };
             hits_to_js(&rules::check_borders(
                 &str_or_empty(arg(0)),

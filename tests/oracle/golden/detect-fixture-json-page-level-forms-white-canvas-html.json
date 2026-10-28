@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"dark-glow\",\n    \"name\": \"Glowing shadow accents\",\n    \"description\": \"Colored glow shadows — a zero-offset chromatic halo (box- or text-shadow) on any background, or any colored blurred shadow on a dark background — are the default \\\"cool\\\" look of AI-generated UIs. Use neutral elevation shadows and subtle, purposeful lighting instead.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/page-level-forms-white-canvas.html\",\n    \"line\": 0,\n    \"snippet\": \"Colored box-shadow glow (#667eea) on dark page\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

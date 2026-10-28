@@ -142,12 +142,13 @@ jobs:
           ls -la out
       - name: Publish the GitHub Release
         env: { GH_TOKEN: "${{ github.token }}" }
-        # No --clobber: a published asset is immutable. A re-run against an
-        # existing release fails on the first existing asset instead of
-        # silently replacing a binary and its sidecar hash.
+        # With asset files, `gh release create` makes a draft, uploads every
+        # asset, then publishes, and deletes the draft if any step fails, so a
+        # release is never public with assets missing. Immutable releases need
+        # that order: assets and the tag freeze at publish. A re-run against a
+        # published release fails at create on purpose: there is nothing to top up.
         run: |
           set -e
           tag="${GITHUB_REF_NAME}"
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "impeccable engine $tag" \
-            --notes "Prebuilt impeccable engine binaries ($tag). The launcher, the npm shim and impeccable install download these on first run. Docs: https://impeccable.style" out/* || \
-          gh release upload "$tag" out/* --repo "$GITHUB_REPOSITORY"
+            --notes "Prebuilt impeccable engine binaries ($tag). The launcher, the npm shim and impeccable install download these on first run. Docs: https://impeccable.style" out/*

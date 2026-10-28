@@ -275,6 +275,9 @@ fn flatten_ops(entries: &[Value]) -> Vec<Value> {
                 "deleted".into(),
                 json!(op.get("deleted") == Some(&Value::Bool(true))),
             );
+            if op.get("removeElement") == Some(&Value::Bool(true)) {
+                m.insert("removeElement".into(), json!(true));
+            }
             m.insert("sourceHint".into(), or_null(prop(&op, "sourceHint")));
             m.insert("leaf".into(), or_null(prop(&op, "leaf")));
             m.insert(

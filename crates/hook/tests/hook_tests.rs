@@ -647,6 +647,33 @@ fn stop_baseline_reports_new_findings_and_keeps_first_preimage() {
 }
 
 #[test]
+fn stop_does_not_repeat_findings_after_an_edit_above_them() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    assert!(!hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+    // A line inserted above moves the finding; it is the same finding.
+    t.write("card.css", &format!("/* later */\n{SIDE_TAB_CSS}"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+}
+
+#[test]
+fn a_per_edit_pass_keeps_what_stop_already_reported() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    assert!(!hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+    hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+}
+
+#[test]
 fn stop_baseline_missing_or_mismatched_preimage_stays_unknown() {
     for original in [None, Some("not the actual preimage")] {
         let t = Tmp::new();
@@ -1153,20 +1180,31 @@ fn cache_round_trip_and_gc() {
     assert_eq!(bump_edit_count(&mut cache, "s", "/x/a.tsx"), 1.0);
     assert_eq!(bump_edit_count(&mut cache, "s", "/x/a.tsx"), 2.0);
     let g = f("gradient-text", 3.0, "G", "d", "s");
-    remember_findings(&mut cache, "s", "/x/a.tsx", &[g.clone()]);
+    remember_findings(&mut cache, "s", "/x/a.tsx", &finding_cache_keys(&[g.clone()]));
     assert!(persist_cache(&r, &cwd, &cache));
     let back = read_cache(&cwd);
     let entry = &back["sessions"]["s"]["files"]["/x/a.tsx"];
     assert_eq!(entry["editCount"], json!(2));
-    assert_eq!(entry["findings"], json!(["gradient-text:3"]));
+    assert_eq!(entry["findings"], json!(["gradient-text:s#1"]));
     let mut cache2 = back.clone();
-    assert!(dedupe_against_cache(&[g.clone()], &mut cache2, "s", "/x/a.tsx").is_empty());
+    assert!(dedupe_against_cache(&[g.clone()], &finding_cache_keys(&[g.clone()]), &mut cache2, "s", "/x/a.tsx").is_empty());
+    // the same finding one line lower is not fresh; one more identical finding is exactly one fresh
+    let lower = f("gradient-text", 9.0, "G", "d", "s");
+    let both = [g.clone(), lower];
+    let keys = finding_cache_keys(&both);
+    assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
+    assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
     let mut b = a.clone();
     b.extras.insert("ignoreValue".into(), json!("Roboto"));
-    assert_ne!(finding_cache_key(&a), finding_cache_key(&b));
+    assert_ne!(finding_cache_keys(&[a]), finding_cache_keys(&[b]));
+    // a colour pair that gains a copy is the same finding (r14-t2)
+    let pair = f("low-contrast", 0.0, "L", "d", "2.3:1 (need 4.5:1) — text #aaaaaa on #ffffff (and 2 more)");
+    let mut more = pair.clone();
+    more.snippet = "2.3:1 (need 4.5:1) — text #aaaaaa on #ffffff (and 3 more)".into();
+    assert_eq!(finding_cache_keys(&[pair]), finding_cache_keys(&[more]));
     // gc: 10 sessions -> newest 8 kept
     let mut big = read_cache(&cwd);
     for i in 0..10 {
@@ -2883,6 +2921,41 @@ fn codex_stop_emits_decision_block() {
     assert_eq!(out["decision"], json!("block"));
     assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
     assert!(out.get("hookSpecificOutput").is_none());
+}
+
+#[test]
+fn hermes_harness_shapes_each_pass() {
+    // #1178: the Hermes plugin sets the harness explicitly and sends
+    // Claude-shaped events; its pre_verify gate reads Codex's Stop shape.
+    let forced = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let claude = json!({ "hook_event_name": "Stop", "session_id": "s" }).as_object().cloned().unwrap();
+    assert_eq!(resolve_harness(&forced, Some(&claude)), "hermes");
+    assert_eq!(payload("findings", "Stop", "hermes"), r#"{"decision":"block","reason":"findings"}"#);
+    assert_eq!(payload("  ", "Stop", "hermes"), "");
+    assert_eq!(
+        payload("t", "PostToolUse", "hermes"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"}}"#
+    );
+
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    let edit = json!({
+        "session_id": "h1", "cwd": cwd, "hook_event_name": "PostToolUse",
+        "tool_name": "Write", "tool_input": { "file_path": css },
+    })
+    .to_string();
+    let quiet = hook::run_hook(&r, &edit);
+    assert_eq!(audit_str(&quiet.audit, "harness"), Some("hermes"));
+    assert!(!quiet.stdout.contains("[side-tab]"), "side-tab is deferred to Stop: {}", quiet.stdout);
+    let stop = stop_event(&cwd, "h1");
+    let deep = hook::run_stop_hook(&r, &stop);
+    let out: Value = serde_json::from_str(&deep.stdout).unwrap();
+    assert_eq!(out["decision"], json!("block"));
+    assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
+    assert!(out.get("hookSpecificOutput").is_none());
+    assert_eq!(hook::run_stop_hook(&r, &stop).stdout, "", "a repeat Stop stays silent");
 }
 
 // ── live-preview stand-down ───────────────────────────────────────────────

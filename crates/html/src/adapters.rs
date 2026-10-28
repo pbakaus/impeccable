@@ -566,6 +566,47 @@ pub fn check_element_radial_spotlight(el: &StaticElement<'_>, style: &StyleValue
 
 // ─── Element adapters ───────────────────────────────────────────────────────
 
+/// The border-box `[width, height]` a static element declares in px, for
+/// the circle test in `check_borders`: `width` and `height` plus the border
+/// on each side. The static cascade does not keep `box-sizing`, so where a
+/// side has padding the border box cannot be known and this is `None`,
+/// which skips the circle test; a border alone moves the size by its width
+/// either way, which the circle test's aspect tolerance absorbs for a thin
+/// ring. `None` too when the size is unset or a length is in another unit
+/// than px (no layout here to resolve it).
+fn declared_px_size(style: &StyleValues) -> Option<[f64; 2]> {
+    let px = |prop: &str, unset_is_zero: bool| -> Option<f64> {
+        let v = sv(style, prop).trim().to_ascii_lowercase();
+        if v.is_empty() {
+            return unset_is_zero.then_some(0.0);
+        }
+        if v == "0" {
+            return Some(0.0);
+        }
+        let n: f64 = v.strip_suffix("px")?.trim().parse().ok()?;
+        (n.is_finite() && n >= 0.0).then_some(n)
+    };
+    let (w, h) = (px("width", false)?, px("height", false)?);
+    if !(w > 0.0 && h > 0.0) {
+        return None;
+    }
+    let extra = |sides: [&str; 2]| -> Option<f64> {
+        let mut sum = 0.0;
+        for side in sides {
+            if px(&format!("padding{side}"), true)? > 0.0 {
+                return None;
+            }
+            // A border with no style draws nothing and takes no room.
+            let style_v = sv(style, &format!("border{side}Style")).trim().to_ascii_lowercase();
+            if !style_v.is_empty() && style_v != "none" && style_v != "hidden" {
+                sum += px(&format!("border{side}Width"), true)?;
+            }
+        }
+        Some(sum)
+    };
+    Some([w + extra(["Left", "Right"])?, h + extra(["Top", "Bottom"])?])
+}
+
 /// JS: checks.mjs#checkElementBorders(tag, style, overrides = null, resolvedRadius, el)
 pub fn check_element_borders(
     tag: &str,
@@ -588,8 +629,11 @@ pub fn check_element_borders(
     let own_bg = parse_any_color(sv_opt(style, "backgroundColor"));
     // An accent on any edge is gated on the corners (left and right by the
     // rounded-card decision, top and bottom by r6-t2-side-tab-bands).
+    // A percentage radius resolves against the border box, the size the
+    // circle test reads, where that size is known.
+    let box_size = declared_px_size(style).filter(|_| !sv(style, "borderRadius").contains('/'));
     let corners = if widths.top > 0.0 || widths.right > 0.0 || widths.bottom > 0.0 || widths.left > 0.0 {
-        resolve_side_accent_corners(el, style, pf0(sv(style, "width")))
+        resolve_side_accent_corners(el, style, box_size.map_or_else(|| pf0(sv(style, "width")), |[w, _]| w))
     } else {
         None
     };
@@ -603,6 +647,9 @@ pub fn check_element_borders(
             status_context: is_status_context_element(el),
             badge_like: own_bg.is_some_and(|c| c.alpha_or_one() > 0.1),
             corners,
+            // An elliptical corner (`50% / 4px`) is read by its horizontal
+            // radius only, so it leaves the circle test unread.
+            box_size,
         },
     )
 }
@@ -966,6 +1013,17 @@ pub fn check_element_stripe_child(el: &StaticElement<'_>, style: &StyleValues) -
     check_stripe_child(&class_selector(el), width, edge, bg)
 }
 
+/// An opaque handle for `el`, as the colour-pair dedupe names the element
+/// that claims a pair and the copies it speaks for. A claim with this
+/// handle is always on screen: this engine has no layout, so it behaves as
+/// an unnamed claim did.
+pub fn element_handle(el: &StaticElement<'_>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    el.id().hash(&mut h);
+    h.finish()
+}
+
 /// JS: checks.mjs#checkElementColors(el, style, tag, window, customPropMap, hasAnchorInheritRule)
 pub fn check_element_colors(
     el: &StaticElement<'_>,
@@ -1153,7 +1211,7 @@ pub fn check_element_colors(
     let mut findings = check_colors_deduped_shaped(
         &color_opts,
         seen,
-        None,
+        Some(impeccable_core::checks::rules::PairClaim { owner: element_handle(el), on_screen: true }),
         &is_decorative,
         &mut |h: &RuleHit| !scoped_ignore_active(el, &h.id) && !picture_under_text(el),
     );

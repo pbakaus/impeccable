@@ -1,0 +1,7 @@
+{
+  "stdout": "WAITING: no answer yet after 2s; run --wait --key k1 again\n",
+  "stderr": "",
+  "exit": 3,
+  "signal": null,
+  "files": {}
+}

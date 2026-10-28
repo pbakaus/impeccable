@@ -2106,6 +2106,27 @@ fn row_stripe_findings(
         .collect()
 }
 
+/// Whether a card scan's side-tab snippet reports the stripe a row-stripe
+/// snippet (`<selectors> — <property> <n>px stripe on a row or cell …`)
+/// does: the inset scan's names the same selectors and thickness, a side
+/// border's the same property and width.
+fn same_stripe(card: &str, row: &str) -> bool {
+    let Some((selector, detail)) = row.split_once(" — ") else { return false };
+    let words: Vec<&str> = detail.split_whitespace().collect();
+    let Some(at) = words.iter().position(|w| w.ends_with("px")) else { return false };
+    let (prop, px) = (words[..at].join(" "), words[at]);
+    if prop == "inset box-shadow" {
+        let Some((card_selector, card_detail)) = card.split_once(" — ") else { return false };
+        let card_branches: Vec<&str> = card_selector.split(", ").collect();
+        return card_detail.starts_with(&format!("inset box-shadow {px} "))
+            && selector.split(", ").all(|b| card_branches.contains(&b));
+    }
+    // The border matcher's snippet is the declaration as written, spaced or not.
+    card.split_once(':').is_some_and(|(p, v)| {
+        js::trim(p) == prop && js::trim_start(v).split(|c: char| c.is_whitespace() || c == ';' || c == '}').next() == Some(px)
+    })
+}
+
 fn pseudo_stripe_findings(
     text: &str,
     file_path: &str,
@@ -2164,7 +2185,9 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
     if css_like {
         findings.extend(scan_inset_stripe_css(content, file_path, 0, &sheet));
         findings.extend(pseudo_stripe_findings(content, file_path, 0, &sheet));
-        row_stripes.extend(row_stripe_findings(content, file_path, 0, options.tokens));
+        // Comments blanked in place: a `//` line in a preprocessor sheet is
+        // not a rule.
+        row_stripes.extend(row_stripe_findings(&source, file_path, 0, options.tokens));
     }
 
     let grid_meta = ProfileMeta {
@@ -2277,10 +2300,11 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
             options.tokens,
         ));
     }
+    let cards = findings.len();
     for stripe in row_stripes {
-        if !findings
+        if !findings[..cards]
             .iter()
-            .any(|f| f.antipattern == "side-tab" && f.line == stripe.line)
+            .any(|f| f.antipattern == "side-tab" && f.line == stripe.line && same_stripe(&f.snippet, &stripe.snippet))
         {
             findings.push(stripe);
         }
@@ -2628,6 +2652,22 @@ function Thumb({ url }: { url?: string }) {
         // A rounded row card reports once, from the card scan.
         let card = ".row-card.is-x { box-shadow: inset 4px 0 0 #d0342c; border-radius: 8px; }\n";
         assert_eq!(side_tabs(card, "/x/a.css", None).len(), 1);
+        // Another stripe, or a card's, on the same line is not that stripe.
+        let compact = "td.is-x { box-shadow: inset 3px 0 0 red; } td.is-y { box-shadow: inset 3px 0 0 blue; }\n";
+        assert_eq!(side_tabs(compact, "/x/a.css", None).len(), 2);
+        let beside_card = ".card { border-left: 4px solid #6366f1; border-radius: 12px; } td.is-x { box-shadow: inset 3px 0 0 red; }\n";
+        assert_eq!(side_tabs(beside_card, "/x/a.css", None).len(), 2);
+        let rounded_elsewhere = ".row-card.is-x { box-shadow: inset 4px 0 0 #d0342c; }\n.row-card { border-radius: 8px; }\n";
+        assert_eq!(side_tabs(rounded_elsewhere, "/x/a.css", None).len(), 1);
+        let compact_rounded = ".row-card.is-x{border-left:3px solid #d0342c}.row-card{border-radius:8px}\n";
+        assert_eq!(side_tabs(compact_rounded, "/x/a.css", None).len(), 1);
+        let card_then_cell = ".card{border-left:3px solid red;border-radius:12px} td.is-error{border-left:3px solid blue}\n";
+        assert_eq!(side_tabs(card_then_cell, "/x/a.css", None).len(), 2);
+        // A line comment in a preprocessor sheet is not a rule.
+        for path in ["/x/a.scss", "/x/a.less"] {
+            assert!(side_tabs("// td.is-error { box-shadow: inset 3px 0 0 red; }\n", path, None).is_empty(), "{path}");
+            assert_eq!(side_tabs("td.is-error { box-shadow: inset 3px 0 0 red; } // flagged\n", path, None).len(), 1, "{path}");
+        }
         // Selection and hover stripes on a row stay silent.
         assert!(side_tabs("tr.is-selected td { box-shadow: inset 3px 0 0 #2563eb; }\ntr:hover td { box-shadow: inset 3px 0 0 #2563eb; }\n", "/x/a.css", None).is_empty());
     }

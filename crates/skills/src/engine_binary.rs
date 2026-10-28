@@ -2,8 +2,9 @@
 //! `scripts/VERSION` names an engine release and no
 //! `scripts/bin/<os>-<arch>/impeccable[.exe]` is present, download that
 //! release's binary for this platform from this repo's `engine-v<version>`
-//! GitHub Release (the same asset naming and `.sha256` sidecar the launcher
-//! uses) and set the executable bit. Not part of the JS; see the crate docs.
+//! GitHub Release (the same asset naming the launcher uses), verify it against
+//! the digest the skill dir's own `scripts/engine-checksums.txt` records, and
+//! set the executable bit. Not part of the JS; see the crate docs.
 
 use std::collections::HashMap;
 
@@ -48,28 +49,32 @@ pub fn binary_path(skill_dir: &str, os: &str, arch: &str) -> String {
 /// tagged `engine-v<version>` because the repo also carries skill, CLI,
 /// extension and detector tags.
 pub fn asset_url(base: &str, version: &str, os: &str, arch: &str) -> String {
-    let ext = if os == "windows" { ".exe" } else { "" };
-    format!("{}/engine-v{version}/impeccable-{os}-{arch}{ext}", base.trim_end_matches('/'))
+    format!("{}/engine-v{version}/{}", base.trim_end_matches('/'), asset_name(os, arch))
 }
 
-/// Fetch one release binary, verified against its `.sha256` sidecar. Fails
-/// closed, mirroring the launchers (triage C1): a sidecar that cannot be
-/// fetched or is empty refuses the download - only a binary whose hash
-/// matches its published sidecar is ever installed.
-fn fetch_binary(url: &str) -> Result<Vec<u8>, String> {
+fn asset_name(os: &str, arch: &str) -> String {
+    let ext = if os == "windows" { ".exe" } else { "" };
+    format!("impeccable-{os}-{arch}{ext}")
+}
+
+/// The digest `engine-checksums.txt` records for `version` and `asset`. Lines
+/// are `<version> <asset> <sha256>`; blank lines and `#` comments are skipped.
+fn manifest_digest(manifest: &str, version: &str, asset: &str) -> Option<String> {
+    manifest.lines().find_map(|line| {
+        let mut f = line.split_whitespace();
+        match (f.next(), f.next(), f.next()) {
+            (Some(v), Some(a), Some(sum)) if v == version && a == asset => Some(sum.to_lowercase()),
+            _ => None,
+        }
+    })
+}
+
+/// Fetch one release binary, verified against the digest `expected` from the
+/// manifest. Fails closed, mirroring the launchers: only a binary whose hash
+/// matches the committed digest is ever installed.
+fn fetch_binary(url: &str, expected: &str) -> Result<Vec<u8>, String> {
     let bytes = download(url)?;
-    let sidecar = download(&format!("{url}.sha256")).map_err(|e| {
-        format!("cannot verify against {url}.sha256 ({e}); refusing the unverified download")
-    })?;
-    let text = String::from_utf8_lossy(&sidecar);
-    let expected = text.split_whitespace().next().unwrap_or("").to_lowercase();
-    if expected.is_empty() {
-        return Err(format!(
-            "cannot verify against {url}.sha256 (empty sidecar); refusing the unverified download"
-        ));
-    }
-    let actual = hex(&Sha256::digest(&bytes));
-    if actual != expected {
+    if hex(&Sha256::digest(&bytes)) != expected {
         return Err(format!("checksum mismatch downloading {url}"));
     }
     Ok(bytes)
@@ -132,7 +137,18 @@ pub fn install_engine_binaries(sys: &Sys, io: &mut Io, skill_dirs: &[String]) {
         let url = asset_url(&base, version, os, arch);
         let fetched = cache
             .entry(version.to_string())
-            .or_insert_with(|| fetch_binary(&url))
+            .or_insert_with(|| {
+                // Resolve the digest before any network traffic: no line, no download.
+                let asset = asset_name(os, arch);
+                let manifest = jsp::join(&[skill_dir, "scripts", "engine-checksums.txt"]);
+                let expected = util::read_text(&manifest)
+                    .ok()
+                    .and_then(|text| manifest_digest(&text, version, &asset))
+                    .ok_or_else(|| {
+                        format!("no checksum for engine {version} ({asset}) in {manifest}; refusing the unverified download")
+                    })?;
+                fetch_binary(&url, &expected)
+            })
             .clone();
         match fetched {
             Ok(bytes) => {
@@ -184,5 +200,38 @@ mod tests {
             binary_path("/s", "windows", "arm64"),
             jsp::join(&["/s", "scripts", "bin", "windows-arm64", "impeccable.exe"])
         );
+    }
+
+    #[test]
+    fn install_refuses_a_version_with_no_manifest_line() {
+        let Some((os, arch)) = platform_tag() else { return };
+        let dir = std::env::temp_dir().join(format!("impeccable-no-manifest-line-{}", std::process::id()));
+        let skill_dir = dir.to_string_lossy().into_owned();
+        std::fs::create_dir_all(dir.join("scripts")).unwrap();
+        std::fs::write(dir.join("scripts/VERSION"), "9.9.9\n").unwrap();
+        std::fs::write(dir.join("scripts/engine-checksums.txt"), "1.0.0 impeccable-linux-x64 abc\n").unwrap();
+        // A refused port: reaching the network would fail with a different error.
+        let env: util::Env = [("IMPECCABLE_DOWNLOAD_BASE".to_string(), "http://127.0.0.1:9".to_string())].into();
+        let (mut io, captured) = Io::captured("", dir.clone(), env.clone());
+        install_engine_binaries(&Sys::new(env, skill_dir.clone()), &mut io, &[skill_dir.clone()]);
+        let stderr = String::from_utf8_lossy(&captured.stderr.borrow()).into_owned();
+        assert!(stderr.contains("no checksum for engine 9.9.9"), "{stderr}");
+        assert!(!util::exists(&binary_path(&skill_dir, os, arch)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn manifest_digest_matches_version_and_asset() {
+        let manifest = "# header: 1.2.3 impeccable-linux-x64 ffff\n\n\
+            1.2.3 impeccable-linux-x64 ABC123\n\
+            1.2.3 impeccable-windows-x64.exe def456\n\
+            1.2.2 impeccable-linux-x64 old\n";
+        assert_eq!(manifest_digest(manifest, "1.2.3", "impeccable-linux-x64").as_deref(), Some("abc123"));
+        assert_eq!(manifest_digest(manifest, "1.2.3", "impeccable-windows-x64.exe").as_deref(), Some("def456"));
+        assert_eq!(manifest_digest(manifest, "1.2.2", "impeccable-linux-x64").as_deref(), Some("old"));
+        assert_eq!(manifest_digest(manifest, "1.2.3", "impeccable-darwin-arm64"), None);
+        assert_eq!(manifest_digest(manifest, "9.9.9", "impeccable-linux-x64"), None);
+        assert_eq!(manifest_digest("# only 1.2.3 impeccable-linux-x64 ffff\n", "1.2.3", "impeccable-linux-x64"), None);
+        assert_eq!(manifest_digest("", "1.2.3", "impeccable-linux-x64"), None);
     }
 }

@@ -17,6 +17,10 @@
 //!   same kind of layer stays.
 //! - An intro named as one, with a gradient fill and a progress line, is
 //!   waited for, and hidden once its budget runs out.
+//! - An unnamed intro (aria-hidden, playing a finite animation) is waited
+//!   for the same way; an aria-hidden layer with only an infinite animation,
+//!   a wall with controls, a tap-to-start layer, and a fixed hero the page
+//!   scrolls over (even one animating for 20s, which is not waited for) stay.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -427,4 +431,126 @@ fn heroes_that_are_the_page_stay() {
         assert_eq!(report.waited_ms, 0, "{page}");
     }
     browser.close();
+}
+
+/// An intro no loader or intro word names (articulation-hub.vercel.app's
+/// `div.spl`, corpus run 1010): aria-hidden, fixed over the page, opaque,
+/// playing a finite animation. One the page's script removes after its
+/// animation is waited for and nothing is hidden.
+#[test]
+fn an_unnamed_intro_that_ends_is_waited_for_and_nothing_hidden() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/intro-unnamed-clears.html");
+    let mut browser = engine.launch().expect("launch");
+    let (findings, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    assert!(has(&flagged(&findings), "low-contrast", "#covered-copy"), "{findings:#?}");
+    let report = evidence.overlays.as_ref().expect("overlay report");
+    assert!(report.hidden.is_empty(), "{report:?}");
+    assert!(report.waited_ms > 0 && report.waited_ms < impeccable_browser::overlays::INTRO_WAIT_MS, "{}", report.waited_ms);
+}
+
+/// The same layer, never removed once its animation ends: waited for the
+/// intro budget, then hidden and named by its first class.
+#[test]
+fn an_unnamed_intro_that_never_ends_is_hidden_after_its_budget() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/intro-unnamed-stuck.html");
+    let mut browser = engine.launch().expect("launch");
+    let (findings, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    assert!(has(&flagged(&findings), "low-contrast", "#covered-copy"), "{findings:#?}");
+    let report = evidence.overlays.as_ref().expect("overlay report");
+    assert_eq!(report.hidden, vec![hidden("intro", "div.spl")]);
+    assert!(report.waited_ms >= impeccable_browser::overlays::INTRO_WAIT_MS, "{}", report.waited_ms);
+}
+
+/// Twins of the unnamed intro that stay: an aria-hidden layer whose only
+/// animation is infinite (not waited for, so it cannot stall the scan), a
+/// wall with a field and a button under a running finite animation (an
+/// answer, not an intro), and a layer with its own `onclick` and
+/// `cursor: pointer` that says "Tap anywhere to start" (a gate). Neither is waited for nor hidden, and the copy
+/// under them is not scored.
+#[test]
+fn unnamed_layers_that_are_not_intros_stay() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let mut browser = engine.launch().expect("launch");
+    for page in ["stay-unnamed-infinite.html", "stay-unnamed-modal.html", "stay-unnamed-tap.html"] {
+        let url = format!("http://127.0.0.1:{port}/{page}");
+        let (findings, evidence) =
+            detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+                .expect("scan");
+        // The tap layer fades in from 0.6 opacity, so the copy under it may
+        // score either way; what it pins is the wait and the hide.
+        if page != "stay-unnamed-tap.html" {
+            assert!(!has(&flagged(&findings), "low-contrast", "#covered-copy"), "{page}: {:#?}", flagged(&findings));
+        }
+        let report = evidence.overlays.as_ref().expect("overlay report");
+        assert!(report.hidden.is_empty(), "{page}: {report:?}");
+        assert_eq!(report.waited_ms, 0, "{page}");
+    }
+    browser.close();
+}
+
+/// A fixed aria-hidden hero that the content scrolls over, fading in: the
+/// wait may count it while it animates, but nothing of a page is under it,
+/// so it is the page and is never hidden.
+#[test]
+fn an_unnamed_fixed_hero_that_animates_stays() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/stay-unnamed-hero.html");
+    let mut browser = engine.launch().expect("launch");
+    let (_, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    let report = evidence.overlays.as_ref().expect("overlay report");
+    assert!(report.hidden.is_empty(), "{report:?}");
+    assert!(report.waited_ms < impeccable_browser::overlays::INTRO_WAIT_MS, "{}", report.waited_ms);
+}
+
+/// Review probe `hero-kenburns` (round 14): a fixed aria-hidden hero playing
+/// a 20s finite zoom with the page scrolling over it from 100vh. While it
+/// animates the wait drops only the outside-text minimum, not the hit test,
+/// so nothing of a page under it means it is not waited for.
+#[test]
+fn an_unnamed_fixed_hero_with_a_long_animation_is_not_waited_for() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/stay-unnamed-hero-long.html");
+    let mut browser = engine.launch().expect("launch");
+    let (_, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    let report = evidence.overlays.as_ref().expect("overlay report");
+    assert!(report.hidden.is_empty(), "{report:?}");
+    assert!(report.waited_ms < 1000, "{}", report.waited_ms);
+}
+
+/// The unnamed intro over a sparse page (under 200 characters outside it,
+/// as on articulation-hub.vercel.app's inner pages): while it animates the
+/// wait drops only that minimum, so it is still waited for, and with too
+/// little page to front it is never hidden.
+#[test]
+fn an_unnamed_intro_over_a_sparse_page_is_still_waited_for() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/intro-unnamed-sparse.html");
+    let mut browser = engine.launch().expect("launch");
+    let (_, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    let report = evidence.overlays.as_ref().expect("overlay report");
+    assert!(report.hidden.is_empty(), "{report:?}");
+    assert!(report.waited_ms > 0 && report.waited_ms < impeccable_browser::overlays::INTRO_WAIT_MS, "{}", report.waited_ms);
 }

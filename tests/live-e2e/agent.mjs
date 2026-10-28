@@ -31,7 +31,10 @@ import { engineEnv } from '../lib/engine-bin.mjs';
 const execFileP = promisify(execFile);
 const CARBONIZE_HMR_BOUNDARY_MS = 250;
 
-export const STEER_MARKER_ATTR = 'data-impeccable-steer';
+// Outside the reserved data-impeccable-* namespace on purpose: an LLM agent
+// often carries the marker into its variants, and `live-complete` refuses an
+// accepted source that still holds a data-impeccable-* attribute.
+export const STEER_MARKER_ATTR = 'data-e2e-steer';
 export const STEER_MARKER_VALUE = 'e2e';
 
 // ---------------------------------------------------------------------------
@@ -2272,7 +2275,7 @@ export async function runAgentLoop({
         }
       } catch (err) {
         if (signal.aborted) return;
-        log('accept failed: ' + err.message);
+        log('accept failed: ' + err.message + ' STDOUT=' + (err.stdout || '') + ' STDERR=' + (err.stderr || ''));
       }
       continue;
     }

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { PROVIDERS } from './transformers/providers.js';
 
 // Per-project artifacts live inside `scripts/` of an installed skill but
 // belong to the consuming project, not the distributable skill. The build
@@ -281,6 +282,18 @@ export function readSourceFiles(rootDir) {
     scripts.push(...readSkillScripts(scriptsDir));
   }
 
+  // Provider payloads beside the skill: the dirs provider configs declare
+  // as pluginPayload.source (skill/hermes-plugin/), emitted verbatim.
+  const payloads = {};
+  for (const source of new Set(Object.values(PROVIDERS).map(c => c.pluginPayload?.source).filter(Boolean))) {
+    const dir = path.join(skillDir, source);
+    if (!fs.existsSync(dir)) continue;
+    payloads[source] = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(f => f.isFile())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(f => ({ name: f.name, content: fs.readFileSync(path.join(dir, f.name), 'utf-8') }));
+  }
+
   const agents = [];
   const agentsDir = path.join(skillDir, 'agents');
   if (fs.existsSync(agentsDir)) {
@@ -328,7 +341,8 @@ export function readSourceFiles(rootDir) {
     filePath: skillMdPath,
     references,
     scripts,
-    agents
+    agents,
+    payloads,
   });
 
   return { skills };
@@ -569,6 +583,12 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
+  },
+  'devin': {
+    model: 'Devin',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'Ask with the ask_user_question tool when available, or directly in chat if it is not, and wait for the answer before continuing.',
+    command_prefix: '/'
   }
 };
 
@@ -579,6 +599,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'claude-code',
   'codex',
   'cursor',
+  'devin',
   'dsh',
   'gemini',
   'github',

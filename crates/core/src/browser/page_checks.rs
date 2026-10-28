@@ -197,6 +197,40 @@ fn font_text_has_a_box(dom: &dyn Dom, el: ElId) -> bool {
     true
 }
 
+/// Faces on [`OVERUSED_FONTS`] that an operating system ships, so a page
+/// can name them and get them with no `@font-face` at all.
+pub const OVERUSED_SYSTEM_FACES: &[&str] = &["arial", "helvetica", "roboto"];
+
+/// Whether the browser shows that `font` (an [`OVERUSED_FONTS`] entry) is
+/// not what the page's text is set in (taste call r12-t2; looot.ai and
+/// felixowolf.com name Inter in a stack nothing supplies, and the text
+/// renders in a fallback). It takes all of: `font` is not a face an
+/// operating system ships ([`OVERUSED_SYSTEM_FACES`]); the capture measured
+/// the faces its text asks for and found `font` not drawn at all, from the
+/// system or from the page ([`Dom::rendered_faces`]); and the capture listed
+/// `document.fonts` with no face of that family at any status but `error`.
+/// A face installed on the capture machine is drawn and keeps the finding;
+/// so does a webfont still `loading` or listed `unloaded`, a family the
+/// measurement did not reach, and a capture that recorded neither list. The
+/// static engine has no browser to ask and keeps reporting.
+fn face_never_loaded(dom: &dyn Dom, font: &str) -> bool {
+    if OVERUSED_SYSTEM_FACES.contains(&font) {
+        return false;
+    }
+    let names_font = |family: &str| {
+        let family = js::to_lower_case(&strip_edge_quotes(js::trim(family)));
+        overused_font_name(&family) == Some(font) || family == font
+    };
+    let (Some(faces), Some(rendered)) = (dom.document_font_faces(), dom.rendered_faces()) else {
+        return false;
+    };
+    let measured: Vec<bool> = rendered.iter().filter(|(f, _)| names_font(f)).map(|(_, drawn)| *drawn).collect();
+    if measured.is_empty() || measured.iter().any(|drawn| *drawn) {
+        return false;
+    }
+    !faces.iter().any(|(family, status)| names_font(family) && status != "error")
+}
+
 const IMPECCABLE_OWN: &str =
     ".impeccable-overlay, .impeccable-label, .impeccable-banner, .impeccable-tooltip";
 
@@ -289,6 +323,7 @@ pub fn check_typography(dom: &dyn Dom) -> Vec<BrowserFinding> {
                     && !is_brand_font_on_own_domain(font, Some(&hostname))
                     && !sets_next_to_none_of_the_text(font, &font_chars, total_text_chars)
                     && !latin_face_on_a_cjk_page(font, &letter_tally)
+                    && !face_never_loaded(dom, font)
                 {
                     findings.push(BrowserFinding::new(
                         "overused-font",
@@ -1271,7 +1306,7 @@ pub fn check_layout(dom: &dyn Dom) -> Vec<ElFinding> {
         }
         let mut parent = dom.parent(el);
         while let Some(p) = parent {
-            if is_card_like_dom(dom, p) {
+            if is_card_like_dom(dom, p) && !is_page_frame(dom, p) {
                 // A panel not painted at capture (a closed mega-nav panel
                 // held at `visibility: hidden`) is not a card anyone sees,
                 // a band along the card's own edges is part of it, and a
@@ -1309,6 +1344,49 @@ pub fn check_layout(dom: &dyn Dom) -> Vec<ElFinding> {
         }
     }
     findings
+}
+
+/// The share of the document's height a box spanning the viewport's width
+/// has to cover to be the page itself ([`is_page_frame`]).
+const PAGE_FRAME_MIN_HEIGHT_SHARE: f64 = 0.75;
+
+/// Whether `el` is the page, not a card on it: a box from the viewport's
+/// left edge across its whole width that covers at least
+/// [`PAGE_FRAME_MIN_HEIGHT_SHARE`] of the document's height. swapno.in
+/// wraps the whole page in `div#outer-wrapper` with a Tailwind
+/// `ring-black/5`, and the cards on the page sat inside it as inner cards.
+/// A page whose width or height the capture did not measure has no frame.
+pub(crate) fn is_page_frame(dom: &dyn Dom, el: ElId) -> bool {
+    let Some(root) = dom.document_element() else { return false };
+    let client = dom.client_width(root);
+    let vw = if client.is_finite() && client > 0.0 { client } else { dom.inner_width() };
+    let scrolled = dom.scroll_height(root);
+    let doc_height = if scrolled.is_finite() { math_max(dom.rect(root).height, scrolled) } else { dom.rect(root).height };
+    if !(vw.is_finite() && vw > 0.0 && doc_height.is_finite() && doc_height > 0.0) {
+        return false;
+    }
+    let r = dom.rect(el);
+    r.all_finite()
+        && r.left <= 1.0
+        && r.width >= vw - 1.0
+        && r.height >= doc_height * PAGE_FRAME_MIN_HEIGHT_SHARE
+        && !shows_page_frame_edge(dom, el)
+}
+
+/// Whether a page-sized box shows where it ends, which keeps it a card: a
+/// border, an outline, a shadow layer above [`FAINT_PAINT_ALPHA`]
+/// (swapno.in's `ring-black/5` sits at it), or a fill that differs from the
+/// surface under it (runlatent.ai's cream sheet on a dark page).
+///
+/// [`FAINT_PAINT_ALPHA`]: crate::checks::measures::FAINT_PAINT_ALPHA
+fn shows_page_frame_edge(dom: &dyn Dom, el: ElId) -> bool {
+    let bordered = ["Top", "Right", "Bottom", "Left"].iter().any(|side| border_side_shows(dom, el, side, None));
+    let outlined = !matches!(dom.style(el, "outlineStyle").as_str(), "" | "none")
+        && parse_float(&dom.style(el, "outlineWidth")) > 0.0;
+    let shadowed = crate::checks::measures::parse_shadow_layers(&dom.style(el, "boxShadow"))
+        .iter()
+        .any(|l| !l.inset && l.alpha > crate::checks::measures::FAINT_PAINT_ALPHA);
+    bordered || outlined || shadowed || fill_differs_from_surface(dom, el)
 }
 
 /// `heading-rhythm`: an element that takes part in normal flow and paints a
@@ -1565,7 +1643,7 @@ fn rhythm_is_spacer(dom: &dyn Dom, el: ElId) -> bool {
 
 fn rhythm_is_empty_box(dom: &dyn Dom, el: ElId, depth: usize) -> bool {
     let tag = tag_lower(dom, el);
-    if rhythm_paints_edge(dom, el, "Bottom")
+    if rhythm_spacer_paints(dom, el)
         || RHYTHM_MEDIA_TAGS.contains(&tag.as_str())
         || RHYTHM_CONTROL_TAGS.contains(&tag.as_str())
     {
@@ -1582,6 +1660,52 @@ fn rhythm_is_empty_box(dom: &dyn Dom, el: ElId, depth: usize) -> bool {
     }
     let children = rhythm_rendered_children(dom, el);
     children.is_empty() || (depth > 0 && children.into_iter().all(|k| rhythm_is_empty_box(dom, k, depth - 1)))
+}
+
+/// Whether an empty box paints something a reader sees as a block: a
+/// background image that bands it, a bottom border, a shadow, or a fill that
+/// differs from the nearest painted background behind it
+/// ([`rhythm_band_differs_from_backdrop`]). A fill the colour of what is
+/// behind it draws no edge: citigroup.com stacks empty `GridRow` spacers
+/// painted the colour of their section (a 15px white row in a white band, an
+/// 87px navy row on the navy footer), and each holds space open exactly as
+/// an unpainted spacer does. A spacer in a colour of its own is a divider and
+/// stays a block.
+fn rhythm_spacer_paints(dom: &dyn Dom, el: ElId) -> bool {
+    if rhythm_is_contents(dom, el) {
+        return false;
+    }
+    if rhythm_painted_background(dom, el).is_some() && rhythm_spacer_fill_shows(dom, el) {
+        return true;
+    }
+    rhythm_image_band(dom, el)
+        || style_px(dom, el, "borderBottomWidth") > 0.0
+        || crate::checks::measures::box_shadow_paints(&dom.style(el, "boxShadow"))
+}
+
+/// Whether a spacer's fill shows against what is behind it: the nearest
+/// ancestor that paints a fill or a background image band. A fill differs
+/// as [`rhythm_band_differs_from_backdrop`] reads it; a band painted only
+/// with an image (a `linear-gradient` section, a photo) is not read here,
+/// and the fill counts as shown, as before; so does a translucent fill.
+fn rhythm_spacer_fill_shows(dom: &dyn Dom, el: ElId) -> bool {
+    // A translucent fill paints over whatever is behind it, its own colour
+    // included: a block, as before.
+    if rhythm_painted_background(dom, el).is_some_and(|c| c.alpha_or_one() < 1.0) {
+        return true;
+    }
+    let mut cur = dom.parent(el);
+    while let Some(c) = cur {
+        // The image paints over the box's own colour, so it is read first.
+        if rhythm_image_band(dom, c) {
+            return true;
+        }
+        if rhythm_painted_background(dom, c).is_some() {
+            break;
+        }
+        cur = dom.parent(c);
+    }
+    rhythm_band_differs_from_backdrop(dom, el)
 }
 
 /// A shadow host whose shadow tree lays out content: a box there with words,
@@ -2636,6 +2760,198 @@ fn covering_ground(dom: &dyn Dom, body: ElId) -> Option<crate::color::Rgba> {
         _ => Some((c, h)),
     })
     .map(|(c, _)| c)
+}
+
+/// The share of the page's height that dark or pictured full-width bands
+/// may cover under an unpainted root before the white canvas stops being
+/// the page's ground.
+const UNPAINTED_ROOT_DARK_BAND_MAX_SHARE: f64 = 0.5;
+
+/// The share of the viewport, on each axis, an out-of-flow layer has to
+/// cover to stand in for the page's ground (a `fixed inset-0 -z-10` wash).
+const GROUND_LAYER_MIN_VIEWPORT_SHARE: f64 = 0.9;
+
+/// How many levels of boxes with a height of their own the in-flow walk of
+/// [`unpainted_root_reads_light`] looks through (`body > #__next > .l1 >
+/// .l2 > main` is four). Wrappers with no box (`display: contents`) or no
+/// height do not count.
+const UNPAINTED_ROOT_WALK_MAX_DEPTH: usize = 8;
+
+/// How many boxes the in-flow walk visits before it gives up and leaves
+/// the decision to the stylesheet.
+const UNPAINTED_ROOT_WALK_MAX_BOXES: usize = 4000;
+
+/// Text at or above this relative luminance is light: it could not be read
+/// on the white canvas, so a page that sets most of its text this way has
+/// painted its ground somewhere.
+const LIGHT_TEXT_MIN_LUMINANCE: f64 = 0.4;
+
+/// Whether a page whose `html` and `body` paint neither a fill nor an image
+/// shows the browser's white canvas as its ground (observations-1010 row 4,
+/// gseek.kr: a white portal with a `#222` footer, read as a dark page off a
+/// `background: #000` in its stylesheet). False, so the stylesheet decides
+/// as before, wherever something else may paint the ground or the reading
+/// is unsure:
+///
+/// - the root or body computes a dark `color-scheme`, or a `<meta
+///   name="color-scheme">` asks for `dark`;
+/// - a `::before` or `::after` of `html` or `body` paints a fill or an
+///   image;
+/// - a layer out of flow covers the viewport and paints a fill, an image,
+///   or a picture by its tag (`canvas`, `video`, `img`, `iframe`);
+/// - in-flow boxes as wide as the body that paint a dark fill, a picture
+///   or a gradient cover half the page's height or more, looked for through
+///   transparent boxes [`UNPAINTED_ROOT_WALK_MAX_DEPTH`] levels down and
+///   through wrappers with no box or no height at no cost;
+/// - most of the page's visible text is light, or the page sets none.
+pub(crate) fn unpainted_root_reads_light(dom: &dyn Dom) -> bool {
+    let Some(body) = dom.body() else { return false };
+    let root = dom.document_element();
+    let roots: Vec<ElId> = [root, Some(body)].into_iter().flatten().collect();
+    if roots
+        .iter()
+        .any(|&el| js::to_lower_case(&dom.style(el, "colorScheme")).contains("dark"))
+    {
+        return false;
+    }
+    let meta_asks_dark = dom.query_all(None, "meta").unwrap_or_default().into_iter().any(|m| {
+        dom.attr(m, "name").is_some_and(|n| js::trim(&n).eq_ignore_ascii_case("color-scheme"))
+            && dom.attr(m, "content").is_some_and(|c| js::to_lower_case(&c).contains("dark"))
+    });
+    if meta_asks_dark {
+        return false;
+    }
+    let paints_picture = |el: ElId| {
+        let image = dom.style(el, "backgroundImage");
+        !image.is_empty() && image != "none"
+    };
+    let pseudo_paints = roots.iter().any(|&el| {
+        ["::before", "::after"].iter().any(|which| {
+            let content = dom.pseudo_style(el, which, "content").unwrap_or_default();
+            let content = js::trim(&content);
+            if content.is_empty() || content == "none" || content == "normal" {
+                return false;
+            }
+            let fill = parse_any_color(dom.pseudo_style(el, which, "backgroundColor").as_deref())
+                .is_some_and(|f| f.alpha_or_one() > 0.0);
+            let image = dom
+                .pseudo_style(el, which, "backgroundImage")
+                .is_some_and(|i| !i.is_empty() && i != "none");
+            fill || image
+        })
+    });
+    if pseudo_paints {
+        return false;
+    }
+    let dark_fill = |el: ElId| {
+        super::background::read_own_background_color(dom, el)
+            .is_some_and(|f| f.alpha_or_one() > 0.5 && crate::color::relative_luminance(&f) < 0.1)
+    };
+    let (vw, vh) = (dom.inner_width(), dom.inner_height());
+    if !(vw > 0.0 && vh > 0.0) {
+        return false;
+    }
+    let all = dom.query_all(None, "*").unwrap_or_default();
+    for &el in &all {
+        if !matches!(dom.style(el, "position").as_str(), "fixed" | "absolute") {
+            continue;
+        }
+        let r = dom.rect(el);
+        if !r.all_finite()
+            || r.width < GROUND_LAYER_MIN_VIEWPORT_SHARE * vw
+            || r.height < GROUND_LAYER_MIN_VIEWPORT_SHARE * vh
+        {
+            continue;
+        }
+        let fill = super::background::read_own_background_color(dom, el).is_some_and(|f| f.alpha_or_one() > 0.5);
+        let picture_tag = matches!(tag_lower(dom, el).as_str(), "canvas" | "video" | "img" | "iframe");
+        if (fill || picture_tag || paints_picture(el)) && painted_at_capture(dom, el) {
+            return false;
+        }
+    }
+    let body_rect = dom.rect(body);
+    if !body_rect.all_finite() || body_rect.width <= 0.0 {
+        return false;
+    }
+    let sy = finite_or_zero(dom.scroll_y());
+    let page_bottom = root
+        .map(|r| dom.scroll_height(r))
+        .filter(|h| h.is_finite())
+        .unwrap_or(0.0)
+        .max(body_rect.bottom + sy);
+    let start = (body_rect.top + sy).max(0.0);
+    if page_bottom <= start {
+        return false;
+    }
+    let mut dark: Vec<(f64, f64)> = Vec::new();
+    let mut stack: Vec<(ElId, usize)> = vec![(body, 0)];
+    let mut visited = 0usize;
+    while let Some((el, depth)) = stack.pop() {
+        for child in dom.children(el) {
+            visited += 1;
+            if visited > UNPAINTED_ROOT_WALK_MAX_BOXES {
+                return false;
+            }
+            if !matches!(dom.style(child, "position").as_str(), "static" | "relative" | "sticky" | "") {
+                continue;
+            }
+            let transparent =
+                super::background::read_own_background_color(dom, child).map_or(true, |f| f.alpha_or_one() <= 0.0);
+            let r = dom.rect(child);
+            // A wrapper with no box or no height of its own (SvelteKit's
+            // `display: contents` root) holds the page's boxes without
+            // taking a level.
+            if dom.style(child, "display") == "contents" || (r.all_finite() && r.height <= 0.0 && transparent) {
+                stack.push((child, depth));
+                continue;
+            }
+            let over_body = r.right.min(body_rect.right) - r.left.max(body_rect.left);
+            if !r.all_finite() || r.height <= 0.0 || over_body < GROUND_COVER_MIN_SHARE * body_rect.width {
+                continue;
+            }
+            if !painted_at_capture(dom, child) {
+                continue;
+            }
+            if dark_fill(child) || paints_picture(child) {
+                dark.push(((r.top + sy).max(start), (r.bottom + sy).min(page_bottom)));
+            } else if depth + 1 < UNPAINTED_ROOT_WALK_MAX_DEPTH && transparent {
+                stack.push((child, depth + 1));
+            }
+        }
+    }
+    dark.retain(|(t, b)| b > t);
+    dark.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let (mut covered, mut reach) = (0.0, start);
+    for (t, b) in dark {
+        if b > reach {
+            covered += b - t.max(reach);
+            reach = b;
+        }
+    }
+    if covered >= UNPAINTED_ROOT_DARK_BAND_MAX_SHARE * (page_bottom - start) {
+        return false;
+    }
+    // A backstop for ground the walks above cannot see (a canvas drawn
+    // dark, an inset shadow): light text is unreadable on the white canvas,
+    // so a page that sets most of its characters light has a dark ground.
+    let (mut light, mut darkish) = (0.0f64, 0.0f64);
+    for &el in &all {
+        let chars = direct_text_chars(dom, el);
+        if chars <= 0.0 || !font_text_has_a_box(dom, el) {
+            continue;
+        }
+        match parse_any_color(Some(&dom.style(el, "color"))) {
+            Some(c) if c.alpha_or_one() > 0.0 => {
+                if crate::color::relative_luminance(&c) >= LIGHT_TEXT_MIN_LUMINANCE {
+                    light += chars;
+                } else {
+                    darkish += chars;
+                }
+            }
+            _ => {}
+        }
+    }
+    darkish > light
 }
 
 /// Whether a painted in-flow box as wide as the body, up to
@@ -5454,6 +5770,62 @@ mod tests {
         assert_eq!(font_finding(&d), None);
     }
 
+    /// Taste call r12-t2 (looot.ai run 1010, felixowolf.com run 1006): a
+    /// page that names Inter in a stack nothing supplies sets its text in a
+    /// fallback. Where the capture listed `document.fonts` and no face of
+    /// the family is loaded, loading or waiting, the finding stands down.
+    /// A loaded subset, a face still on its way, a system face and a
+    /// capture that did not list the faces keep it.
+    #[test]
+    fn a_face_the_browser_never_loaded_is_not_the_page_face() {
+        let build = |faces: Option<Vec<(&str, &str)>>, family: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            for _ in 0..20 {
+                typeset(&mut d, body, "p", "Copy set in the named face", family);
+            }
+            d.font_faces = faces.map(|f| f.into_iter().map(|(a, b)| (a.to_string(), b.to_string())).collect());
+            // The canvas finds the named face not drawn.
+            let face = family.split(',').next().unwrap().trim().trim_matches('"').to_string();
+            d.rendered_faces = Some(vec![(face, false)]);
+            d
+        };
+        let inter = "Inter, sans-serif";
+        let reported = Some("Primary font: inter (100% of text)".to_string());
+        // Never declared, or declared and failed.
+        assert_eq!(font_finding(&build(Some(vec![]), inter)), None);
+        assert_eq!(font_finding(&build(Some(vec![("Noto Sans", "loaded")]), inter)), None);
+        assert_eq!(font_finding(&build(Some(vec![("Inter", "error")]), inter)), None);
+        // Should-flag twins.
+        assert_eq!(font_finding(&build(None, inter)), reported);
+        assert_eq!(font_finding(&build(Some(vec![("Inter", "loaded")]), inter)), reported);
+        assert_eq!(font_finding(&build(Some(vec![("\"Inter\"", "loaded")]), inter)), reported);
+        assert_eq!(font_finding(&build(Some(vec![("Inter", "error"), ("Inter", "loaded")]), inter)), reported);
+        assert_eq!(font_finding(&build(Some(vec![("Inter", "loading")]), inter)), reported);
+        assert_eq!(font_finding(&build(Some(vec![("Inter", "unloaded")]), inter)), reported);
+        assert_eq!(
+            font_finding(&build(Some(vec![]), "Arial, sans-serif")),
+            Some("Primary font: arial (100% of text)".to_string())
+        );
+        // A face installed on the capture machine is drawn and keeps the
+        // finding with no `@font-face`, and so does a capture that did not
+        // measure.
+        let mut installed = build(Some(vec![]), inter);
+        installed.rendered_faces = Some(vec![("Inter".to_string(), true)]);
+        assert_eq!(font_finding(&installed), reported);
+        let mut unmeasured = build(Some(vec![]), inter);
+        unmeasured.rendered_faces = None;
+        assert_eq!(font_finding(&unmeasured), reported);
+        let mut other = build(Some(vec![]), inter);
+        other.rendered_faces = Some(vec![("Lora".to_string(), false)]);
+        assert_eq!(font_finding(&other), reported);
+        // One face under another spelling (`GeistSans` from the package).
+        assert_eq!(
+            font_finding(&build(Some(vec![("GeistSans", "loaded")]), "\"Geist Sans\", sans-serif")),
+            Some("Primary font: geist sans (100% of text)".to_string())
+        );
+    }
+
     /// walla.co.il: Arial is "40% of text" by element and sets 2% of the
     /// characters. Under one in twenty the finding stands down; above it the
     /// element count names the face and the snippet is unchanged.
@@ -5833,6 +6205,60 @@ mod tests {
         assert!(check_layout(&d).is_empty());
     }
 
+    /// observations-1010 row 7 (swapno.in 10139882): a box across the whole
+    /// viewport that covers most of the page is the page, not an outer card,
+    /// whatever ring it casts. A centred panel narrower than the viewport is
+    /// a card, and so is a full-width band that covers a part of the page.
+    #[test]
+    fn nested_cards_skip_the_page_frame() {
+        let build = |frame: (f64, f64, f64, f64)| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.set_rect(html, 0.0, 0.0, 1280.0, 4000.0);
+            d.el_mut(html).client_width = 1280.0;
+            let outer = d.add(Some(body), "div");
+            card_styles(&mut d, outer, "rgb(255, 255, 255)");
+            d.set_styles(outer, &[("borderRadius", "0px"), ("boxShadow", "rgba(0, 0, 0, 0.05) 0px 0px 0px 1px")]);
+            d.set_rect(outer, frame.0, frame.1, frame.2, frame.3);
+            let inner = d.add(Some(outer), "div");
+            card_styles(&mut d, inner, "rgb(255, 255, 255)");
+            d.set_style(inner, "border", "1px solid rgb(200, 200, 200)");
+            d.set_rect(inner, 200.0, 400.0, 340.0, 250.0);
+            d.add_text(inner, "Some card body text");
+            d.add_text(outer, "Outer text longer than ten");
+            check_layout(&d).len()
+        };
+        assert_eq!(build((0.0, 30.0, 1280.0, 3940.0)), 0, "the page wrapper");
+        assert_eq!(build((90.0, 30.0, 1100.0, 3940.0)), 1, "a centred 1,100px panel");
+        assert_eq!(build((0.0, 300.0, 1280.0, 900.0)), 1, "a full-width band over part of the page");
+        // A page-sized box that shows its edge stays a card (review of round
+        // 14): a border, or a fill apart from the page under it.
+        let edged = |styles: &[(&str, &str)]| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.set_rect(html, 0.0, 0.0, 1280.0, 4000.0);
+            d.el_mut(html).client_width = 1280.0;
+            d.set_style(body, "backgroundColor", "rgb(10, 11, 16)");
+            let outer = d.add(Some(body), "div");
+            card_styles(&mut d, outer, "rgb(255, 255, 255)");
+            d.set_styles(outer, &[("borderRadius", "0px"), ("boxShadow", "rgba(0, 0, 0, 0.05) 0px 0px 0px 1px")]);
+            d.set_styles(outer, styles);
+            d.set_rect(outer, 0.0, 30.0, 1280.0, 3940.0);
+            let inner = d.add(Some(outer), "div");
+            card_styles(&mut d, inner, "rgb(255, 255, 255)");
+            d.set_rect(inner, 200.0, 400.0, 340.0, 250.0);
+            d.add_text(inner, "Some card body text");
+            d.add_text(outer, "Outer text longer than ten");
+            check_layout(&d).len()
+        };
+        assert_eq!(edged(&[("backgroundColor", "rgb(245, 245, 242)")]), 1, "a cream sheet on a dark page");
+        assert_eq!(
+            edged(&[("borderTopWidth", "1px"), ("borderTopStyle", "solid"), ("borderTopColor", "rgb(200, 200, 200)")]),
+            1,
+            "a bordered page box"
+        );
+    }
+
     /// Decision r6-t3-nested-cards-mockups (advisory): the panels of a drawn
     /// product mockup report as advisory, in a framed demo (r5-p26's
     /// structure) or under an HTML `role="img"`.
@@ -6104,6 +6530,61 @@ mod tests {
         let worded = flow(&mut d, body, "div", (0.0, 200.0, 800.0, 40.0), "");
         flow(&mut d, worded, "div", (0.0, 200.0, 800.0, 40.0), "Words");
         assert!(!rhythm_is_spacer(&d, worded));
+    }
+
+    /// observations-1010 row 3 (citigroup.com 10140212, 10140309): an empty
+    /// spacer row painted the colour of the band behind it is space, as an
+    /// unpainted one is; a spacer in a colour of its own is a divider and the
+    /// heading under it still sits 0px from a block.
+    #[test]
+    fn rhythm_spacer_filled_like_its_band_is_space() {
+        let build = |band: Option<&str>, spacer: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let page = flow(&mut d, body, "div", (0.0, 0.0, 800.0, 1000.0), "");
+            if let Some(band) = band {
+                d.set_style(page, "backgroundColor", band);
+            }
+            let mut y = 0.0;
+            for i in 0..2 {
+                flow(&mut d, page, "p", (0.0, y, 800.0, 20.0), "The paragraph that closes the section above this heading");
+                y += 20.0;
+                let s = flow(&mut d, page, "div", (0.0, y, 800.0, 40.0), "");
+                d.set_style(s, "backgroundColor", spacer);
+                y += 40.0;
+                let section = flow(&mut d, page, "section", (0.0, y, 800.0, 200.0), "");
+                flow(&mut d, section, "h2", (0.0, y, 800.0, 30.0), &format!("Section title {i}"));
+                flow(&mut d, section, "p", (0.0, y + 54.0, 800.0, 100.0), "What the heading introduces");
+                y += 200.0;
+            }
+            check_heading_rhythm_dom(&d).len()
+        };
+        assert_eq!(build(None, "rgb(255, 255, 255)"), 0, "a white spacer on the white canvas");
+        assert_eq!(build(Some("rgb(15, 22, 50)"), "rgb(15, 22, 50)"), 0, "a navy spacer on a navy band");
+        assert_eq!(build(None, "rgb(15, 22, 50)"), 2, "a navy band on white is a block");
+        assert_eq!(build(Some("rgb(15, 22, 50)"), "rgb(255, 255, 255)"), 2, "a white band on navy is a block");
+        // A band painted only with an image is not read: the spacer's fill
+        // is a block over it (review of round 14).
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let page = flow(&mut d, body, "div", (0.0, 0.0, 800.0, 1000.0), "");
+        d.set_styles(page, &[("backgroundImage", "linear-gradient(rgb(15, 22, 50), rgb(15, 22, 50))"), ("background", "rgba(0, 0, 0, 0) linear-gradient(rgb(15, 22, 50), rgb(15, 22, 50)) repeat scroll 0% 0% / auto padding-box border-box")]);
+        let s = flow(&mut d, page, "div", (0.0, 20.0, 800.0, 40.0), "");
+        d.set_style(s, "backgroundColor", "rgb(255, 255, 255)");
+        assert!(rhythm_image_band(&d, page), "the gradient bands the page box");
+        assert!(!rhythm_is_spacer(&d, s), "a white strip across a gradient band");
+        // So is one whose band also sets a white colour under the gradient.
+        d.set_style(page, "backgroundColor", "rgb(255, 255, 255)");
+        assert!(!rhythm_is_spacer(&d, s), "a white strip across a gradient over white");
+        // A translucent spacer on a band of the same translucent fill draws
+        // over it: a darker stripe, a block.
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let band = flow(&mut d, body, "div", (0.0, 0.0, 800.0, 1000.0), "");
+        d.set_style(band, "backgroundColor", "rgba(0, 0, 0, 0.5)");
+        let s = flow(&mut d, band, "div", (0.0, 20.0, 800.0, 40.0), "");
+        d.set_style(s, "backgroundColor", "rgba(0, 0, 0, 0.5)");
+        assert!(!rhythm_is_spacer(&d, s), "a translucent strip on its own colour");
     }
 
     /// observations-35 row 12 (improved-rotary-phone-two.vercel.app 213861):

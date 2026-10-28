@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>nested-cards, the page wrapper is not an outer card</title>
+<!--
+  Should pass: a bordered card straight inside a white page wrapper that
+  spans the viewport and the page, drawn with a Tailwind ring-black/5
+  (swapno.in's div#outer-wrapper). The wrapper is the page.
+
+  Should flag: a bordered card inside a centred, bordered panel narrower
+  than the viewport, inside the same wrapper.
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; font-size: 16px; line-height: 24px; color: #1f2937; margin: 0; }
+  .frame { background: #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05); padding: 48px 0; min-height: 1600px; }
+  h2 { font-size: 20px; line-height: 28px; margin: 0 0 16px; }
+  .card { width: 340px; padding: 24px; margin: 0 0 24px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+  .card p { margin: 0; }
+  .pass-col { margin: 0 64px 48px; }
+  .panel { width: 1100px; max-width: calc(100% - 128px); margin: 0 auto; padding: 32px; background: #f9fafb; border: 1px solid #d1d5db; border-radius: 16px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+</style>
+</head>
+<body>
+<div class="frame" id="outer-wrapper">
+  <section class="pass-col" id="should-pass">
+    <h2>Should pass</h2>
+    <aside class="card" id="pass-frame-card">
+      <p>Our mission is to bring fresh groceries to every neighbourhood at a fair price, every day.</p>
+    </aside>
+  </section>
+  <section class="panel" id="should-flag">
+    <h2>Should flag</h2>
+    <aside class="card" id="flag-panel-card">
+      <p>A card set inside a centred, bordered panel is a card inside a card.</p>
+    </aside>
+  </section>
+</div>
+</body>
+</html>

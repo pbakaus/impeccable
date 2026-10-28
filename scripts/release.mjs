@@ -133,6 +133,53 @@ if (cfg.sibling) {
   ok(`${cfg.sibling} agrees`);
 }
 
+// Engine source guard (#813). The binary every machine downloads is built from
+// the engine-v<ENGINE_VERSION> tag, so pinning it from a tree whose engine
+// source moved on ships a binary the release tag's source no longer describes.
+// It runs before the asset probe below. The local tag must be origin's, the one
+// CI built from, or the diff would compare against the wrong tree. Diffing
+// against the working tree (not HEAD) counts tracked uncommitted edits too. Set
+// IMPECCABLE_SKIP_ENGINE_SOURCE_CHECK=1 only when the changes cannot reach the
+// shipped binary, such as test-only edits under crates/. The paths outside the
+// workspace are the files the crates compile in with include_str! or
+// include_bytes!; tests/release.test.mjs fails when one is missing here.
+const ENGINE_SOURCE_PATHS = [
+  'crates', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
+  'browser-bundle',
+  'scripts/bundle-signing-keys.json',
+  'skill/scripts/live-browser*.js', 'skill/scripts/modern-screenshot.umd.js',
+  'ui/component-review/theme.css', 'ui/component-review/fonts',
+  'ui/component-review/vendor/*.css', 'ui/component-review/vendor/instrument-strip.js',
+];
+if (cfg.engineGated && process.env.IMPECCABLE_SKIP_ENGINE_SOURCE_CHECK !== '1') {
+  const engineTag = `engine-v${readEngineVersion(repoRoot)}`;
+  step(`Verifying engine source is unchanged since ${engineTag}`);
+  const originTag = run(`git ls-remote --tags origin "refs/tags/${engineTag}"`).split('\t')[0];
+  if (!originTag) fail(`origin has no ${engineTag} tag. Release the engine first (bun run release:engine).`);
+  let localTag = '';
+  try {
+    localTag = run(`git rev-parse -q --verify "refs/tags/${engineTag}"`);
+  } catch {}
+  if (localTag !== originTag) {
+    fail(
+      `${localTag ? `Local tag ${engineTag} differs from origin's` : `Tag ${engineTag} is not available locally`}, ` +
+      `so the engine source cannot be compared to it. Run \`git fetch --force origin tag ${engineTag}\`, then retry.`
+    );
+  }
+  const changed = run(`git diff --name-only refs/tags/${engineTag} -- ${ENGINE_SOURCE_PATHS.map((p) => `"${p}"`).join(' ')}`);
+  if (changed) {
+    fail(
+      `Refusing to release ${cfg.label} ${version}: the engine source changed since ${engineTag}:\n` +
+      changed.split('\n').map((file) => `    · ${file}`).join('\n') + '\n' +
+      '  Bump ENGINE_VERSION and release the engine first (bun run release:engine), then the platform packages, then this.\n' +
+      '  A listed file that is only an uncommitted local edit needs stashing or discarding instead.'
+    );
+  }
+  ok(`engine source unchanged since ${engineTag}`);
+} else if (cfg.engineGated) {
+  step('Skipping engine source guard (IMPECCABLE_SKIP_ENGINE_SOURCE_CHECK=1)');
+}
+
 // Release-order guard (triage decision D4). Engine-gated components refuse to
 // tag/publish until the engine release for the pinned ENGINE_VERSION is fully
 // live: the five engine-v<version> release binaries + .sha256 and the five @impeccable/cli-<os>-<arch>

@@ -185,6 +185,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             manual_edit_activity: None,
             next_manual_edit_seq: 1,
             pending_apply_deferreds: Vec::new(),
+            commits_in_progress: Vec::new(),
             last_poll_at: 0,
             timed_out_apply_ids: Vec::new(),
             next_poll_id: 1,
@@ -2201,6 +2202,59 @@ fn handle_manual_edit_route(
                 return;
             }
             let page_url = req.query_get("pageUrl").map(String::from);
+            let op_ref = req
+                .query_get("ref")
+                .map(String::from)
+                .filter(|r| !r.is_empty());
+            // `ref` scopes the discard to one staged op on the page (the
+            // browser's Undo for a removal). It never rolls a transaction
+            // back, so it refuses while an Apply owns the page's edits: a
+            // second tab could otherwise undo an op the agent is applying.
+            if let (Some(pu), Some(r)) = (page_url.as_deref(), op_ref.as_deref()) {
+                let mut st = lock(shared);
+                if manual_apply::apply_in_flight(&st, pu) {
+                    drop(st);
+                    respond(
+                        stream,
+                        cors,
+                        json_res(
+                            409,
+                            json!({ "error": "manual_edit_apply_in_flight", "pageUrl": pu, "ref": r }),
+                        ),
+                    );
+                    return;
+                }
+                let (entries, discarded) =
+                    match manual_buffer::remove_ops_by_ref(&cwd, &env, pu, r) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            drop(st);
+                            respond(
+                                stream,
+                                cors,
+                                json_res(500, json!({ "error": "discard_failed", "message": e })),
+                            );
+                            return;
+                        }
+                    };
+                let (total, per_page) = manual_buffer::count_by_page(&cwd, &env);
+                let mut details = Map::new();
+                details.insert("pageUrl".into(), json!(pu));
+                details.insert("ref".into(), json!(r));
+                details.insert("discarded".into(), json!(discarded));
+                details.insert("totalCount".into(), json!(total));
+                st.record_manual_edit_activity("manual_edit_discarded", details);
+                drop(st);
+                respond(
+                    stream,
+                    cors,
+                    json_res(
+                        200,
+                        json!({ "discarded": discarded, "entries": entries, "canceledApplyEvents": [], "totalCount": total, "perPage": per_page }),
+                    ),
+                );
+                return;
+            }
             let mut st = lock(shared);
             let buffer = manual_buffer::read_buffer(&cwd, &env);
             let transaction_rollback = manual_apply::rollback_transaction(
@@ -2397,6 +2451,9 @@ fn handle_manual_edit_commit(
         details.insert(k, v);
     }
     st.record_manual_edit_activity("manual_edit_commit_started", details);
+    // Listed before the lock drops, so a ref-scoped discard cannot slip in
+    // while the evidence build below reads the buffer outside the lock.
+    st.begin_commit(page_url.as_deref());
     drop(st);
     // The commit itself waits on an agent (JS: awaited); later requests must
     // not queue behind it.
@@ -2529,6 +2586,7 @@ fn handle_manual_edit_commit(
                     .unwrap_or(Value::Null),
             );
             st.record_manual_edit_activity("manual_edit_commit_failed", details);
+            st.end_commit(page_url.as_deref());
             // finally: clear transaction (result undefined -> not kept)
             if let Some(t) = &transaction {
                 manual_apply::clear_manual_apply_transaction(
@@ -2571,6 +2629,9 @@ fn handle_manual_edit_commit(
         .map(|s| json!(s))
         .unwrap_or(Value::Null);
     let mut st = lock(shared);
+    // The queue, the deferreds, or the transaction on disk carry the
+    // in-flight signal from here on.
+    st.end_commit(page_url.as_deref());
     if result.get("needsManualDecision") == Some(&Value::Bool(true)) {
         let mut details = Map::new();
         details.insert("pageUrl".into(), page_url_val.clone());

@@ -96,6 +96,11 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     if !hook_enabled_at(&active_root, env) {
         return "none";
     }
+    // Hermes runs the hook from a plugin in its home dir, at turn end (#1178).
+    if provider.id == "hermes" {
+        let home = crate::hermes::hermes_global_home(env, cwd, &crate::util::homedir(env));
+        return if crate::hermes::plugin_enabled(&home) { "stop" } else { "none" };
+    }
     // Gemini's manifest carries only the session and build-completion hooks,
     // no detector pass, so it never counts as automatic coverage.
     if provider.id == "gemini" {
@@ -1102,6 +1107,51 @@ mod user_scope_hook_tests {
         std::os::unix::fs::symlink(fixture.root.join("real-home/child"), fixture.root.join("project/link")).unwrap();
         fixture.env.insert("CODEX_HOME".to_string(), "link/..".to_string());
         assert_eq!(fixture.mode(), "stop");
+    }
+
+    const HERMES_PLUGIN: &str = "home/.hermes/plugins/impeccable-design-hook";
+    const HERMES_ENABLED: &str = "plugins:\n  clone_timeout_seconds: 300\n  enabled:\n    - impeccable-design-hook\n  disabled: []\n";
+
+    fn hermes_fixture(config: &str) -> UserHookFixture {
+        let fixture = UserHookFixture::new("hermes");
+        fixture.put(&format!("{HERMES_PLUGIN}/plugin.yaml"), "name: impeccable-design-hook\n");
+        fixture.put(&format!("{HERMES_PLUGIN}/__init__.py"), "");
+        fixture.put("home/.hermes/config.yaml", config);
+        fixture
+    }
+
+    #[test]
+    fn hermes_enabled_plugin_supplies_stop_coverage() {
+        assert_eq!(hermes_fixture(HERMES_ENABLED).mode(), "stop", "block list");
+        let flow = "model: x\nplugins:\n  enabled: [other, 'impeccable-design-hook']  # on\n  disabled: []\n";
+        assert_eq!(hermes_fixture(flow).mode(), "stop", "flow list");
+    }
+
+    #[test]
+    fn hermes_plugin_not_enabled_falls_back_to_manual() {
+        let not_listed = "plugins:\n  enabled:\n    - other\n  disabled: []\n";
+        assert_eq!(hermes_fixture(not_listed).mode(), "none", "present but not listed");
+        let disabled = "plugins:\n  enabled:\n    - impeccable-design-hook\n  disabled:\n    - impeccable-design-hook\n";
+        assert_eq!(hermes_fixture(disabled).mode(), "none", "listed under disabled");
+        let unreadable = "plugins:\n  enabled: impeccable-design-hook\n";
+        assert_eq!(hermes_fixture(unreadable).mode(), "none", "scalar, not a list");
+        let fixture = hermes_fixture(HERMES_ENABLED);
+        std::fs::remove_file(fixture.root.join(format!("{HERMES_PLUGIN}/__init__.py"))).unwrap();
+        assert_eq!(fixture.mode(), "none", "missing __init__.py");
+    }
+
+    #[test]
+    fn hermes_home_and_hook_disable_are_respected() {
+        let mut fixture = hermes_fixture(HERMES_ENABLED);
+        fixture.env.insert("IMPECCABLE_HOOK_DISABLED".to_string(), "yes".to_string());
+        assert_eq!(fixture.mode(), "none", "environment disabled");
+        fixture.env.remove("IMPECCABLE_HOOK_DISABLED");
+        fixture.env.insert("HERMES_HOME".to_string(), fixture.root.join("home/custom").to_string_lossy().into_owned());
+        assert_eq!(fixture.mode(), "none", "HERMES_HOME points elsewhere");
+        fixture.put("home/custom/plugins/impeccable-design-hook/plugin.yaml", "");
+        fixture.put("home/custom/plugins/impeccable-design-hook/__init__.py", "");
+        fixture.put("home/custom/config.yaml", HERMES_ENABLED);
+        assert_eq!(fixture.mode(), "stop", "HERMES_HOME under home");
     }
 
     #[test]

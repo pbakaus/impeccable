@@ -1,0 +1,7 @@
+{
+  "stdout": "ANSWER: {\"optionId\":\"one\",\"steer\":\"\",\"comp\":\".impeccable/mocks/decision/a.png\"}\nAPPROVED COMP: the user picked this composition in the comp round, so it is the approved comp. Set \"approved\": true in its prompt sidecar, the image's full file name plus .json (a.png gets a.png.json), record its path in the surface brief, then close the comps phase with build-phase advance. Build from it as it stands; never regenerate it.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

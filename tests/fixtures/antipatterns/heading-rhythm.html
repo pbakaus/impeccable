@@ -271,6 +271,15 @@
       .stack { display: flex; flex-direction: column; }
       .spacer-16 { height: 16px; }
       .spacer-48 { height: 48px; }
+      /* PASS: an empty spacer row painted the colour of its band (citigroup.com's
+         navy GridRow on the navy footer) is space; FLAG: one in a colour of its own
+         is a divider, and the title sits 0px under it */
+      .navy-band { background: #0f1632; color: #f4f4f4; padding: 16px; }
+      .navy-fill { background: #0f1632; }
+      .divider-fill { height: 16px; background: #c9bfe0; }
+      /* FLAG: a white strip across a band painted only with a gradient is a divider */
+      .grad-band { background-image: linear-gradient(#0f1632, #0f1632); color: #f4f4f4; padding: 16px; }
+      .white-fill { background: #ffffff; }
       /* FLAG: a code block framed on every side is content, not a rule */
       .code { border: 1px solid #d0d7de; background: #f6f8fa; padding: 16px; font: 14px/20px monospace; }
       /* FLAG: a title alone in a layout row, then a row of feature columns with the same class */
@@ -349,6 +358,33 @@
         <div><h2>Flag Stack Heading</h2></div>
         <div class="spacer-48"></div>
         <div><p class="blk">Sixteen pixels of spacer above the title, forty-eight below it before this content.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack navy-band">
+        <div><p class="blk">A navy band closes a paragraph, then holds forty-eight pixels open with an empty row painted navy.</p></div>
+        <div class="spacer-48 navy-fill"></div>
+        <div><h2 class="below-24">Pass Filled Spacer Row</h2></div>
+        <div><p class="blk">The row is the band's own colour, so the title has forty-eight pixels above and twenty-four below.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack">
+        <div><p class="blk">A paragraph, then a sixteen pixel row painted a colour of its own.</p></div>
+        <div class="divider-fill"></div>
+        <div><h2 class="below-24">Flag Divider Row</h2></div>
+        <div><p class="blk">The row is a divider the title sits right under, with twenty-four pixels below it.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack grad-band">
+        <div><p class="blk">A band painted with a gradient, then a forty-eight pixel white strip across it.</p></div>
+        <div class="spacer-48 white-fill"></div>
+        <div><h2 class="below-24">Flag Strip Over Gradient Band</h2></div>
+        <div><p class="blk">The strip is a divider the title sits right under, with twenty-four pixels below it.</p></div>
       </div>
     </section>
 

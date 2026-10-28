@@ -18,8 +18,8 @@
 //! a stripe.
 
 use crate::checks::css_scan::{
-    collect_css_custom_props, css_length_to_px, parse_css_decl_block, selector_is_state_indicator,
-    CustomProps, PatternFinding, CSS_RULE_BLOCK_SOURCE,
+    collect_css_custom_props, css_length_to_px, selector_is_state_indicator, CustomProps, DeclMap,
+    PatternFinding, CSS_RULE_BLOCK_SOURCE,
 };
 use crate::checks::measures::resolve_var_refs;
 use crate::checks::rules::{extract_shadow_lengths, find_shadow_color};
@@ -55,6 +55,12 @@ re!(
     STATUS_MARKER_RE,
     r"(?i)\.(?:is|has)-[-_A-Za-z0-9]|\.[A-Za-z0-9_-]+--[A-Za-z0-9]|\[\s*(?:data-[-_A-Za-z0-9]+|aria-invalid)"
         .to_string()
+);
+// A `data-*` attribute that names a selection (`[data-state=selected]`,
+// Radix and shadcn tables) marks the chosen row, not its status.
+re!(
+    SELECTION_ATTR_RE,
+    r#"(?i)\[\s*data-[-_A-Za-z0-9]+\s*[*^$|~]?=\s*["']?(?:selected|active|current|checked)(?:["'\s\]]|$)"#.to_string()
 );
 re!(INSET_WORD_RE, r"(?i)\binset\b".to_string());
 re!(
@@ -134,22 +140,45 @@ fn part_is_row_or_cell(part: &str) -> bool {
         || CLASS_RE.captures_iter(&subject).any(|c| class_names_a_row(&c[1]))
 }
 
+/// Whether a class names a row, not a cell (`.row`, `.table__row`): what a
+/// cell's ancestors are walked up to.
+pub fn class_names_only_a_row(class: &str) -> bool {
+    class_names(class, &["row"])
+}
+
 /// Whether a class names a row or cell: a `row` / `cell` / `gridcell`
 /// segment that is not a layout utility's (`flex-row`, `grid-row`,
 /// `row-span-2`, `row-gap-4`, `row-cols-3`).
 fn class_names_a_row(class: &str) -> bool {
+    class_names(class, &["row", "cell", "gridcell"])
+}
+
+fn class_names(class: &str, names: &[&str]) -> bool {
     let segments: Vec<String> = class
         .split(|c| c == '-' || c == '_')
         .filter(|s| !s.is_empty())
         .map(|s| s.to_ascii_lowercase())
         .collect();
     segments.iter().enumerate().any(|(i, seg)| {
-        matches!(seg.as_str(), "row" | "cell" | "gridcell")
+        names.contains(&seg.as_str())
             && !(i > 0 && matches!(segments[i - 1].as_str(), "flex" | "grid" | "inline"))
             && !segments.get(i + 1).is_some_and(|next| {
                 matches!(next.as_str(), "span" | "start" | "end" | "gap" | "reverse" | "auto" | "cols")
             })
     })
+}
+
+/// Whether a `data-state` / `data-status` value names a selection rather
+/// than a status.
+pub fn is_selection_state_value(value: &str) -> bool {
+    matches!(js::to_lower_case(js::trim(value)).as_str(), "selected" | "active" | "current" | "checked")
+}
+
+/// Whether a selector's subject is a table or ARIA row or cell by tag or
+/// role, which is a row whatever its corners.
+fn part_is_table_or_aria_row(part: &str) -> bool {
+    let subject = without_arguments(subject_compound(part));
+    ROW_TAG_RE.is_match(&subject) || ROW_ROLE_RE.is_match(&subject)
 }
 
 /// The selector with every parenthesised argument dropped.
@@ -288,6 +317,9 @@ struct BorderSide {
     width: f64,
     styled: bool,
     colour: String,
+    /// Whether an `!important` declaration set the width, style or colour:
+    /// a later declaration without it does not change that part.
+    important: [bool; 3],
     /// The single-side property that last set it (`border-left`), for the
     /// finding's wording.
     named: Option<&'static str>,
@@ -296,7 +328,23 @@ struct BorderSide {
 impl BorderSide {
     /// The initial border: medium, no style, the text colour.
     fn initial() -> Self {
-        BorderSide { width: 3.0, styled: false, colour: "currentcolor".to_string(), named: None }
+        BorderSide {
+            width: 3.0,
+            styled: false,
+            colour: "currentcolor".to_string(),
+            important: [false; 3],
+            named: None,
+        }
+    }
+    /// Sets the width (0), style (1) or colour (2) when a declaration of
+    /// this priority wins over the one that set it last.
+    fn set(&mut self, part: usize, important: bool, apply: impl FnOnce(&mut Self)) -> bool {
+        if self.important[part] && !important {
+            return false;
+        }
+        apply(self);
+        self.important[part] = important;
+        true
     }
     fn visible(&self) -> bool {
         self.styled
@@ -337,11 +385,37 @@ fn box_value<'a>(values: &[&'a str], family_sides: &[usize], side: usize) -> Opt
     values.get(at.min(n - 1)).copied()
 }
 
-/// A side border that is a stripe: `(property, thickness, edge)`. `block`
-/// is the rule's declarations as written: a later declaration wins, so a
-/// shared `border-style: none` after the side border hides it, and a reset
-/// before it does not. A box drawn top and bottom too is a frame.
-fn border_stripe(block: &str, lookup: &dyn Fn(&str) -> Option<String>) -> Option<(&'static str, f64, &'static str)> {
+/// A rule's declarations as its own cascade leaves them: a later
+/// declaration wins unless an earlier one is `!important`.
+fn cascade_decl_block(block: &str) -> DeclMap {
+    let mut decls = DeclMap::new();
+    let mut important: Vec<String> = Vec::new();
+    for part in block.split(';') {
+        let Some((prop, value)) = part.split_once(':') else { continue };
+        let prop = js::to_lower_case(js::trim(prop));
+        let priority = IMPORTANT_RE.is_match(js::trim(value));
+        let value = IMPORTANT_RE.replace(js::trim(value), "").into_owned();
+        if prop.is_empty() || value.is_empty() || (!priority && important.contains(&prop)) {
+            continue;
+        }
+        if priority {
+            important.push(prop.clone());
+        }
+        decls.set(&prop, value);
+    }
+    decls
+}
+
+/// A side border that is a stripe: `(property, thickness, edge, alone)`,
+/// `alone` when no other side is drawn. `block` is the rule's declarations
+/// as written: a later declaration wins unless an earlier one is
+/// `!important`, so a shared `border-style: none` after the side border
+/// hides it, and a reset before it does not. A box drawn top and bottom too
+/// is a frame.
+fn border_stripe(
+    block: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<(&'static str, f64, &'static str, bool)> {
     let mut sides = [BorderSide::initial(), BorderSide::initial(), BorderSide::initial(), BorderSide::initial()];
     for part in block.split(';') {
         let Some((prop, value)) = part.split_once(':') else { continue };
@@ -351,35 +425,44 @@ fn border_stripe(block: &str, lookup: &dyn Fn(&str) -> Option<String>) -> Option
         }) else {
             continue;
         };
+        let important = IMPORTANT_RE.is_match(js::trim(value));
         let value = IMPORTANT_RE.replace(js::trim(value), "").into_owned();
         let value = resolve_var_refs(&value, &|name: &str| lookup(name), 0);
         let tokens = split_ws_outside_parens(js::trim(&value));
         let single = family_sides.len() == 1;
         for &side in family_sides {
             let s = &mut sides[side];
-            match &prop[family.len()..] {
+            let set_any = match &prop[family.len()..] {
                 "" => {
-                    *s = BorderSide::initial();
+                    // A shorthand resets each part it does not name.
+                    let mut next = BorderSide::initial();
                     for &token in &tokens {
                         if BORDER_STYLE_RE.is_match(token) {
-                            s.styled = true;
+                            next.styled = true;
                         } else if BORDER_STYLE_NONE_RE.is_match(token) {
-                            s.styled = false;
+                            next.styled = false;
                         } else if let Some(px) = border_width_px(token) {
-                            s.width = px;
+                            next.width = px;
                         } else {
-                            s.colour = token.to_string();
+                            next.colour = token.to_string();
                         }
                     }
+                    let width = s.set(0, important, |s| s.width = next.width);
+                    let style = s.set(1, important, |s| s.styled = next.styled);
+                    let colour = s.set(2, important, |s| s.colour = next.colour);
+                    width || style || colour
                 }
                 rest => {
                     let Some(v) = box_value(&tokens, family_sides, side) else { continue };
                     match rest {
-                        "-width" => s.width = border_width_px(v).unwrap_or(s.width),
-                        "-style" => s.styled = BORDER_STYLE_RE.is_match(v),
-                        _ => s.colour = v.to_string(),
+                        "-width" => s.set(0, important, |s| s.width = border_width_px(v).unwrap_or(s.width)),
+                        "-style" => s.set(1, important, |s| s.styled = BORDER_STYLE_RE.is_match(v)),
+                        _ => s.set(2, important, |s| s.colour = v.to_string()),
                     }
                 }
+            };
+            if !set_any {
+                continue;
             }
             if single {
                 s.named = Some(family);
@@ -394,7 +477,8 @@ fn border_stripe(block: &str, lookup: &dyn Fn(&str) -> Option<String>) -> Option
     for (side, edge, fallback) in [(3, "left", "border-left"), (1, "right", "border-right")] {
         let s = &sides[side];
         if s.visible() && in_band(s.width) && accent_colour(&s.colour, lookup) == Some(true) {
-            return Some((s.named.unwrap_or(fallback), s.width, edge));
+            let alone = (0..4).all(|other| other == side || !sides[other].visible());
+            return Some((s.named.unwrap_or(fallback), s.width, edge, alone));
         }
     }
     None
@@ -461,14 +545,14 @@ pub fn scan_css_text_for_row_stripe(content: &str, tokens: Option<&CustomProps>)
         let kept: Vec<&str> = split_commas_outside_parens(selector)
             .into_iter()
             .map(js::trim)
-            .filter(|part| part_is_row_or_cell(part) && !selector_is_state_indicator(part))
+            .filter(|part| {
+                part_is_row_or_cell(part) && !selector_is_state_indicator(part) && !SELECTION_ATTR_RE.is_match(part)
+            })
             .collect();
         if kept.is_empty() {
             continue;
         }
-        let selector = kept.join(", ");
-        let selector = selector.as_str();
-        let decls = parse_css_decl_block(&m[2]);
+        let decls = cascade_decl_block(&m[2]);
         if decls
             .get("width")
             .and_then(|w| css_length_to_px(&resolve_var_refs(w, &lookup, 0)))
@@ -476,46 +560,44 @@ pub fn scan_css_text_for_row_stripe(content: &str, tokens: Option<&CustomProps>)
         {
             continue;
         }
-        // A rounded box is a card, and the card scans read it.
-        if decls.iter().any(|(p, v)| p.contains("radius") && rounds(js::trim(v))) {
+        // A rounded row named only by class is a card, and the card scans
+        // read it; a table or ARIA row or cell stays a row.
+        let kept: Vec<&str> = if decls.iter().any(|(p, v)| p.contains("radius") && rounds(js::trim(v))) {
+            kept.into_iter().filter(|part| part_is_table_or_aria_row(part)).collect()
+        } else {
+            kept
+        };
+        if kept.is_empty() {
             continue;
         }
-        let (stripe_prop, snippet) = if let Some((px, edge)) = decls
+        // The stripe, and whether the rule paints nothing else.
+        let (detail, stripe_only) = if let Some((px, edge)) = decls
             .get("box-shadow")
             .and_then(|v| inset_stripe(v, &lookup))
         {
-            (
-                "box-shadow",
-                format!("{} — inset box-shadow {}px stripe on a row or cell ({edge} edge)", collapse(selector), number_to_string(px)),
-            )
-        } else if let Some((prop, px, edge)) = border_stripe(&m[2], &lookup) {
-            (
-                prop,
-                format!("{} — {prop} {}px stripe on a row or cell ({edge} edge)", collapse(selector), number_to_string(px)),
-            )
+            let only = decls.iter().all(|(p, v)| !paints(p, v) || p == "box-shadow" || p.starts_with("box-shadow-"));
+            (format!("inset box-shadow {}px stripe on a row or cell ({edge} edge)", number_to_string(px)), only)
+        } else if let Some((prop, px, edge, alone)) = border_stripe(&m[2], &lookup) {
+            // Every side was resolved: a border declaration is part of the
+            // stripe when no other side is drawn.
+            let only = alone && decls.iter().all(|(p, v)| !paints(p, v) || p.starts_with("border"));
+            (format!("{prop} {}px stripe on a row or cell ({edge} edge)", number_to_string(px)), only)
         } else {
             continue;
         };
-        let stripe_only = decls
-            .iter()
-            .all(|(p, v)| {
-                !paints(p, v)
-                    || p == stripe_prop
-                    || p.starts_with(&format!("{stripe_prop}-"))
-                    // The border path checked every side: a shared border
-                    // declaration is part of the stripe.
-                    || (stripe_prop != "box-shadow"
-                        && p.starts_with("border")
-                        && !["border-top", "border-bottom", "border-block"].iter().any(|f| p.starts_with(f)))
-            });
-        if !selector_has_status_marker(selector) && !stripe_only {
+        // A rule that paints more than the stripe reports for the branches
+        // about a state only.
+        let kept: Vec<&str> = kept.into_iter().filter(|part| stripe_only || selector_has_status_marker(part)).collect();
+        if kept.is_empty() {
             continue;
         }
+        let selector = collapse(&kept.join(", "));
+        let snippet = format!("{selector} — {detail}");
         let leading = raw.as_str().len() - js::trim_start(raw.as_str()).len();
         findings.push(PatternFinding {
             id: "side-tab".to_string(),
             snippet,
-            selector: Some(collapse(selector)),
+            selector: Some(selector),
             index: Some(raw.start() + leading),
             severity: None,
         });
@@ -557,6 +639,16 @@ mod tests {
             "td.is-x { box-shadow: inset 3px 0 0 #d0342c; border-radius: 0; }",
             // A hover branch beside a status branch leaves the status branch.
             "tr.is-error td, tr:hover td { box-shadow: inset 3px 0 0 red; }",
+            // An important side border outlasts a later shared reset.
+            "td.is-x { border-left: 3px solid #d0342c !important; border-style: none; }",
+            "td.is-x { box-shadow: inset 3px 0 0 #d0342c !important; box-shadow: none; }",
+            // A shared colour paints only the side the stripe draws.
+            ".cell { border-color: #d0342c; border-left-width: 3px; border-left-style: solid; }",
+            // A plain branch beside a status branch leaves the status branch.
+            "tr.is-error td, td.amount { box-shadow: inset 3px 0 0 red; background: #fff; }",
+            // A table or ARIA cell is a row whatever its corners.
+            "td.is-error { box-shadow: inset 3px 0 0 red; border-radius: 4px; }",
+            ".grid [role=row].has-error { border-left: 3px solid #d0342c; border-radius: 6px; }",
         ] {
             assert_eq!(snippets(css).len(), 1, "{css}");
         }
@@ -570,6 +662,12 @@ mod tests {
                 .as_deref(),
             Some("tr.is-error td")
         );
+        assert_eq!(
+            scan_css_text_for_row_stripe("tr.is-error td, td.amount { box-shadow: inset 3px 0 0 red; background: #fff; }", None)[0]
+                .selector
+                .as_deref(),
+            Some("tr.is-error td")
+        );
     }
 
     #[test]
@@ -579,6 +677,8 @@ mod tests {
             "tr.is-selected td:first-child { box-shadow: inset 3px 0 0 #2563eb; }",
             "tr:hover td:first-child { box-shadow: inset 3px 0 0 #2563eb; }",
             "tr[aria-current] td { box-shadow: inset 3px 0 0 #2563eb; }",
+            "tr[data-state=\"selected\"] td { box-shadow: inset 3px 0 0 #2563eb; }",
+            "[role=row][data-state='active'] { box-shadow: inset 3px 0 0 #2563eb; }",
             // Neutral, transparent, faint or unresolved-and-unnamed colours.
             "tr.is-x td { box-shadow: inset 3px 0 0 #e5e7eb; }",
             ".vital-cell { border-left: 2px solid #2e3d54; padding-left: 18px; }",
@@ -613,6 +713,16 @@ mod tests {
             // A shared border-style after the side border hides it.
             "td.is-x { border-left: 3px solid #d0342c; border-style: none; }",
             "td.is-x { border-left-width: 3px; border-left-color: #d0342c; }",
+            // An important shared reset outlasts a later side border.
+            "td.is-x { border-style: none !important; border-left: 3px solid #d0342c; }",
+            "td.is-x { border-left-style: none !important; border-left: 3px solid #d0342c; }",
+            // An important `none` outlasts a later shadow, an important
+            // background a later reset.
+            "td.is-x { box-shadow: none !important; box-shadow: inset 3px 0 0 #d0342c; }",
+            "td { box-shadow: inset 3px 0 0 #d0342c; background: #fff !important; background: none; }",
+            // A plain cell edged on the other side too paints more than the stripe.
+            ".cell { border-left: 3px solid #d0342c; border-right: 1px solid #ccc; }",
+            "td { border-left: 3px solid #d0342c; border-inline-end: 1px solid #ccc; }",
             // A frame drawn top and bottom too.
             "td.is-x { border-width: 1px; border-style: solid; border-color: #ccc; border-left: 3px solid #d0342c; }",
             // A pseudo-element is a box of its own.

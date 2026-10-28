@@ -10,7 +10,7 @@ npx impeccable install
 
 Reload your coding tool, then run `/impeccable init` in your agent (`$impeccable init` on Codex).
 
-Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
+Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
 
 | Without Impeccable | With Impeccable |
 |---|---|
@@ -71,7 +71,7 @@ Live mode edits a local checkout only; don't inject it into a deployed site or w
 
 ## Three ways to run the detector
 
-**In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, and Grok Build, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).
+**In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, Grok Build, and Hermes Agent, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).
 
 **In CI or your terminal.** The CLI needs no agent:
 
@@ -97,7 +97,7 @@ npx impeccable install
 
 The installer detects your coding tools, asks whether to install for this project or globally, and offers the design hook where your tool supports one. Accept the hook. Reload your tool afterward. `npx impeccable update` refreshes an existing install. For scripts, pass `--providers=claude,codex,cursor` and `--scope=project|global`.
 
-Two tools need a trust step before the hook runs. In Codex, open `/hooks` and approve the project hook (again after an update that changes it). In Grok Build, run `/hooks-trust` or launch with `--trust`. [Allow the hook in your harness](https://impeccable.style/docs/hooks#allow-the-hook-in-your-harness).
+Three tools need one more step before the hook runs. In Codex, open `/hooks` and approve the project hook (again after an update that changes it). In Grok Build, run `/hooks-trust` or launch with `--trust`. In Hermes Agent, the hook is a plugin: run `hermes plugins enable impeccable-design-hook` once. [Allow the hook in your harness](https://impeccable.style/docs/hooks#allow-the-hook-in-your-harness).
 
 Node is only needed for `npx`. The skill itself runs a self-contained engine binary that ships next to it or downloads once into `~/.impeccable/bin/`.
 
@@ -133,7 +133,8 @@ Download the ZIP for your tool from [impeccable.style](https://impeccable.style)
 |---|---|---|
 | Claude Code | `.claude/` | `~/.claude/skills/` |
 | Cursor | `.cursor/` | |
-| Codex CLI | `.agents/` | `~/.agents/skills/` |
+| Codex CLI, Replit Agent | `.agents/` | `~/.agents/skills/` |
+| Devin | `.devin/` | `${XDG_CONFIG_HOME:-$HOME/.config}/devin/skills/` |
 | GitHub Copilot | `.github/` | |
 | Gemini CLI | `.gemini/` | |
 | Google Antigravity | `.agent/` | `~/.gemini/config/skills/` |
@@ -153,7 +154,7 @@ For example: `mkdir -p your-project/.claude/skills && cp -r .claude/skills/impec
 Notes:
 - A manual copy skips the design hook and subagents. Use the installer if you want them. For the Codex hook alone, copy `.codex/hooks.json` into your project's `.codex/`.
 - OpenCode also needs `.opencode/commands/impeccable.md` copied into your project's `.opencode/commands/` to provide `/impeccable`.
-- Hermes asks you to trust project-local skills once: run `hermes skills trust` from the project root. Global installs need no trust step. Hermes has no hook.
+- Hermes asks you to trust project-local skills once: run `hermes skills trust` from the project root. Global installs need no trust step.
 - Cursor and Gemini CLI may need Agent Skills enabled in settings. See the [Cursor](https://cursor.com/docs/context/skills) and [Gemini CLI](https://geminicli.com/docs/cli/skills/) skills docs.
 - Restart Trae after copying.
 - `impeccable install` and `update` manage a DeepSeek Harness global copy only when `DSH_HOME` is inside your home directory.

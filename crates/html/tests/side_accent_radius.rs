@@ -351,4 +351,17 @@ fn a_row_stripe_reports_only_where_its_selector_matches_a_cell() {
     };
     assert_eq!(count("plain"), 0);
     assert_eq!(count("other"), 1);
+    // A plain branch beside a status branch reports only where a status
+    // row is on the page.
+    let branches = "<style>tr.is-error td,td.amount{box-shadow:inset 3px 0 0 #d0342c;background:#fff}</style>";
+    assert!(side_tabs_on_page(branches, "<table><tr><td class=\"amount\">1</td></tr></table>").is_empty());
+    assert_eq!(side_tabs_on_page(branches, "<table><tr class=\"is-error\"><td>1</td></tr></table>").len(), 1);
+    // A row card rounded by another rule is the card scans' to report, once.
+    let row_card = "<div class=\"row-card is-x\">A row card</div>";
+    let stripe = ".row-card.is-x{width:400px;height:48px;box-shadow:inset 3px 0 0 #d0342c}";
+    let rounded = side_tabs_on_page(&format!("<style>{stripe}.row-card{{border-radius:12px}}</style>"), row_card);
+    assert_eq!(rounded.len(), 1, "{rounded:?}");
+    assert!(!rounded[0].contains("row or cell"), "{rounded:?}");
+    let square = side_tabs_on_page(&format!("<style>{stripe}</style>"), row_card);
+    assert!(square.len() == 1 && square[0].contains("row or cell"), "{square:?}");
 }

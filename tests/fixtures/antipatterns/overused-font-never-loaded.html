@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overused font never loaded: should pass (browser-only)</title>
+  <!--
+    Taste call r12-t2 (looot.ai run 1010, felixowolf.com run 1006): the page
+    names Recoleta for thirty labels, but nothing supplies it. Its one
+    @font-face points at a file that is not there, so document.fonts lists
+    the face at "error", and the canvas probe finds Recoleta drawn nowhere:
+    the labels render in the fallback. Recoleta is a commercial face no test
+    host installs; Inter is avoided here because a host that installs it
+    draws it, and then the finding rightly stands. The URL engine does not
+    report Recoleta as the page's face. The static engine cannot know and
+    keeps reporting. Its should-flag twin is overused-font-share-flag.html,
+    the same page with a face that loads (Inter, from a data: URI).
+  -->
+  <style>
+    @font-face { font-family: Recoleta; src: url(missing-recoleta-face.woff2) format("woff2"); }
+    body { margin: 0; padding: 24px 40px; width: 1000px; color: #1a1a1a; background: #fff; font: 16px/24px Georgia, serif; }
+    h1 { font-size: 32px; line-height: 40px; margin: 0 0 16px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; width: 720px; margin: 0 0 24px; }
+    .tags span { display: block; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font: 12px/16px Recoleta, sans-serif; }
+    p { width: 640px; margin: 0 0 16px; }
+    .drawer { display: none; width: 640px; font-family: Recoleta, sans-serif; }
+  </style>
+</head>
+<body>
+  <h1>Pass: Recoleta is named for thirty labels and never loads</h1>
+  <div class="tags">
+    <span>Platform</span>
+    <span>Agents</span>
+    <span>Pricing</span>
+    <span>Security</span>
+    <span>Docs</span>
+    <span>Changelog</span>
+    <span>Status</span>
+    <span>Careers</span>
+    <span>Compliance</span>
+    <span>Privacy</span>
+    <span>Releases</span>
+    <span>Roadmap</span>
+    <span>Partners</span>
+    <span>Webhooks</span>
+    <span>Integrations</span>
+    <span>Templates</span>
+    <span>Latency</span>
+    <span>Uptime</span>
+    <span>Regions</span>
+    <span>Teams</span>
+    <span>Roles</span>
+    <span>Audit</span>
+    <span>Logs</span>
+    <span>Alerts</span>
+    <span>Export</span>
+    <span>Import</span>
+    <span>Billing</span>
+    <span>Usage</span>
+    <span>Limits</span>
+    <span>Support</span>
+  </div>
+  <p>The workspace keeps every draft, review and decision in one place, so a team that picks up a project after a month away can read how it got to where it is without asking anyone who was there at the time.</p>
+  <p>Each record carries its own history. A change shows who made it and what it replaced, and a reviewer can step back through the versions one at a time until the point where the numbers stopped adding up.</p>
+  <p>Access follows the work. A contractor sees the two projects they were brought in for and nothing else, and when the engagement ends their access ends with it, on the date written into the invitation.</p>
+  <p>Exports are plain files in open formats. Nothing is held in a shape only this product can read, and a team that decides to leave takes its whole archive along in an afternoon without writing to support.</p>
+  <p>Alerts go to the person on call and to nobody else. The schedule is a table anyone on the team can read, and swapping a shift takes two taps from the phone, with the change noted for the rest of the week.</p>
+  <p>Billing counts active seats on the last day of the month. A seat that was added and removed inside the same month costs nothing, and the invoice lists each seat by name so finance can check it line by line.</p>
+  <p>Search reads every field, including the notes people leave in the margins, and it returns the record with the matching words marked so a reader can see at a glance why it came up in the first place.</p>
+  <p>Support answers in writing within a working day, and every answer is kept with the record it was about, so the next person to ask the same question finds the answer already waiting where they looked.</p>
+
+  <!-- Not rendered: a closed drawer whose copy is set in Recoleta. It counts as
+       Recoleta text elements, and its characters are not weighed. -->
+  <nav class="drawer">
+    <a href="#x">The workspace keeps every draft, review and decision in one place, so a team that picks up a project after a month away can read how it got to where it is without asking anyone who was there at the time.</a>
+    <a href="#x">Each record carries its own history. A change shows who made it and what it replaced, and a reviewer can step back through the versions one at a time until the point where the numbers stopped adding up.</a>
+    <a href="#x">Access follows the work. A contractor sees the two projects they were brought in for and nothing else, and when the engagement ends their access ends with it, on the date written into the invitation.</a>
+    <a href="#x">Exports are plain files in open formats. Nothing is held in a shape only this product can read, and a team that decides to leave takes its whole archive along in an afternoon without writing to support.</a>
+  </nav>
+</body>
+</html>

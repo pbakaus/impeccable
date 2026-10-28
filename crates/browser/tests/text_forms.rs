@@ -3,11 +3,14 @@
 //!
 //! - `overused-font-share-{pass,flag}.html`: a face that sets under one
 //!   character in twenty of the visible text is not reported as primary.
+//! - `overused-font-never-loaded.html`: a face the browser never loaded is
+//!   not reported as primary (taste call r12-t2).
 //! - `side-tab-stylesheet-forms.html`: a pseudo-element stripe its host
 //!   already reports is not reported again from the stylesheet, and a stripe
 //!   drawn by an image alone is not reported.
 //! - `marquee-ornament.html`: an infinite horizontal loop that moves nothing
-//!   to read or look at is not a marquee.
+//!   to read or look at is not a marquee; on a pseudo-element, the
+//!   pseudo-element is what moves.
 //! - `bounce-easing-pulse.html`: a bounce name whose keyframes only scale
 //!   between nothing and full size is a pulse.
 
@@ -100,6 +103,18 @@ fn overused_font_stands_down_for_a_face_that_sets_next_to_no_text() {
     assert_eq!(flag[0].0, "Primary font: inter (79% of text)", "{flag:?}");
 }
 
+/// Taste call r12-t2: the same thirty labels on a page whose only Recoleta
+/// `@font-face` fails to load, and which no test host installs, set their
+/// text in a fallback, so Recoleta is not reported as the page's face. `overused-font-share-flag.html`,
+/// which loads its Inter, is the should-flag twin above.
+#[test]
+fn overused_font_stands_down_for_a_face_the_browser_never_loaded() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let pass = findings(&engine, port, "overused-font-never-loaded.html", "overused-font");
+    assert_eq!(pass, vec![], "Recoleta never loaded");
+}
+
 fn snippets(engine: &BrowserEngine, port: u16, fixture: &str, rule: &str) -> Vec<String> {
     let mut out: Vec<String> = findings(engine, port, fixture, rule).into_iter().map(|(s, _)| s).collect();
     out.sort();
@@ -131,9 +146,10 @@ fn a_marquee_carries_something_to_read_or_look_at() {
         snippets(&engine, port, "marquee-ornament.html", "marquee"),
         vec![
             ".flag-logos — infinite horizontal loop animation \"fixture-crawl\"",
+            ".flag-ticker::before — infinite horizontal loop animation \"fixture-flow\"",
             ".flag-words — infinite horizontal loop animation \"fixture-crawl\"",
         ],
-        "the wave path and the highlight sweep move nothing a visitor reads"
+        "the wave path, the highlight sweep and the pseudo-element sheen move nothing a visitor reads"
     );
 }
 

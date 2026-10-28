@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"skipped-heading\",\n    \"name\": \"Skipped heading level\",\n    \"description\": \"Heading levels should not skip (e.g. h1 then h3 with no h2). Screen readers use heading hierarchy for navigation. Skipping levels breaks the document outline.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/skipped-heading-sr-only.html\",\n    \"line\": 0,\n    \"snippet\": \"<h1> \\\"Cards and services\\\" followed by <h3> \\\"Site search\\\" (missing h2)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

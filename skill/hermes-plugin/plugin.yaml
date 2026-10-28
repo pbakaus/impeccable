@@ -1,0 +1,6 @@
+name: impeccable-design-hook
+version: "1.0.0"
+description: "Runs the Impeccable design detector on UI files the agent writes or patches and adds the findings to the tool result, so the model fixes broken images, contrast failures and design-system drift on its next step. Before the turn ends, a deeper pass over every UI file touched in the session hands back whatever is left. It runs only where the impeccable skill is installed (the project's .hermes/skills or the Hermes home); set hook.enabled to false in .impeccable/config.json to turn it off for a project."
+provides_hooks:
+  - transform_tool_result
+  - pre_verify

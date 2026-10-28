@@ -472,7 +472,8 @@ pub fn is_monospace_family(font_family: &str) -> bool {
             .any(|w| matches!(w, "mono" | "monospace" | "monospaced" | "sfmono"))
 }
 
-/// How many em dashes `body` sets: each `—`, each `--` written in its place
+/// How many em dashes `body` sets: each `—` (a pair `——`, the Chinese
+/// dash, is one), each `--` written in its place
 /// (two hyphens and no more, followed by a non-space), and each `---` set
 /// between two letters or digits (the LaTeX and SmartyPants spelling). Any
 /// other longer run of hyphens is a rule, not a dash: terminal output and
@@ -485,8 +486,14 @@ pub fn count_em_dashes(body: &str) -> usize {
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '—' {
-            count += 1;
-            i += 1;
+            // Chinese sets its dash as two em dashes side by side (破折号,
+            // `——`): one mark, counted once (taste call r14-t6). Any other
+            // run counts each dash, as before.
+            let start = i;
+            while i < chars.len() && chars[i] == '—' {
+                i += 1;
+            }
+            count += if i - start == 2 { 1 } else { i - start };
         } else if chars[i] == '-' {
             let start = i;
             while i < chars.len() && chars[i] == '-' {
@@ -515,12 +522,20 @@ pub fn count_em_dashes(body: &str) -> usize {
 /// JS: checks.mjs#checkEmDashOveruse. Two gates (absolute floor + density)
 /// over already-rendered text. `None` for a non-string input.
 pub fn check_em_dash_overuse(text: Option<&str>) -> Vec<Finding> {
+    check_em_dash_overuse_less(text, 0)
+}
+
+/// [`check_em_dash_overuse`], with `separators` of the text's em dashes
+/// left out of the count: dashes the caller has read as list separators
+/// (a short term, a dash, its description), which set punctuation in no
+/// sentence.
+pub fn check_em_dash_overuse_less(text: Option<&str>, separators: usize) -> Vec<Finding> {
     re!(WS_RE, format!("{}+", WS));
     let body: String = match text {
         Some(t) => WS_RE.replace_all(t, " ").into_owned(),
         None => String::new(),
     };
-    let count = count_em_dashes(&body);
+    let count = count_em_dashes(&body).saturating_sub(separators);
     if count < EM_DASH_FLOOR {
         return vec![];
     }
@@ -666,6 +681,8 @@ mod tests {
     fn count_em_dashes_cases() {
         assert_eq!(count_em_dashes("a — b — c"), 2);
         assert_eq!(count_em_dashes("a--b"), 1);
+        assert_eq!(count_em_dashes("长白山——中国"), 1, "the Chinese paired dash is one mark");
+        assert_eq!(count_em_dashes("a — b ——— c"), 4, "a run of three counts each");
         assert_eq!(count_em_dashes("a-- b"), 0);
         // A run longer than two is a rule, not a dash.
         assert_eq!(count_em_dashes("----x"), 0);

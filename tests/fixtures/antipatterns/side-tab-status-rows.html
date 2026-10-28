@@ -52,6 +52,25 @@
     td.amount { box-shadow: inset 3px 0 0 #7c3aed; background: #f8fafc; }
     /* PASS: a 1px column divider. */
     td.divided { box-shadow: inset 1px 0 0 #dc2626; }
+    /* PASS: an important style reset outlasts the later side border. */
+    tr.is-void td:first-child { border-style: none !important; border-left: 3px solid #b91c1c; }
+    /* PASS: a plain cell edged on both sides is a column. */
+    td.bounded { border-left: 3px solid #0891b2; border-right: 1px solid #0891b2; }
+    /* PASS: the plain branch of a list whose status branch is not on the page. */
+    tr.is-late td.due, td.total { box-shadow: inset 3px 0 0 #9333ea; background: #f8fafc; }
+    /* PASS: a cell wrapper in a selected row marks the selection. */
+    .cell-content { display: block; width: 216px; height: 24px; }
+    tr[aria-selected="true"] .cell-content { box-shadow: inset 3px 0 0 #2563eb; }
+    /* FLAG: a row card rounded by another rule, reported once, as a card. */
+    .row-card { display: block; width: 720px; height: 40px; padding: 8px 12px; box-sizing: border-box; }
+    .row-card.is-overdue { box-shadow: inset 4px 0 0 #dc2626; }
+    .row-card { border-radius: 12px; }
+    /* PASS: a row selected through data-state (Radix, shadcn). */
+    tr[data-state="selected"] td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+    /* FLAG: an error cell with rounded corners is still a cell. */
+    td.is-rounded-error { box-shadow: inset 3px 0 0 #be123c; border-radius: 4px; }
+    /* FLAG: a stale row inside an active tab pane. */
+    tr.is-stale > td:first-child { box-shadow: inset 3px 0 0 #ea580c; }
   </style>
 </head>
 <body>
@@ -84,5 +103,26 @@
     <thead><tr><th class="is-sorted">Customer</th><th>Total</th><th>Due</th></tr></thead>
     <tbody><tr><td class="is-sticky">Acme</td><td class="amount">$1,200</td><td class="divided">Friday</td></tr></tbody>
   </table>
+
+  <h2>Pass: a void row whose stripe an important reset hides</h2>
+  <table><tbody><tr class="is-void"><td>Invoice 21</td><td>Void</td><td>Last week</td></tr></tbody></table>
+
+  <h2>Pass: a cell edged on both sides, a total beside an unused late branch</h2>
+  <table><tbody><tr><td class="bounded">Region</td><td class="total">$3,400</td><td>Monday</td></tr></tbody></table>
+
+  <h2>Pass: a cell wrapper in a selected row</h2>
+  <table><tbody><tr aria-selected="true"><td class="table__cell"><span class="cell-content">Invoice 22</span></td><td>Paid</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a row card rounded by another rule</h2>
+  <div class="row-card is-overdue">Invoice 23 is overdue</div>
+
+  <h2>Pass: a row selected through data-state</h2>
+  <table><tbody><tr data-state="selected"><td>Invoice 24</td><td>Paid</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a rounded error cell</h2>
+  <table><tbody><tr><td class="is-rounded-error">Invoice 25</td><td>Failed</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a stale row inside an active tab pane</h2>
+  <div class="tab-pane active"><table><tbody><tr class="is-stale"><td>Invoice 26</td><td>Stale</td><td>Last month</td></tr></tbody></table></div>
 </body>
 </html>

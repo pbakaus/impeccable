@@ -48,9 +48,9 @@ fn cmd_launcher_asset_naming_matches_engine() {
     // arm64 falls back to the x64 asset (Windows on ARM runs x64 binaries).
     assert!(cmd.contains(r#"set "asset=impeccable-windows-x64.exe""#));
     assert!(cmd.contains(r#"if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "arch=arm64""#));
-    // sha256 verification via certutil against the sidecar.
+    // sha256 verification via certutil against the committed manifest.
     assert!(cmd.contains("certutil -hashfile"));
-    assert!(cmd.contains(".sha256"));
+    assert!(cmd.contains("engine-checksums.txt"));
     // engine-probe handshake for PATH / unversioned home candidates.
     assert!(cmd.contains("engine-probe"));
     assert!(cmd.contains(r#"findstr /b /c:"impeccable-engine""#));
@@ -97,21 +97,26 @@ fn cmd_launcher_has_no_multiline_parenthesized_blocks() {
 
 #[test]
 fn launchers_fail_closed_on_missing_checksum() {
-    // Triage C1: a freshly downloaded binary runs only after verifying
-    // against its .sha256 sidecar. A sidecar that cannot be fetched, or a
-    // machine with no sha256 tool, refuses the download instead of running
-    // an unverified binary; a mismatch stays fatal.
+    // Triage C1: a freshly downloaded binary runs only after its hash matches
+    // the digest committed in engine-checksums.txt (#813); nothing published
+    // beside the binary is trusted. No recorded digest, or a machine with no
+    // sha256 tool, refuses the download instead of running an unverified
+    // binary; a mismatch stays fatal.
     let sh = launcher_file("impeccable");
     let cmd = launcher_file("impeccable.cmd");
     assert!(sh.contains("refusing the unverified download"));
-    assert!(sh.contains(r#"if [ -z "$expected" ] || [ -z "$actual" ]; then"#));
-    // wget-only environments fetch and require the sidecar too.
-    assert!(sh.contains(r#"wget -q -O "$tmp.sha256" "$url.sha256""#));
+    assert!(sh.contains(r#"manifest="$dir/engine-checksums.txt""#));
+    assert!(sh.contains(r#"if [ -z "$actual" ]; then"#));
     assert!(cmd.contains("refusing the unverified download"));
+    assert!(cmd.contains(r#"set "manifest=%~dp0engine-checksums.txt""#));
     assert!(cmd.contains("goto verify_refuse"));
-    // The old lenient path (missing sidecar -> place the binary) is gone.
-    assert!(!cmd.contains(":have_sidecar"));
     for text in [&sh, &cmd] {
+        // The digest is resolved before any download, and the sidecar is gone.
+        assert!(text.contains("no checksum for engine"));
+        assert!(!text.contains(".sha256"));
+        // Cached binaries are hashed once; the stamp records it.
+        assert!(text.contains(".verified"));
+        assert!(text.contains("cannot verify the cached engine"));
         assert!(text.contains("checksum mismatch downloading"));
     }
 }

@@ -304,6 +304,72 @@ function __snapStyleRuleAppliesToLiveMatches(rule, matches) {
   }
 }
 
+// Dom::text_wrap_pretty_supported (crates/foundation/src/browser/dom.rs):
+// null where CSS.supports is missing, and the consumer then trusts the
+// computed style.
+function __snapTextWrapPrettySupported() {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return null;
+  try { return CSS.supports('text-wrap', 'pretty') || CSS.supports('text-wrap-style', 'pretty'); }
+  catch { return null; }
+}
+
+// Dom::document_font_faces (crates/foundation/src/browser/dom.rs): each
+// face in document.fonts as [family, status], quotes stripped, one entry per
+// distinct pair. null where the FontFaceSet cannot be read.
+function __snapFontFaces() {
+  try {
+    if (typeof document === 'undefined' || !document.fonts || typeof document.fonts.forEach !== 'function') return null;
+    const seen = new Set();
+    const out = [];
+    document.fonts.forEach((face) => {
+      if (out.length >= 512) return;
+      const family = String(face.family || '').trim().replace(/^['"]|['"]$/g, '');
+      const status = String(face.status || '');
+      const key = family + '\u0000' + status;
+      if (!family || seen.has(key)) return;
+      seen.add(key);
+      out.push([family, status]);
+    });
+    return out;
+  } catch { return null; }
+}
+
+// Dom::rendered_faces (crates/foundation/src/browser/dom.rs): for each
+// face that heads the font-family of an element holding text, whether the
+// browser draws text in it at all, installed or loaded: a canvas measures a
+// probe string in "<face>", <generic> against <generic> alone for three
+// generics, and any difference means the face is drawn. Synchronous, so a
+// webfont still loading reads as not drawn (document.fonts says loading).
+// null where no 2D canvas is available.
+function __snapRenderedFaces() {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx || typeof ctx.measureText !== 'function') return null;
+    const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong', '-apple-system', 'blinkmacsystemfont']);
+    const faces = [];
+    const seen = new Set();
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    let steps = 0;
+    for (let node = walker.nextNode(); node && steps < 5000 && faces.length < 40; node = walker.nextNode()) {
+      steps++;
+      if (!node.nodeValue || !node.nodeValue.trim() || !node.parentElement) continue;
+      const stack = getComputedStyle(node.parentElement).fontFamily || '';
+      const first = stack.split(',').map((f) => f.trim().replace(/^['"]|['"]$/g, '')).find((f) => f && !generic.has(f.toLowerCase()));
+      if (!first || seen.has(first.toLowerCase())) continue;
+      seen.add(first.toLowerCase());
+      faces.push(first);
+    }
+    const probe = 'mmmmmmmmmmlliiWW@#0123456789';
+    const width = (font) => { ctx.font = font; return ctx.measureText(probe).width; };
+    return faces.map((face) => {
+      const quoted = '"' + face.replace(/["\\]/g, '') + '"';
+      const drawn = ['monospace', 'serif', 'sans-serif'].some((g) => width('72px ' + quoted + ', ' + g) !== width('72px ' + g));
+      return [face, drawn];
+    });
+  } catch { return null; }
+}
+
 function __snapConditionalCssRuleIsActive(rule) {
   const type = Number(rule?.type);
   const constructorName = rule?.constructor?.name || '';
@@ -886,6 +952,9 @@ const __impeccableSnapshot = {
       keyframes: __snapKeyframes(keyframeKeys),
       keyframeKeys,
       linkedCss: __snapLinkedStylesheetText(),
+      prettyWrap: __snapTextWrapPrettySupported(),
+      fontFaces: __snapFontFaces(),
+      renderedFaces: __snapRenderedFaces(),
       styleProps: __SNAP_STYLE_PROPS,
       pseudoProps: __SNAP_PSEUDO_PROPS,
       strings,

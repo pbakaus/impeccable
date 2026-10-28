@@ -9,7 +9,8 @@
 //!    its `scripts/VERSION` exists and `scripts/bin/<os>-<arch>/impeccable`
 //!    does not, the matching engine binary is downloaded from this repo's
 //!    `engine-v<version>` GitHub Release (`IMPECCABLE_DOWNLOAD_BASE` overrides
-//!    the base URL) with `.sha256` verification, so the installed skill is
+//!    the base URL), verified against the skill dir's own
+//!    `scripts/engine-checksums.txt`, so the installed skill is
 //!    self-contained. See `engine_binary`.
 //! 2. Hook manifests are rewritten to invoke the launcher
 //!    (`"<skill>/scripts/impeccable" hook`, `impeccable.cmd` in the Codex

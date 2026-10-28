@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evidence: a slide moves on while the screenshot is taken</title>
+  <style>
+    /* Two faint notes, each a real contrast failure at the scan. Once the
+       scan's capture exists (`window.__impCap`), `.step-note` moves 600px
+       right in the task after its box is first read, as gseek.kr's swiper
+       (corpus run 1010) advanced between the evidence measure and the
+       screenshot. That is under a viewport width, so the measure keeps its
+       rect; the measure after the screenshot finds it
+       moved, and its drift carries `afterShot`. `.still-note` never moves
+       and carries no drift. Pinned by crates/browser/tests/evidence.rs. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #f2f2f2; background: #0b0b10; overflow-x: hidden; }
+    p { margin: 0 0 24px; width: 520px; font-size: 14px; }
+    .faint { color: #3a3a44; }
+    /* A colour pair reports once (r14-t2), so each note wears its own ink. */
+    .step-note { color: #3b3a44; }
+    .track { position: relative; width: 600px; height: 40px; }
+  </style>
+</head>
+<body>
+  <h1>A slide that moves on during the screenshot</h1>
+  <p class="still-note faint">Faint note that stays where the scan saw it.</p>
+  <div class="track" id="step-track"><p class="step-note faint">Faint note in a slide that steps on while the screenshot is taken.</p></div>
+  <script>
+    const watch = setInterval(() => {
+      if (!window.__impCap) return;
+      clearInterval(watch);
+      const track = document.getElementById('step-track');
+      const note = track.querySelector('.step-note');
+      const read = Element.prototype.getBoundingClientRect;
+      note.getBoundingClientRect = function () {
+        if (!window.__stepRead) {
+          window.__stepRead = true;
+          // The next task: after the measure returns, before the screenshot.
+          setTimeout(() => { track.style.transform = 'translateX(600px)'; }, 0);
+        }
+        return read.call(this);
+      };
+    }, 10);
+  </script>
+</body>
+</html>

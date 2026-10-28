@@ -15,15 +15,9 @@ const COMSPEC = process.env.ComSpec || process.env.COMSPEC || 'C:\\Windows\\Syst
 // downloaded release binary is executed, and all network traffic is loopback.
 const PAYLOAD = WINDOWS ? fs.readFileSync(COMSPEC) : Buffer.from('#!/bin/sh\necho verified-engine\n');
 const HASH = createHash('sha256').update(PAYLOAD).digest('hex');
-
-// The run's in-flight download: a .impeccable.part.<id> file (sh) or the
-// impeccable.exe inside a .impeccable.part.<id> directory (cmd).
-function stagedDownload(cacheDir) {
-  const name = fs.readdirSync(cacheDir).find(file => file.startsWith('.impeccable.part.') && file !== '.impeccable.part.1');
-  assert.ok(name, 'a staging entry exists while the download is in flight');
-  const staged = path.join(cacheDir, name);
-  return fs.statSync(staged).isDirectory() ? path.join(staged, 'impeccable.exe') : staged;
-}
+const BIN = WINDOWS ? 'impeccable.exe' : 'impeccable';
+// The release asset this host's launcher asks for (the cmd tests pin AMD64).
+const ASSET = `impeccable-${WINDOWS ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux'}-${!WINDOWS && process.arch === 'arm64' ? 'arm64' : 'x64'}${WINDOWS ? '.exe' : ''}`;
 
 async function exercise(t, scenario) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-'));
@@ -37,7 +31,21 @@ async function exercise(t, scenario) {
   const name = WINDOWS ? 'impeccable.cmd' : 'impeccable';
   const launcher = path.join(scripts, name);
   fs.copyFileSync(path.join(ROOT, 'skill/scripts', name), launcher);
+  // The launchers verify against the manifest next to them, never the server.
+  const digest = scenario === 'mismatch' ? '0'.repeat(64) : HASH;
+  if (scenario !== 'no-manifest') {
+    const entry = scenario === 'no-manifest-line' ? `9.9.9 ${ASSET} ${digest}` : `0.0.0-test ${ASSET} ${digest}`;
+    // A CRLF checkout whose last line has no newline must still match.
+    const manifest = scenario === 'crlf-manifest' ? `# test manifest\r\n\r\n${entry}` : `# test manifest\n\n${entry}\n`;
+    fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), manifest);
+  }
   const cacheDir = path.join(cache, 'bin', '0.0.0-test');
+  if (scenario.startsWith('cached-')) {
+    // A cache from an earlier run: no .verified stamp yet.
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const tampered = Buffer.from('#!/bin/sh\necho tampered-engine\n');
+    fs.writeFileSync(path.join(cacheDir, BIN), scenario === 'cached-tampered' ? tampered : PAYLOAD, { mode: 0o755 });
+  }
   if (scenario === 'cache-directory-failure') {
     // A file where the cache parent belongs makes mkdir fail on every OS,
     // including privileged test runners where chmod cannot deny writes.
@@ -89,7 +97,7 @@ async function exercise(t, scenario) {
     const fault = path.join(tools, 'fault.cmd');
     const hashFault = ['hash-failure', 'removed-during-hash'].includes(scenario);
     const operation = hashFault
-      ? 'certutil -hashfile "%part%" SHA256 >"%sidecar%" 2>nul'
+      ? 'certutil -hashfile "%~1" SHA256 >"%~2" 2>nul'
       : 'move /y "%part%" "%cached%" >nul 2>nul';
     let script;
     if (hashFault) {
@@ -104,7 +112,7 @@ async function exercise(t, scenario) {
     fs.writeFileSync(fault, script.replaceAll('\n', '\r\n'));
     const source = fs.readFileSync(launcher, 'utf8');
     assert.equal(source.split(operation).length, 2, 'instrument exactly one operation');
-    const replacement = `call "${fault}"${hashFault ? ' >"%sidecar%" 2>nul' : ''}`;
+    const replacement = `call "${fault}"${hashFault ? ' >"%~2" 2>nul' : ''}`;
     fs.writeFileSync(launcher, source.replace(operation, replacement));
   }
   const requests = [];
@@ -117,22 +125,14 @@ async function exercise(t, scenario) {
       req.socket.destroy();
       return;
     }
-    if (req.url.endsWith('.sha256')) {
-      const part = stagedDownload(cacheDir);
-      if (scenario === 'removed') fs.unlinkSync(part);
-      if (scenario === 'emptied') fs.truncateSync(part);
-      res.writeHead(scenario === 'no-sidecar' ? 404 : 200);
-      res.end(scenario === 'empty-sidecar' ? '' : `${scenario === 'mismatch' ? '0'.repeat(64) : HASH}  engine\n`);
-    } else {
-      if (interrupt) {
-        // Send part of the body and never finish, so the launcher is mid-download.
-        res.writeHead(200);
-        res.write(PAYLOAD.subarray(0, 8), stalled);
-        return;
-      }
-      if (scenario === 'download-failure') res.writeHead(404);
-      res.end(scenario === 'empty-download' ? '' : PAYLOAD);
+    if (interrupt) {
+      // Send part of the body and never finish, so the launcher is mid-download.
+      res.writeHead(200);
+      res.write(PAYLOAD.subarray(0, 8), stalled);
+      return;
     }
+    if (scenario === 'download-failure') res.writeHead(404);
+    res.end(scenario === 'empty-download' ? '' : PAYLOAD);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -143,7 +143,7 @@ async function exercise(t, scenario) {
     HOME: home, USERPROFILE: home, TEMP: root, TMP: root,
     IMPECCABLE_HOME: cache,
     IMPECCABLE_DOWNLOAD_BASE: `http://127.0.0.1:${server.address().port}`,
-    ...(WINDOWS ? { SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: 'AMD64' } : {}),
+    ...(WINDOWS ? { SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: scenario === 'arm64-fallback' ? 'ARM64' : 'AMD64' } : {}),
   };
   const run = () => new Promise((resolve, reject) => {
     const child = WINDOWS
@@ -160,6 +160,9 @@ async function exercise(t, scenario) {
   });
   const result = await run();
   if (scenario === 'valid') {
+    // The stamp is the whole check on later runs: a hash tool that always
+    // fails proves nothing rehashes the cached engine.
+    if (!WINDOWS) fs.writeFileSync(path.join(tools, 'shasum'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const requestCount = requests.length;
     const cachedResult = await run();
     assert.equal(cachedResult.status, 0, cachedResult.stderr);
@@ -168,10 +171,10 @@ async function exercise(t, scenario) {
     assert.equal(requests.length, requestCount, 'subsequent runs use the cached engine without network');
   }
   assert.equal(result.signal, null, JSON.stringify(result));
-  const cacheFailure = scenario.startsWith('cache-');
-  assert.equal(requests.filter(url => !url.endsWith('.sha256')).length, cacheFailure ? 0 : 1,
-    'cache failures do not attempt a download; other scenarios download once');
-  return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir) : [], requests, cacheDir };
+  const noDownload = scenario.startsWith('cache-') || scenario.startsWith('no-manifest') || scenario === 'cached-unstamped';
+  assert.equal(requests.length, noDownload ? 0 : 1,
+    'cache failures, a missing digest and a verified cache make no request; other scenarios download once');
+  return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).sort() : [], requests, cacheDir };
 }
 
 for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'download-failure', 'transport-failure']) {
@@ -199,8 +202,42 @@ test('launcher downloads and runs a verified executable', async t => {
   const result = await exercise(t, 'valid');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /verified-engine/);
-  assert.deepEqual(result.files, [WINDOWS ? 'impeccable.exe' : 'impeccable']);
-  assert.equal(result.requests.length, 2);
+  assert.deepEqual(result.files, [BIN, `${BIN}.verified`], 'the binary lands with its verified stamp');
+  assert.equal(result.requests.length, 1);
+});
+
+test('launcher reads a CRLF manifest whose last line has no newline', async t => {
+  const result = await exercise(t, 'crlf-manifest');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verified-engine/);
+  assert.deepEqual(result.files, [BIN, `${BIN}.verified`]);
+});
+
+test('cmd launcher on ARM64 fetches the x64 asset when only x64 has a line', { skip: WINDOWS ? false : 'Windows-only cmd launcher ARM64 fallback' }, async t => {
+  const result = await exercise(t, 'arm64-fallback');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verified-engine/);
+  assert.deepEqual(result.requests, ['/engine-v0.0.0-test/impeccable-windows-x64.exe'], 'no arm64 request without an arm64 line');
+  assert.deepEqual(result.files, [BIN, `${BIN}.verified`]);
+});
+
+test('launcher hashes an unstamped cached engine once, then trusts the stamp', async t => {
+  const result = await exercise(t, 'cached-unstamped');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verified-engine/);
+  assert.equal(result.stderr, '');
+  assert.deepEqual(result.files, [BIN, `${BIN}.verified`]);
+  assert.equal(fs.readFileSync(path.join(result.cacheDir, `${BIN}.verified`), 'utf8').trim(), HASH);
+});
+
+test('launcher re-downloads a cached engine that does not match the manifest', async t => {
+  const result = await exercise(t, 'cached-tampered');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /cannot verify the cached engine/);
+  assert.match(result.stdout, /verified-engine/);
+  assert.doesNotMatch(result.stdout, /tampered-engine/);
+  assert.deepEqual(result.files, [BIN, `${BIN}.verified`]);
+  assert.deepEqual(fs.readFileSync(path.join(result.cacheDir, BIN)), PAYLOAD, 'the download replaced the bad file');
 });
 
 test('launcher ignores stale staging files from older or killed runs', async t => {
@@ -208,7 +245,7 @@ test('launcher ignores stale staging files from older or killed runs', async t =
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /verified-engine/);
   assert.deepEqual(result.files.sort(),
-    ['.impeccable.part.1', WINDOWS ? 'impeccable.exe' : 'impeccable', 'impeccable.exe.part', 'impeccable.exe.sha256'].sort(),
+    ['.impeccable.part.1', BIN, `${BIN}.verified`, 'impeccable.exe.part', 'impeccable.exe.sha256'].sort(),
     'the new download lands and leaves the leftovers untouched');
 });
 
@@ -264,6 +301,7 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
     fs.mkdirSync(scripts);
     fs.mkdirSync(homeBin, { recursive: true });
     fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+    fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), `0.0.0-test ${ASSET} ${HASH}\n`);
     const launcher = path.join(scripts, 'impeccable');
     fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable'), launcher);
     // Prints the handshake marker either way; only the exit status differs.
@@ -304,7 +342,7 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
   });
 }
 
-for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'empty-sidecar', 'mismatch', 'hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure']) {
+for (const scenario of ['empty-download', 'no-manifest-line', 'no-manifest', 'mismatch', 'hash-failure', 'removed-during-hash', 'removed-before-move', 'removed-after-move', 'emptied-after-move', 'move-failure']) {
   test(`launcher refuses ${scenario} with an accurate diagnostic`, async t => {
     const result = await exercise(t, scenario);
     assert.equal(result.status, 127, JSON.stringify(result));
@@ -321,6 +359,9 @@ for (const scenario of ['removed', 'emptied', 'empty-download', 'no-sidecar', 'e
       assert.match(result.stderr, /checksum mismatch/);
     } else if (scenario === 'move-failure') {
       assert.match(result.stderr, /could not cache the verified download/);
+    } else if (scenario.startsWith('no-manifest')) {
+      assert.match(result.stderr, /no checksum for engine 0\.0\.0-test \(impeccable-/);
+      assert.match(result.stderr, /refusing the unverified download/);
     } else {
       assert.match(result.stderr, /refusing the unverified download/);
     }
