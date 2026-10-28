@@ -60,7 +60,7 @@ Read relevant source files and visually inspect the live page when browser autom
 
 Evaluate:
 - **Design specificity**: Is the composition, interaction, and visual language grounded in this product, or could an unrelated product use it unchanged? Make this judgment before seeing detector output.
-- **Holistic design**: hierarchy, IA, emotional fit, discoverability, composition, typography, color, accessibility, states, copy, and edge cases.
+- **Holistic design**: hierarchy, IA, emotional fit, discoverability, composition, typography, color, accessibility, states, copy, and edge cases. When a surface branches across steps, modes, or mount contexts (page vs. dialog/sheet, empty vs. populated), inspect the rendered result of each branch and verify that shared chrome (headers, toolbars, footers) stays coherent with the active branch rather than leaving orphaned controls or split action groups.
 - **Cognitive load**: consult the [Cognitive Load Assessment](#cognitive-load-assessment) section below; report checklist failures and decision points with >4 visible options.
 - **Emotional journey**: peak-end rule, emotional valleys, reassurance at high-stakes moments.
 - **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4, marking any heuristic the mode-applicability rule allows as `n/a` instead of forcing a number.
@@ -88,7 +88,7 @@ Browser visualization is required for a viewable target when browser automation 
 2. Preflight mutable injection by setting `document.title` and appending a `<script>` tag. Read-only evaluate APIs do not count.
 3. If mutation is unavailable, skip live server, browser presentation, and injection; report fallback signal.
 4. If mutation is available, start `{{scripts_path}}/impeccable live-server --background`, present the browser if supported, label `[Human]`, scroll top, inject `http://localhost:PORT/detect.js`, wait 2-3 seconds, read `impeccable` console messages, then run `{{scripts_path}}/impeccable live-server stop --keep-inject`. The overlay went in through the browser, so the project's HTML has no script tag to strip; a bare `stop` also runs `live-inject --remove` against the project's entry file, an edit a read-only critique should not make.
-5. For multi-view targets, inject on 3-5 representative pages.
+5. For multi-view or multi-step targets, inject across 3-5 representative pages or distinct conditional states rather than only the initial view.
 
 **Desktop apps** (Electron, NW.js, CEF, WebView2): there is no URL to open, so Assessment B attaches to the running app instead.
 
