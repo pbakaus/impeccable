@@ -642,6 +642,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         keep_consent_banners: has(&args, "--no-consent-hiding"),
         keep_overlays: has(&args, "--no-overlay-hiding"),
         unreported_rules: unreported_rules(&detection_config.ignore_rules, &scopes),
+        image_samples: crate::engines::ImageSamples::Decode,
         ignored_linked_stylesheet: Some({
             let (cwd, config) = (cwd.clone(), detection_config.clone());
             std::rc::Rc::new(move |path: &str| should_ignore_detection_file(path, &cwd, &config))

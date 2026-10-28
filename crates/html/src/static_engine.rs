@@ -81,6 +81,8 @@ impl HtmlEngine for StaticHtmlEngine {
             ignored_linked_stylesheet: options.ignored_linked_stylesheet.as_deref(),
             static_rule_pack: self.static_rule_pack,
             rule_pack: options.rule_pack,
+            image_samples: options.image_samples,
+            sample_cache_dir: None,
         };
         detect_html(Path::new(path), &html_options).map_err(|e| {
             EngineError::new(match e {

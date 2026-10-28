@@ -38,10 +38,11 @@
        #pass-edge-photo-title, #pass-offscreen-copy (the first copy in
        document order), #pass-shadow-button-label (the host's own pale
        ink) and #pass-step-numeral (it measures no boxes). It reports neither translucent ink on the blue band (with no
-       layout it stands down on translucent text over a gradient), and the
-       frosted taglines are URL-engine only; it also reads the black contents
-       root as a box with flush children. The URL behavior is pinned by
-       crates/browser/tests/surface_resolution.rs. */
+       layout it stands down on translucent text over a gradient). The
+       frosted tagline it reads by sampling the data-URI backdrop under the
+       95% fill (#560), as `sampled (coarse) 3.1:1`; it also reads the black
+       contents root as a box with flush children. The URL behavior is pinned
+       by crates/browser/tests/surface_resolution.rs. */
     * { box-sizing: border-box; }
     body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #111; background: #fff; }
     h1 { font: 600 28px/1.2 system-ui; margin: 0; padding: 16px 20px 0; color: #111; }

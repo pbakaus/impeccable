@@ -1,0 +1,3 @@
+/* Linked from ../sampled-image-contrast.html. A url() inside a stylesheet is
+   relative to the sheet, so light.png resolves here, not next to the page. */
+.from-sheet { background: url(light.png); }

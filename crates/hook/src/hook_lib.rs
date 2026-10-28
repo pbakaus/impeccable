@@ -1609,6 +1609,7 @@ impl HookScanOptions {
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
+            image_samples: impeccable_detect::engines::ImageSamples::CacheOnly,
             ignored_linked_stylesheet: self.ignored_linked_stylesheet.clone(),
         }
     }

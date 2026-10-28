@@ -120,6 +120,54 @@ pub fn split_css_tokens(value: &str) -> Vec<String> {
     tokens
 }
 
+// ─── call and string extents ────────────────────────────────────────────────
+
+/// The index just past the `)` that closes the call whose `(` sits at
+/// `open`, or the end of `text` when it never closes. Strings hide parens, a
+/// backslash hides the character after it, and nested calls nest: the CSS
+/// tokenizer's own rules, so every caller agrees on where a `url()` or a
+/// gradient ends. Every index it returns is a char boundary.
+pub fn css_call_end(text: &str, open: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'"' | b'\'' => {
+                i = css_string_end(text, i);
+                continue;
+            }
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    text.len()
+}
+
+/// The index just past the quote that closes the string whose opening quote
+/// sits at `open`, or the end of `text` when it never closes.
+pub fn css_string_end(text: &str, open: usize) -> usize {
+    let bytes = text.as_bytes();
+    let mut i = open + 1;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            i += 1;
+        } else if bytes[i] == bytes[open] {
+            return i + 1;
+        }
+        i += 1;
+    }
+    text.len()
+}
+
 // ─── cssPropToCamel ─────────────────────────────────────────────────────────
 
 static DASH_LOWER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"-([a-z])").expect("DASH_LOWER_RE"));

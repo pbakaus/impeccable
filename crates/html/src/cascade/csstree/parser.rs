@@ -107,6 +107,23 @@ pub fn parse_stylesheet(source: &str) -> PResult<Node> {
     Ok(ast)
 }
 
+/// css-tree `parse(source, { context: 'value' })`: one declaration value on
+/// its own. The stylesheet parse leaves a custom property's value as `Raw`;
+/// this reads such a value when its contents matter.
+pub fn parse_value(source: &str) -> PResult<Node> {
+    let mut p = Parser {
+        ts: TokenStream::new(source),
+        parse_custom_property: false,
+        parse_value: true,
+        parse_rule_prelude: true,
+    };
+    let value = p.value()?;
+    if !p.ts.eof {
+        return Err(ParseError);
+    }
+    Ok(value)
+}
+
 impl Parser {
     // ─── TokenStream conveniences ─────────────────────────────────────
 

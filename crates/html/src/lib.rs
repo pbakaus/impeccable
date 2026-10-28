@@ -11,6 +11,12 @@ pub mod decorative_text;
 pub mod dom;
 pub mod engine;
 pub mod field_label;
+#[cfg(feature = "image-sampling")]
+pub mod image_sampling;
+#[cfg(not(feature = "image-sampling"))]
+#[path = "image_sampling_stub.rs"]
+pub mod image_sampling;
+pub mod image_url;
 pub mod layer;
 pub mod page;
 pub mod profile;

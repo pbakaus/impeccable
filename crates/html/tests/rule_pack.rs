@@ -84,6 +84,8 @@ fn document_hook_fires_and_no_pack_is_unchanged() {
 
     impeccable_core::rule_pack::install(&PACK);
     let with_pack = scan(&DetectHtmlOptions {
+        image_samples: Default::default(),
+        sample_cache_dir: None,
         static_rule_pack: Some(&PACK),
         rule_pack: Some(&PACK),
         ..Default::default()
@@ -105,6 +107,8 @@ fn document_hook_fires_and_no_pack_is_unchanged() {
 fn text_hook_covers_html_when_no_document_hook_is_set() {
     impeccable_core::rule_pack::install(&PACK);
     let with_text_only = scan(&DetectHtmlOptions {
+        image_samples: Default::default(),
+        sample_cache_dir: None,
         rule_pack: Some(&PACK),
         ..Default::default()
     });
@@ -132,6 +136,8 @@ fn pack_findings_are_waivable_inline() {
         &page,
         Path::new("/app/index.html"),
         &DetectHtmlOptions {
+            image_samples: Default::default(),
+            sample_cache_dir: None,
             static_rule_pack: Some(&PACK),
             ..Default::default()
         },
