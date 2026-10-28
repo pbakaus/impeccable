@@ -278,6 +278,126 @@ fn gradient_is_decoration(layer: &str) -> bool {
             .any(|v| v > 0.0 && v <= HAIRLINE_MAX_PX)
 }
 
+/// Whether every background layer of a box is a sparse dot pattern: a
+/// `radial-gradient` that paints a dot ([`radial_dot`]: coloured stops
+/// first, then transparent to the end), repeated in cells at most
+/// [`TEXTURE_MAX_CELL_PX`] on both axes, whose ink (the dot's area over the
+/// cell's, times its strongest stop's alpha) is at most
+/// [`DOT_TEXTURE_MAX_INK`]. spacesheep.dev's body draws a 1px dot every
+/// 24px over its fill; the reader sees the fill, not the dot
+/// (observations-1010 row 8). A mesh of pinholes (clear centre, opaque
+/// outside), a dense halftone, an opaque checker and grid lines are not
+/// sparse dots and are read as before (juskoe.vercel.app's `bg-grid` lines
+/// are what several of its failing words were reported on, judged harmful
+/// there). A layer whose cell the style does not state is not one either.
+pub(crate) fn gradient_layers_are_dot_texture(dom: &dyn Dom, node: ElId, image: &str) -> bool {
+    let sizes = split_top_level_commas(&js::to_lower_case(&dom.style(node, "backgroundSize")));
+    let shorthand = split_top_level_commas(&js::to_lower_case(&dom.style(node, "background")));
+    let layers = split_top_level_commas(image);
+    if layers.is_empty() || sizes.is_empty() {
+        return false;
+    }
+    // The ink of every layer together: several sparse layers offset across
+    // one cell can make a dense pattern (#1201 review).
+    let mut ink = 0.0;
+    for (i, layer) in layers.iter().enumerate() {
+        let lower = js::to_lower_case(layer);
+        let repeats = !shorthand.get(i).map_or(false, |s| s.contains("no-repeat"));
+        let Some((w, h)) = explicit_cell(sizes[i % sizes.len()].as_str()) else {
+            return false;
+        };
+        let Some((radius, alpha)) = radial_dot(js::trim(&lower)) else {
+            return false;
+        };
+        // The default shape is an ellipse in the cell's own proportions:
+        // a circle only in a square cell.
+        let circular = lower.contains("circle") || (w - h).abs() < 0.5;
+        if !(repeats
+            && circular
+            && w > 0.0
+            && h > 0.0
+            && w <= TEXTURE_MAX_CELL_PX
+            && h <= TEXTURE_MAX_CELL_PX
+            && gradient_is_decoration(&lower))
+        {
+            return false;
+        }
+        ink += std::f64::consts::PI * radius * radius / (w * h) * alpha;
+    }
+    ink <= DOT_TEXTURE_MAX_INK
+}
+
+/// The most ink a dot pattern may lay over its cell, as a share of the
+/// cell's area times the dot's alpha, summed over its layers, and still be
+/// texture over the fill.
+const DOT_TEXTURE_MAX_INK: f64 = 0.15;
+
+/// A gradient argument split into its leading colour (a token, or a whole
+/// function call such as `rgba(26, 26, 31, 0.13)`) and the rest.
+fn leading_colour(arg: &str) -> Option<(&str, &str)> {
+    match arg.find('(') {
+        Some(open) if !arg[..open].contains(char::is_whitespace) => {
+            let close = arg.rfind(')')?;
+            Some((&arg[..=close], &arg[close + 1..]))
+        }
+        _ => Some(match arg.split_once(char::is_whitespace) {
+            Some((c, r)) => (c, r),
+            None => (arg, ""),
+        }),
+    }
+}
+
+/// A `radial-gradient` layer that paints a dot: its colour stops are opaque
+/// enough to see first (alpha over 0.05), then transparent to the end, with
+/// every position in pixels. The dot's radius (the first transparent stop's
+/// position, or the last coloured one's where that is larger) and its
+/// strongest alpha. `None` for any other shape: a ring, a hole, a stop
+/// placed in percent or not at all, and an ellipse written as one (the
+/// default shape is one too, which the caller allows only in a square
+/// cell).
+fn radial_dot(layer: &str) -> Option<(f64, f64)> {
+    let inner = layer.strip_prefix("radial-gradient(")?.strip_suffix(')')?;
+    // Only a circle: an ellipse's area is not the circle its stops give
+    // (`ellipse 4px 32px` paints far more of a tall cell).
+    let shape = split_top_level_commas(inner).into_iter().next().unwrap_or_default();
+    let shape = js::trim(&shape).to_string();
+    let starts_with_colour = leading_colour(&shape).is_some_and(|(c, _)| crate::color::parse_any_color(Some(c)).is_some());
+    if !starts_with_colour && !shape.starts_with("circle") {
+        return None;
+    }
+    let mut coloured: Vec<(f64, Option<f64>)> = Vec::new();
+    let mut clear: Vec<Option<f64>> = Vec::new();
+    for arg in split_top_level_commas(inner) {
+        let arg = js::trim(&arg).to_string();
+        let (colour, rest) = leading_colour(&arg)?;
+        let Some(c) = crate::color::parse_any_color(Some(colour)) else {
+            // The shape and position argument, allowed only first.
+            if coloured.is_empty() && clear.is_empty() {
+                continue;
+            }
+            return None;
+        };
+        let mut position = None;
+        for t in rest.split_ascii_whitespace() {
+            position = Some(px(t)?);
+        }
+        if c.alpha_or_one() > 0.05 {
+            if !clear.is_empty() {
+                return None;
+            }
+            coloured.push((c.alpha_or_one(), position));
+        } else {
+            clear.push(position);
+        }
+    }
+    let first_clear = (*clear.first()?)?;
+    // A stop placed before an earlier one is drawn at the earlier one's
+    // position, so the dot reaches the furthest coloured stop.
+    let last_coloured = coloured.iter().map(|(_, p)| *p).collect::<Option<Vec<f64>>>()?.into_iter().fold(0.0, f64::max);
+    let alpha = coloured.iter().map(|(a, _)| *a).fold(0.0, f64::max);
+    Some((first_clear.max(last_coloured), alpha))
+}
+
 /// What a box's background images paint. Every layer has to be texture for
 /// the box to be; one picture makes it a picture, and one layer this cannot
 /// place (a remote tile at its own size, an `image-set`) leaves it undecided.
@@ -676,7 +796,11 @@ fn layers(dom: &dyn Dom, el: ElId, host: Option<ElId>, resolved: Option<Rgba>, s
     if points.is_empty() || points.len() * 2 < occlusion_grid_size(&rect) {
         // Below the fold no point is answered, but one layer can be read off
         // the tree: a loaded picture a later sibling lays over the text.
-        if rect.top >= vh && (covered_by_a_later_picture(dom, el) || covered_by_a_later_fill(dom, el)) {
+        if rect.top >= vh
+            && (covered_by_a_later_picture(dom, el)
+                || covered_by_a_later_fill(dom, el)
+                || covered_by_a_higher_sibling(dom, el))
+        {
             return TextLayers::Covered;
         }
         return TextLayers::Undecided;
@@ -862,6 +986,78 @@ fn covered_by_a_later_fill(dom: &dyn Dom, el: ElId) -> bool {
     false
 }
 
+/// The z-index `e` stacks at among its siblings: a number, on a box where
+/// it applies (positioned, or a flex or grid item). `None` otherwise.
+fn stack_z(dom: &dyn Dom, e: ElId) -> Option<f64> {
+    let z = dom.style(e, "zIndex");
+    let z = js::parse_float(&z).is_finite().then(|| js::parse_float(&z))?;
+    let positioned = !matches!(dom.style(e, "position").as_str(), "static" | "");
+    let item = dom.parent(e).is_some_and(|p| {
+        matches!(dom.style(p, "display").as_str(), "flex" | "grid" | "inline-flex" | "inline-grid")
+    });
+    (positioned || item).then_some(z)
+}
+
+/// Whether a sibling ranked above the text's layer lays an opaque fill over
+/// all of `el`'s text: apple.com's stacked gallery, five tab panels in one
+/// grid cell, the active one at `z-index: 2` with a white fill over panels
+/// 2 to 5 at 0; cursor.com's Slack demo window (z 10) under its CLI window
+/// (z 15). From the first ancestor-or-self of `el` (within
+/// [`FILL_COVER_MAX_DEPTH`]) whose z-index applies ([`stack_z`]), a sibling,
+/// earlier or later, at a strictly higher z-index, painted at capture, that
+/// holds a box passing [`fill_covers`] (the sibling's own z-index allowed,
+/// and the rank standing for the positioned layer) covers it. Equal ranks
+/// fall to document order, which [`covered_by_a_later_fill`] reads.
+fn covered_by_a_higher_sibling(dom: &dyn Dom, el: ElId) -> bool {
+    let text = dom
+        .direct_text_rect(el)
+        .filter(|r| r.all_finite() && r.width > 0.0 && r.height > 0.0)
+        .unwrap_or_else(|| dom.rect(el));
+    if !text.all_finite() || text.width <= 0.0 || text.height <= 0.0 {
+        return false;
+    }
+    let body = dom.body();
+    let mut held = el;
+    let mut ranked = None;
+    for _ in 0..FILL_COVER_MAX_DEPTH {
+        if Some(held) == body || dom.document_element() == Some(held) {
+            return false;
+        }
+        if let Some(z) = stack_z(dom, held) {
+            ranked = Some((held, z));
+            break;
+        }
+        let Some(parent) = dom.parent(held) else { return false };
+        held = parent;
+    }
+    let Some((held, z)) = ranked else { return false };
+    let Some(parent) = dom.parent(held) else { return false };
+    let z_auto = |e: ElId| matches!(dom.style(e, "zIndex").as_str(), "auto" | "");
+    let positioned = |e: ElId| !matches!(dom.style(e, "position").as_str(), "static" | "");
+    let opaque = |e: ElId| {
+        let o = js::parse_float(&dom.style(e, "opacity"));
+        o.is_finite() && o >= FILL_COVER_MIN_ALPHA
+    };
+    let mut read = 0usize;
+    for sib in dom.children(parent) {
+        if sib == held || !stack_z(dom, sib).is_some_and(|zs| zs > z) || !super::painted::painted_at_capture(dom, sib) {
+            continue;
+        }
+        let mut boxes = vec![sib];
+        boxes.extend(dom.query_all(Some(sib), "*").unwrap_or_default());
+        for fill in boxes {
+            read += 1;
+            if read > FILL_COVER_BUDGET {
+                return false;
+            }
+            if fill_covers_ranked(dom, fill, sib, &text, &z_auto, &positioned, &opaque, true) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// [`covered_by_a_later_fill`]'s test of one box `fill` inside `sib`.
 fn fill_covers(
     dom: &dyn Dom,
@@ -871,6 +1067,23 @@ fn fill_covers(
     z_auto: &dyn Fn(ElId) -> bool,
     positioned: &dyn Fn(ElId) -> bool,
     opaque: &dyn Fn(ElId) -> bool,
+) -> bool {
+    fill_covers_ranked(dom, fill, sib, text, z_auto, positioned, opaque, false)
+}
+
+/// [`fill_covers`], where `ranked` says `sib` stacks above the text by its
+/// own z-index ([`covered_by_a_higher_sibling`]): its z-index is allowed,
+/// and its rank stands for the positioned layer.
+#[allow(clippy::too_many_arguments)]
+fn fill_covers_ranked(
+    dom: &dyn Dom,
+    fill: ElId,
+    sib: ElId,
+    text: &crate::browser::Rect,
+    z_auto: &dyn Fn(ElId) -> bool,
+    positioned: &dyn Fn(ElId) -> bool,
+    opaque: &dyn Fn(ElId) -> bool,
+    ranked: bool,
 ) -> bool {
     let Some(bg) = parse_rgb_or_any(&dom.style(fill, "backgroundColor")) else {
         return false;
@@ -890,7 +1103,7 @@ fn fill_covers(
     if super::page_checks::drawn_tilted(dom, fill) {
         return false;
     }
-    let mut layered = false;
+    let mut layered = ranked;
     // The fill's alpha times every opacity up to the sibling: ten boxes at
     // 0.96 each let 0.34 of the text through between them.
     let mut alpha = bg.alpha_or_one();
@@ -900,7 +1113,7 @@ fn fill_covers(
         // under it: a white card at `multiply` leaves it all.
         let blend = dom.style(c, "mixBlendMode");
         let filter = dom.style(c, "filter");
-        if !z_auto(c)
+        if !(z_auto(c) || (ranked && c == sib))
             || !opaque(c)
             || masked_or_clipped(dom, c)
             || !matches!(blend.as_str(), "normal" | "")

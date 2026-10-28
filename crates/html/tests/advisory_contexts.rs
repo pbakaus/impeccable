@@ -93,10 +93,29 @@ fn micro_labels_are_advisory_and_read_text_fails() {
 #[test]
 fn fine_print_is_advisory_and_a_consent_label_fails() {
     let f = scan_fixture("fine-print.html");
-    // Advisory: a legal class, a disclaimer id, a small element, an asterisk,
-    // a leading sup and a paragraph under a marked list.
-    assert_eq!(count(&f, "tiny-text", true), 6, "{f:#?}");
-    assert_eq!(count(&f, "tight-leading", true), 6, "{f:#?}");
+    // Advisory under tiny-text: a small element, an asterisk, a leading
+    // sup, an input hint in a small, a terms row, a disclosure widget's
+    // panel, a footnote accordion, a footnote inside it and a `text-footnote` class. A legal class, a
+    // disclaimer id, a paragraph under a marked list, a disclaimer banner
+    // and a footnote report no tiny-text (decision 3, round 13).
+    assert_eq!(count(&f, "tiny-text", true), 9, "{f:#?}");
+    for quote in ["Requires a new line", "Offer available through", "Trade-in values vary", "Mercury is a financial", "for how the annual yield"] {
+        assert!(
+            !f.iter().any(|x| x.antipattern == "tiny-text" && x.snippet.contains(quote)),
+            "{quote}: {f:#?}"
+        );
+    }
+    // tight-leading stays advisory in both tiers: the fourteen 11px rows.
+    assert_eq!(count(&f, "tight-leading", true), 14, "{f:#?}");
+    // Links inside a footnote and a terms row keep undersized-ui-text.
+    for quote in ["rate disclosure", "Privacy"] {
+        let links: Vec<&str> = f
+            .iter()
+            .filter(|x| x.antipattern == "undersized-ui-text" && x.snippet.contains(quote))
+            .map(|x| x.severity.as_str())
+            .collect();
+        assert_eq!(links, ["warning"], "{quote}: {f:#?}");
+    }
     // Failing: unmarked copy, a marker four levels up and a form hint
     // (tiny-text); unmarked copy, the consent label and the far marker
     // (tight-leading).
@@ -121,16 +140,20 @@ fn a_custom_checkbox_rows_label_is_not_fine_print() {
         "<div class=\"legal\"><input type=\"checkbox\"><span style=\"font-size: 10px\">I agree that my data is processed under the terms above.</span></div>\
          <div class=\"legal\"><span style=\"font-size: 10px\">Prices include VAT where it applies to the order.</span></div>",
     );
-    // A control elsewhere in the container does not make the note a label.
+    // A control elsewhere in the container does not make the note a label:
+    // under `legal` it is exempt, under `terms` advisory.
     let g = scan(
         "<div class=\"legal\"><span style=\"font-size: 10px\">Prices include VAT where it applies to the order.</span><p>Questions?</p><button>Contact us</button></div>",
     );
-    let sev: Vec<&str> = g.iter().filter(|x| x.antipattern == "tiny-text").map(|x| x.severity.as_str()).collect();
-    assert_eq!(sev, vec!["advisory"], "{g:#?}");
-    // The checkbox row's label keeps failing; the VAT note is fine print.
-    let mut got: Vec<&str> = f.iter().filter(|x| x.antipattern == "tiny-text").map(|x| x.severity.as_str()).collect();
-    got.sort();
-    assert_eq!(got, vec!["advisory", "warning"], "{f:#?}");
+    assert!(!g.iter().any(|x| x.antipattern == "tiny-text"), "{g:#?}");
+    let h = scan(
+        "<div class=\"terms\"><span style=\"font-size: 10px\">Prices include VAT where it applies to the order.</span><p>Questions?</p><button>Contact us</button></div>",
+    );
+    let sev: Vec<&str> = h.iter().filter(|x| x.antipattern == "tiny-text").map(|x| x.severity.as_str()).collect();
+    assert_eq!(sev, vec!["advisory"], "{h:#?}");
+    // The checkbox row's label keeps failing; the VAT note is a legal block.
+    let got: Vec<&str> = f.iter().filter(|x| x.antipattern == "tiny-text").map(|x| x.severity.as_str()).collect();
+    assert_eq!(got, vec!["warning"], "{f:#?}");
 }
 
 #[test]
@@ -173,9 +196,11 @@ fn text_in_a_framed_demo_is_advisory_under_three_rules() {
         s.sort_unstable();
         assert_eq!(s, ["advisory", "warning"], "{label}");
     }
-    // tiny-text: the short run in the window is advisory, the sentence fails.
+    // tiny-text: the short run in the window is advisory; the sentence and
+    // the code line in the dotted config window (r14-t7) fail.
     assert_eq!(count(&f, "tiny-text", true), 1, "{f:#?}");
-    assert_eq!(count(&f, "tiny-text", false), 1, "{f:#?}");
+    assert_eq!(count(&f, "tiny-text", false), 2, "{f:#?}");
+    assert_eq!(severities(&f, "undersized-ui-text", "timeout_ms = 3000"), ["warning"]);
     // low-contrast: the dim label in the window is advisory.
     let dim: Vec<&Finding> = f
         .iter()
@@ -219,8 +244,18 @@ fn nested_cards_in_a_mockup_are_advisory() {
     // one under a mockup class keep failing.
     // r8-t1 adds a panel with an illustrative footer note (advisory) and
     // one whose footer is a sentence with the word "example" in it (fails).
-    assert_eq!(count(&f, "nested-cards", true), 6, "{f:#?}");
-    assert_eq!(count(&f, "nested-cards", false), 7, "{f:#?}");
+    // Round 14 adds a window whose title bar follows an aria-hidden glow
+    // (advisory), a phone, which only a measured box shows (fails here), and
+    // a phone-shaped shell that holds the page's h1 (fails), and r14-t7 a
+    // card in a dotted window that holds code (fails).
+    assert_eq!(count(&f, "nested-cards", true), 7, "{f:#?}");
+    // One panel, one finding (r14-t5): the three paseo.sh cards report once,
+    // counting two more, so ten failing cards are eight findings.
+    assert_eq!(count(&f, "nested-cards", false), 8, "{f:#?}");
+    assert!(
+        f.iter().any(|x| x.antipattern == "nested-cards" && x.snippet == "Card inside card (div) (and 2 more)"),
+        "{f:#?}"
+    );
 }
 
 #[test]

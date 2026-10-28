@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pattern walk: candidates in at-rules that do not apply (browser-only)</title>
+  <!--
+    A glow, a radial halo and a grid-line background each report the first
+    candidate the page shows. The magenta glow, the magenta halo and the
+    first grid below sit inside an @media block no 1280px viewport matches,
+    on elements a visitor does see: the URL engine reads each element's
+    computed paint and passes them over, so the glow and the halo report the
+    cyan candidates in the left column. The static engine reads no computed
+    style and reports what the stylesheet text says.
+  -->
+  <style>
+    html { background: #0b0b0f; }
+    body { font-family: system-ui, sans-serif; margin: 0; color: #e5e7eb; background: #0b0b0f; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    h2 { font-size: 16px; line-height: 24px; margin: 0 0 8px; }
+    .case { margin: 0 0 32px; }
+    .tile { width: 320px; height: 120px; border-radius: 12px; background-color: #15151c; }
+    @media (min-width: 4000px) {
+      .wide-glow { box-shadow: 0 0 24px rgba(255, 0, 255, 0.8); }
+      .wide-halo { background: radial-gradient(circle at center, #ff00ff 0%, transparent 70%); }
+      .wide-grid { background-image: linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px); background-size: 24px 24px; }
+    }
+    .glow { box-shadow: 0 0 24px rgba(0, 169, 255, 0.8); }
+    .halo { background: radial-gradient(circle at center, #00a9ff 0%, transparent 70%); }
+    .grid { background-image: linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px); background-size: 32px 32px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="col">
+      <h1>Should flag</h1>
+      <div class="case"><h2>A cyan glow that applies</h2><div class="tile glow" id="flag-active-glow"></div></div>
+      <div class="case"><h2>A cyan halo that applies</h2><div class="tile halo" id="flag-active-halo"></div></div>
+      <div class="case"><h2>A grid that applies</h2><div class="tile grid" id="flag-active-grid"></div></div>
+    </div>
+    <div class="col">
+      <h1>Should pass</h1>
+      <div class="case"><h2>A magenta glow at 4000px only</h2><div class="tile wide-glow" id="pass-inactive-glow"></div></div>
+      <div class="case"><h2>A magenta halo at 4000px only</h2><div class="tile wide-halo" id="pass-inactive-halo"></div></div>
+      <div class="case"><h2>A grid at 4000px only</h2><div class="tile wide-grid" id="pass-inactive-grid"></div></div>
+    </div>
+  </main>
+</body>
+</html>

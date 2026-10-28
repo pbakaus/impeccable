@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Script errors from benign races in round 13 (browser-only)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #fff; }
+    main { width: 640px; margin: 0 auto; padding: 32px 24px; }
+    p { font-size: 16px; line-height: 24px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>The page renders fine</h1>
+    <p>A visitor-identity pixel that rejects when its load is blocked, and a
+    hover preview whose play() a pause() interrupts, throw on pages that
+    render fine. Both report as advisory. A fetch the page aborts and did not
+    expect to, and a script on a host that only ends like the pixel's, stay
+    the site's errors.</p>
+  </main>
+  <script>
+    // Should flag (advisory, Vector): mercury.com's visitor-identity pixel.
+    setTimeout(new Function("Promise.reject(new Error('No visitor ID available. Load may have failed.'))\n//# sourceURL=https://cdn.vector.co/pixel.js"), 0);
+    // Should flag (advisory): a play() interrupted by a call to pause() (rauno.me).
+    setTimeout(function () {
+      Promise.reject(new DOMException("The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22", "AbortError"));
+    }, 0);
+    // Should flag (error): an aborted fetch the page did not catch.
+    setTimeout(function () {
+      Promise.reject(new DOMException("The user aborted a request.", "AbortError"));
+    }, 50);
+    // Should flag (error): a host that only ends like the pixel's.
+    setTimeout(new Function("throw new TypeError('cart is undefined')\n//# sourceURL=https://cdn.notvector.co/app.js"), 100);
+  </script>
+</body>
+</html>

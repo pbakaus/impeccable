@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contrast grounds painted by pseudo halves, hidden faces, clips and echoes: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for low-contrast verdicts that read the wrong ground or the
+       wrong ink (observations-craft-1009 rows 4 to 7).
+
+       - A section painted by a `::before` and an `::after` skewed apart, each
+         over half the width (panic.com's chevrons), is one ground: text across
+         the seam is scored on the gradient both halves paint over their
+         opaque fill, not on the grey page under the section.
+       - A hover face parked at `opacity: 0` in the label's own colour is not
+         the ground at rest; shown, it is.
+       - Text under gradients clipped to it on every layer (`text, text`)
+         takes no verdict on its `color`, and neither does text whose fill is
+         transparent inside a clipped heading. Pale stops on a white ground
+         still fail by the stop that reads best.
+       - A pseudo's fill counts as a solid ground only at alpha times
+         opacity 0.9 or more, and a pseudo moved by `scale` or `rotate` is
+         not placed: a tint or a parked hover fill leaves the copy's failure
+         on white standing. A skewed band is placed for certain only where
+         it covers the copy whatever its `transform-origin`.
+       - A run with a blended, translucent copy of itself over it is handed
+         to the pixels, which give the verdict; an opaque copy at `normal`
+         over another run is scored as itself.
+
+       The static HTML engine reads no pseudo boxes and no layers: it scores
+       both seam texts on the grey page, reads no hover face (missing the
+       shown one), scores no clipped stop, scores the echoed green headline
+       as itself, reports `gradient-text` on the clipped heading and on
+       one clipped stat, and scores the tinted, parked and skewed rows on the
+       white page, the pale copy on the skewed band included. The URL behavior is pinned by
+       crates/browser/tests/paint_grounds.rs. Every case uses its own text
+       colour or id so a finding names the case. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #111111; background: #ffffff; }
+    h1 { font: 600 28px/1.2 system-ui, sans-serif; margin: 0; padding: 16px 20px 8px; color: #111111; }
+    .grid { display: grid; grid-template-columns: 600px 600px; gap: 40px; padding: 0 20px; }
+    .col { position: relative; width: 600px; }
+    .col h2 { font: 600 15px/1.2 system-ui, sans-serif; margin: 0 0 8px; color: #111111; }
+    .case { position: relative; width: 560px; margin: 0 0 24px; }
+
+    /* Two sheared halves, each the full width, moved apart so each paints
+       one half, at z-index -1 inside the section's own stacking context. */
+    .chevron-ground { background: #abafb4; padding: 24px 32px; width: 624px; margin-left: -32px; }
+    .chevron { position: relative; isolation: isolate; width: 560px; height: 240px; }
+    .chevron::before, .chevron::after {
+      content: ""; position: absolute; top: 0; left: 0; width: 560px; height: 240px; z-index: -1;
+    }
+    .chevron::before { transform: translate(-280px, -24px) skewY(10deg); }
+    .chevron::after { transform: translate(280px, -24px) skewY(-10deg); }
+    .chevron.orange::before, .chevron.orange::after {
+      background: #fdc42b linear-gradient(rgba(254, 143, 24, 0), #fe8f18);
+    }
+    .chevron.slate::before, .chevron.slate::after {
+      background: #536b77 linear-gradient(rgba(83, 107, 119, 0), #565f67);
+    }
+    .chevron p { position: absolute; left: 200px; top: 104px; width: 160px; height: 32px; margin: 0; font: 700 24px/32px system-ui, sans-serif; text-align: center; }
+    #flag-white-across-orange-seam { color: #ffffff; }
+    #pass-white-across-slate-seam { color: #ffffff; }
+
+    /* A button with a hover face in its own label colour. */
+    .button { position: relative; display: inline-block; width: 200px; height: 44px; padding: 10px 16px; font: 500 16px/24px system-ui, sans-serif; }
+    .button::before { content: ""; position: absolute; top: 0; left: 0; width: 200px; height: 44px; }
+    .button.parked::before { background: #6d6d6d; opacity: 0; }
+    .button.shown::before { background: #c8c8c8; opacity: 1; z-index: -1; }
+    .button.shown { isolation: isolate; }
+    #pass-label-over-parked-face { color: #6d6d6d; }
+    #flag-label-on-shown-face { color: #6c6c6c; }
+
+    /* Gradient-clipped text. */
+    .stat { margin: 0; width: 360px; height: 56px; font: 700 44px/56px system-ui, sans-serif; color: #ffffff; -webkit-text-fill-color: transparent; }
+    #pass-stat-clipped-on-two-layers {
+      background-image: linear-gradient(90deg, #7a2bff, #ff3d7a), linear-gradient(#5a1fd1, #8e1fd1);
+      -webkit-background-clip: text, text; background-clip: text, text;
+    }
+    .clipped-title { margin: 0; width: 520px; height: 56px; font: 700 44px/56px system-ui, sans-serif; color: #f0f0f0;
+      background-image: linear-gradient(135deg, #2a2a2a 30%, #555555); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .clipped-title em { font-style: italic; }
+    #flag-pale-stops-clipped-on-white {
+      background-image: linear-gradient(90deg, #f2f2f2, #e6e6e6), linear-gradient(#eeeeee, #e8e8e8);
+      -webkit-background-clip: text, text; background-clip: text, text;
+    }
+
+    /* A band whose `::before` is a tint, or a hover fill parked at rest,
+       over white: the copy is on (nearly) white, and fails there. */
+    .band { position: relative; width: 560px; height: 80px; background: #ffffff; }
+    .band::before { content: ""; position: absolute; left: 0; top: 0; width: 560px; height: 80px; background-color: #000000; }
+    .band.tint15::before { opacity: .15; }
+    .band.tint12::before { opacity: .12; }
+    .band.parked::before { scale: 0 1; }
+    .band p { position: relative; margin: 0; padding: 28px 16px; font: 400 16px/24px system-ui, sans-serif; }
+    #flag-grey-under-15-tint { color: #a9a9a9; }
+    #flag-grey-under-12-tint { color: #a8a8a8; }
+    #flag-grey-over-parked-fill { color: #a7a7a7; }
+    /* Two solid faces over each other: the `::after` paints last and is
+       the ground, whatever the `::before` under it is. */
+    .band.faces::before { background-color: #222222; }
+    .band.faces::after { content: ""; position: absolute; left: 0; top: 0; width: 560px; height: 80px; background-color: #ffffff; }
+    .band.faces.swap::before { background-color: #ffffff; }
+    .band.faces.swap::after { background-color: #222222; }
+    .band.faces p { z-index: 1; color: #cccccc; }
+
+    /* A dark band skewed about its top-left corner: the copy at its right
+       end sits below the band's real edge, on the white page. */
+    .diagonal { position: relative; isolation: isolate; width: 560px; height: 200px; margin-top: 60px; }
+    .diagonal::before { content: ""; position: absolute; left: 0; top: 0; width: 560px; height: 200px; background-color: #222222;
+      transform: skewY(-12deg); transform-origin: 0 0; z-index: -1; }
+    .diagonal p { position: absolute; margin: 0; width: 120px; font: 400 16px/20px system-ui, sans-serif; }
+    #flag-pale-below-skewed-edge { left: 300px; top: 140px; color: #cdcdcd; }
+    #pass-pale-on-skewed-band { left: 40px; top: 140px; color: #cccccc; white-space: nowrap; } /* one short line whatever the font, inside the band for every origin */
+
+    /* A headline and a copy of it in the same place. */
+    .echo { position: relative; width: 560px; height: 72px; }
+    .echo .copy { position: absolute; left: 0; top: 0; width: 560px; margin: 0; font: 700 40px/72px system-ui, sans-serif; }
+    .echo .blended { mix-blend-mode: hard-light; z-index: 2; color: rgba(0, 14, 255, 0.5); }
+    .echo .over { z-index: 2; }
+    #handed-green-under-blended-copy { color: #81b81a; }
+    #flag-pale-green-opaque-copy { color: #a9d46b; }
+    .echo .under-plain { color: #333333; }
+  </style>
+</head>
+<body>
+  <h1>Grounds painted by halves, faces, clips and echoes</h1>
+  <div class="grid">
+    <div class="col">
+      <h2>Should flag</h2>
+      <div class="case">
+        <div class="chevron-ground"><div class="chevron orange"><p id="flag-white-across-orange-seam">Servers</p></div></div>
+      </div>
+      <div class="case">
+        <span class="button shown" id="flag-label-on-shown-face">Download</span>
+      </div>
+      <div class="case">
+        <p class="stat" id="flag-pale-stops-clipped-on-white">99.999%</p>
+      </div>
+      <div class="case band tint15"><p id="flag-grey-under-15-tint">Grey copy under a 15 percent tint</p></div>
+      <div class="case band tint12"><p id="flag-grey-under-12-tint">Grey copy under a 12 percent tint</p></div>
+      <div class="case band parked"><p id="flag-grey-over-parked-fill">Grey copy over a parked hover fill</p></div>
+      <div class="case diagonal"><p id="flag-pale-below-skewed-edge">Pale copy off the band</p></div>
+      <div class="case band faces"><p id="flag-pale-on-top-white-face">Pale copy on a white face over a dark one</p></div>
+      <div class="case echo">
+        <p class="copy under-plain" aria-hidden="true">Ship it today</p>
+        <p class="copy over" id="flag-pale-green-opaque-copy">Ship it today</p>
+      </div>
+    </div>
+    <div class="col">
+      <h2>Should pass</h2>
+      <div class="case">
+        <div class="chevron-ground"><div class="chevron slate"><p id="pass-white-across-slate-seam">Transmit</p></div></div>
+      </div>
+      <div class="case">
+        <span class="button parked" id="pass-label-over-parked-face">Download</span>
+      </div>
+      <div class="case diagonal"><p id="pass-pale-on-skewed-band">Pale on band</p></div>
+      <div class="case band faces swap"><p id="pass-pale-on-top-dark-face">Pale copy on a dark face over a white one</p></div>
+      <div class="case">
+        <p class="stat" id="pass-stat-clipped-on-two-layers">135+</p>
+      </div>
+      <div class="case">
+        <h3 class="clipped-title">Email for <em id="pass-word-in-clipped-title">developers</em></h3>
+      </div>
+      <h2>Handed to the pixels (the element pass prints no verdict of its own)</h2>
+      <div class="case echo">
+        <p class="copy" id="handed-green-under-blended-copy">Financial rails</p>
+        <p class="copy blended" aria-hidden="true">Financial rails</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

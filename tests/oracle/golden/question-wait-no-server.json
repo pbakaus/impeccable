@@ -1,5 +1,5 @@
 {
-  "stdout": "serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start --key k1 and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.\n",
+  "stdout": "serve-question: no state file for key k1 in <WS>/.impeccable/questions, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun --wait from the directory where --start ran. The page may still be open: do not --start a second server.\n",
   "stderr": "",
   "exit": 2,
   "signal": null,

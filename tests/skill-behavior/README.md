@@ -478,6 +478,15 @@ These are single samples per case and candidate, not reliability estimates.
 This API harness starts with the skill loaded and readable references. It
 does not measure activation, reproduce Windows command parsing, or establish
 fallback behavior when the host also denies required file reads or writes.
+
+### Named craft-floor read (2026-10-23, #744)
+
+An outside measurement in acceptEdits mode found 0 of 21 craft-floor reads
+before the first UI edit on the denied-launcher path: "follow applicable steps
+2–3" did not get the agent into `reference/`. The fallback now names
+`reference/craft-floor.md` and the pre-edit timing explicitly. Scenario 19's
+assertions are unchanged. Not yet rerun: one combined `test:skill-behavior`
+run is planned after #1114 and #1118 land, so there is no new result here.
 Keep #744 open; evaluate activation separately with #375.
 
 To repeat only these cases (provider keys and an engine binary required):

@@ -17,6 +17,7 @@
 //! `impeccable_context::hook_markers::is_impeccable_hook_command`, so the two
 //! writers and the three readers can never disagree on what counts as ours.
 
+use impeccable_context::hermes;
 use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
@@ -391,8 +392,12 @@ fn manifest_is_user_settings(provider: &str, user_scope: bool) -> bool {
     provider == ".gemini" || (provider == ".claude" && user_scope)
 }
 
-/// JS: hookInstalledForProvider(root, provider)
-pub fn hook_installed_for_provider(root: &str, provider: &str) -> bool {
+/// JS: hookInstalledForProvider(root, provider). `.hermes`' hook is the
+/// plugin under Hermes' home, not a manifest under `root`.
+pub fn hook_installed_for_provider(sys: &Sys, root: &str, provider: &str) -> bool {
+    if provider == ".hermes" {
+        return hermes_plugin_installed(sys);
+    }
     let artifacts = provider_hook_artifacts(provider);
     if artifacts.is_empty() {
         return true;
@@ -417,14 +422,14 @@ pub fn hook_installed_for_provider(root: &str, provider: &str) -> bool {
 /// install wrote the portable `$(git rev-parse ...)/.github/skills/...` form
 /// into a project with no Copilot skill of its own, a hook that never fires
 /// (#1098), so a repeat install must rewrite it rather than count it.
-pub fn hook_installed_for_provider_at_scope(root: &str, provider: &str, user_scope: bool) -> bool {
+pub fn hook_installed_for_provider_at_scope(sys: &Sys, root: &str, provider: &str, user_scope: bool) -> bool {
     if user_scope && provider == ".claude" {
         return user_claude_hook_is_current(root);
     }
     if user_scope && provider == ".github" && github_manifest_names_missing_project_skill(root) {
         return false;
     }
-    hook_installed_for_provider(root, provider)
+    hook_installed_for_provider(sys, root, provider)
 }
 
 /// The portable prefix of a project Copilot hook command.
@@ -631,6 +636,12 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
     let user_scope = sys.is_home_dir(skill_root);
     let mut written: Vec<&'static str> = Vec::new();
     for provider in providers {
+        if *provider == ".hermes" {
+            if copy_hermes_plugin(sys, bundle_dir)? && !written.contains(provider) {
+                written.push(provider);
+            }
+            continue;
+        }
         let manifest_root = if user_scope && *provider == ".claude" { skill_root } else { root };
         for artifact in hook_artifacts_for_install(bundle_dir, manifest_root, provider, user_scope) {
             if !util::exists(&artifact.src) {
@@ -685,6 +696,44 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
         }
     }
     Ok(written)
+}
+
+/// The Hermes gateway loads plugins from its home dir, not from a project,
+/// so project and global installs alike copy the bundled plugin to `<hermes home>/plugins/`
+/// (#1178), overwriting a partial or stale copy. A bundle without the plugin
+/// is skipped like a bundle without a provider's manifest; a bundle with half
+/// of it is broken and fails. Returns whether the plugin was written.
+fn copy_hermes_plugin(sys: &Sys, bundle_dir: &str) -> Result<bool, String> {
+    let src = jsp::join(&[bundle_dir, ".hermes", "plugins", hermes::PLUGIN_NAME]);
+    if !util::exists(&src) {
+        return Ok(false);
+    }
+    for file in hermes::PLUGIN_FILES {
+        if !util::exists(&jsp::join(&[&src, file])) {
+            return Err(format!("Bundled Hermes plugin is missing {file}: {src}"));
+        }
+    }
+    let dest = hermes_plugin_dir(sys);
+    util::mkdir_p(&dest)?;
+    for file in hermes::PLUGIN_FILES {
+        util::write_bytes(&jsp::join(&[&dest, file]), &util::read_bytes(&jsp::join(&[&src, file]))?)?;
+    }
+    Ok(true)
+}
+
+fn hermes_plugin_dir(sys: &Sys) -> String {
+    hermes::plugin_dir(&hermes::hermes_global_home(&sys.env, &sys.cwd, &sys.home))
+}
+
+/// Both plugin files are present under Hermes' home.
+pub fn hermes_plugin_installed(sys: &Sys) -> bool {
+    let dir = hermes_plugin_dir(sys);
+    hermes::PLUGIN_FILES.iter().all(|f| util::exists(&jsp::join(&[&dir, f])))
+}
+
+/// Installed and listed under `plugins.enabled` in Hermes' config.yaml.
+pub fn hermes_plugin_enabled(sys: &Sys) -> bool {
+    hermes::plugin_enabled(&hermes::hermes_global_home(&sys.env, &sys.cwd, &sys.home))
 }
 
 /// Once a user-scope Claude hook is in `<home>/.claude/settings.json`, the

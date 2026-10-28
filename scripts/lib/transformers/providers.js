@@ -207,9 +207,23 @@ export const PROVIDERS = {
     // (license, compatibility, metadata) are spec-defined; harness-specific
     // extensions (user-invocable, argument-hint, allowed-tools) are NOT
     // recognized by the Hermes skill loader and would be silently ignored.
-    // Hermes also has no hook surface, no equivalent of Claude's slash
-    // commands, and no per-skill tool ACL -- so no emitHooks, no agentFormat,
-    // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
+    // The design hook ships as a Python plugin (skill/hermes-plugin/) under
+    // .hermes/plugins/, since Hermes hooks are in-process plugin callbacks.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
+    pluginPayload: { source: 'hermes-plugin', dest: 'plugins/impeccable-design-hook' },
+  },
+  devin: {
+    provider: 'devin',
+    providerTags: ['devin'],
+    configDir: '.devin',
+    displayName: 'Devin',
+    // Devin (web, CLI, Desktop) reads name, description, argument-hint, triggers,
+    // model, subagent, agent, permissions, allowed-tools. user-invocable is
+    // omitted: triggers already defaults to user and model. allowed-tools is
+    // omitted: the CLI docs call it an auto-approve list, the web docs a
+    // restriction, and our Claude-syntax entries match no Devin tool. The CLI
+    // has hooks (.devin/hooks.v1.json) and subagent profiles (.devin/agents/,
+    // Devin tool names), neither targeted yet: no emitHooks, no agentFormat.
+    frontmatterFields: ['argument-hint', 'license', 'compatibility', 'metadata'],
   },
 };

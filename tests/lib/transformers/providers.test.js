@@ -75,6 +75,24 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       });
     }
 
+    if (key === 'devin') {
+      test('emits argument-hint but neither user-invocable nor allowed-tools', () => {
+        transform([{
+          name: 'test',
+          description: 'Test',
+          body: 'Ask {{model}}.',
+          userInvocable: true,
+          argumentHint: '[target]',
+          allowedTools: ['Bash(npx impeccable *)'],
+        }], TEST_DIR);
+        const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
+        expect(content).toContain('argument-hint: "[target]"');
+        expect(content).not.toContain('user-invocable');
+        expect(content).not.toContain('allowed-tools');
+        expect(content).toContain('Ask Devin.');
+      });
+    }
+
     if (key === 'dsh') {
       test('uses DSH tools and resource paths without installing unsupported hooks or agents', () => {
         transform([{

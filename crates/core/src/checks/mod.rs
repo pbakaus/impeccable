@@ -15,6 +15,8 @@
 //!   scanCssTextForGlow/GridBackground/RadialHalo/PseudoStripe/InsetStripe/
 //!   Marquee/PulsingDot/OrganicClipPath/BuriedRaster, isRoundDotRadius).
 //!   Open: `impeccable_foundation::css::scan`.
+//! - `row_stripe`: the side stripe on a status row or cell
+//!   (scanCssTextForRowStripe), which the card scans in `css_scan` skip.
 //! - `html_patterns`: scanHtmlForShapeAssembledIllustration,
 //!   buildHtmlPatternCorpora, checkHtmlPatterns. Open (the corpora type):
 //!   `impeccable_foundation::rules::html_patterns`.
@@ -53,6 +55,7 @@ pub mod embedded_content;
 pub mod gradient_geometry;
 pub mod html_patterns;
 pub mod measures;
+pub mod row_stripe;
 pub mod rules;
 pub mod text_context;
 pub mod text_rules;

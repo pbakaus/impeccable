@@ -56,6 +56,7 @@ import {
   installLiveQueryHelpers,
   isMountErrorCardVisible,
   openTunePanel,
+  closeTunePanel,
   pickElement,
   readComputedFontWeight,
   runLiveChromeBottomBarSmoke,
@@ -784,6 +785,10 @@ for (const { name, fixture } of fixtures) {
           const applied = await setTuneRange(page, scenario.rangeLabel, scenario.rangeValue);
           assert.equal(applied, scenario.rangeValue, 'range knob took the requested value');
           await chooseTuneStep(page, scenario.stepsLabel, scenario.stepsOptionLabel);
+
+          t.diagnostic('Closing and reopening Tune before accepting the edited values');
+          await closeTunePanel(page);
+          await openTunePanel(page);
 
           t.diagnostic(`Accepting variant ${targetVariant} with tuned params`);
           await clickAccept(page, { expectedVariant: targetVariant });

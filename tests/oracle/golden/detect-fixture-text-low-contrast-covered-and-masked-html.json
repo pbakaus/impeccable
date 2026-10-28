@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/low-contrast-covered-and-masked.html\n  [low-contrast] 2.6:1 (need 4.5:1) — text #a0a0a0 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 2.6:1 (need 4.5:1) — text #a1a1a1 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 2.6:1 (need 4.5:1) — text #a2a2a2 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 2.5:1 (need 4.5:1) — text #a3a3a3 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n4 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

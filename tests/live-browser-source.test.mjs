@@ -153,8 +153,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply copy edit' : 'Apply copy edits';/,
-      'the staged apply pill should use Apply copy edits copy',
+      /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply edit' : 'Apply edits';/,
+      'the staged apply pill counts removals too, so it says edits, not copy edits',
     );
     assert.match(
       SOURCE,
@@ -223,7 +223,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function manualApplyLoadingText\(fallbackCount\)[\s\S]*?Fixing apply issue, attempt[\s\S]*?Verifying copy edits[\s\S]*?Applying ' \+ remaining \+ ' copy edit/,
+      /function manualApplyLoadingText\(fallbackCount\)[\s\S]*?Fixing apply issue, attempt[\s\S]*?Verifying edits[\s\S]*?Applying ' \+ remaining \+ ' edit/,
       'Apply loading text should cover applying, verifying, and repair states',
     );
     assert.match(
@@ -256,7 +256,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /pendingTrashTooltipEl\.textContent = 'Discard copy edits';/,
+      /pendingTrashTooltipEl\.textContent = 'Discard edits';/,
       'the discard button should use tooltip copy',
     );
     assert.match(
@@ -347,6 +347,43 @@ describe('live-browser source contracts', () => {
       /parentElement/,
       'source hints should come from the edited leaf itself, not inherited generated-container ancestors',
     );
+  });
+
+  it('offers a Remove badge beside Edit copy that stages a removal op and can undo it', () => {
+    const badge = SOURCE.match(/function renderEditBadge\(mode\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(badge);
+    assert.match(
+      badge,
+      /if \(selectedElement && hasTextRows\(selectedElement\)\) \{[\s\S]{0,120}chip\(EDIT_COPY_ICON, EDIT_COPY_LABEL, ACCENT, enterEditingMode\)[\s\S]{0,40}\}[\s\S]{0,40}chip\(REMOVE_ELEMENT_ICON, REMOVE_ELEMENT_LABEL, REMOVE_BADGE_FILL, removeSelectedElement\)/,
+      'Remove renders last on every selection, after a pencil that only shows when there is copy to edit',
+    );
+    assert.doesNotMatch(SOURCE, /renderEditBadge\(hasTextRows\(selectedElement\) \? 'idle' : 'hidden'\)/, 'selections without text rows must still get the Remove badge');
+    const remove = SOURCE.match(/async function removeSelectedElement\(\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(remove);
+    assert.match(remove, /if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}/, 'Remove is blocked while an apply runs');
+    assert.match(remove, /deleted: true,\s*removeElement: true,/, 'a removal is a deleted op flagged removeElement for the applier');
+    assert.match(remove, /leaf: copyEditLeafContext\(target, originalText, ''\)/, 'the applier gets the element markup through leaf');
+    assert.match(remove, /\/manual-edit-stash\?token=[\s\S]*?element: extractContext\(parent \|\| target\)[\s\S]*?ops: \[op\]/, 'removals stage through the same buffer as copy edits');
+    assert.match(remove, /target\.setAttribute\(REMOVED_ATTR, ref \|\| op\.tag\);/, 'the element is hidden by attribute, never detached (frameworks own the node)');
+    assert.doesNotMatch(remove, /target\.remove\(\)|removeChild\(target\)/);
+    assert.match(remove, /action: \{ label: 'Undo', onClick: \(\) => undoElementRemoval\(target, ref\) \}/, 'the toast offers Undo');
+    const undo = SOURCE.match(/async function undoElementRemoval\(target, ref\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(undo);
+    assert.match(undo, /\/manual-edit-discard\?token=[\s\S]*?&ref=' \+ encodeURIComponent\(ref \|\| ''\)/, 'Undo discards only that op by ref, not the whole page');
+    assert.match(undo, /target\.removeAttribute\(REMOVED_ATTR\);/);
+    assert.match(undo, /if \(res\.status === 409\) \{[\s\S]{0,260}return;/, 'Undo leaves the removal staged while an Apply owns the page');
+    assert.match(remove, /if \(!originalText\) \{[\s\S]{0,300}return;[\s\S]{0,20}\}/, 'an element nothing identifies in source is refused before staging');
+    const original = SOURCE.match(/function removalOriginalText\(el\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(original, /if \(el\.id\) return el\.id;[\s\S]{0,160}if \(cls\) return cls;/, 'a class name is the last identifying fallback');
+    const restore = SOURCE.match(/function restoreDiscardedManualEdits\(entries\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(restore, /if \(op\?\.removeElement === true\) \{ restoreRemovedElement\(op\); continue; \}/, 'Discard restores removed elements before the text-leaf path');
+    assert.match(restore, /op\?\.supersededOp \? \[op, op\.supersededOp\] : \[op\]/, 'Discard also restores the copy edit a removal superseded');
+    const keys = SOURCE.match(/function handleKeyDown\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(keys, /if \(isRemoveKey\(e\) && state === 'CONFIGURING' && selectedElement && configureKind !== 'insert'\) \{[\s\S]{0,120}removeSelectedElement\(\);/, 'Delete or Backspace removes the selected element');
+    assert.match(SOURCE, /function isRemoveKey\(e\) \{[\s\S]{0,200}!e\.metaKey && !e\.ctrlKey && !e\.altKey && !e\.shiftKey/, 'only an unmodified Delete or Backspace counts');
+    assert.match(SOURCE, /function shouldPassthroughElementNav\(deepActive, e\) \{[\s\S]{0,200}!isRemoveKey\(e\)\) return false;[\s\S]{0,160}if \(deepActive\.value\) return false;/, 'the key reaches the handler only from an empty prompt');
+    const strip = SOURCE.match(/function stripManualEditRuntimeState\(root\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(strip, /root\.querySelectorAll\('\[' \+ REMOVED_ATTR \+ '\]'\)\) removed\.remove\(\);[\s\S]{0,40}root\.removeAttribute\(REMOVED_ATTR\);/, 'context clones drop removed descendants and the marker');
   });
 
   it('keeps sendEvent fire-and-forget by default while accept/discard opt into rejection', () => {
@@ -1285,5 +1322,284 @@ describe('live-browser source contracts', () => {
     assert.equal(lines?.length, 2, 'both configure rows skip auto-focus on touch');
     assert.match(SOURCE, /if \(keepExpanded && touchPrimary\(\)\) preparePageChatInputForTyping\(\);/);
   });
+  it('renders DESIGN.md links only for safe schemes', () => {
+    const fn = (name) => SOURCE.match(new RegExp(`\\n  function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+    const sources = ['inlineMd', 'isSafeHref', 'escapeHtml'].map(fn);
+    for (const source of sources) assert.ok(source);
+    const inlineMd = runInNewContext(`${sources.join('\n')}\ninlineMd`, {});
+    // Payloads avoid `)`: the link pattern ends the URL at the first one.
+    for (const href of ['javascript:void 0', 'JavaScript:void 0', 'java\tscript:void 0', ' javascript:void 0', 'data:text/html,x', 'vbscript:x']) {
+      const html = inlineMd(`[docs](${href})`);
+      assert.doesNotMatch(html, /<a /, href);
+      assert.equal(html, 'docs', href);
+    }
+    for (const href of ['https://example.com/a', 'http://localhost:3000', 'mailto:a@b.c', '/docs/x', '#tokens', 'guide.md']) {
+      assert.match(inlineMd(`[docs](${href})`), /^<a href="/, href);
+    }
+  });
+
+  it('removes the helper token from window on every run, including a double-init', () => {
+    for (const alreadyInit of [false, true]) {
+      const window = { __IMPECCABLE_TOKEN__: 'secret', __IMPECCABLE_LIVE_INIT__: alreadyInit };
+      // No port: a fresh run returns right after reading it, before any DOM work.
+      runInNewContext(SOURCE, { window, console });
+      assert.equal('__IMPECCABLE_TOKEN__' in window, false, `alreadyInit=${alreadyInit}`);
+    }
+  });
+  it('reads localStorage for the session helper inside a try', () => {
+    // A denied store throws on the property read itself; unguarded, init
+    // aborts with __IMPECCABLE_LIVE_INIT__ still true and never retries.
+    assert.doesNotMatch(SOURCE, /storage: localStorage,/);
+    assert.match(SOURCE, /try \{ liveStorage = window\.localStorage; \} catch/);
+  });
 });
 
+// Exercise Tune's real control listeners and open/close lifecycle without a server.
+function tuneHarness(params) {
+  function node(tag) {
+    return {
+      tag, style: {}, dataset: {}, children: [], listeners: {},
+      appendChild(child) { this.children.push(child); },
+      addEventListener(type, fn) { this.listeners[type] = fn; },
+      set innerHTML(value) { this.children = []; },
+    };
+  }
+  const variant = { values: {} };
+  const body = node('div');
+  const context = {
+    state: 'CYCLING', paramsCurrentValues: {}, tuneOpen: false, currentSessionId: null,
+    visibleVariant: 1, restoredParamValues: null, rememberSessionFileMeta() {},
+    paramsPanelBody: body, paramsPanelEl: node('div'), paramsPanelPalette: {},
+    barEl: null, C: { brand: 'gold', ink: 'black' }, FONT: 'sans-serif', EASE: 'ease',
+    document: { createElement: node }, el: (tag, style) => Object.assign(node(tag), { style }),
+    getVisibleVariantEl: () => variant, parseVariantParams: () => params,
+    applyParamValue: (target, p, value) => { target.values[p.id] = value; },
+    showParamsPanel() {}, hideParamsPanel() {}, showOrUpdateCyclingBar() {}, queueCheckpoint() {},
+    saveSession() { context.savedParamValues = { ...context.paramsCurrentValues }; },
+  };
+  const names = [
+    'applyParamDefaults', 'rememberSavedParamValues', 'restoredParamValuesForVisibleVariant', 'noteParamEdited',
+    'isValidSavedParamValue', 'applySavedParamValues', 'applySavedSessionMeta',
+    'formatRangeValue', 'buildParamsPanel', 'openTunePopover', 'closeTunePopover', 'refreshParamsPanel',
+  ];
+  const functions = names.map(name => {
+    const source = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+    assert.ok(source, name);
+    return source;
+  }).join('\n');
+  const api = runInNewContext(`${functions}\n({refreshParamsPanel, openTunePopover, closeTunePopover, applySavedSessionMeta, rememberSavedParamValues})`, context);
+  const fire = (control, event) => control.listeners[event]({ stopPropagation() {} });
+  return { api, context, variant, body, fire };
+}
+
+describe('Tune reopening', () => {
+  for (const value of [0, 0.65]) {
+    it(`preserves a range value of ${value} through repeated reopening`, () => {
+      const h = tuneHarness([{ id: 'lightness', kind: 'range', min: 0, max: 1, default: 0.5 }]);
+      h.api.refreshParamsPanel();
+      h.api.openTunePopover();
+      const input = h.body.children[0].children[1];
+      input.value = String(value);
+      h.fire(input, 'input');
+      for (let i = 0; i < 2; i++) {
+        h.api.closeTunePopover();
+        h.api.openTunePopover();
+        assert.equal(h.variant.values.lightness, value, 'preview retains edit');
+        assert.equal(h.context.paramsCurrentValues.lightness, value, 'accept/checkpoint state retains edit');
+        assert.equal(h.body.children[0].children[1].value, String(value), 'slider agrees');
+        assert.equal(h.body.children[0].children[0].children[1].textContent, value.toFixed(2));
+      }
+    });
+  }
+  for (const initial of [false, true]) {
+    it(`preserves a toggle changed from ${initial} to ${!initial}`, () => {
+      const h = tuneHarness([{ id: 'italic', kind: 'toggle', default: initial }]);
+      h.api.refreshParamsPanel();
+      h.api.openTunePopover();
+      h.fire(h.body.children[0].children[1], 'click');
+      h.api.closeTunePopover();
+      h.api.openTunePopover();
+      assert.equal(h.context.paramsCurrentValues.italic, !initial);
+      assert.equal(h.variant.values.italic, !initial);
+      assert.equal(h.body.children[0].children[0].children[1].textContent, initial ? 'Off' : 'On');
+      assert.equal(h.body.children[0].children[1].children[0].style.left, initial ? '2px' : '18px');
+    });
+  }
+  it('preserves steps and still resets to the next variant defaults on refresh', () => {
+    const params = [{ id: 'face', kind: 'steps', default: 'sans', options: ['sans', 'serif'] }];
+    const h = tuneHarness(params);
+    h.api.refreshParamsPanel();
+    h.api.openTunePopover();
+    h.fire(h.body.children[0].children[1].children[1], 'click');
+    h.api.closeTunePopover();
+    h.api.openTunePopover();
+    assert.equal(h.variant.values.face, 'serif');
+    assert.equal(h.context.paramsCurrentValues.face, 'serif');
+    assert.equal(h.body.children[0].children[0].children[1].textContent, 'serif');
+    assert.equal(h.body.children[0].children[1].children[1].style.background, 'gold');
+    const nextVariant = { values: {} };
+    h.context.getVisibleVariantEl = () => nextVariant;
+    h.api.refreshParamsPanel();
+    assert.equal(h.context.paramsCurrentValues.face, 'sans');
+    assert.equal(nextVariant.values.face, 'sans');
+  });
+});
+
+
+describe('Tune session boundaries', () => {
+  it('clears old values when leaving the cycling state', () => {
+    const h = tuneHarness([{ id: 'size', kind: 'range', default: 0.5 }]);
+    h.context.paramsCurrentValues = { size: 0.8 };
+    h.context.state = 'IDLE';
+    h.api.refreshParamsPanel();
+    assert.equal(Object.keys(h.context.paramsCurrentValues).length, 0);
+    assert.equal(h.context.tuneOpen, false);
+    h.context.state = 'CYCLING';
+    h.api.refreshParamsPanel();
+    h.api.openTunePopover();
+    assert.equal(h.context.paramsCurrentValues.size, 0.5);
+    assert.equal(h.body.children[0].children[1].value, '0.5');
+  });
+
+  it('clears old values when a variant has no Tune parameters', () => {
+    const h = tuneHarness([]);
+    h.context.paramsCurrentValues = { size: 0.8 };
+    h.context.tuneOpen = true;
+    h.api.refreshParamsPanel();
+    h.api.openTunePopover();
+    assert.equal(Object.keys(h.context.paramsCurrentValues).length, 0);
+    assert.equal(h.context.tuneOpen, false);
+  });
+});
+
+describe('Tune first open without a refresh', () => {
+  it('seeds and applies displayed defaults so the preview, accept and toggles agree', () => {
+    const h = tuneHarness([
+      { id: 'size', kind: 'range', min: 0, max: 1, default: 0.4 },
+      { id: 'italic', kind: 'toggle', default: true },
+      { id: 'face', kind: 'steps', default: 'serif', options: ['sans', 'serif'] },
+    ]);
+    // Tune parameters can land on the visible variant after its last refresh.
+    h.api.openTunePopover();
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, { size: 0.4, italic: true, face: 'serif' });
+    assert.deepEqual({ ...h.variant.values }, { size: 0.4, italic: true, face: 'serif' });
+    h.fire(h.body.children[1].children[1], 'click');
+    assert.equal(h.context.paramsCurrentValues.italic, false, 'one click turns a default-on toggle off');
+    assert.equal(h.variant.values.italic, false);
+    h.api.closeTunePopover();
+    h.api.openTunePopover();
+    assert.equal(h.context.paramsCurrentValues.italic, false, 'reopen keeps the edit');
+    assert.equal(h.context.paramsCurrentValues.size, 0.4);
+  });
+});
+
+describe('Tune values across a reload', () => {
+  const PARAMS = [
+    { id: 'size', kind: 'range', min: 0, max: 1, default: 0.4 },
+    { id: 'italic', kind: 'toggle', default: false },
+    { id: 'face', kind: 'steps', default: 'sans', options: ['sans', { value: 'serif', label: 'Serif' }] },
+  ];
+  function resumed(saved) {
+    const h = tuneHarness(PARAMS);
+    h.context.currentSessionId = 's1';
+    h.context.visibleVariant = 2;
+    h.api.applySavedSessionMeta({ id: 's1', visible: 2, ...saved });
+    return h;
+  }
+
+  it('restores and applies the saved values for the resumed variant, through repeated refreshes', () => {
+    const h = resumed({ paramValues: { size: 0.8, italic: true, face: 'serif' } });
+    // The DOM resume refreshes from showVariantInDOM and again once cycling.
+    h.api.refreshParamsPanel();
+    h.api.refreshParamsPanel();
+    const expected = { size: 0.8, italic: true, face: 'serif' };
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, expected);
+    assert.deepEqual({ ...h.variant.values }, expected);
+    h.api.openTunePopover();
+    assert.equal(h.body.children[0].children[1].value, '0.8', 'slider shows the restored value');
+    assert.equal(h.body.children[1].children[0].children[1].textContent, 'On');
+    assert.equal(h.body.children[2].children[0].children[1].textContent, 'Serif');
+  });
+
+  it('keeps the stash through refreshes outside cycling', () => {
+    const h = resumed({ paramValues: { size: 0.8 } });
+    h.context.state = 'GENERATING';
+    h.api.refreshParamsPanel();
+    h.context.state = 'CYCLING';
+    h.api.refreshParamsPanel();
+    assert.equal(h.context.paramsCurrentValues.size, 0.8);
+    assert.equal(h.variant.values.size, 0.8);
+  });
+
+  it('resets to defaults on a variant switch after the resume, and does not restore on switching back', () => {
+    const h = resumed({ paramValues: { size: 0.8, italic: true, face: 'serif' } });
+    h.api.refreshParamsPanel();
+    const nextVariant = { values: {} };
+    h.context.getVisibleVariantEl = () => nextVariant;
+    h.context.visibleVariant = 3;
+    h.api.refreshParamsPanel();
+    const defaults = { size: 0.4, italic: false, face: 'sans' };
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
+    assert.deepEqual({ ...nextVariant.values }, defaults);
+    assert.equal(h.context.restoredParamValues, null);
+    h.context.getVisibleVariantEl = () => h.variant;
+    h.context.visibleVariant = 2;
+    h.api.refreshParamsPanel();
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
+  });
+
+  it('drops the stash once a knob is edited, so a later refresh does not revive it', () => {
+    const h = resumed({ paramValues: { size: 0.8 } });
+    h.api.refreshParamsPanel();
+    h.api.openTunePopover();
+    h.fire(h.body.children[1].children[1], 'click');
+    assert.equal(h.context.restoredParamValues, null);
+    assert.equal(h.context.paramsCurrentValues.italic, true);
+  });
+
+  it('saves a knob edit locally, so the next reload restores it', () => {
+    const h = resumed({ paramValues: { size: 0.8 } });
+    h.api.refreshParamsPanel();
+    h.api.openTunePopover();
+    const input = h.body.children[0].children[1];
+    input.value = '0.2';
+    h.fire(input, 'input');
+    assert.deepEqual({ ...h.context.savedParamValues }, { size: 0.2, italic: false, face: 'sans' });
+    const reloaded = resumed({ paramValues: h.context.savedParamValues });
+    reloaded.api.refreshParamsPanel();
+    assert.equal(reloaded.context.paramsCurrentValues.size, 0.2);
+    assert.equal(reloaded.variant.values.size, 0.2);
+  });
+
+  it('ignores stale keys and values that no longer fit the param', () => {
+    const h = resumed({ paramValues: { gone: 5, size: 1.5, italic: 'on', face: 'mono' } });
+    h.api.refreshParamsPanel();
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, { size: 0.4, italic: false, face: 'sans' });
+    assert.deepEqual({ ...h.variant.values }, { size: 0.4, italic: false, face: 'sans' });
+    for (const bad of [-0.1, Number.NaN, '0.5', null]) {
+      const r = resumed({ paramValues: { size: bad } });
+      r.api.refreshParamsPanel();
+      assert.equal(r.context.paramsCurrentValues.size, 0.4, `range value ${String(bad)} is ignored`);
+    }
+  });
+
+  it('ignores values saved for another session or another variant', () => {
+    const other = resumed({ id: 's0', paramValues: { size: 0.8 } });
+    other.api.refreshParamsPanel();
+    assert.equal(other.context.paramsCurrentValues.size, 0.4);
+    const elsewhere = resumed({ visible: 1, paramValues: { size: 0.8 } });
+    elsewhere.api.refreshParamsPanel();
+    assert.equal(elsewhere.context.paramsCurrentValues.size, 0.4);
+  });
+
+  it('reads the variant from both the local and the server session shapes', () => {
+    const h = tuneHarness(PARAMS);
+    h.api.rememberSavedParamValues({ id: 's1', visibleVariant: 2, paramValues: { size: 0.2 } });
+    assert.deepEqual({ ...h.context.restoredParamValues, values: { ...h.context.restoredParamValues.values } },
+      { sessionId: 's1', variant: 2, values: { size: 0.2 } });
+    h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: {} });
+    assert.equal(h.context.restoredParamValues.variant, 2, 'an empty save keeps the server values');
+    h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: { size: 0.3 } });
+    assert.equal(h.context.restoredParamValues.variant, 3);
+  });
+});

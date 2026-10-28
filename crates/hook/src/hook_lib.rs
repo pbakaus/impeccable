@@ -969,8 +969,9 @@ pub fn per_edit_tiering_active(config: &HookConfig, harness: &str) -> bool {
     config.per_edit_rules != "all"
 }
 
-/// JS: findingCacheKey(finding)
-pub fn finding_cache_key(f: &Finding) -> String {
+/// JS: findingCacheKey(finding). The pending ack's label for a finding, with
+/// its line; no longer a cache key (see [`finding_cache_keys`]).
+pub fn pending_label(f: &Finding) -> String {
     let line = if f.line.is_nan() { 0.0 } else { f.line };
     let value = extract_finding_ignore_value(f);
     if line > 0.0 && !value.is_empty() {
@@ -982,7 +983,8 @@ pub fn finding_cache_key(f: &Finding) -> String {
     if !value.is_empty() {
         return format!("{}:0:{}", f.antipattern, value);
     }
-    let snippet = slice_prefix(js::trim(&f.snippet), 80);
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
     if snippet.is_empty() {
         format!("{}:0", f.antipattern)
     } else {
@@ -990,7 +992,48 @@ pub fn finding_cache_key(f: &Finding) -> String {
     }
 }
 
-fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
+/// What a finding says, without where it sits: an edit above it must not
+/// make it a new finding.
+fn finding_identity(f: &Finding) -> String {
+    let value = extract_finding_ignore_value(f);
+    if !value.is_empty() {
+        return format!("{}:{}", f.antipattern, value);
+    }
+    // A finding that counts the copies it speaks for is the same finding
+    // when the count moves: one more link wearing a reported colour pair is
+    // not a new finding to repeat.
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
+    if snippet.is_empty() {
+        f.antipattern.to_string()
+    } else {
+        format!("{}:{}", f.antipattern, snippet)
+    }
+}
+
+/// Cache keys, index-aligned with `findings`: identity plus the occurrence
+/// among identical findings, top to bottom (identical findings on one line
+/// are one occurrence). An edit above a finding leaves its key alone, and one
+/// more identical finding on a new line adds exactly one fresh key.
+pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
+    let line = |i: usize| if findings[i].line.is_nan() { 0.0 } else { findings[i].line };
+    let mut order: Vec<usize> = (0..findings.len()).collect();
+    order.sort_by(|&a, &b| line(a).total_cmp(&line(b)).then(a.cmp(&b)));
+    let mut seen: HashMap<String, (usize, Option<f64>)> = HashMap::new();
+    let mut keys = vec![String::new(); findings.len()];
+    for i in order {
+        let identity = finding_identity(&findings[i]);
+        let (n, last) = seen.entry(identity.clone()).or_insert((0, None));
+        if *last != Some(line(i)) {
+            *n += 1;
+            *last = Some(line(i));
+        }
+        keys[i] = format!("{identity}#{n}");
+    }
+    keys
+}
+
+pub fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
     match entry.get("findings") {
         Some(Value::Array(list)) => list.iter().map(js_string).collect(),
         _ => vec![],
@@ -1000,6 +1043,7 @@ fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
 /// JS: dedupeAgainstCache(findings, cache, sessionId, filePath)
 pub fn dedupe_against_cache(
     findings: &[Finding],
+    keys: &[String],
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
@@ -1010,12 +1054,11 @@ pub fn dedupe_against_cache(
     let entry = ensure_file(cache, session_id, file_path);
     let mut known = known_findings(entry);
     let mut fresh = Vec::new();
-    for f in findings {
-        let key = finding_cache_key(f);
-        if known.contains(&key) {
+    for (f, key) in findings.iter().zip(keys) {
+        if known.contains(key) {
             continue;
         }
-        known.push(key);
+        known.push(key.clone());
         fresh.push(f.clone());
     }
     fresh
@@ -1026,19 +1069,18 @@ pub fn remember_findings(
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
-    findings: &[Finding],
+    keys: &[String],
 ) {
     let entry = ensure_file(cache, session_id, file_path);
-    let mut keys: Vec<String> = Vec::new();
-    for f in findings {
-        let k = finding_cache_key(f);
-        if !keys.contains(&k) {
-            keys.push(k);
+    let mut unique: Vec<String> = Vec::new();
+    for k in keys {
+        if !unique.contains(k) {
+            unique.push(k.clone());
         }
     }
     entry.insert(
         "findings".into(),
-        Value::Array(keys.into_iter().map(Value::String).collect()),
+        Value::Array(unique.into_iter().map(Value::String).collect()),
     );
     ensure_session(cache, session_id).insert("updatedAt".into(), now_value());
 }
@@ -1667,6 +1709,7 @@ pub fn detector_detect_text(
         design_system: scan.design_system.as_deref(),
         inline_ignores: true,
         rule_pack: None,
+        tokens: None,
     };
     detect_text(content, file_path, &opts)
 }
@@ -1778,11 +1821,12 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
+        // Hermes' pre_verify plugin hands this same shape to its verify gate.
         if js::trim(text).is_empty() {
             return String::new();
         }
@@ -1869,6 +1913,7 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("claude") => return "claude",
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
+        Some("hermes") => return "hermes",
         _ => {}
     }
     if let Some(ev) = event {

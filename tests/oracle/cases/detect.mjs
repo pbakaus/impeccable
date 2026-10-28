@@ -294,6 +294,25 @@ function Thumb({ url }: { url?: string }) {
       args: ['--json', target],
     })),
 
+    // `**/` must match root and nested paths without swallowing adjacent names.
+    {
+      id: 'detect-ignore-globstar-directory-boundary-json', verb: 'detect',
+      setup: (ws) => {
+        fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"globstar-ignore"}\n');
+        fs.mkdirSync(path.join(ws, 'docs'), { recursive: true });
+        fs.mkdirSync(path.join(ws, '.impeccable'));
+        fs.writeFileSync(
+          path.join(ws, '.impeccable', 'config.json'),
+          JSON.stringify({ detector: { ignoreFiles: ['**/index.html'] } }) + '\n',
+        );
+        const html = '<style>.card { border-left: 4px solid #ff0000; border-radius: 10px; }</style>\n<div class="card">Card</div>\n';
+        for (const file of ['index.html', 'docs/index.html', 'safeindex.html', 'docs/safeindex.html']) {
+          fs.writeFileSync(path.join(ws, file), html);
+        }
+      },
+      args: ['--json', '.'],
+    },
+
     // A DESIGN.md that declares a purple switches ai-color-palette's
     // purple/violet forms off for its project, in the static and the regex
     // engines alike, and text mode says so; a DESIGN.md without one changes

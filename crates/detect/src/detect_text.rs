@@ -5,8 +5,9 @@
 
 use impeccable_core::checks::css_scan::{
     scan_css_text_for_grid_background, scan_css_text_for_pseudo_stripe, side_stripe_index,
-    CssHostIndex,
+    CssHostIndex, CustomProps,
 };
+use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
 use impeccable_core::checks::rules::DeclaredCorners;
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
@@ -34,6 +35,10 @@ pub struct TextOptions<'a> {
     pub inline_ignores: bool,
     /// An installed rule pack's text hook; `None` runs the built-ins only.
     pub rule_pack: Option<&'static dyn RulePack>,
+    /// Custom properties declared elsewhere in the project (its token
+    /// sheets), so a stripe coloured `var(--danger)` in a component reads
+    /// the colour the token holds. `None` reads the file's own only.
+    pub tokens: Option<&'a CustomProps>,
 }
 
 const PAGE_ANALYZER_EXTS: &[&str] = &[".html", ".htm", ".astro", ".vue", ".svelte"];
@@ -2086,6 +2091,42 @@ pub fn run_text_content_analyzers(
     findings
 }
 
+fn row_stripe_findings(
+    text: &str,
+    file_path: &str,
+    line_offset: usize,
+    tokens: Option<&CustomProps>,
+) -> Vec<Finding> {
+    scan_css_text_for_row_stripe(text, tokens)
+        .into_iter()
+        .map(|hit| {
+            let line = line_offset + line_of_offset(text, hit.index.unwrap_or(0));
+            finding(&hit.id, file_path, &hit.snippet, line as f64)
+        })
+        .collect()
+}
+
+/// Whether a card scan's side-tab snippet reports the stripe a row-stripe
+/// snippet (`<selectors> — <property> <n>px stripe on a row or cell …`)
+/// does: the inset scan's names the same selectors and thickness, a side
+/// border's the same property and width.
+fn same_stripe(card: &str, row: &str) -> bool {
+    let Some((selector, detail)) = row.split_once(" — ") else { return false };
+    let words: Vec<&str> = detail.split_whitespace().collect();
+    let Some(at) = words.iter().position(|w| w.ends_with("px")) else { return false };
+    let (prop, px) = (words[..at].join(" "), words[at]);
+    if prop == "inset box-shadow" {
+        let Some((card_selector, card_detail)) = card.split_once(" — ") else { return false };
+        let card_branches: Vec<&str> = card_selector.split(", ").collect();
+        return card_detail.starts_with(&format!("inset box-shadow {px} "))
+            && selector.split(", ").all(|b| card_branches.contains(&b));
+    }
+    // The border matcher's snippet is the declaration as written, spaced or not.
+    card.split_once(':').is_some_and(|(p, v)| {
+        js::trim(p) == prop && js::trim_start(v).split(|c: char| c.is_whitespace() || c == ';' || c == '}').next() == Some(px)
+    })
+}
+
 fn pseudo_stripe_findings(
     text: &str,
     file_path: &str,
@@ -2138,9 +2179,15 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
         Some(&sheet),
     ));
 
+    // Side stripes on status rows and cells, which the card scans skip; kept
+    // apart until those have run so a stripe they report is not doubled.
+    let mut row_stripes: Vec<Finding> = Vec::new();
     if css_like {
         findings.extend(scan_inset_stripe_css(content, file_path, 0, &sheet));
         findings.extend(pseudo_stripe_findings(content, file_path, 0, &sheet));
+        // Comments blanked in place: a `//` line in a preprocessor sheet is
+        // not a rule.
+        row_stripes.extend(row_stripe_findings(&source, file_path, 0, options.tokens));
     }
 
     let grid_meta = ProfileMeta {
@@ -2203,6 +2250,12 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
             block.start_line - 2,
             &sheet,
         ));
+        row_stripes.extend(row_stripe_findings(
+            &block_content,
+            file_path,
+            block.start_line - 2,
+            options.tokens,
+        ));
     }
 
     let css_js_blocks = profile_step(
@@ -2240,6 +2293,21 @@ pub fn detect_text(content: &str, file_path: &str, options: &TextOptions) -> Vec
             block.start_line - 1,
             &sheet,
         ));
+        row_stripes.extend(row_stripe_findings(
+            &block_content,
+            file_path,
+            block.start_line - 1,
+            options.tokens,
+        ));
+    }
+    let cards = findings.len();
+    for stripe in row_stripes {
+        if !findings[..cards]
+            .iter()
+            .any(|f| f.antipattern == "side-tab" && f.line == stripe.line && same_stripe(&f.snippet, &stripe.snippet))
+        {
+            findings.push(stripe);
+        }
     }
 
     if let Some(ds) = options.design_system {
@@ -2549,6 +2617,59 @@ function Thumb({ url }: { url?: string }) {
         // radius in the accent's own rule is not seen there.
         let own = "<style lang=\"stylus\">\n.card\n  border-bottom: 3px solid red\n  border-radius: 12px\n</style>\n";
         assert_eq!(at(own, "/x/a.vue"), 0);
+    }
+
+    /// A stripe down one side of a status row or cell reports in a sheet, a
+    /// component's `<style>` block and a CSS-in-JS template, with a token
+    /// colour read from the project's other sheets.
+    #[test]
+    fn status_row_stripe_is_a_side_tab_in_every_text_source() {
+        let side_tabs = |src: &str, path: &str, tokens: Option<&CustomProps>| -> Vec<(f64, String)> {
+            let options = TextOptions { tokens, ..TextOptions::default() };
+            detect_text(src, path, &options)
+                .into_iter()
+                .filter(|f| f.antipattern == "side-tab")
+                .map(|f| (f.line, f.snippet))
+                .collect()
+        };
+        let rule = "tr.is-broken > td:first-child { box-shadow: inset 3px 0 0 var(--pr-mark-danger); }";
+        let svelte = format!("<table><tr class=\"is-broken\"><td>a</td></tr></table>\n\n<style>\n  .x {{ color: red; }}\n  {rule}\n</style>\n");
+        let mut tokens = CustomProps::new();
+        tokens.set("--pr-mark-danger", "oklch(63% .23 27)".to_string());
+        let found = side_tabs(&svelte, "/x/AppsTable.svelte", Some(&tokens));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].0, 5.0);
+        assert!(found[0].1.starts_with("tr.is-broken > td:first-child"), "{found:?}");
+        // The token name says the colour even with no sheet in reach; a
+        // neutral token says it is not one.
+        assert_eq!(side_tabs(&svelte, "/x/AppsTable.svelte", None).len(), 1);
+        let mut neutral = CustomProps::new();
+        neutral.set("--pr-mark-danger", "#e5e7eb".to_string());
+        assert!(side_tabs(&svelte, "/x/AppsTable.svelte", Some(&neutral)).is_empty());
+        assert_eq!(side_tabs(".cell {\n  box-shadow: inset 3px 0 0 red;\n}\n", "/x/a.css", None).len(), 1);
+        let styled = "const Row = styled.tr`\n  &.is-new td:first-child { border-left: 3px solid #16a34a; }\n`;\n";
+        assert_eq!(side_tabs(styled, "/x/a.tsx", None).len(), 1);
+        // A rounded row card reports once, from the card scan.
+        let card = ".row-card.is-x { box-shadow: inset 4px 0 0 #d0342c; border-radius: 8px; }\n";
+        assert_eq!(side_tabs(card, "/x/a.css", None).len(), 1);
+        // Another stripe, or a card's, on the same line is not that stripe.
+        let compact = "td.is-x { box-shadow: inset 3px 0 0 red; } td.is-y { box-shadow: inset 3px 0 0 blue; }\n";
+        assert_eq!(side_tabs(compact, "/x/a.css", None).len(), 2);
+        let beside_card = ".card { border-left: 4px solid #6366f1; border-radius: 12px; } td.is-x { box-shadow: inset 3px 0 0 red; }\n";
+        assert_eq!(side_tabs(beside_card, "/x/a.css", None).len(), 2);
+        let rounded_elsewhere = ".row-card.is-x { box-shadow: inset 4px 0 0 #d0342c; }\n.row-card { border-radius: 8px; }\n";
+        assert_eq!(side_tabs(rounded_elsewhere, "/x/a.css", None).len(), 1);
+        let compact_rounded = ".row-card.is-x{border-left:3px solid #d0342c}.row-card{border-radius:8px}\n";
+        assert_eq!(side_tabs(compact_rounded, "/x/a.css", None).len(), 1);
+        let card_then_cell = ".card{border-left:3px solid red;border-radius:12px} td.is-error{border-left:3px solid blue}\n";
+        assert_eq!(side_tabs(card_then_cell, "/x/a.css", None).len(), 2);
+        // A line comment in a preprocessor sheet is not a rule.
+        for path in ["/x/a.scss", "/x/a.less"] {
+            assert!(side_tabs("// td.is-error { box-shadow: inset 3px 0 0 red; }\n", path, None).is_empty(), "{path}");
+            assert_eq!(side_tabs("td.is-error { box-shadow: inset 3px 0 0 red; } // flagged\n", path, None).len(), 1, "{path}");
+        }
+        // Selection and hover stripes on a row stay silent.
+        assert!(side_tabs("tr.is-selected td { box-shadow: inset 3px 0 0 #2563eb; }\ntr:hover td { box-shadow: inset 3px 0 0 #2563eb; }\n", "/x/a.css", None).is_empty());
     }
 
     /// Every text-engine producer of `side-tab` answers a square box and a

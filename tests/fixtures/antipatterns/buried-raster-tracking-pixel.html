@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Buried raster, a tracking pixel</title>
+  <!--
+    Browser-only reads. A 0x0 tracking pixel at opacity 0
+    (teenage.engineering's view beacon) shows no picture to bury. A 600 by
+    400 photo held at opacity 0.05 is what the rule is for.
+  -->
+  <style>
+    body { margin: 0; padding: 32px; font-family: system-ui, sans-serif; color: #1a1a1a; background: #ffffff; }
+    .photo { display: block; width: 600px; height: 400px; opacity: 0.05; background: #888; }
+  </style>
+</head>
+<body>
+  <h1>Products</h1>
+  <img id="pass-beacon" aria-hidden="true" alt="" src="/_api/track/view.png" style="opacity:0;height:0;width:0">
+  <img id="flag-faint-photo" class="photo" alt="Workshop" src="/images/workshop.png">
+</body>
+</html>

@@ -288,8 +288,8 @@ pub mod origin {
     /// The visual-contrast pass (image and pixel reads), and the rule pass's
     /// `low-contrast` verdicts on text it hands to that pass
     /// (`visual::routed_reason`), which the pixels replace where they give a
-    /// verdict and which stand, as advisory, where they do not. Recorded,
-    /// not replayable.
+    /// verdict and which, where they do not, stand as advisory or, if they
+    /// measured nothing, drop. Recorded, not replayable.
     pub const VISUAL_CONTRAST: &str = "visual-contrast";
 }
 
@@ -313,6 +313,11 @@ struct RawResult {
     /// For a page-level finding, where the evidence step found the element
     /// that carries its declaration ([`Evidence::page_anchors`]).
     anchor: Option<Value>,
+    /// A `low-contrast` verdict handed to the pixels ([`hand_over`]) whose
+    /// ratio was taken against a ground a picture, or paint the scan cannot
+    /// model, covers: it measured nothing, and stands only if the pixels
+    /// measure it ([`settle_handed_over`]).
+    unmeasured: bool,
 }
 
 impl RawResult {
@@ -327,6 +332,7 @@ impl RawResult {
             scan_el: None,
             third_party: None,
             anchor: None,
+            unmeasured: false,
         }
     }
 }
@@ -376,7 +382,11 @@ pub struct Evidence {
     /// `{ scan: [x, y, width, height], measured: [x, y, width, height] }`,
     /// document coordinates. [`Evidence::element_rects`] keeps the measured
     /// rect, which matches the screenshot; the element there is the scan's,
-    /// not the state it was scored in.
+    /// not the state it was scored in. A selector whose element moved more
+    /// than half its own size while the screenshot was taken also carries
+    /// `afterShot: [x, y, width, height]`, its rect measured right after it
+    /// (see [`note_motion_during_shot`]): the crop at the measured rect may
+    /// show what replaced it.
     pub element_drift: Map<String, Value>,
     /// Parallel to the findings: for a page-level finding (on `body` or
     /// `html`) whose declaration a painted element carries (a radial-gradient
@@ -838,6 +848,7 @@ fn results_from_groups(groups: &[Value]) -> Vec<RawResult> {
                     .and_then(Value::as_str)
                     .map(String::from),
                 anchor: None,
+                unmeasured: false,
             });
         }
     }
@@ -849,8 +860,8 @@ fn results_from_groups(groups: &[Value]) -> Vec<RawResult> {
 /// hands to the pixels ([`impeccable_core::browser::visual::routed_reason`]).
 /// The live scan lets a pixel verdict replace such a verdict, so it is the
 /// visual-contrast pass's to report, and a replay leaves it out. A handed
-/// verdict over a picture carries the text it keeps if the pixels give none
-/// ([`impeccable_core::browser::visual::unmeasured_handed_over_snippet`]).
+/// verdict whose ratio was taken against a ground a picture covers measured
+/// nothing ([`impeccable_core::browser::visual::handed_over_unmeasured`]).
 fn handed_over(dom: &SnapshotDom, groups: &[impeccable_core::browser::FindingGroup]) -> Vec<Handed> {
     let mut out = Vec::new();
     for g in groups {
@@ -861,7 +872,9 @@ fn handed_over(dom: &SnapshotDom, groups: &[impeccable_core::browser::FindingGro
                     impeccable_core::browser::visual::routed_reason(dom, g.el).is_some()
                 });
             out.push(if handed {
-                Handed::Yes(impeccable_core::browser::visual::unmeasured_handed_over_snippet(dom, g.el, &f.detail))
+                Handed::Yes {
+                    unmeasured: impeccable_core::browser::visual::handed_over_unmeasured(dom, g.el, &f.detail),
+                }
             } else {
                 Handed::No
             });
@@ -874,25 +887,23 @@ fn handed_over(dom: &SnapshotDom, groups: &[impeccable_core::browser::FindingGro
 #[derive(Debug, Clone, PartialEq)]
 enum Handed {
     No,
-    /// Handed to the pixels, with the text the verdict keeps if they give
-    /// none (`None`: its own).
-    Yes(Option<String>),
+    /// Handed to the pixels; `unmeasured` where its ratio measured nothing a
+    /// reader sees, so it stands only on a pixel verdict.
+    Yes { unmeasured: bool },
 }
 
 /// Move the verdicts [`handed_over`] marks to [`origin::VISUAL_CONTRAST`],
-/// with the text they keep if the pixels give none (only an unsuperseded
-/// one is ever printed). Results that do not line up with the marks (never
-/// expected) stay in the scan origin, the same way live and in a replay.
+/// marking the ones that measured nothing. Results that do not line up with
+/// the marks (never expected) stay in the scan origin, the same way live and
+/// in a replay.
 fn hand_over(results: &mut [RawResult], handed: &[Handed]) {
     if handed.len() != results.len() {
         return;
     }
     for (r, handed) in results.iter_mut().zip(handed) {
-        if let Handed::Yes(unmeasured) = handed {
+        if let Handed::Yes { unmeasured } = handed {
             r.origin = origin::VISUAL_CONTRAST;
-            if let Some(text) = unmeasured {
-                r.snippet = text.clone();
-            }
+            r.unmeasured = *unmeasured;
         }
     }
 }
@@ -903,12 +914,15 @@ fn hand_over(results: &mut [RawResult], handed: &[Handed]) {
 /// Where the pixels gave a verdict, pass or fail, theirs replaces the element
 /// pass's (`superseded`). Where they gave none (the routed budget was spent,
 /// the read was refused for a blocked reason, the candidate never reached a
-/// slot, the two shots differed), the element pass's verdict stands, but as
-/// advisory: it was computed from styles over paint the walk could not read,
-/// and the check meant to confirm it never ran (corpus decision
-/// r6-t5-unread-pixel-verdicts). Its text is unchanged. Only the verdicts
-/// `hand_over` moved to the visual-contrast origin are touched: the scan
-/// origin is what a replay reproduces, and a replay has no pixels.
+/// slot, the two shots differed), a verdict whose ratio was taken against a
+/// ground a picture, or paint the scan cannot model, covers is dropped: it
+/// measured nothing, and only a measured failing ratio reports (corpus
+/// decision 2 of round 13, which reverses r6-t5-unread-pixel-verdicts for
+/// this case). Any other stands, text unchanged, as advisory: it was computed
+/// from styles over paint the walk could not read, and the check meant to
+/// confirm it never ran (r6-t5). Only the verdicts `hand_over` moved to the
+/// visual-contrast origin are touched: the scan origin is what a replay
+/// reproduces, and a replay has no pixels.
 ///
 /// A selector that names several elements (a repeated id) is told apart by
 /// its match (`[n, count]`): `match_of` gives a result's, and a pixel verdict
@@ -919,15 +933,14 @@ fn settle_handed_over(
     match_of: impl Fn(&RawResult) -> Option<Value>,
 ) {
     let handed = |r: &RawResult| r.origin == origin::VISUAL_CONTRAST && r.id == "low-contrast";
-    if !superseded.is_empty() {
-        results.retain(|r| {
-            !(handed(r)
-                && r.selector.as_deref().is_some_and(|s| {
+    results.retain(|r| {
+        !(handed(r)
+            && (r.unmeasured
+                || r.selector.as_deref().is_some_and(|s| {
                     let m = match_of(r);
                     superseded.iter().any(|k| k.names(s, m.as_ref()))
-                }))
-        });
-    }
+                })))
+    });
     for r in results.iter_mut().filter(|r| handed(r)) {
         r.severity = impeccable_core::checks::rules::ADVISORY_SEVERITY.to_string();
     }
@@ -1286,6 +1299,9 @@ fn scan_loaded(
     // the in-page bundle's `impeccableDetect({ serialize: true })` produced; the
     // group selectors feed the visual pass below.
     let mut serialized_groups: Vec<Value> = Vec::new();
+    // Copies whose verdict a counted finding speaks for (` (and N more)`):
+    // the visual pass treats them as reported.
+    let mut collapsed_selectors: Vec<String> = Vec::new();
     let mut results = step_findings(profile, "scan", "browser-scan", url, || {
         let facts = evidence.as_mut().map(|(ev, _)| &mut ev.scan_facts);
         // Which verdicts the element pass hands to the pixels is decided here,
@@ -1306,6 +1322,11 @@ fn scan_loaded(
             .as_array()
             .cloned()
             .unwrap_or_default();
+        collapsed_selectors = collected
+            .collapsed
+            .iter()
+            .map(|el| impeccable_core::browser::driver::generate_selector(&base, *el))
+            .collect();
         let mut results = results_from_groups(&serialized_groups);
         hand_over(&mut results, &handed);
         // One serialized group per finding group, one result per finding, in
@@ -1414,7 +1435,8 @@ fn scan_loaded(
     // A hidden window paints no frames, and a screenshot of it can wait for
     // one that never comes: an attached page skips the pixel reads while it
     // is hidden, and they stop if one stalls. What they would have read
-    // keeps the element pass's verdict, as advisory.
+    // keeps the element pass's verdict, as advisory, unless that verdict
+    // measured nothing ([`settle_handed_over`]).
     let pixels_off = page.is_attached()
         && page
             .evaluate_value("document.visibilityState === 'hidden'")
@@ -1422,7 +1444,7 @@ fn scan_loaded(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
     let (mut visual, superseded, stalled) =
-        run_visual_contrast_fallback(page, &analyses, &serialized_groups, viewport, profile, url, pixels_off)?;
+        run_visual_contrast_fallback(page, &analyses, &serialized_groups, &collapsed_selectors, viewport, profile, url, pixels_off)?;
     if pixels_off {
         notes.push(format!(
             "Capture note: {url} was hidden (minimized, or a background tab or window), so the pixel pass read nothing there. Bring it on screen, focused or not, and scan again for those contrast verdicts."
@@ -1504,8 +1526,9 @@ const VISUAL_CONTRAST_MAX_ROUTED: f64 = 12.0;
 /// they have spent this long, or once this many in a row gave no verdict (a
 /// page whose carousels repaint every box between the two shots, at about a
 /// second a read on lpga.or.jp). What they leave unread keeps the element
-/// pass's verdict, as advisory ([`settle_handed_over`]). A page whose reads are quick (about
-/// 150ms each) spends under two seconds on all twelve.
+/// pass's verdict, as advisory, or drops one that measured nothing
+/// ([`settle_handed_over`]). A page whose reads are quick (about 150ms each)
+/// spends under two seconds on all twelve.
 const ROUTED_PIXEL_BUDGET: std::time::Duration = std::time::Duration::from_secs(4);
 const ROUTED_PIXEL_MISSES: usize = 4;
 /// A read that gave no verdict counts toward [`ROUTED_PIXEL_MISSES`] only
@@ -1550,7 +1573,8 @@ fn capped_script_errors<'a>(errors: impl IntoIterator<Item = (&'a str, Option<&'
 /// decision r3-31-script-error-ad-tech). One of React's recoverable
 /// hydration errors reports as advisory with its text unchanged: React
 /// renders the page again on the client and the page shows complete (corpus
-/// decision r5-p13-script-error-hydration).
+/// decision r5-p13-script-error-hydration). So does a `play()` a later
+/// `pause()` interrupted: the video does what the last call asked.
 fn script_error_result(message: &str, source: Option<&str>) -> RawResult {
     let snippet = match source {
         Some(source) => format!("{message} ({source})"),
@@ -1566,10 +1590,14 @@ fn script_error_result(message: &str, source: Option<&str>) -> RawResult {
                 impeccable_core::third_party::tag_detail(&snippet, vendor),
             )
         },
-        None if impeccable_core::script_errors::react_recoverable_hydration_error(message).is_some() => RawResult {
-            severity: "advisory".to_string(),
-            ..RawResult::new(origin::SCRIPT_ERROR, "script-error".to_string(), snippet)
-        },
+        None if impeccable_core::script_errors::react_recoverable_hydration_error(message).is_some()
+            || impeccable_core::script_errors::media_play_interrupted(message) =>
+        {
+            RawResult {
+                severity: "advisory".to_string(),
+                ..RawResult::new(origin::SCRIPT_ERROR, "script-error".to_string(), snippet)
+            }
+        }
         None => RawResult::new(origin::SCRIPT_ERROR, "script-error".to_string(), snippet),
     }
 }
@@ -1811,6 +1839,7 @@ fn capture_post_scan(
     }
     match fullpage::capture_full_page(page, request.max_screenshot_height, request.jpeg_quality) {
         Ok(shot) => {
+            note_motion_during_shot(page, ev, identities, nodes);
             ev.element_shots = fullpage::capture_element_shots(
                 page,
                 &ev.element_rects,
@@ -1902,6 +1931,89 @@ fn remeasure_drifted(
             ev.element_drift.insert(selector, json!({ "scan": scan, "measured": measured }));
         }
     }
+}
+
+/// Least distance, in CSS px, a flagged element must move between the
+/// measure before the screenshot and the one after it for
+/// [`note_motion_during_shot`] to record it, beside half its own size.
+pub const SHOT_MOTION_MIN_PX: f64 = 16.0;
+
+/// Measure every flagged selector that has a rect again right after the
+/// screenshot. One that moved more than half its own width or height (and at
+/// least [`SHOT_MOTION_MIN_PX`]) since the measure before it was in motion
+/// while the screenshot was taken (a carousel that advanced one slide, a
+/// layout that shifted), so the crop at its rect may show what replaced it.
+/// It is recorded in [`Evidence::element_drift`] with `afterShot`, its rect
+/// after the screenshot, beside `scan` and `measured` (an entry already
+/// there keeps its own; a fresh one has both at the measured rect, since it
+/// did not drift for good);
+/// [`Evidence::element_rects`] keeps the rect the screenshot was cut by.
+/// Best-effort: a failed measure records nothing.
+fn note_motion_during_shot(
+    page: &mut Page<'_>,
+    ev: &mut Evidence,
+    identities: &Map<String, Value>,
+    nodes: &Map<String, Value>,
+) {
+    let selectors: Vec<&String> = ev.element_rects.keys().collect();
+    if selectors.is_empty() {
+        return;
+    }
+    let expr = format!(
+        r#"(() => {{
+  const resolve = {resolve};
+  const identities = {ids};
+  const nodes = {nodes};
+  const rects = {{}};
+  for (const s of {sels}) {{
+    try {{
+      const n = nodes[s];
+      const el = resolve(s, identities[s], n ? n[0] : null);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      rects[s] = [r.x + window.scrollX, r.y + window.scrollY, r.width, r.height];
+    }} catch (e) {{}}
+  }}
+  return rects;
+}})()"#,
+        resolve = fullpage::RESOLVE_FLAGGED_JS,
+        ids = Value::Object(identities.clone()),
+        nodes = Value::Object(nodes.clone()),
+        sels = json!(selectors),
+    );
+    let Ok(Value::Object(after)) = page.evaluate_value(&expr) else { return };
+    let rect = |v: &Value| -> Option<[f64; 4]> {
+        let a = v.as_array()?;
+        let n = |i: usize| a.get(i).and_then(Value::as_f64).filter(|x| x.is_finite());
+        Some([n(0)?, n(1)?, n(2)?, n(3)?])
+    };
+    for (selector, now) in after {
+        let (Some(before), Some(now_rect)) = (ev.element_rects.get(&selector).and_then(rect), rect(&now)) else {
+            continue;
+        };
+        if !moved_during_shot(&before, &now_rect) {
+            continue;
+        }
+        // A fresh entry did not drift for good: `scan` is the measured rect,
+        // so a reader sees motion during the shot only, not a small move
+        // before it (a carousel mid-transition at the scan).
+        let entry = ev
+            .element_drift
+            .entry(selector.clone())
+            .or_insert_with(|| json!({ "scan": before, "measured": before }));
+        if let Value::Object(m) = entry {
+            m.insert("afterShot".to_string(), now);
+        }
+    }
+}
+
+/// Whether a rect measured after the screenshot sits more than half the
+/// element's own width or height (and at least [`SHOT_MOTION_MIN_PX`]) from
+/// the one measured before it.
+fn moved_during_shot(before: &[f64; 4], after: &[f64; 4]) -> bool {
+    let dx = (after[0] - before[0]).abs();
+    let dy = (after[1] - before[1]).abs();
+    dx > (before[2] / 2.0).max(SHOT_MOTION_MIN_PX) || dy > (before[3] / 2.0).max(SHOT_MOTION_MIN_PX)
 }
 
 /// Run the consent hide step ([`consent::hide_js`]) and fold what it hid into
@@ -2081,6 +2193,7 @@ fn run_visual_contrast_fallback(
     page: &mut Page<'_>,
     browser_analyses: &[Value],
     serialized_groups: &[Value],
+    collapsed_selectors: &[String],
     viewport: Viewport,
     profile: Option<&DetectorProfile>,
     target: &str,
@@ -2095,7 +2208,7 @@ fn run_visual_contrast_fallback(
         .filter_map(CandidateKey::of)
         .collect();
     let is_routed = |v: &Value| routed.iter().any(|k| k.names_value(v));
-    let existing_low_contrast: Vec<String> = serialized_groups
+    let mut existing_low_contrast: Vec<String> = serialized_groups
         .iter()
         .filter(|g| {
             g.get("findings")
@@ -2110,6 +2223,13 @@ fn run_visual_contrast_fallback(
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect();
+    // A copy a counted finding speaks for is reported there: the analyses
+    // and the pixel reads neither report it again nor spend a slot on it.
+    for s in collapsed_selectors {
+        if !existing_low_contrast.contains(s) {
+            existing_low_contrast.push(s.clone());
+        }
+    }
 
     let (mut findings, mut superseded) =
         analysis_findings(browser_analyses, &existing_low_contrast, &routed);
@@ -2284,6 +2404,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn motion_during_the_shot_is_more_than_half_the_box_and_16px() {
+        // gseek.kr (corpus run 1010): a 67x26 badge on a swiper slide that
+        // advanced one 288px slide between the measure and the screenshot.
+        assert!(moved_during_shot(&[648.0, 2184.0, 67.0, 26.0], &[360.0, 2184.0, 67.0, 26.0]));
+        // A layout shift below a lazy image.
+        assert!(moved_during_shot(&[40.0, 900.0, 600.0, 40.0], &[40.0, 1140.0, 600.0, 40.0]));
+        // Subpixel settling, a nudge within half the box, and a small box
+        // moving under 16px stay quiet.
+        assert!(!moved_during_shot(&[40.0, 900.0, 600.0, 40.0], &[40.5, 900.5, 600.0, 40.0]));
+        assert!(!moved_during_shot(&[40.0, 900.0, 600.0, 40.0], &[200.0, 915.0, 600.0, 40.0]));
+        assert!(!moved_during_shot(&[40.0, 900.0, 8.0, 8.0], &[52.0, 900.0, 8.0, 8.0]));
+    }
+
+    #[test]
     fn only_a_screenshot_timeout_is_a_stall() {
         assert!(is_screenshot_stall(
             "Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
@@ -2393,7 +2527,8 @@ mod tests {
     }
 
     /// r6-t5-unread-pixel-verdicts: a handed-over verdict the pixels read is
-    /// replaced; one they did not read stands as advisory, text unchanged;
+    /// replaced; one they did not read stands as advisory, text unchanged,
+    /// unless it measured nothing (round 13 decision 2), when it drops;
     /// nothing else moves.
     #[test]
     fn unread_handed_over_verdicts_are_advisory() {
@@ -2402,13 +2537,26 @@ mod tests {
             severity: severity.to_string(),
             ..RawResult::new(origin, id.to_string(), format!("{id} on {sel}"))
         };
+        let unmeasured = |sel: &str| RawResult {
+            unmeasured: true,
+            ..result(origin::VISUAL_CONTRAST, "low-contrast", sel, "")
+        };
         let mut results = vec![
             result(origin::VISUAL_CONTRAST, "low-contrast", "#read", ""),
             result(origin::VISUAL_CONTRAST, "low-contrast", "#unread", ""),
+            unmeasured("#over-photo"),
+            unmeasured("#read-over-photo"),
             result(origin::SCAN, "low-contrast", "#scored", ""),
             result(origin::SCAN, "tiny-text", "#unread", ""),
         ];
-        settle_handed_over(&mut results, &[CandidateKey { selector: "#read".into(), matched: None }], |_| None);
+        settle_handed_over(
+            &mut results,
+            &[
+                CandidateKey { selector: "#read".into(), matched: None },
+                CandidateKey { selector: "#read-over-photo".into(), matched: None },
+            ],
+            |_| None,
+        );
         let summary: Vec<(&str, &str, &str)> =
             results.iter().map(|r| (r.origin, r.snippet.as_str(), r.severity.as_str())).collect();
         assert_eq!(

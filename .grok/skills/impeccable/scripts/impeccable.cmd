@@ -13,10 +13,11 @@ rem - The unversioned user binary and the PATH candidate are validated with
 rem   the engine-probe handshake (see :probe) so the retired 3.x npm CLI,
 rem   whose bin is also named impeccable, is never exec'd. IMPECCABLE_BIN,
 rem   the sibling binary, and the version-pinned cache stay trusted.
-rem - Downloads are verified against the .sha256 sidecar via certutil and
-rem   fail closed: a missing sidecar or hash tool refuses the download. On
-rem   ARM64 the arm64 asset is tried first and the x64 asset is the
-rem   fallback (Windows on ARM runs x64 binaries).
+rem - Downloads and the version-pinned cache are verified via certutil
+rem   against engine-checksums.txt next to this file, and fail closed; a
+rem   .verified stamp lets later runs skip hashing the cache. On ARM64 the
+rem   arm64 asset is tried first and the x64 asset is the fallback (Windows on
+rem   ARM runs x64 binaries), each only when the manifest has a line for it.
 if not defined IMPECCABLE_SKILL_DIR set "IMPECCABLE_SKILL_DIR=%~dp0.."
 if not defined IMPECCABLE_SELF set "IMPECCABLE_SELF=%~f0"
 set "arch=x64"
@@ -47,8 +48,22 @@ set "version="
 if exist "%~dp0VERSION" set /p version=<"%~dp0VERSION"
 if not defined IMPECCABLE_HOME set "IMPECCABLE_HOME=%USERPROFILE%\.impeccable"
 set "cached=%IMPECCABLE_HOME%\bin\%version%\impeccable.exe"
+set "asset=impeccable-windows-%arch%.exe"
+set "manifest=%~dp0engine-checksums.txt"
 if not defined version goto no_cache
 if not exist "%cached%" goto no_cache
+if exist "%cached%.verified" goto cache_trusted
+call :read_expected
+call :sha256 "%cached%" "%TEMP%\impeccable-hash-%RANDOM%%RANDOM%.txt"
+if not defined actual goto cache_unverified
+if /I "%actual%"=="%expected%" goto cache_verified
+if /I "%actual%"=="%expected_x64%" goto cache_verified
+:cache_unverified
+echo impeccable: cannot verify the cached engine "%cached%" against "%manifest%"; not using it 1>&2
+goto no_cache
+:cache_verified
+(>"%cached%.verified" echo %actual%) 2>nul
+:cache_trusted
 set "run=%cached%"
 goto run
 :no_cache
@@ -67,6 +82,8 @@ rem the version-pinned user cache, verify it, then run it. Never inside
 rem another launcher's probe: fail fast and quiet instead.
 if defined IMPECCABLE_LAUNCHER_PROBE exit /b 127
 if not defined version goto fail
+call :read_expected
+if not defined expected if not defined expected_x64 goto no_checksum
 where curl.exe >nul 2>nul
 if errorlevel 1 goto curl_missing
 if not defined IMPECCABLE_DOWNLOAD_BASE set "IMPECCABLE_DOWNLOAD_BASE=https://github.com/pbakaus/impeccable/releases/download"
@@ -93,16 +110,17 @@ set "staging=%IMPECCABLE_HOME%\bin\%version%\.impeccable.part.%stamp%-%RANDOM%%R
 mkdir "%staging%" >nul 2>nul
 if errorlevel 1 goto claim_staging
 set "part=%staging%\impeccable.exe"
-set "sidecar=%staging%\impeccable.sha256"
 rem Redirection failures do not reliably update ERRORLEVEL in cmd.exe;
 rem branch on the command's failure directly.
 (type nul >"%part%") 2>nul || goto staging_write_failed
-set "asset=impeccable-windows-%arch%.exe"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
+if not defined expected goto fetch_x64
 curl.exe -fsSL -o "%part%" "%url%" >nul 2>nul
 if not errorlevel 1 goto verify
-if not "%arch%"=="arm64" goto download_failed
+:fetch_x64
+if not defined expected_x64 goto download_failed
 set "asset=impeccable-windows-x64.exe"
+set "expected=%expected_x64%"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 curl.exe -fsSL -o "%part%" "%url%" >nul 2>nul
 if errorlevel 1 goto download_failed
@@ -111,28 +129,13 @@ if errorlevel 1 goto download_failed
 call :check_download
 if errorlevel 1 exit /b 127
 rem Mirrors the sh launcher and fails closed: a freshly downloaded binary
-rem runs only after verifying against its .sha256 sidecar. A sidecar that
-rem cannot be fetched, or an empty certutil result, refuses the download
-rem instead of running an unverified binary.
-curl.exe -fsSL -o "%sidecar%" "%url%.sha256" >nul 2>nul
-if errorlevel 1 goto verify_refuse
-set "expected="
-set /p expected=<"%sidecar%"
-for /f "tokens=1" %%h in ("%expected%") do set "expected=%%h"
+rem runs only after its hash matches the digest read from engine-checksums.txt.
+rem An empty certutil result refuses the download instead of running an
+rem unverified binary.
+call :sha256 "%part%" "%staging%\hash.txt"
 call :check_download
 if errorlevel 1 exit /b 127
-set "actual="
-rem Reuse the sidecar staging file after reading expected. Check certutil's
-rem status before parsing: its error text on stdout is not a digest.
-certutil -hashfile "%part%" SHA256 >"%sidecar%" 2>nul
-if errorlevel 1 goto verify_refuse
-call :check_download
-if errorlevel 1 exit /b 127
-for /f "usebackq skip=1 delims=" %%h in ("%sidecar%") do if not defined actual set "actual=%%h"
-del "%sidecar%" >nul 2>nul
-if not defined expected goto verify_refuse
 if not defined actual goto verify_refuse
-set "actual=%actual: =%"
 if /I "%actual%"=="%expected%" goto place
 call :discard_staging
 echo impeccable: checksum mismatch downloading %url% 1>&2
@@ -142,8 +145,39 @@ exit /b 127
 call :check_download
 if errorlevel 1 exit /b 127
 call :discard_staging
-echo impeccable: cannot verify %url% against %url%.sha256; refusing the unverified download 1>&2
+echo impeccable: cannot verify %url% (certutil could not hash it); refusing the unverified download 1>&2
 exit /b 127
+
+:read_expected
+rem Sets expected (and, on ARM64, expected_x64: Windows on ARM runs x64
+rem binaries) from engine-checksums.txt. Only called off the stamped path:
+rem hooks run this launcher on every edit.
+call :manifest_digest "%asset%" expected
+set "expected_x64="
+if "%arch%"=="arm64" call :manifest_digest impeccable-windows-x64.exe expected_x64
+exit /b 0
+
+:manifest_digest
+rem Sets the variable named %2 to the digest the first engine-checksums.txt
+rem line for this version and asset %1 records, empty when there is none.
+set "%~2="
+if not exist "%manifest%" exit /b 0
+for /f "usebackq tokens=1-3" %%a in ("%manifest%") do if "%%a"=="%version%" if /I "%%b"=="%~1" if not defined %~2 set "%~2=%%c"
+exit /b 0
+
+:sha256
+rem Sets actual to the sha256 of %~1, empty when certutil fails. %~2 is the
+rem scratch file for its output. Check certutil's status before parsing: its
+rem error text on stdout is not a digest.
+set "actual="
+certutil -hashfile "%~1" SHA256 >"%~2" 2>nul
+if errorlevel 1 goto sha256_done
+for /f "usebackq skip=1 delims=" %%h in ("%~2") do if not defined actual set "actual=%%h"
+if not defined actual goto sha256_done
+set "actual=%actual: =%"
+:sha256_done
+del "%~2" >nul 2>nul
+exit /b 0
 
 :check_download
 set "download_file=%~1"
@@ -177,6 +211,7 @@ if errorlevel 1 goto place_failed
 call :discard_staging
 call :check_download "%cached%"
 if errorlevel 1 exit /b 127
+(>"%cached%.verified" echo %actual%) 2>nul
 set "run=%cached%"
 goto run
 
@@ -207,6 +242,10 @@ if not errorlevel 1 set "probe_ok=1"
 :probe_done
 del "%probe_tmp%" >nul 2>nul
 exit /b 0
+
+:no_checksum
+echo impeccable: no checksum for engine %version% (%asset%) in "%manifest%"; refusing the unverified download 1>&2
+exit /b 127
 
 :cache_directory_failed
 echo impeccable: engine %version% is not installed; cannot create cache directory: "%IMPECCABLE_HOME%\bin\%version%" 1>&2

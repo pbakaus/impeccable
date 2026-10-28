@@ -170,7 +170,10 @@ pub struct AdTechVendor {
 /// Chase's shared `Reporting.js` tag library, served from `asset.chase.com`
 /// to jpmorganchase.com (143250); Prisma Media's ad core on
 /// cuisineactuelle.fr throws from its Prebid call (143089, 143154), which
-/// [`AD_TECH_APIS`] names.
+/// [`AD_TECH_APIS`] names. Round 13 adds Vector's visitor-identity pixel
+/// (`cdn.vector.co/pixel.js`) on mercury.com, which rejects `No visitor ID
+/// available` when its load is blocked or slow (findings 10133600,
+/// 10133648, 10133678, 10133733, 10133748, 10133787).
 pub const AD_TECH_VENDORS: &[AdTechVendor] = &[
     AdTechVendor { name: "AnyMind", sources: &["anymind360.com"], files: &[] },
     AdTechVendor { name: "Prebid", sources: &[], files: &["prebid"] },
@@ -183,6 +186,7 @@ pub const AD_TECH_VENDORS: &[AdTechVendor] = &[
         files: &[],
     },
     AdTechVendor { name: "Nagich", sources: &["nagich.co.il"], files: &[] },
+    AdTechVendor { name: "Vector", sources: &["cdn.vector.co"], files: &[] },
     AdTechVendor {
         name: "Chase Reporting",
         sources: &["asset.chase.com/web/library/digddsautomation/reportingjs/"],
@@ -422,6 +426,15 @@ mod tests {
             ),
             Some("Chase Reporting")
         );
+        assert_eq!(
+            ad_tech_vendor(
+                "Uncaught (in promise) Error: No visitor ID available. Load may have failed.",
+                Some("at https://cdn.vector.co/pixel.js:2:219512")
+            ),
+            Some("Vector")
+        );
+        // A host that only ends like Vector's is not Vector's.
+        assert_eq!(ad_tech_vendor("Uncaught Error: x", Some("at https://cdn.notvector.co/app.js:1:1")), None);
         // Chase's own bundles on the same host stay first-party.
         assert_eq!(
             ad_tech_vendor("Uncaught TypeError: x is undefined", Some("at a, https://asset.chase.com/web/app/main.js:1:1")),

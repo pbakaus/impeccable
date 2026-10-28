@@ -568,3 +568,486 @@ fn serve_page(body: &'static str) -> u16 {
     });
     port
 }
+
+fn scan_page(
+    engine: &BrowserEngine,
+    body: &'static str,
+    viewport: (u32, u32),
+    request: &EvidenceRequest,
+) -> (Vec<Finding>, Evidence) {
+    let port = serve_page(body);
+    let options = ScanOptions {
+        viewport: Some(viewport),
+        ..Default::default()
+    };
+    let mut browser = engine.launch().expect("launch");
+    let url = format!("http://127.0.0.1:{port}/");
+    let out = detect_url_evidence(&mut browser, &url, &options, "load", 100, request)
+        .expect("evidence scan");
+    browser.close();
+    out
+}
+
+/// The share of the pixels inside `rect` that `is` matches.
+fn share(img: &image::RgbImage, rect: [f64; 4], is: impl Fn([u8; 3]) -> bool) -> f64 {
+    let x0 = rect[0].max(0.0) as u32;
+    let y0 = rect[1].max(0.0) as u32;
+    let x1 = ((rect[0] + rect[2]) as u32).min(img.width());
+    let y1 = ((rect[1] + rect[3]) as u32).min(img.height());
+    let (mut hit, mut all) = (0usize, 0usize);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            all += 1;
+            if is(img.get_pixel(x, y).0) {
+                hit += 1;
+            }
+        }
+    }
+    hit as f64 / all.max(1) as f64
+}
+
+/// A phone page with a fixed sheet over the lower two thirds of the
+/// viewport (theguardian.com's support appeal, round 13 row 21), and small
+/// print far past the screenshot's cut.
+const COVER_SHEET_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Fixed sheet</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; background: repeating-linear-gradient(45deg, #dfe6ee 0 12px, #c3cfdc 12px 24px); }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .sheet { position: fixed; left: 0; right: 0; top: 30%; bottom: 0; z-index: 40; background: #d00000; color: #ffffff; }
+</style></head><body>
+<h1>A long read</h1>
+<div class="spacer"></div>
+<p class="tiny" id="under-sheet">Small print far down a long page, under the sheet when scrolled to.</p>
+<div class="spacer" style="height: 1200px"></div>
+<aside class="sheet"><p>Support our journalism</p></aside>
+</body></html>"#;
+
+/// The same small print over a fixed backdrop painted under the page.
+const FIXED_BACKDROP_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Fixed backdrop</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .backdrop { position: fixed; inset: 0; z-index: -1; background: #2050c0; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; }
+</style></head><body>
+<div class="backdrop"></div>
+<h1>A long read</h1>
+<div class="spacer"></div>
+<p class="tiny" id="over-backdrop">Small print far down a long page, over the fixed backdrop.</p>
+<div class="spacer" style="height: 1200px"></div>
+</body></html>"#;
+
+fn element_shot<'a>(evidence: &'a Evidence, selector: &str) -> &'a impeccable_browser::fullpage::ElementShot {
+    evidence
+        .element_shots
+        .iter()
+        .find(|s| s.selector == selector)
+        .unwrap_or_else(|| panic!("no shot for {selector}: {:?}", evidence.element_rects.keys()))
+}
+
+#[test]
+fn an_element_shot_hides_the_fixed_sheet_over_the_element() {
+    let Some(engine) = engine() else { return };
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (findings, evidence) = scan_page(&engine, COVER_SHEET_PAGE, (390, 844), &request);
+    let all = flagged(&findings, &evidence);
+    assert!(all.iter().any(|(_, s, _)| *s == "#under-sheet"), "{all:?}");
+    let shot = element_shot(&evidence, "#under-sheet");
+    let img = decode(&shot.jpeg_base64);
+    let red = share(&img, shot.rect, |p| p[0] > 170 && p[1] < 70 && p[2] < 70);
+    assert!(red < 0.2, "the sheet covers the element in its shot: {red}");
+    let white = share(&img, shot.rect, |p| p[0] > 230 && p[1] > 230 && p[2] > 230);
+    assert!(white > 0.5, "the element's own white box is missing: {white}");
+    assert_eq!(shot.hidden_covers, vec!["aside.sheet".to_string()]);
+}
+
+#[test]
+fn an_element_shot_keeps_a_fixed_backdrop_under_the_element() {
+    let Some(engine) = engine() else { return };
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (findings, evidence) = scan_page(&engine, FIXED_BACKDROP_PAGE, (390, 844), &request);
+    let all = flagged(&findings, &evidence);
+    assert!(all.iter().any(|(_, s, _)| *s == "#over-backdrop"), "{all:?}");
+    let shot = element_shot(&evidence, "#over-backdrop");
+    let img = decode(&shot.jpeg_base64);
+    let blue = share(&img, shot.rect, |p| p[2] > 150 && p[0] < 80 && p[1] < 120);
+    assert!(blue > 0.5, "the backdrop under the element was hidden: {blue}");
+}
+
+/// A page that relays itself for the capture and comes back (round 13 row
+/// 23: developer.apple.com folds its navigator at the capture's 1x1 resize
+/// and slides its column back over about 330ms). Chromium dispatches that
+/// 1x1 resize on some pages and not on a minimal one, but the capture's
+/// closing resize reaches every page: this one folds its column at any
+/// resize and slides it back over 400ms, so the probe right after the
+/// capture sees the column moving and then settling where it was. Its
+/// section bar under a header that scrolls away sticks from the second tile
+/// on, and a second bar further down sticks only on a later tile; the
+/// stitched image shows each once, where it sits.
+const RELAYOUT_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Relayout</title>
+<style>
+  body { margin: 0; background: #ffffff; }
+  .main { margin-left: 400px; transition: margin-left 0.4s linear; }
+  .folded .main { margin-left: 0; transition: none; }
+  .block { width: 300px; height: 300px; background: #0a7d3b; }
+  .row { height: 200px; background: #e8e8e8; margin-top: 20px; }
+  .tall { height: 1500px; }
+  .head { height: 60px; background: #ffffff; }
+  .bar { position: sticky; top: 0; height: 50px; background: #d00000; }
+  .later { position: sticky; top: 0; height: 50px; background: #0030d0; }
+  .third { position: sticky; top: 64px; height: 50px; background: #8000c0; }
+  .fourth { position: sticky; top: 0; height: 50px; background: #ff8c00; }
+  .section { height: 4000px; }
+</style></head><body>
+<div class="head"></div><div class="bar"></div>
+<div class="main"><div class="block"></div><div class="row"></div><div class="row"></div><div class="tall"></div></div>
+<div class="section"><div class="later"></div><div style="height: 820px"></div><div class="third"></div></div>
+<div style="height: 50px"></div><div class="section" style="height: 1000px"><div class="fourth"></div></div>
+<script>
+  addEventListener('resize', () => {
+    document.body.classList.add('folded');
+    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('folded')));
+  });
+</script>
+</body></html>"#;
+
+/// The twin: a column that never stops moving (a marquee on `margin-left`)
+/// is in motion whatever the capture does, never settles back, and keeps its
+/// beyond-viewport capture.
+const TICKER_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Ticker</title>
+<style>
+  body { margin: 0; background: #ffffff; }
+  .main { margin-left: 400px; animation: fold 0.7s linear infinite; }
+  @keyframes fold { from { margin-left: 400px; } to { margin-left: 0px; } }
+  .block { width: 300px; height: 300px; background: #0a7d3b; }
+  .row { height: 200px; background: #e8e8e8; margin-top: 20px; }
+  .tall { height: 6000px; }
+</style></head><body>
+<div class="main"><div class="block"></div><div class="row"></div><div class="row"></div><div class="tall"></div></div>
+</body></html>"#;
+
+/// The twin: a page that moves only by transform (a carousel) and answers no
+/// resize keeps its beyond-viewport capture.
+const SLIDING_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Sliding</title>
+<style>
+  body { margin: 0; background: #ffffff; }
+  .main { margin-left: 400px; }
+  .block { width: 300px; height: 300px; background: #0a7d3b; animation: slide 0.8s linear infinite alternate; }
+  @keyframes slide { from { transform: translateX(0); } to { transform: translateX(200px); } }
+  .row { height: 200px; background: #e8e8e8; margin-top: 20px; }
+  .tall { height: 3000px; }
+</style></head><body>
+<div class="main"><div class="block"></div><div class="row"></div><div class="row"></div><div class="tall"></div></div>
+</body></html>"#;
+
+#[test]
+fn a_page_that_relays_itself_for_the_capture_is_stitched() {
+    let Some(engine) = engine() else { return };
+    let (_, evidence) = scan_page(&engine, RELAYOUT_PAGE, (1280, 800), &EvidenceRequest::default());
+    let shot = evidence.screenshot.as_ref().expect("screenshot");
+    assert_eq!(shot.method, impeccable_browser::fullpage::method::STITCHED);
+    assert_eq!(shot.height, shot.document_height);
+    let img = decode(&shot.jpeg_base64);
+    let green = |p: [u8; 3]| p[1] > 100 && p[0] < 40 && p[2] < 90;
+    // The column is back at x 400 in every tile.
+    assert!(share(&img, [420.0, 130.0, 260.0, 220.0], green) > 0.9, "the block is not at rest");
+    assert!(share(&img, [20.0, 130.0, 360.0, 220.0], green) < 0.05, "the block is folded left");
+    let red = |p: [u8; 3]| p[0] > 170 && p[1] < 70 && p[2] < 70;
+    let blue = |p: [u8; 3]| p[2] > 150 && p[0] < 60 && p[1] < 90;
+    assert!(share(&img, [0.0, 65.0, 1280.0, 40.0], red) > 0.9, "the bar is missing where it sits");
+    let later_top = 60.0 + 50.0 + 300.0 + 2.0 * 220.0 + 1500.0;
+    assert!(share(&img, [0.0, later_top + 5.0, 1280.0, 40.0], blue) > 0.9, "the later bar is missing where it sits");
+    // A bar whose section starts 20px into a tile sticks at 64px there: that
+    // tile is the only one that paints it, so it stays (it shows 44px low).
+    let purple = |p: [u8; 3]| p[0] > 90 && p[0] < 170 && p[1] < 50 && p[2] > 150;
+    let third_tile = 4.0 * 800.0;
+    assert_eq!(later_top + 50.0 + 820.0, third_tile + 20.0);
+    assert!(share(&img, [0.0, third_tile + 69.0, 1280.0, 40.0], purple) > 0.9, "the bar stuck on its own tile is missing");
+    // A bar that sits at its offset only because its section starts on a
+    // tile's top edge is in place there, not stuck, and stays.
+    let orange = |p: [u8; 3]| p[0] > 220 && p[1] > 100 && p[1] < 180 && p[2] < 60;
+    let fourth_top = later_top + 4000.0 + 50.0;
+    assert_eq!(fourth_top, 8.0 * 800.0);
+    assert!(share(&img, [0.0, fourth_top + 5.0, 1280.0, 40.0], orange) > 0.9, "the bar on a tile edge is missing");
+    let tiles = (shot.height / 800.0).ceil() as usize;
+    for tile in 1..tiles {
+        let top = tile as f64 * 800.0;
+        if (top - later_top).abs() < 60.0 || (top - fourth_top).abs() < 60.0 {
+            continue;
+        }
+        let row = [0.0, top + 5.0, 1280.0, 40.0];
+        assert!(share(&img, row, red) < 0.1, "the stuck bar repeats on tile {tile}");
+        assert!(share(&img, row, blue) < 0.1, "the later bar repeats on tile {tile}");
+        if top > third_tile {
+            assert!(share(&img, [0.0, top + 69.0, 1280.0, 40.0], purple) < 0.1, "the third bar repeats on tile {tile}");
+        }
+    }
+}
+
+#[test]
+fn a_page_that_never_stops_moving_keeps_its_beyond_viewport_capture() {
+    let Some(engine) = engine() else { return };
+    let (_, evidence) = scan_page(&engine, TICKER_PAGE, (1280, 800), &EvidenceRequest::default());
+    let shot = evidence.screenshot.as_ref().expect("screenshot");
+    assert_eq!(shot.method, impeccable_browser::fullpage::method::BEYOND_VIEWPORT);
+}
+
+#[test]
+fn a_page_that_only_slides_keeps_its_beyond_viewport_capture() {
+    let Some(engine) = engine() else { return };
+    let (_, evidence) = scan_page(&engine, SLIDING_PAGE, (1280, 800), &EvidenceRequest::default());
+    let shot = evidence.screenshot.as_ref().expect("screenshot");
+    assert_eq!(shot.method, impeccable_browser::fullpage::method::BEYOND_VIEWPORT);
+}
+
+fn shot_of(engine: &BrowserEngine, page: &'static str, selector: &str) -> (image::RgbImage, impeccable_browser::fullpage::ElementShot) {
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (findings, evidence) = scan_page(engine, page, (390, 844), &request);
+    let all = flagged(&findings, &evidence);
+    assert!(all.iter().any(|(_, s, _)| *s == selector), "{all:?}");
+    let shot = element_shot(&evidence, selector).clone();
+    (decode(&shot.jpeg_base64), shot)
+}
+
+fn red(p: [u8; 3]) -> bool {
+    p[0] > 170 && p[1] < 70 && p[2] < 70
+}
+
+fn blue(p: [u8; 3]) -> bool {
+    p[2] > 150 && p[0] < 80 && p[1] < 120
+}
+
+/// Light small print in a content layer that takes no pointer events, over a
+/// fixed backdrop the page lets take the pointer (a WebGL canvas behind
+/// content). Made hit-testable for the walk, the element is listed above the
+/// backdrop, so nothing covers it and the backdrop under it stays in its shot.
+const POINTERLESS_OVER_BACKDROP_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Pointerless</title>
+<style>
+  body { margin: 0; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .backdrop { position: fixed; inset: 0; z-index: 0; background: #2050c0; }
+  .wrap { position: relative; z-index: 1; pointer-events: none; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #eeeeee; }
+</style></head><body>
+<div class="backdrop"></div>
+<div class="wrap"><h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="pointerless">Light small print in a layer that takes no pointer events.</p>
+<div class="spacer" style="height: 1200px"></div></div>
+</body></html>"#;
+
+#[test]
+fn an_element_shot_keeps_the_backdrop_under_an_element_the_hit_test_misses() {
+    let Some(engine) = engine() else { return };
+    let (img, shot) = shot_of(&engine, POINTERLESS_OVER_BACKDROP_PAGE, "#pointerless");
+    let b = share(&img, shot.rect, blue);
+    assert!(b > 0.5, "the backdrop under the element was hidden: {b}");
+    assert!(shot.hidden_covers.is_empty(), "{:?}", shot.hidden_covers);
+}
+
+/// A card whose content takes no pointer events, so a link stretched over
+/// the card gets them (theguardian.com's cards), under a fixed sheet. The
+/// hit test never lists the content on its own, yet the sheet is over it.
+const POINTERLESS_UNDER_SHEET_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Pointerless card</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; }
+  .card { position: relative; margin: 40px 20px; width: 300px; }
+  .card .content { pointer-events: none; }
+  .card a { position: absolute; inset: 0; z-index: 1; }
+  .tiny { margin: 0; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .sheet { position: fixed; left: 0; right: 0; top: 30%; bottom: 0; z-index: 40; background: #d00000; color: #ffffff; }
+</style></head><body>
+<h1>A long read</h1>
+<div class="spacer"></div>
+<div class="card"><div class="content"><p class="tiny" id="card-print">Small print in a card a link covers.</p></div><a href="/story" aria-label="Read the story"></a></div>
+<div class="spacer" style="height: 1200px"></div>
+<aside class="sheet"><p>Support our journalism</p></aside>
+</body></html>"#;
+
+#[test]
+fn an_element_shot_hides_the_fixed_sheet_over_content_the_hit_test_misses() {
+    let Some(engine) = engine() else { return };
+    let (img, shot) = shot_of(&engine, POINTERLESS_UNDER_SHEET_PAGE, "#card-print");
+    let r = share(&img, shot.rect, red);
+    assert!(r < 0.2, "the sheet covers the element in its shot: {r}");
+    assert_eq!(shot.hidden_covers, vec!["aside.sheet".to_string()]);
+}
+
+/// A fixed box inside a transformed wrapper scrolls with the page: it is
+/// content placed over the element, not chrome following the viewport.
+const CONTAINED_FIXED_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Contained</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .wrap { position: relative; transform: translateZ(0); }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .card { position: fixed; left: 0; right: 0; top: 4000px; height: 200px; z-index: 40; background: #d00000; }
+</style></head><body>
+<div class="wrap"><h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="under-card">Small print under a card that scrolls with the page.</p>
+<div class="spacer" style="height: 1200px"></div>
+<div class="card"></div></div>
+</body></html>"#;
+
+#[test]
+fn an_element_shot_keeps_a_fixed_box_that_scrolls_along() {
+    let Some(engine) = engine() else { return };
+    let (img, shot) = shot_of(&engine, CONTAINED_FIXED_PAGE, "#under-card");
+    let r = share(&img, shot.rect, red);
+    assert!(r > 0.8, "the card over the element was hidden: {r}");
+    assert!(shot.hidden_covers.is_empty(), "{:?}", shot.hidden_covers);
+}
+
+/// Two flagged elements one viewport shows together, and a fixed bar over
+/// the lower 15% of the viewport: the shot centred on the first leaves the
+/// second under the bar, so the second gets a tile of its own with the bar
+/// hidden instead of sharing the first one's.
+const SHARED_TILE_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Shared tile</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 0 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .gap { height: 240px; }
+  .bar { position: fixed; left: 0; right: 0; top: 85%; bottom: 0; z-index: 40; background: #d00000; }
+</style></head><body>
+<h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="a-clear">Small print the bar leaves clear.</p>
+<div class="gap"></div>
+<p class="tiny" id="b-under-bar">Small print the bar covers when the first is centred.</p>
+<div class="spacer" style="height: 1200px"></div>
+<div class="bar"></div>
+</body></html>"#;
+
+#[test]
+fn a_shared_tile_serves_only_elements_no_shown_layer_covers() {
+    let Some(engine) = engine() else { return };
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (_, evidence) = scan_page(&engine, SHARED_TILE_PAGE, (390, 844), &request);
+    let a = element_shot(&evidence, "#a-clear");
+    let b = element_shot(&evidence, "#b-under-bar");
+    for shot in [a, b] {
+        let img = decode(&shot.jpeg_base64);
+        let r = share(&img, shot.rect, red);
+        assert!(r < 0.2, "the bar covers {} in its shot: {r}", shot.selector);
+    }
+    assert!(a.hidden_covers.is_empty(), "{:?}", a.hidden_covers);
+    assert_eq!(b.hidden_covers, vec!["div.bar".to_string()]);
+    assert_ne!(a.jpeg_base64, b.jpeg_base64, "the second element reused the first one's tile");
+}
+
+/// An open modal dialog over the element: a visitor sees it, so the shot
+/// keeps it.
+const MODAL_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Modal</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  dialog { width: 100vw; height: 100vh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #d00000; }
+</style></head><body>
+<h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="under-modal">Small print under an open modal.</p>
+<div class="spacer" style="height: 1200px"></div>
+<dialog id="modal"><p>Subscribe</p></dialog>
+<script>document.getElementById('modal').showModal();</script>
+</body></html>"#;
+
+/// An `aria-modal` dialog laid out normally inside a fixed backdrop: the
+/// backdrop is the fixed layer the walk meets, and it holds the modal.
+const WRAPPED_MODAL_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Wrapped modal</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .backdrop { position: fixed; inset: 0; z-index: 50; background: #d00000; }
+  .panel { margin: 20px; height: 80px; background: #2050c0; }
+</style></head><body>
+<h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="under-wrapped-modal">Small print under an open modal.</p>
+<div class="spacer" style="height: 1200px"></div>
+<div class="backdrop"><div class="panel" role="dialog" aria-modal="true">Subscribe</div></div>
+</body></html>"#;
+
+#[test]
+fn an_element_shot_keeps_a_modal_wrapped_in_a_fixed_backdrop() {
+    let Some(engine) = engine() else { return };
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (_, evidence) = scan_page(&engine, WRAPPED_MODAL_PAGE, (390, 844), &request);
+    let Some(shot) = evidence.element_shots.iter().find(|s| s.selector == "#under-wrapped-modal") else {
+        return;
+    };
+    assert!(shot.hidden_covers.is_empty(), "{:?}", shot.hidden_covers);
+    let img = decode(&shot.jpeg_base64);
+    let r = share(&img, shot.rect, red);
+    assert!(r > 0.8, "the modal's backdrop was hidden: {r}");
+}
+
+/// The twin: a fixed sheet holding a modal panel the page has not opened
+/// (a cookie banner's preferences) is still a cover.
+const SHEET_WITH_CLOSED_MODAL_PAGE: &str = r#"<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Closed modal</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #111111; font: 16px/1.5 Arial, sans-serif; }
+  .spacer { height: 4000px; }
+  .tiny { margin: 40px 20px; width: 300px; height: 60px; font-size: 9px; color: #222222; background: #ffffff; }
+  .sheet { position: fixed; left: 0; right: 0; top: 30%; bottom: 0; z-index: 40; background: #d00000; color: #ffffff; }
+  .prefs { display: none; }
+</style></head><body>
+<h1>A long read</h1><div class="spacer"></div>
+<p class="tiny" id="under-banner">Small print under a banner with a closed panel.</p>
+<div class="spacer" style="height: 1200px"></div>
+<aside class="sheet"><p>Cookies</p><div class="prefs" role="dialog" aria-modal="true">Preferences</div></aside>
+</body></html>"#;
+
+#[test]
+fn an_element_shot_hides_a_sheet_whose_modal_is_closed() {
+    let Some(engine) = engine() else { return };
+    let (img, shot) = shot_of(&engine, SHEET_WITH_CLOSED_MODAL_PAGE, "#under-banner");
+    let r = share(&img, shot.rect, red);
+    assert!(r < 0.2, "the banner covers the element in its shot: {r}");
+    assert_eq!(shot.hidden_covers, vec!["aside.sheet".to_string()]);
+}
+
+#[test]
+fn an_element_shot_keeps_an_open_modal() {
+    let Some(engine) = engine() else { return };
+    let request = EvidenceRequest {
+        max_screenshot_height: 1500.0,
+        ..EvidenceRequest::default()
+    };
+    let (_, evidence) = scan_page(&engine, MODAL_PAGE, (390, 844), &request);
+    let Some(shot) = evidence.element_shots.iter().find(|s| s.selector == "#under-modal") else {
+        // The scan may report nothing under a modal; then there is no shot.
+        return;
+    };
+    assert!(shot.hidden_covers.is_empty(), "{:?}", shot.hidden_covers);
+    let img = decode(&shot.jpeg_base64);
+    let r = share(&img, shot.rect, red);
+    assert!(r > 0.8, "the open modal was hidden: {r}");
+}

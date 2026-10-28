@@ -4,7 +4,7 @@
 
 use crate::checks::css_scan::{
     enclosing_css_selector, scan_css_text_for_buried_raster, scan_css_text_for_glow_with,
-    scan_css_text_for_grid_background, scan_css_text_for_inset_stripe, scan_css_text_for_marquee,
+    scan_css_text_for_inset_stripe, scan_css_text_for_marquee,
     scan_css_text_for_organic_clip_path, scan_css_text_for_pseudo_stripe,
     scan_css_text_for_pulsing_dot, scan_css_text_for_radial_halo_with,
     PatternFinding,
@@ -136,6 +136,62 @@ const SVG_FONT_SIZE_PX: f64 = 16.0;
 /// wordmark: 11 of 208).
 const SVG_PRIMITIVE_SHARE_MIN: f64 = 0.25;
 
+re!(SVG_RECT_TAG_RE, format!(r"<{rect}{B}[^>]*>", rect = ci("rect")));
+re!(
+    SVG_ROUND_SHAPE_RE,
+    format!(
+        r"<(?:{circle}|{ellipse}|{polygon}){B}",
+        circle = ci("circle"),
+        ellipse = ci("ellipse"),
+        polygon = ci("polygon")
+    )
+);
+
+/// The most primitives [`svg_is_a_bar_series`] reads. Its grouping compares
+/// every rect with every other, so past this an SVG keeps the base reading
+/// (it reports), and the hook's cost stays bounded.
+const BAR_SERIES_MAX_PRIMITIVES: usize = 400;
+
+/// Whether an SVG's primitives are a series of equal bars rather than a
+/// scene: half or more of them are `<rect>`s that share one width or one
+/// height (within a pixel), and fewer than a quarter are circles, ellipses
+/// or polygons. stripe.com's uptime chart (14 of 16 rects 44px wide),
+/// vercel.com's bar diagrams, raycast.com's 35-rect timeline (23 rects 6px
+/// tall), their other side varying. A skyline of equal windows with a sun
+/// and polygon roofs, and a stack of equal blocks, are scenes. A rect whose
+/// size is not written as attributes is not counted.
+fn svg_is_a_bar_series(painted: &str, primitives: usize) -> bool {
+    if primitives > BAR_SERIES_MAX_PRIMITIVES
+        || (SVG_ROUND_SHAPE_RE.find_iter(painted).count() as f64) >= primitives as f64 * 0.25
+    {
+        return false;
+    }
+    let rects: Vec<(f64, f64)> = SVG_RECT_TAG_RE
+        .find_iter(painted)
+        .map(|tag| {
+            let dim = |re: &Regex| svg_attr_dim(tag.as_str(), re).filter(|v| v.is_finite()).unwrap_or(f64::NAN);
+            (dim(&SVG_WIDTH_RE), dim(&SVG_HEIGHT_RE))
+        })
+        .filter(|(w, h)| w.is_finite() && h.is_finite())
+        .collect();
+    // The rects sharing one value of `side` (within a pixel), where the
+    // other side takes more than one value: bars of one width and many
+    // lengths. Equal tiles (a stack of blocks) share both sides.
+    let series = |side: fn(&(f64, f64)) -> f64, other: fn(&(f64, f64)) -> f64| {
+        rects
+            .iter()
+            .map(|a| {
+                let group: Vec<&(f64, f64)> = rects.iter().filter(|b| (side(b) - side(a)).abs() <= 1.0).collect();
+                let varies = group.iter().any(|b| !((other(b) - other(group[0])).abs() <= 1.0));
+                if varies { group.len() } else { 0 }
+            })
+            .max()
+            .unwrap_or(0)
+    };
+    let half = primitives as f64 / 2.0;
+    series(|r| r.0, |r| r.1) as f64 >= half || series(|r| r.1, |r| r.0) as f64 >= half
+}
+
 /// JS `attrDim(name)`: first `name="<num>"` in the open tag whose match is
 /// not preceded by `[-\w]` (the lookbehind keeps `stroke-width` out).
 fn svg_attr_dim(open_tag: &str, re: &Regex) -> Option<f64> {
@@ -233,7 +289,7 @@ pub fn scan_html_for_shape_assembled_illustration(html: &str) -> Vec<RuleHit> {
                 fills.push(paint);
             }
         }
-        if fills.len() < 3 {
+        if fills.len() < 3 || svg_is_a_bar_series(&painted, primitives) {
             continue;
         }
         findings.push(RuleHit::new(
@@ -749,17 +805,22 @@ pub fn check_html_patterns_picking(
             // `dominantPct > 0.6` means the maximum is unique, so entry
             // order never decides.
             let dominant = &counts.iter().find(|c| c.2 == max_count).unwrap().0;
-            findings.push(pf(
-                "monotonous-spacing",
-                format!(
-                    "~{}px used {}/{} times ({}%)",
-                    dominant,
-                    max_count,
-                    rounded_spacing.len(),
-                    number_to_string(math_round(dominant_pct * 100.0))
-                ),
-                None,
-            ));
+            // A page whose most common value is zero is resetting spacing
+            // (mercury.com's Tailwind `p-0`, `md:p-0` and `pr-0`, 953 of 962
+            // samples), not repeating one gap.
+            if dominant != "0" {
+                findings.push(pf(
+                    "monotonous-spacing",
+                    format!(
+                        "~{}px used {}/{} times ({}%)",
+                        dominant,
+                        max_count,
+                        rounded_spacing.len(),
+                        number_to_string(math_round(dominant_pct * 100.0))
+                    ),
+                    None,
+                ));
+            }
         }
     }
 
@@ -881,10 +942,8 @@ pub fn check_html_patterns_picking(
     );
 
     // --- Generated-UI tells: two-axis grid-line background ---
-    let grid_hits = scan_css_text_for_grid_background(style_text);
     findings.extend(
-        grid_hits
-            .iter()
+        crate::checks::css_scan::grid_background_hits(style_text)
             .map(|h| pf("codex-grid-background", h.snippet.clone(), enclosing_css_selector(style_text, h.index)))
             .take(PICK_MAX_CANDIDATES)
             .find(|f| stands(f)),
@@ -969,6 +1028,19 @@ mod tests {
     use super::*;
 
     // Expected values come from running the JS functions in Node.
+
+    /// mercury.com: Tailwind resets (`p-0`, `md:p-0`, `pr-0`) are not a
+    /// spacing choice, so a page of them plus a varied scale is not
+    /// monotonous. Twin: a page that really uses one gap keeps the finding.
+    #[test]
+    fn monotonous_spacing_ignores_zero_resets() {
+        let mono = |html: &str| check_html_patterns(html, None).iter().any(|f| f.id == "monotonous-spacing");
+        let resets = "<div class=\"p-0 md:p-0 pr-0\"></div>".repeat(40);
+        let varied = "<div class=\"p-2\"></div><div class=\"p-4\"></div><div class=\"p-6\"></div>".repeat(4);
+        assert!(!mono(&format!("<html><body>{resets}{varied}</body></html>")));
+        let one = "<div class=\"p-4\"></div>".repeat(20);
+        assert!(mono(&format!("<html><body>{one}</body></html>")));
+    }
 
     /// The stylesheet form reads every gradient in the clip's window: a
     /// one-colour fill there is solid type, but a declaration whose own ramp
@@ -1135,6 +1207,55 @@ mod tests {
         assert_eq!(defs(icon, "<use href=\"#nope\"/>"), 0, "a use that names no asset");
         let unused_eight = "<rect id=\"x1\" fill=\"red\"/><rect id=\"x2\" fill=\"blue\"/><rect id=\"x3\" fill=\"#0f0\"/><circle id=\"x4\"/><circle id=\"x5\"/><circle id=\"x6\"/><ellipse id=\"x7\"/><polygon id=\"x8\"/>";
         assert_eq!(defs(unused_eight, "<use href=\"#x1\"/>"), 0, "one use among eight unused assets");
+    }
+
+    /// stripe.com's uptime chart: 14 of 16 rects 44px wide is a series of
+    /// bars, not a scene. Twins: a skyline of equal-width windows with a
+    /// sun and polygon roofs, and bars of all different sizes.
+    #[test]
+    fn a_series_of_equal_bars_is_a_chart_not_a_scene() {
+        let svg = |inner: &str| {
+            scan_html_for_shape_assembled_illustration(&format!(
+                "<svg width=\"382\" height=\"210\" viewBox=\"0 0 382 210\">{inner}</svg>"
+            ))
+            .len()
+        };
+        let fills = "<rect width=\"380\" height=\"208\" fill=\"#fff\"/><rect width=\"380\" height=\"28\" fill=\"#f6f9fc\"/>";
+        let bars: String = (0..14)
+            .map(|i| format!("<rect x=\"{}\" y=\"{}\" width=\"44\" height=\"{}\" fill=\"#635bff\"/>", i * 26, 40 + i, 160 - i))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{bars}")), 0, "an equal-width bar series");
+        let tall: String = (0..14)
+            .map(|i| format!("<rect x=\"{}\" y=\"40\" width=\"{}\" height=\"5.99\" fill=\"#635bff\"/>", i * 26, 10 + 3 * i))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{tall}")), 0, "an equal-height timeline");
+        let roofs = "<circle cx=\"300\" cy=\"30\" r=\"20\" fill=\"#ffd400\"/><polygon points=\"0,60 40,20 80,60\" fill=\"#a33\"/><polygon points=\"80,60 120,20 160,60\" fill=\"#a33\"/><polygon points=\"160,60 200,20 240,60\" fill=\"#a33\"/><polygon points=\"240,60 280,20 320,60\" fill=\"#a33\"/>";
+        let windows: String = (0..10)
+            .map(|i| format!("<rect x=\"{}\" y=\"100\" width=\"12\" height=\"{}\" fill=\"#9cf\"/>", i * 30, 12 + 5 * i))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{windows}{roofs}")), 1, "a skyline with a sun and roofs");
+        let mixed: String = (0..10)
+            .map(|i| format!("<rect x=\"{}\" y=\"40\" width=\"{}\" height=\"{}\" fill=\"#635bff\"/>", i * 30, 10 + 7 * i, 20 + 9 * i))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{mixed}")), 1, "bars of every size");
+        let blocks = "<rect width=\"40\" height=\"40\" fill=\"#0b5\"/>".repeat(14);
+        assert_eq!(svg(&format!("{fills}{blocks}")), 1, "a stack of equal blocks");
+        // Past the primitive budget the series is not read, and the SVG
+        // reports as before: the grouping compares every rect pair.
+        let many: String = (0..401)
+            .map(|i| format!("<rect x=\"{}\" y=\"40\" width=\"1\" height=\"{}\" fill=\"#635bff\"/>", i % 380, 10 + i % 150))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{many}")), 1, "a series past the budget");
+        let few: String = (0..300)
+            .map(|i| format!("<rect x=\"{}\" y=\"40\" width=\"1\" height=\"{}\" fill=\"#635bff\"/>", i % 380, 10 + i % 150))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{few}")), 0, "a series inside the budget");
+        // A rect whose height comes from CSS is not counted: equal-width
+        // tiles with no height attribute are not a series of bars.
+        let css_sized: String = (0..14)
+            .map(|i| format!("<rect x=\"{}\" y=\"40\" width=\"40\" fill=\"#0b5\"/>", i * 26))
+            .collect();
+        assert_eq!(svg(&format!("{fills}{css_sized}")), 1, "tiles sized by CSS");
     }
 
     #[test]

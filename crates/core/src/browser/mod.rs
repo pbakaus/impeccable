@@ -67,6 +67,10 @@
 //!   `getLayerValue`, the candidate-analysis finalization. Its plain-data
 //!   plans and rects are shared. The async pixel sampling (Image loading,
 //!   canvas draws) stays JS and feeds these.
+//! - `hidden_mockup`: product mockups the page declares are not content
+//!   (`inert` or `aria-hidden="true"` on a drawn window, behind gates), and
+//!   boxes labelled as a screenshot; the driver drops or demotes the rules
+//!   that score a mockup's text and boxes as content.
 //! - `text_layers`: what the hit-test stacks over a run of text say about the
 //!   surface the contrast walk resolved (covered at capture, paint the walk
 //!   never read, or consistent), over the occlusion grid's points.
@@ -85,6 +89,7 @@ pub use impeccable_foundation::browser::fake_dom;
 pub mod background;
 pub mod decorative_text;
 pub mod driver;
+pub mod hidden_mockup;
 pub mod element_checks;
 pub mod field_label;
 pub mod line_breaks;

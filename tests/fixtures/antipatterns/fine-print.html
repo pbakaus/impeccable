@@ -2,17 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Legal fine print under line-length, tiny-text and tight-leading (taste call r5-p27)</title>
+<title>Legal fine print under line-length, tiny-text and tight-leading (r5-p27, decision 3)</title>
 <!--
-  Text set under 15px and marked as fine print (a small element, a legal,
-  disclaimer, terms or footnote class or id up to three levels up, or a block
-  that opens with an asterisk or a footnote mark) reports as advisory under
-  line-length, tiny-text and tight-leading. A consent or form label is not
-  fine print and keeps failing. Every row reports; the column says at which
-  severity.
+  Text set under 15px and marked as fine print reports in one of two tiers.
 
-  line-length needs layout, so the three wide rows report in the browser
-  engine only.
+  A legal or footnote block (a legal, disclaimer, disclosure, footnote,
+  fine-print or small-print class or id up to three levels up) is exempt
+  from line-length and tiny-text and stays advisory under tight-leading
+  (decision 3, round 13). A link inside it keeps undersized-ui-text.
+
+  Weaker evidence (a small element, a terms or copyright class, a singular
+  disclosure class, a footnote class after a type-scale word such as
+  text-footnote, a block that opens with an asterisk or a footnote mark)
+  reports as advisory under all three rules (taste call r5-p27). So does a
+  legal block that is, or directly holds, an expand/collapse widget (a
+  details, a summary, an aria-expanded control), and a policy page's body
+  (fine-print-policy.html).
+
+  A consent or form label is not fine print and keeps failing. The column
+  says what each row reports.
+
+  line-length needs layout, so the wide rows report in the browser engine
+  only.
 -->
 <style>
   body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #fff; }
@@ -47,15 +58,29 @@
   <p class="fine fail-required">* Indicates a required field in this form</p>
 </div>
 
-<!-- ================= ADVISORY ================= -->
-<div class="col" id="advisory">
-  <h2>Advisory</h2>
+<!-- ================= EXEMPT (tight-leading advisory) ================= -->
+<div class="col" id="exempt">
+  <h2>Exempt</h2>
 
   <!-- a legal class -->
   <p class="fine adv-class offer-legal">Requires a new line and a qualifying plan. Well-qualified customers only. Restrictions apply and the offer may change.</p>
 
   <!-- a disclaimer id -->
   <p class="fine adv-id" id="disclaimer-2">Offer available through December while supplies last. One per customer. Not valid with any other offer or discount.</p>
+
+  <!-- a paragraph two levels under a marked list -->
+  <ul class="disclaimers"><li><p class="fine adv-list">Trade-in values vary by condition, year and configuration of the device you hand in at the store.</p></li></ul>
+
+  <!-- a small element inside a disclaimer banner: the marker above the small settles it -->
+  <div id="disclaimer-banner"><small class="fine adv-banner">Mercury is a financial technology company, not a bank. Banking services provided by partner banks.</small></div>
+
+  <!-- a link inside a footnote keeps undersized-ui-text -->
+  <p class="fine adv-footnote-link" id="footnote-4">See the <a class="fail-footnote-link" href="#" style="font-size: 10px">rate disclosure</a> for how the annual yield is set, when it changes, and which balances earn it in each account.</p>
+</div>
+
+<!-- ================= ADVISORY ================= -->
+<div class="col" id="advisory">
+  <h2>Advisory</h2>
 
   <!-- a small element -->
   <p class="fine"><small class="adv-small">Prices exclude tax and delivery, and may change without notice in some regions and stores.</small></p>
@@ -66,8 +91,23 @@
   <!-- a block that opens with a footnote mark in a sup -->
   <p class="fine adv-sup"><sup>1</sup> Battery life varies by use and configuration. See the product page for more information about testing.</p>
 
-  <!-- a paragraph two levels under a marked list -->
-  <ul class="disclaimers"><li><p class="fine adv-list">Trade-in values vary by condition, year and configuration of the device you hand in at the store.</p></li></ul>
+  <!-- an input hint in a small element stays advisory: small alone is weak evidence -->
+  <div><input type="email" aria-label="Email"><small class="fine adv-hint">We only use your email address to send the receipt for this order.</small></div>
+
+  <!-- a disclosure widget's panel: singular disclosure is the widget's name, not a legal block -->
+  <div class="disclosure"><button type="button" aria-expanded="true" class="disclosure__button">Refunds</button><div class="disclosure__panel"><p class="fine adv-disclosure-panel">Refunds go back to the card you paid with, once the warehouse team inspects the item.</p></div></div>
+
+  <!-- a footnote-marked accordion: the marked box is a details, so it is demoted, not dropped -->
+  <details open class="footer-footnote-accordion"><summary>Rates</summary><p class="fine adv-accordion">Rates apply to new customers only and may change at any time without notice.</p></details>
+
+  <!-- a footnote inside that accordion: the marked details around it still demotes it -->
+  <details open class="footer-footnote-accordion"><summary>Fees</summary><p class="fine adv-inner-footnote footnote">Fees are waived for the first year and charged monthly after that on every open account.</p></details>
+
+  <!-- a type-scale class: text-footnote names Apple's Footnote text style -->
+  <p class="fine adv-type-footnote text-footnote">Our team ships every feature behind a flag first and measures how customers use it.</p>
+
+  <!-- a row of terms links: terms is weak evidence, and the links keep undersized-ui-text -->
+  <div class="fine adv-terms terms-links">Read our policies before you order: <a class="fail-terms-link" href="#" style="font-size: 10px">Privacy</a> and <a href="#" style="font-size: 10px">Cookies</a> apply.</div>
 </div>
 
 <!-- ================= line-length, browser engine only ================= -->
@@ -77,7 +117,16 @@
 <!-- a legal document set at body size is read -->
 <div class="legal-body"><p class="wide fail-document" style="font-size: 17px; line-height: 27px">The contest is an ongoing, skill-based contest conducted in a series of rounds, each of which is scored by an independent panel against the published criteria. Entrants may take part in any round that is open at the time of entry, and each round is judged on its own without regard to the results of any earlier round or of any later one.</p></div>
 
+<!-- a disclaimer set at body size is read: fine print is set under 15px -->
+<p class="wide fail-disclaimer-intro disclaimer-intro" style="font-size: 16px; line-height: 26px">Before you open an account, read the disclosures below: they set out the fees, the rates and the limits that apply to every account, and how each of them can change after you open one. The bank that holds your deposits names itself in each of them, along with the insurance that covers them.</p>
+
+<h2>Wide: exempt</h2>
+<p class="wide ex-wide offer-disclaimer">Monthly price reflects net monthly payment, after application of the trade-in credit applied over thirty-six months with purchase of a new device on a qualifying plan. Trade-in values will vary based on the condition, year and configuration of your eligible trade-in device. Offer may not be available in all stores, and may vary between in-store and online trade-in.</p>
+
 <h2>Wide: advisory</h2>
+<!-- the FAQ answer in a disclosure widget stays reported -->
+<div class="disclosure"><button type="button" class="disclosure__button">How do refunds work?</button><div class="disclosure__panel"><p class="wide adv-faq-wide" style="font-size: 13px; line-height: 20px">Refunds go back to the card you paid with. Once we receive the returned item, our warehouse team inspects it within two business days, and if it passes inspection your refund is issued immediately. Banks usually take another three to five days to show the money in your account, and some take longer around holidays.</p></div></div>
+
 <p class="wide adv-wide offer-terms">Monthly price reflects net monthly payment, after application of the trade-in credit applied over thirty-six months with purchase of a new device on a qualifying plan. Trade-in values will vary based on the condition, year and configuration of your eligible trade-in device. Offer may not be available in all stores, and may vary between in-store and online trade-in.</p>
 
 </body>

@@ -296,6 +296,16 @@ describe('live-browser-ignores resolver', () => {
     assert.equal(out.skipScan, true);
   });
 
+  it('keeps the directory boundary after `**/`', () => {
+    const ignores = { ignoreFiles: ['public/**/index.html'], roots: ['public/'] };
+    assert.equal(resolve({ ignores, pathname: '/safeindex.html' }).skipScan, false);
+    assert.equal(resolve({ ignores, pathname: '/index.html' }).skipScan, true);
+    assert.equal(resolve({ ignores, pathname: '/docs/index.html' }).skipScan, true);
+    const leading = { ignoreFiles: ['**/foo.html'] };
+    assert.equal(resolve({ ignores: leading, pathname: '/barfoo.html' }).skipScan, false);
+    assert.equal(resolve({ ignores: leading, pathname: '/bar/foo.html' }).skipScan, true);
+  });
+
   it('treats a malformed ignoreFiles value as no waiver at all', () => {
     const out = resolve({
       ignores: { ignoreFiles: 'prototype/**', roots: [] },

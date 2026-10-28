@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Side tab: a stripe down a status row or cell</title>
+  <!--
+    A coloured stripe down one side of a table row or cell, drawn with an
+    inset box-shadow or a side border, is the side tab on a row: a row is
+    never a rounded card, so the card gate does not apply. It reports when
+    the rule is about the row's state (an is-* / has-* class, a BEM modifier,
+    a data-* attribute) or paints nothing but the stripe, 2-6px wide, left or
+    right, in an accent colour (through var() too).
+    A selection or hover stripe, a neutral divider, a blurred sticky-column
+    shadow, a header underline and a plain cell that paints more than the
+    stripe stay silent.
+    Explicit pixel dimensions throughout.
+  -->
+  <style>
+    :root { --mark-broken: #d0342c; --line: #e5e7eb; }
+    body { margin: 0; padding: 24px 40px; width: 1000px; font: 16px/24px system-ui, sans-serif; color: #1a1a1a; background: #fff; }
+    h2 { font-size: 14px; line-height: 20px; margin: 32px 0 8px; color: #475569; }
+    table { width: 720px; border-collapse: collapse; }
+    td, th { width: 240px; height: 40px; padding: 8px 12px; text-align: left; }
+    .grid { width: 720px; }
+    .grid [role=row] { display: flex; width: 720px; height: 40px; }
+    .grid [role=cell] { width: 240px; padding: 8px 12px; }
+    .cell, .table__row { display: block; width: 720px; height: 40px; padding: 8px 12px; box-sizing: border-box; }
+
+    /* FLAG: a broken app's row, the stripe coloured through a token. */
+    tr.is-broken > td:first-child { box-shadow: inset 3px 0 0 var(--mark-broken); }
+    /* FLAG: a square cell that paints nothing but the stripe. */
+    .cell { box-shadow: inset 3px 0 0 #e11d48; }
+    /* FLAG: a failed run's row, the stripe drawn as a border. */
+    tr[data-state=failed] td:first-child { border-left: 3px solid #c2410c; }
+    /* FLAG: an ARIA grid row with an error, the stripe on the right. */
+    .grid [role=row].has-error { box-shadow: inset -4px 0 0 #dc2626; }
+    /* FLAG: a BEM modifier row with a logical-side border. */
+    .table__row--new { border-inline-start: 2px solid #16a34a; }
+
+    /* PASS: the selected row's stripe marks the selection. */
+    tr.is-selected td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+    /* PASS: a hover stripe. */
+    tr.hoverable:hover td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+    /* PASS: a neutral token stripe. */
+    tr.is-muted td:first-child { box-shadow: inset 3px 0 0 var(--line); }
+    /* PASS: a sticky column's blurred shadow. */
+    td.is-sticky { box-shadow: inset -8px 0 8px -8px #dc2626; }
+    /* PASS: a sorted header's underline. */
+    th.is-sorted { box-shadow: inset 0 -3px 0 #2563eb; }
+    /* PASS: a plain cell that paints its own background beside the stripe. */
+    td.amount { box-shadow: inset 3px 0 0 #7c3aed; background: #f8fafc; }
+    /* PASS: a 1px column divider. */
+    td.divided { box-shadow: inset 1px 0 0 #dc2626; }
+    /* PASS: an important style reset outlasts the later side border. */
+    tr.is-void td:first-child { border-style: none !important; border-left: 3px solid #b91c1c; }
+    /* PASS: a plain cell edged on both sides is a column. */
+    td.bounded { border-left: 3px solid #0891b2; border-right: 1px solid #0891b2; }
+    /* PASS: the plain branch of a list whose status branch is not on the page. */
+    tr.is-late td.due, td.total { box-shadow: inset 3px 0 0 #9333ea; background: #f8fafc; }
+    /* PASS: a cell wrapper in a selected row marks the selection. */
+    .cell-content { display: block; width: 216px; height: 24px; }
+    tr[aria-selected="true"] .cell-content { box-shadow: inset 3px 0 0 #2563eb; }
+    /* FLAG: a row card rounded by another rule, reported once, as a card. */
+    .row-card { display: block; width: 720px; height: 40px; padding: 8px 12px; box-sizing: border-box; }
+    .row-card.is-overdue { box-shadow: inset 4px 0 0 #dc2626; }
+    .row-card { border-radius: 12px; }
+    /* PASS: a row selected through data-state (Radix, shadcn). */
+    tr[data-state="selected"] td:first-child { box-shadow: inset 3px 0 0 #2563eb; }
+    /* FLAG: an error cell with rounded corners is still a cell. */
+    td.is-rounded-error { box-shadow: inset 3px 0 0 #be123c; border-radius: 4px; }
+    /* FLAG: a stale row inside an active tab pane. */
+    tr.is-stale > td:first-child { box-shadow: inset 3px 0 0 #ea580c; }
+  </style>
+</head>
+<body>
+  <h2>Flag: a broken app's row</h2>
+  <table><tbody><tr class="is-broken"><td>billing-api</td><td>Broken</td><td>2m ago</td></tr></tbody></table>
+
+  <h2>Flag: a square cell striped down its left</h2>
+  <div class="cell">An unread notification in a list of cells</div>
+
+  <h2>Flag: a failed run's row</h2>
+  <table><tbody><tr data-state="failed"><td>Run 412</td><td>Failed</td><td>12s</td></tr></tbody></table>
+
+  <h2>Flag: an ARIA grid row with an error</h2>
+  <div class="grid" role="grid"><div role="row" class="has-error"><span role="cell">Import 3</span><span role="cell">Error</span><span role="cell">1h ago</span></div></div>
+
+  <h2>Flag: a new row in a BEM table</h2>
+  <div class="table__row table__row--new">A row added since the last visit</div>
+
+  <h2>Pass: the selected row</h2>
+  <table><tbody><tr class="is-selected"><td>Invoice 18</td><td>Paid</td><td>Today</td></tr></tbody></table>
+
+  <h2>Pass: a hover stripe</h2>
+  <table><tbody><tr class="hoverable"><td>Invoice 19</td><td>Open</td><td>Today</td></tr></tbody></table>
+
+  <h2>Pass: a muted row striped in a neutral token</h2>
+  <table><tbody><tr class="is-muted"><td>Invoice 20</td><td>Void</td><td>Yesterday</td></tr></tbody></table>
+
+  <h2>Pass: a sticky column shadow, a sorted header, a shaded amount cell, a divider</h2>
+  <table>
+    <thead><tr><th class="is-sorted">Customer</th><th>Total</th><th>Due</th></tr></thead>
+    <tbody><tr><td class="is-sticky">Acme</td><td class="amount">$1,200</td><td class="divided">Friday</td></tr></tbody>
+  </table>
+
+  <h2>Pass: a void row whose stripe an important reset hides</h2>
+  <table><tbody><tr class="is-void"><td>Invoice 21</td><td>Void</td><td>Last week</td></tr></tbody></table>
+
+  <h2>Pass: a cell edged on both sides, a total beside an unused late branch</h2>
+  <table><tbody><tr><td class="bounded">Region</td><td class="total">$3,400</td><td>Monday</td></tr></tbody></table>
+
+  <h2>Pass: a cell wrapper in a selected row</h2>
+  <table><tbody><tr aria-selected="true"><td class="table__cell"><span class="cell-content">Invoice 22</span></td><td>Paid</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a row card rounded by another rule</h2>
+  <div class="row-card is-overdue">Invoice 23 is overdue</div>
+
+  <h2>Pass: a row selected through data-state</h2>
+  <table><tbody><tr data-state="selected"><td>Invoice 24</td><td>Paid</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a rounded error cell</h2>
+  <table><tbody><tr><td class="is-rounded-error">Invoice 25</td><td>Failed</td><td>Today</td></tr></tbody></table>
+
+  <h2>Flag: a stale row inside an active tab pane</h2>
+  <div class="tab-pane active"><table><tbody><tr class="is-stale"><td>Invoice 26</td><td>Stale</td><td>Last month</td></tr></tbody></table></div>
+</body>
+</html>

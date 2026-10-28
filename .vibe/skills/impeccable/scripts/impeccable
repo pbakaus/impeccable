@@ -8,7 +8,10 @@
 # named `impeccable`, and exec'ing it would fail every verb with
 # "Unknown command". Trusted candidates (IMPECCABLE_BIN, the sibling binary,
 # the version-pinned cache) are exec'd without a probe: hooks run them on
-# every edit and must stay fast.
+# every edit and must stay fast. The version-pinned cache and the download are
+# verified against engine-checksums.txt (next to this script), never against
+# anything published beside the binary; a <binary>.verified stamp records that
+# a cached binary passed, so only the first run hashes it.
 set -eu
 
 # True when the candidate answers the engine handshake (prints
@@ -18,14 +21,51 @@ set -eu
 # then skips its own probes and refuses to download, so probing stays cheap
 # and can never loop.
 probe_ok() {
-  case "$(IMPECCABLE_LAUNCHER_PROBE=1 "$1" engine-probe 2>/dev/null || true)" in
+  probe_out=$(IMPECCABLE_LAUNCHER_PROBE=1 "$1" engine-probe 2>/dev/null) || return 1
+  case "$probe_out" in
     impeccable-engine*) return 0 ;;
   esac
   return 1
 }
 probing=${IMPECCABLE_LAUNCHER_PROBE:-}
 
+# Prints the digest engine-checksums.txt records for engine version $1 and
+# asset $2 (lines are "<version> <asset> <sha256>"), nothing when there is none.
+# A CR is a separator too (CRLF checkouts), and a last line with no newline
+# still counts.
+manifest_digest() {
+  [ -f "$manifest" ] || return 0
+  while IFS="$(printf ' \t\r')" read -r m_version m_asset m_sum _ || [ -n "$m_version" ]; do
+    case "$m_version" in ''|'#'*) continue ;; esac
+    if [ "$m_version" = "$1" ] && [ "$m_asset" = "$2" ]; then
+      printf '%s' "$m_sum"
+      return 0
+    fi
+  done < "$manifest"
+  return 0
+}
+# Sets $expected (and, on Windows on ARM, which runs x64 binaries,
+# $expected_x64) from engine-checksums.txt. Only called off the stamped fast
+# path: hooks run this launcher on every edit.
+read_expected() {
+  expected=$(manifest_digest "$version" "$asset")
+  expected_x64=""
+  if [ "$os" = windows ] && [ "$arch" = arm64 ]; then
+    expected_x64=$(manifest_digest "$version" impeccable-windows-x64.exe)
+  fi
+}
+# Sets $actual to the sha256 of $1, empty when no hash tool works.
+hash_file() {
+  actual=""
+  if command -v shasum >/dev/null 2>&1; then
+    if digest=$(shasum -a 256 "$1" 2>/dev/null); then actual=${digest%% *}; fi
+  elif command -v sha256sum >/dev/null 2>&1; then
+    if digest=$(sha256sum "$1" 2>/dev/null); then actual=${digest%% *}; fi
+  fi
+}
+
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+manifest="$dir/engine-checksums.txt"
 
 # What the binary needs to know about its home: the skill directory (for
 # reference/*.md and command-metadata.json) and how to name itself in the
@@ -77,8 +117,19 @@ version=""
 [ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
 cache_root="${IMPECCABLE_HOME:-${HOME:-/nonexistent}/.impeccable}"
 cached="$cache_root/bin/$version/impeccable$exe"
+asset="impeccable-$os-$arch"
+[ "$os" = windows ] && asset="$asset.exe"
 if [ -n "$version" ] && [ -x "$cached" ]; then
-  exec "$cached" "$@"
+  if [ -f "$cached.verified" ]; then
+    exec "$cached" "$@"
+  fi
+  read_expected
+  hash_file "$cached"
+  if [ -n "$actual" ] && { [ "$actual" = "$expected" ] || [ "$actual" = "$expected_x64" ]; }; then
+    { echo "$actual" > "$cached.verified"; } 2>/dev/null || :
+    exec "$cached" "$@"
+  fi
+  echo "impeccable: cannot verify the cached engine $cached against $manifest; not using it" >&2
 fi
 if [ -z "$probing" ] && command -v impeccable >/dev/null 2>&1 && probe_ok impeccable; then
   exec impeccable "$@"
@@ -104,12 +155,11 @@ fetch_url() {
 check_download() {
   download_file=${1:-$tmp}
   if [ ! -f "$download_file" ]; then
-    rm -f "$tmp.sha256"
     echo "impeccable: download completed but the file was removed before execution: $url; check your antivirus quarantine or logs. Refusing to continue; do not disable protection." >&2
     exit 127
   fi
   if [ ! -s "$download_file" ]; then
-    rm -f "$download_file" "$tmp.sha256"
+    rm -f "$download_file"
     echo "impeccable: downloaded file is empty: $url; refusing the unverified download" >&2
     exit 127
   fi
@@ -120,13 +170,17 @@ if [ -n "$probing" ]; then
 fi
 if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/pbakaus/impeccable/releases/download}"
-  asset="impeccable-$os-$arch"
-  [ "$os" = windows ] && asset="$asset.exe"
   url="$base/engine-v$version/$asset"
+  read_expected
+  # Fail closed before any network traffic or cache write.
+  if [ -z "$expected" ] && [ -z "$expected_x64" ]; then
+    echo "impeccable: no checksum for engine $version ($asset) in $manifest; refusing the unverified download" >&2
+    exit 127
+  fi
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
   # An interrupted download (Ctrl-C, a hook timeout) would otherwise leave the
   # PID-named staging file behind for good. The handlers must exit explicitly.
-  cleanup() { rm -f "$tmp" "$tmp.sha256" 2>/dev/null || :; }
+  cleanup() { rm -f "$tmp" 2>/dev/null || :; }
   trap 'cleanup; exit 129' HUP
   trap 'cleanup; exit 130' INT
   trap 'cleanup; exit 143' TERM
@@ -143,40 +197,22 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     exit 127
   fi
   fetched=0
-  if fetch_url "$url"; then
+  if [ -n "$expected" ] && fetch_url "$url"; then
     fetched=1
-  elif [ "$os" = windows ] && [ "$arch" = arm64 ]; then
+  elif [ -n "$expected_x64" ]; then
     # Windows on ARM runs x64 binaries; fall back when no arm64 asset exists.
     url="$base/engine-v$version/impeccable-windows-x64.exe"
+    expected=$expected_x64
     fetch_url "$url" && fetched=1
   fi
   if [ "$fetched" = 1 ]; then
     check_download
-    # Fail closed: a freshly downloaded binary runs only after verifying
-    # against its .sha256 sidecar. A sidecar that cannot be fetched, or a
-    # machine with no sha256 tool, refuses the download instead of exec'ing
-    # an unverified binary. (A binary already on PATH or in the cache that
-    # passes engine-probe is unaffected.)
-    sidecar_ok=0
-    if command -v curl >/dev/null 2>&1; then
-      curl -fsSL --retry 2 -o "$tmp.sha256" "$url.sha256" 2>/dev/null && sidecar_ok=1
-    elif command -v wget >/dev/null 2>&1; then
-      wget -q -O "$tmp.sha256" "$url.sha256" 2>/dev/null && sidecar_ok=1
-    fi
+    # No sha256 tool refuses the download too.
+    hash_file "$tmp"
     check_download
-    expected=""
-    [ "$sidecar_ok" = 1 ] && expected=$(cut -d' ' -f1 < "$tmp.sha256")
-    actual=""
-    if command -v shasum >/dev/null 2>&1; then
-      if digest=$(shasum -a 256 "$tmp" 2>/dev/null); then actual=${digest%% *}; fi
-    elif command -v sha256sum >/dev/null 2>&1; then
-      if digest=$(sha256sum "$tmp" 2>/dev/null); then actual=${digest%% *}; fi
-    fi
-    check_download
-    rm -f "$tmp.sha256"
-    if [ -z "$expected" ] || [ -z "$actual" ]; then
+    if [ -z "$actual" ]; then
       rm -f "$tmp"
-      echo "impeccable: cannot verify $url against $url.sha256 (sidecar unavailable or hashing failed); refusing the unverified download" >&2
+      echo "impeccable: cannot verify $url (no sha256 tool, or hashing failed); refusing the unverified download" >&2
       exit 127
     fi
     if [ "$actual" != "$expected" ]; then
@@ -199,6 +235,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       exit 127
     fi
     check_download "$cached"
+    { echo "$actual" > "$cached.verified"; } 2>/dev/null || :
     exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null

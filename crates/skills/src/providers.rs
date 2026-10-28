@@ -8,7 +8,7 @@ use crate::util::{self, jsp, Env};
 pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
-    ".claude", ".cursor", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
+    ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
     ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
 ];
 
@@ -23,6 +23,7 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("cursor", ".cursor"),
     ("deepseek", ".dsh"),
     ("deepseek-harness", ".dsh"),
+    ("devin", ".devin"),
     ("dsh", ".dsh"),
     ("gemini", ".gemini"),
     ("github", ".github"),
@@ -36,11 +37,13 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("omp", ".omp"),
     ("oh-my-pi", ".omp"),
     ("qoder", ".qoder"),
+    ("replit", ".agents"),
     ("rovo-dev", ".rovodev"),
     ("rovodev", ".rovodev"),
     ("trae", ".trae"),
     ("trae-cn", ".trae-cn"),
     ("vibe", ".vibe"),
+    ("windsurf", ".devin"),
 ];
 
 const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
@@ -48,6 +51,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".agents", "Codex CLI", "codex"),
     (".claude", "Claude Code", "claude"),
     (".cursor", "Cursor", "cursor"),
+    (".devin", "Devin", "devin"),
     (".dsh", "DeepSeek Harness", "dsh"),
     (".gemini", "Gemini CLI", "gemini"),
     (".github", "GitHub Copilot", "github"),
@@ -64,8 +68,13 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".vibe", "Mistral Vibe", "vibe"),
 ];
 
+/// Harnesses that read another provider's dir: (input name, label, provider
+/// dir). Replit Agent loads `.agents/skills` exactly as Codex CLI does, so it
+/// is a second harness on `.agents` rather than a provider of its own (#1019).
+const SHARED_DIR_HARNESSES: &[(&str, &str, &str)] = &[("replit", "Replit Agent", ".agents")];
+
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
-    "antigravity", "claude", "codex", "cursor", "dsh", "gemini", "github", "grok", "hermes", "kiro",
+    "antigravity", "claude", "codex", "replit", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
     "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
 ];
 
@@ -83,18 +92,21 @@ pub fn opencode_global_config_dir(env: &Env, home: &str) -> String {
     jsp::join(&[home, ".config", "opencode"])
 }
 
-/// JS: hermesGlobalHome(home): honor $HERMES_HOME only when it sits under
-/// `home` (resolved against cwd like `path.resolve`).
-pub fn hermes_global_home(env: &Env, cwd: &str, home: &str) -> String {
-    if let Some(env_home) = env.get("HERMES_HOME").filter(|v| !v.is_empty()) {
-        let resolved_env = jsp::resolve(cwd, &[env_home]);
-        let resolved_home = jsp::resolve(cwd, &[home]);
-        if resolved_env == resolved_home || resolved_env.starts_with(&format!("{resolved_home}/")) {
-            return resolved_env;
+/// Devin CLI and Desktop share one global config dir: `%APPDATA%\devin` on
+/// Windows, else `$XDG_CONFIG_HOME/devin`, else `~/.config/devin`.
+pub fn devin_global_config_dir(env: &Env, _cwd: &str, home: &str) -> String {
+    if cfg!(windows) {
+        if let Some(v) = env.get("APPDATA").filter(|v| !v.is_empty()) {
+            return jsp::join(&[v, "devin"]);
         }
     }
-    jsp::join(&[home, ".hermes"])
+    if let Some(v) = env.get("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
+        return jsp::join(&[v, "devin"]);
+    }
+    jsp::join(&[home, ".config", "devin"])
 }
+
+pub use impeccable_context::hermes::hermes_global_home;
 
 /// JS: dshGlobalHome(home): honor $DSH_HOME only when it sits under `home`
 /// (resolved against cwd like `path.resolve`), mirroring hermesGlobalHome.
@@ -119,6 +131,7 @@ pub fn dsh_global_home(env: &Env, cwd: &str, home: &str) -> String {
 fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) -> Option<String> {
     match provider {
         ".agent" => Some(jsp::join(&[home, ".gemini", "config", "skills"])),
+        ".devin" => Some(jsp::join(&[&devin_global_config_dir(env, cwd, home), "skills"])),
         ".dsh" => Some(jsp::join(&[&dsh_global_home(env, cwd, home), "skills"])),
         ".hermes" => Some(jsp::join(&[&hermes_global_home(env, cwd, home), "skills"])),
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
@@ -129,7 +142,7 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
 }
 
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
+    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -324,20 +337,7 @@ impl Sys {
     /// JS: collectInstallDetections(root, home)
     pub fn collect_install_detections(&self, root: &str) -> Vec<Detection> {
         let home = self.home.as_str();
-        let mut detections = Vec::new();
-        for provider in PROVIDER_DIRS {
-            let found_path = jsp::join(&[root, provider]);
-            if !util::exists(&found_path) {
-                continue;
-            }
-            detections.push(Detection {
-                provider,
-                scope: Scope::Project,
-                found_path,
-                has_real_skills: has_real_skill_entries(&jsp::join(&[root, provider, "skills"])),
-            });
-        }
-        // Shared probe pair for env-relocated config dirs (OpenCode, DSH):
+        // Shared probe pair for env-relocated config dirs (OpenCode, DSH, Devin):
         // the harness-specific user skills dir plus a direct
         // `<config-dir>/skills` fallback.
         let config_dir_detection = |provider: &'static str, found: String| {
@@ -347,33 +347,57 @@ impl Sys {
             ]);
             (found, probes)
         };
-        for hint in GLOBAL_HARNESS_HINTS {
-            let (found_path, probe_paths) = match hint {
-                Hint::Home(rel, provider) => {
-                    let found = jsp::join(&[home, rel]);
+        let mut hinted = Vec::new();
+        for hint in HARNESS_HINTS {
+            let harness = hint.harness();
+            let Some((provider, _)) = harness_display_name(harness) else { continue };
+            let (scope, found_path, probe_paths) = match hint {
+                Hint::Project(rel, _) => (Scope::Project, jsp::join(&[root, rel]), vec![jsp::join(&[root, provider, "skills"])]),
+                Hint::Home(rel, _) => {
                     let probes = unique_paths(vec![
                         self.user_provider_skills_dir(home, provider),
                         jsp::join(&[home, rel, "skills"]),
                     ]);
-                    (found, probes)
+                    (Scope::User, jsp::join(&[home, rel]), probes)
                 }
-                Hint::OpencodeConfig(provider) => {
-                    config_dir_detection(provider, opencode_global_config_dir(&self.env, home))
-                }
-                Hint::DshHome(provider) => {
-                    config_dir_detection(provider, dsh_global_home(&self.env, &self.cwd, home))
+                Hint::ConfigDir(dir, _) => {
+                    let (found, probes) = config_dir_detection(provider, dir(&self.env, &self.cwd, home));
+                    (Scope::User, found, probes)
                 }
             };
             if !util::exists(&found_path) {
                 continue;
             }
-            detections.push(Detection {
-                provider: hint.provider(),
-                scope: Scope::User,
+            hinted.push(Detection {
+                provider,
+                scope,
                 found_path,
                 has_real_skills: probe_paths.iter().any(|p| has_real_skill_entries(p)),
+                harness,
             });
         }
+        // A provider dir in the project root is the generic signal; a project
+        // hint for the same dir is the specific one and stands in for it.
+        let mut detections = Vec::new();
+        for provider in PROVIDER_DIRS {
+            if hinted.iter().any(|d| d.scope == Scope::Project && d.provider == *provider) {
+                continue;
+            }
+            let found_path = jsp::join(&[root, provider]);
+            if !util::exists(&found_path) {
+                continue;
+            }
+            detections.push(Detection {
+                provider,
+                scope: Scope::Project,
+                found_path,
+                has_real_skills: has_real_skill_entries(&jsp::join(&[root, provider, "skills"])),
+                harness: provider_harness(provider),
+            });
+        }
+        let (project, user): (Vec<Detection>, Vec<Detection>) = hinted.into_iter().partition(|d| d.scope == Scope::Project);
+        detections.extend(project);
+        detections.extend(user);
         detections
     }
 
@@ -448,43 +472,56 @@ pub enum UpdateTarget {
     Ambiguous { project_providers: Vec<&'static str>, user_providers: Vec<&'static str> },
 }
 
+/// Where a harness leaves its mark, and which harness (by input name).
 enum Hint {
+    /// A file or dir in the project root: a project-scope detection.
+    Project(&'static str, &'static str),
     Home(&'static str, &'static str),
-    OpencodeConfig(&'static str),
-    /// `$DSH_HOME` relocates the whole config root, so detection must probe
-    /// the resolved home (which falls back to `~/.dsh`) rather than a fixed
-    /// relative path; a plain `Home` hint would miss a DSH_HOME-only setup.
-    DshHome(&'static str),
+    /// Config root resolved from `(env, cwd, home)`, for harnesses whose root
+    /// an env var or OS convention relocates.
+    ConfigDir(fn(&Env, &str, &str) -> String, &'static str),
+}
+
+fn opencode_hint_dir(env: &Env, _cwd: &str, home: &str) -> String {
+    opencode_global_config_dir(env, home)
 }
 
 impl Hint {
-    fn provider(&self) -> &'static str {
+    fn harness(&self) -> &'static str {
         match self {
-            Hint::Home(_, p) | Hint::OpencodeConfig(p) | Hint::DshHome(p) => p,
+            Hint::Project(_, h) | Hint::Home(_, h) | Hint::ConfigDir(_, h) => h,
         }
     }
 }
 
-const GLOBAL_HARNESS_HINTS: &[Hint] = &[
-    Hint::Home(".agent", ".agent"),
-    Hint::Home(".gemini/antigravity", ".agent"),
-    Hint::Home(".gemini/antigravity-cli", ".agent"),
-    Hint::Home(".gemini/antigravity-ide", ".agent"),
-    Hint::Home(".claude", ".claude"),
-    Hint::Home(".codex", ".agents"),
-    Hint::Home(".cursor", ".cursor"),
-    Hint::DshHome(".dsh"),
-    Hint::Home(".gemini", ".gemini"),
-    Hint::Home(".grok", ".grok"),
-    Hint::Home(".hermes", ".hermes"),
-    Hint::Home(".kiro", ".kiro"),
-    Hint::Home(".opencode", ".opencode"),
-    Hint::OpencodeConfig(".opencode"),
-    Hint::Home(".pi", ".pi"),
-    Hint::Home(".omp", ".omp"),
-    Hint::Home(".qoder", ".qoder"),
-    Hint::Home(".rovodev", ".rovodev"),
-    Hint::Home(".vibe", ".vibe"),
+const HARNESS_HINTS: &[Hint] = &[
+    // Every Replit project carries `.replit` at its root; Replit Agent reads
+    // `.agents/skills`, so this marks the `.agents` install as Replit (#1019).
+    Hint::Project(".replit", "replit"),
+    Hint::Home(".agent", "antigravity"),
+    Hint::Home(".gemini/antigravity", "antigravity"),
+    Hint::Home(".gemini/antigravity-cli", "antigravity"),
+    Hint::Home(".gemini/antigravity-ide", "antigravity"),
+    Hint::Home(".claude", "claude"),
+    Hint::Home(".codex", "codex"),
+    Hint::Home(".cursor", "cursor"),
+    Hint::Home(".codeium/windsurf", "devin"),
+    Hint::ConfigDir(devin_global_config_dir, "devin"),
+    // `$DSH_HOME` relocates the whole config root, so detection must probe
+    // the resolved home (which falls back to `~/.dsh`) rather than a fixed
+    // relative path; a plain `Home` hint would miss a DSH_HOME-only setup.
+    Hint::ConfigDir(dsh_global_home, "dsh"),
+    Hint::Home(".gemini", "gemini"),
+    Hint::Home(".grok", "grok"),
+    Hint::Home(".hermes", "hermes"),
+    Hint::Home(".kiro", "kiro"),
+    Hint::Home(".opencode", "opencode"),
+    Hint::ConfigDir(opencode_hint_dir, "opencode"),
+    Hint::Home(".pi", "pi"),
+    Hint::Home(".omp", "omp"),
+    Hint::Home(".qoder", "qoder"),
+    Hint::Home(".rovodev", "rovo-dev"),
+    Hint::Home(".vibe", "vibe"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -509,6 +546,16 @@ pub struct Detection {
     pub scope: Scope,
     pub found_path: String,
     pub has_real_skills: bool,
+    /// The harness that produced this detection, as its input name
+    /// (`codex`, `replit`); one provider dir can host more than one.
+    pub harness: &'static str,
+}
+
+impl Detection {
+    /// The harness name shown in the detected list.
+    pub fn label(&self) -> &'static str {
+        harness_display_name(self.harness).map(|(_, label)| label).unwrap_or(self.harness)
+    }
 }
 
 fn unique_paths(paths: Vec<String>) -> Vec<String> {
@@ -702,6 +749,20 @@ pub fn provider_input_name(provider: &str) -> String {
         .unwrap_or_else(|| provider.strip_prefix('.').unwrap_or(provider).to_string())
 }
 
+/// The provider dir and label for a harness input name such as `replit`.
+pub fn harness_display_name(input: &str) -> Option<(&'static str, &'static str)> {
+    PROVIDER_DISPLAY
+        .iter()
+        .find(|(_, _, i)| *i == input)
+        .map(|(p, name, _)| (*p, *name))
+        .or_else(|| SHARED_DIR_HARNESSES.iter().find(|(i, _, _)| *i == input).map(|(_, name, p)| (*p, *name)))
+}
+
+/// The harness a provider dir belongs to (its `PROVIDER_DISPLAY` row).
+fn provider_harness(provider: &'static str) -> &'static str {
+    PROVIDER_DISPLAY.iter().find(|(p, _, _)| *p == provider).map(|(_, _, input)| *input).unwrap_or(provider)
+}
+
 /// JS: providerDisplayName(provider)
 pub fn provider_display_name(provider: &str) -> String {
     PROVIDER_DISPLAY
@@ -709,11 +770,6 @@ pub fn provider_display_name(provider: &str) -> String {
         .find(|(p, _, _)| *p == provider)
         .map(|(_, name, _)| name.to_string())
         .unwrap_or_else(|| provider.to_string())
-}
-
-/// JS: formatProviderList(providers)
-pub fn format_provider_list(providers: &[&str]) -> String {
-    providers.iter().map(|p| provider_input_name(p)).collect::<Vec<_>>().join(", ")
 }
 
 /// JS: formatPathForDisplay(path, home)
@@ -738,15 +794,29 @@ pub fn unique_providers(detections: &[&Detection]) -> Vec<&'static str> {
     out
 }
 
+/// The harness input names behind a set of detections, in order, once each.
+pub fn unique_harnesses(detections: &[&Detection]) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for d in detections {
+        if !out.contains(&d.harness) {
+            out.push(d.harness);
+        }
+    }
+    out
+}
+
 /// JS: defaultDetectedProviders(detections)
 pub fn default_detected_providers(detections: &[Detection]) -> Vec<&'static str> {
+    unique_providers(&default_detections(detections))
+}
+
+/// The detections that preselect harnesses: project ones, else user ones.
+pub fn default_detections(detections: &[Detection]) -> Vec<&Detection> {
     let project: Vec<&Detection> = detections.iter().filter(|d| d.scope == Scope::Project).collect();
-    let project_providers = unique_providers(&project);
-    if !project_providers.is_empty() {
-        return project_providers;
+    if !project.is_empty() {
+        return project;
     }
-    let user: Vec<&Detection> = detections.iter().filter(|d| d.scope == Scope::User).collect();
-    unique_providers(&user)
+    detections.iter().filter(|d| d.scope == Scope::User).collect()
 }
 
 /// JS: normalizeInstallScope(value)
@@ -811,6 +881,62 @@ mod tests {
         assert_eq!(sys.user_provider_skills_dir(&home, ".omp"), jsp::join(&[&home, ".omp", "agent", "skills"]));
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".omp", Some(Scope::Project)), vec![jsp::join(&["/project", ".omp", "skills"])]);
 
+    }
+
+    #[test]
+    fn devin_provider_resolves_paths() {
+        assert_eq!(normalize_provider_name("devin"), Some(".devin"));
+        assert_eq!(normalize_provider_name("windsurf"), Some(".devin"));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let appdata = if cfg!(windows) { r"C:\Users\u\AppData\Roaming" } else { "/appdata" };
+        let xdg = if cfg!(windows) { r"C:\xdg" } else { "/xdg" };
+        let with_env = |pairs: &[(&str, &str)]| {
+            let mut env = Env::new();
+            for (k, v) in pairs {
+                env.insert((*k).into(), (*v).into());
+            }
+            Sys { env, cwd: home.into(), home: home.into() }
+        };
+        let skills_dir = |sys: &Sys| sys.user_provider_skills_dir(home, ".devin");
+
+        // Neither variable: ~/.config/devin on every OS.
+        assert_eq!(skills_dir(&with_env(&[])), jsp::join(&[home, ".config", "devin", "skills"]));
+        // XDG_CONFIG_HOME alone relocates the root on every OS.
+        assert_eq!(skills_dir(&with_env(&[("XDG_CONFIG_HOME", xdg)])), jsp::join(&[xdg, "devin", "skills"]));
+        // APPDATA wins over XDG_CONFIG_HOME on Windows and is ignored elsewhere.
+        let both = skills_dir(&with_env(&[("APPDATA", appdata), ("XDG_CONFIG_HOME", xdg)]));
+        let expected_root = if cfg!(windows) { appdata } else { xdg };
+        assert_eq!(both, jsp::join(&[expected_root, "devin", "skills"]));
+        let appdata_only = skills_dir(&with_env(&[("APPDATA", appdata)]));
+        let expected = if cfg!(windows) { jsp::join(&[appdata, "devin", "skills"]) } else { jsp::join(&[home, ".config", "devin", "skills"]) };
+        assert_eq!(appdata_only, expected);
+
+        let sys = with_env(&[]);
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".devin", Some(Scope::Project)), vec![jsp::join(&["/project", ".devin", "skills"])]);
+    }
+
+    #[test]
+    fn replit_aliases_agents_without_displacing_codex() {
+        assert_eq!(normalize_provider_name("replit"), Some(".agents"));
+        assert_eq!(provider_display_name(".agents"), "Codex CLI");
+        assert_eq!(provider_input_name(".agents"), "codex");
+        assert_eq!(harness_display_name("replit"), Some((".agents", "Replit Agent")));
+        assert_eq!(harness_display_name("codex"), Some((".agents", "Codex CLI")));
+        assert_eq!(provider_harness(".agents"), "codex");
+    }
+
+    #[test]
+    fn every_hint_and_picker_entry_names_a_known_harness() {
+        for hint in HARNESS_HINTS {
+            assert!(harness_display_name(hint.harness()).is_some(), "hint harness {}", hint.harness());
+        }
+        for input in PROVIDER_INPUT_ORDER {
+            assert!(harness_display_name(input).is_some(), "picker input {input}");
+        }
+        for provider in PROVIDER_DIRS {
+            assert!(harness_display_name(provider_harness(provider)).is_some(), "provider dir {provider}");
+        }
     }
 
     #[test]

@@ -74,6 +74,24 @@ pub fn holds_only_phrasing(dom: &dyn Dom, el: ElId) -> bool {
         .all(|c| paints_nothing(dom, c) || (is_inline_phrasing(dom, c) && holds_only_phrasing(dom, c)))
 }
 
+/// The children of `el` that set their own lines: a box laid out at block
+/// level (a nested list under a list item's own words, a `<p>` inside a
+/// cell). An inline-level box (`inline-flex`, `inline-block`) sits on one of
+/// `el`'s lines and is not one, and a box whose display the capture did not
+/// record is not counted.
+pub fn block_children(dom: &dyn Dom, el: ElId) -> Vec<ElId> {
+    dom.children(el)
+        .into_iter()
+        .filter(|&c| {
+            let display = dom.style(c, "display");
+            !paints_nothing(dom, c)
+                && !display.is_empty()
+                && !display.starts_with("inline")
+                && !matches!(display.as_str(), "contents" | "ruby" | "ruby-text")
+        })
+        .collect()
+}
+
 fn usable(r: &Rect) -> bool {
     r.all_finite() && r.width > 0.0 && r.height > 0.0
 }
@@ -393,7 +411,7 @@ fn is_transformed(dom: &dyn Dom, el: ElId) -> bool {
 
 /// Whether two consecutive children with area sit side by side: one starts
 /// where the other ends, on overlapping lines.
-fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
     let boxes: Vec<Rect> = dom
         .children(el)
         .into_iter()

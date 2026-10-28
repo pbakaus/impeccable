@@ -86,4 +86,18 @@ describe('live-browser-session state helper', () => {
     const session = loadSession({ crypto: { randomUUID() { throw new TypeError('not allowed'); } } });
     assert.match(session.randomUUID(), UUID_V4);
   });
+  it('starts with no persistence when reading localStorage is denied', () => {
+    const context = vm.createContext({});
+    // Defined from inside the realm: an accessor set on the sandbox object
+    // from outside is not invoked for in-realm global reads.
+    vm.runInContext(
+      "Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('SecurityError: storage denied'); } });",
+      context,
+    );
+    vm.runInContext(readFileSync(SCRIPT, 'utf-8'), context);
+    const state = context.__IMPECCABLE_LIVE_SESSION__.createLiveBrowserSessionState({ prefix: 'impeccable-live' });
+    state.saveSession({ id: 'session-a' });
+    assert.equal(state.loadSession(), null);
+    assert.equal(state.nextCheckpointRevision(), 1);
+  });
 });

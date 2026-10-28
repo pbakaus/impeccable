@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +21,8 @@ import {
   buildGeminiHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
+import { createTransformer, PROVIDERS } from '../scripts/lib/transformers/index.js';
+import { readSourceFiles } from '../scripts/lib/utils.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -265,7 +268,32 @@ describe('hook manifest builders', () => {
     assert.ok(hooksJsonFor('grok'));
     assert.ok(hooksJsonFor('gemini'));
     assert.equal(hooksJsonFor('omp'), null);
+    assert.equal(hooksJsonFor('devin'), null);
+    assert.equal(hooksJsonFor('hermes'), null);
     assert.equal(hooksJsonFor('unrecognized'), null);
+  });
+
+  // Hermes has no hook manifest; the design hook ships as a plugin payload.
+  // Built into a temp dist because this suite runs before `bun run build` in CI.
+  it('emits the Hermes design-hook plugin verbatim under .hermes/plugins/', () => {
+    assert.equal(PROVIDERS.hermes.emitHooks, undefined);
+    const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hermes-dist-'));
+    try {
+      createTransformer(PROVIDERS.hermes)(readSourceFiles(REPO_ROOT).skills, distDir);
+      const pluginDir = path.join(distDir, 'hermes/.hermes/plugins/impeccable-design-hook');
+      assert.deepEqual(fs.readdirSync(pluginDir).sort(), ['__init__.py', 'plugin.yaml']);
+      for (const name of ['__init__.py', 'plugin.yaml']) {
+        assert.equal(
+          fs.readFileSync(path.join(pluginDir, name), 'utf8'),
+          fs.readFileSync(path.join(REPO_ROOT, 'skill/hermes-plugin', name), 'utf8'),
+        );
+      }
+      const manifest = fs.readFileSync(path.join(pluginDir, 'plugin.yaml'), 'utf8');
+      assert.match(manifest, /^name: impeccable-design-hook$/m);
+      assert.match(manifest, /^provides_hooks:\n  - transform_tool_result\n  - pre_verify$/m);
+    } finally {
+      fs.rmSync(distDir, { recursive: true, force: true });
+    }
   });
 });
 

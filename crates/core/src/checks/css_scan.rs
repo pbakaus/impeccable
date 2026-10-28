@@ -108,10 +108,16 @@ re!(
 /// JS: checks.mjs#cssTextHasDarkRootBg
 pub fn css_text_has_dark_root_bg(content: &str, custom_props: &CustomProps) -> bool {
     // A token such as `--color-background: #0a0a0a` is not a background.
-    if DARK_BG_RE
-        .find_iter(content)
-        .any(|m| starts_css_property_token(content, m.start()))
-        || TW_DARK_BG_RE.is_match(content)
+    // The pattern reads only the leading channel of a hex (`#00` to `#23`),
+    // so the colour it matched has to be dark as a whole: a bright mint
+    // `#00d68f` leads with `00` (observations-1010 row 4).
+    if DARK_BG_RE.find_iter(content).any(|m| {
+        starts_css_property_token(content, m.start())
+            && m.as_str()
+                .split_once(':')
+                .and_then(|(_, v)| parse_any_color(Some(js::trim(v))))
+                .map_or(true, |c| relative_luminance(&c) < 0.1)
+    }) || TW_DARK_BG_RE.is_match(content)
     {
         return true;
     }
@@ -262,7 +268,15 @@ re!(
 
 /// JS: checks.mjs#scanCssTextForGridBackground
 pub fn scan_css_text_for_grid_background(content: &str) -> Vec<IndexedHit> {
-    for blk in GRID_BLOCK_RE.captures_iter(content) {
+    grid_background_hits(content).take(1).collect()
+}
+
+/// Every block of `content` that paints a two-axis grid-line background, in
+/// source order, read lazily: [`scan_css_text_for_grid_background`] keeps
+/// the first, and a walk that picks the first candidate the page shows
+/// reads on only past one it passes over.
+pub fn grid_background_hits(content: &str) -> impl Iterator<Item = IndexedHit> + '_ {
+    GRID_BLOCK_RE.captures_iter(content).filter_map(|blk| {
         let block = blk
             .get(1)
             .or_else(|| blk.get(2))
@@ -282,20 +296,17 @@ pub fn scan_css_text_for_grid_background(content: &str) -> Vec<IndexedHit> {
             bg_joined.push(';');
         }
         if hairline_count == 0 {
-            continue;
+            return None;
         }
         let has_px_cell =
             SIZE_DECL_PX_RE.is_match(block) || SHORTHAND_PX_ANY_RE.is_match(&bg_joined);
         // A single hairline is a line, divider, or rail, not a grid, even
         // when tiled by a 2D px cell (issue #615).
-        if hairline_count >= 2 && has_px_cell {
-            return vec![IndexedHit {
-                index: blk.get(0).unwrap().start(),
-                snippet: "two-axis grid-line gradient background".to_string(),
-            }];
-        }
-    }
-    Vec::new()
+        (hairline_count >= 2 && has_px_cell).then(|| IndexedHit {
+            index: blk.get(0).unwrap().start(),
+            snippet: "two-axis grid-line gradient background".to_string(),
+        })
+    })
 }
 
 // ─── scanCssTextForRadialHalo ───────────────────────────────────────────────
@@ -572,6 +583,15 @@ re!(
         target = ci("target")
     )
 );
+
+/// Whether a selector styles a selection, hover or focus state: a stripe
+/// there marks the chosen item, not a card. The stripe scans skip it.
+pub(crate) fn selector_is_state_indicator(selector: &str) -> bool {
+    STATE_PSEUDO_TARGET_RE.is_match(selector)
+        || ARIA_SELECTED_TRUE_RE.is_match(selector)
+        || has_aria_current_not_false(selector)
+        || selector_has_state_word(selector, false)
+}
 
 // ─── scanCssTextForPseudoStripe ─────────────────────────────────────────────
 re!(COMMENT_RE, format!(r"/\*{ANY}*?\*/"));
@@ -2393,6 +2413,41 @@ fn sample_arc(
         .collect()
 }
 
+/// The vertex count of a `polygon()` body (the text between its
+/// parentheses) that approximates an organic contour, the shape the
+/// organic-clip-path rule reports: at least [`ORGANIC_POLYGON_MIN_VERTICES`]
+/// comma-separated points (a leading fill rule counts as one, as the rule
+/// has always counted it), every coordinate off a 25% grid on average, and
+/// neither rectilinear nor a zigzag. `None` otherwise.
+pub(crate) fn organic_polygon_vertices(body: &str) -> Option<usize> {
+    let points: Vec<&str> = body
+        .split(',')
+        .map(js::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if points.len() < ORGANIC_POLYGON_MIN_VERTICES {
+        return None;
+    }
+    // Vertices sitting on a coarse grid (multiples of 25%) are geometric;
+    // a contour has arbitrary values.
+    let mut off_grid = 0usize;
+    for p in &points {
+        for n in SIGNED_NUM_RE.find_iter(p) {
+            let v = parse_float(n.as_str());
+            if (v - js::math_round(v / 25.0) * 25.0).abs() > 0.5 {
+                off_grid += 1;
+            }
+        }
+    }
+    if off_grid < points.len() {
+        return None;
+    }
+    if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
+        return None;
+    }
+    Some(points.len())
+}
+
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
 ///
 /// The same declaration repeated (one inline style per button) reports once
@@ -2425,36 +2480,14 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
             });
             continue;
         }
-        let points: Vec<&str> = body
-            .split(',')
-            .map(js::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if points.len() < ORGANIC_POLYGON_MIN_VERTICES {
+        let Some(vertices) = organic_polygon_vertices(body) else {
             continue;
-        }
-        // Vertices sitting on a coarse grid (multiples of 25%) are geometric;
-        // a contour has arbitrary values.
-        let mut off_grid = 0usize;
-        for p in &points {
-            for n in SIGNED_NUM_RE.find_iter(p) {
-                let v = parse_float(n.as_str());
-                if (v - js::math_round(v / 25.0) * 25.0).abs() > 0.5 {
-                    off_grid += 1;
-                }
-            }
-        }
-        if off_grid < points.len() {
-            continue;
-        }
-        if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
-            continue;
-        }
+        };
         push(&mut findings, PatternFinding {
             id: "organic-clip-path".to_string(),
             snippet: format!(
                 "clip-path: polygon() with {} vertices approximating an organic contour",
-                points.len()
+                vertices
             ),
             selector: enclosing_css_selector(style_text, index),
             index: None,
@@ -3231,6 +3264,20 @@ mod tests {
                 "{text:?} @ {idx}"
             );
         }
+        // #1076: a quoted brace or semicolon in an at-rule's header does
+        // not cut the header short, so the rule inside keeps its selector.
+        for text in [
+            "@supports (content: \"}\") { .b { c: d } }",
+            "@supports (content: \"{\") { .b { c: d } }",
+            "@supports (content: \"a;b\") { .b { c: d } }",
+            "@media (x) { @supports (content: 'x;y') { .b { c: d } } }",
+        ] {
+            let idx = text.find("c: d").unwrap();
+            assert_eq!(enclosing_css_selector(text, idx).as_deref(), Some(".b"), "{text:?}");
+        }
+        // A quoted semicolon still ends nothing in a rule nested in a style rule.
+        let nested = ".card { content: \"a;b\"; @media (x) { .s { c: d } } }";
+        assert_eq!(enclosing_css_selector(nested, nested.find("c: d").unwrap()), None);
     }
 
     #[test]
@@ -3348,6 +3395,53 @@ mod tests {
         let m =
             collect_pulse_keyframes("@keyframes n {50%{transform: translateY(2px) scale(1.2)}}");
         assert_eq!(m.entries(), &[("n".to_string(), true)]);
+    }
+
+    /// observations-1010 row 11: an eye that blinks on one axis (looot.ai's
+    /// `asblink`) and a dot that runs along a connector by its `left`
+    /// (zcad.ai's `handoff-network-flow`) are not pulses. A dot that swells
+    /// and fades, and one that breathes a pixel by its margin, still are.
+    #[test]
+    fn a_blink_and_a_travelling_dot_are_not_pulses() {
+        let pulses = |css: &str| collect_pulse_keyframes(css).entries()[0].1;
+        assert!(!pulses("@keyframes asblink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}"));
+        assert!(!pulses("@keyframes bar{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}"));
+        assert!(!pulses(
+            "@keyframes handoff-network-flow { 0% { opacity: 0; left: 0px; transform: scale(0.7); } 14% { opacity: 0.9; } 100% { opacity: 0; left: calc(100% - 4px); transform: scale(0.95); } }"
+        ));
+        assert!(!pulses("@keyframes m { 0% { opacity: 1; margin-top: 0 } 100% { opacity: .2; margin-top: 24px } }"));
+        assert!(!pulses("@keyframes bob { 0%,100% { opacity: 1; top: 0 } 50% { opacity: .6; top: -6px } }"));
+        // Should-flag twins.
+        assert!(pulses("@keyframes dot { 0%,100% { transform: scale(.5); opacity: 1 } 50% { transform: scale(1); opacity: .5 } }"));
+        assert!(pulses("@keyframes sq { 0%,100% { transform: scaleX(1) scaleY(1) } 50% { transform: scaleX(1.3) scaleY(1.3) } }"));
+        assert!(pulses("@keyframes blinkfade { 0%,100% { transform: scaleY(1); opacity: 1 } 50% { transform: scaleY(.1); opacity: .4 } }"));
+        assert!(pulses("@keyframes breathe { 0%,100% { opacity: 1; margin-top: 0 } 50% { opacity: .5; margin-top: -1px } }"));
+        assert!(pulses("@keyframes still { 0%,100% { opacity: 1; left: 8px } 50% { opacity: .5; left: 8px } }"));
+        // Review of round 14: a ripple kept centred while it grows, by a
+        // shorthand that moves every side, by a margin that changes with
+        // the size, or by both opposite offsets, is a ping.
+        assert!(pulses("@keyframes r1 { 0% { width: 8px; height: 8px; margin: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin: -4px; opacity: .3 } }"));
+        assert!(pulses("@keyframes r2 { 0%,100% { margin: 4px; opacity: 1 } 50% { margin: 0; opacity: .4 } }"));
+        assert!(pulses("@keyframes r3 { 0% { inset: 0; opacity: 1 } 100% { inset: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r4 { 0% { width: 8px; height: 8px; margin-left: 0; margin-top: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin-left: -4px; margin-top: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r5 { 0% { top: 4px; bottom: 4px; opacity: 1 } 100% { top: -4px; bottom: -4px; opacity: 0 } }"));
+        // Zero in any unit is zero: `left: 0` to `left: 0%` does not move.
+        assert!(pulses("@keyframes z { 0% { left: 0; opacity: 1 } 100% { left: 0%; opacity: .3 } }"));
+        assert!(pulses("@keyframes z2 { 0% { top: 0px; opacity: 1 } 100% { top: -0.0em; opacity: .3 } }"));
+        assert!(!pulses("@keyframes z3 { 0% { left: 0; opacity: 1 } 100% { left: 50%; opacity: .3 } }"));
+    }
+
+    /// observations-1010 row 4: `DARK_BG_RE` reads the leading channel of a
+    /// hex, so the colour it matched must be dark as a whole.
+    #[test]
+    fn a_dark_background_declaration_is_dark_as_a_whole() {
+        assert!(!dark(".badge{background:#00d68f}"));
+        assert!(!dark(".chip{background-color:#1fd1f9}"));
+        assert!(!dark(".k{background:#1ff}"));
+        assert!(dark(".footer{background:#111}"));
+        assert!(dark(".footer{background:#0a0a0a}"));
+        assert!(dark(".x{background-color:#1a1a2e}"));
+        assert!(dark(".x{background:rgb(12, 14, 20)}"));
     }
 
     /// observations-1004 row 25: keyframes that move their box 4px or more,

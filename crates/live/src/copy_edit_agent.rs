@@ -66,6 +66,7 @@ pub fn build_copy_edit_batch_prompt(batch: &Value, cwd: &str) -> String {
         "- If numeric copy is rendered from an expression, change the display expression or a clearly coupled lookup value; do not replace the underlying typed model declaration with quoted copy.".into(),
         "- If newText looks numeric but is not a valid safe numeric literal for the current source language, represent it as display text. For example, leading-zero decimals or mixed alphanumeric counts must be quoted/escaped as strings in JS/TS data.".into(),
         "- Treat current source evidence as authoritative after earlier chunks/retries. sourceEdit.originalText must appear exactly in the current file; do not reuse stale object keys or old line text.".into(),
+        "- An op with deleted: true and removeElement: true removes the whole element from source, children included, not just its text: locate it by sourceHint, then by leaf.outerHTML and originalText, delete exactly that element's source range, and leave no empty wrapper, orphaned children, or dangling markup behind.".into(),
         "- In JSX/TSX, if the original visible copy is rendered by an expression-only text node and the new value is display copy, keep the replacement expression-shaped with a quoted expression such as {\"7 seats\"} rather than raw text.".into(),
         "- When user copy contains framework-sensitive characters such as >, keep the visible text exact but encode it as valid source. In JSX/TSX text nodes, use a quoted expression like {\"alpha -> beta\"} instead of raw text that contains >.".into(),
         "- Replacement text must still be valid source syntax. If newText is display text inside JS, TS, JSX, Svelte, Astro, or data files and is not the existing typed value, quote or escape it as source text instead of pasting raw user text into code.".into(),
@@ -810,6 +811,9 @@ fn compact_batch_op(op: &Value) -> Value {
     ins(&mut m, "newText", op.get("newText").cloned());
     if op.get("deleted") == Some(&Value::Bool(true)) {
         m.insert("deleted".into(), Value::Bool(true));
+    }
+    if op.get("removeElement") == Some(&Value::Bool(true)) {
+        m.insert("removeElement".into(), Value::Bool(true));
     }
     m.insert(
         "sourceHint".into(),

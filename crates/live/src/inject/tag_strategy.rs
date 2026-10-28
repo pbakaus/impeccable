@@ -3,6 +3,7 @@
 //! meta patch/revert.
 
 use crate::util::{base64_decode, base64_encode, encode_uri_component};
+use markup5ever::data::NAMED_ENTITIES;
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexBuilder};
 
@@ -244,11 +245,22 @@ fn get_attr(attrs: &str, name: &str) -> Option<Attr> {
     best.map(|(_, a)| a)
 }
 
-/// Length of the HTML character reference at the start of `s` (which starts
-/// with `&`), if one starts there. A numeric reference may omit its `;`, as
-/// browsers read it; a named one counts only with its `;`.
-fn reference_len(s: &str) -> Option<usize> {
-    let b = s.as_bytes();
+/// How a browser reads the `&` at the start of `tail` inside an attribute
+/// value, following the HTML tokenizer's character reference state.
+enum Reference {
+    /// Not a reference: the `&` is a literal character and what follows is
+    /// read as ordinary text, so a `;` after `&bogus` still separates.
+    Literal,
+    /// A numeric reference, or a named one that decodes to one ASCII
+    /// character: the character and the reference's length in bytes.
+    Char(char, usize),
+    /// A real named reference that decodes to anything else (`&copy;`).
+    /// A CSP is ASCII, so the patch only needs to know it is one unit.
+    Opaque(usize),
+}
+
+fn read_reference(tail: &str) -> Reference {
+    let b = tail.as_bytes();
     if b.get(1) == Some(&b'#') {
         let hex = matches!(b.get(2), Some(b'x' | b'X'));
         let start = if hex { 3 } else { 2 };
@@ -263,81 +275,65 @@ fn reference_len(s: &str) -> Option<usize> {
             i += 1;
         }
         if i == start {
-            return None;
+            return Reference::Literal;
         }
+        let digits = &tail[start..i];
+        // A numeric reference may omit its `;`, as browsers read it.
         if b.get(i) == Some(&b';') {
             i += 1;
         }
-        Some(i)
-    } else {
-        let mut i = 1;
-        while i < b.len() && b[i].is_ascii_alphanumeric() {
-            i += 1;
-        }
-        if i == 1 || b.get(i) != Some(&b';') {
-            return None;
-        }
-        Some(i + 1)
-    }
-}
-
-/// The named references that decode to ASCII, the only characters a CSP is
-/// made of. Any other `&name;` is kept as one opaque unit: it may be a real
-/// reference (`&copy;`) or literal text (`&bogus;`), and telling them apart
-/// takes the full HTML table. Treating it as text inside a source means an
-/// insertion never lands between its name and its `;`.
-const ASCII_NAMED_REFERENCES: [(&str, char); 29] = [
-    ("amp", '&'),
-    ("quot", '"'),
-    ("apos", '\''),
-    ("lt", '<'),
-    ("gt", '>'),
-    ("semi", ';'),
-    ("colon", ':'),
-    ("comma", ','),
-    ("period", '.'),
-    ("sol", '/'),
-    ("bsol", '\\'),
-    ("Tab", '\t'),
-    ("NewLine", '\n'),
-    ("ast", '*'),
-    ("plus", '+'),
-    ("lowbar", '_'),
-    ("equals", '='),
-    ("quest", '?'),
-    ("num", '#'),
-    ("percnt", '%'),
-    ("excl", '!'),
-    ("commat", '@'),
-    ("dollar", '$'),
-    ("lpar", '('),
-    ("rpar", ')'),
-    ("lsqb", '['),
-    ("rsqb", ']'),
-    ("lcub", '{'),
-    ("rcub", '}'),
-];
-
-/// `tail` starts with `&`. Returns the decoded char and the reference length
-/// for numeric references and the names in `ASCII_NAMED_REFERENCES`.
-fn decode_reference(tail: &str) -> Option<(char, usize)> {
-    let len = reference_len(tail)?;
-    let body = tail[1..len].trim_end_matches(';');
-    let ch = if let Some(num) = body.strip_prefix('#') {
-        let code = match num.strip_prefix(['x', 'X']) {
-            Some(hex) => u32::from_str_radix(hex, 16).ok(),
-            None => num.parse::<u32>().ok(),
+        let code = if hex {
+            u32::from_str_radix(digits, 16).ok()
+        } else {
+            digits.parse::<u32>().ok()
         };
-        code.filter(|c| *c != 0)
+        let ch = code
+            .filter(|c| *c != 0)
             .and_then(char::from_u32)
-            .unwrap_or('\u{FFFD}')
-    } else {
-        ASCII_NAMED_REFERENCES
-            .iter()
-            .find(|(name, _)| *name == body)?
-            .1
+            .unwrap_or('\u{FFFD}');
+        return Reference::Char(ch, i);
+    }
+    // Named: the longest name in the HTML table that the text spells. Names
+    // are alphanumeric, ending in `;` except for the legacy ones (`&amp`,
+    // `&copy`). The table also holds every prefix of a name mapped to (0, 0);
+    // those are not references.
+    let run = 1 + b[1..]
+        .iter()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .count();
+    // Walk forward one byte at a time. Every prefix of a name is in the
+    // table, so the first miss ends the search: an unknown name costs one
+    // lookup, not one per byte of the text after it.
+    let mut found = None;
+    for end in 2..=run {
+        let Some(&value) = NAMED_ENTITIES.get(&tail[1..end]) else {
+            break;
+        };
+        if value != (0, 0) {
+            found = Some((value, end));
+        }
+        if end == run && b.get(run) == Some(&b';') {
+            if let Some(&value) = NAMED_ENTITIES.get(&tail[1..=run]) {
+                if value != (0, 0) {
+                    found = Some((value, run + 1));
+                }
+            }
+        }
+    }
+    let Some(((first, second), len)) = found else {
+        return Reference::Literal;
     };
-    Some((ch, len))
+    // In an attribute, a legacy name followed by `=` or an alphanumeric is
+    // not decoded (`?a&ampb=1` keeps its text).
+    if !tail[..len].ends_with(';')
+        && matches!(b.get(len), Some(c) if *c == b'=' || c.is_ascii_alphanumeric())
+    {
+        return Reference::Literal;
+    }
+    match char::from_u32(first) {
+        Some(ch) if second == 0 && ch.is_ascii() => Reference::Char(ch, len),
+        _ => Reference::Opaque(len),
+    }
 }
 
 /// One decoded character of a raw attribute value and the raw bytes it came
@@ -346,7 +342,7 @@ struct Unit {
     ch: char,
     start: usize,
     end: usize,
-    /// An `&name;` outside `ASCII_NAMED_REFERENCES`, read as its raw text.
+    /// A named reference that does not decode to ASCII, read as its raw text.
     opaque: bool,
 }
 
@@ -356,12 +352,10 @@ fn decode_units(raw: &str) -> Vec<Unit> {
     while i < raw.len() {
         let tail = &raw[i..];
         let (ch, len, opaque) = if tail.starts_with('&') {
-            match decode_reference(tail) {
-                Some((ch, len)) => (ch, len, false),
-                None => match reference_len(tail) {
-                    Some(len) if tail.as_bytes()[1] != b'#' => ('\u{FFFD}', len, true),
-                    _ => ('&', 1, false),
-                },
+            match read_reference(tail) {
+                Reference::Char(ch, len) => (ch, len, false),
+                Reference::Opaque(len) => ('\u{FFFD}', len, true),
+                Reference::Literal => ('&', 1, false),
             }
         } else {
             let c = tail.chars().next().unwrap();
@@ -378,8 +372,8 @@ fn decode_units(raw: &str) -> Vec<Unit> {
     out
 }
 
-/// The value a browser hands the CSP parser, for the references
-/// `decode_reference` knows; anything else passes through unchanged.
+/// The value a browser hands the CSP parser, with references that decode to
+/// non-ASCII kept as their raw text.
 #[cfg(test)]
 fn decode_html_attr_value(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
@@ -469,13 +463,16 @@ fn append_origin_to_directive(raw: &str, directive: &str, source: &str, quote: &
         _ => "",
     };
     // A trailing `&#99` or `&amp` would take the new `;` as its terminator
-    // and swallow the separator; a space ends the reference first.
-    let tail = base.rfind('&').map(|i| &base[i + 1..]).unwrap_or(" ");
-    let gap = if !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'#') {
-        " "
-    } else {
-        ""
-    };
+    // and swallow the separator; a space ends the reference first. A
+    // trailing `&b` cannot: `&b;` is no reference, so its `;` separates.
+    let swallows = base.rfind('&').is_some_and(|i| {
+        let probe = format!("{};", &base[i..]);
+        match read_reference(&probe) {
+            Reference::Char(_, len) | Reference::Opaque(len) => len == probe.len(),
+            Reference::Literal => false,
+        }
+    });
+    let gap = if swallows { " " } else { "" };
     format!(
         "{}{}; {} {} {}",
         base,
@@ -804,6 +801,86 @@ mod tests {
             assert!(
                 patched.contains(&format!(
                     "content=\"{csp}; script-src 'self' http://localhost:9797 'wasm-unsafe-eval';"
+                )),
+                "{patched}"
+            );
+            assert_eq!(revert_csp_meta(&patched), html);
+        }
+    }
+
+    #[test]
+    fn unknown_named_reference_keeps_its_semicolon_as_a_separator() {
+        // `&b;` is not in the HTML table, so a browser reads `&b` as text and
+        // the `;` ends img-src. Reading it as one unit used to hide the
+        // separator: blob: landed in script-src and a second script-src was
+        // added.
+        let html = "<meta http-equiv=\"Content-Security-Policy\" content=\"img-src https://a.example/?a&b; script-src 'self'\">";
+        let patched = patch_csp_meta(html, 8412);
+        assert!(
+            patched.contains("content=\"img-src https://a.example/?a&b blob:; script-src 'self' http://localhost:8412 'wasm-unsafe-eval'; connect-src 'self' http://localhost:8412\""),
+            "{patched}"
+        );
+        assert_eq!(
+            browser_policy(&patched),
+            "img-src https://a.example/?a&b blob:; script-src 'self' http://localhost:8412 'wasm-unsafe-eval'; connect-src 'self' http://localhost:8412"
+        );
+        assert_eq!(revert_csp_meta(&patched), html);
+        assert_eq!(patch_csp_meta(&revert_csp_meta(&patched), 8412), patched);
+    }
+
+    #[test]
+    fn named_references_follow_the_html_table() {
+        // Every name that decodes to ASCII is read, not only the common ones.
+        assert_eq!(
+            decode_html_attr_value("&vert;&grave;&lbrack;&QUOT;&AMP;&midast;"),
+            "|`[\"&*"
+        );
+        // Legacy names without `;` decode, except before `=` or an
+        // alphanumeric, which in an attribute keeps the text.
+        assert_eq!(
+            decode_html_attr_value("&amp x &lt; &ampb &amp=1 &gt"),
+            "& x < &ampb &amp=1 >"
+        );
+        // A real non-ASCII reference hides no separator: `&notin;` is one
+        // character, so script-src here is a source of img-src and the patch
+        // adds a real script-src. `&notit;` is the legacy `&not` before an
+        // alphanumeric, so it stays text and its `;` separates.
+        for (csp, expect) in [
+            (
+                "img-src a&notin; script-src 'self'",
+                "img-src a&notin; script-src 'self' blob:; script-src 'self' http://localhost:9797 'wasm-unsafe-eval'; connect-src 'self' http://localhost:9797",
+            ),
+            (
+                "img-src a&notit; script-src 'self'",
+                "img-src a&notit blob:; script-src 'self' http://localhost:9797 'wasm-unsafe-eval'; connect-src 'self' http://localhost:9797",
+            ),
+        ] {
+            let html = format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{csp}\">");
+            let patched = patch_csp_meta(&html, 9797);
+            assert!(patched.contains(&format!("content=\"{expect}\"")), "{patched}");
+            assert_eq!(revert_csp_meta(&patched), html);
+        }
+    }
+
+    #[test]
+    fn trailing_text_that_cannot_take_a_semicolon_gets_no_gap() {
+        for (csp, base) in [
+            // `&b;` is no reference, so the added `;` separates on its own.
+            (
+                "default-src https://a.example/?a&b",
+                "default-src https://a.example/?a&b",
+            ),
+            // `&copy;` is one, so it needs the space.
+            (
+                "default-src https://a.example/&copy",
+                "default-src https://a.example/&copy ",
+            ),
+        ] {
+            let html = format!("<meta http-equiv=\"Content-Security-Policy\" content=\"{csp}\">");
+            let patched = patch_csp_meta(&html, 9797);
+            assert!(
+                patched.contains(&format!(
+                    "content=\"{base}; script-src 'self' http://localhost:9797 'wasm-unsafe-eval';"
                 )),
                 "{patched}"
             );

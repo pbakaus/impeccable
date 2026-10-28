@@ -110,6 +110,11 @@ pub fn is_fine_print(el: &StaticElement<'_>) -> bool {
     text_context::is_fine_print(&StaticNode(*el))
 }
 
+/// Which tier of legal fine print the element's text is in.
+pub fn fine_print(el: &StaticElement<'_>) -> text_context::FinePrint {
+    text_context::fine_print(&StaticNode(*el))
+}
+
 /// Whether the element's text is a label with no reading job.
 pub fn is_micro_label(el: &StaticElement<'_>) -> bool {
     text_context::is_micro_label(&StaticNode(*el))

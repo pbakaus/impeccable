@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Text occlusion: 1px text a transform draws larger (browser-only)</title>
+  <!--
+    A label set at font-size: 1px draws a dot, not letters, so laid over a
+    caption it hides nothing. The same label under scale: 16 draws 16px
+    letters, and laid over the caption it collides with it.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    .case { position: relative; width: 400px; height: 48px; margin: 0 0 32px; }
+    .caption { font: 400 16px/24px system-ui; color: #1a1a1a; }
+    .label { position: absolute; left: 0; top: 4px; font: 700 1px/1 system-ui; color: #b91c1c; white-space: nowrap; transform-origin: 0 0; }
+    .label.scaled { scale: 16; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="col">
+      <h1>Should flag</h1>
+      <div class="case"><p class="caption" id="flag-caption-under-scaled-label">Shipping updates for every order</p><span class="label scaled" id="flag-scaled-label">Limited offer today</span></div>
+    </div>
+    <div class="col">
+      <h1>Should pass</h1>
+      <div class="case"><p class="caption" id="pass-caption-under-dot-label">Returns accepted within thirty days</p><span class="label" id="pass-dot-label">Limited offer today</span></div>
+    </div>
+  </main>
+</body>
+</html>

@@ -353,10 +353,34 @@ fn extract_zip_from<R: Read + std::io::Seek>(reader: R, target_dir: &str, cwd: &
 /// both the zip and the extracted tree; any failure removes the whole
 /// staging dir before rethrowing. Returns the staging dir (caller removes).
 pub fn download_and_extract_bundle(sys: &Sys) -> Result<String, BundleError> {
+    #[cfg(test)]
+    if let Some(forced) = test_seam::take() {
+        return forced;
+    }
     if let Some(local) = sys.env.get("IMPECCABLE_BUNDLE_PATH").filter(|v| !v.is_empty()) {
         return copy_or_extract_local_bundle(sys, local).map_err(BundleError::Local);
     }
     download_remote_bundle(sys, &mut ureq_fetch, bundle_signature::trusted_keys())
+}
+
+/// Lets in-crate command tests stand in for the network: the next
+/// `download_and_extract_bundle` on this thread returns the forced result.
+#[cfg(test)]
+pub(crate) mod test_seam {
+    use super::BundleError;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static NEXT: RefCell<Option<Result<String, BundleError>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn force(result: Result<String, BundleError>) {
+        NEXT.with(|n| *n.borrow_mut() = Some(result));
+    }
+
+    pub(super) fn take() -> Option<Result<String, BundleError>> {
+        NEXT.with(|n| n.borrow_mut().take())
+    }
 }
 
 /// Why no bundle was produced. A remote failure names the step that failed,
@@ -376,10 +400,23 @@ pub enum BundleError {
 }
 
 impl BundleError {
-    /// A failed remote bundle, which `install` treats as fatal even over an
-    /// existing installation (#734).
-    pub fn is_remote(&self) -> bool {
-        !matches!(self, BundleError::Local(_))
+    /// A bundle that failed authentication, which `install` treats as fatal
+    /// even over an existing installation (#734). Every other failure over an
+    /// existing installation (offline, a stall, an HTTP error, a full disk)
+    /// leaves the installed skills as they are and exits 0 (#1138).
+    pub fn is_fatal_over_existing_install(&self) -> bool {
+        matches!(self, BundleError::Verify(_))
+    }
+
+    /// The failure without the "nothing was installed" advice, for the
+    /// non-fatal line printed over an existing installation.
+    pub fn summary(&self) -> String {
+        match self {
+            BundleError::Download(e) => format!("Could not download skill bundle: {e}"),
+            BundleError::Verify(e) => format!("{}{e}", bundle_signature::ERROR_PREFIX),
+            BundleError::Unpack(e) => format!("Could not unpack skill bundle: {e}"),
+            BundleError::Local(e) => e.clone(),
+        }
     }
 
     fn into_detail(self) -> String {
@@ -517,7 +554,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
 }
 
 static PROVIDER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\.(claude|cursor|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
+    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
 });
 
 /// JS: normalizeForHash(content)
@@ -1173,7 +1210,10 @@ mod tests {
         };
         let error = download_file_capped("https://example.com/b.zip", "/nonexistent/impeccable/b.zip", &mut fetch, MAX_DOWNLOAD_BYTES).unwrap_err();
         assert!(matches!(error, BundleError::Unpack(_)), "a failed save is not a download failure: {error}");
-        assert!(!BundleError::Local("Local bundle not found: x".into()).is_remote());
+        assert!(!BundleError::Local("Local bundle not found: x".into()).is_fatal_over_existing_install());
+        assert!(!BundleError::Download("connection refused".into()).is_fatal_over_existing_install());
+        assert!(!BundleError::Unpack("disk full".into()).is_fatal_over_existing_install());
+        assert!(BundleError::Verify("digest mismatch".into()).is_fatal_over_existing_install());
     }
 
     #[test]

@@ -158,14 +158,14 @@ Sources in priority order: DESIGN.md's visual system fields; CSS custom properti
 
 **Default:** compare each variant against the Phase A lock; palette, type voice, or rhetoric drift means it crossed into departure by accident: rework. Then confirm three different primary axes; three "tighter density" variants is failure. **Departure:** two passes, family before sentence. Family pass (non-negotiable): label each variant with a concrete family of your own choosing; shared or interchangeable labels mean rework. Sentence pass: three one-line descriptions side by side; two that rhyme mean rework. When the primary axis is color or theme, the trio must not share theme + dominant hue: three color worlds, not three shades.
 
-**Action-specific invocations** must vary along the action's dimension:
+**Action-specific invocations** must vary along the action's dimension; in default mode every variation stays within the available faces and existing tokens:
 
 - `bolder`: amplify a different dimension per variant (scale / saturation / structural change).
 - `quieter`: pull back a different dimension (color / ornament / spacing).
 - `distill`: remove a different class of excess (visual noise / redundant content / nested structure).
 - `polish`: a different refinement axis (rhythm / hierarchy / micro-details).
-- `typeset`: different pairing AND different scale ratio each.
-- `colorize`: different hue family each; vary chroma and contrast strategy.
+- `typeset`: departure varies the pairing AND the scale ratio each; default keeps the faces and varies scale ratio, case, and weight each.
+- `colorize`: departure gives each a different hue family and varies chroma and contrast strategy; default gives each a different existing palette role carrying the surface (Restrained / Committed / Full palette / Drenched) and a different contrast strategy.
 - `layout`: different structural arrangement, not spacing tweaks.
 - `adapt`: different target context per variant (mobile-first / tablet / desktop / print or low-data).
 - `animate`: different motion vocabulary (cascade stagger / clip wipe / scale-and-focus / morph / parallax).
@@ -303,6 +303,8 @@ Event: `{id, pageUrl, batch: {entries}, evidencePath?, chunk?, repair?, deadline
 The user already clicked Apply. Do not ask what to do, discard, or redirect to Go. The parent live thread keeps the foreground poll loop and sends the final `/poll --reply --data`.
 
 When native subagents are available, delegate source edits to `impeccable_manual_edit_applier` / `impeccable-manual-edit-applier`. Pass cwd, scripts path, event id, page URL, chunk/deadline, `batch`, `evidencePath`, and the canonical JSON result schema. The subagent must not poll or reply. If unavailable, apply inline with the same contract.
+
+An op with `deleted: true` and `removeElement: true` is the browser's Remove badge: delete that whole element from source, children included, not just its text. Locate it by `sourceHint`, then by `leaf.outerHTML` and `originalText`, and remove exactly that element's source range; leave no empty wrapper, orphaned children, or dangling markup behind.
 
 If `repair` is present, the previous Apply changed source but final validation failed. Fix the current source and return the same canonical JSON result; do not roll files back yourself. The browser will ask the user before any rollback.
 

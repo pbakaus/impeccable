@@ -12,16 +12,24 @@
 //!   the rows past the viewport do not exist at scroll 0.
 //! - Content wider than the viewport: a capture cut at the viewport width
 //!   leaves the overflow out, and the flagged elements with it.
+//! - A page whose script answers the resize a beyond-viewport capture puts
+//!   it through (developer.apple.com folds its navigator and slides the
+//!   column back while the capture paints): the image shows a layout the
+//!   rects were not measured in.
 //!
 //! The first is recognised from the page's geometry and captured by scrolling
 //! that element in viewport steps and stitching the tiles. The second is
 //! recognised from the image: a uniform band taller than two viewports is
 //! recaptured the same way, and the stitched image is kept when it holds
-//! more. The third captures the document's scroll width.
+//! more. The third captures the document's scroll width. The fourth is
+//! recognised by measuring a sample of layout boxes before and after the
+//! capture, and stitched once the page has settled.
 //!
 //! The screenshot is cut at a height cap. A flagged element past the cut, or
 //! past the right edge, is scrolled into view and gets a viewport shot of its
-//! own ([`ElementShot`]), so every flagged element has a picture.
+//! own ([`ElementShot`]), so every flagged element has a picture. Fixed
+//! chrome painted over the element there (a support appeal pinned over the
+//! lower part of a phone viewport) is hidden for the shot.
 
 use base64::Engine as _;
 use image::RgbImage;
@@ -60,6 +68,11 @@ pub struct ElementShot {
     pub height: f64,
     /// The element's `[x, y, width, height]` inside this image.
     pub rect: [f64; 4],
+    /// The fixed layers hidden while this image was taken, because they were
+    /// painted over the element it was taken for (a support appeal, a cookie
+    /// sheet), as short selectors (`aside#appeal`, `div.sheet.open`). Empty
+    /// when the image shows the page as a visitor scrolled there sees it.
+    pub hidden_covers: Vec<String>,
 }
 
 /// The element a page scrolls instead of its document.
@@ -285,6 +298,19 @@ const SCROLL_TO_JS: &str = r#"(async ({ x, y, useScroller, hideFixed, docY }) =>
   // lands on every tile; a beyond-viewport capture shows it once, at the top.
   // Every tile after the first hides it, by opacity, since a child can
   // override a hidden parent's visibility.
+  // A sticky box the document's scroll has stuck at its `top` offset, whose
+  // own place in the document is above this tile, so an earlier tile painted
+  // it there. `anchorTop` is where it sat on the anchor tile. A box only at
+  // its offset because its section starts there, or stuck on the tile its
+  // section starts on, is painted on this tile and stays.
+  const stuckSincePainted = (node, r, anchorTop) => {
+    const cs = getComputedStyle(node);
+    if (cs.position !== 'sticky') return false;
+    const offset = parseFloat(cs.top);
+    if (!Number.isFinite(offset) || Math.abs(r.top - offset) >= 0.5) return false;
+    const anchors = window.__impeccableShotAnchors;
+    return !!anchors && anchors.y + anchorTop < pos.y - 0.5;
+  };
   if (hideFixed && !window.__impeccableShotHidden) {
     const hidden = [];
     const hide = node => {
@@ -312,18 +338,37 @@ const SCROLL_TO_JS: &str = r#"(async ({ x, y, useScroller, hideFixed, docY }) =>
     }
     // A box the page keeps in place while it scrolls (a tooltip re-anchored
     // to fixed chrome on every scroll, a stuck header) is viewport chrome too:
-    // it did not move while the page did.
+    // it did not move while the page did. So is a sticky box the document's
+    // scroll has stuck at its offset, though it sat lower on the first tile
+    // (a section bar under a header that scrolls away).
     const anchors = window.__impeccableShotAnchors;
     if (anchors && Math.abs(pos.x - anchors.x) + Math.abs(pos.y - anchors.y) >= 1) {
       for (const [node, left, top] of anchors.boxes) {
         if (!node.isConnected || (el && holds(node, el))) continue;
         const r = node.getBoundingClientRect();
         if (r.width < 1 || r.height < 1) continue;
-        if (Math.abs(r.left - left) + Math.abs(r.top - top) < 0.5) hide(node);
+        if (Math.abs(r.left - left) + Math.abs(r.top - top) < 0.5 || (!el && stuckSincePainted(node, r, top))) hide(node);
       }
     }
     window.__impeccableShotHidden = hidden;
     await frame();
+  } else if (hideFixed && !el && window.__impeccableShotHidden && window.__impeccableShotAnchors) {
+    // Each later tile: a sticky box that sticks only now (a section bar
+    // further down) goes too, once its place at the top of its section is on
+    // an earlier tile. Once hidden it stays hidden.
+    const hidden = window.__impeccableShotHidden;
+    const done = new Set(hidden.map(h => h[0]));
+    let added = false;
+    for (const [node, , top] of window.__impeccableShotAnchors.boxes) {
+      if (done.has(node) || !node.isConnected) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      if (!stuckSincePainted(node, r, top)) continue;
+      hidden.push([node, node.style.getPropertyValue('opacity'), node.style.getPropertyPriority('opacity')]);
+      node.style.setProperty('opacity', '0', 'important');
+      added = true;
+    }
+    if (added) await frame();
   }
   return pos;
 })"#;
@@ -420,11 +465,152 @@ const ELEMENT_INTO_VIEW_JS: &str = r#"(async (resolve, { selector, identity, nod
   return result(moved, showing());
 })"#;
 
+/// Before an element shot: hide, by opacity, each `position: fixed` layer
+/// painted over the flagged element (a support appeal pinned over the lower
+/// two thirds of a phone viewport, a cookie sheet), so the shot shows the
+/// element rather than the chrome that follows the viewport to it. A layer is
+/// over the element when the hit-test stack at one of 9 points over the
+/// element's visible part lists something of the layer before it. Never the
+/// layer that holds the element, never one that scrolls along (a fixed box
+/// under a transformed or filtered ancestor, as `stitch` reads it), and never
+/// one painted under it (a fixed backdrop). A point counts only when its
+/// stack reaches the element or something inside it: where the element takes
+/// no pointer events the stack runs past it to what lies beneath, so nothing
+/// there is known to be above it, and such an element keeps whatever covers
+/// it (as before). A layer that takes no pointer events stays too: the hit
+/// test does not list it. Neither does an open modal (`dialog[open]`,
+/// `aria-modal="true"`): a visitor sees it over the page, so it stays in the
+/// shot. Returns the hidden layers' short selectors; [`RESTORE_COVERS_JS`]
+/// puts them back. With `check` it hides nothing and answers whether the
+/// last tile's hiding left this element covered or hidden: 0 when the last
+/// tile serves it.
+const HIDE_COVERS_JS: &str = r#"(async (resolve, { selector, identity, node }, check) => {
+  if (!check) window.__impeccableShotTileCovers = [];
+  let el;
+  try {
+    el = resolve(selector, identity, node);
+  } catch (e) {
+    return check ? 0 : [];
+  }
+  if (!el) return check ? 0 : [];
+  const up = n => n.assignedSlot || n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const holds = (outer, inner) => {
+    for (let n = inner; n; n = up(n)) if (n === outer) return true;
+    return false;
+  };
+  const none = v => !v || v === 'none';
+  const scrollsAlong = node => {
+    for (let p = up(node); p; p = up(p)) {
+      const cs = getComputedStyle(p);
+      if (!none(cs.transform) || !none(cs.translate) || !none(cs.scale) || !none(cs.rotate)
+        || !none(cs.filter) || !none(cs.backdropFilter) || !none(cs.perspective)
+        || /transform|translate|scale|rotate|filter|perspective/.test(cs.willChange)
+        || /paint|layout|strict|content/.test(cs.contain)) return true;
+    }
+    return false;
+  };
+  const fixedLayer = node => {
+    for (let n = node; n && n !== document.body && n !== document.documentElement; n = up(n)) {
+      if (n.nodeType === 1 && getComputedStyle(n).position === 'fixed') return n;
+    }
+    return null;
+  };
+  const r = el.getBoundingClientRect();
+  const left = Math.max(r.left, 0);
+  const top = Math.max(r.top, 0);
+  const right = Math.min(r.right, window.innerWidth);
+  const bottom = Math.min(r.bottom, window.innerHeight);
+  if (right - left < 1 || bottom - top < 1) return check ? 0 : [];
+  const layers = new Set();
+  // An element that takes no pointer events (card content under a link that
+  // covers the card) is not in the hit stack. Made hit-testable for the walk,
+  // it is listed at its true paint position, so what comes before it is over it.
+  const pointer = [el.style.getPropertyValue('pointer-events'), el.style.getPropertyPriority('pointer-events')];
+  el.style.setProperty('pointer-events', 'auto', 'important');
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      const x = left + (right - left) * (i + 0.5) / 3;
+      const y = top + (bottom - top) * (j + 0.5) / 3;
+      const above = [];
+      for (const hit of document.elementsFromPoint(x, y)) {
+        // The element or something inside it: what came before is over it.
+        if (holds(el, hit)) {
+          for (const layer of above) layers.add(layer);
+          break;
+        }
+        // An ancestor first: the element is not in the stack here.
+        if (holds(hit, el)) break;
+        const layer = fixedLayer(hit);
+        if (layer && !holds(layer, el)) above.push(layer);
+      }
+    }
+  }
+  if (pointer[0]) el.style.setProperty('pointer-events', pointer[0], pointer[1]);
+  else el.style.removeProperty('pointer-events');
+  const modal = layer => {
+    for (let n = layer; n; n = up(n)) {
+      if (n.nodeType !== 1) continue;
+      if ((n.localName === 'dialog' && n.hasAttribute('open')) || n.getAttribute('aria-modal') === 'true') return true;
+    }
+    return false;
+  };
+  // A fixed backdrop that wraps an open dialog is the modal too: hiding it
+  // would take the dialog with it. Only a dialog the page renders counts: a
+  // cookie banner's hidden preferences panel does not keep the banner.
+  const shown = n => n.checkVisibility
+    ? n.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+    : n.getClientRects().length > 0;
+  const holdsModal = layer => modal(layer)
+    || [...layer.querySelectorAll('dialog[open], [aria-modal="true"]')].some(shown);
+  const covers = [...layers].filter(layer => !scrollsAlong(layer) && !holdsModal(layer));
+  if (check) {
+    // Whether the last tile serves this element too: it hid every layer
+    // over this one, and none that holds it.
+    const tile = window.__impeccableShotTileCovers || [];
+    if (tile.some(layer => holds(layer, el))) return 1;
+    return covers.filter(layer => !tile.includes(layer)).length;
+  }
+  const hidden = [];
+  for (const layer of covers) {
+    hidden.push([layer, layer.style.getPropertyValue('opacity'), layer.style.getPropertyPriority('opacity')]);
+    layer.style.setProperty('opacity', '0', 'important');
+  }
+  window.__impeccableShotCovers = hidden;
+  window.__impeccableShotTileCovers = covers;
+  if (hidden.length) {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 50))));
+  }
+  const name = n => {
+    let out = n.localName;
+    if (n.id) return out + '#' + n.id;
+    const cls = typeof n.className === 'string' ? n.className.trim().split(/\s+/).filter(Boolean).slice(0, 2) : [];
+    return out + cls.map(c => '.' + c).join('');
+  };
+  return covers.map(name);
+})"#;
+
+/// Undo [`HIDE_COVERS_JS`].
+const RESTORE_COVERS_JS: &str = r#"(() => {
+  const hidden = window.__impeccableShotCovers;
+  if (hidden) {
+    for (const [node, value, priority] of hidden.reverse()) {
+      if (value) node.style.setProperty('opacity', value, priority);
+      else node.style.removeProperty('opacity');
+    }
+  }
+  try { delete window.__impeccableShotCovers; } catch (e) {}
+})()"#;
+
+/// Forget the last tile's covers ([`HIDE_COVERS_JS`]) once the shots are done.
+const FORGET_COVERS_JS: &str = "(() => { try { delete window.__impeccableShotTileCovers; } catch (e) {} })()";
+
 /// Capture the page, cut at `max_height`. See the module docs for the method.
 pub fn capture_full_page(page: &mut Page<'_>, max_height: f64, quality: u32) -> CdpResult<Screenshot> {
     let geometry = Geometry::from_value(&page.evaluate_value(GEOMETRY_JS)?);
     let shot = capture_with(page, &geometry, max_height, quality);
-    let _ = page.evaluate("(() => { try { delete window.__impeccableShotScroller; } catch (e) {} })()");
+    let _ = page.evaluate(
+        "(() => { try { delete window.__impeccableShotScroller; delete window.__impeccableShotProbe; } catch (e) {} })()",
+    );
     shot
 }
 
@@ -457,7 +643,35 @@ fn capture_with(
 
     let document_height = geometry.document_height;
     let height = document_height.min(max_height);
+    let before = probe_layout(page, true);
     let jpeg_base64 = page.screenshot_jpeg(geometry.capture_clip_x(), 0.0, width, height, quality)?;
+    // A page whose script answers the capture's resize re-lays itself while
+    // the capture paints (developer.apple.com folds its navigator and slides
+    // the column back over 300ms): the image shows that state, not the one
+    // the rects were measured in. Viewport tiles do not resize the page, so
+    // the page is stitched instead, once it has settled; a stitch that fails
+    // keeps the beyond-viewport capture.
+    let after = probe_layout(page, false);
+    if layout_moved(&before, &after) {
+        // Only a page whose moved boxes come back to where they were
+        // measured relaid for the capture. One that keeps moving (a marquee on `margin-left`, an
+        // autoplaying accordion) is in motion either way, and a beyond-viewport
+        // capture shows it no worse than tiles would.
+        if wait_for_layout(page, &before, &moved_boxes(&before, &after)) {
+            if let Ok(stitched) = stitch(page, geometry, None, width, height) {
+                if let Some(jpeg_base64) = encode_jpeg(&stitched, quality) {
+                    return Ok(Screenshot {
+                        jpeg_base64,
+                        width,
+                        height,
+                        document_height,
+                        method: method::STITCHED,
+                        origin_x: geometry.capture_origin_x(),
+                    });
+                }
+            }
+        }
+    }
     let beyond = Screenshot {
         jpeg_base64,
         width,
@@ -492,6 +706,122 @@ fn capture_with(
         }),
         None => Ok(beyond),
     }
+}
+
+/// The layout boxes of a sample of the elements in the first viewport:
+/// `[left, top, width, height]` each, from `offsetLeft` and `offsetTop` up
+/// the offset-parent chain, so a transform (a carousel, a reveal) does not
+/// move them and only layout does. `pick` samples a fresh set (a 6x6 grid of
+/// points over the viewport) and keeps it on the page; otherwise the kept
+/// set is measured again, an element that left the document as `null`.
+const PROBE_LAYOUT_JS: &str = r#"((pick) => {
+  if (pick) {
+    const seen = new Set();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) {
+        const el = document.elementFromPoint(vw * (i + 0.5) / 6, vh * (j + 0.5) / 6);
+        if (el instanceof HTMLElement && el !== document.body && el !== document.documentElement) seen.add(el);
+      }
+    }
+    window.__impeccableShotProbe = [...seen];
+  }
+  const probe = window.__impeccableShotProbe || [];
+  return probe.map(el => {
+    if (!el.isConnected) return null;
+    let x = 0;
+    let y = 0;
+    for (let n = el; n; n = n.offsetParent) {
+      x += n.offsetLeft;
+      y += n.offsetTop;
+    }
+    return [x, y, el.offsetWidth, el.offsetHeight];
+  });
+})"#;
+
+/// [`PROBE_LAYOUT_JS`]: the sample's boxes, `None` for an element gone or a
+/// failed measure.
+fn probe_layout(page: &mut Page<'_>, pick: bool) -> Vec<Option<[f64; 4]>> {
+    let Ok(v) = page.evaluate_value(&format!("({PROBE_LAYOUT_JS})({pick})")) else {
+        return Vec::new();
+    };
+    v.as_array()
+        .map(|boxes| {
+            boxes
+                .iter()
+                .map(|b| {
+                    let n: Vec<f64> = b.as_array()?.iter().filter_map(Value::as_f64).collect();
+                    (n.len() == 4).then(|| [n[0], n[1], n[2], n[3]])
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Which boxes of one sample ([`probe_layout`]) moved sideways between two
+/// measures: measured both times, with the left edge or the width changed by
+/// 2px or more. Only the horizontal geometry counts: an image that loads
+/// during a capture pushes content down without the layout having switched.
+pub fn moved_boxes(before: &[Option<[f64; 4]>], after: &[Option<[f64; 4]>]) -> Vec<bool> {
+    before
+        .iter()
+        .zip(after)
+        .map(|(b, a)| match (b, a) {
+            (Some(b), Some(a)) => (b[0] - a[0]).abs() >= 2.0 || (b[2] - a[2]).abs() >= 2.0,
+            _ => false,
+        })
+        .collect()
+}
+
+/// Whether the page's layout moved sideways between two measures of one
+/// sample: at least 2 of the elements measured both times, and a quarter of
+/// them, are [`moved_boxes`].
+pub fn layout_moved(before: &[Option<[f64; 4]>], after: &[Option<[f64; 4]>]) -> bool {
+    let measured = before.iter().zip(after).filter(|(b, a)| b.is_some() && a.is_some()).count();
+    let moved = moved_boxes(before, after).iter().filter(|m| **m).count();
+    moved >= 2 && moved * 4 >= measured
+}
+
+/// Whether a page measured `before` has settled back there: every box that
+/// `moved` at the capture is back in its place (measured, left edge and
+/// width within 2px) in the last two measures, 100ms apart. A box in steady
+/// motion can pass its old place once, not twice in a row. Boxes that did
+/// not move at the capture do not count: the image was painted with them
+/// where they were measured, whatever they do afterwards. A box that moved
+/// at the capture and keeps its new geometry leaves the page unsettled, so
+/// it keeps the beyond-viewport capture: the engine cannot tell whether the
+/// image or the rects hold its true place (developer.apple.com's navigator
+/// labels re-wrap at the capture's resize and stay that way).
+pub fn settled(before: &[Option<[f64; 4]>], moved: &[bool], measures: &[Vec<Option<[f64; 4]>>]) -> bool {
+    let back = |m: &Vec<Option<[f64; 4]>>| {
+        before.iter().zip(moved).enumerate().all(|(i, (b, moved))| {
+            if !moved {
+                return true;
+            }
+            match (b, m.get(i).copied().flatten()) {
+                (Some(b), Some(a)) => (b[0] - a[0]).abs() < 2.0 && (b[2] - a[2]).abs() < 2.0,
+                _ => false,
+            }
+        })
+    };
+    moved.iter().any(|m| *m) && measures.len() >= 2 && measures[measures.len() - 2..].iter().all(back)
+}
+
+/// Measure the sample every 100ms, up to 2 seconds, until the boxes that
+/// `moved` at the capture have [`settled`] back to `before`. Returns whether
+/// they did.
+fn wait_for_layout(page: &mut Page<'_>, before: &[Option<[f64; 4]>], moved: &[bool]) -> bool {
+    let started = std::time::Instant::now();
+    let mut measures: Vec<Vec<Option<[f64; 4]>>> = Vec::new();
+    while started.elapsed() < std::time::Duration::from_secs(2) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        measures.push(probe_layout(page, false));
+        if settled(before, moved, &measures) {
+            return true;
+        }
+    }
+    false
 }
 
 /// The start and length, in rows, of the longest run of rows that each read
@@ -757,6 +1087,8 @@ pub fn capture_element_shots(
     let mut last: Option<String> = None;
     let mut captures = 0usize;
     let mut moved_any = false;
+    // The fixed layers hidden for the last tile ([`ElementShot::hidden_covers`]).
+    let mut tile_covers: Vec<String> = Vec::new();
     for (selector, rect) in rects {
         if selector == "body" || selector == "html" {
             continue;
@@ -795,6 +1127,18 @@ pub fn capture_element_shots(
         }
         let vw = v.get("vw").and_then(Value::as_f64).unwrap_or(0.0);
         let vh = v.get("vh").and_then(Value::as_f64).unwrap_or(0.0);
+        // The last tile hid the fixed layers over another element: it serves
+        // this one only when this one is under no layer it left showing.
+        if last.is_some() {
+            let uncovered = page
+                .evaluate_value(&format!("({HIDE_COVERS_JS})({RESOLVE_FLAGGED_JS}, {args}, true)"))
+                .ok()
+                .and_then(|v| v.as_f64())
+                == Some(0.0);
+            if !uncovered {
+                last = None;
+            }
+        }
         let jpeg_base64 = match &last {
             Some(previous) => previous.clone(),
             None => {
@@ -802,7 +1146,21 @@ pub fn capture_element_shots(
                     continue;
                 }
                 captures += 1;
-                match page.screenshot_viewport_jpeg(quality) {
+                // Fixed chrome over the element goes for the shot and comes
+                // back after it: elements that share the tile share it too.
+                tile_covers = page
+                    .evaluate_value(&format!("({HIDE_COVERS_JS})({RESOLVE_FLAGGED_JS}, {args}, false)"))
+                    .ok()
+                    .and_then(|v| {
+                        v.as_array()
+                            .map(|a| a.iter().filter_map(Value::as_str).map(String::from).collect())
+                    })
+                    .unwrap_or_default();
+                let shot = page.screenshot_viewport_jpeg(quality);
+                if !tile_covers.is_empty() {
+                    let _ = page.evaluate(RESTORE_COVERS_JS);
+                }
+                match shot {
                     Ok(j) => j,
                     Err(_) => continue,
                 }
@@ -815,8 +1173,10 @@ pub fn capture_element_shots(
             width: vw,
             height: vh,
             rect: [live[0], live[1], live[2], live[3]],
+            hidden_covers: tile_covers.clone(),
         });
     }
+    let _ = page.evaluate(FORGET_COVERS_JS);
     if moved_any {
         let _ = page.evaluate("window.scrollTo({ left: 0, top: 0, behavior: 'instant' })");
     }
@@ -876,6 +1236,95 @@ mod tests {
                 Rgb([230, 220, 210])
             }
         })
+    }
+
+    #[test]
+    fn a_layout_moved_when_a_quarter_of_the_sample_shifted_sideways() {
+        let at = |x: f64, w: f64| Some([x, 100.0, w, 40.0]);
+        let before = vec![at(390.0, 539.0), at(390.0, 539.0), at(150.0, 200.0), at(0.0, 1280.0), None];
+        // The column moved left and the sidebar narrowed.
+        let after = vec![at(309.0, 620.0), at(309.0, 620.0), at(150.0, 127.0), at(0.0, 1280.0), at(5.0, 5.0)];
+        assert!(layout_moved(&before, &after));
+        // One box moving is a widget, not the layout.
+        let after = vec![at(309.0, 539.0), at(390.0, 539.0), at(150.0, 200.0), at(0.0, 1280.0), None];
+        assert!(!layout_moved(&before, &after));
+        // Content pushed down (an image loading above) is not a relayout.
+        let down = |x: f64, w: f64| Some([x, 400.0, w, 90.0]);
+        let after = vec![down(390.0, 539.0), down(390.0, 539.0), down(150.0, 200.0), down(0.0, 1280.0), None];
+        assert!(!layout_moved(&before, &after));
+        // Two of ten is under a quarter.
+        let many: Vec<Option<[f64; 4]>> = (0..10).map(|i| at(i as f64 * 10.0, 50.0)).collect();
+        let mut shifted = many.clone();
+        shifted[0] = at(500.0, 50.0);
+        shifted[1] = at(500.0, 50.0);
+        assert!(!layout_moved(&many, &shifted));
+        shifted[2] = at(500.0, 50.0);
+        assert!(layout_moved(&many, &shifted));
+        // Nothing measured twice, nothing moved.
+        assert!(!layout_moved(&[], &[]));
+        assert!(!layout_moved(&before, &[None, None, None, None, None]));
+    }
+
+    #[test]
+    fn a_page_has_settled_when_two_measures_in_a_row_match() {
+        let at = |x: f64| vec![Some([x, 0.0, 300.0, 40.0]), Some([x, 60.0, 300.0, 40.0])];
+        let before = at(390.0);
+        let moved = moved_boxes(&before, &at(0.0));
+        assert_eq!(moved, vec![true, true]);
+        // Folded, then on its way back, then back twice: settled.
+        assert!(settled(&before, &moved, &[at(0.0), at(300.0), at(390.0), at(390.0)]));
+        // Back once is not enough: a marquee passes its old place.
+        assert!(!settled(&before, &moved, &[at(0.0), at(390.0)]));
+        assert!(!settled(&before, &moved, &[at(390.0), at(200.0)]));
+        // Never back.
+        assert!(!settled(&before, &moved, &[at(100.0), at(200.0), at(300.0)]));
+        assert!(!settled(&before, &moved, &[]));
+        // Nothing moved at the capture: nothing to wait for.
+        assert!(!settled(&before, &[false, false], &[at(390.0), at(390.0)]));
+    }
+
+    #[test]
+    fn only_the_boxes_that_moved_at_the_capture_decide_settled() {
+        // Two column boxes and four navigator labels. The capture's resize
+        // moves the column and it slides back; the labels change width
+        // only after the capture.
+        let page = |x: f64, w: f64| -> Vec<Option<[f64; 4]>> {
+            vec![
+                Some([x, 0.0, 539.0, 40.0]),
+                Some([x, 60.0, 539.0, 40.0]),
+                Some([165.0, 0.0, w, 20.0]),
+                Some([165.0, 30.0, w, 20.0]),
+                Some([204.0, 60.0, w, 20.0]),
+                Some([204.0, 90.0, w, 20.0]),
+            ]
+        };
+        let before = page(390.0, 96.0);
+        let after = page(309.0, 96.0);
+        assert!(layout_moved(&before, &after));
+        let moved = moved_boxes(&before, &after);
+        assert_eq!(moved, vec![true, true, false, false, false, false]);
+        // The column is back and the labels changed width for good: settled,
+        // though the whole sample still reads as moved.
+        let back = page(390.0, 84.0);
+        assert!(layout_moved(&before, &back));
+        assert!(settled(&before, &moved, &[after.clone(), back.clone(), back.clone()]));
+        // Should-flag twin: a box that moved at the capture and stays
+        // changed keeps the page unsettled, whatever the rest does. This
+        // is developer.apple.com's shape: its labels re-wrap at the capture
+        // and keep the new width, so it keeps the beyond-viewport capture.
+        let rewrapped = page(309.0, 84.0);
+        let moved_too = moved_boxes(&before, &rewrapped);
+        assert_eq!(moved_too, vec![true; 6]);
+        assert!(!settled(&before, &moved_too, &[rewrapped.clone(), back.clone(), back.clone()]));
+        let stays = page(309.0, 96.0);
+        assert!(!settled(&before, &moved, &[after.clone(), stays.clone(), stays]));
+        let mut half = page(390.0, 96.0);
+        half[1] = Some([390.0, 60.0, 420.0, 40.0]);
+        assert!(!settled(&before, &moved, &[after.clone(), half.clone(), half]));
+        // A moved box that left the document is not back.
+        let mut gone = page(390.0, 96.0);
+        gone[0] = None;
+        assert!(!settled(&before, &moved, &[after, gone.clone(), gone]));
     }
 
     #[test]

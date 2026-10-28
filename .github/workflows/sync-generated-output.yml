@@ -28,6 +28,7 @@ env:
     .codex
     .claude
     .cursor
+    .devin
     .dsh
     .gemini
     .github/agents

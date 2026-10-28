@@ -8,17 +8,22 @@
 //! break: `text-wrap: balance`, a `<br>`, preformatted text. `pretty` stands
 //! down `straggler` only: it pulls a word down beside a lone last word but
 //! does not even out a heading, and it inherits, so `pretty` on `body` would
-//! otherwise silence every heading on the page.
+//! otherwise silence every heading on the page. In a browser that drops
+//! `pretty` at parse time, `straggler` also reads it from the raw `style`
+//! attribute and `<style>` text, gated on the page flag (#1136).
 //!
 //! Both are advisory. An uneven break can be the design: a headline that
 //! lands on one word for weight, a poster line, a pull quote.
 
-use super::dom::{renders_no_text, tag_lower, Dom, DomChild, ElId};
-use super::quality::{is_atomic_inline, is_visually_hidden, rendered_text_len, COMBINING_OR_FORMAT_RE};
+use super::dom::{ancestors_inclusive, matches_or_false, renders_no_text, tag_lower, Dom, DomChild, ElId, Rect};
+use super::quality::{is_atomic_inline, is_visually_hidden, rendered_text_len};
 use super::text_geometry::{holds_only_phrasing, phrasing_holds_break};
+use crate::checks::css_scan::enclosing_css_selector;
 use crate::checks::rules::{is_heading_tag, RuleHit};
 use crate::checks::text_rules::is_cjk_text;
 use crate::js::{self, math_round, number_to_string};
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 /// The prose blocks a straggler is read in.
 const STRAGGLER_TAGS: &[&str] = &["p", "li", "dd", "blockquote", "figcaption"];
@@ -52,6 +57,10 @@ const HEADING_MIN_COLUMN_CHARS: f64 = 20.0;
 /// and `pretty` move words between lines, and two words have nowhere to go.
 const MIN_WORDS: usize = 3;
 
+/// How far up from a block [`lines_run_past_a_clip`] looks for the box
+/// that clips its lines, as the tight-leading floor looks for a line clamp.
+const CLIP_SEARCH_DEPTH: usize = 4;
+
 /// The widths of the lines `el`'s text rendered on, top to bottom.
 ///
 /// `None` when the lines do not stack in one column. Lines come back sorted
@@ -65,6 +74,9 @@ fn line_widths(dom: &dyn Dom, el: ElId) -> Option<Vec<f64>> {
         .into_iter()
         .filter(|r| r.width > 0.0 && r.height > 0.0)
         .collect();
+    if lines_run_past_a_clip(dom, el, &rects) {
+        return None;
+    }
     let widest = rects.iter().copied().reduce(|a, b| if b.width > a.width { b } else { a });
     if let Some(w) = widest {
         if rects.iter().any(|r| r.right <= w.left || r.left >= w.right) {
@@ -80,6 +92,124 @@ fn wraps_with(dom: &dyn Dom, el: ElId, style: &str) -> bool {
     let computed = dom.style(el, "textWrapStyle");
     let computed = if computed.is_empty() { dom.style(el, "textWrap") } else { computed };
     computed.split_whitespace().any(|s| s == style)
+}
+
+/// A `text-wrap` or `text-wrap-style` declaration and its value; `--text-wrap`
+/// is a custom property's name, not a declaration of it.
+static PRETTY_WRAP_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)(?:^|[^\w-])text-wrap(?:-style)?\s*:([^;{}]*)").expect("PRETTY_WRAP_RE"));
+static CSS_COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"/\*[\s\S]*?\*/").expect("CSS_COMMENT_RE"));
+
+/// Whether the author set `text-wrap: pretty` and the browser dropped it
+/// (issue #1136): the page flag says `pretty` is not applied, and the raw
+/// text still declares it, in the `style` attribute of `el` or an ancestor or
+/// in a `<style>` rule whose selector matches one of them. The nearest
+/// element up the chain that declares `text-wrap` at all decides, by the last
+/// declaration that reaches it (an `!important` one first, the `style`
+/// attribute after the `<style>` rules, specificity not weighed), so an
+/// explicit reset keeps the finding; `inherit` and `unset` pass the decision
+/// to the ancestor. Linked stylesheets, `@import` and shadow-tree styles are
+/// not read.
+fn pretty_wrap_dropped(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> bool {
+    if dom.text_wrap_pretty_supported() != Some(false) {
+        return false;
+    }
+    for c in ancestors_inclusive(dom, el) {
+        let mut decls: Vec<WrapDecl> = rules
+            .declarations(dom)
+            .iter()
+            .filter(|(selector, _)| matches_or_false(dom, c, selector))
+            .map(|(_, decl)| *decl)
+            .collect();
+        if let Some(style) = dom.attr(c, "style") {
+            decls.extend(wrap_decls(&style));
+        }
+        match winning_decl(&decls).map(|d| d.wrap) {
+            Some(Wrap::Pretty) => return true,
+            Some(Wrap::Other) => return false,
+            Some(Wrap::Inherit) | None => {}
+        }
+    }
+    false
+}
+
+/// What a `text-wrap` or `text-wrap-style` value asks for: `pretty` (`wrap
+/// pretty` and `pretty!important` do), the ancestor's choice (`inherit`,
+/// `unset`), or another wrap.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Wrap {
+    Pretty,
+    Inherit,
+    Other,
+}
+
+/// One declaration: its value and whether it is `!important`.
+#[derive(Debug, Clone, Copy)]
+struct WrapDecl {
+    wrap: Wrap,
+    important: bool,
+}
+
+fn wrap_decl(value: &str) -> WrapDecl {
+    let mut parts = value.split('!');
+    let tokens: Vec<&str> = parts.next().unwrap_or("").split_whitespace().collect();
+    let has = |word: &str| tokens.iter().any(|t| t.eq_ignore_ascii_case(word));
+    let wrap = if has("pretty") {
+        Wrap::Pretty
+    } else if has("inherit") || has("unset") {
+        Wrap::Inherit
+    } else {
+        Wrap::Other
+    };
+    WrapDecl { wrap, important: parts.any(|t| t.trim().eq_ignore_ascii_case("important")) }
+}
+
+/// The `text-wrap` declarations of one declaration list (a `style`
+/// attribute), in order, comments removed first so a commented-out one does
+/// not count.
+fn wrap_decls(declarations: &str) -> Vec<WrapDecl> {
+    let text = CSS_COMMENT_RE.replace_all(declarations, "");
+    PRETTY_WRAP_RE.captures_iter(&text).map(|c| wrap_decl(&c[1])).collect()
+}
+
+/// The declaration that wins among those reaching one element: the last
+/// `!important` one, else the last.
+fn winning_decl(decls: &[WrapDecl]) -> Option<WrapDecl> {
+    decls.iter().rev().find(|d| d.important).or(decls.last()).copied()
+}
+
+/// The `text-wrap` declarations of the page's `<style>` rules with the
+/// selector of each, in source order, read once per scan and only when a
+/// straggler candidate first asks in a browser that dropped `pretty`. Each
+/// declaration's rule is the one [`enclosing_css_selector`] names: a rule
+/// under a grouping at-rule counts (its condition is not evaluated), a rule
+/// nested in a style rule does not.
+#[derive(Debug, Default)]
+pub struct TextWrapRules(std::cell::OnceCell<Vec<(String, WrapDecl)>>);
+
+impl TextWrapRules {
+    fn declarations(&self, dom: &dyn Dom) -> &[(String, WrapDecl)] {
+        self.0.get_or_init(|| {
+            dom.query_all(None, "style")
+                .unwrap_or_default()
+                .into_iter()
+                .flat_map(|style| text_wrap_rules(&dom.text_content(style)))
+                .collect()
+        })
+    }
+}
+
+/// Every `text-wrap` declaration in `css` with its rule's selector, comments
+/// removed first so a commented-out declaration names no rule.
+fn text_wrap_rules(css: &str) -> Vec<(String, WrapDecl)> {
+    let css = CSS_COMMENT_RE.replace_all(css, "");
+    PRETTY_WRAP_RE
+        .captures_iter(&css)
+        .filter_map(|c| {
+            let value = c.get(1).unwrap();
+            Some((enclosing_css_selector(&css, value.start())?, wrap_decl(value.as_str())))
+        })
+        .collect()
 }
 
 /// Whether the author already set where `el`'s lines end, or set them not to
@@ -131,6 +261,45 @@ fn push_rendered_text(dom: &dyn Dom, el: ElId, out: &mut String) {
     }
 }
 
+/// Whether `el`'s lines run past a box that clips them: a `-webkit-line-clamp`
+/// box (vercel.com's `p.line-clamp-2`, impeccable.style's release summaries)
+/// or one whose `overflow` clips on y, on `el` or within
+/// [`CLIP_SEARCH_DEPTH`] ancestors. Chromium lays out the lines a clamp
+/// hides below the box, and `Dom::text_line_rects` still returns them, so
+/// the last line measured is not the last line shown. A line whose middle
+/// lies below a clamp's content edge, or below an overflow clip's padding
+/// edge, is hidden. Clips that hide nothing
+/// leave the lines as they are.
+fn lines_run_past_a_clip(dom: &dyn Dom, el: ElId, lines: &[super::dom::Rect]) -> bool {
+    let Some(lowest) = lines.iter().map(|r| r.top + r.height / 2.0).reduce(f64::max) else {
+        return false;
+    };
+    let mut cur = Some(el);
+    for _ in 0..=CLIP_SEARCH_DEPTH {
+        let Some(c) = cur else { break };
+        let clamp = crate::checks::text_rules::is_line_clamp(&dom.style(c, "display"), &dom.style(c, "webkitLineClamp"));
+        let clips = |k: &str| matches!(dom.style(c, k).as_str(), "hidden" | "clip");
+        if clamp || clips("overflowY") || clips("overflow") {
+            let r = dom.rect(c);
+            let px = |k: &str| {
+                let v = js::parse_float(&dom.style(c, k));
+                if v.is_finite() { v } else { 0.0 }
+            };
+            // A clamp hides the lines past its count, so its content edge is
+            // the last line shown; overflow clips at the padding edge, and
+            // text set in the padding (a caption on a padding-hack ratio
+            // card) is in view.
+            let padding = if clamp { px("paddingBottom") } else { 0.0 };
+            let bottom = r.bottom - px("borderBottomWidth") - padding;
+            if bottom.is_finite() && lowest > bottom {
+                return true;
+            }
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
+
 /// Whether any of the text `el` sets on its lines does not paint: text in a
 /// box whose computed `visibility` is `hidden` or `collapse`. Such text still
 /// takes its room on a line box, so `Dom::text_line_rects` measures it and
@@ -157,12 +326,13 @@ fn words(dom: &dyn Dom, el: ElId) -> Vec<String> {
         .collect()
 }
 
-/// The characters of `word` that take up room on a line, counted as
-/// `rendered_text_len` counts them: one per character, combining marks and
-/// format characters left out. An emoji is one, not two UTF-16 units.
-fn advancing_len(word: &str) -> f64 {
-    let mut buf = [0u8; 4];
-    word.chars().filter(|c| !COMBINING_OR_FORMAT_RE.is_match(c.encode_utf8(&mut buf))).count() as f64
+/// Whether two rects sit on one row: they overlap by more than half the
+/// shorter one's height, the test `merge_text_rects_into_lines` joins
+/// fragments into a line by.
+fn share_a_row(a: Rect, b: Rect) -> bool {
+    let overlap = a.bottom.min(b.bottom) - a.top.max(b.top);
+    let shorter = a.height.min(b.height);
+    shorter > 0.0 && overlap > shorter / 2.0
 }
 
 /// Characters per pixel of `el`'s lines: the rendered characters
@@ -175,11 +345,11 @@ fn chars_per_px(dom: &dyn Dom, el: ElId, widths: &[f64]) -> Option<f64> {
 
 /// `straggler`: one word alone on the last line of a multi-line paragraph.
 ///
-/// The lines are measured; the words on them are not. The characters divide
-/// between the lines in proportion to their widths, as `line-length` divides
-/// them, and the last line holds one word when its share of the characters
-/// is nearer the last word's length than the last two words'.
-fn check_straggler(dom: &dyn Dom, el: ElId) -> Option<RuleHit> {
+/// The lines and the last two words are both measured: the last word is
+/// alone when the word before it ended on another row. A count of the
+/// characters on the last line could not say so: narrow letters fit two
+/// words in the room the estimate gave one.
+fn check_straggler(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> Option<RuleHit> {
     if wraps_with(dom, el, "pretty") || breaks_are_authored(dom, el) {
         return None;
     }
@@ -204,12 +374,14 @@ fn check_straggler(dom: &dyn Dom, el: ElId) -> Option<RuleHit> {
     if widest * chars_per_px < STRAGGLER_MIN_COLUMN_CHARS {
         return None;
     }
-    let word = &words[words.len() - 1];
-    let one = advancing_len(word);
-    let two = one + 1.0 + advancing_len(&words[words.len() - 2]);
-    if last * chars_per_px >= (one + two) / 2.0 {
+    let [before, last_word] = dom.last_word_rects(el)?;
+    if share_a_row(before, last_word) {
         return None;
     }
+    if pretty_wrap_dropped(dom, el, rules) {
+        return None;
+    }
+    let word = &words[words.len() - 1];
     Some(RuleHit::new(
         "straggler",
         format!(
@@ -256,11 +428,17 @@ fn check_unbalanced_heading(dom: &dyn Dom, el: ElId) -> Option<RuleHit> {
 
 /// The line-break rules for one element.
 pub fn check_element_line_breaks_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
+    check_element_line_breaks_dom_with(dom, el, &TextWrapRules::default())
+}
+
+/// [`check_element_line_breaks_dom`] sharing one page's [`TextWrapRules`]
+/// across its elements.
+pub fn check_element_line_breaks_dom_with(dom: &dyn Dom, el: ElId, rules: &TextWrapRules) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
     let hit = if is_heading_tag(&tag) {
         check_unbalanced_heading(dom, el)
     } else if STRAGGLER_TAGS.contains(&tag.as_str()) {
-        check_straggler(dom, el)
+        check_straggler(dom, el, rules)
     } else {
         None
     };
@@ -282,6 +460,10 @@ mod tests {
         let rects: Vec<(f64, f64, f64, f64)> =
             lines.iter().enumerate().map(|(i, w)| (0.0, 100.0 + 24.0 * i as f64, *w, 19.0)).collect();
         d.set_text_lines(el, &rects);
+        // The last word alone: the word before it ends the line above.
+        if let [.., (_, above, w_above, _), (_, y, w, h)] = rects[..] {
+            d.set_last_words(el, (w_above - 40.0, above, 40.0, h), (0.0, y, w, h));
+        }
         el
     }
 
@@ -312,6 +494,35 @@ mod tests {
         assert_eq!(hits[0].snippet, "\"text.\" alone on the last of 3 lines (7% of the measure)");
     }
 
+    /// vercel.com's template cards: `-webkit-line-clamp: 2` on a paragraph
+    /// whose third line Chromium lays out below the box. The visitor reads
+    /// two lines ending in an ellipsis, not a lone last word. Twin: the same
+    /// paragraph unclamped, and a clamp that hides nothing, still report.
+    #[test]
+    fn lines_a_clamp_hides_are_not_judged() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let clamped = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        d.set_styles(clamped, &[("display", "-webkit-box"), ("webkitLineClamp", "2"), ("overflow", "hidden")]);
+        d.set_rect(clamped, 0.0, 100.0, 600.0, 48.0);
+        assert!(ids(&d, clamped).is_empty());
+        // In a clipping wrapper two levels up.
+        let card = d.add(Some(body), "div");
+        d.set_styles(card, &[("overflowY", "hidden"), ("paddingBottom", "0px"), ("borderBottomWidth", "0px")]);
+        d.set_rect(card, 0.0, 100.0, 600.0, 48.0);
+        let inner = d.add(Some(card), "div");
+        let wrapped = block(&mut d, inner, "p", PROSE, &[560.0, 560.0, 40.0]);
+        assert!(ids(&d, wrapped).is_empty());
+
+        let free = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        d.set_rect(free, 0.0, 100.0, 600.0, 72.0);
+        assert_eq!(ids(&d, free), vec!["straggler"]);
+        let roomy = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        d.set_styles(roomy, &[("display", "-webkit-box"), ("webkitLineClamp", "3"), ("overflow", "hidden")]);
+        d.set_rect(roomy, 0.0, 100.0, 600.0, 72.0);
+        assert_eq!(ids(&d, roomy), vec!["straggler"], "a clamp of three shows all three lines");
+    }
+
     /// A soft hyphen paints nothing, so the snippet names the word a reader
     /// sees.
     #[test]
@@ -332,6 +543,44 @@ mod tests {
         let mut d = FakeDom::new();
         let (_h, body) = d.with_page();
         let p = block(&mut d, body, "p", PROSE, &[560.0, 510.0, 80.0]);
+        d.set_last_words(p, (0.0, 148.0, 38.0, 19.0), (42.0, 148.0, 38.0, 19.0));
+        assert!(ids(&d, p).is_empty());
+    }
+
+    /// Issue #1073: in 16px Arial at 711px, "it fills." set on the last
+    /// line in 6% of the measure, which a count of its characters read as
+    /// "fills." alone. Measured, the two words share the row.
+    #[test]
+    fn narrow_letters_on_a_short_last_line_are_two_words() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let text = PROSE.replace("under the text.", "under the line it fills.");
+        let p = block(&mut d, body, "p", &text, &[700.0, 42.0]);
+        d.set_last_words(p, (0.0, 124.0, 9.0, 19.0), (13.0, 124.0, 29.0, 19.0));
+        assert!(ids(&d, p).is_empty());
+    }
+
+    /// A word hyphenated across the last break ends on the last line, its
+    /// tail alone there; its last rect is the one the rule reads.
+    #[test]
+    fn a_word_hyphenated_onto_the_last_line_is_a_straggler() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let text = PROSE.replace("text.", "re\u{AD}turn.");
+        let p = block(&mut d, body, "p", &text, &[560.0, 560.0, 30.0]);
+        // "the" ends line two; "re-" ends it too, and "turn." starts line three.
+        d.set_last_words(p, (500.0, 124.0, 24.0, 19.0), (0.0, 148.0, 30.0, 19.0));
+        assert_eq!(ids(&d, p), ["straggler"]);
+    }
+
+    /// A DOM that did not measure the last two words gets no finding: the
+    /// rule does not fall back on guessing where they broke.
+    #[test]
+    fn no_last_word_rects_no_finding() {
+        let mut d = FakeDom::new();
+        let (_h, body) = d.with_page();
+        let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        d.el_mut(p).last_word_rects = None;
         assert!(ids(&d, p).is_empty());
     }
 
@@ -566,14 +815,122 @@ mod tests {
         assert_eq!(ids(&d, p), vec!["straggler"]);
     }
 
-    /// The word is counted the way the line is: an emoji advances once, not
-    /// as its two UTF-16 units, so a short word plus an emoji tail is two
-    /// words and not one long one.
+    /// Firefox drops `text-wrap: pretty` at parse time, so the computed style
+    /// reads `auto` and only the raw text still holds it (#1136). With the
+    /// page flag false, the `style` attribute of the element or an ancestor
+    /// and a matching `<style>` rule (also under a conditional group) stand
+    /// the finding down.
     #[test]
-    fn the_word_and_the_line_are_counted_alike() {
-        assert_eq!(advancing_len("go\u{1F680}"), 3.0);
-        assert_eq!(advancing_len("e\u{301}te\u{301}"), 3.0);
+    fn a_pretty_the_browser_dropped_stands_straggler_down() {
+        let build = |setup: &dyn Fn(&mut FakeDom, ElId, ElId, ElId)| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.text_wrap_pretty_supported = Some(false);
+            let div = d.add(Some(body), "div");
+            let p = block(&mut d, div, "p", PROSE, &[560.0, 560.0, 40.0]);
+            assert_eq!(ids(&d, p), ["straggler"]);
+            setup(&mut d, html, div, p);
+            ids(&d, p)
+        };
+        assert!(build(&|d, _, _, p| {
+            d.set_attr(p, "style", "width: 39.5ch; text-wrap: pretty");
+        })
+        .is_empty());
+        assert!(build(&|d, _, div, _| {
+            d.set_attr(div, "style", "text-wrap: pretty");
+        })
+        .is_empty());
+        assert!(build(&|d, html, _, p| {
+            let style = d.add(Some(html), "style");
+            d.add_text(style, ".lede { text-wrap: pretty }");
+            d.add_selector(p, ".lede");
+        })
+        .is_empty());
+        assert!(build(&|d, html, _, p| {
+            let style = d.add(Some(html), "style");
+            d.add_text(style, "@media (min-width: 40em) { p.copy { text-wrap: wrap pretty !important; } }");
+            d.add_selector(p, "p.copy");
+        })
+        .is_empty());
+    }
+
+    /// A rule that does not reach the paragraph, a `pretty` the author
+    /// commented out or wrote over, an explicit reset on the paragraph under
+    /// an ancestor's `pretty`, or a browser that applies `pretty` (or a
+    /// capture that never asked) leaves the finding alone.
+    #[test]
+    fn a_pretty_elsewhere_or_in_a_browser_that_applies_it_still_flags() {
+        for flag in [Some(false), None, Some(true)] {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.text_wrap_pretty_supported = flag;
+            let style = d.add(Some(html), "style");
+            d.add_text(style, ".pull-quote { text-wrap: pretty } p!! { text-wrap: pretty }");
+            let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+            assert_eq!(ids(&d, p), ["straggler"], "{flag:?}");
+            if flag != Some(false) {
+                d.set_attr(p, "style", "text-wrap: pretty");
+                assert_eq!(ids(&d, p), ["straggler"], "{flag:?}");
+            }
+        }
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.text_wrap_pretty_supported = Some(false);
+        let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+        for style in ["/* text-wrap: pretty */", "text-wrap: pretty; text-wrap: auto"] {
+            d.set_attr(p, "style", style);
+            assert_eq!(ids(&d, p), ["straggler"], "{style}");
+        }
+        // `body { text-wrap: pretty }` with the paragraph reset inline.
+        let sheet = d.add(Some(html), "style");
+        d.add_text(sheet, "body { text-wrap: pretty }");
+        d.set_attr(p, "style", "text-wrap: auto");
+        assert_eq!(ids(&d, p), ["straggler"]);
+        // The reset in a later rule of the paragraph's own.
+        d.set_attr(p, "style", "");
+        d.add_text(sheet, " p { text-wrap-style: auto }");
+        assert_eq!(ids(&d, p), ["straggler"]);
+        // An `!important` pretty outlives a later reset.
+        d.set_attr(p, "style", "text-wrap: pretty !important; text-wrap: auto");
+        assert!(ids(&d, p).is_empty());
+        // `inherit` hands the decision to an ancestor that declares nothing.
+        d.add_text(sheet, " body { text-wrap: auto }");
+        d.set_attr(p, "style", "text-wrap: inherit");
+        assert_eq!(ids(&d, p), ["straggler"]);
+    }
+
+    /// `body { text-wrap: pretty }` reaches a paragraph that says `inherit`
+    /// or `unset`, inline or in a rule of its own: the author kept the
+    /// ancestor's choice, so the finding stands down.
+    #[test]
+    fn an_inherited_pretty_stands_straggler_down() {
+        for own in ["text-wrap: inherit", "text-wrap-style: unset"] {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.text_wrap_pretty_supported = Some(false);
+            let sheet = d.add(Some(html), "style");
+            d.add_text(sheet, "body { text-wrap: pretty }");
+            let p = block(&mut d, body, "p", PROSE, &[560.0, 560.0, 40.0]);
+            d.set_attr(p, "style", own);
+            assert!(ids(&d, p).is_empty(), "{own}");
+            d.set_attr(p, "style", "");
+            d.add_text(sheet, &format!(" p {{ {own} }}"));
+            assert!(ids(&d, p).is_empty(), "{own}");
+        }
+    }
+
+    /// Minified CSS writes `pretty!important`, a comment may hold a dead
+    /// declaration, a custom property may wear the name, and each live
+    /// declaration names its own rule: under a grouping at-rule, not nested
+    /// in a style rule.
+    #[test]
+    fn text_wrap_rules_reads_rules_not_substrings() {
+        let css = r#".a { color: red; /* text-wrap: pretty */ } /* p { text-wrap: pretty } */ @font-face { font-family: x } @supports (display: grid) { .b, .c { text-wrap: pretty } } .d { text-wrap: balance } p{text-wrap:pretty!important} .e { content: "\""; } .f { text-wrap: pretty; & p { color: red } } .g { .x { text-wrap: pretty } } :root { --text-wrap: pretty }"#;
+        let rules = text_wrap_rules(css);
+        let rules: Vec<(&str, Wrap, bool)> = rules.iter().map(|(sel, d)| (sel.as_str(), d.wrap, d.important)).collect();
+        assert_eq!(
+            rules,
+            [(".b, .c", Wrap::Pretty, false), (".d", Wrap::Other, false), ("p", Wrap::Pretty, true), (".f", Wrap::Pretty, false)]
+        );
     }
 }
-
-

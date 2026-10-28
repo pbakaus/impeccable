@@ -9,10 +9,17 @@
     photo it cannot read, and hands the verdict to the pixel pass. Where the
     pixels read the box they replace it: the copy passes on the photo. Where
     they refuse to read it (a backdrop filter over the photo), the element
-    pass's verdict stands as advisory (corpus decision
-    r6-t5-unread-pixel-verdicts), and since its ratio was taken against the
-    fill the photo covers, it says the copy over the image was not measured.
-    The two cases differ only in the filter.
+    pass's ratio was taken against the fill the photo covers and measured
+    nothing, so it is dropped (round 13 decision 2: only a measured failing
+    ratio reports). Those two cases differ only in the filter. Outlined copy
+    under the same filter keeps its own verdict: the element pass hands it
+    over for its outline, not for the photo, and where the pixels give none
+    it stands as advisory with its ratio (corpus decision
+    r6-t5-unread-pixel-verdicts). Copy under a black wash its section's
+    ::before paints is read through the wash: white on #eee under 0.42 black
+    (about #8a8a8a) fails on both and stands as advisory; white on #ccc under
+    0.5 black (about #666, where white passes) measured nothing and drops.
+    The static engine reads no layers and scores every copy on its fill.
   -->
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
@@ -28,20 +35,45 @@
     .photo-band .copy { position: relative; padding: 56px 24px; }
     .photo-band .frosted { backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
     .photo-band p { margin: 0; font: 600 20px/28px system-ui; color: #ffffff; }
+    .photo-band .outlined { -webkit-text-stroke: 1px #000000; }
+    /* A section under a black wash its ::before paints, read through: the
+       copy is measured only where it fails on the ground and on every
+       colour the wash makes there. */
+    .washed { position: relative; width: 560px; height: 120px; }
+    .washed::before { content: ""; position: absolute; left: 0; top: 0; width: 560px; height: 120px; }
+    .washed .copy { position: relative; padding: 44px 24px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+    .washed p { margin: 0; font: 600 18px/24px system-ui; color: #ffffff; }
+    .washed.light { background: #eeeeee; }
+    .washed.light::before { background-image: linear-gradient(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.42)); }
+    .washed.half { background: #cccccc; }
+    .washed.half::before { background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)); }
   </style>
 </head>
 <body>
   <main>
     <div class="col">
-      <h1>Should flag (advisory): the pixels could not read it</h1>
+      <h1>Should flag (advisory): the pixels could not read outlined copy</h1>
       <div class="case">
         <div class="photo-band">
           <img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAD0lEQVR42mNQwAEYhpYEAGFPGAHY2OnFAAAAAElFTkSuQmCC">
-          <div class="copy frosted"><p id="flag-copy-under-backdrop-filter">Book a table for tonight</p></div>
+          <div class="copy frosted"><p id="flag-outlined-copy-under-backdrop-filter" class="outlined">Reserve a seat at the bar</p></div>
         </div>
+      </div>
+      <div class="case">
+        <div class="washed light"><div class="copy"><p id="flag-white-under-light-wash">White on grey under a light wash</p></div></div>
       </div>
     </div>
     <div class="col">
+      <h1>Should pass: the pixels could not read it, and nothing measured it</h1>
+      <div class="case">
+        <div class="photo-band">
+          <img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAD0lEQVR42mNQwAEYhpYEAGFPGAHY2OnFAAAAAElFTkSuQmCC">
+          <div class="copy frosted"><p id="pass-copy-under-backdrop-filter">Book a table for tonight</p></div>
+        </div>
+      </div>
+      <div class="case">
+        <div class="washed half"><div class="copy"><p id="pass-white-under-half-wash">White on grey under a half wash</p></div></div>
+      </div>
       <h1>Should pass: the pixels read it</h1>
       <div class="case">
         <div class="photo-band">

@@ -51,6 +51,32 @@ pub const QUALITY_TEXT_TAGS: &[&str] = &["p", "li", "td", "th", "dd", "blockquot
 /// builders) started at 24px and ran to 51px.
 pub const LEADING_DISPLAY_TYPE_PX: f64 = 24.0;
 
+/// Where lead text starts, for the tight-leading floor (taste call r13-t3):
+/// a standfirst or intro set at 20 to 23px over a few lines sets its own
+/// leading the way display type does, and 1.2 there read as harmless on
+/// culturedcode.com, mercury.com, stripe.com and apple.com (57 findings on
+/// craft run 1009). Only a short block: past
+/// [`LEADING_LEAD_TEXT_MAX_LINES`] it is reading copy and keeps the floor.
+pub const LEADING_LEAD_TEXT_PX: f64 = 20.0;
+
+/// The most rendered lines lead text ([`LEADING_LEAD_TEXT_PX`]) can run and
+/// keep the exemption.
+pub const LEADING_LEAD_TEXT_MAX_LINES: f64 = 3.0;
+
+/// The tightest ratio lead text ([`LEADING_LEAD_TEXT_PX`]) can set and keep
+/// the exemption. The harmless lead text r13-t3 read ran 1.19 to 1.25;
+/// under this the lines crowd at any size, and both judges called them
+/// harmful: klimaschutz-niedersachsen.de's 20px accordion title over three
+/// lines at 1.0 (finding 10046656), stripe.com's 22px intro at 1.10.
+pub const LEADING_LEAD_TEXT_MIN_RATIO: f64 = 1.15;
+
+/// The tightest ratio a label in capitals can set and keep its exemption
+/// from the tight-leading floor (r13-t3): capitals have no descenders, but
+/// under solid their lines overlap. The browser engine also bounds the label
+/// to [`LEADING_LEAD_TEXT_MAX_LINES`] rendered lines; the static engine,
+/// which cannot count lines, to under `ALL_CAPS_LONG_RUN` characters.
+pub const LEADING_CAPS_LABEL_MIN_RATIO: f64 = 1.0;
+
 /// How much of a second line box the tight-leading floor needs to see before
 /// it judges leading. Text that renders as one line has no gap between lines
 /// to crowd; wrapped text is two line boxes or more, so the midpoint

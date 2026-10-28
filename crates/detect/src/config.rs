@@ -746,11 +746,13 @@ fn glob_to_regex(glob: &str) -> Option<Regex> {
         let c = chars[i];
         if c == '*' {
             if chars.get(i + 1) == Some(&'*') {
-                re.push_str(DOT);
-                re.push('*');
                 i += 2;
                 if chars.get(i) == Some(&'/') {
+                    re.push_str(&format!("(?:{DOT}*/)?"));
                     i += 1;
+                } else {
+                    re.push_str(DOT);
+                    re.push('*');
                 }
             } else {
                 re.push_str("[^/]*");
@@ -1185,6 +1187,18 @@ mod tests {
         ));
         assert!(!matches_any_glob("src/a.css", &["src/*.scss".to_string()]));
         assert!(matches_any_glob("a.scss", &["*.{css,scss}".to_string()]));
+    }
+
+    #[test]
+    fn globstar_slash_keeps_the_directory_boundary() {
+        let nested = ["src/**/a.html".to_string()];
+        assert!(matches_any_glob("src/a.html", &nested));
+        assert!(matches_any_glob("src/pages/a.html", &nested));
+        assert!(!matches_any_glob("src/xa.html", &nested));
+        let leading = ["**/foo.html".to_string()];
+        assert!(matches_any_glob("foo.html", &leading));
+        assert!(matches_any_glob("bar/foo.html", &leading));
+        assert!(!matches_any_glob("barfoo.html", &leading));
     }
 
     #[test]

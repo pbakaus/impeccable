@@ -3,7 +3,7 @@
 
 use crate::checks::decorative_text::{
     avatar_sized, centred_in, classify_decorative_text, is_mockup_marker, is_signature_marker,
-    is_wordmark_size, DecorativeShape, DecorativeTextFacts, MOCKUP_MARKER_SKIP_TAGS, WORDMARK_H1_PATH_MIN_PX, WORDMARK_MAX_OPACITY,
+    is_wordmark_size, DecorativeShape, DecorativeTextFacts, GHOST_MAX_RATIO, MOCKUP_MARKER_SKIP_TAGS, WORDMARK_H1_PATH_MIN_PX, WORDMARK_MAX_OPACITY,
     WORDMARK_MIN_PX,
 };
 use super::dom::{class_attr, closest_or_none, pf0, tag_lower, Dom, ElId};
@@ -163,10 +163,13 @@ fn shown_opacity(dom: &dyn Dom, el: ElId) -> f64 {
 }
 
 /// The names the site goes by: its host name run together and without its
-/// top-level label (`screen.movie` gives `screenmovie` and `screen`), its
-/// `og:site_name` or `application-name`, its title, and the title's first
-/// and last parts between separators (`Incredible · AI that does tasks`
-/// gives `Incredible`).
+/// top-level label (`screen.movie` gives `screenmovie` and `screen`), and
+/// its `og:site_name` or `application-name`. Where neither meta names it,
+/// the title: whole when it has one part, and otherwise only the parts
+/// between separators that the host name holds (`Incredible · AI that does
+/// tasks` on incredible.ai gives `Incredible`). The other parts name a page
+/// or a section (`Pricing | Acme`), and a faint display heading that
+/// repeats one is not the site's wordmark.
 fn site_names(dom: &dyn Dom) -> Vec<String> {
     let mut names: Vec<String> = Vec::new();
     let host = js::to_lower_case(&dom.hostname());
@@ -178,29 +181,44 @@ fn site_names(dom: &dyn Dom) -> Vec<String> {
             names.push(labels[..labels.len() - 1].concat());
         }
     }
+    let mut declared = false;
     for selector in ["meta[property=\"og:site_name\"]", "meta[name=\"application-name\"]"] {
         for meta in dom.query_all(None, selector).unwrap_or_default() {
-            if let Some(content) = dom.attr(meta, "content") {
+            if let Some(content) = dom.attr(meta, "content").filter(|c| !js::trim(c).is_empty()) {
                 names.push(content);
+                declared = true;
             }
         }
     }
+    if declared {
+        return names;
+    }
     if let Some(title) = dom.query_one(None, "title").ok().flatten() {
         let title = collapsed_text(dom, title);
-        // The site's name opens or closes a title (`Incredible · AI that
-        // does tasks`, `Pricing | Acme`); a part in the middle is a page or
-        // section name. A hyphen joins words (`e-commerce`) and separates
-        // nothing here.
+        // A hyphen joins words (`e-commerce`) and separates nothing here.
         let parts: Vec<String> = title
             .split(['|', '·', '•', '—', '–', ':'])
             .map(|part| js::trim(part).to_string())
             .filter(|part| !part.is_empty())
             .collect();
         if parts.len() > 1 {
-            names.push(parts[0].clone());
-            names.push(parts[parts.len() - 1].clone());
+            let run = |text: &str| -> String {
+                text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+            };
+            // The host read the same way, without its top-level label:
+            // `get-acme-studio.com` holds `Acme Studio`, and a part that only
+            // repeats the TLD (`Studio` on acme.studio) names nothing.
+            let site_labels = if labels.len() > 1 { &labels[..labels.len() - 1] } else { &labels[..] };
+            let host_run = run(&site_labels.concat());
+            for part in parts {
+                let joined = run(&part);
+                if joined.chars().count() >= 3 && host_run.contains(&joined) {
+                    names.push(part);
+                }
+            }
+        } else {
+            names.push(title);
         }
-        names.push(title);
     }
     names
 }
@@ -231,11 +249,16 @@ pub fn decorative_text_facts_dom(dom: &dyn Dom, el: ElId) -> DecorativeTextFacts
     } else {
         Vec::new()
     };
+    let ghost_marked = font_size_px >= WORDMARK_MIN_PX && set_aside(dom, el);
+    let names_page_heading = ghost_marked && names_page_heading(dom, el, &text);
     DecorativeTextFacts {
         font_size_px,
         largest_h1_px,
         shown_opacity,
         site_names,
+        ghost_marked,
+        faint_ground: false,
+        names_page_heading,
         avatar_box: !text.is_empty() && text.chars().count() <= 3 && in_avatar_box(dom, el, &text),
         in_kbd: closest_or_none(dom, el, "kbd").is_some(),
         font_family: dom.style(el, "fontFamily"),
@@ -248,6 +271,85 @@ pub fn decorative_text_facts_dom(dom: &dyn Dom, el: ElId) -> DecorativeTextFacts
         framed_demo: super::text_context::in_framed_demo_dom(dom, el),
         text,
     }
+}
+
+/// Whether the element is set aside from reading and pointing: it or a box
+/// it sits in is `aria-hidden="true"`, it sets `pointer-events: none` on
+/// itself (its parent takes pointer events: an overlay wrapper that passes
+/// clicks through says nothing of the copy inside it), or a box it sits in
+/// is laid at a negative `z-index` where that applies (a positioned box, or
+/// a flex or grid item).
+fn set_aside(dom: &dyn Dom, el: ElId) -> bool {
+    let no_pointer = |n: ElId| js::trim(&dom.style(n, "pointerEvents")) == "none";
+    if no_pointer(el) && !dom.parent(el).is_some_and(no_pointer) {
+        return true;
+    }
+    let mut cur = Some(el);
+    for _ in 0..64 {
+        let Some(n) = cur else { break };
+        if dom.attr(n, "aria-hidden").is_some_and(|v| js::trim(&v).eq_ignore_ascii_case("true")) {
+            return true;
+        }
+        let z = dom.style(n, "zIndex");
+        let z = js::trim(&z);
+        if !z.is_empty() && z != "auto" && z.parse::<f64>().is_ok_and(|v| v < 0.0) {
+            let position = dom.style(n, "position");
+            let applies = !matches!(js::trim(&position), "" | "static")
+                || dom.parent(n).is_some_and(|p| {
+                    let display = dom.style(p, "display");
+                    display.contains("flex") || display.contains("grid")
+                });
+            if applies {
+                return true;
+            }
+        }
+        cur = dom.parent(n);
+    }
+    false
+}
+
+/// The words of `text`, letters and digits only, lower-cased.
+fn words_of(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// Whether `text` is the page's own heading, or part of it: its words run
+/// word for word inside the text of a visually hidden heading (the sr-only
+/// `h1` a page sets beside the same words drawn `aria-hidden`, "Northwind"
+/// beside "Northwind Studio") or of the document title. At least three
+/// letters or digits.
+fn names_page_heading(dom: &dyn Dom, el: ElId, text: &str) -> bool {
+    let words = words_of(text);
+    if words.concat().chars().count() < 3 {
+        return false;
+    }
+    let holds = |other: &str| {
+        let theirs = words_of(other);
+        theirs.windows(words.len()).any(|w| w == words.as_slice())
+    };
+    if let Some(title) = dom.query_one(None, "title").ok().flatten() {
+        if holds(&collapsed_text(dom, title)) {
+            return true;
+        }
+    }
+    dom.query_all(None, HEADING_SELECTOR)
+        .unwrap_or_default()
+        .into_iter()
+        .take(64)
+        .filter(|&h| h != el && !dom.contains(h, el) && !dom.contains(el, h))
+        .any(|h| holds(&collapsed_text(dom, h)) && super::quality::is_visually_hidden(dom, h))
+}
+
+/// [`decorative_text_shape_dom`], where the caller measured the ink against
+/// its ground: `ratio` at most [`GHOST_MAX_RATIO`] counts as faint for a
+/// ghost word (taste call r14-t3).
+pub fn decorative_text_shape_measured_dom(dom: &dyn Dom, el: ElId, ratio: Option<f64>) -> Option<DecorativeShape> {
+    let mut facts = decorative_text_facts_dom(dom, el);
+    facts.faint_ground = ratio.is_some_and(|r| r.is_finite() && r <= GHOST_MAX_RATIO);
+    classify_decorative_text(&facts)
 }
 
 /// The decorative shape one element's text has, if any.
@@ -300,6 +402,66 @@ mod tests {
             d.set_style(p, "fontSize", size);
             assert_eq!(decorative_text_facts_dom(&d, p).largest_h1_px, h1_read, "{size}");
         }
+    }
+
+    /// observations-1010 row 10 (taste call r14-t3): aproov.es's 410px "oo"
+    /// in an `aria-hidden` layer at 0.055, and intel.com's 240px "效率" behind
+    /// a slide, `aria-hidden` and at 1.3:1. Neither names the site.
+    #[test]
+    fn a_ghost_word_set_aside_and_faint_is_decorative() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.hostname = "aproov.es".into();
+        let layer = d.add(Some(body), "div");
+        let word = d.add(Some(layer), "div");
+        d.add_text(word, "oo");
+        d.set_styles(word, &[("fontSize", "410px"), ("color", "rgb(248, 239, 233)"), ("opacity", "0.055")]);
+        d.set_rect(word, 0.0, 0.0, 900.0, 400.0);
+        // Not set aside, it is a line like any other.
+        assert_eq!(decorative_text_shape_dom(&d, word), None);
+        d.set_attr(layer, "aria-hidden", "true");
+        assert_eq!(decorative_text_shape_dom(&d, word), Some(DecorativeShape::GhostWord));
+        d.set_attr(layer, "aria-hidden", "false");
+        d.set_style(word, "pointerEvents", "none");
+        assert_eq!(decorative_text_shape_dom(&d, word), Some(DecorativeShape::GhostWord));
+        // Inherited from an overlay wrapper, it says nothing of the copy.
+        d.set_style(layer, "pointerEvents", "none");
+        assert_eq!(decorative_text_shape_dom(&d, word), None);
+        d.set_style(layer, "pointerEvents", "auto");
+        // Behind the page at a negative z-index, where it applies.
+        d.set_style(word, "pointerEvents", "auto");
+        d.set_styles(layer, &[("zIndex", "-10"), ("position", "static")]);
+        assert_eq!(decorative_text_shape_dom(&d, word), None);
+        d.set_style(layer, "position", "absolute");
+        assert_eq!(decorative_text_shape_dom(&d, word), Some(DecorativeShape::GhostWord));
+        // Shown whole, it is a ghost only where measured faint.
+        d.set_style(word, "opacity", "1");
+        assert_eq!(decorative_text_shape_dom(&d, word), None);
+        assert_eq!(decorative_text_shape_measured_dom(&d, word, Some(1.3)), Some(DecorativeShape::GhostWord));
+        assert_eq!(decorative_text_shape_measured_dom(&d, word, Some(1.6)), None);
+        // The page's heading drawn aria-hidden beside an sr-only copy, or the
+        // document title, keeps its warning.
+        d.set_attr(layer, "aria-hidden", "true");
+        let name = d.add(Some(layer), "div");
+        d.add_text(name, "Northwind");
+        d.set_styles(name, &[("fontSize", "140px"), ("color", "rgb(230, 230, 230)"), ("opacity", "0.2")]);
+        d.set_rect(name, 0.0, 500.0, 900.0, 170.0);
+        let h1 = d.add(Some(body), "h1");
+        d.add_text(h1, "Northwind Studio");
+        d.set_attr(h1, "class", "title");
+        assert_eq!(decorative_text_shape_dom(&d, name), Some(DecorativeShape::GhostWord));
+        // Clipped to nothing, as `sr-only` draws it.
+        d.set_styles(h1, &[("position", "absolute"), ("clip", "rect(0px, 0px, 0px, 0px)")]);
+        assert_eq!(decorative_text_shape_dom(&d, name), None);
+        d.set_styles(h1, &[("position", "static"), ("clip", "auto")]);
+        assert_eq!(decorative_text_shape_dom(&d, name), Some(DecorativeShape::GhostWord));
+        let head = d.add(Some(html), "head");
+        let title = d.add(Some(head), "title");
+        d.add_text(title, "Northwind | Trade software");
+        assert_eq!(decorative_text_shape_dom(&d, name), None);
+        // Under 120px it is not display type.
+        d.set_style(word, "fontSize", "110px");
+        assert_eq!(decorative_text_shape_measured_dom(&d, word, Some(1.1)), None);
     }
 
     /// incredible.one (10048155): `span.br-footer-monogram`, "Incredible" at
@@ -380,6 +542,46 @@ mod tests {
         d.add_text(other, "Tasks");
         d.set_styles(other, &[("fontSize", "272.102px"), ("color", "rgb(255, 255, 255)")]);
         assert_eq!(decorative_text_shape_dom(&d, other), None);
+    }
+
+    /// #1076: a faint display heading that repeats the page's part of the
+    /// title (a 120px "Pricing" on "Pricing | Acme") is a page name, not
+    /// the site's wordmark. Only the part the host name or an explicit
+    /// site name corroborates names the site.
+    #[test]
+    fn a_title_part_names_the_site_only_where_something_backs_it() {
+        let build = |host: &str, site_name: Option<&str>, title_text: &str, text: &str| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.hostname = host.into();
+            let head = d.add(Some(html), "head");
+            let title = d.add(Some(head), "title");
+            d.add_text(title, title_text);
+            if let Some(name) = site_name {
+                let meta = d.add(Some(head), "meta");
+                d.add_selector(meta, "meta[property=\"og:site_name\"]");
+                d.set_attr(meta, "property", "og:site_name");
+                d.set_attr(meta, "content", name);
+            }
+            let mark = d.add(Some(body), "span");
+            d.add_text(mark, text);
+            d.set_styles(mark, &[("fontSize", "160px"), ("color", "rgba(0, 0, 0, 0.1)")]);
+            d.set_rect(mark, 0.0, 400.0, 900.0, 160.0);
+            decorative_text_shape_dom(&d, mark)
+        };
+        let wordmark = Some(DecorativeShape::Wordmark);
+        assert_eq!(build("", None, "Pricing | Acme", "Pricing"), None);
+        assert_eq!(build("", None, "Pricing | Acme", "Acme"), None, "nothing backs either part");
+        assert_eq!(build("getacme.io", None, "Pricing | Acme", "Acme"), wordmark);
+        assert_eq!(build("getacme.io", None, "Pricing | Acme", "Pricing"), None);
+        assert_eq!(build("get-acme-studio.com", None, "Pricing | Acme Studio", "Acme Studio"), wordmark);
+        assert_eq!(build("acme.studio", None, "Pricing | Studio", "Studio"), None);
+        assert_eq!(build("www.acme.io", None, "Acme | io", "io"), None);
+        assert_eq!(build("www.acme.io", None, "Acme | io", "Acme"), wordmark);
+        assert_eq!(build("", Some("Acme"), "Pricing | Acme", "Acme"), wordmark);
+        assert_eq!(build("", Some("Acme"), "Pricing | Acme", "Pricing"), None);
+        // A title of one part is the site's name, opened word for word.
+        assert_eq!(build("", None, "Screen Movie Blog", "Screen Movie"), wordmark);
     }
 
     #[test]

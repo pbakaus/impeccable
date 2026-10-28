@@ -2833,6 +2833,11 @@ fn analyze_monotonous_spacing(content: &str, file_path: &str) -> Vec<Finding> {
     );
     ordered.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let dominant = ordered[0].0.clone();
+    // A most common value of zero is resetting spacing (`p-0`, `gap: 0px`),
+    // not repeating one gap.
+    if dominant == "0" {
+        return vec![];
+    }
     vec![finding(
         "monotonous-spacing",
         file_path,

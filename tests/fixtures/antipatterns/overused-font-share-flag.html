@@ -8,9 +8,13 @@
     The same page with thirty word labels in Inter instead of step numbers.
     Inter is still the most used face by element and now sets about one
     character in nine of the visible text, so the finding stands, with the
-    element share in its snippet as before.
+    element share in its snippet as before. The page loads its Inter
+    (a 644-byte blank face generated for this fixture, so no host font
+    decides anything): a face the browser never loaded is taste call
+    r12-t2's stand-down, pinned by overused-font-never-loaded.html.
   -->
   <style>
+    @font-face { font-family: Inter; src: url(data:font/ttf;base64,AAEAAAAKAIAAAwAgT1MvMkT/RC0AAAEoAAAAYGNtYXAADABzAAABkAAAADRnbHlm99FWagAAAcwAAAAaaGVhZC95aigAAACsAAAANmhoZWEFegH3AAAA5AAAACRobXR4A1IAZAAAAYgAAAAIbG9jYQANAA0AAAHEAAAABm1heHAABAAGAAABCAAAACBuYW1lCknrQAAAAegAAABycG9zdAAHAAAAAAJcAAAAJgABAAAAAQAAppC28V8PPPUAAwPoAAAAAOcFk0YAAAAA5wWTRgBkAAAB9AK8AAAAAwACAAAAAAAAAAEAAAMg/zgAAAJYAGQAZAH0AAEAAAAAAAAAAAAAAAAAAAACAAEAAAACAAQAAQAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwGpAZAABQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAPz8/PwAAACAAIAMgAAAAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAACWABkAPoAAAAAAAIAAAADAAAAFAADAAEAAAAUAAQAIAAAAAQABAABAAAAIP//AAAAIP///+EAAQAAAAAAAAANAA0AAAABAGQAAAH0ArwAAwAAMxEhEWQBkAK8/UQAAAAAAAAEADYAAQAAAAAAAQANAAAAAQAAAAAAAgAHAA0AAwABBAkAAQAaABQAAwABBAkAAgAOAC5GaXh0dXJlIEJsYW5rUmVndWxhcgBGAGkAeAB0AHUAcgBlACAAQgBsAGEAbgBrAFIAZQBnAHUAbABhAHIAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAADAAA=) format("truetype"); }
     body { margin: 0; padding: 24px 40px; width: 1000px; color: #1a1a1a; background: #fff; font: 16px/24px Georgia, serif; }
     h1 { font-size: 32px; line-height: 40px; margin: 0 0 16px; }
     .tags { display: flex; flex-wrap: wrap; gap: 8px; width: 720px; margin: 0 0 24px; }

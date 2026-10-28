@@ -15,6 +15,7 @@ use crate::config::{
 };
 use crate::design_system::{load_design_system_for_target, DesignSystemCache};
 use crate::detect_text::{detect_text, ext_from_file_path, TextOptions};
+use crate::project_tokens::{may_need_tokens, ProjectTokens};
 use crate::engines::{EngineError, Engines, ScanOptions};
 use crate::file_system::{
     build_import_graph_reporting, detect_framework_config, is_port_listening, uses_html_engine,
@@ -313,6 +314,9 @@ struct Ctx<'a> {
     /// target (a DESIGN.md that declares a purple), and per URL scan note (a
     /// consent banner the engine hid), in first-seen order.
     design_notes: Vec<String>,
+    /// Custom properties per project, read once for the stripe colours a
+    /// component takes from a token sheet elsewhere.
+    tokens: ProjectTokens,
 }
 
 impl<'a> Ctx<'a> {
@@ -378,6 +382,7 @@ impl<'a> Ctx<'a> {
         };
         self.regex_only_files += 1;
         self.regex_only_exts.insert(ext_from_file_path(file_path));
+        let tokens = may_need_tokens(&content).then(|| self.tokens.for_file(file_path));
         Ok(detect_text(
             &content,
             file_path,
@@ -386,6 +391,7 @@ impl<'a> Ctx<'a> {
                 design_system: options.design_system.as_deref(),
                 inline_ignores: options.inline_ignores,
                 rule_pack: options.rule_pack,
+                tokens: tokens.as_deref(),
             },
         ))
     }
@@ -416,6 +422,7 @@ impl<'a> Ctx<'a> {
                 design_system: opts.design_system.as_deref(),
                 inline_ignores: opts.inline_ignores,
                 rule_pack: opts.rule_pack,
+                tokens: None,
             },
         ))
     }
@@ -703,6 +710,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
+        tokens: ProjectTokens::default(),
     };
 
     let mut all: Vec<Finding> = Vec::new();

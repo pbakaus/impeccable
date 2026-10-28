@@ -360,7 +360,8 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             cache_dirty = true;
             deferred_total += deferred.len();
         }
-        let fresh = dedupe_against_cache(&immediate, &mut cache, &session_id, file_path);
+        let immediate_keys = finding_cache_keys(&immediate);
+        let fresh = dedupe_against_cache(&immediate, &immediate_keys, &mut cache, &session_id, file_path);
         audit.insert("findings".into(), Value::from(raw_count));
         audit.insert("freshFindings".into(), Value::from(fresh.len()));
         if deferred_total > 0 {
@@ -377,7 +378,12 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if harness == "grok" {
             touch_file(&mut cache, &session_id, file_path);
         } else {
-            remember_findings(&mut cache, &session_id, file_path, &immediate);
+            // Deferred findings a Stop pass already reported stay remembered;
+            // the rest of the old list is dropped (see the Stop pass).
+            let known = known_findings(ensure_file(&mut cache, &session_id, file_path));
+            let mut keys = immediate_keys;
+            keys.extend(finding_cache_keys(&deferred).into_iter().filter(|k| known.contains(k)));
+            remember_findings(&mut cache, &session_id, file_path, &keys);
         }
         cache_dirty = true;
 
@@ -391,7 +397,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if !immediate.is_empty() && pending_winner.is_none() {
             pending_winner = Some(Pending {
                 file_path: file_path.clone(),
-                known: immediate.iter().map(finding_cache_key).collect(),
+                known: immediate.iter().map(pending_label).collect(),
             });
         } else if immediate.is_empty() && clean_winner.is_none() {
             if quiet_mode || !should_emit_ack_for_file(file_path, &config) {
@@ -730,7 +736,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if let Some(skip) = native_skip(&audit, &session_cwd, &mut platform_memo) { return skip; }
     }
     let mut cache = read_cache(&session_cwd);
-    if matches!(harness, "claude" | "codex" | "gemini") {
+    if matches!(harness, "claude" | "codex" | "gemini" | "hermes") {
         if let Some(message) = crate::build_completion::reminder(rt, &session_cwd, &session_id, stop_hook_active, &mut cache) {
             return RunResult {
                 stdout: payload(&message, "Stop", harness),
@@ -858,12 +864,17 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             pre_existing += classified.pre_existing;
             new_findings += classified.new;
             unknown += classified.unknown;
-            let fresh = dedupe_against_cache(&classified.findings, &mut root_cache, &session_id, file_path);
+            // Occurrence numbers come from the whole scan: classify drops the
+            // pre-existing findings, and counting over the survivors would
+            // shift the keys of the ones that stay.
+            let keys = finding_cache_keys(&filtered);
+            let kept_keys: Vec<String> = classified.kept.iter().map(|&i| keys[i].clone()).collect();
+            let fresh = dedupe_against_cache(&classified.findings, &kept_keys, &mut root_cache, &session_id, file_path);
             // JS: sync to the live scan, including empty. Remembering only
             // `fresh` (or skipping the write on a clean Stop) left stale keys in
             // place, so a finding that was fixed and later reintroduced never
             // fired again.
-            remember_findings(&mut root_cache, &session_id, file_path, &filtered);
+            remember_findings(&mut root_cache, &session_id, file_path, &keys);
             dirty = true;
             if !fresh.is_empty() {
                 groups.push(Group {

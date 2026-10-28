@@ -18,3 +18,4 @@ sha2 = "0.10"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 sha1 = "0.10"
 getrandom = "0.2"
+markup5ever = "0.39"

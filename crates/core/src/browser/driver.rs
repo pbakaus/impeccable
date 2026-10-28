@@ -1211,12 +1211,11 @@ fn pattern_finding_stands(
     if !super::painted::page_form_painted(dom, &f.id, &matches) {
         return None;
     }
-    // A stripe rule inside an `@media` or `@supports` block that does not
-    // apply, or one a later rule overrides, paints nothing on the element
-    // it names: its computed image must carry a repeating gradient.
-    if f.id == "repeating-stripes-gradient"
-        && !matches.iter().any(|&el| repeating_gradient_applies(dom, el, selector))
-    {
+    // A stripe, glow, halo or grid rule inside an `@media` or `@supports`
+    // block that does not apply, or one a later rule overrides, paints
+    // nothing on the element it names: the element's computed style must
+    // carry what the rule declares ([`computed_paint_applies`]).
+    if !matches.iter().any(|&el| computed_paint_applies(dom, el, selector, &f.id, &f.snippet)) {
         return None;
     }
     // A stripe on any edge from the style-text scans reports only
@@ -1236,30 +1235,65 @@ fn pattern_finding_stands(
     Some(Some(matches))
 }
 
-/// Whether the box a stripe selector names on `el` computes a repeating
-/// gradient as its background or mask image: the `::before` / `::after`
-/// box for a part of the selector list that names one, `el` itself for a
-/// part that does not. A value the Dom did not record answers yes: a host
-/// with none of its images recorded, or a pseudo-element whose mask the
-/// capture predates.
-fn repeating_gradient_applies(dom: &dyn Dom, el: ElId, selector: &str) -> bool {
-    let repeats = |v: &str| v.to_ascii_lowercase().contains("repeating-");
-    let host = || {
-        let values = [
-            dom.style(el, "backgroundImage"),
-            dom.style(el, "maskImage"),
-            dom.style(el, "webkitMaskImage"),
-        ];
-        values.iter().all(|v| v.is_empty()) || values.iter().any(|v| repeats(v))
+/// Whether the box a pattern rule's selector names on `el` computes what
+/// the rule declares: the `::before` / `::after` box for a part of the
+/// selector list that names one, `el` itself for a part that does not.
+/// A stripe needs a repeating gradient as its background or mask image, a
+/// radial halo a radial gradient as its background image, a grid-line
+/// background a gradient as its background image, and a glow the shadow
+/// property its snippet names. A value the Dom did not record answers yes:
+/// a host with none of the properties recorded, a pseudo-element whose mask
+/// the capture predates, or the pseudo-element of a glow, halo or grid.
+/// Other rules answer yes.
+fn computed_paint_applies(dom: &dyn Dom, el: ElId, selector: &str, rule: &str, snippet: &str) -> bool {
+    let has = |v: &str, needle: &str| v.to_ascii_lowercase().contains(needle);
+    let drawn = |v: &str| v != "none" && v != "initial";
+    let shadow_props: &[&str] = if snippet.contains("text-shadow") {
+        &["textShadow"]
+    } else {
+        &["boxShadow"]
     };
+    // Read off the host, or off a pseudo-element (`pseudo`) through `read`.
+    let applies = |read: &dyn Fn(&str) -> String, pseudo: bool| match rule {
+        "repeating-stripes-gradient" if pseudo => {
+            let mask = read("maskImage");
+            mask.is_empty() || has(&mask, "repeating-") || has(&read("backgroundImage"), "repeating-")
+        }
+        "repeating-stripes-gradient" => {
+            let values = [read("backgroundImage"), read("maskImage"), read("webkitMaskImage")];
+            values.iter().all(|v| v.is_empty()) || values.iter().any(|v| has(v, "repeating-"))
+        }
+        "radial-halo" => {
+            let image = read("backgroundImage");
+            image.is_empty() || has(&image, "radial-gradient")
+        }
+        "codex-grid-background" => {
+            let image = read("backgroundImage");
+            image.is_empty() || has(&image, "gradient")
+        }
+        "dark-glow" => shadow_props.iter().any(|p| {
+            let v = read(p);
+            v.is_empty() || drawn(&v)
+        }),
+        _ => true,
+    };
+    if !matches!(rule, "repeating-stripes-gradient" | "radial-halo" | "codex-grid-background" | "dark-glow") {
+        return true;
+    }
+    let host = || applies(&|prop: &str| dom.style(el, prop), false);
     let pseudo = |name: &str| {
-        let read = |prop: &str| dom.pseudo_style(el, name, prop).unwrap_or_default();
-        let content = read("content");
+        // The capture records a pseudo-element only where its `content`
+        // is a non-empty value, so the `content: ''` box a glow, halo or
+        // grid decoration is usually drawn on reads as `none`: unrecorded,
+        // which answers yes.
+        if rule != "repeating-stripes-gradient" {
+            return true;
+        }
+        let content = dom.pseudo_style(el, name, "content").unwrap_or_default();
         if content == "none" || content == "normal" {
             return false;
         }
-        let mask = read("maskImage");
-        mask.is_empty() || repeats(&mask) || repeats(&read("backgroundImage"))
+        applies(&|prop: &str| dom.pseudo_style(el, name, prop).unwrap_or_default(), true)
     };
     selector_list_pseudos(selector).into_iter().any(|part| match part {
         Some(name) => pseudo(name),
@@ -1322,13 +1356,75 @@ fn selector_list_pseudos(selector: &str) -> Vec<Option<&'static str>> {
     parts
 }
 
+/// `html` with the text inside every `<script>` element removed and the
+/// tags kept. A serialized document cannot hold `</script` inside a script,
+/// so the first one after the start tag closes it. A `<script` inside an
+/// HTML comment or a `<style>` block is not a script, and a script with no `</script` after it
+/// keeps its text: the rest of the document stays as it was.
+fn without_script_text(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let mut out = String::with_capacity(html.len());
+    let mut from = 0usize;
+    let mut search = 0usize;
+    while let Some(rel) = lower[search..].find("<script") {
+        let start = search + rel;
+        // A comment or a `<style>` block before it is skipped whole: a
+        // `<script` in either is text, not a tag.
+        let comment = lower[search..start].find("<!--").map(|p| (search + p, "<!--".len(), "-->"));
+        let style = lower[search..start]
+            .match_indices("<style")
+            .map(|(p, _)| search + p)
+            .find(|&p| lower.as_bytes().get(p + 6).is_some_and(|b| b.is_ascii_whitespace() || *b == b'>'))
+            .map(|p| (p, "<style".len(), "</style"));
+        if let Some((at, open_len, close)) = [comment, style].into_iter().flatten().min_by_key(|(at, _, _)| *at) {
+            match lower[at + open_len..].find(close) {
+                Some(end) => {
+                    search = at + open_len + end + close.len();
+                    continue;
+                }
+                None => break,
+            }
+        }
+        let after = start + "<script".len();
+        let delimited = lower
+            .as_bytes()
+            .get(after)
+            .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/');
+        if !delimited {
+            search = after;
+            continue;
+        }
+        let Some(open_end) = lower[after..].find('>').map(|p| after + p + 1) else {
+            break;
+        };
+        let closing = lower[open_end..].match_indices("</script").map(|(p, _)| open_end + p).find(|&p| {
+            lower
+                .as_bytes()
+                .get(p + "</script".len())
+                .is_none_or(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
+        });
+        let Some(close) = closing else {
+            break;
+        };
+        out.push_str(&html[from..open_end]);
+        from = close;
+        search = close + "</script".len();
+    }
+    out.push_str(&html[from..]);
+    out
+}
+
 /// [`scoped_html_pattern_findings`] keeping each finding's selector and the
 /// elements it resolves to, plus the style corpus the pass read.
 fn html_pattern_items(
     dom: &dyn Dom,
     context: &crate::checks::html_patterns::PatternContext,
 ) -> (Vec<PatternItem>, String) {
-    let html = dom.document_html_for_patterns();
+    // A script's text is not markup: a `style` attribute or a `<style>`
+    // block written inside a JS string (gseek.kr's course cards, built by a
+    // template literal) paints only once the script inserts it, and then
+    // the live DOM carries it as an element of its own.
+    let html = without_script_text(&dom.document_html_for_patterns());
     // Linked stylesheets are absent from the page's outerHTML, so the probe
     // hands their readable, live-resolving rules to the style corpus (#709).
     let mut corpora = crate::checks::html_patterns::build_html_pattern_corpora(&html);
@@ -1488,11 +1584,18 @@ fn drop_covered_palette_forms(findings: &mut Vec<BrowserFinding>) {
 /// and `body` with an opaque fill, which is what the canvas shows. `None`
 /// where that cannot be read off the root (neither paints a fill, or the
 /// fill sits under an image or a gradient), which leaves the decision to the
-/// stylesheet text.
+/// stylesheet text. A root where neither paints anything at all shows the
+/// browser's white canvas, and reads light where nothing else on the page
+/// stands in for the ground ([`unpainted_root_reads_light`]).
+///
+/// [`unpainted_root_reads_light`]: super::page_checks::unpainted_root_reads_light
 fn painted_root_is_dark(dom: &dyn Dom) -> Option<bool> {
+    let mut tinted = false;
     for el in [dom.document_element(), dom.body()].into_iter().flatten() {
         let image = dom.style(el, "backgroundImage");
-        let paints_image = !image.is_empty() && image != "none";
+        // A gradient wash too faint to change the ground (looot.ai's 8%
+        // mint corner over a white body) leaves the fill under it readable.
+        let paints_image = !image.is_empty() && image != "none" && !is_faint_gradient_wash(&image);
         match crate::color::parse_any_color(Some(&dom.style(el, "backgroundColor"))) {
             Some(fill) if fill.alpha_or_one() > 0.5 => {
                 return if paints_image {
@@ -1502,10 +1605,29 @@ fn painted_root_is_dark(dom: &dyn Dom) -> Option<bool> {
                 };
             }
             _ if paints_image => return None,
+            Some(fill) if fill.alpha_or_one() > 0.0 => tinted = true,
             _ => {}
         }
     }
+    if !tinted && dom.body().is_some() && super::page_checks::unpainted_root_reads_light(dom) {
+        return Some(false);
+    }
     None
+}
+
+/// The alpha under which every stop of a root's gradient leaves the fill
+/// beneath it as the colour a visitor reads.
+const ROOT_WASH_MAX_STOP_ALPHA: f64 = 0.1;
+
+/// Whether a `background-image` is only gradients whose colour stops all
+/// paint at [`ROOT_WASH_MAX_STOP_ALPHA`] or less. A picture, or a stop that
+/// cannot be read, is not.
+fn is_faint_gradient_wash(image: &str) -> bool {
+    if image.contains("url(") || image.contains("image-set(") || image.contains("element(") || image.contains("paint(") {
+        return false;
+    }
+    let stops = crate::color::parse_gradient_colors(Some(image));
+    !stops.is_empty() && stops.iter().all(|c| c.alpha_or_one() <= ROOT_WASH_MAX_STOP_ALPHA)
 }
 
 /// Whether a resolved surface is light (the dark-background forms' threshold).
@@ -1575,7 +1697,18 @@ fn reconcile_page_level_forms(
             _ => true,
         };
         if stands {
-            out.push(item.finding);
+            let mut finding = item.finding;
+            // A dark claim that stands on a light root stands on the dark
+            // surfaces under its elements (looot.ai's halo in a dark card on
+            // a mint-washed white page), which is the element form's wording.
+            if root_dark == Some(false)
+                && matches!(finding.type_.as_str(), "dark-glow" | "radial-halo")
+            {
+                if let Some(head) = finding.detail.strip_suffix("on dark page") {
+                    finding.detail = format!("{head}on dark background");
+                }
+            }
+            out.push(finding);
         }
     }
     out
@@ -1608,6 +1741,7 @@ fn computes_clipped_gradient(dom: &dyn Dom, el: ElId) -> bool {
 fn clipped_gradient_silent(dom: &dyn Dom, el: ElId) -> bool {
     super::painted::unpainted_for(dom, el, super::painted::PaintGate::Text).is_some()
         || !super::element_checks::gradient_text_paints_a_ramp(dom, el)
+        || super::element_checks::gradient_text_is_a_shimmer(dom, el)
 }
 
 /// Whether the declaration a stylesheet gradient-text form names is silent:
@@ -1806,8 +1940,10 @@ fn radial_halo_page_form_stands(dom: &dyn Dom, item: &PatternItem, root_dark: Op
 
 /// The element a page-level stylesheet finding (reported on `body`) can be
 /// shown on: the first element painted at capture whose computed style
-/// carries the declaration the finding names, a radial-gradient halo or a
-/// glow in the finding's colour. Computed values have every `var()`
+/// carries the declaration the finding names: a radial-gradient halo or a
+/// glow in the finding's colour, a `polygon()` clip with the finding's
+/// vertex count, or the finding's overshooting timing function or bounce
+/// animation. Computed values have every `var()`
 /// resolved, so this finds the element a declaration spelled through a
 /// custom property paints on (`.g1 { background: radial-gradient(circle,
 /// var(--accent) 0%, transparent 70%) }`), which a reader of the stylesheet
@@ -1819,6 +1955,17 @@ pub fn page_form_anchor(dom: &dyn Dom, rule: &str, detail: &str) -> Option<ElId>
             .captures(detail)
             .map(|m| elements_painting_halo(dom, &crate::js::to_lower_case(&m[1])))?,
         "dark-glow" => glow_declaration(detail).map(|(prop, hex)| elements_casting_glow(dom, &prop, &hex))?,
+        "organic-clip-path" => ORGANIC_VERTICES_RE
+            .captures(detail)
+            .and_then(|m| m[1].parse::<usize>().ok())
+            .map(|n| elements_clipped_to_polygon(dom, n))?,
+        "bounce-easing" => {
+            let declared = bounce_declarations(detail);
+            if declared.is_empty() {
+                return None;
+            }
+            elements_easing_with(dom, &declared)
+        }
         _ => return None,
     };
     // A halo fades to transparent: an opaque radial fill in the same colour
@@ -1837,6 +1984,59 @@ pub fn page_form_anchor(dom: &dyn Dom, rule: &str, detail: &str) -> Option<ElId>
 static FADES_OUT_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
     regex::Regex::new(r"rgba\([^)]*,\s*0(?:\.0+)?\s*\)|transparent").expect("FADES_OUT_RE")
 });
+
+static ORGANIC_VERTICES_RE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+    regex::Regex::new(r"polygon\(\) with (\d+) vertices").expect("ORGANIC_VERTICES_RE")
+});
+
+/// The elements whose computed `clip-path` is a `polygon()` the
+/// organic-clip-path rule would report with `vertices` points
+/// ([`crate::checks::css_scan::organic_polygon_vertices`]: the same count,
+/// grid, rectilinear and zigzag tests the scan applies to the stylesheet).
+fn elements_clipped_to_polygon(dom: &dyn Dom, vertices: usize) -> Vec<ElId> {
+    dom.query_all(None, "*")
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|&el| {
+            let clip = dom.style(el, "clipPath");
+            clip.trim()
+                .strip_prefix("polygon(")
+                .and_then(|b| b.strip_suffix(')'))
+                .and_then(crate::checks::css_scan::organic_polygon_vertices)
+                == Some(vertices)
+        })
+        .collect()
+}
+
+/// The elements whose computed animation or transition timing function is
+/// one of the `declared` overshooting curves, or whose computed animation
+/// name is one of the `declared` names.
+fn elements_easing_with(dom: &dyn Dom, declared: &[BounceDeclaration]) -> Vec<ElId> {
+    dom.query_all(None, "*")
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|&el| {
+            let mut own: Vec<BounceDeclaration> = Vec::new();
+            for prop in ["animationTimingFunction", "transitionTimingFunction"] {
+                let value = dom.style(el, prop);
+                for m in crate::checks::rules::BEZIER_RE.captures_iter(&value) {
+                    let n = |i: usize| crate::js::parse_float(&m[i]);
+                    own.push(BounceDeclaration::Bezier([n(1), n(2), n(3), n(4)]));
+                }
+            }
+            let names = dom.style(el, "animationName");
+            if names != "none" {
+                own.extend(
+                    BOUNCE_NAME_SPLIT_RE
+                        .split(&names)
+                        .filter(|n| !n.is_empty() && *n != "none")
+                        .map(|n| BounceDeclaration::Name(crate::js::to_lower_case(n))),
+                );
+            }
+            own.iter().any(|o| declared.iter().any(|d| o.same_as(d)))
+        })
+        .collect()
+}
 
 static HALO_COLOR_RE: once_cell::sync::Lazy<regex::Regex> =
     once_cell::sync::Lazy::new(|| regex::Regex::new(r"halo \((#[0-9a-fA-F]+) ").expect("HALO_COLOR_RE"));
@@ -1943,7 +2143,24 @@ fn marquee_page_form_stands(
     // A marquee is content crawling past: words, logos, pictures. A loop that
     // moves nothing a visitor reads or looks at (a wave drawn as one SVG
     // path, a highlight sweeping across a pill) is an ornament in motion.
-    if !elements.iter().any(|&el| marquee_carries_content(dom, el)) {
+    // A loop declared on a pseudo-element moves that pseudo-element, not its
+    // host: a `content: ""` gradient sweeping across a banner with text in
+    // it (zcad.ai's `.home-announcement::before`, mypip.dev's
+    // `.feature-asset-stack::after`) carries nothing, whatever the host
+    // holds. A selector list that also names a host reads the hosts.
+    // Each part of a list asks its own pseudo-element of its own hosts.
+    let pseudos = item.selector.as_deref().map(selector_list_pseudos).unwrap_or_default();
+    let carries = if !pseudos.is_empty() && pseudos.iter().all(Option::is_some) {
+        match item.selector.as_deref().and_then(|s| pseudo_parts_carry_content(dom, s, elements)) {
+            Some(carries) => carries,
+            None => elements
+                .iter()
+                .any(|&el| pseudos.iter().flatten().any(|which| pseudo_carries_content(dom, el, which))),
+        }
+    } else {
+        elements.iter().any(|&el| marquee_carries_content(dom, el))
+    };
+    if !carries {
         return false;
     }
     let root_like = |el: ElId| Some(el) == dom.body() || Some(el) == dom.document_element();
@@ -2009,12 +2226,36 @@ fn marquee_carries_content(dom: &dyn Dom, el: ElId) -> bool {
     if paints_image(el) || dom.query_all(Some(el), "*").unwrap_or_default().into_iter().any(paints_image) {
         return true;
     }
-    ["::before", "::after"].iter().any(|which| {
-        dom.pseudo_style(el, which, "content").map_or(false, |c| {
-            let c = crate::js::trim(&c).to_string();
-            !(c.is_empty() || c == "none" || c == "normal" || c == "\"\"" || c == "''")
-                || dom.pseudo_style(el, which, "backgroundImage").map_or(false, |b| b.contains("url("))
-        })
+    ["::before", "::after"].iter().any(|which| pseudo_carries_content(dom, el, which))
+}
+
+/// For a selector list whose every part names a `::before` or `::after`,
+/// whether any part's own pseudo-element carries content on that part's own
+/// hosts (among `elements`). `None` where a part cannot be split off or
+/// resolved, and the caller reads every pseudo-element on every host.
+fn pseudo_parts_carry_content(dom: &dyn Dom, selector: &str, elements: &[ElId]) -> Option<bool> {
+    let parts = crate::color::split_top_level_commas(selector);
+    let mut any = false;
+    for part in &parts {
+        let which = (*selector_list_pseudos(part).first()?)?;
+        let host = pseudo_element_host_selector(part)?;
+        let hosts = selector_nodes_for_live_dom(dom, &host)?;
+        any |= hosts
+            .iter()
+            .filter(|h| elements.contains(h))
+            .any(|&h| pseudo_carries_content(dom, h, which));
+    }
+    Some(any)
+}
+
+/// Whether `el`'s `::before` or `::after` (`which`) generates something to
+/// read or look at: a string that is not empty, an image (`content: url()`
+/// is not empty either), or a `url()` background.
+fn pseudo_carries_content(dom: &dyn Dom, el: ElId, which: &str) -> bool {
+    dom.pseudo_style(el, which, "content").map_or(false, |c| {
+        let c = crate::js::trim(&c).to_string();
+        !(c.is_empty() || c == "none" || c == "normal" || c == "\"\"" || c == "''")
+            || dom.pseudo_style(el, which, "backgroundImage").map_or(false, |b| b.contains("url("))
     })
 }
 
@@ -2033,15 +2274,23 @@ fn stripe_pseudo(detail: &str) -> Option<&'static str> {
 /// The stylesheet form of a pseudo-element stripe stands unless a host it
 /// resolves to already carries the element form for the same pseudo-element:
 /// that finding read the stripe off the rendered box and names the element,
-/// and the two describe one stripe.
+/// and the two describe one stripe. An inset box-shadow stripe reads the same
+/// way against the element form of an inset stripe.
 fn side_tab_page_form_stands(groups: &[FindingGroup], item: &PatternItem) -> bool {
     const STRIPE: &str = "pseudo-element stripe";
-    if !item.finding.detail.contains(STRIPE) {
-        return true;
-    }
+    const INSET: &str = "inset box-shadow";
     let Some(hosts) = item.matches.as_ref().filter(|m| !m.is_empty()) else {
         return true;
     };
+    if item.finding.detail.contains(INSET) {
+        return !groups
+            .iter()
+            .filter(|g| hosts.contains(&g.el))
+            .any(|g| g.findings.iter().any(|f| f.type_ == "side-tab" && f.detail.contains(INSET)));
+    }
+    if !item.finding.detail.contains(STRIPE) {
+        return true;
+    }
     let Some(pseudo) = stripe_pseudo(&item.finding.detail) else {
         return true;
     };
@@ -2624,6 +2873,33 @@ pub fn element_is_scanned(dom: &dyn Dom, el: ElId) -> bool {
     super::dom::closest_or_none(dom, el, "[id^=\"impeccable-live-\"]").is_none()
 }
 
+/// Drops the [`super::hidden_mockup::DROP_RULES`] findings of an element
+/// inside a declared mockup, and reports them as advisory inside a box
+/// labelled as a screenshot or illustration.
+fn apply_mockup_signals(mockups: &super::hidden_mockup::HiddenMockups<'_>, groups: &mut Vec<FindingGroup>) {
+    use super::hidden_mockup::{MockupSignal, DROP_RULES};
+    if mockups.is_empty() {
+        return;
+    }
+    for g in groups.iter_mut() {
+        if !g.findings.iter().any(|f| DROP_RULES.contains(&f.type_.as_str())) {
+            continue;
+        }
+        match mockups.signal(g.el) {
+            Some(MockupSignal::Declared) => {
+                g.findings.retain(|f| !DROP_RULES.contains(&f.type_.as_str()));
+            }
+            Some(MockupSignal::Labelled) => {
+                for f in g.findings.iter_mut().filter(|f| DROP_RULES.contains(&f.type_.as_str())) {
+                    f.severity = Some(crate::checks::rules::ADVISORY_SEVERITY.to_string());
+                }
+            }
+            None => {}
+        }
+    }
+    groups.retain(|g| !g.findings.is_empty());
+}
+
 /// JS: index.mjs#collectBrowserFindings()
 pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> CollectResult {
     use super::element_checks as ec;
@@ -2637,7 +2913,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     // overlay resolves the globs per page (live-browser-ignores.js) and
     // forwards the verdict as config.skipScan. JS: index.mjs#skipScanActive().
     if config.extension_mode && config.skip_scan {
-        return CollectResult { groups: Vec::new(), page_level: Vec::new() };
+        return CollectResult { groups: Vec::new(), page_level: Vec::new(), collapsed: Vec::new() };
     }
 
     let mut groups: Vec<FindingGroup> = Vec::new();
@@ -2670,7 +2946,12 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let body_key = body.unwrap_or(0);
 
     let glow_text = ec::GlowTextRects::default();
-    for el in dom.query_all(None, "*").unwrap_or_default() {
+    let pretty_wrap = super::line_breaks::TextWrapRules::default();
+    // Product mockups the page declares are not content (decision 1 of round
+    // 13), and boxes labelled as a screenshot report as advisory (r13-t5).
+    let mockups = super::hidden_mockup::HiddenMockups::scan(dom);
+    let all_elements = dom.query_all(None, "*").unwrap_or_default();
+    for &el in &all_elements {
         if !element_is_scanned(dom, el) {
             continue;
         }
@@ -2678,8 +2959,9 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         let mut findings: Vec<BrowserFinding> = Vec::new();
         findings.extend(hits(ec::check_element_borders_dom(dom, el)));
         findings.extend(hits(ec::check_element_pseudo_stripe_dom(dom, el)));
+        findings.extend(hits(ec::check_element_inset_stripe_dom(dom, el)));
         findings.extend(hits(ec::check_element_stripe_child_dom(dom, el)));
-        findings.extend(hits(ec::check_element_colors_dom(dom, el, &mut color_seen)));
+        findings.extend(hits(ec::check_element_colors_dom_in(dom, el, &mut color_seen, Some(&mockups))));
         findings.extend(hits(ec::check_element_motion_dom(dom, el)));
         findings.extend(hits(ec::check_element_glow_dom(dom, el)));
         findings.extend(hits(ec::check_element_hard_offset_shadow_dom(dom, el)));
@@ -2731,7 +3013,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         findings.extend(hits(ec::check_element_icon_tile_dom(dom, el)));
         findings.extend(hits(ec::check_element_italic_serif_dom(dom, el)));
         findings.extend(hits(q::check_element_quality_dom(dom, el, config)));
-        findings.extend(hits(super::line_breaks::check_element_line_breaks_dom(dom, el)));
+        findings.extend(hits(super::line_breaks::check_element_line_breaks_dom_with(dom, el, &pretty_wrap)));
         findings.extend(hits(ec::check_element_oversized_h1_dom(dom, el)));
         findings.extend(hits(ec::check_element_clipped_overflow_dom(dom, el)));
         findings.extend(hits(ec::check_element_gpt_border_shadow_dom(dom, el)));
@@ -2795,6 +3077,27 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
                 .retain(|f| !(f.type_ == "low-contrast" && f.detail == snippet));
         }
     }
+    // The copies the dedupe dropped, counted below for the element whose
+    // report speaks for them. A copy counts where a reader sees it wearing
+    // the pair: painted at capture, not waived inline, and not inside a
+    // mockup the page declares.
+    let mut pair_copies: Vec<(ElId, ElId)> = Vec::new();
+    for (owner, copy) in color_seen.take_copies() {
+        let (Ok(owner), Ok(copy)) = (ElId::try_from(owner), ElId::try_from(copy)) else { continue };
+        // A copy counts only on the owner's side of the pair's other
+        // boundaries: a copy the pixels read never adds to a verdict they
+        // do not, and a vendor's copy never adds to the page's own.
+        if pair_copies.contains(&(owner, copy))
+            || scoped_ignore_active(dom, copy, "low-contrast")
+            || mockups.declared(copy)
+            || super::painted::unpainted_for(dom, copy, super::painted::PaintGate::Text).is_some()
+            || super::visual::routed_reason(dom, copy).is_some() != super::visual::routed_reason(dom, owner).is_some()
+            || crate::third_party::widget_vendor(dom, copy) != crate::third_party::widget_vendor(dom, owner)
+        {
+            continue;
+        }
+        pair_copies.push((owner, copy));
+    }
     // With the colour claims settled, a low-contrast finding still on an
     // element speaks for its size findings.
     for g in groups.iter_mut().filter(|g| vanishing_ink_candidates.contains(&g.el)) {
@@ -2852,7 +3155,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     el_pass(&mut groups, pc::check_text_occlusion_dom(dom));
     el_pass(&mut groups, pc::check_first_viewport_column_overflow_dom(dom));
 
-    page_pass(&mut groups, &mut page_level, q::check_page_quality_dom(dom));
+    page_pass(&mut groups, &mut page_level, q::check_page_quality_dom_in(dom, Some(&mockups)));
     page_pass(&mut groups, &mut page_level, q::check_page_overflow_dom(dom));
     page_pass(&mut groups, &mut page_level, hits(pc::check_cream_palette(dom)));
     // The stylesheet-text forms go last among the built-in passes because
@@ -2868,6 +3171,11 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     let page_forms =
         reconcile_page_level_forms(dom, &groups, pattern_items, &pattern_style_text, root_dark);
     page_pass(&mut groups, &mut page_level, page_forms);
+
+    // The rules that score a mockup's text and boxes as the page's content
+    // report nothing inside a mockup the page declares, and advisory inside
+    // a box labelled as a screenshot.
+    apply_mockup_signals(&mockups, &mut groups);
 
     // Rule-pack page rules run after every built-in page pass, through the
     // same attribution as the built-in checks that name their own element.
@@ -2900,7 +3208,261 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
         page_level.retain(|f| !browser_value_ignored(f, &disabled_values));
     }
 
-    CollectResult { groups, page_level }
+    // Once every waiver has spoken, one report per colour pair and one per
+    // outer panel, each counting the rest (taste calls r14-t2, r14-t5).
+    let collapsed = count_repeats(dom, &mut groups, &pair_copies, &all_elements);
+
+    CollectResult { groups, page_level, collapsed }
+}
+
+/// One `low-contrast` finding per colour pair, and one `nested-cards`
+/// finding per outer panel, each saying how many more elements it speaks
+/// for (taste calls r14-t2 and r14-t5). Returns the elements whose
+/// `low-contrast` verdict is now counted by another finding.
+///
+/// A `low-contrast` pair is the finding's text (ratio, bar, ink, ground),
+/// its severity, whether the element pass hands the text to the pixels
+/// ([`super::visual::routed_reason`]), and the widget vendor whose markup
+/// holds it: a verdict the pixels may replace never speaks for one they do
+/// not read, and a vendor's copy never speaks for the page's own. The first
+/// element in document order reports, unless its text holds fewer than
+/// [`WORD_LETTERS`] letters (an icon glyph, a digit) and a copy in the pair
+/// holds a word: then the first such copy reports, so the crop shows text
+/// a reader reads (jaksa.me's share pair reported on an `𝕏` button).
+/// `pair_copies` adds the copies the SAFE_TAGS dedupe dropped before they
+/// reached a group, to the element that claimed their pair.
+///
+/// A `nested-cards` panel is the inner card's nearest card-like ancestor,
+/// the box `check_layout` found it in, with the severity: the first inner
+/// card in document order reports.
+///
+/// Runs after every waiver, so an inline ignore or a declared mockup on the
+/// first copy never silences the rest.
+fn count_repeats(
+    dom: &dyn Dom,
+    groups: &mut Vec<FindingGroup>,
+    pair_copies: &[(ElId, ElId)],
+    all_elements: &[ElId],
+) -> Vec<ElId> {
+    use std::collections::{HashMap, HashSet};
+    let mut order: Option<HashMap<ElId, usize>> = None;
+    let mut position = |el: ElId| -> usize {
+        let map = order.get_or_insert_with(|| {
+            all_elements.iter().enumerate().map(|(i, e)| (*e, i)).collect()
+        });
+        map.get(&el).copied().unwrap_or(usize::MAX)
+    };
+
+    // (group index, finding index, key) for every finding the pass counts.
+    let mut pair_members: Vec<(usize, usize, (String, Option<String>, bool, Option<&'static str>))> = Vec::new();
+    let mut panel_members: Vec<(usize, usize, (Option<ElId>, Option<String>))> = Vec::new();
+    for (gi, g) in groups.iter().enumerate() {
+        let mut routed: Option<bool> = None;
+        let mut vendor: Option<Option<&'static str>> = None;
+        let mut outer: Option<Option<ElId>> = None;
+        for (fi, f) in g.findings.iter().enumerate() {
+            if f.type_ == "low-contrast" {
+                let routed = *routed.get_or_insert_with(|| super::visual::routed_reason(dom, g.el).is_some());
+                let vendor = *vendor.get_or_insert_with(|| crate::third_party::widget_vendor(dom, g.el));
+                pair_members.push((gi, fi, (f.detail.clone(), f.severity.clone(), routed, vendor)));
+            } else if f.type_ == "nested-cards" {
+                let outer = *outer.get_or_insert_with(|| outer_card(dom, g.el));
+                panel_members.push((gi, fi, (outer, f.severity.clone())));
+            }
+        }
+    }
+
+    // The copies the SAFE_TAGS dedupe dropped, per element that claimed
+    // them; counted once, on that element's first low-contrast finding.
+    let mut copies_of: HashMap<ElId, Vec<ElId>> = HashMap::new();
+    for (owner, copy) in pair_copies {
+        copies_of.entry(*owner).or_default().push(*copy);
+    }
+    let mut first_pair_finding: HashMap<usize, usize> = HashMap::new();
+    for (gi, fi, _) in &pair_members {
+        first_pair_finding.entry(*gi).or_insert(*fi);
+    }
+
+    let mut collapsed: Vec<ElId> = pair_copies.iter().map(|(_, c)| *c).collect();
+    let mut drop: HashSet<(usize, usize)> = HashSet::new();
+    let mut rename: Vec<(usize, usize, usize)> = Vec::new();
+    // A reporting finding handed to a copy the dedupe dropped: (group,
+    // finding, copy).
+    let mut moves: Vec<(usize, usize, ElId)> = Vec::new();
+
+    // Low-contrast: group by key, the first in document order reports.
+    let mut by_pair: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut pair_index: HashMap<&(String, Option<String>, bool, Option<&'static str>), usize> = HashMap::new();
+    for (gi, fi, key) in &pair_members {
+        let i = *pair_index.entry(key).or_insert_with(|| {
+            by_pair.push(Vec::new());
+            by_pair.len() - 1
+        });
+        by_pair[i].push((*gi, *fi));
+    }
+    for mut members in by_pair {
+        if members.len() > 1 {
+            members.sort_by_key(|(gi, fi)| (position(groups[*gi].el), *gi, *fi));
+        }
+        let mut more = members.len() - 1;
+        let mut member_copies: Vec<ElId> = Vec::new();
+        for (gi, fi) in &members {
+            if first_pair_finding.get(gi) == Some(fi) {
+                if let Some(cs) = copies_of.get(&groups[*gi].el) {
+                    more += cs.len();
+                    member_copies.extend(cs.iter().copied());
+                }
+            }
+        }
+        let mut rep = members[0];
+        let mut moved_to: Option<ElId> = None;
+        if word_letters(dom, groups[rep.0].el) < WORD_LETTERS {
+            // A member or a copy wholly on screen whose text holds a word,
+            // the first in document order.
+            let mut best: Option<(usize, Result<(usize, usize), ElId>)> = None;
+            for m in members.iter().skip(1) {
+                let el = groups[m.0].el;
+                if word_letters(dom, el) >= WORD_LETTERS {
+                    let p = position(el);
+                    if best.as_ref().is_none_or(|(bp, _)| p < *bp) {
+                        best = Some((p, Ok(*m)));
+                    }
+                }
+            }
+            for &c in &member_copies {
+                if word_letters(dom, c) >= WORD_LETTERS
+                    && super::element_checks::wholly_within_page_width(dom, &dom.rect(c))
+                {
+                    let p = position(c);
+                    if best.as_ref().is_none_or(|(bp, _)| p < *bp) {
+                        best = Some((p, Err(c)));
+                    }
+                }
+            }
+            match best {
+                Some((_, Ok(m))) => rep = m,
+                Some((_, Err(c))) => moved_to = Some(c),
+                None => {}
+            }
+        }
+        for m in &members {
+            if *m != rep {
+                drop.insert(*m);
+                collapsed.push(groups[m.0].el);
+            }
+        }
+        rename.push((rep.0, rep.1, more));
+        if let Some(c) = moved_to {
+            moves.push((rep.0, rep.1, c));
+            collapsed.retain(|e| *e != c);
+            collapsed.push(groups[rep.0].el);
+        }
+    }
+
+    // Nested cards: group by outer panel and severity.
+    // An inner card with no panel found (none should reach here) stands alone.
+    let mut by_panel: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut panel_index: HashMap<&(Option<ElId>, Option<String>), usize> = HashMap::new();
+    for (gi, fi, key) in &panel_members {
+        if key.0.is_none() {
+            by_panel.push(vec![(*gi, *fi)]);
+            continue;
+        }
+        let i = *panel_index.entry(key).or_insert_with(|| {
+            by_panel.push(Vec::new());
+            by_panel.len() - 1
+        });
+        by_panel[i].push((*gi, *fi));
+    }
+    for mut members in by_panel {
+        if members.len() > 1 {
+            members.sort_by_key(|(gi, fi)| (position(groups[*gi].el), *gi, *fi));
+        }
+        let (rep_g, rep_f) = members[0];
+        rename.push((rep_g, rep_f, members.len() - 1));
+        drop.extend(members.into_iter().skip(1));
+    }
+
+    if rename.iter().all(|(_, _, more)| *more == 0) && drop.is_empty() && moves.is_empty() {
+        return collapsed;
+    }
+    for (gi, fi, more) in rename {
+        let f = &mut groups[gi].findings[fi];
+        f.detail = crate::checks::rules::with_more_count(&f.detail, more);
+    }
+    // A finding handed to a copy leaves its element and joins the copy's
+    // group, or a new group in the place the element's group held.
+    let mut moved: HashMap<usize, Vec<(ElId, BrowserFinding)>> = HashMap::new();
+    for (gi, fi, copy) in moves {
+        let f = groups[gi].findings[fi].clone();
+        drop.insert((gi, fi));
+        moved.entry(gi).or_default().push((copy, f));
+    }
+    let old = std::mem::take(groups);
+    // A copy that already holds a group anywhere takes the finding there, so
+    // one element never ends up with two groups.
+    let grouped: HashSet<ElId> = old.iter().map(|g| g.el).collect();
+    let targets: HashSet<ElId> = moved.values().flatten().map(|(c, _)| *c).collect();
+    let mut joins: Vec<(ElId, BrowserFinding)> = Vec::new();
+    for (gi, g) in old.into_iter().enumerate() {
+        let el = g.el;
+        let findings: Vec<BrowserFinding> = g
+            .findings
+            .into_iter()
+            .enumerate()
+            .filter(|(fi, _)| !drop.contains(&(gi, *fi)))
+            .map(|(_, f)| f)
+            .collect();
+        if !findings.is_empty() || targets.contains(&el) {
+            groups.push(FindingGroup { el, findings });
+        }
+        for (copy, f) in moved.remove(&gi).unwrap_or_default() {
+            joins.push((copy, f));
+            if !grouped.contains(&copy) && !groups.iter().any(|g| g.el == copy) {
+                groups.push(FindingGroup { el: copy, findings: Vec::new() });
+            }
+        }
+    }
+    for (copy, f) in joins {
+        if let Some(g) = groups.iter_mut().find(|g| g.el == copy) {
+            g.findings.push(f);
+        }
+    }
+    groups.retain(|g| !g.findings.is_empty());
+    collapsed
+}
+
+/// The letters a reporting element needs before it reads as a word rather
+/// than a mark ([`count_repeats`]).
+const WORD_LETTERS: usize = 3;
+
+/// The letters in an element's text, leaving out the mathematical
+/// alphanumerics (`𝕏`) that brand marks are set in.
+fn word_letters(dom: &dyn Dom, el: ElId) -> usize {
+    dom.text_content(el)
+        .chars()
+        .filter(|c| c.is_alphabetic() && !('\u{1D400}'..='\u{1D7FF}').contains(c))
+        .take(WORD_LETTERS)
+        .count()
+}
+
+/// The panel an inner card sits in for `nested-cards`: its nearest
+/// card-like ancestor that is not the page's own frame, the test
+/// `check_layout` walks with.
+fn outer_card(dom: &dyn Dom, el: ElId) -> Option<ElId> {
+    let mut parent = dom.parent(el);
+    let mut steps = 0;
+    while let Some(p) = parent {
+        if super::page_checks::is_card_like_dom(dom, p) && !super::page_checks::is_page_frame(dom, p) {
+            return Some(p);
+        }
+        steps += 1;
+        if steps > 10_000 {
+            return None;
+        }
+        parent = dom.parent(p);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -3091,6 +3653,68 @@ mod tests {
         );
     }
 
+    /// #1076: a glow, a radial halo or a grid-line background declared for a
+    /// visible element inside an `@media` block that does not apply paints
+    /// nothing there either, so it hides no later candidate the page shows.
+    #[test]
+    fn a_glow_halo_or_grid_rule_the_element_does_not_compute_is_passed_over() {
+        // (rule, the inactive candidate's declaration, the active one's, the
+        // computed property, what an element under the active rule computes)
+        let cases = [
+            (
+                "dark-glow",
+                "box-shadow: 0 0 24px rgba(255, 0, 255, 0.8)",
+                "box-shadow: 0 0 24px rgba(0, 169, 255, 0.8)",
+                "boxShadow",
+                "rgba(0, 169, 255, 0.8) 0px 0px 24px 0px",
+            ),
+            (
+                "radial-halo",
+                "background: radial-gradient(circle, #ff00ff 0%, transparent 70%)",
+                "background: radial-gradient(circle, #00a9ff 0%, transparent 70%)",
+                "backgroundImage",
+                "radial-gradient(circle, rgb(0, 169, 255) 0%, rgba(0, 0, 0, 0) 70%)",
+            ),
+            (
+                "codex-grid-background",
+                "background-image: linear-gradient(90deg, #fff 1px, transparent 1px), linear-gradient(#fff 1px, transparent 1px); background-size: 24px 24px",
+                "background-image: linear-gradient(90deg, #fff 1px, transparent 1px), linear-gradient(#fff 1px, transparent 1px); background-size: 32px 32px",
+                "backgroundImage",
+                "linear-gradient(90deg, rgb(255, 255, 255) 1px, rgba(0, 0, 0, 0) 1px), linear-gradient(rgb(255, 255, 255) 1px, rgba(0, 0, 0, 0) 1px)",
+            ),
+        ];
+        for (rule, inactive, active, prop, computed) in cases {
+            let run = |with_active: bool| {
+                let mut d = FakeDom::new();
+                let (html, body) = d.with_page();
+                d.set_rect(html, 0.0, 0.0, 1280.0, 2000.0);
+                d.set_rect(body, 0.0, 0.0, 1280.0, 2000.0);
+                d.el_mut(html).scroll_width = 1280.0;
+                for (selector, y, value) in [(".wide", 100.0, "none"), (".on", 300.0, computed)] {
+                    let el = d.add(Some(body), "div");
+                    d.add_selector(el, selector);
+                    d.set_rect(el, 0.0, y, 320.0, 120.0);
+                    d.set_styles(el, &[(prop, value), ("textShadow", "none")]);
+                }
+                let tail = if with_active { format!(".on {{ {active} }}") } else { String::new() };
+                d.html_for_patterns = format!(
+                    "<html><head><style>body{{background:#0b0b0f}}\
+@media (min-width: 4000px) {{ .wide {{ {inactive} }} }}\
+{tail}</style></head><body><div class=\"wide\"></div><div class=\"on\"></div></body></html>"
+                );
+                scoped_html_pattern_findings(&d)
+                    .into_iter()
+                    .filter(|f| f.type_ == rule)
+                    .map(|f| f.detail)
+                    .collect::<Vec<_>>()
+            };
+            assert!(run(false).is_empty(), "{rule}: {:?}", run(false));
+            let found = run(true);
+            assert_eq!(found.len(), 1, "{rule}: {found:?}");
+            assert!(!found[0].contains("#ff00ff"), "{rule}: {found:?}");
+        }
+    }
+
     /// Fourth review of #1042: a selector list splits on its top-level
     /// commas only, and a pseudo-element counts only outside quotes,
     /// brackets and parentheses.
@@ -3123,8 +3747,8 @@ mod tests {
         d.set_pseudo_style(el, "::before", "content", "\"\"");
         d.set_pseudo_style(el, "::before", "backgroundImage", "none");
         d.set_pseudo_style(el, "::before", "maskImage", "none");
-        assert!(repeating_gradient_applies(&d, el, "[data-icon=\":before\"]"));
-        assert!(!repeating_gradient_applies(&d, el, ":is(.a, .b)::before"));
+        assert!(computed_paint_applies(&d, el, "[data-icon=\":before\"]", "repeating-stripes-gradient", ""));
+        assert!(!computed_paint_applies(&d, el, ":is(.a, .b)::before", "repeating-stripes-gradient", ""));
     }
 
     /// Third review of #1042: a `::before` stripe is judged by the
@@ -4716,6 +5340,173 @@ mod page_level_form_tests {
         assert_eq!(painted_root_is_dark(&d), None);
     }
 
+    /// observations-1010 row 4 (gseek.kr 10139033): a white portal whose
+    /// `html` and `body` paint nothing shows the browser's white canvas, so a
+    /// dark box elsewhere in the stylesheet does not make it a dark page.
+    /// Where something else paints the ground (a dark in-flow root, a dark
+    /// fixed layer, a dark `color-scheme`), the stylesheet decides as before.
+    #[test]
+    fn an_unpainted_root_is_the_white_canvas_unless_something_paints_the_ground() {
+        let style = ".player{background-color:#000}@keyframes lift{50%{box-shadow:0 8px 24px rgba(99,102,241,.6)}}";
+        let on_dark = "Colored box-shadow glow (#6366f1) on dark page".to_string();
+        let laid_out = || -> (FakeDom, ElId, ElId) {
+            let (mut d, body) = page(style);
+            let html = d.document_element.unwrap();
+            d.set_rect(html, 0.0, 0.0, 1280.0, 2400.0);
+            d.set_rect(body, 0.0, 0.0, 1280.0, 2400.0);
+            let main = d.add(Some(body), "main");
+            d.set_rect(main, 0.0, 0.0, 1280.0, 2100.0);
+            let copy = d.add(Some(main), "p");
+            d.set_rect(copy, 32.0, 32.0, 640.0, 48.0);
+            d.add_text(copy, "Pick a course to see its outline and enrol.");
+            d.set_style(copy, "color", "rgb(17, 17, 17)");
+            let footer = d.add(Some(body), "footer");
+            d.set_rect(footer, 0.0, 2100.0, 1280.0, 300.0);
+            d.set_style(footer, "backgroundColor", "rgb(34, 34, 34)");
+            (d, body, main)
+        };
+
+        // A white page with a dark footer: light.
+        let (d, _body, _) = laid_out();
+        assert_eq!(painted_root_is_dark(&d), Some(false));
+        assert!(details(&scan(&d), "dark-glow").is_empty());
+
+        // Should-flag twin: the same page whose in-flow root paints it dark.
+        let (mut d, body, main) = laid_out();
+        d.set_style(main, "backgroundColor", "rgb(10, 10, 10)");
+        assert_eq!(painted_root_is_dark(&d), None);
+        assert_eq!(details(&scan(&d), "dark-glow"), vec![(body, on_dark.clone())]);
+
+        // A dark wash fixed behind the content (`fixed inset-0 -z-10`).
+        let (mut d, body, _) = laid_out();
+        let wash = d.add(Some(body), "div");
+        d.set_rect(wash, 0.0, 0.0, 1280.0, 800.0);
+        d.set_styles(wash, &[("position", "fixed"), ("backgroundColor", "rgb(5, 5, 8)")]);
+        assert_eq!(painted_root_is_dark(&d), None);
+        assert_eq!(details(&scan(&d), "dark-glow"), vec![(body, on_dark.clone())]);
+
+        // A root that asks for a dark colour scheme.
+        let (mut d, body, _) = laid_out();
+        let html = d.document_element.unwrap();
+        d.set_style(html, "colorScheme", "dark");
+        assert_eq!(painted_root_is_dark(&d), None);
+        assert_eq!(details(&scan(&d), "dark-glow"), vec![(body, on_dark)]);
+
+        // Review of round 14: grounds the first walk did not see.
+        // SvelteKit's `display: contents` root around a dark app box.
+        let (mut d, body, main) = laid_out();
+        let contents = d.add(Some(body), "div");
+        d.set_style(contents, "display", "contents");
+        d.set_rect(contents, 0.0, 0.0, 0.0, 0.0);
+        let app = d.add(Some(contents), "div");
+        d.set_rect(app, 0.0, 0.0, 1280.0, 2400.0);
+        d.set_style(app, "backgroundColor", "rgb(10, 10, 10)");
+        let _ = main;
+        assert_eq!(painted_root_is_dark(&d), None, "display: contents");
+        // A dark main four transparent wrappers down.
+        let (mut d, body, _) = laid_out();
+        let mut parent = body;
+        for _ in 0..3 {
+            let wrap = d.add(Some(parent), "div");
+            d.set_rect(wrap, 0.0, 0.0, 1280.0, 2400.0);
+            parent = wrap;
+        }
+        let deep = d.add(Some(parent), "main");
+        d.set_rect(deep, 0.0, 0.0, 1280.0, 2400.0);
+        d.set_style(deep, "backgroundColor", "rgb(10, 10, 10)");
+        assert_eq!(painted_root_is_dark(&d), None, "four levels down");
+        // `body::before { position: fixed; inset: 0; background: #0a0a0a }`.
+        let (mut d, body, _) = laid_out();
+        d.set_pseudo_style(body, "::before", "content", "\"\"");
+        d.set_pseudo_style(body, "::before", "backgroundColor", "rgb(10, 10, 10)");
+        assert_eq!(painted_root_is_dark(&d), None, "body::before");
+        // `<meta name="color-scheme" content="dark">`.
+        let (mut d, _body, _) = laid_out();
+        let html = d.document_element.unwrap();
+        let head = d.add(Some(html), "head");
+        let meta = d.add(Some(head), "meta");
+        d.set_attr(meta, "name", "color-scheme");
+        d.set_attr(meta, "content", "dark light");
+        assert_eq!(painted_root_is_dark(&d), None, "meta color-scheme");
+        // A fixed canvas drawn dark behind the page.
+        let (mut d, body, _) = laid_out();
+        let canvas = d.add(Some(body), "canvas");
+        d.set_rect(canvas, 0.0, 0.0, 1280.0, 800.0);
+        d.set_style(canvas, "position", "fixed");
+        assert_eq!(painted_root_is_dark(&d), None, "fixed canvas");
+        // Light text: the ground is painted somewhere the walks cannot see.
+        let (mut d, _body, main) = laid_out();
+        let copy = d.children(main)[0];
+        d.set_style(copy, "color", "rgb(245, 245, 245)");
+        assert_eq!(painted_root_is_dark(&d), None, "light text");
+
+        // A translucent tint on the body is not read as the white canvas.
+        let (mut d, body, _) = laid_out();
+        d.set_style(body, "backgroundColor", "rgba(0, 0, 0, 0.4)");
+        assert_eq!(painted_root_is_dark(&d), None);
+
+        // looot.ai: a white body under an 8% gradient wash reads as white;
+        // a picture over it does not.
+        let (mut d, body, _) = laid_out();
+        d.set_styles(
+            body,
+            &[
+                ("backgroundColor", "rgb(255, 255, 255)"),
+                ("backgroundImage", "radial-gradient(circle at 80% -20%, rgba(16, 120, 80, 0.08), rgba(0, 0, 0, 0) 35%)"),
+            ],
+        );
+        assert_eq!(painted_root_is_dark(&d), Some(false));
+        d.set_style(body, "backgroundImage", "radial-gradient(circle, rgba(16, 120, 80, 0.6), rgba(0, 0, 0, 0) 35%)");
+        assert_eq!(painted_root_is_dark(&d), None);
+    }
+
+    /// observations-1010 row 4 (gseek.kr): course cards a template literal
+    /// builds carry `style` attributes inside an inline `<script>`; neither
+    /// the glow nor the `background: #000` there is on the page.
+    #[test]
+    fn a_style_written_inside_a_script_is_not_on_the_page() {
+        assert_eq!(
+            without_script_text("<p>a</p><script>var s='<b style=\"x\">';</script><script src=\"a.js\"></script><scripts>k</scripts>"),
+            "<p>a</p><script></script><script src=\"a.js\"></script><scripts>k</scripts>"
+        );
+        assert_eq!(without_script_text("<SCRIPT type=\"module\">x</SCRIPT>y"), "<SCRIPT type=\"module\"></SCRIPT>y");
+        // Fail safe: a script never closed keeps its text, and a `<script`
+        // in a comment is not one, so the markup after it stays.
+        assert_eq!(without_script_text("a<script>never closed <i style=a>"), "a<script>never closed <i style=a>");
+        assert_eq!(
+            without_script_text("<!-- TODO: add <script> here --><style>.a{}</style><script>x</script><b style=\"c\">"),
+            "<!-- TODO: add <script> here --><style>.a{}</style><script></script><b style=\"c\">"
+        );
+        assert_eq!(without_script_text("<!-- <script --> <i style=a>"), "<!-- <script --> <i style=a>");
+        assert_eq!(without_script_text("<!-- unclosed <script>x</script>"), "<!-- unclosed <script>x</script>");
+        assert_eq!(
+            without_script_text("<script>var t = '</script-loader><div style=\"a\">';</script><b>"),
+            "<script></script><b>"
+        );
+        assert_eq!(
+            without_script_text("<style>.a::after{content:\"<script>\"}</style><b style=\"c\"><script>x</script>"),
+            "<style>.a::after{content:\"<script>\"}</style><b style=\"c\"><script></script>"
+        );
+
+        let card = "<button style=\"box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4)\">Go</button><div style=\"background: #000\"></div>";
+        let build = |markup: String| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            d.html_for_patterns = format!("<html><head></head><body>{markup}</body></html>");
+            (d, body)
+        };
+        let (d, _) = build(format!("<script>var html = '{card}';</script>"));
+        assert!(details(&scan(&d), "dark-glow").is_empty());
+
+        // Should-flag twin: the same markup in the document on a dark body.
+        let (mut d, body) = build(card.to_string());
+        d.set_style(body, "backgroundColor", "rgb(10, 10, 10)");
+        assert_eq!(
+            details(&scan(&d), "dark-glow"),
+            vec![(body, "Colored box-shadow glow (#667eea) on dark page".to_string())]
+        );
+    }
+
     #[test]
     fn radial_halo_needs_a_dark_page_and_a_dark_surface() {
         let halo = ".hero{background:radial-gradient(circle at 50% 0%,#8fd8f2 0%,transparent 70%)}";
@@ -4748,7 +5539,9 @@ mod page_level_form_tests {
         d.set_rect(hero, 0.0, 0.0, 1280.0, 600.0);
         assert_eq!(details(&scan(&d), "radial-halo"), vec![(body, reported.clone())]);
 
-        // Light root, but the halo sits in a near-black band: a dark surface.
+        // Light root, but the halo sits in a near-black band: a dark
+        // surface, named as the element form names one (observations-1010
+        // row 4, looot.ai).
         let (mut d, body) = page(&format!(".band{{background:#040406}}{halo}"));
         d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
         let band = d.add(Some(body), "footer");
@@ -4757,7 +5550,8 @@ mod page_level_form_tests {
         let hero = d.add(Some(band), "div");
         d.add_selector(hero, ".hero");
         d.set_rect(hero, 1093.0, 8.0, 142.0, 142.0);
-        assert_eq!(details(&scan(&d), "radial-halo"), vec![(body, reported)]);
+        let on_surface = reported.replace("on dark page", "on dark background");
+        assert_eq!(details(&scan(&d), "radial-halo"), vec![(body, on_surface)]);
     }
 
     /// round 9 (nemonix.app, emotionalcomputing.co.uk): a halo declared
@@ -4807,9 +5601,60 @@ mod page_level_form_tests {
         );
     }
 
+    /// round 13 (apple.com/macbook-air, framer.com/community/gallery): an
+    /// organic clip and an overshooting curve are anchored on the painted
+    /// element whose computed style carries them.
+    #[test]
+    fn a_clip_or_an_easing_page_form_is_anchored_on_its_carrier() {
+        let blob_clip = "polygon(3% 7%, 21% 1%, 47% 4%, 73% 2%, 96% 9%, 99% 33%, 94% 61%, 97% 88%, 71% 97%, 44% 93%, 18% 99%, 2% 84%, 6% 52%, 1% 27%)";
+        let organic = "clip-path: polygon() with 14 vertices approximating an organic contour";
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        // Another vertex count, a 14-point zigzag divider the rule would not
+        // report, and a carrier with no box are all passed over.
+        let triangle = d.add(Some(body), "div");
+        d.set_rect(triangle, 0.0, 0.0, 200.0, 200.0);
+        d.set_style(triangle, "clipPath", "polygon(50% 0%, 100% 100%, 0% 100%)");
+        let zigzag = d.add(Some(body), "div");
+        d.set_rect(zigzag, 0.0, 200.0, 1200.0, 40.0);
+        d.set_style(
+            zigzag,
+            "clipPath",
+            "polygon(0% 0%, 7.7% 100%, 15.4% 0%, 23.1% 100%, 30.8% 0%, 38.5% 100%, 46.2% 0%, 53.8% 100%, 61.5% 0%, 69.2% 100%, 76.9% 0%, 84.6% 100%, 92.3% 0%, 100% 100%)",
+        );
+        let closed = d.add(Some(body), "div");
+        d.set_style(closed, "clipPath", blob_clip);
+        let blob = d.add(Some(body), "div");
+        d.set_rect(blob, 0.0, 300.0, 600.0, 400.0);
+        d.set_style(blob, "clipPath", blob_clip);
+        assert_eq!(page_form_anchor(&d, "organic-clip-path", organic), Some(blob));
+        assert_eq!(
+            page_form_anchor(&d, "organic-clip-path", "clip-path: polygon() with 9 vertices approximating an organic contour"),
+            None
+        );
+
+        let bounce = "cubic-bezier(.175, .885, .32, 1.275)";
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        let eased = d.add(Some(body), "a");
+        d.set_rect(eased, 20.0, 20.0, 120.0, 40.0);
+        d.set_style(eased, "transitionTimingFunction", "ease, cubic-bezier(0.25, 0.1, 0.25, 1)");
+        assert_eq!(page_form_anchor(&d, "bounce-easing", bounce), None);
+        let card = d.add(Some(body), "div");
+        d.set_rect(card, 20.0, 100.0, 300.0, 200.0);
+        d.set_style(card, "transitionTimingFunction", "ease, cubic-bezier(0.175, 0.885, 0.32, 1.275)");
+        assert_eq!(page_form_anchor(&d, "bounce-easing", bounce), Some(card));
+        let dot = d.add(Some(body), "span");
+        d.set_rect(dot, 400.0, 100.0, 16.0, 16.0);
+        d.set_style(dot, "animationName", "fade, Bounce");
+        assert_eq!(page_form_anchor(&d, "bounce-easing", "animation: bounce"), Some(dot));
+        assert_eq!(page_form_anchor(&d, "bounce-easing", "animation: wobble"), None);
+    }
+
     #[test]
     fn a_halo_with_no_rule_reads_the_elements_that_paint_it() {
-        let reported = "radial-gradient halo (#211dff → transparent) on dark page".to_string();
+        // The root is light, so the claim stands on the band's surface.
+        let reported = "radial-gradient halo (#211dff → transparent) on dark background".to_string();
         let build = |band_fill: &str| {
             let mut d = FakeDom::new();
             let (_html, body) = d.with_page();
@@ -4858,7 +5703,7 @@ mod page_level_form_tests {
         let (d, body) = build("rgb(0, 0, 0)");
         assert_eq!(
             details(&scan(&d), "radial-halo"),
-            vec![(body, "radial-gradient halo (#012d2a → transparent) on dark page".to_string())]
+            vec![(body, "radial-gradient halo (#012d2a → transparent) on dark background".to_string())]
         );
     }
 
@@ -4971,6 +5816,52 @@ mod page_level_form_tests {
                 "{content}"
             );
         }
+    }
+
+    /// observations-1010 row 5 (zcad.ai 10137152, mypip.dev 10138126): a
+    /// loop declared on a pseudo-element moves the pseudo-element. A
+    /// `content: ""` gradient sheen panning across a banner with text in it
+    /// carries nothing; a pseudo-element that generates the words is a
+    /// ticker.
+    #[test]
+    fn a_pseudo_element_marquee_is_read_off_the_pseudo_element() {
+        let build = |content: &str| {
+            let style = ".ann::before{content:\"\";position:absolute;inset:0;animation:flow 6s linear infinite}\
+.ticker::before{content:\"SALE • NEW • \";animation:flow 20s linear infinite}\
+@keyframes flow{0%{transform:translateX(-48%)}100%{transform:translateX(48%)}}";
+            let (mut d, body) = page(style);
+            let banner = d.add(Some(body), "aside");
+            d.add_selector(banner, ".ann");
+            d.add_selector(banner, ".ticker");
+            d.add_text(banner, "New: the spring release is out");
+            d.set_pseudo_style(banner, "::before", "content", content);
+            d.set_pseudo_style(banner, "::before", "animationName", "flow");
+            d
+        };
+        let d = build("\"\"");
+        assert!(details(&scan(&d), "marquee").is_empty());
+        let d = build("\"SALE • NEW • \"");
+        assert!(!details(&scan(&d), "marquee").is_empty());
+
+        // A list asks each part's own pseudo-element: two empty sheens on
+        // `::before` and `::after` of different hosts carry nothing, though
+        // the second host's still `::before` holds words.
+        let style = ".a::before, .b::after{content:\"\";animation:flow 6s linear infinite}\
+@keyframes flow{0%{transform:translateX(-48%)}100%{transform:translateX(48%)}}";
+        let (mut d, body) = page(style);
+        let a = d.add(Some(body), "div");
+        d.add_selector(a, ".a");
+        d.set_pseudo_style(a, "::before", "content", "\"\"");
+        d.set_pseudo_style(a, "::before", "animationName", "flow");
+        let b = d.add(Some(body), "div");
+        d.add_selector(b, ".b");
+        d.set_pseudo_style(b, "::after", "content", "\"\"");
+        d.set_pseudo_style(b, "::after", "animationName", "flow");
+        d.set_pseudo_style(b, "::before", "content", "\"New\"");
+        assert!(details(&scan(&d), "marquee").is_empty());
+        // The twin: the moving `::after` itself generates words.
+        d.set_pseudo_style(b, "::after", "content", "\"Ticker words\"");
+        assert!(!details(&scan(&d), "marquee").is_empty());
     }
 
     /// freenet.de: `.md-header::after` drew one 3px stripe and it reported

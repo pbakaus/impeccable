@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Product mockups the page declares are not content (round 13, decision 1)</title>
+<!--
+  A subtree under inert or aria-hidden="true" that draws an interface (a
+  frame-sized box, three or more runs of text, no h1, a small share of the
+  page's words, not a dialog, landmark, slide or copy) is a mockup the
+  author took out of the page's content. Under it low-contrast,
+  nested-cards, tiny-text, undersized-ui-text, cramped-padding and
+  clipped-overflow-container report nothing, and its headings leave the
+  outline skipped-heading reads. The URL engine reads this; the static
+  engine, which has no layout to size a frame by, reports every row.
+
+  Each row's ink is its own grey, so the page's one report per colour pair
+  never hides one row behind another.
+
+  Hidden boxes that hold content a visitor reads keep their findings: the
+  lines of a split-text headline whose host's aria-label reads them, a
+  resting carousel slide beside a current one, a band beside a
+  screen-reader copy of its words, a list of links, a form step. The pixel
+  pass takes no candidate inside a declared mockup.
+
+  A box whose aria-label names a screenshot is described, not hidden: its
+  findings report as advisory (taste call r13-t5), from the pixel pass too,
+  and its advisory verdicts never hide the page's own text wearing the same
+  colours. Text under display: none is no run of a drawing and none of the
+  page's words.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #ffffff; margin: 24px; }
+  h1 { font-size: 28px; margin: 0 0 16px; }
+  .col { display: inline-block; width: 460px; vertical-align: top; }
+  h2 { font-size: 20px; margin: 0 0 16px; }
+  .frame { width: 420px; height: 190px; margin: 0 0 32px; background: #ffffff; border: 1px solid #d0d7de; border-radius: 14px; padding: 16px; box-sizing: border-box; }
+  .inner { width: 360px; height: 70px; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 12px; box-sizing: border-box; }
+  .label { display: block; height: 20px; font-size: 14px; line-height: 20px; margin: 0 0 8px; }
+  p { margin: 0; font-size: 14px; line-height: 20px; }
+  h4 { font-size: 14px; line-height: 20px; margin: 0 0 8px; }
+  .small { display: block; height: 14px; font-size: 10px; line-height: 14px; margin: 6px 0 0; color: #1a1a1a; }
+  .shot { background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAD0lEQVR4nGN4iAMwDC0JAO+XqMGDY6i2AAAAAElFTkSuQmCC) center / cover; }
+  .shot .label { color: #f4f4f4; }
+  .split { width: 440px; font-size: 40px; line-height: 84px; font-weight: 700; color: #b0b0b0; margin: 0 0 32px; }
+  .split .line { display: block; height: 84px; }
+  .split .word { display: inline-block; margin-right: 12px; }
+  .track { display: flex; flex-wrap: wrap; gap: 12px; width: 440px; margin: 0 0 32px; }
+  .quote { width: 200px; height: 120px; border: 1px solid #dddddd; border-radius: 12px; padding: 12px; box-sizing: border-box; }
+  .stats { display: flex; gap: 12px; width: 440px; height: 100px; margin: 0 0 32px; }
+  .stat { flex: 1; padding: 8px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .rail { width: 200px; height: 160px; margin: 0 0 32px; }
+  .rail a { display: block; height: 24px; font-size: 14px; }
+  .step { width: 420px; height: 170px; margin: 0 0 32px; }
+  .step label { display: block; height: 20px; font-size: 14px; }
+  .step input { display: block; width: 200px; height: 24px; margin: 0 0 8px; }
+  .badge { width: 110px; height: 70px; margin: 0 0 32px; }
+</style>
+</head>
+<body>
+<h1>Declared mockups</h1>
+
+<div class="col" id="passes">
+  <h2>Passes: declared mockups report nothing</h2>
+
+  <!-- stripe.com's figure.DomGraphic, cursor.com's demo windows -->
+  <div class="frame" id="pass-hidden" aria-hidden="true">
+    <h4 style="color: #a1a1a1">Hidden window heading</h4>
+    <div class="inner" id="pass-hidden-inner"><p style="color: #a1a1a1">Invoice 2041 paid by Lattice</p><p style="color: #a1a1a1">Due in three days</p></div>
+  </div>
+
+  <!-- impeccable.style's div.cc-well -->
+  <div class="frame" id="pass-inert" inert>
+    <span class="label" style="color: #a2a2a2">Drafts</span>
+    <div class="inner" id="pass-inert-inner"><p style="color: #a2a2a2">Weekly active users up 12%</p><p style="color: #a2a2a2">Compared with last week</p></div>
+    <a class="small" href="#pass-inert" id="pass-inert-link">Open the report</a>
+    <p class="small" id="pass-inert-small">A ten pixel sentence a visitor would have to read here.</p>
+  </div>
+
+  <!-- the pixel pass takes no candidate inside a declared mockup: pale
+       labels over a raster ground, one window inert, one aria-hidden -->
+  <div class="frame shot" id="pass-pixel-inert" inert>
+    <span class="label">Inbox zero today</span><span class="label">Deploy finished</span><span class="label">Three new comments</span>
+  </div>
+  <div class="frame shot" id="pass-pixel-hidden" aria-hidden="true">
+    <span class="label" style="color: #f5f5f5">Revenue up 12 percent</span><span class="label" style="color: #f5f5f5">Churn down</span><span class="label" style="color: #f5f5f5">Seats added</span>
+  </div>
+</div>
+
+<div class="col" id="fails">
+  <h2>Fails: nothing hidden, or a guard holds</h2>
+
+  <!-- a live demo with nothing hidden keeps its findings -->
+  <div class="frame" id="fail-live">
+    <h4 style="color: #a3a3a3">Live demo heading</h4>
+    <div class="inner" id="fail-live-inner"><p style="color: #a3a3a3">Deploy finished in 42 seconds</p><p style="color: #a3a3a3">Production, main branch</p></div>
+    <a class="small" href="#fail-live" id="fail-live-link">Open the deploy</a>
+    <p class="small" id="fail-live-small">A ten pixel sentence a visitor would have to read here.</p>
+  </div>
+
+  <!-- framer.com: an aria-hidden copy beside the shown original -->
+  <div id="fail-copy-track">
+    <div class="frame logo-set" id="fail-copy-original">
+      <span class="label" style="color: #a4a4a4">Customers</span>
+      <div class="inner" id="fail-copy-original-inner"><p style="color: #a4a4a4">Trusted by teams at Acme</p><p style="color: #a4a4a4">And forty more</p></div>
+    </div>
+    <div class="frame logo-set" id="fail-copy" aria-hidden="true">
+      <span class="label" style="color: #a5a5a5">Customers</span>
+      <div class="inner" id="fail-copy-inner"><p style="color: #a5a5a5">Trusted by teams at Acme</p><p style="color: #a5a5a5">And forty more</p></div>
+    </div>
+  </div>
+
+  <!-- an aria-hidden badge smaller than a frame -->
+  <div class="badge" id="fail-badge" aria-hidden="true">
+    <span class="label" style="color: #a6a6a6">Beta</span>
+    <span class="label" style="color: #a6a6a6">New</span>
+    <span class="label" style="color: #a6a6a6">Soon</span>
+  </div>
+
+  <!-- an aria-hidden box with two runs of text: a decorative copy -->
+  <div class="frame" id="fail-two-runs" aria-hidden="true">
+    <div class="inner" id="fail-two-runs-inner"><p style="color: #a7a7a7">Build the future</p><p style="color: #a7a7a7">Ship it today</p></div>
+  </div>
+
+  <!-- an inert dialog on screen is the page's own UI -->
+  <div class="frame" id="fail-dialog" role="dialog" inert>
+    <span class="label" style="color: #a8a8a8">Cookie settings</span>
+    <div class="inner" id="fail-dialog-inner"><p style="color: #a8a8a8">Analytics cookies are off</p><p style="color: #a8a8a8">Change them at any time</p></div>
+  </div>
+
+  <!-- linear.app: a box labelled as a screenshot is described, not
+       hidden, so its findings report as advisory -->
+  <div class="frame" id="adv-screenshot" aria-label="A screenshot of the billing screen">
+    <span class="label" style="color: #a9a9a9">Billing</span>
+    <div class="inner" id="adv-screenshot-inner"><p style="color: #a9a9a9">Pro plan, renews on June 3</p><p style="color: #a9a9a9">Two seats in use</p></div>
+  </div>
+
+  <!-- the page's own text in the labelled screenshot's colours, after it:
+       the screenshot's advisory verdict never claims the pair -->
+  <span class="label" id="fail-after-shot" style="color: #a9a9a9">Your plan renews next month</span>
+
+  <!-- pale labels over a raster ground with nothing hidden: the pixel pass
+       reports them -->
+  <div class="frame shot" id="fail-pixel-live">
+    <span class="label" id="fail-pixel-live-a" style="color: #f3f3f3">Build queued</span><span class="label" style="color: #f3f3f3">Tests running</span><span class="label" style="color: #f3f3f3">Preview ready</span>
+  </div>
+
+  <!-- the same over a raster ground in a box labelled as a screenshot:
+       the pixel pass reports them as advisory -->
+  <div class="frame shot" id="adv-pixel-shot" aria-label="A screenshot of the deploy screen">
+    <span class="label" id="adv-pixel-shot-a" style="color: #f2f2f2">Release notes</span><span class="label" style="color: #f2f2f2">Rollback ready</span><span class="label" style="color: #f2f2f2">Two regions live</span>
+  </div>
+
+  <!-- an aria-hidden window drawing two runs, with three more under
+       display: none: text that does not render is no run of a drawing.
+       Wrapped alone, so no shown peer of the same class holds it -->
+  <div id="fail-unrendered-runs-wrap">
+    <div class="frame" id="fail-unrendered-runs" aria-hidden="true">
+      <div class="inner" id="fail-unrendered-runs-inner"><p style="color: #afafaf">Build the future</p><p style="color: #afafaf">Ship it today</p></div>
+      <div style="display: none"><span>Starter</span><span>Team</span><span>Enterprise</span></div>
+    </div>
+  </div>
+
+  <!-- GSAP SplitText: the host's aria-label reads the line, each visual
+       line is aria-hidden -->
+  <div class="split" id="fail-split" aria-label="Plan every launch with your whole team">
+    <div class="line" aria-hidden="true"><span class="word" style="color: #aaaaab">Plan</span><span class="word" style="color: #aaaaab">every</span><span class="word" style="color: #aaaaab">launch</span></div>
+    <div class="line" aria-hidden="true"><span class="word" style="color: #aaaaac">with</span><span class="word" style="color: #aaaaac">your</span><span class="word" style="color: #aaaaac">whole</span><span class="word" style="color: #aaaaac">team</span></div>
+  </div>
+
+  <!-- a carousel whose current slide wears a state class -->
+  <div class="track" id="fail-carousel">
+    <div class="quote is-active"><p>We moved the whole team over in an afternoon.</p><p>Dana Reyes</p><p>Head of Ops</p></div>
+    <div class="quote" id="fail-carousel-rest" aria-hidden="true"><p style="color: #ababab">Billing finally makes sense.</p><p style="color: #ababab">Sam Okafor</p><p style="color: #ababab">CFO, Lattice Labs</p></div>
+  </div>
+
+  <!-- a stats band hidden beside a screen-reader sentence saying the same -->
+  <div id="fail-stats-wrap">
+    <p class="sr-only">Over twelve thousand teams, ninety nine point nine percent uptime and four minute replies.</p>
+    <div class="stats" id="fail-stats" aria-hidden="true"><div class="stat"><b style="color: #acacac">12k</b> <span style="color: #acacac">teams</span></div><div class="stat"><b style="color: #acacac">99.9%</b> <span style="color: #acacac">uptime</span></div><div class="stat"><b style="color: #acacac">4 min</b> <span style="color: #acacac">replies</span></div></div>
+  </div>
+
+  <!-- a list of links a breakpoint script left aria-hidden -->
+  <div class="rail" id="fail-rail" aria-hidden="true"><a href="#a" style="color: #adadad">Getting started</a><a href="#b" style="color: #adadad">Install</a><a href="#c" style="color: #adadad">Configure</a><a href="#d" style="color: #adadad">Deploy</a><a href="#e" style="color: #adadad">Reference</a></div>
+
+  <!-- step 2 of a form, held inert until step 1 is done -->
+  <div class="step" id="fail-step" inert><label style="color: #aeaeae">Billing email</label><input><label style="color: #aeaeae">Tax ID</label><input><label style="color: #aeaeae">Billing address</label><input></div>
+</div>
+
+</body>
+</html>

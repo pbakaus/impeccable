@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>body-text-viewport-edge, a slider track beside a fixed-width column</title>
+<!--
+  The page clips x overflow at the body. A column laid out at a fixed
+  2,400px runs its text past the right edge of the window, and a slider's
+  6,000px track, translated 1,016px to the left past the clones a looping slider
+  puts before its first slide, holds a slide whose text also runs past it
+  (studying.jp). The page-level
+  finding names the column, the box whose width cuts the text, not the
+  track, which runs past both sides of the window carrying slides.
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; font-size: 16px; line-height: 24px; color: #1f2937; background: #ffffff; margin: 0; overflow-x: hidden; }
+  .wide-column { width: 2400px; padding: 24px 16px; }
+  .wide-column p { margin: 0 0 16px; }
+  .slider { width: 300px; margin: 24px 16px; }
+  .track { display: flex; width: 6000px; transform: translateX(-1016px); }
+  .slide { flex: none; width: 700px; padding: 0 16px; }
+  .slide p { margin: 0; }
+</style>
+</head>
+<body>
+  <div class="wide-column">
+    <p>Every course is built around the exam it prepares for, so the lessons, the practice questions and the mock tests all follow the same syllabus, in the same order, with nothing left to chance and nothing you will not need.</p>
+  </div>
+  <div class="slider">
+    <div class="track">
+      <div class="slide"><p>I studied on the train every morning and passed on the first try, which I never expected to do.</p></div>
+      <div class="slide"><p>The short lectures fit into my lunch break, and the practice questions showed me what to review next.</p></div>
+      <div class="slide"><p>Tracking my score every week kept me going through the months before the exam day arrived.</p></div>
+      <div class="slide"><p>I could replay the hard parts at double speed and skip what I already knew well enough.</p></div>
+      <div class="slide"><p>The mock exams felt like the real one, so nothing on the day came as a surprise to me.</p></div>
+      <div class="slide"><p>Every chapter ended with a short test, and the results told me exactly where to spend my evenings.</p></div>
+      <div class="slide"><p>I kept my notes in the app and read them again on the way to the exam hall that morning.</p></div>
+    </div>
+  </div>
+</body>
+</html>

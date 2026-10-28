@@ -221,6 +221,17 @@ export default [
     ],
   },
 
+  // Hermes (#1178): the plugin forces the harness and sends Claude-shaped
+  // events; its pre_verify gate reads the same top-level decision/block.
+  {
+    id: 'hook-session-hermes-stop-decision', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    env: { IMPECCABLE_HOOK_HARNESS: 'hermes' },
+    steps: [
+      { stdin: claudeEdit('src/components/Card.module.css', { session_id: 'hm1' }) },
+      { stdin: stop({ session_id: 'hm1' }) },
+    ],
+  },
+
   // Umbrella session (#1101): the session cwd is a plain folder holding the
   // projects, so the per-edit pass keys each cache to the project root below
   // it. Stop finds them through the per-user session index (in the case's

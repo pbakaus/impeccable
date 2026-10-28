@@ -1,9 +1,9 @@
 //! What an uncaught page error is, read from its message.
 //!
 //! A URL scan reports each uncaught error as `script-error`. Most are the
-//! rule's error. Two kinds report as advisory: ad-tech errors
-//! ([`crate::third_party::ad_tech_vendor`]) and the hydration errors React
-//! recovers from, named here.
+//! rule's error. Three kinds report as advisory: ad-tech errors
+//! ([`crate::third_party::ad_tech_vendor`]), the hydration errors React
+//! recovers from, and an interrupted media `play()`, both named here.
 
 /// The invariants React throws when hydration fails and it recovers by
 /// rendering again on the client: #418 (the server HTML did not match), #419
@@ -28,9 +28,35 @@ pub fn react_recoverable_hydration_error(message: &str) -> Option<u32> {
     REACT_RECOVERABLE_HYDRATION_ERRORS.contains(&code).then_some(code)
 }
 
+/// Whether `message` is the rejection Chrome gives a `play()` promise that a
+/// later `pause()`, a new load or the element's removal interrupted
+/// (`AbortError: The play() request was interrupted by a call to pause()`,
+/// rauno.me finding 10135138). It is a race between a hover preview's play
+/// and pause that the visitor never sees: the video does what the last call
+/// asked. Such a `script-error` reports as advisory; every other
+/// `AbortError` (an aborted fetch the page did not expect) keeps failing.
+pub fn media_play_interrupted(message: &str) -> bool {
+    message.contains("AbortError") && message.contains("The play() request was interrupted")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interrupted_play_is_named() {
+        assert!(media_play_interrupted(
+            "Uncaught (in promise) AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22"
+        ));
+        assert!(media_play_interrupted(
+            "Uncaught (in promise) AbortError: The play() request was interrupted by a new load request. https://goo.gl/LdLk22"
+        ));
+        // Twins: an aborted fetch and a play() that failed for another reason.
+        assert!(!media_play_interrupted("Uncaught (in promise) AbortError: The user aborted a request."));
+        assert!(!media_play_interrupted(
+            "Uncaught (in promise) NotAllowedError: play() failed because the user didn't interact with the document first."
+        ));
+    }
 
     #[test]
     fn recoverable_hydration_errors_are_named() {
