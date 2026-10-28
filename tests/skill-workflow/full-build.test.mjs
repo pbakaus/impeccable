@@ -64,6 +64,40 @@ body { background: var(--legacy-beige); color: #3c3833; font-family: Arial, sans
 <footer data-untouched="footer">Operational since 1987</footer>
 </body></html>`;
 
+// Scope checks for a bolder refinement of the fixture page: only the
+// #case-study section may change (its markup or the page CSS), while the
+// header and footer keep their text and links. Comment- and whitespace-only
+// writes are not a meaningful change. Shared by the model-backed workflow
+// test and the deterministic cases below.
+function namedBlock(html, tag) {
+  return html.match(new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`))?.[0] ?? null;
+}
+
+function targetSection(html) {
+  return html.match(/<section[^>]*id="case-study"[^>]*>[\s\S]*?<\/section>/)?.[0] ?? null;
+}
+
+function stripNoise(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function assertBolderScope(before, after) {
+  const section = targetSection(after);
+  assert.ok(section, 'the #case-study section disappeared');
+  const header = namedBlock(after, 'header');
+  assert.ok(header, 'the header disappeared');
+  assert.match(header, /href="\/"/, 'the header link no longer points at "/"');
+  assert.match(header, /Harbor Desk/, 'the header brand text changed');
+  const footer = namedBlock(after, 'footer');
+  assert.ok(footer, 'the footer disappeared');
+  assert.match(footer, /Operational since 1987/, 'the footer text changed');
+  const styleOf = (html) => namedBlock(html, 'style') ?? '';
+  const changed =
+    stripNoise(section) !== stripNoise(targetSection(before) ?? '') ||
+    stripNoise(styleOf(after)) !== stripNoise(styleOf(before));
+  assert.ok(changed, 'bolder left the #case-study section and the page CSS unchanged');
+}
+
 // Deliberately broken enough that any honest critique lists three or more
 // Priority Issues, so the run cannot reach the "fewer than 3" skip branch by
 // merit. Low contrast, an icon-tile stack, a kicker over the heading, dead
@@ -243,6 +277,7 @@ for (const modelId of process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS ? resolveMode
         assert.match(artifact, /data-untouched="header"/);
         assert.match(artifact, /data-untouched="footer"/);
         assert.match(artifact, /id="case-study"/);
+        assertBolderScope(EXISTING_PAGE, artifact);
       } finally {
         cleanupWorkspace(workspace);
       }
@@ -299,3 +334,29 @@ for (const modelId of process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS ? resolveMode
     });
   });
 }
+
+// Deterministic replay of the bolder scope checks (no model run): controlled
+// edits of the fixture, as proposed in #1193. Out-of-scope and comment-only
+// writes must be rejected; valid scoped refinements (markup or CSS-only) must
+// be accepted. This guards the assertion gap the model-backed test alone
+// cannot see.
+describe('bolder scope assertions :: deterministic', () => {
+  const cases = [
+    ['target text changed; header and footer preserved', (h) => h.replace('Challenge. Approach. Outcome.', 'A sharper story.'), true],
+    ['scoped markup refinement with the header and footer preserved', (h) => h.replace('<p>Image placeholder</p>', '<p>Outcome chart</p>'), true],
+    ['CSS-only refinement of the target', (h) => h.replace('.card {', '.card { background: #fff;'), true],
+    ['header link retargeted outside the section', (h) => h.replace('<a href="/">', '<a href="/missing-page">'), false],
+    ['header brand text changed outside the section', (h) => h.replace('Harbor Desk</a>', 'Dockside Desk</a>'), false],
+    ['footer text replaced outside the section', (h) => h.replace('Operational since 1987', 'All hands on deck'), false],
+    ['comment-only write with the target untouched', (h) => h.replace('</body>', '<!-- polished --></body>'), false],
+    ['whitespace-only write with the target untouched', (h) => h.replace('</style>', '</style>\n'), false],
+  ];
+  for (const [name, change, passes] of cases) {
+    it(`${passes ? 'accepts' : 'rejects'}: ${name}`, () => {
+      const edited = change(EXISTING_PAGE);
+      const check = () => assertBolderScope(EXISTING_PAGE, edited);
+      if (passes) check();
+      else assert.throws(check);
+    });
+  }
+});
