@@ -143,10 +143,11 @@ Download the ZIP for your tool from [impeccable.style](https://impeccable.style)
 | Trae | `.trae/` | `~/.trae/skills/` |
 | Trae China | `.trae-cn/` | `~/.trae-cn/skills/` |
 
-For example: `cp -r .claude/skills/impeccable your-project/.claude/skills/`.
+For example: `mkdir -p your-project/.claude/skills && cp -r .claude/skills/impeccable your-project/.claude/skills/`.
 
 Notes:
 - A manual copy skips the design hook and subagents. Use the installer if you want them. For the Codex hook alone, copy `.codex/hooks.json` into your project's `.codex/`.
+- OpenCode also needs `.opencode/commands/impeccable.md` copied into your project's `.opencode/commands/` to provide `/impeccable`.
 - Hermes asks you to trust project-local skills once: run `hermes skills trust` from the project root. Global installs need no trust step. Hermes has no hook.
 - Cursor and Gemini CLI may need Agent Skills enabled in settings. See the [Cursor](https://cursor.com/docs/context/skills) and [Gemini CLI](https://geminicli.com/docs/cli/skills/) skills docs.
 - Restart Trae after copying.
