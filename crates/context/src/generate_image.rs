@@ -24,20 +24,24 @@ pub fn configured_api_base(env: &Env) -> Result<Option<String>, String> {
         return Ok(None);
     };
     let base = raw.trim().trim_end_matches('/');
-    if base.is_empty() || base == DEFAULT_API_BASE {
+    if base.is_empty() {
         return Ok(None);
     }
     // Schemes are case-insensitive; an uppercase HTTP:// is the same endpoint,
     // not a typo to refuse. Normalize the scheme to lowercase so the prefix
     // match below accepts it, then run every other check on the normalized
-    // value.
-    let base = if base.len() >= 8 && base[..8].eq_ignore_ascii_case("https://") {
+    // value. `get` rather than indexing: a byte offset inside a multibyte
+    // character (`http://例.jp`) is None, not a panic.
+    let base = if base.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://")) {
         format!("https://{}", &base[8..])
-    } else if base.len() >= 7 && base[..7].eq_ignore_ascii_case("http://") {
+    } else if base.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("http://")) {
         format!("http://{}", &base[7..])
     } else {
         base.to_string()
     };
+    if is_default_api_base(&base) {
+        return Ok(None);
+    }
     let rest = match base.strip_prefix("https://").or_else(|| base.strip_prefix("http://")) {
         Some(rest) => rest,
         None => return Err("must start with http:// or https://".into()),
@@ -73,6 +77,13 @@ pub fn configured_api_base(env: &Env) -> Result<Option<String>, String> {
         }
     }
     Ok(Some(base.to_string()))
+}
+
+/// OpenAI's own endpoint, matched after scheme normalization: the origin
+/// compares case-insensitively (hosts are), the path exactly (paths are not).
+fn is_default_api_base(base: &str) -> bool {
+    let origin = DEFAULT_API_BASE.len() - "/v1".len();
+    base.get(..origin).is_some_and(|o| o.eq_ignore_ascii_case(&DEFAULT_API_BASE[..origin])) && base.get(origin..) == Some("/v1")
 }
 
 /// Split the authority of a scheme-stripped endpoint into host and optional
@@ -565,7 +576,10 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
             }
         }
     }
-    let agent = crate::http::agent_builder().build();
+    // A proxy cannot reach the operator's loopback, and HTTP_PROXY would
+    // carry a plaintext key off-machine; loopback skips the env proxy, as
+    // live-mode localhost HTTP does.
+    let agent = if is_loopback_endpoint(api_base) { ureq::AgentBuilder::new().build() } else { crate::http::agent_builder().build() };
     let response = if !refs.is_empty() {
         let boundary = format!("----impeccable{:x}", crate::util::now_ms() as u64);
         let mut body: Vec<u8> = Vec::new();
@@ -1058,7 +1072,7 @@ mod tests {
     fn api_base_resolution() {
         // Unset, empty, whitespace-only, or already OpenAI (with or without
         // trailing slashes): the default, so no re-pointing happened.
-        for raw in ["", "   ", "https://api.openai.com/v1", "https://api.openai.com/v1///"] {
+        for raw in ["", "   ", "https://api.openai.com/v1", "https://api.openai.com/v1///", "HTTPS://api.openai.com/v1", "https://API.OpenAI.com/v1/"] {
             assert_eq!(configured_api_base(&Env::from([("OPENAI_BASE_URL".into(), raw.into())])), Ok(None), "{raw:?}");
         }
         // A configured endpoint, outer whitespace and trailing slashes stripped.
@@ -1080,8 +1094,18 @@ mod tests {
             configured_api_base(&Env::from([("OPENAI_BASE_URL".into(), "HTTP://127.0.0.1:8188/v1".into())])),
             Ok(Some("http://127.0.0.1:8188/v1".into()))
         );
+        // The path is case-sensitive, so a different path is a configured endpoint.
+        assert_eq!(
+            configured_api_base(&Env::from([("OPENAI_BASE_URL".into(), "https://api.openai.com/V1".into())])),
+            Ok(Some("https://api.openai.com/V1".into()))
+        );
+        // A multibyte character at the scheme's byte offsets resolves, never panics.
+        assert_eq!(
+            configured_api_base(&Env::from([("OPENAI_BASE_URL".into(), "http://例.jp/v1".into())])),
+            Ok(Some("http://例.jp/v1".into()))
+        );
         // An unusable value is refused with a reason, never guessed around.
-        for bad in ["not a url", "ftp://127.0.0.1:8188/v1", "http://", "http:///v1", "http://lo cal/v1", "https://\r\nx/v1", "http://localhost:99999/v1", "http://localhost:8188/v1?token=x", "http://localhost:8188/v1#frag", "http://user@:8188/v1", "http://user:pass@proxy.example/v1", "https://user:token@proxy.example/v1"] {
+        for bad in ["例例例://x/v1", "not a url", "ftp://127.0.0.1:8188/v1", "http://", "http:///v1", "http://lo cal/v1", "https://\r\nx/v1", "http://localhost:99999/v1", "http://localhost:8188/v1?token=x", "http://localhost:8188/v1#frag", "http://user@:8188/v1", "http://user:pass@proxy.example/v1", "https://user:token@proxy.example/v1"] {
             assert!(configured_api_base(&Env::from([("OPENAI_BASE_URL".into(), bad.into())])).is_err(), "{bad:?}");
         }
     }
@@ -1261,6 +1285,19 @@ mod tests {
 
     #[test]
     fn a_configured_endpoint_sends_the_key_when_one_is_present() {
+        // A dead HTTP_PROXY proves loopback dispatch skips the env proxy: a
+        // proxied request would never reach this server, and the key would
+        // leave the machine in plaintext.
+        let _proxy_lock = crate::http::PROXY_ENV_LOCK.lock().unwrap();
+        let proxy_vars = ["ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"];
+        let saved: Vec<_> = proxy_vars.iter().map(|k| (*k, std::env::var(k).ok())).collect();
+        for k in proxy_vars {
+            // SAFETY: PROXY_ENV_LOCK serializes every test touching these vars.
+            match k {
+                "HTTP_PROXY" | "http_proxy" => unsafe { std::env::set_var(k, "http://127.0.0.1:9") },
+                _ => unsafe { std::env::remove_var(k) },
+            }
+        }
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let addr = format!("http://{}", server.server_addr());
         let dir = temp("local-endpoint-key");
@@ -1278,7 +1315,15 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        assert_eq!(run(&args, &mut io), 0, "{:?}", captured.stderr);
+        let exit = run(&args, &mut io);
+        for (k, v) in saved {
+            // SAFETY: same lock as above; restore before asserting.
+            match v {
+                Some(v) => unsafe { std::env::set_var(k, v) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+        assert_eq!(exit, 0, "{:?}", captured.stderr);
         assert_eq!(handle.join().unwrap().as_deref(), Some("Bearer test-key"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
