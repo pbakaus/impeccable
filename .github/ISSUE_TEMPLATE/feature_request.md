@@ -26,6 +26,7 @@ assignees: ''
 - [ ] OpenCode
 - [ ] Qoder
 - [ ] Mistral Vibe
+- [ ] ZCode
 - [ ] All providers
 
 ## Alternatives considered

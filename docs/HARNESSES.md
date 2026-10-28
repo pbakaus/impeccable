@@ -3,7 +3,7 @@
 Source of truth for what each AI coding harness supports in terms of agent skills.
 Used to inform provider configs in `scripts/lib/transformers/providers.js`.
 
-Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral Vibe row verified 2026-07-16; Grok Build skills row verified 2026-07-21; Grok Build hook stdin captured 2026-08-24; DeepSeek Harness row verified 2026-09-06)
+Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral Vibe row verified 2026-07-16; Grok Build skills row verified 2026-07-21; Grok Build hook stdin captured 2026-08-24; DeepSeek Harness row verified 2026-09-06; ZCode rows verified 2026-10-24)
 
 > This file is point-in-time. Capabilities move fast; verify live before relying
 > on any "only X supports Y" claim. Notably, the subagent table below lists
@@ -31,6 +31,7 @@ Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral V
 | Hermes Agent | https://hermes-agent.nousresearch.com/docs/ |
 | Antigravity | https://antigravity.google/docs/skills |
 | Devin | https://docs.devin.ai/cli/extensibility/skills/overview |
+| ZCode | https://zcode.z.ai/en/docs/skill |
 
 ## Spec Compliance
 
@@ -42,22 +43,22 @@ Provider-specific extensions beyond the spec: `user-invocable`, `argument-hint`,
 
 Fields marked with * are spec-standard. Others are provider extensions.
 
-| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Grok | Hermes | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity | DSH |
-|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|:------:|
-| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
-| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
-| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | No | Yes | Yes | Yes | Yes | Yes | No |
-| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | Yes | No | Yes |
-| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | No | No | No |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No | Yes |
-| `model` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
-| `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
-| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No | No |
+| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Grok | Hermes | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity | DSH | ZCode |
+|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|:------:|:-----:|
+| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored | Yes |
+| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored | Ignored |
+| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | No | Yes | Yes | Yes | Yes | Yes | No | Ignored |
+| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | Yes | No | Yes | No |
+| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | No | No | No | No |
+| `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No | Yes | No |
+| `model` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No | No |
+| `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No | No |
+| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
@@ -69,6 +70,7 @@ Notes:
 - Antigravity supports standard Agent Skills spec frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
 - OpenCode 1.18.10 recognises only the spec subset on SKILL.md (`name`, `description`, `license`, `compatibility`, `metadata`). Claude-style extensions (`user-invocable`, `argument-hint`, `allowed-tools`, `model`, `agent`) are silently ignored; Impeccable still emits them today for other harnesses, but they have no effect in OpenCode. Use `commands/<name>.md` (see Placeholder / Variable Substitution below) for slash UX; OpenCode honours only `description`, `agent`, `model`, `variant`, `subtask` on command files.
 - DeepSeek Harness parses the Agent Skills frontmatter and requires `name` and `description`; it reads `metadata`, `user-invocable`, and `disable-model-invocation`. Spec fields it does not consume (`license`, `compatibility`, `allowed-tools`) and Claude-style extensions (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are silently ignored. Hooks are in-process plugins configured via cordis.yml, not on-disk manifests, so there is no hook surface to install. Subagents exist but are composed from preset config, not an on-disk skill-adjacent format. Verified against the [filesystem skill provider](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.md).
+- ZCode validates `name` and `description` only (both required; a description over 1024 characters drops the skill) and additionally recognizes `license`, `metadata`, and its own `when_to_use` key. The frontmatter parser reads flat top-level `key: value` lines (indented, nested keys are ignored), and unknown fields are silently ignored. Docs: https://zcode.z.ai/en/docs/skill.
 - Oh My Pi supports standard Agent Skills frontmatter fields and `disable-model-invocation`; other harness-specific extensions are ignored.
 - Devin's skill frontmatter carries `name`, `description`, `argument-hint`, `allowed-tools`, `triggers`, `model`, `subagent`, `agent`, and `permissions` (the last four are documented for the CLI). It has no `user-invocable`; `triggers` defaults to user and model, so Impeccable omits it. The CLI docs describe `allowed-tools` as an auto-approve list and the web docs as a restriction, and Impeccable's Claude-syntax entries match no Devin tool (`read`, `grep`, `glob`, `exec`), so Impeccable omits it too. The CLI has lifecycle hooks (`.devin/hooks.v1.json`, plus Claude-format hooks read from `.claude/settings.json`) and subagent profiles (`.devin/agents/`, `.agents/agents/`, `~/.config/devin/agents/`, same frontmatter as skills with Devin tool names); Impeccable targets neither yet, so Devin gets the skill without an edit hook and runs the agent roles inline from `reference/degraded/`. Verified 2026-10-26 against the bundled docs of Devin CLI 3000.11.205 and [docs.devin.ai](https://docs.devin.ai/cli/extensibility/skills/overview).
 - Unknown fields are silently ignored by all harnesses.
@@ -109,6 +111,7 @@ Notes:
 | Hermes Agent | `.hermes/skills/` (project), `~/.hermes/skills/` (global) | `skills.external_dirs` config (no automatic `.agents/skills/` fallback) |
 | Antigravity | `.agent/skills/` (project), `~/.gemini/config/skills/` (global) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 | Devin | `.devin/skills/` (project), `~/.config/devin/skills/` (global, shared by CLI and Desktop; `%APPDATA%\devin\skills\` on Windows) | `.agents/skills/` and `.cognition/skills/` (project), `~/.agents/skills/` and `~/.config/cognition/skills/` (global), `.windsurf/skills/` (legacy), `~/.codeium/windsurf/skills/` (Desktop legacy global). The CLI also imports `.claude/skills/`, `.cursor/skills/`, and `.github/skills/` through `read_config_from`; Devin web scans `.github/skills/`, `.claude/skills/`, `.cognition/skills/`, and `.windsurf/skills/` |
+| ZCode | `.zcode/skills/` (project), `~/.zcode/skills/` (global) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 
 All harnesses support the `{skill-name}/SKILL.md` directory structure with optional `reference/`, `scripts/`, and `assets/` subdirectories.
 

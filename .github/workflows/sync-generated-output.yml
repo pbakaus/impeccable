@@ -46,6 +46,7 @@ env:
     .trae-cn
     .veto
     .vibe
+    .zcode
     plugin
     cursor-plugin
 

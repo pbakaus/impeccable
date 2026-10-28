@@ -226,4 +226,15 @@ export const PROVIDERS = {
     // Devin tool names), neither targeted yet: no emitHooks, no agentFormat.
     frontmatterFields: ['argument-hint', 'license', 'compatibility', 'metadata'],
   },
+  zcode: {
+    provider: 'zcode',
+    providerTags: ['zcode'],
+    configDir: '.zcode',
+    displayName: 'ZCode',
+    // ZCode reads flat top-level frontmatter (name + description required,
+    // over 1024 chars drops the skill) and preserves license + metadata.
+    // See https://zcode.z.ai/en/docs/skill.
+    frontmatterFields: ['license', 'metadata'],
+    versionInMetadata: true,
+  },
 };

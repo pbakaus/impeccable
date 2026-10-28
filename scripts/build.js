@@ -687,6 +687,7 @@ This folder contains skills for all supported tools:
   .vibe/      -> Mistral Vibe
   .veto/      -> Veto model-routing harness
   .qoder/     -> Qoder
+  .zcode/     -> ZCode
 
 To install, copy the relevant folder(s) into your project root.
 For Codex, repo and user skill installs come from .agents/skills.

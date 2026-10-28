@@ -2,6 +2,8 @@
 //! (DeepSeek Harness) must be detected even when `~/.dsh` itself does not
 //! exist, and must be ignored when it points outside home. A project
 //! `.replit` file labels the shared `.agents` detection as Replit Agent.
+//! Also pins the plain-home `.zcode` hint (ZCode reaches detection through
+//! the generic home-hint path, like other plain-home providers).
 
 use std::collections::HashMap;
 
@@ -109,6 +111,22 @@ fn opencode_config_dir_only_setup_is_detected() {
         .map(|d| d.found_path)
         .collect();
     assert_eq!(found, vec![opencode_dir]);
+}
+
+#[test]
+fn zcode_home_hint_dir_is_detected() {
+    let home = temp_root("zcode-hint-detect");
+    let project = temp_root("zcode-hint-project");
+    std::fs::create_dir_all(jsp::join(&[&home, ".zcode"])).unwrap();
+    let sys = sys_with(&home, &[]);
+
+    let found: Vec<String> = sys
+        .collect_install_detections(&project)
+        .into_iter()
+        .filter(|d| d.provider == ".zcode" && d.scope == Scope::User)
+        .map(|d| d.found_path)
+        .collect();
+    assert_eq!(found, vec![jsp::join(&[&home, ".zcode"])]);
 }
 
 fn agents_project_detections(sys: &Sys, root: &str) -> Vec<impeccable_skills::providers::Detection> {

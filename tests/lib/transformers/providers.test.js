@@ -121,7 +121,7 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       transform(skills, TEST_DIR, { skillsVersion: '1.2.3-test' });
       const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
       const parsed = parseFrontmatter(content);
-      if (key === 'codex' || key === 'agents') {
+      if (key === 'codex' || key === 'agents' || key === 'zcode') {
         expect(parsed.frontmatter.version).toBeUndefined();
         expect(content).toContain('metadata:\n  version: 1.2.3-test');
       } else {

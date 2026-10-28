@@ -129,7 +129,9 @@ git add .gitmodules .impeccable .claude .cursor
 git commit -m "Add Impeccable skills"
 ```
 
-Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `devin`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+
+Use the providers your project needs, for example `claude`, `cursor`, `gemini`, `codex`, `github`, `grok`, `devin`, `hermes`, `opencode`, `pi`, `qoder`, `trae`, `trae-cn`, `rovo-dev`, `vibe`, `zcode`, or `veto`. The command links individual skill folders from `.impeccable/dist/universal/` and leaves existing real skill directories untouched unless you pass `--force`.
+
 
 To update later:
 
@@ -305,6 +307,15 @@ cp -r dist/qoder/.qoder your-project/
 
 # Or global (applies to all projects)
 cp -r dist/qoder/.qoder/skills/* ~/.qoder/skills/
+```
+
+**ZCode:**
+```bash
+# Project-specific
+cp -r dist/zcode/.zcode your-project/
+
+# Or global (applies to all projects)
+cp -r dist/zcode/.zcode/skills/* ~/.zcode/skills/
 ```
 
 **Mistral Vibe:**
@@ -521,6 +532,7 @@ Full detector docs: [impeccable.style/docs/detector](https://impeccable.style/do
 - [Mistral Vibe](https://docs.mistral.ai/vibe/code/overview)
 - [Veto](https://github.com/oleg-koval/veto)
 - [Google Antigravity](https://antigravity.google)
+- [ZCode](https://zcode.z.ai)
 
 ## Community & Ecosystem
 

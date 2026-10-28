@@ -61,5 +61,6 @@ crates/live/assets/antipatterns.json linguist-generated
 .trae-cn/** linguist-generated
 .veto/** linguist-generated
 .vibe/** linguist-generated
+.zcode/** linguist-generated
 plugin/** linguist-generated
 cursor-plugin/** linguist-generated

@@ -22,5 +22,6 @@ export const transformAntigravity = createTransformer(PROVIDERS.antigravity);
 export const transformHermes = createTransformer(PROVIDERS.hermes);
 export const transformDevin = createTransformer(PROVIDERS.devin);
 export const transformVeto = createTransformer(PROVIDERS.veto);
+export const transformZcode = createTransformer(PROVIDERS.zcode);
 
 export { createTransformer, PROVIDERS };

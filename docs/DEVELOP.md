@@ -173,6 +173,7 @@ The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, g
 - [Mistral Vibe Skills](https://docs.mistral.ai/vibe/code/cli/skills)
 - [Grok Build Skills, Plugins & Marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces)
 - [Grok Build Hooks](https://docs.x.ai/build/features/hooks)
+- [ZCode Skills](https://zcode.z.ai/en/docs/skill)
 
 ## Repository Structure
 
