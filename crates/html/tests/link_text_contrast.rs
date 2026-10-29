@@ -409,12 +409,9 @@ a.pale { color: #aaaaaa; font-size: 14px; }
 }
 
 #[test]
-fn a_media_query_never_hides_anything_from_the_contrast_pass() {
-    // The static cascade descends every `@media` block, so a `max-width`
-    // query's `display: none` is the winning value here whatever viewport a
-    // reader is on. Standing an element down for it deletes the coverage
-    // this engine has always had of desktop-only markup: both links below
-    // are read by somebody, and both are reported.
+fn inactive_mobile_media_does_not_hide_desktop_contrast_findings() {
+    // Static scans use a 1280px-wide screen. The mobile-only display rule
+    // does not apply, so both desktop links remain in the contrast pass.
     let html = r#"<!DOCTYPE html>
 <html><head><style>
 body { background: #ffffff; }
