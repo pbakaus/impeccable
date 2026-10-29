@@ -54,7 +54,12 @@ async function download() {
     throw new Error(`no checksum for engine ${VERSION} (${ASSET}) in ${MANIFEST}; refusing the unverified download`);
   }
   const res = await fetch(URL, { redirect: 'follow' });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // Release rejected responses so an unfinished error body cannot hold the
+    // shim open while main() exits naturally.
+    await res.body?.cancel();
+    return null;
+  }
   const buf = Buffer.from(await res.arrayBuffer());
   if (createHash('sha256').update(buf).digest('hex') !== expected) {
     throw new Error(`checksum mismatch downloading ${URL}`);
@@ -97,20 +102,25 @@ if (argv[0] === '--version' || argv[0] === '-v') {
   process.exit(0);
 }
 
-const bin = await locate();
-if (!bin) {
-  process.stderr.write(
-    `impeccable: no binary for ${TARGET}. Install ${PLATFORM_PKG}@${VERSION}, set IMPECCABLE_BIN, `
-    + `or download impeccable-${TARGET} v${VERSION} from ${BASE} into ${CACHED}.\n`,
-  );
-  process.exit(127);
+async function main() {
+  const bin = await locate();
+  if (!bin) {
+    process.stderr.write(
+      `impeccable: no binary for ${TARGET}. Install ${PLATFORM_PKG}@${VERSION}, set IMPECCABLE_BIN, `
+      + `or download impeccable-${TARGET} v${VERSION} from ${BASE} into ${CACHED}.\n`,
+    );
+    return 127;
+  }
+  const result = spawnSync(bin, argv, {
+    stdio: 'inherit',
+    env: { IMPECCABLE_SELF: 'npx impeccable', ...process.env },
+  });
+  if (result.error) {
+    process.stderr.write(`impeccable: failed to run ${bin}: ${result.error.message}\n`);
+    return 127;
+  }
+  return result.status === null ? 1 : result.status;
 }
-const result = spawnSync(bin, argv, {
-  stdio: 'inherit',
-  env: { IMPECCABLE_SELF: 'npx impeccable', ...process.env },
-});
-if (result.error) {
-  process.stderr.write(`impeccable: failed to run ${bin}: ${result.error.message}\n`);
-  process.exit(127);
-}
-process.exit(result.status === null ? 1 : result.status);
+
+// Let pending HTTP handles and output finish before Node tears down libuv.
+process.exitCode = await main();

@@ -20,10 +20,14 @@ const forceOptIn = eventName === 'workflow_dispatch';
 const RUST_PATTERNS = [
   /^crates\//,
   /^Cargo\.(toml|lock)$/,
+  /^package\.json$/,
   /^rust-toolchain\.toml$/,
   /^browser-bundle\//,
   /^tests\/oracle\//,
   /^\.github\/workflows\/ci\.yml$/,
+  /^\.github\/workflows\/release-engine\.yml$/,
+  /^cli\/(bin|platform-packages)\//,
+  /^tests\/cli-native\.test\.mjs$/,
 ];
 const rustChanged = changedFiles.some((file) => RUST_PATTERNS.some((re) => re.test(file)));
 
