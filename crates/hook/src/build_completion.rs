@@ -94,7 +94,11 @@ pub fn persist_session_identity(rt: &Runtime, session: &str) {
     use std::io::Write;
     if !literal_session_id(session) { return; }
     let Some(path) = rt.env("CLAUDE_ENV_FILE").filter(|p| !p.is_empty()) else { return; };
+    // SessionStart fires on every resume; write the line once so the env file
+    // (which Claude Code inlines into each Bash command) does not grow.
+    let line = format!("export IMPECCABLE_SESSION_ID='{session}'");
+    if std::fs::read_to_string(&path).is_ok_and(|s| s.lines().any(|l| l == line)) { return; }
     if let Ok(mut file) = std::fs::OpenOptions::new().append(true).create(true).open(path) {
-        let _ = writeln!(file, "export IMPECCABLE_SESSION_ID='{session}'");
+        let _ = writeln!(file, "{line}");
     }
 }
