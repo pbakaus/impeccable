@@ -8,9 +8,10 @@
  * `skill/scripts/engine-checksums.txt`, never from the release server. No line
  * for the version and asset refuses before any request, a payload that
  * disagrees refuses after the fetch, and both leave nothing in the cache dir.
- * A cached binary is hashed once against the same line and then trusted
- * through its `.verified` stamp; a cached binary that fails the hash is
- * downloaded again.
+ * A cached binary is hashed against the same line and then trusted through
+ * its `.verified` stamp, but only while the stamp holds that digest and the
+ * binary's size and is not older than the binary; a cached binary that fails
+ * the hash is downloaded again.
  *
  * Two things keep these cases honest about which lookup arm they exercise.
  * First, the shim runs from a staged copy (`<tmp>/cli/bin/cli.js` beside a
@@ -107,15 +108,28 @@ function run(shim, args, env) {
   });
 }
 
-/** Stage a shim and run it with its own cache dir, optionally pre-filled with an unstamped binary. */
-async function runShim(args = ['engine-probe'], { line, cached } = {}) {
+/**
+ * Stage a shim and run it with its own cache dir, optionally pre-filled with a
+ * binary that is unstamped, or stamped with `stamp` and aged `stampAge` ms.
+ * `nodeOptions` and `exe` let a case pose as another platform.
+ */
+async function runShim(args = ['engine-probe'], { line, cached, stamp, stampAge = 0, exe = 'impeccable', nodeOptions } = {}) {
   const { dir, shim } = stageShim(line);
   if (cached) {
-    fs.mkdirSync(path.join(dir, 'bin', VERSION), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'bin', VERSION, 'impeccable'), cached, { mode: 0o755 });
+    const bin = path.join(dir, 'bin', VERSION, exe);
+    fs.mkdirSync(path.dirname(bin), { recursive: true });
+    fs.writeFileSync(bin, cached, { mode: 0o755 });
+    if (stamp !== undefined) {
+      fs.writeFileSync(`${bin}.verified`, stamp);
+      if (stampAge) {
+        const past = new Date(Date.now() - stampAge);
+        fs.utimesSync(`${bin}.verified`, past, past);
+      }
+    }
   }
   const env = { ...process.env, IMPECCABLE_HOME: dir, IMPECCABLE_DOWNLOAD_BASE: base };
   delete env.IMPECCABLE_BIN;
+  if (nodeOptions) env.NODE_OPTIONS = nodeOptions;
   return { ...(await run(shim, args, env)), home: dir };
 }
 
@@ -179,6 +193,56 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     assert.deepEqual(requests, [ASSET_PATH]);
     assert.deepEqual(cacheEntries(res.home), cachedEntries);
     assert.deepEqual(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable')), PAYLOAD);
+  });
+
+  for (const [what, stamp] of [['is empty', ''], ['holds another digest', `${'0'.repeat(64)} ${PAYLOAD.length}`], ['predates the size field', DIGEST]]) {
+    it(`rehashes a cached binary whose stamp ${what}, rewrites it and never downloads`, async () => {
+      const res = await runShim(['hi'], { cached: PAYLOAD, stamp });
+      assert.equal(res.status, 0, res.stderr);
+      assert.match(res.stdout, /fake-engine hi/);
+      assert.deepEqual(requests, []);
+      assert.deepEqual(cacheEntries(res.home), cachedEntries);
+      assert.equal(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable.verified'), 'utf8').trim(), `${DIGEST} ${PAYLOAD.length}`);
+    });
+  }
+
+  const tampered = Buffer.from('#!/bin/sh\necho "tampered $*"\n');
+  for (const [how, stamp, stampAge] of [
+    ['written after its stamp', `${DIGEST} ${tampered.length}\n`, 60000],
+    ['moved in with an older mtime', `${DIGEST} ${PAYLOAD.length}\n`, 0],
+  ]) {
+    it(`downloads again when a cached binary was ${how}`, async () => {
+      const res = await runShim(['hi'], { cached: tampered, stamp, stampAge });
+      assert.equal(res.status, 0, res.stderr);
+      assert.match(res.stderr, /cannot verify the cached engine/);
+      assert.match(res.stdout, /fake-engine hi/);
+      assert.deepEqual(requests, [ASSET_PATH]);
+      assert.deepEqual(cacheEntries(res.home), cachedEntries);
+      assert.deepEqual(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable')), PAYLOAD);
+    });
+  }
+
+  it('runs a cached binary on a good stamp without hashing it', async () => {
+    const digest = '1'.repeat(64);
+    const res = await runShim(['hi'], { line: `${VERSION} ${ASSET} ${digest}`, cached: PAYLOAD, stamp: `${digest} ${PAYLOAD.length}\n` });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.equal(res.stderr, '');
+    assert.deepEqual(requests, []);
+  });
+
+  it('accepts the x64 digest for a cached engine on Windows on ARM, like the launchers', async () => {
+    const posing = "Object.defineProperty(process,'platform',{value:'win32'});Object.defineProperty(process,'arch',{value:'arm64'});";
+    const res = await runShim(['hi'], {
+      line: `${VERSION} impeccable-windows-x64.exe ${DIGEST}`,
+      cached: PAYLOAD,
+      exe: 'impeccable.exe',
+      nodeOptions: `--import=data:text/javascript,${encodeURIComponent(posing)}`,
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.deepEqual(requests, []);
+    assert.equal(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable.exe.verified'), 'utf8').trim(), `${DIGEST} ${PAYLOAD.length}`);
   });
 
   it('answers --version and -v from its own package.json without touching a binary', async () => {

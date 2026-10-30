@@ -6,12 +6,16 @@
 # The unversioned home binary and the PATH candidate are validated with the
 # engine-probe handshake first: the retired 3.x npm CLI also installed a bin
 # named `impeccable`, and exec'ing it would fail every verb with
-# "Unknown command". Trusted candidates (IMPECCABLE_BIN, the sibling binary,
-# the version-pinned cache) are exec'd without a probe: hooks run them on
-# every edit and must stay fast. The version-pinned cache and the download are
-# verified against engine-checksums.txt (next to this script), never against
-# anything published beside the binary; a <binary>.verified stamp records that
-# a cached binary passed, so only the first run hashes it.
+# "Unknown command". The sibling binary must also report the version in
+# VERSION: it is gitignored, so a skill upgrade that copies files over this
+# directory leaves the old engine in place. A local build of the same version
+# passes, which is why it is not hashed. IMPECCABLE_BIN is the operator's
+# explicit choice and is exec'd without a probe. The version-pinned cache and
+# the download are verified against engine-checksums.txt (next to this
+# script), never against anything published beside the binary; a
+# <binary>.verified stamp holding the manifest digest and the binary's size
+# skips rehashing until either changes or the binary is newer than the stamp.
+# No path hashes on every run: hooks run this launcher on every edit.
 set -eu
 
 # True when the candidate answers the engine handshake (prints
@@ -23,7 +27,7 @@ set -eu
 probe_ok() {
   probe_out=$(IMPECCABLE_LAUNCHER_PROBE=1 "$1" engine-probe 2>/dev/null) || return 1
   case "$probe_out" in
-    impeccable-engine*) return 0 ;;
+    impeccable-engine*) probe_version=${probe_out#impeccable-engine }; return 0 ;;
   esac
   return 1
 }
@@ -35,7 +39,8 @@ probing=${IMPECCABLE_LAUNCHER_PROBE:-}
 # still counts.
 manifest_digest() {
   [ -f "$manifest" ] || return 0
-  while IFS="$(printf ' \t\r')" read -r m_version m_asset m_sum _ || [ -n "$m_version" ]; do
+  sep=$(printf ' \t\r')
+  while IFS="$sep" read -r m_version m_asset m_sum _ || [ -n "$m_version" ]; do
     case "$m_version" in ''|'#'*) continue ;; esac
     if [ "$m_version" = "$1" ] && [ "$m_asset" = "$2" ]; then
       printf '%s' "$m_sum"
@@ -45,14 +50,18 @@ manifest_digest() {
   return 0
 }
 # Sets $expected (and, on Windows on ARM, which runs x64 binaries,
-# $expected_x64) from engine-checksums.txt. Only called off the stamped fast
-# path: hooks run this launcher on every edit.
+# $expected_x64) from engine-checksums.txt.
 read_expected() {
   expected=$(manifest_digest "$version" "$asset")
   expected_x64=""
   if [ "$os" = windows ] && [ "$arch" = arm64 ]; then
     expected_x64=$(manifest_digest "$version" impeccable-windows-x64.exe)
   fi
+}
+# Sets $size to the byte count of the cached binary (BSD wc pads it).
+cached_size() {
+  size=$(wc -c < "$cached") || size=""
+  size=${size##* }
 }
 # Sets $actual to the sha256 of $1, empty when no hash tool works.
 hash_file() {
@@ -94,15 +103,17 @@ case "$(uname -m 2>/dev/null || echo unknown)" in
   *) arch=unknown ;;
 esac
 
+version=""
+[ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
 bin="$dir/bin/$os-$arch/impeccable"
 [ "$os" = windows ] && bin="$bin.exe"
 
-if [ -x "$bin" ]; then
-  exec "$bin" "$@"
-fi
-if [ -f "$bin" ]; then
-  # Lost the executable bit in transit (zip extraction, some copiers).
-  chmod +x "$bin" 2>/dev/null && exec "$bin" "$@"
+# Lost the executable bit in transit (zip extraction, some copiers).
+if [ -f "$bin" ] && { [ -x "$bin" ] || chmod +x "$bin" 2>/dev/null; }; then
+  if [ -n "$probing" ] || [ -z "$version" ] || { probe_ok "$bin" && [ "$probe_version" = "$version" ]; }; then
+    exec "$bin" "$@"
+  fi
+  echo "impeccable: skipping $bin: it reports engine ${probe_version:-unknown} but this skill pins $version; delete it to stop this warning" >&2
 fi
 # On Windows (an MSYS/Git Bash shell) the cached names carry .exe so this
 # launcher and impeccable.cmd share one cache.
@@ -113,20 +124,22 @@ if [ -z "$probing" ] && [ -x "$home_bin" ] && probe_ok "$home_bin"; then
   exec "$home_bin" "$@"
 fi
 # Version-pinned user cache, filled by the download below or by `impeccable update`.
-version=""
-[ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
 cache_root="${IMPECCABLE_HOME:-${HOME:-/nonexistent}/.impeccable}"
 cached="$cache_root/bin/$version/impeccable$exe"
 asset="impeccable-$os-$arch"
 [ "$os" = windows ] && asset="$asset.exe"
 if [ -n "$version" ] && [ -x "$cached" ]; then
-  if [ -f "$cached.verified" ]; then
+  read_expected
+  cached_size
+  stamp=""
+  stamp_size=""
+  { IFS="$(printf ' \t\r')" read -r stamp stamp_size _ < "$cached.verified"; } 2>/dev/null || :
+  if [ -n "$stamp" ] && [ "$stamp_size" = "$size" ] && { [ "$stamp" = "$expected" ] || [ "$stamp" = "$expected_x64" ]; } && [ ! "$cached" -nt "$cached.verified" ]; then
     exec "$cached" "$@"
   fi
-  read_expected
   hash_file "$cached"
   if [ -n "$actual" ] && { [ "$actual" = "$expected" ] || [ "$actual" = "$expected_x64" ]; }; then
-    { echo "$actual" > "$cached.verified"; } 2>/dev/null || :
+    { echo "$actual $size" > "$cached.verified"; } 2>/dev/null || :
     exec "$cached" "$@"
   fi
   echo "impeccable: cannot verify the cached engine $cached against $manifest; not using it" >&2
@@ -235,7 +248,8 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       exit 127
     fi
     check_download "$cached"
-    { echo "$actual" > "$cached.verified"; } 2>/dev/null || :
+    cached_size
+    { echo "$actual $size" > "$cached.verified"; } 2>/dev/null || :
     exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null
