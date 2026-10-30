@@ -33,6 +33,43 @@ probe_ok() {
 }
 probing=${IMPECCABLE_LAUNCHER_PROBE:-}
 
+# IMPECCABLE_HOOK_SCOPE=ui limits the design hook to interface work, for
+# machines where most sessions write no UI code. In a project with no
+# PRODUCT.md, DESIGN.md, .impeccable/config.json, .impeccable/design.json or
+# comp build state, a SessionStart or Stop event exits here, and a
+# PostToolUse event goes on only when the edited file is a markup, style or
+# component file (plain .ts and .js are left out). The check uses shell
+# builtins only and runs before anything else, so a skipped event starts no
+# other process. An event it does not recognise (another harness's shape, or
+# no file_path) goes on as before, and so does every event when the variable
+# is unset or holds any other value.
+if [ "${1:-}" = hook ] && [ "${IMPECCABLE_HOOK_SCOPE:-}" = ui ] && [ -z "$probing" ]; then
+  scope_root=${CLAUDE_PROJECT_DIR:-$PWD}
+  scope_design=
+  for scope_name in PRODUCT.md Product.md product.md DESIGN.md Design.md design.md \
+    .impeccable/config.json .impeccable/design.json .impeccable/build/state.json; do
+    if [ -f "$scope_root/$scope_name" ]; then scope_design=1; break; fi
+  done
+  if [ -z "$scope_design" ]; then
+    scope_input=
+    IFS= read -r scope_input || :
+    case "$scope_input" in
+      *'"hook_event_name":"Stop"'*|*'"hook_event_name":"SessionStart"'*) exit 0 ;;
+      *'"hook_event_name":"PostToolUse"'*'"file_path":"'*)
+        scope_path=${scope_input#*\"file_path\":\"}
+        scope_path=${scope_path%%\"*}
+        case "$scope_path" in
+          *.tsx|*.jsx|*.html|*.htm|*.vue|*.svelte|*.astro|*.css|*.scss|*.sass|*.less) ;;
+          *) exit 0 ;;
+        esac ;;
+    esac
+    # The engine reads the event from stdin, so hand the line back to it.
+    exec 0<<IMPECCABLE_HOOK_INPUT
+$scope_input
+IMPECCABLE_HOOK_INPUT
+  fi
+fi
+
 # Prints the digest engine-checksums.txt records for engine version $1 and
 # asset $2 (lines are "<version> <asset> <sha256>"), nothing when there is none.
 # A CR is a separator too (CRLF checkouts), and a last line with no newline
