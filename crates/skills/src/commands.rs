@@ -373,8 +373,14 @@ fn choose_install_providers(sys: &Sys, prompt: &mut Prompt, io: &mut Io, project
         return Ok(ProviderChoice { targets, detections, explicit: false });
     }
     let mode = prompt_detected_install_mode(prompt, io, &defaults)?;
-    let targets = if mode == DetectedMode::Add { prompt_for_providers(prompt, io, &defaults)? } else { unique_providers(&defaults) };
-    Ok(ProviderChoice { targets, detections, explicit: false })
+    if mode == DetectedMode::Add {
+        let targets = prompt_for_providers(prompt, io, &defaults)?;
+        // Customize names harnesses the way `--providers` does. An install
+        // that already exists for another harness must not hide one the user
+        // just selected and does not have yet (#1235).
+        return Ok(ProviderChoice { targets, detections, explicit: true });
+    }
+    Ok(ProviderChoice { targets: unique_providers(&defaults), detections, explicit: false })
 }
 
 /// JS: chooseInstallScope(projectRoot, targets, detections, {yes, scopeValue})
