@@ -164,13 +164,13 @@ fn session_start_writes_the_session_identity_once_across_resumes() {
     let env_path = t.write("session.env", "export EXISTING=kept\n");
     let r = rt_with(&t.path(), env(&[("CLAUDE_ENV_FILE", &env_path)]));
     let mut io = Io::captured("", t.0.clone(), HashMap::new()).0;
-    for session in ["owner-123", "owner-123", "other-456", "owner-123"] {
+    for session in ["owner-123", "owner-123", "other-456", "owner-123", "owner-123"] {
         let event = json!({"hook_event_name":"SessionStart", "session_id":session, "cwd":t.path()}).to_string();
         assert_eq!(hook::run(&r, &event, &mut io), 0);
     }
     assert_eq!(
         t.read("session.env"),
-        "export EXISTING=kept\nexport IMPECCABLE_SESSION_ID='owner-123'\nexport IMPECCABLE_SESSION_ID='other-456'\n"
+        "export EXISTING=kept\nexport IMPECCABLE_SESSION_ID='owner-123'\nexport IMPECCABLE_SESSION_ID='other-456'\nexport IMPECCABLE_SESSION_ID='owner-123'\n"
     );
 }
 
