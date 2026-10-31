@@ -1565,7 +1565,7 @@ Constants:
 5. If not found and no target: `discoverAppCandidates(cwd)`; 1 → appRoot, `resolvedFrom='candidate:<rel>'`; >1 → return `{ selection: { candidates: [{name: basename, path: rel-with-forward-slashes}] } }`.
 6. If still none: `appRoot = targetDir ⊆ legacyRoot ? legacyRoot : targetDir`, `resolvedFrom='fallback'`.
 7. `effectiveRepoRoot = repoRoot` if appRoot ⊆ repoRoot else appRoot.
-8. `productPath`/`designPath` each = walk up from appRoot to effectiveRepoRoot with `findContextFile`. `contextRoot = dirname(productPath) || dirname(designPath) || null`.
+8. `productPath`/`designPath` each = walk up from appRoot to effectiveRepoRoot with `findContextFile`. When that walk-up finds neither, the pair falls back to `resolveContext(cwd, {targetPath})` — the same resolver `impeccable context` uses, so project/repo-root context dirs and `IMPECCABLE_CONTEXT_DIR` apply. `contextRoot = dirname(productPath) || dirname(designPath) || null`.
 
 `resolveLiveRoots(cwd, {targetPath})` (used by every helper via `enterLiveRoot`):
 1. If no target: walk up from cwd to (git root || cwd) for a `roots.json` whose `appRoot` resolves to the dir it sits in → `{manifest, source:'persisted'}`.
