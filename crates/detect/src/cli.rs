@@ -484,13 +484,28 @@ fn file_url_to_local_path(url: &str) -> Option<String> {
 /// JS: main.mjs#detectCli. `args` are the argv after the `detect` verb (the
 /// leading `detect` the JS strips itself is also stripped here).
 pub fn run_detect(args: &[String], io: &mut Io, engines: &Engines) -> i32 {
-    match detect_cli(args, io, engines) {
+    run_detect_with_pack(args, io, engines, None)
+}
+
+/// CLI scanning with a build-supplied source/browser hook.
+pub fn run_detect_with_pack(
+    args: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
+    match detect_cli(args, io, engines, rule_pack) {
         Ok(code) => code,
         Err(Exit(code)) => code,
     }
 }
 
-fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32, Exit> {
+fn detect_cli(
+    args_in: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> Result<i32, Exit> {
     let mut args: Vec<String> = args_in
         .iter()
         .map(|a| match a.as_str() {
@@ -638,7 +653,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         profile: None,
         // The `impeccable` binary installs no rule pack; a library caller that
         // does sets this before handing the options to an engine.
-        rule_pack: None,
+        rule_pack,
         keep_consent_banners: has(&args, "--no-consent-hiding"),
         keep_overlays: has(&args, "--no-overlay-hiding"),
         unreported_rules: unreported_rules(&detection_config.ignore_rules, &scopes),

@@ -39,16 +39,38 @@ fn runtime<'a>(io: &Io, html: &'a dyn HtmlEngine) -> Runtime<'a> {
 
 /// `impeccable hook` (PostToolUse per-edit pass + Stop deep pass). Exit 0.
 pub fn run_hook(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
+    run_hook_with_pack(_args, io, html, None)
+}
+
+/// Run with build-supplied source hooks (HTML hooks travel with the engine).
+pub fn run_hook_with_pack(
+    _args: &[String],
+    io: &mut Io,
+    html: &dyn HtmlEngine,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
     let stdin = io.stdin().to_string();
-    let rt = runtime(io, html);
+    let mut rt = runtime(io, html);
+    rt.rule_pack = rule_pack;
     hook::run(&rt, &stdin, io)
 }
 
 /// `impeccable hook-before-edit` (the retired Cursor preToolUse gate, kept
 /// for manifests not yet migrated to the post-edit hook). Exit 0.
 pub fn run_hook_before_edit(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
+    run_hook_before_edit_with_pack(_args, io, html, None)
+}
+
+/// Run with build-supplied source hooks (HTML hooks travel with the engine).
+pub fn run_hook_before_edit_with_pack(
+    _args: &[String],
+    io: &mut Io,
+    html: &dyn HtmlEngine,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
     let stdin = io.stdin().to_string();
-    let rt = runtime(io, html);
+    let mut rt = runtime(io, html);
+    rt.rule_pack = rule_pack;
     before_edit::run(&rt, &stdin, io)
 }
 
