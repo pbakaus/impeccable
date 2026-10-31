@@ -93,6 +93,20 @@ fn customize_mixed_selection_installs_the_missing_provider() {
 }
 
 #[test]
+fn customize_mixed_selection_installs_the_opencode_command_bridge() {
+    let fx = fixture("picker-opencode");
+    seed_install(&fx.project, ".claude");
+    let bundle = &fx.env["IMPECCABLE_BUNDLE_PATH"];
+    seed_install(bundle, ".opencode");
+    write(&format!("{bundle}/.opencode/commands/impeccable.md"), "Bridge fixture.\n");
+    let (code, stdout) = run_install(&fx, "customize\nclaude,opencode\nproject\n");
+    assert_eq!(code, 0, "{stdout}");
+    assert!(exists(&format!("{}/.opencode/skills/impeccable/SKILL.md", fx.project)), "{stdout}");
+    assert!(exists(&format!("{}/.opencode/commands/impeccable.md", fx.project)), "{stdout}");
+    std::fs::remove_dir_all(&fx.root).ok();
+}
+
+#[test]
 fn direct_picker_installs_a_picked_provider_when_another_is_installed() {
     let fx = fixture("picker-direct");
     seed_install(&fx.home, ".agents");

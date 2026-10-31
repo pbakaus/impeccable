@@ -683,6 +683,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                 install_engine_binaries(&sys, io, &written);
                 let agents = bundle::copy_provider_agents(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt)?;
                 bundle::report_provider_agents(&sys, io, &agents);
+                bundle::copy_provider_commands(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt);
             }
 
             let written_hook_targets = if !missing_hook_targets.is_empty() {
