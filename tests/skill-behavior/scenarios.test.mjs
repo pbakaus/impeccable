@@ -13,6 +13,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -127,27 +128,30 @@ const PINNED_FIRST_VIEWPORT = 'The first viewport is fixed too: one open noteboo
 // The context-only bash tool tells the model everything but `context` is off
 // limits, which would bias the very decision these scenarios measure. They get
 // the real shell and a local catalog, so a roll reaches no API.
-const PIN_TURN_OPTIONS = {
-  checkpoint: pinDecisionReached,
-  contextOnlyBash: false,
-  maxSteps: 16,
-  env: {
-    IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
-    IMPECCABLE_SEED_SALT: 'skill-behavior',
-  },
-};
+function pinTurnOptions(workspace) {
+  return {
+    workspace,
+    checkpoint: (trace) => directionRolls(trace).length > 0 || savedPinnedBriefs(workspace).length > 0,
+    contextOnlyBash: false,
+    maxSteps: 16,
+    env: {
+      IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
+      IMPECCABLE_SEED_SALT: 'skill-behavior',
+    },
+  };
+}
 
 function directionRolls(trace) {
   return trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
 }
 
-function pinnedSeedWrites(trace) {
-  // Models write the brief with the write tool or a heredoc for `surface-brief write`.
-  return trace.toolCalls.filter(({ input }) => /seed:\s*none \(pinned\)/.test(input?.contents ?? input?.command ?? ''));
-}
-
-function pinDecisionReached(trace) {
-  return directionRolls(trace).length > 0 || pinnedSeedWrites(trace).length > 0;
+// Read the saved brief, not the tool input: models draft the body in a temp file
+// or a heredoc before `surface-brief write`, and only the saved file counts.
+function savedPinnedBriefs(workspace) {
+  const dir = path.join(workspace, '.impeccable/surfaces');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((file) => file.endsWith('.md')
+    && /seed:\s*none \(pinned\)/.test(fs.readFileSync(path.join(dir, file), 'utf8')));
 }
 
 function executedUpdateCommands(trace) {
@@ -943,13 +947,12 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
       try {
         const { trace, text } = await runTurn({
-          ...PIN_TURN_OPTIONS,
-          workspace,
+          ...pinTurnOptions(workspace),
           model,
           userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD}`,
         });
         logTrace('S23', 'partial-pin-rolls', modelId, trace, { textSample: text.slice(0, 400) });
-        assert.equal(pinnedSeedWrites(trace).length, 0,
+        assert.equal(savedPinnedBriefs(workspace).length, 0,
           `a pin that leaves the first surface open must not record seed: none (pinned).\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
         assert.ok(directionRolls(trace).length >= 1,
@@ -966,8 +969,7 @@ for (const modelId of resolveModelList()) {
       const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
       try {
         const { trace, text } = await runTurn({
-          ...PIN_TURN_OPTIONS,
-          workspace,
+          ...pinTurnOptions(workspace),
           model,
           userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD} ${PINNED_FIRST_VIEWPORT}`,
           timeoutMs: 420000,
@@ -978,8 +980,8 @@ for (const modelId of resolveModelList()) {
         assert.equal(directionRolls(trace).length, 0,
           `a direction pinned whole must not run concept-seed.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
-        assert.ok(pinnedSeedWrites(trace).length >= 1,
-          `a direction pinned whole must record seed: none (pinned) in the surface brief.\n` +
+        assert.ok(savedPinnedBriefs(workspace).length >= 1,
+          `a direction pinned whole must save seed: none (pinned) in the surface brief.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
       } finally {
         cleanupWorkspace(workspace);
