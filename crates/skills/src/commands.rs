@@ -349,6 +349,7 @@ fn prompt_detected_install_mode(prompt: &mut Prompt, io: &mut Io, detected: &[&D
 struct ProviderChoice {
     targets: Vec<&'static str>,
     detections: Vec<Detection>,
+    /// The user named these targets (`--providers` or a picker), so a target with no install is installed fresh even when another harness already has one.
     explicit: bool,
 }
 
@@ -370,11 +371,11 @@ fn choose_install_providers(sys: &Sys, prompt: &mut Prompt, io: &mut Io, project
     let defaults = default_detections(&detections);
     if defaults.is_empty() {
         let targets = prompt_for_providers(prompt, io, &[])?;
-        return Ok(ProviderChoice { targets, detections, explicit: false });
+        return Ok(ProviderChoice { targets, detections, explicit: true });
     }
     let mode = prompt_detected_install_mode(prompt, io, &defaults)?;
     let targets = if mode == DetectedMode::Add { prompt_for_providers(prompt, io, &defaults)? } else { unique_providers(&defaults) };
-    Ok(ProviderChoice { targets, detections, explicit: false })
+    Ok(ProviderChoice { targets, detections, explicit: mode == DetectedMode::Add })
 }
 
 /// JS: chooseInstallScope(projectRoot, targets, detections, {yes, scopeValue})
