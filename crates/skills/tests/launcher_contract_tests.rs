@@ -54,6 +54,7 @@ fn cmd_launcher_asset_naming_matches_engine() {
     // engine-probe handshake for PATH / unversioned home candidates.
     assert!(cmd.contains("engine-probe"));
     assert!(cmd.contains(r#"findstr /b /c:"impeccable-engine""#));
+    assert!(cmd.contains(r#"call "%~1" engine-probe"#));
     assert!(!cmd.contains("npm i -g"));
 }
 

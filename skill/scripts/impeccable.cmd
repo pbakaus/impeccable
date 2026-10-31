@@ -97,7 +97,7 @@ where impeccable >nul 2>nul
 if errorlevel 1 goto download
 call :probe impeccable
 if not "%probe_ok%"=="1" goto download
-impeccable %*
+call impeccable %*
 exit /b %errorlevel%
 
 :download
@@ -259,7 +259,7 @@ set "probe_ok="
 set "probe_version="
 set "probe_tmp=%TEMP%\impeccable-probe-%RANDOM%%RANDOM%.txt"
 set "IMPECCABLE_LAUNCHER_PROBE=1"
-"%~1" engine-probe >"%probe_tmp%" 2>nul
+call "%~1" engine-probe >"%probe_tmp%" 2>nul
 set "probe_err=%ERRORLEVEL%"
 set "IMPECCABLE_LAUNCHER_PROBE="
 if not "%probe_err%"=="0" goto probe_done
