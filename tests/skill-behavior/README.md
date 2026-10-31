@@ -404,6 +404,21 @@ results remain the completed measurements.
 | 20 | PRODUCT.md + DESIGN.md + `index.html`; prompt is `/impeccable generate 2 bold variants of the hero heading` | loads `reference/generate.md`, and before any `live.md` read (live.md alone is the misroute) |
 | 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
 | 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
+| 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll and records no `seed: none (pinned)`; stops at the roll, no build |
+| 24 | same fixture; the same prompt also pins the first viewport | runs no scoped `concept-seed` roll and writes `seed: none (pinned)` into the surface brief; stops at that write, no build |
+
+## Pinned-direction baseline (2026-11-01, PR #1265, claude-sonnet-5 only)
+
+Scenario 23 passed all four runs. Scenario 24 made the right decision in all
+three runs that finished: no scoped roll, `seed: none (pinned)` written with the
+pinning words quoted. Two earlier runs hit 180s and 230s limits before recording
+anything, which is why it now has 420s. Finished runs of 24 used 180K to 530K
+tokens, the most expensive scenario in this file. GPT and Gemini were not run.
+
+In the same full sweep (23 of 28 passed), scenario 19's three denied-launcher
+cases failed but all passed on a rerun, and passed on the base commit. Scenario 17
+failed in all three runs, on the branch and on the base commit, so the failure
+predates this change.
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 

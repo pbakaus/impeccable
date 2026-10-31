@@ -121,6 +121,35 @@ function stopLiveHelper(workspace) {
   } catch { /* nothing was running */ }
 }
 
+const PINNED_WORLD = 'The world is fixed: a working laboratory notebook, ruled graph paper in blue-black ink with pencil margin annotations.';
+const PINNED_FIRST_VIEWPORT = 'The first viewport is fixed too: one open notebook spread filling the screen, the product claim handwritten across the left page, the reasoning trail as numbered margin notes on the right page, and the primary action a stamped index tab on the right edge.';
+
+// The context-only bash tool tells the model everything but `context` is off
+// limits, which would bias the very decision these scenarios measure. They get
+// the real shell and a local catalog, so a roll reaches no API.
+const PIN_TURN_OPTIONS = {
+  checkpoint: pinDecisionReached,
+  contextOnlyBash: false,
+  maxSteps: 16,
+  env: {
+    IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
+    IMPECCABLE_SEED_SALT: 'skill-behavior',
+  },
+};
+
+function directionRolls(trace) {
+  return trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
+}
+
+function pinnedSeedWrites(trace) {
+  // Models write the brief with the write tool or a heredoc for `surface-brief write`.
+  return trace.toolCalls.filter(({ input }) => /seed:\s*none \(pinned\)/.test(input?.contents ?? input?.command ?? ''));
+}
+
+function pinDecisionReached(trace) {
+  return directionRolls(trace).length > 0 || pinnedSeedWrites(trace).length > 0;
+}
+
 function executedUpdateCommands(trace) {
   const executableSegments = trace.bashCommands.flatMap((command) =>
     command
@@ -901,6 +930,57 @@ for (const modelId of resolveModelList()) {
           `a plain refinement must not route into generate.md.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    // The two prompts differ only by the first-viewport sentence, so the pair
+    // measures the boundary: a named world alone still rolls, a world plus its
+    // first-surface experience skips. Both stop at the roll or the pinned
+    // brief, whichever comes first; neither runs a build.
+    it('scenario 23: a pinned world with an open first surface still rolls', async () => {
+      const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
+      try {
+        const { trace, text } = await runTurn({
+          ...PIN_TURN_OPTIONS,
+          workspace,
+          model,
+          userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD}`,
+        });
+        logTrace('S23', 'partial-pin-rolls', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.equal(pinnedSeedWrites(trace).length, 0,
+          `a pin that leaves the first surface open must not record seed: none (pinned).\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+        assert.ok(directionRolls(trace).length >= 1,
+          `a pin that leaves the first surface open must still run concept-seed.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    // With no roll to stop at, the model does font and asset work before it
+    // writes the brief, which took 180 to 230 seconds or more on Sonnet.
+    it('scenario 24: a direction pinned whole skips the roll and records seed: none (pinned)', { timeout: 480000 }, async () => {
+      const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
+      try {
+        const { trace, text } = await runTurn({
+          ...PIN_TURN_OPTIONS,
+          workspace,
+          model,
+          userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD} ${PINNED_FIRST_VIEWPORT}`,
+          timeoutMs: 420000,
+        });
+        logTrace('S24', 'whole-pin-skips', modelId, trace, { textSample: text.slice(0, 400) });
+        // Probing verbs with `concept-seed --help` is not the decision measured
+        // here, so only a scoped roll counts.
+        assert.equal(directionRolls(trace).length, 0,
+          `a direction pinned whole must not run concept-seed.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+        assert.ok(pinnedSeedWrites(trace).length >= 1,
+          `a direction pinned whole must record seed: none (pinned) in the surface brief.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
       } finally {
         cleanupWorkspace(workspace);
       }
