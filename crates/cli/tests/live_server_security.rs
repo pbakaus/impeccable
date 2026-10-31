@@ -174,13 +174,20 @@ fn live_server_source_ignores_and_poller_fields() {
 fn manual_edit_discard_with_ref_keeps_sibling_edits() {
     use serde_json::json;
 
-    // Stops the server even when an assert below fails.
-    struct Server(std::process::Child, std::path::PathBuf);
+    // Stops the server even when an assert below fails. The reaper holds a
+    // pipe to this process, so a killed test run stops the server too (#717).
+    struct Server {
+        child: std::process::Child,
+        reaper: std::process::Child,
+        dir: std::path::PathBuf,
+    }
     impl Drop for Server {
         fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
-            let _ = std::fs::remove_dir_all(&self.1);
+            let _ = self.reaper.kill();
+            let _ = self.reaper.wait();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 
@@ -195,7 +202,14 @@ fn manual_edit_discard_with_ref_keeps_sibling_edits() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .expect("spawn live-server");
-    let _server = Server(child, dir.clone());
+    let reaper = std::process::Command::new("sh")
+        .args(["-c", &format!("cat >/dev/null; kill {}", child.id())])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn reaper");
+    let _server = Server { child, reaper, dir: dir.clone() };
 
     let pid_file = dir.join(".impeccable/live/server.json");
     assert!(wait_for(&pid_file, 10), "server pid file never appeared");
