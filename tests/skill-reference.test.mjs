@@ -102,6 +102,18 @@ describe('skill reference authoring contracts', () => {
     );
   });
 
+  it('lists every card kind the engine accepts in the identity rule', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const telemetry = readFileSync(join(ROOT, 'crates/context/src/telemetry.rs'), 'utf-8');
+    const cardKinds = telemetry.match(/pub const CARD_KINDS: .*? = \[(.*?)\];/)?.[1].match(/[a-z]+/g) ?? [];
+    const identityRule = newWork.match(/Every option declares its identity: ([\s\S]*?), and each challenger carries/)?.[1] ?? '';
+
+    assert.ok(cardKinds.includes('dealt'));
+    for (const kind of cardKinds) {
+      assert.match(identityRule, new RegExp(`\`${kind}\``));
+    }
+  });
+
   it('sizes the hand by the verdicts, never by a requested count', () => {
     const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const handComposition = newWork.match(
