@@ -431,7 +431,7 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
       PROCESSOR_ARCHITECTURE: 'AMD64',
     };
     const result = await new Promise((resolve, reject) => {
-      const child = spawn(COMSPEC, ['/d', '/c', launcher, 'detect'], { env, cwd: root });
+      const child = spawn(COMSPEC, ['/d', '/c', launcher, 'detect', 'literal-%LITERAL_TOKEN%.html'], { env, cwd: root, timeout: 20000 });
       let stdout = '';
       let stderr = '';
       child.stdout.on('data', data => { stdout += data; });
@@ -443,6 +443,7 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
     if (trusted) {
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /path-engine-ran/);
+      assert.match(result.stdout, /literal-%LITERAL_TOKEN%.html/, 'preserves literal percent references without re-expansion');
       assert.equal(requests.length, 0, 'a trusted PATH binary needs no download');
     } else {
       assert.equal(result.status, 127, JSON.stringify(result));

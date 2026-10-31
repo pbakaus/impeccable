@@ -97,7 +97,7 @@ where impeccable >nul 2>nul
 if errorlevel 1 goto download
 call :probe impeccable
 if not "%probe_ok%"=="1" goto download
-call impeccable %*
+impeccable %*
 exit /b %errorlevel%
 
 :download
