@@ -55,6 +55,19 @@ describe('skill reference authoring contracts', () => {
     assert.match(reviewer, /`seed: none \(pinned\)` stands only when the original request or the confirmed user answers pin both/);
   });
 
+  it('collects the existing-DESIGN.md choice before the documenter writes', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const documenter = readFileSync(join(ROOT, 'skill/agents/impeccable-documenter.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const handoff = newWork.match(/After the last correction[\s\S]*?<!-- rule:skill-documenter-records-the-world -->/)?.[0] ?? '';
+    const inputContract = documenter.match(/## Input Contract\n([\s\S]*?)\n## Workflow/)?.[1] ?? '';
+
+    assert.match(handoff, /\{\{ask_instruction\}\} Offer refresh, overwrite, or merge/);
+    assert.ok(handoff.indexOf('{{ask_instruction}}') < handoff.indexOf('spawn the shipped documenter'), 'the choice is collected before the documenter is spawned');
+    assert.match(inputContract, /refresh, overwrite, or merge/);
+    assert.doesNotMatch(documenter, /update, not replace/);
+    assert.match(documenter, /no choice arrived, write nothing/);
+  });
+
   it('skips the detector and its degraded banner on native critique targets', () => {
     const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const orchestration = critique.match(/### Assessment Orchestration\n([\s\S]*?)\n<codex>/)?.[1] ?? '';
@@ -112,6 +125,18 @@ describe('skill reference authoring contracts', () => {
       visualDecisionPage,
       /only exit code 2 from starting it routes the decision to the structured tool; that exit is the fallback/,
     );
+  });
+
+  it('lists every card kind the engine accepts in the identity rule', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const telemetry = readFileSync(join(ROOT, 'crates/context/src/telemetry.rs'), 'utf-8');
+    const cardKinds = telemetry.match(/pub const CARD_KINDS: .*? = \[(.*?)\];/)?.[1].match(/[a-z]+/g) ?? [];
+    const identityRule = newWork.match(/Every option declares its identity: ([\s\S]*?), and each challenger carries/)?.[1] ?? '';
+
+    assert.ok(cardKinds.includes('dealt'));
+    for (const kind of cardKinds) {
+      assert.match(identityRule, new RegExp(`\`${kind}\``));
+    }
   });
 
   it('sizes the hand by the verdicts, never by a requested count', () => {
