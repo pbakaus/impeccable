@@ -481,6 +481,7 @@ describe('degraded-mode fallback reference generation', () => {
     expect(content).toContain('This harness has no subagent capability, so you are running this role inline.');
     // Distinctive phrase from the agent body proves the source body was inlined.
     expect(content).toContain('material_fixes');
+    expect(content).toContain('ship only when material_fixes is empty and the matrix holds no contradicted or missing row');
   });
 
   test('generated fallbacks pass through provider-block compilation (codex keeps its block, others strip it)', () => {
@@ -577,6 +578,7 @@ describe('GitHub Copilot custom agent generation', () => {
     // A distinctive body phrase proves the agent body itself was inlined.
     const reviewer = fs.readFileSync(path.join(AGENTS_DIR, 'impeccable-finish-reviewer.agent.md'), 'utf-8');
     expect(reviewer).toContain('material_fixes');
+    expect(reviewer).toContain('ship only when material_fixes is empty and the matrix holds no contradicted or missing row');
   });
 
   test('degraded fallbacks still ship for the github provider alongside the real agents', () => {
