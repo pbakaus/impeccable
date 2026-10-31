@@ -43,6 +43,18 @@ describe('skill reference authoring contracts', () => {
     assert.doesNotMatch(newWork, /first child of the document's body/);
   });
 
+  it('defines the FORM seed value for a direction pinned whole', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8');
+    const reviewer = readFileSync(join(ROOT, 'skill/agents/impeccable-finish-reviewer.md'), 'utf-8');
+
+    assert.match(newWork, /pins whole, naming its world and its first-surface experience both in words you can quote/);
+    assert.match(newWork, /a pin that leaves a dimension open, a direction you completed from a partial brief/);
+    assert.match(newWork, /write `seed: none \(pinned\)` in place of both the list position and the reference, followed by the quoted words that pin it/);
+    assert.match(newWork, /`seed: none \(pinned\)` when a direction pinned whole skipped it\) are present/);
+    assert.match(newWork, /build-phase start --direction <seed reference, or none when it was unavailable or a direction pinned whole skipped the roll>/);
+    assert.match(reviewer, /`seed: none \(pinned\)` stands only when the original request or the confirmed user answers pin both/);
+  });
+
   it('skips the detector and its degraded banner on native critique targets', () => {
     const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const orchestration = critique.match(/### Assessment Orchestration\n([\s\S]*?)\n<codex>/)?.[1] ?? '';
