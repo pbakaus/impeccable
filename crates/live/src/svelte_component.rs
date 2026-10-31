@@ -904,7 +904,7 @@ fn append_sanitized_css_rule(
 }
 
 /// JS: sanitizeAcceptedSvelteCss(cssLines, variantNum, paramValues, rootTag)
-fn sanitize_accepted_svelte_css(
+pub(crate) fn sanitize_accepted_component_css(
     css_lines: &[String],
     variant_num: &str,
     param_values: Option<&Map<String, Value>>,
@@ -1477,7 +1477,7 @@ pub fn inline_svelte_component_accept(
         || variant_css.contains("impeccable-variant-ready")
     {
         variant_css =
-            sanitize_accepted_svelte_css(&css_lines, variant_num, param_values, &root_tag)
+            sanitize_accepted_component_css(&css_lines, variant_num, param_values, &root_tag)
                 .join("\n");
     }
     let empty = Map::new();
@@ -1672,8 +1672,9 @@ fn inline_svelte_component_insert_accept(
     if variant_css.contains("data-impeccable-variant")
         || variant_css.contains("impeccable-variant-ready")
     {
-        variant_css = sanitize_accepted_svelte_css(css_lines, variant_num, param_values, &root_tag)
-            .join("\n");
+        variant_css =
+            sanitize_accepted_component_css(css_lines, variant_num, param_values, &root_tag)
+                .join("\n");
     }
     let declared = read_declared_params(manifest, variant_num, cwd);
     let empty = Map::new();
@@ -1712,6 +1713,21 @@ pub fn compile_check_variants(id: &str, cwd: &str) -> Value {
     let Ok(Some(manifest)) = find_svelte_component_manifest(id, cwd) else {
         return empty;
     };
+    if manifest.get("previewMode").and_then(Value::as_str) == Some("vue-component") {
+        let dir = component_session_dir(id, cwd);
+        let count = manifest.get("count").and_then(Value::as_u64).unwrap_or(0);
+        let mut failures = Vec::new();
+        for n in 1..=count {
+            let file = jsp::join(&[&dir, &format!("v{n}.vue")]);
+            let result = safe_read(&file)
+                .ok_or_else(|| "Variant file is missing".to_string())
+                .and_then(|source| crate::vue_component::analyze(&source, &file, cwd));
+            if let Err(message) = result {
+                failures.push(json!({"file":file,"message":message}));
+            }
+        }
+        return json!({"ok":failures.is_empty(),"failures":failures,"checked":count});
+    }
     let Some(manifest_path) = manifest.get("manifestPath").and_then(|v| v.as_str()) else {
         return empty;
     };

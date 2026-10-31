@@ -211,7 +211,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     }
     if !is_discard {
         let v = variant_num.as_deref().unwrap_or("");
-        let ok = !v.is_empty() && v.len() <= 3 && v.bytes().all(|b| b.is_ascii_digit());
+        let ok = !v.is_empty() && v.len() <= 3 && v.bytes().all(|b| b.is_ascii_digit()) && v.parse::<u16>().is_ok_and(|n| n > 0);
         if !ok {
             eprintln(io, "Invalid --variant");
             return 1;
@@ -300,6 +300,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     }
 
     if let Some(manifest) = svelte_manifest {
+        let is_vue = manifest.get("previewMode").and_then(Value::as_str) == Some("vue-component");
         let source_file = manifest.get("sourceFile").cloned().unwrap_or(Value::Null);
         let component_dir = manifest.get("componentDir").cloned().unwrap_or(Value::Null);
         let mut context: Vec<(&str, Value)> = vec![("file", source_file.clone())];
@@ -308,8 +309,13 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
         } else {
             context.push(("sourceFile", source_file.clone()));
         }
-        context.push(("previewMode", Value::String("svelte-component".into())));
+        context.push(("previewMode", Value::String(if is_vue { "vue-component" } else { "svelte-component" }.into())));
         context.push(("componentDir", component_dir));
+
+        if is_vue && param_values_raw.is_some() && param_values.is_none() {
+            emit_result(io, operation_failure("Invalid Vue parameter values: expected a JSON object", &context));
+            return 0;
+        }
 
         let sf_str = crate::accept_css::js_string(&source_file);
         let lock_file = jsp::resolve(&cwd, &[&sf_str]);
@@ -324,7 +330,11 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 }
                 Ok(Value::Object(m))
             } else {
-                inline_svelte_component_accept(&manifest, &variant_num, param_values.as_ref(), &cwd)
+                if is_vue {
+                    crate::vue_component::inline_vue_component_accept(&manifest, &variant_num, param_values.as_ref(), &cwd)
+                } else {
+                    inline_svelte_component_accept(&manifest, &variant_num, param_values.as_ref(), &cwd)
+                }
             }
         });
         let mut result = match locked {
