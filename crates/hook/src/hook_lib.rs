@@ -1727,7 +1727,7 @@ pub fn detector_detect_html(
 
 pub fn design_stale_note(rt: &Runtime) -> String {
     format!(
-        "{ENVELOPE_PREFIX} DESIGN.md is newer than .impeccable/design.json. Run {} document to refresh the design-system sidecar.",
+        "{ENVELOPE_PREFIX} DESIGN.md has changed since the sidecar was verified. Run {} document to refresh the design-system sidecar.",
         rt.impeccable_command
     )
 }

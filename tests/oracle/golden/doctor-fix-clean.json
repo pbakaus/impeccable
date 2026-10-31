@@ -1,5 +1,5 @@
 {
-  "stdout": "Impeccable doctor: <WS>\n\nNo drift found. Every artifact matches what this version reads.\nApplied nothing.\n",
+  "stdout": "Impeccable doctor: <WS>\n\nworth saying (1):\n  design-sidecar-unverified  [.impeccable/design.json]\n    .impeccable/design.json has no verifiable DESIGN.md content fingerprint; file timestamps cannot establish whether it is current.\n    → Offer `document` to review or regenerate the sidecar against DESIGN.md, then stamp its fingerprint. Do not stamp an unchecked sidecar just to dismiss this notice.\n\nApplied nothing.\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

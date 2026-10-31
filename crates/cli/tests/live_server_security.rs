@@ -101,6 +101,32 @@ fn live_server_source_ignores_and_poller_fields() {
         let port = info.get("port").and_then(|p| p.as_u64()).ok_or("no port")? as u16;
         let token = info.get("token").and_then(|t| t.as_str()).ok_or("no token")?.to_string();
 
+        // #846: Live must use the same content check as doctor/context.
+        let design = dir.join("DESIGN.md");
+        let sidecar = dir.join(".impeccable/design.json");
+        std::fs::write(&design, "# Design\n").unwrap();
+        std::fs::write(&sidecar, r#"{"schemaVersion":2}"#).unwrap();
+        let read_design = || {
+            let (status, body) = http(port, "GET", &format!("/design-system.json?token={token}"), None);
+            assert_eq!(status, 200);
+            serde_json::from_str::<serde_json::Value>(&body).unwrap()
+        };
+        assert_eq!(read_design()["sidecarStatus"], "unverified");
+        assert_eq!(read_design()["mdNewerThanJson"], false);
+        impeccable_context::design_sidecar::stamp(&design, &sidecar).unwrap();
+        let set_time = |seconds| std::fs::File::open(&design).unwrap().set_times(
+            std::fs::FileTimes::new().set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds))
+        ).unwrap();
+        set_time(2_000_000_000);
+        assert_eq!(read_design()["sidecarStatus"], "current");
+        assert_eq!(read_design()["mdNewerThanJson"], false);
+        std::fs::write(&design, "# Changed design\n").unwrap();
+        set_time(100);
+        assert_eq!(read_design()["sidecarStatus"], "stale");
+        assert_eq!(read_design()["mdNewerThanJson"], true);
+        std::fs::write(&design, "# Design\n").unwrap();
+        assert_eq!(read_design()["sidecarStatus"], "current");
+
         // /source serves a project file...
         let (st, body) = http(port, "GET", &format!("/source?token={}&path=prototype/index.html", token), None);
         assert_eq!(st, 200, "{}", body);

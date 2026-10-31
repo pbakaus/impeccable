@@ -12642,7 +12642,8 @@ void main() {
     hasSidecar: false,
     present: null,          // true/false once fetch resolves
     raw: null,              // raw DESIGN.md for the raw tab
-    mdNewerThanJson: false, // stale-hint flag
+    mdNewerThanJson: false, // compatibility stale-hint flag
+    sidecarStatus: null,
     loading: false,
     error: null,
     collapsed: {            // narrative-section accordion state
@@ -13082,6 +13083,7 @@ void main() {
       designState.hasMd = !!jsonData.hasMd;
       designState.hasSidecar = !!jsonData.hasSidecar;
       designState.mdNewerThanJson = !!jsonData.mdNewerThanJson;
+      designState.sidecarStatus = jsonData.sidecarStatus || null;
       designState.raw = designState.present && rawRes.ok ? await rawRes.text() : null;
       designState.error = jsonData.parseError || jsonData.sidecarError || null;
     } catch (err) {
@@ -13119,7 +13121,8 @@ void main() {
     }
 
     // Visual tab - single unified render path.
-    if (designState.mdNewerThanJson) body.appendChild(renderStaleHint());
+    if (designState.sidecarStatus === 'unverified') body.appendChild(renderStaleHint(true));
+    else if (designState.mdNewerThanJson) body.appendChild(renderStaleHint());
     if (designState.hasMd && !designState.hasSidecar) {
       body.appendChild(renderParsedMdCta());
     }
@@ -13133,12 +13136,12 @@ void main() {
     return d;
   }
 
-  function renderStaleHint() {
+  function renderStaleHint(unverified = false) {
     const box = document.createElement('div');
     box.className = 'stale';
     box.innerHTML = `
       <span class="stale-dot"></span>
-      <span class="stale-text"><strong>DESIGN.md is newer than .impeccable/design.json.</strong> Run <code>${IMPECCABLE_COMMAND} document</code> to refresh the sidecar.</span>
+      <span class="stale-text"><strong>${unverified ? 'The design sidecar has not been verified against DESIGN.md.' : 'DESIGN.md has changed since the sidecar was verified.'}</strong> Run <code>${IMPECCABLE_COMMAND} document</code> to ${unverified ? 'review' : 'refresh'} the sidecar.</span>
     `;
     return box;
   }

@@ -254,6 +254,16 @@ The frontmatter owns token primitives (colors, typography, rounded, spacing, com
 
 Regenerate the sidecar whenever you regenerate root `DESIGN.md`. If the user only asks to refresh the sidecar (e.g., from the live panel's stale-hint), preserve `DESIGN.md` and write only `.impeccable/design.json`.
 
+After writing or reviewing the sidecar against the final `DESIGN.md`, run:
+
+```bash
+{{scripts_path}}/impeccable design-sidecar stamp
+```
+
+Pass the same `--target <path>` used for context when documenting a specific workspace. This engine step writes `designMdFingerprint`; do not invent or calculate the digest yourself. It hashes DESIGN.md with SHA-256 after converting CRLF to LF only. Other bytes, including trailing whitespace and the final newline, remain significant. Run it after the last DESIGN.md edit. If it fails, resolve the error before reporting the sidecar as verified.
+
+Legacy sidecars without a valid fingerprint are **unverified**, not stale. Read and compare their contents with DESIGN.md, refresh them if needed, then stamp. Never run the stamp command merely to suppress a warning. Seed mode still skips the sidecar and this command.
+
 #### Schema
 
 ```json
