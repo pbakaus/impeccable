@@ -393,6 +393,66 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
   });
 }
 
+for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
+  test(`cmd launcher ${trusted ? 'runs' : 'skips'} a PATH .cmd candidate whose engine-probe exits ${probeStatus}`, { skip: WINDOWS ? false : 'Windows-only cmd launcher probe' }, async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-cmd-probe-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const scripts = path.join(root, 'scripts');
+    const tools = path.join(root, 'tools');
+    fs.mkdirSync(scripts);
+    fs.mkdirSync(tools);
+    fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\r\n');
+    fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), `0.0.0-test ${ASSET} ${HASH}\r\n`);
+    const launcher = path.join(scripts, 'impeccable.cmd');
+    fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), launcher);
+    // When probeStatus is 0, prints handshake and succeeds. When 1 (e.g. retired 3.x CLI), prints Unknown command and fails.
+    const pathCmdContent = probeStatus === 0
+      ? '@echo off\r\nif "%~1"=="engine-probe" (\r\n  echo impeccable-engine 0.0.0-test\r\n  exit /b 0\r\n)\r\necho path-engine-ran %*\r\nexit /b 0\r\n'
+      : '@echo off\r\necho Unknown command 1>&2\r\nexit /b 1\r\n';
+    fs.writeFileSync(path.join(tools, 'impeccable.cmd'), pathCmdContent);
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      requests.push(req.url);
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => server.close(resolve)));
+    const env = {
+      SystemRoot: process.env.SystemRoot,
+      ComSpec: COMSPEC,
+      PATH: `${tools};${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`,
+      HOME: root,
+      USERPROFILE: root,
+      TEMP: root,
+      TMP: root,
+      IMPECCABLE_HOME: path.join(root, 'cache'),
+      IMPECCABLE_DOWNLOAD_BASE: `http://127.0.0.1:${server.address().port}`,
+      PROCESSOR_ARCHITECTURE: 'AMD64',
+    };
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(COMSPEC, ['/d', '/c', launcher, 'detect'], { env, cwd: root });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', data => { stdout += data; });
+      child.stderr.on('data', data => { stderr += data; });
+      child.on('error', reject);
+      child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+    });
+    assert.equal(result.signal, null, JSON.stringify(result));
+    if (trusted) {
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /path-engine-ran/);
+      assert.equal(requests.length, 0, 'a trusted PATH binary needs no download');
+    } else {
+      assert.equal(result.status, 127, JSON.stringify(result));
+      assert.doesNotMatch(result.stdout, /path-engine-ran/);
+      assert.equal(requests.length, 1, 'a failed probe falls through to the pinned download');
+      assert.match(result.stderr, /could not download engine/);
+    }
+  });
+}
+
 // The sibling engine slot is gitignored, so a skill upgrade that copies files
 // over it leaves the old engine behind. POSIX: a sh stub. Windows: a copy of
 // node.exe that answers `engine-probe` through engine-probe.js in the cwd.
