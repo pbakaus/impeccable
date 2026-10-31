@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "generate-image: OPENAI_BASE_URL names a non-OpenAI endpoint, whose served model is not the OpenAI default; add --model <id> matching the model that endpoint serves.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

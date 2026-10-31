@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "generate-image: could not download --ref http://127.0.0.1:9/cards/world.webp: the request failed; nothing was generated.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
