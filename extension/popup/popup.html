@@ -23,8 +23,11 @@
 
   <div class="actions">
     <button class="btn btn-primary" id="btn-scan">Scan page</button>
+    <button class="btn btn-secondary" id="btn-copy-all" disabled>Copy all findings</button>
     <button class="btn btn-secondary" id="btn-toggle">Hide overlays</button>
   </div>
+
+  <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
 
   <p class="scan-error" id="scan-error" hidden></p>
 
@@ -32,6 +35,7 @@
     <a href="https://impeccable.style" id="link-site">impeccable.style</a>
   </footer>
 
+  <script src="../shared/findings-report.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
