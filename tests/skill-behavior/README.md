@@ -548,6 +548,15 @@ an initialized natural build request, replacement-world redesign, scope-preservi
 refinement, and critique's closing question. It checks question order and
 context/artifact writes rather than only reference-file loading.
 
+The bolder artifact check compares header text and links and footer text to the
+original fixture, with whitespace normalized. It also requires a change to the
+`#case-study` DOM or computed styles at desktop or mobile size; CSS-only changes
+are valid, while comments and unused CSS are not. This is a scope/change check,
+not a design-quality score. The existing trace and fresh-capture checks remain.
+Run its offline positive and negative cases with
+`node --test tests/skill-workflow-scope.test.mjs`; they also run in
+`bun run test:skill-workflow` before any provider-backed turns.
+
 `critique closes with the question or an explicit skip line` is a regression
 guard, not a routing check. A critique that prints its report and then stops,
 asking nothing and printing no `Questions skipped: <reason>` line, is an
