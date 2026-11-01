@@ -1,15 +1,16 @@
 ### Purpose
 
-Resolve one stable target, run two independent assessments, synthesize a design critique, persist a snapshot, and ask the user what to improve next. The chat response is the primary deliverable; the snapshot is an archive of that run.
+Resolve one stable target, assess it, synthesize a design critique, persist a snapshot, and ask the user what to improve next. The chat response is the primary deliverable; the snapshot is an archive of that run.
 
 ### Hard Invariants
 
-- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration).
+- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration). An unchanged target (Setup step 4) runs neither, and a rerun without a diff skips A.
+- The first run's ledger is complete: severity ranks a finding, it never decides whether the finding is reported. A rerun reports a new finding only when a change since the previous run caused it.
 - Assessment A and B MUST run as two isolated sub-agents whenever a sub-agent/Task tool is exposed. Running them inline in this context is "possible" but is NOT permitted; it is a degraded run. Inline is allowed ONLY when no sub-agent tool exists (or the user declined, on harnesses that ask). Native platforms run A alone (see Assessment Orchestration).
 - If you degrade for any reason, the report's first line MUST be a banner: `⚠️ DEGRADED: single-context (<reason>)`. A silent degraded critique is a failed critique.
 - Assessment A must finish before detector findings enter the parent synthesis context. Detector output is deterministic, but it still anchors judgment.
-- A skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, or the platform is native (see Assessment Orchestration).
-- Viewable targets require browser inspection when available.
+- On any run that assesses, a skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, or the platform is native (see Assessment Orchestration).
+- On any run that assesses, viewable targets require browser inspection when available.
 - Any local server started only for critique visualization must run in the background, have a recorded stop method, and be stopped before final reporting unless the user asks to keep it.
 - Do not claim a user-visible overlay exists unless script injection succeeded and the detector ran in the page.
 - The question is the LAST thing in the response. Write the entire report out first, then ask; nothing follows the question. Prose emitted after a structured question is withheld until the user answers it, so a report written after the question reads as if the critique never ran.
@@ -26,7 +27,18 @@ Resolve one stable target, run two independent assessments, synthesize a design 
    {{scripts_path}}/impeccable critique-storage slug "<resolved-path-or-url>"
    ```
    Every later command also accepts the resolved target directly and derives the same slug internally; never hand-write a slug. If this exits non-zero, skip persistence and trend for this run, but continue the critique.
-3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently; it is the only prior-run input critique consumes.
+3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently.
+4. **Find the previous run**:
+   ```bash
+   {{scripts_path}}/impeccable critique-storage changes "<resolved target>"
+   ```
+   Take the first branch that applies:
+   - **Exit non-zero**, or the user asks for a fresh review or says the surface was redesigned: **first run**. Follow Assessment Orchestration as written.
+   - **`changes: none`**: **unchanged**. Read `.impeccable/critique/<previous>`, report its score and unresolved findings as they stand, write no snapshot, run no assessment, and close with Ask the User. Reporting nothing new is the correct result.
+   - **`changes: <n> files`**: **rerun**. See Rerun.
+   - **`changes: unknown`**: a previous run exists but no diff can be trusted (no git, a target git cannot see, a pruned base). **Rerun without a diff**. See Rerun.
+
+   Unresolved means `open` or `partial`.
 
 ### Assessment Orchestration
 
@@ -49,14 +61,23 @@ Codex sub-agent gate (overrides the default above; Codex's permission model requ
 - If allowed, spawn A and B (in sequence for a desktop app). If declined, run sequentially and lead the report with `⚠️ DEGRADED: single-context (sub-agents declined by user)`.
 - If `spawn_agent` is not exposed, do not ask; run sequentially and lead with `⚠️ DEGRADED: single-context (spawn_agent unavailable in this session)`.
 - If spawning fails after permission, run sequentially and lead with `⚠️ DEGRADED: single-context (sub-agent spawn failed: <exact error>)`.
-Prefer `fork_context: false` with self-contained prompts containing cwd, target, live URL, references, product context, and output contract. If using `fork_context: true`, omit `agent_type`, `model`, and `reasoning_effort`.
+Prefer `fork_context: false` with self-contained prompts containing cwd, target, live URL, references, product context, and output contract. If using `fork_context: true`, omit `agent_type`, `model`, and `reasoning_effort`. On a rerun, A always takes `fork_context: false`.
 </codex>
 
 If browser automation is available, each assessment creates its own new tab. Never reuse an existing tab, even if it is already at the right URL. Desktop apps are the exception (see **Desktop apps** under Assessment B).
 
 ### Assessment A: Design Review
 
-Read relevant source files and visually inspect the live page when browser automation is available. Think like a design director.
+Read relevant source files and visually inspect the live page when browser automation is available. Think like a design director. This is the first-run method; a rerun replaces it (see Rerun).
+
+Build the inventory first: every screen and route in the target, each state it can reach (empty, loading, error, success, focus), every width the platform supports. Then operate it, on a local dev server or test profile with disposable data only. Against anything else stay read-only, stop destructive and payment flows at their confirmation step, and mark those rows not exercised. Restore what you changed and report any side effect.
+- Submit forms empty and malformed, tab through with the keyboard, trigger destructive actions, read copy against the same action on sibling screens.
+- After each mutating control, reload and reread every count and status that depends on it.
+- On web, read `documentElement.scrollWidth` at exactly 320px on every route; for each repeated control or text role, compare computed size, weight, and color across instances, and `:hover` against the active state.
+- Check every `mailto:`, `tel:`, and external link for placeholder values (`.example`, `TODO`) before crediting it as a working path.
+- Compare visible copy with PRODUCT.md and DESIGN.md: their internal terms do not belong in customer copy.
+
+Walk every inventory row against every heuristic and the cognitive load checklist. The pass is complete when every row is walked or marked not exercised with the reason; return the inventory with it.
 
 Evaluate:
 - **Design specificity**: Is the composition, interaction, and visual language grounded in this product, or could an unrelated product use it unchanged? Make this judgment before seeing detector output.
@@ -65,7 +86,13 @@ Evaluate:
 - **Emotional journey**: peak-end rule, emotional valleys, reassurance at high-stakes moments.
 - **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4, marking any heuristic the mode-applicability rule allows as `n/a` instead of forcing a number.
 
-Return: design-specificity verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
+Report every defect, however small. One defect per finding: a different fix means a different finding, so never bundle. Number findings `F1`, `F2`, ... in the order found. Each finding carries severity, heuristic number, location (file and element), what is wrong, and the fix.
+
+Scores: every point below 4 traces to named findings. For each heuristic below 4, state which findings earn each next point (`F3, F7 -> 3; F9 -> 4`), one group per missing point, most severe first: its P0 and P1 findings form the first group and nothing else joins it on a first run, so fixing the priority issues always earns a point. If you cannot name what is missing, the rubric must agree the score is 4; otherwise name the finding.
+
+Status: a pattern PRODUCT.md or DESIGN.md records as deliberate is `documented`; it costs no points and becomes a closing question. A defect that does not show on the target's own screens is `outside` and costs no points; one that shows there is in scope whichever file causes it, a shared layout or stylesheet included.
+
+Return: inventory, design-specificity verdict, heuristic scores with their next-point groups, cognitive load, emotional journey, 2-3 strengths, every finding, persona red flags, and provocative questions.
 
 ### Assessment B: Detector + Browser Evidence
 
@@ -103,7 +130,7 @@ The app has one window, so the assessments take turns in it instead of opening t
 Codex Browser note: Use the Browser skill. Do not spend a Browser attempt on `file://`. Only call `visibility.set(true)` after mutable script injection is confirmed for the `[Human]` overlay path; verify with `get()`. Use `tab.dev.logs({ filter: "impeccable" })` for console results. Its Playwright `evaluate(...)` surface is read-only; do not rely on it for mutation.
 </codex>
 
-Return: CLI findings JSON/counts, browser console findings if applicable, false positives, and skipped/failed browser steps with concrete reasons.
+Return: CLI findings JSON/counts, browser console findings if applicable, false positives, and skipped/failed browser steps with concrete reasons. On a first run, every detector and browser finding enters the ledger unless it is a false positive.
 
 After Assessment B returns usable CLI findings, reuse them. Do not rerun `impeccable detect` in the parent unless Assessment B failed, was truncated, or omitted count, rule names, or file locations.
 
@@ -111,9 +138,41 @@ After Assessment B returns usable CLI findings, reuse them. Do not rerun `impecc
 Codex failure accounting: final Run Notes must include target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live-server cleanup, temp-file cleanup, and any fallback signal used. Do not run repo status checks, late API spelunking, or unrelated verification after the report is assembled.
 </codex>
 
+### Rerun
+
+Applies when Setup step 4 printed `changes: <n> files` or `changes: unknown`.
+
+- **Assessment A stays blind to the ledger.** Spawn it first with a fresh context, never a forked one. Tell it to run `{{scripts_path}}/impeccable critique-storage changes "<resolved target>" --diff` itself, to stay out of `.impeccable/critique/`, and to report only defects a change introduced that show on the target's own screens. Each new finding names the hunk that caused it; a finding with no hunk, or a defect that predates its hunk, is out of scope for this run. Unchanged code is not re-reviewed. It numbers findings `N1`, `N2`, ... and returns no scores.
+- **Then read the ledger** from `.impeccable/critique/<previous>` in the parent: its All Findings table, heuristic table, and scores. On a native or degraded run, read it only after A returns.
+- **Assessment B gets the ledger.** It verifies each unresolved row against the current code and rendered page and marks it `fixed`, `partial` or `open` with evidence. Judge the row as written: when its What no longer holds or a fix it offered was applied, it is `fixed`, because a stricter bar than the row states keeps the loop from ending. It runs the detector as usual, reads the touched lines from `{{scripts_path}}/impeccable critique-storage changes "<resolved target>" --diff`, and keeps a detector or browser finding only when it sits on a touched line or it can name the hunk that caused it.
+- On a native platform the parent does B's verification after A returns. Degraded sequential runs follow the same order, A first.
+- **Without a diff** (`changes: unknown`), nothing can show what a change caused, so skip A and report no new findings. B only verifies the ledger as above. State in the report header that no diff exists, and offer a fresh review as a closing option.
+
+**Merge**: fold any new finding the ledger already holds into that row; a `fixed` row it reopens goes back to `open`. Number the rest after the ledger's last id.
+
+**Contradictions**: a new fix that reverses a fix the ledger already issued is never issued as an instruction. Make it a closing question naming both.
+
+**Score is arithmetic on the ledger.** A heuristic scores 4 minus its Next points groups that still hold an unresolved finding, floored at 0, so a group whose findings are all `fixed` earns its point and keeps it. New P0 and P1 findings form a new first group on their heuristic. A new P2 joins its heuristic's last group, opening one if it has none, so an open P2 never reads as excellent. A new P3 joins the last group if there is one and otherwise costs nothing. Nothing else moves a score.
+
+Report, in this order:
+- The Method line, then `Rerun of <previous>`.
+- `#### Since Last Run`: a table of ledger rows with their verdicts.
+- `#### New Since Last Run`: the new findings with the hunk that caused each, or `None`.
+- The heuristic table.
+- `#### Priority Issues`: every unresolved P0 and P1.
+- `#### All Findings`: every row carried forward, fixed ones included, so contradictions stay checkable across rounds.
+
+A rerun has no fresh review, so it carries none of the other first-run sections.
+
+**Done**: when no finding is unresolved and nothing new appeared, say the target is done, and that another run will report nothing new unless the code changes or a fresh review is requested.
+
+Done or not, deliver, persist, and close as below: the write records the new change base, and the trend records the move.
+
 ### Generate Combined Critique Report
 
 Synthesize both assessments into a single report. Do not simply concatenate. Weave the findings together, noting where the LLM review and detector agree, where the detector caught issues the LLM missed, and where detector findings are false positives.
+
+Merge A and B into one ledger: deduplicate, drop false positives and `ignore.md` matches silently, and drop nothing else. Continue A's numbering for findings only B caught, and give each a severity and heuristic.
 
 The chat response is the primary user-facing deliverable. Present the full structured critique below in chat; do not replace it with a summary and a link. The persisted snapshot is an archive of that run.
 
@@ -129,29 +188,29 @@ The report's first line MUST declare how the assessments were run, so a degraded
 - Dual-agent: `Method: dual-agent (A: <agent-id> · B: <agent-id>)`
 - Degraded: `⚠️ DEGRADED: single-context (<reason, e.g. no sub-agent tool exposed>)`
 - Native: `Method: design review only (detector not applicable, native platform)`
+- Unchanged: `Method: none run (unchanged since <previous>)`
+- Rerun without a diff: `Method: verification only (A skipped, no diff · B: <agent-id>)`
 
 #### Design Health Score
 > *Consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below.*
 
 Present the Nielsen's 10 heuristics scores as a table:
 
-| # | Heuristic | Score | Key Issue |
-|---|-----------|-------|-----------|
-| 1 | Visibility of System Status | ? | [specific finding or "n/a" if solid] |
-| 2 | Match System / Real World | ? | |
-| 3 | User Control and Freedom | ? | |
-| 4 | Consistency and Standards | ? | |
-| 5 | Error Prevention | ? | |
-| 6 | Recognition Rather Than Recall | ? | |
-| 7 | Flexibility and Efficiency | ? | |
-| 8 | Aesthetic and Minimalist Design | ? | |
-| 9 | Error Recovery | ? | |
-| 10 | Help and Documentation | ? | |
-| **Total** | | **??/[applicable max]** | **[Rating band]** |
+| # | Heuristic | Score | Next points | Key Issue |
+|---|-----------|-------|-------------|-----------|
+| 1 | Visibility of System Status | ? | `F3, F7 -> 3; F9 -> 4` | [specific finding or "n/a" if solid] |
+| 2 | Match System / Real World | ? | | |
+| 3 | User Control and Freedom | ? | | |
+| 4 | Consistency and Standards | ? | | |
+| 5 | Error Prevention | ? | | |
+| 6 | Recognition Rather Than Recall | ? | | |
+| 7 | Flexibility and Efficiency | ? | | |
+| 8 | Aesthetic and Minimalist Design | ? | | |
+| 9 | Error Recovery | ? | | |
+| 10 | Help and Documentation | ? | | |
+| **Total** | | **??/[applicable max]** | | **[Rating band]** |
 
 The applicable maximum is 4 times the number of heuristics you actually scored: **/40** when all ten apply, **/32** when two are `n/a`. Never print `/40` over a partial set.
-
-Be honest with scores. A 4 means genuinely excellent. Most real interfaces score 20-32 out of 40.
 
 **Mode applicability**: heuristics 7 (Flexibility and Efficiency) and 10 (Help and Documentation) may be scored `n/a` on Persuade and Experience surfaces (landing pages, campaigns, portfolios, bodies of work), as may any other heuristic that genuinely cannot apply to the surface under review. Write `n/a` in the Score cell with a one-line reason, and renormalize the total to the applicable maximum (e.g. **24/32** when two heuristics are n/a) so the rating band stays proportional. The persisted snapshot must record the applicable maximum and which heuristics were scored n/a.
 
@@ -172,10 +231,10 @@ A brief gut reaction: what works, what doesn't, and the single biggest opportuni
 Highlight 2-3 things done well. Be specific about why they work.
 
 #### Priority Issues
-The 3-5 most impactful design problems, ordered by importance.
+Every open P0 and P1, ordered by importance, with no count limit.
 
-For each issue, tag with **P0-P3 severity** (see [Issue Severity below](#issue-severity-p0p3) for definitions):
-- **[P?] What**: Name the problem clearly
+For each issue, prefix its id and tag with **P0-P3 severity** (see [Issue Severity below](#issue-severity-p0p3) for definitions):
+- **F? [P?] What**: Name the problem clearly
 - **Why it matters**: How this hurts users or undermines goals
 - **Fix**: What to do about it (be concrete)
 - **Suggested command**: Which command could address this (from: {{available_commands}})
@@ -193,8 +252,13 @@ For each selected persona, walk through the primary user action and list specifi
 
 Be specific. Name the exact elements and interactions that fail each persona. Don't write generic persona descriptions; write what broke for them.
 
-#### Minor Observations
-Quick notes on smaller issues worth addressing.
+#### All Findings
+The complete ledger, P0 to P3, one row per finding.
+
+| ID | P | H | Where | What | Fix | Status |
+|----|---|---|-------|------|-----|--------|
+
+Status is `open`, `documented` or `outside`; a rerun adds `fixed` and `partial`.
 
 #### Questions to Consider
 Provocative questions that might unlock better solutions:
@@ -204,7 +268,7 @@ Provocative questions that might unlock better solutions:
 
 <codex>
 #### Run Notes
-Keep this compact. Include status for target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live server cleanup, and temp-file cleanup. For failed or skipped steps, give the concrete observed reason and the fallback signal used. In the final chat response, also include snapshot write and trend read status after persistence has run.
+Keep this compact; an unchanged run marks assessment steps `not run (unchanged)`. Include status for target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live server cleanup, and temp-file cleanup. For failed or skipped steps, give the concrete observed reason and the fallback signal used. In the final chat response, also include snapshot write and trend read status after persistence has run.
 
 Codex Run Notes are final-chat only. Do not include this section in the persisted snapshot body, because persistence, trend read, and temp cleanup happen after the snapshot write and would otherwise archive stale status such as "pending after persistence."
 </codex>
@@ -214,7 +278,7 @@ Codex Run Notes are final-chat only. Do not include this section in the persiste
 - Be specific. "The submit button," not "some elements."
 - Say what's wrong AND why it matters to users.
 - Give concrete suggestions. Cut "consider exploring..." entirely.
-- Prioritize ruthlessly. If everything is important, nothing is.
+- Rank ruthlessly. If everything is important, nothing is.
 - Don't soften criticism. Developers need honest feedback to ship great design.
 
 ### Deliver the Report
@@ -231,7 +295,7 @@ Once the report above is finalized, write it to `.impeccable/critique/` so the u
 
 Skip this step if the Setup slug was null (vague or root-level target).
 
-1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions), but stop before the "Ask the User" / "Recommended Actions" sections that come later.
+1. **Write the body to a temp file** outside the project so you can pipe it to the helper. Use the full report as delivered, but stop before the "Ask the User" / "Recommended Actions" sections that come later.
 
    This is a copy of the report you already delivered above, for later commands to read. It is not delivery. If you find yourself composing the report for the first time inside this heredoc, you have skipped Deliver the Report; go back and send it.
 
@@ -244,7 +308,7 @@ Skip this step if the Setup slug was null (vague or root-level target).
    IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>}' \
      {{scripts_path}}/impeccable critique-storage write "<resolved target>" <body-file>
    ```
-   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not.
+   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one; `p0_count` and `p1_count` count unresolved findings. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not.
 
 3. **Delete the temp body file** after the write attempt completes, whether the write succeeded or failed. If deletion fails, mention `temp-file cleanup failed: <reason>` briefly in the final output, but do not block the critique.
 
@@ -277,7 +341,7 @@ Ask questions along these lines (adapt to the specific findings; do not ask gene
 
 1. **Priority direction**: Based on the issues found, ask which category matters most to the user right now. For example: "I found problems with visual hierarchy, color usage, and information overload. Which area should we tackle first?" Offer the top 2-3 issue categories as options.
 
-2. **Design intent**: If the critique found a tonal mismatch, ask whether it was intentional. For example: "The interface feels clinical and corporate. Is that the intended tone, or should it feel warmer/bolder/more playful?" Offer 2-3 tonal directions as options based on what would fix the issues found.
+2. **Design intent**: If the critique found a tonal mismatch, ask whether it was intentional. For example: "The interface feels clinical and corporate. Is that the intended tone, or should it feel warmer/bolder/more playful?" Offer 2-3 tonal directions as options based on what would fix the issues found. Fold every `documented` finding into one question: keep these as intended, or revisit any?
 
 3. **Scope**: Ask how much the user wants to take on. For example: "I found N issues. Want to address everything, or focus on the top 3?" Offer scope options like "Top 3 only", "All issues", "Critical issues only".
 
@@ -287,7 +351,7 @@ Ask questions along these lines (adapt to the specific findings; do not ask gene
 - Every question must reference specific findings from the report. Never ask generic "who is your audience?" questions.
 - Keep it to 2-4 questions maximum. Respect the user's time.
 - Offer concrete options, not open-ended prompts.
-- Skipping is allowed only when the report listed **fewer than 3 Priority Issues**. Count them; do not judge the findings "straightforward" by feel. At 3 or more, the questions are required.
+- Skipping is allowed only when the report listed **fewer than 3 unresolved Priority Issues**. Count them; do not judge the findings "straightforward" by feel. At 3 or more, the questions are required.
 
 **Final-question gate.** The user-visible response must either include the targeted questions or carry the literal line `Questions skipped: <reason>` naming the count that permitted the skip. Each question must include 2-3 concrete answer options tied to the actual critique findings. Do not end with only open-ended questions, and do not end with neither: stopping after the report, having asked nothing and printed no skip line, is the most common way this command fails.
 
@@ -317,7 +381,7 @@ After presenting the summary, tell the user:
 
 > You can ask me to run these one at a time, all at once, or in any order you prefer.
 >
-> Re-run `{{command_prefix}}impeccable critique` after fixes to see your score improve.
+> Re-run `{{command_prefix}}impeccable critique` after fixes. The rerun verifies these findings, reviews only what changed, and moves the score accordingly. Ask for a fresh critique to start over.
 
 ---
 

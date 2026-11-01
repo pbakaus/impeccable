@@ -93,6 +93,31 @@ describe('skill reference authoring contracts', () => {
     assert.doesNotMatch(polish, /git status|git log/);
   });
 
+  it('makes the first critique complete and every rerun diff-driven', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const setup = critique.match(/### Setup\n([\s\S]*?)\n### Assessment Orchestration/)?.[1] ?? '';
+    const rerun = critique.match(/### Rerun\n([\s\S]*?)\n### Generate Combined Critique Report/)?.[1] ?? '';
+
+    assert.doesNotMatch(critique, /3-5 (priority issues|most impactful)/);
+    assert.match(setup, /critique-storage changes "<resolved target>"/);
+    assert.match(setup, /write no snapshot, run no assessment/);
+    assert.match(critique, /#### All Findings/);
+    assert.match(rerun, /\*\*Assessment A stays blind to the ledger\.\*\*/);
+    assert.match(rerun, /a finding with no hunk, or a defect that predates its hunk, is out of scope/);
+    assert.match(rerun, /\*\*Score is arithmetic on the ledger\.\*\*/);
+    assert.match(rerun, /Nothing else moves a score/);
+    // Each broke a real test loop (#1264): mixed groups and P2 costs held the
+    // score flat with every P1 fixed, and a verifier stricter than the row kept
+    // a fix the row offered from counting.
+    assert.match(critique, /its P0 and P1 findings form the first group/);
+    assert.match(rerun, /scores 4 minus its Next points groups that still hold an unresolved finding/);
+    assert.match(rerun, /Judge the row as written/);
+    assert.match(rerun, /skip A and report no new findings/);
+    // A real run mutated seeded data with nothing to restore it.
+    assert.match(critique, /on a local dev server or test profile with disposable data only/);
+    assert.match(setup, /`changes: unknown`[^\n]*\*\*Rerun without a diff\*\*/);
+  });
+
   it('routes visual decision fallback through wait capability and start failure', () => {
     const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const visualDecisionPage = newWork.match(

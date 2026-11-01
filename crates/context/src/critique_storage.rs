@@ -8,6 +8,8 @@ use crate::util::{exists, iso_now, js_trim, json_pretty, node_read_error, read_d
 use impeccable_common::Io;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn get_critique_dir(cwd: &str, env: &Env) -> String {
     jsp::join(&[&resolve_project_root(cwd, &TargetOptions::default(), env), ".impeccable", "critique"])
@@ -243,6 +245,110 @@ fn hex_lower(bytes: &[u8]) -> String {
         s.push_str(&format!("{:02x}", b));
     }
     s
+}
+
+/// `git args` run in `root`, against the throwaway index `index` when given,
+/// and never against a repository an outer hook's environment points at.
+fn git_cmd(root: &str, index: Option<&str>, args: &[&str]) -> Command {
+    let mut cmd = Command::new("git");
+    cmd.args(args).current_dir(root).stdin(Stdio::null()).stderr(Stdio::null());
+    impeccable_common::proc::hide_window(&mut cmd);
+    for var in ["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_INDEX_FILE"] {
+        cmd.env_remove(var);
+    }
+    if let Some(path) = index {
+        cmd.env("GIT_INDEX_FILE", path);
+    }
+    cmd
+}
+
+/// Stdout of `git_cmd`; `None` when git is missing or the command fails.
+fn git(root: &str, index: Option<&str>, args: &[&str]) -> Option<String> {
+    let out = git_cmd(root, index, args).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Left out of a change base: runtime state would read as a change on every
+/// run, and a base's blobs sit in the object store and its diff goes to a
+/// sub-agent, so the common credential files stay out even when nothing
+/// ignores them.
+const NOT_IN_CHANGE_BASE: [&str; 7] =
+    ["**/.impeccable/**", "**/.env*", "**/.npmrc", "**/id_rsa*", "**/*.pem", "**/*.key", "**/*.p12"];
+
+/// Lockfiles count as changed but stay out of `--diff`: megabytes no design
+/// review reads.
+const NOT_IN_DIFF: [&str; 13] = [
+    "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb", "Cargo.lock", "uv.lock", "poetry.lock",
+    "Podfile.lock", "pubspec.lock", "Gemfile.lock", "composer.lock", "go.sum",
+];
+
+static INDEX_SEQ: AtomicUsize = AtomicUsize::new(0);
+
+/// The change base: a git tree of the whole working tree at this moment
+/// (tracked, dirty and untracked-not-ignored files, minus `NOT_IN_CHANGE_BASE`
+/// and `leave_out`, a path relative to `root`), built in a throwaway index so
+/// the user's index, HEAD and working tree stay untouched. `None` when git is
+/// missing, `root` is not in a repo, or no tree can be written; a file git
+/// cannot read is left out rather than losing the base.
+fn working_tree_id(root: &str, leave_out: Option<&str>) -> Option<String> {
+    let real = git(root, None, &["rev-parse", "--git-path", "index"])?;
+    let real = std::path::Path::new(root).join(real.trim());
+    let temp = std::env::temp_dir().join(format!(
+        "impeccable-critique-index-{}-{}",
+        std::process::id(),
+        INDEX_SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
+    let index = temp.to_string_lossy().into_owned();
+    let tree = (|| {
+        // Seeded from the real index so git rehashes only what changed.
+        if real.is_file() {
+            std::fs::copy(&real, &temp).ok()?;
+        }
+        // The add pathspec only stops new files; a tracked one already in the
+        // copied index has to be dropped too.
+        let dropped: Vec<String> = NOT_IN_CHANGE_BASE.iter().map(|p| format!(":(top,glob){p}")).collect();
+        let mut rm = vec!["rm", "-r", "-q", "-f", "--cached", "--ignore-unmatch", "--"];
+        rm.extend(dropped.iter().map(String::as_str));
+        git(root, Some(&index), &rm)?;
+        let mut excluded: Vec<String> = NOT_IN_CHANGE_BASE.iter().map(|p| format!(":(top,glob,exclude){p}")).collect();
+        excluded.extend(leave_out.map(|p| format!(":(exclude){p}")));
+        let mut add = vec!["add", "-A", "--ignore-errors", "--", ":/"];
+        add.extend(excluded.iter().map(String::as_str));
+        // `--ignore-errors` exits 1 after skipping a file it cannot read, and also
+        // when it cannot write objects at all; a fatal or an unwritable store
+        // leaves the seeded index, which would read as no change.
+        let added = git_cmd(root, Some(&index), &add).output().ok()?;
+        match added.status.code() {
+            Some(0) => {}
+            Some(1) if objects_writable(root) => {}
+            _ => return None,
+        }
+        git(root, Some(&index), &["write-tree"])
+    })();
+    let _ = std::fs::remove_file(&temp);
+    tree.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// Whether git can add to this repo's object store, as a sandbox guarding
+/// `.git` or another owner's store would not let it.
+fn objects_writable(root: &str) -> bool {
+    let Some(dir) = git(root, None, &["rev-parse", "--git-path", "objects"]) else { return false };
+    let probe = std::path::Path::new(root).join(dir.trim()).join(format!("impeccable-probe-{}", std::process::id()));
+    let writable = std::fs::File::create(&probe).is_ok();
+    let _ = std::fs::remove_file(&probe);
+    writable
+}
+
+/// Whether a repo tree can see the target at all. A gitignored file, a path
+/// outside the repo, and a remote URL all read as unchanged there whatever
+/// happened to them, so they get no verdict from it.
+fn target_in_change_base(target: &str, root: &str, cwd: &str) -> bool {
+    if is_http(target) {
+        return crate::url::parse(target).is_some_and(|u| matches!(u.hostname.as_str(), "localhost" | "127.0.0.1" | "[::1]"));
+    }
+    let Some(path) = resolve_local_target_path(target, cwd) else { return false };
+    // Exit 1 is "inside the repo and not ignored"; 0 is ignored, 128 is outside.
+    git_cmd(root, None, &["check-ignore", "-q", "--", &path]).status().ok().and_then(|s| s.code()) == Some(1)
 }
 
 /// JS #660: readSnapshot(filePath).
@@ -484,7 +590,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             // the order of the rest) and append the freshly resolved values.
             let mut meta: Map<String, Value> = Map::new();
             for (k, v) in parsed_meta {
-                if k != "target_fingerprint" && k != "target_path" && k != "target_identity" {
+                if k != "target_fingerprint" && k != "target_path" && k != "target_identity" && k != "change_base" {
                     meta.insert(k, v);
                 }
             }
@@ -496,6 +602,16 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 if let Some(lp) = resolve_local_target_path(slug_arg, &cwd) {
                     meta.insert("target_path".into(), Value::String(lp));
                 }
+            }
+            // The helper also owns the change base `changes` diffs against;
+            // it is left out when git cannot produce one.
+            let root = resolve_project_root(&cwd, &TargetOptions::default(), &env);
+            // A body written inside the project is gone by the next run, and
+            // its deletion would hand the ledger to a reviewer as `-` lines.
+            let body_path = jsp::resolve(&cwd, &[body_file]);
+            let leave_out = body_path.strip_prefix(&root).map(|p| p.trim_start_matches(['/', '\\']));
+            if let Some(base) = working_tree_id(&root, leave_out) {
+                meta.insert("change_base".into(), Value::String(base));
             }
             let dir = get_critique_dir(&cwd, &env);
             let _ = std::fs::create_dir_all(&dir);
@@ -657,6 +773,65 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 }
             }
         }
+        "changes" => {
+            let target = rest.first().map(String::as_str).unwrap_or("");
+            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
+            let flag = rest.get(1).map(String::as_str);
+            if slugs.is_empty() || flag.is_some_and(|f| f != "--diff") {
+                io.err("usage: changes <resolved-target> [--diff]\n");
+                return 1;
+            }
+            // `latest`'s lookup, minus its closed and fingerprint checks: polish
+            // closes snapshots whose findings a rerun still has to verify.
+            let target_identity = resolve_target_identity(target, &cwd);
+            let mut previous = read_newest_snapshot_for_identity_slugs(&slugs, target_identity.as_deref(), &cwd, &env);
+            if previous.is_none() && !is_ready_slug(target) {
+                previous = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, None, &cwd, &env));
+            }
+            let Some(previous) = previous else {
+                return 2;
+            };
+            // Written before the ledger existed: nothing a rerun can verify or score from.
+            if !previous.body.contains("All Findings") {
+                return 2;
+            }
+            io.out(&format!("previous: {}\n", jsp::basename(&previous.path)));
+            let root = resolve_project_root(&cwd, &TargetOptions::default(), &env);
+            let report = (|| {
+                // Hex only: the value reaches git's command line from a file.
+                let Some(Value::String(base)) = previous.meta.get("change_base") else { return None };
+                if base.is_empty() || !base.chars().all(|c| c.is_ascii_hexdigit()) || !target_in_change_base(target, &root, &cwd) {
+                    return None;
+                }
+                let current = working_tree_id(&root, None)?;
+                let diff_args = |extra: &[&'_ str]| -> Option<String> {
+                    let mut args = vec![
+                        "-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "-c", "diff.ignoreSubmodules=none", "-c", "core.quotePath=false",
+                        "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+                    ];
+                    args.extend(extra);
+                    args.extend([base.as_str(), current.as_str()]);
+                    let locks: Vec<String> = NOT_IN_DIFF.iter().map(|f| format!(":(top,glob,exclude)**/{f}")).collect();
+                    if extra.is_empty() {
+                        args.extend(["--", ":/"]);
+                        args.extend(locks.iter().map(String::as_str));
+                    }
+                    git(&root, None, &args)
+                };
+                let names = diff_args(&["--name-only"])?;
+                let files = names.lines().count();
+                if files == 0 {
+                    // Same tree but different bytes: a target the base leaves out.
+                    let recorded = previous.meta.get("target_fingerprint").and_then(Value::as_str);
+                    let moved = recorded.is_some_and(|r| fingerprint_target(target, &cwd).as_deref() != Some(r));
+                    return (!moved).then(|| "changes: none\n".to_string());
+                }
+                let detail = if flag.is_some() { diff_args(&[])? } else { names };
+                Some(format!("changes: {files} files\n{detail}"))
+            })();
+            io.out(&report.unwrap_or_else(|| "changes: unknown\n".to_string()));
+            0
+        }
         "trend" => {
             let mut slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
             if slugs.is_empty() {
@@ -695,7 +870,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         _ => {
-            io.err("usage: impeccable critique-storage <slug|write|latest|trend|close> [args]\n");
+            io.err("usage: impeccable critique-storage <slug|write|latest|trend|close|changes> [args]\n");
             1
         }
     }
@@ -777,7 +952,12 @@ mod tests_660 {
     }
 
     fn run_capture(cwd: &str, args: &[&str]) -> (i32, String, String) {
-        let (mut io, cap) = Io::captured("", PathBuf::from(cwd), HashMap::new());
+        run_capture_env(cwd, args, &[])
+    }
+
+    fn run_capture_env(cwd: &str, args: &[&str], env: &[(&str, &str)]) -> (i32, String, String) {
+        let env: HashMap<String, String> = env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let (mut io, cap) = Io::captured("", PathBuf::from(cwd), env);
         let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         let code = run(&owned, &mut io);
         let out = String::from_utf8_lossy(&cap.stdout.borrow()).into_owned();
@@ -951,6 +1131,277 @@ mod tests_660 {
         assert_eq!(run_capture(&cwd, &["close", collision, &identified_name]).0, 2);
         assert_eq!(run_capture(&cwd, &["close", target, &identified_name]).0, 0);
 
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    /// Runs git in `cwd` under a fixed identity; false when git is missing or fails.
+    fn git_ok(cwd: &str, args: &[&str]) -> bool {
+        Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .is_ok_and(|o| o.status.success())
+    }
+
+    /// A project with a fresh git repo (no commits) and a source file, or
+    /// `None` when this machine has no git.
+    fn repo() -> Option<String> {
+        let cwd = tmp();
+        if !git_ok(&cwd, &["init", "-q"]) {
+            let _ = std::fs::remove_dir_all(&cwd);
+            return None;
+        }
+        std::fs::create_dir_all(jsp::join(&[&cwd, "src"])).unwrap();
+        std::fs::write(jsp::join(&[&cwd, "src", "App.tsx"]), "one\n").unwrap();
+        Some(cwd)
+    }
+
+    /// Writes a critique snapshot for src/App.tsx; returns its path.
+    fn snapshot(cwd: &str, meta: &str) -> String {
+        let body_dir = tmp();
+        let body = jsp::join(&[&body_dir, "body.md"]);
+        std::fs::write(&body, "#### All Findings\n").unwrap();
+        let (code, out, _) = run_capture_env(cwd, &["write", "src/App.tsx", &body], &[("IMPECCABLE_CRITIQUE_META", meta)]);
+        assert_eq!(code, 0);
+        let _ = std::fs::remove_dir_all(&body_dir);
+        out.trim().to_string()
+    }
+
+    #[test]
+    fn write_records_a_change_base_only_where_git_can_make_one() {
+        let Some(cwd) = repo() else { return };
+        let path = snapshot(&cwd, r#"{"change_base":"evil","total_score":3}"#);
+        let meta = parse_frontmatter(&std::fs::read_to_string(&path).unwrap());
+        let base = meta["change_base"].as_str().unwrap();
+        assert!(base.len() >= 40 && base.chars().all(|c| c.is_ascii_hexdigit()), "{base}");
+        // The snapshot's own directory is outside the tree, so it is still the base.
+        assert_eq!(working_tree_id(&cwd, None).as_deref(), Some(base));
+        assert_eq!(meta["total_score"], 3);
+        let _ = std::fs::remove_dir_all(&cwd);
+
+        let outside = tmp();
+        if git(&outside, None, &["rev-parse", "--git-dir"]).is_some() {
+            return; // the temp dir sits inside someone's repo
+        }
+        std::fs::create_dir_all(jsp::join(&[&outside, "src"])).unwrap();
+        std::fs::write(jsp::join(&[&outside, "src", "App.tsx"]), "one\n").unwrap();
+        let path = snapshot(&outside, r#"{"change_base":"evil"}"#);
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("change_base"));
+        let name = jsp::basename(&path);
+        assert_eq!(run_capture(&outside, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: unknown\n"));
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn changes_needs_a_target_and_a_snapshot() {
+        let cwd = tmp();
+        assert_eq!(run_capture(&cwd, &["changes"]), (1, String::new(), "usage: changes <resolved-target> [--diff]\n".to_string()));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn changes_diffs_the_working_tree_against_the_recorded_base() {
+        let Some(cwd) = repo() else { return };
+        let at = |rel: &str| jsp::join(&[&cwd, rel]);
+        std::fs::write(at(".gitignore"), "*.log\n").unwrap();
+        std::fs::write(at("ignored.log"), "ignored\n").unwrap();
+        std::fs::write(at("notes.txt"), "untracked before the write\n").unwrap();
+        assert!(git_ok(&cwd, &["add", "src/App.tsx"]));
+        let index = std::fs::read(at(".git/index")).unwrap();
+        let name = jsp::basename(&snapshot(&cwd, "{}"));
+        let changes = || run_capture(&cwd, &["changes", "src/App.tsx"]);
+        assert_eq!(changes(), (0, format!("previous: {name}\nchanges: none\n"), String::new()));
+
+        // Anything under `.impeccable/`, at any depth, is not a change.
+        std::fs::create_dir_all(at("pkg/.impeccable")).unwrap();
+        std::fs::write(at("pkg/.impeccable/notes.md"), "nested\n").unwrap();
+        std::fs::create_dir_all(at(".impeccable/surfaces")).unwrap();
+        std::fs::write(at(".impeccable/surfaces/home.md"), "brief\n").unwrap();
+        assert_eq!(changes().1, format!("previous: {name}\nchanges: none\n"));
+
+        // A dirty edit and a new untracked file are; the ignored file and the
+        // file that was already untracked at write time are not.
+        std::fs::write(at("src/App.tsx"), "two\n").unwrap();
+        std::fs::write(at("new.txt"), "fresh\n").unwrap();
+        std::fs::write(at("ignored.log"), "changed\n").unwrap();
+        assert_eq!(changes().1, format!("previous: {name}\nchanges: 2 files\nnew.txt\nsrc/App.tsx\n"));
+        let (code, out, _) = run_capture(&cwd, &["changes", "src/App.tsx", "--diff"]);
+        assert_eq!(code, 0);
+        assert!(out.starts_with(&format!("previous: {name}\nchanges: 2 files\ndiff --git ")), "{out}");
+        assert!(out.contains("src/App.tsx") && out.contains("+two") && out.contains("new.txt"), "{out}");
+        for left_out in ["notes.txt", "ignored.log", ".gitignore", ".impeccable"] {
+            assert!(!out.contains(left_out), "{left_out} in {out}");
+        }
+
+        // Polish closes the snapshot it processed; the rerun still diffs against it.
+        assert_eq!(run_capture(&cwd, &["close", "src/App.tsx", &name]).0, 0);
+        assert_eq!(run_capture(&cwd, &["latest", "src/App.tsx"]).0, 2);
+        assert!(changes().1.starts_with(&format!("previous: {name}\nchanges: 2 files\n")));
+
+        // The user's index was never touched.
+        assert_eq!(std::fs::read(at(".git/index")).unwrap(), index);
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn changes_leaves_out_tracked_impeccable_files_even_when_staged() {
+        let Some(cwd) = repo() else { return };
+        let tracked = jsp::join(&[&cwd, ".impeccable", "tracked.md"]);
+        std::fs::create_dir_all(jsp::join(&[&cwd, ".impeccable"])).unwrap();
+        std::fs::write(&tracked, "a\n").unwrap();
+        assert!(git_ok(&cwd, &["add", "-f", ".impeccable/tracked.md"]));
+        assert!(git_ok(&cwd, &["commit", "-qm", "base"]));
+        // Staged and then edited again, the state a plain `git rm --cached` refuses.
+        std::fs::write(&tracked, "b\n").unwrap();
+        assert!(git_ok(&cwd, &["add", "-f", ".impeccable/tracked.md"]));
+        std::fs::write(&tracked, "c\n").unwrap();
+        let name = jsp::basename(&snapshot(&cwd, "{}"));
+        std::fs::write(&tracked, "d\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: none\n"));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn changes_is_unknown_when_the_recorded_base_cannot_be_used() {
+        let Some(cwd) = repo() else { return };
+        let dir = jsp::join(&[&cwd, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&dir).unwrap();
+        let slug = slug_from_target(Some("src/App.tsx"), &cwd).unwrap();
+        let identity = serde_json::to_string(&resolve_target_identity("src/App.tsx", &cwd).unwrap()).unwrap();
+        // No base, a base that reads as a git option, and a tree git does not have.
+        let bases = ["", "change_base: --output=pwned\n", "change_base: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"];
+        for (i, base) in bases.iter().enumerate() {
+            let name = format!("2026-05-12T18-3{i}-00Z__{slug}.md");
+            let body = format!("---\ntarget_identity: {identity}\nslug: {slug}\n{base}---\n#### All Findings\n");
+            std::fs::write(jsp::join(&[&dir, &name]), body).unwrap();
+            let (code, out, _) = run_capture(&cwd, &["changes", "src/App.tsx"]);
+            assert_eq!((code, out), (0, format!("previous: {name}\nchanges: unknown\n")));
+        }
+        assert!(!exists(&jsp::join(&[&cwd, "pwned"])));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    /// A snapshot for `target`, written with the body inside the project when
+    /// `body_rel` is given; returns its file name.
+    fn snapshot_for(cwd: &str, target: &str, body_rel: &str) -> String {
+        let body = jsp::join(&[cwd, body_rel]);
+        std::fs::write(&body, "#### All Findings\n").unwrap();
+        let (code, out, _) = run_capture_env(cwd, &["write", target, &body], &[]);
+        assert_eq!(code, 0);
+        std::fs::remove_file(&body).unwrap();
+        jsp::basename(out.trim())
+    }
+
+    #[test]
+    fn changes_gives_no_verdict_on_a_target_the_tree_cannot_see() {
+        let Some(cwd) = repo() else { return };
+        std::fs::write(jsp::join(&[&cwd, ".gitignore"]), "dist/\n").unwrap();
+        std::fs::create_dir_all(jsp::join(&[&cwd, "dist"])).unwrap();
+        std::fs::write(jsp::join(&[&cwd, "dist", "page.html"]), "one\n").unwrap();
+        let outside_dir = tmp();
+        let outside = jsp::join(&[&outside_dir, "page.html"]);
+        std::fs::write(&outside, "one\n").unwrap();
+        for target in ["dist/page.html", outside.as_str(), "https://example.com/pricing"] {
+            let name = snapshot_for(&cwd, target, "body.md");
+            assert_eq!(run_capture(&cwd, &["changes", target]).1, format!("previous: {name}\nchanges: unknown\n"), "{target}");
+        }
+        // A local dev server serves this repo, so its tree does speak for it.
+        let name = snapshot_for(&cwd, "http://localhost:3000/pricing", "body.md");
+        assert_eq!(run_capture(&cwd, &["changes", "http://localhost:3000/pricing"]).1, format!("previous: {name}\nchanges: none\n"));
+        let _ = std::fs::remove_dir_all(&cwd);
+        let _ = std::fs::remove_dir_all(&outside_dir);
+    }
+
+    #[test]
+    fn change_base_holds_no_secrets_body_file_or_lockfile_diff() {
+        let Some(cwd) = repo() else { return };
+        let at = |rel: &str| jsp::join(&[&cwd, rel]);
+        std::fs::write(at(".env"), "STRIPE_SECRET=one\n").unwrap();
+        // The body lives in the project and is deleted after the write: no deletion shows.
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        std::fs::write(at(".env"), "STRIPE_SECRET=two\n").unwrap();
+        std::fs::write(at("server.key"), "private\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: none\n"));
+
+        std::fs::write(at("pnpm-lock.yaml"), "huge\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: 1 files\npnpm-lock.yaml\n"));
+        let (_, diff, _) = run_capture(&cwd, &["changes", "src/App.tsx", "--diff"]);
+        assert_eq!(diff, format!("previous: {name}\nchanges: 1 files\n"));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn a_snapshot_with_no_ledger_counts_as_no_previous_run() {
+        let Some(cwd) = repo() else { return };
+        let body = jsp::join(&[&cwd, "body.md"]);
+        std::fs::write(&body, "#### Priority Issues\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["write", "src/App.tsx", &body]).0, 0);
+        std::fs::remove_file(&body).unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]), (2, String::new(), String::new()));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn a_fatal_add_or_a_target_the_base_leaves_out_gets_no_verdict() {
+        let Some(cwd) = repo() else { return };
+        let at = |rel: &str| jsp::join(&[&cwd, rel]);
+        // A target the base excludes: the tree cannot move, its bytes can.
+        std::fs::write(at("page.key"), "one\n").unwrap();
+        let name = snapshot_for(&cwd, "page.key", "body.md");
+        assert_eq!(run_capture(&cwd, &["changes", "page.key"]).1, format!("previous: {name}\nchanges: none\n"));
+        std::fs::write(at("page.key"), "two\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "page.key"]).1, format!("previous: {name}\nchanges: unknown\n"));
+
+        // A required filter that fails (LFS with git-lfs off PATH): git add dies
+        // and the seeded index must not read as "nothing changed".
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        assert!(git_ok(&cwd, &["config", "filter.x.clean", "false"]));
+        assert!(git_ok(&cwd, &["config", "filter.x.required", "true"]));
+        std::fs::write(at(".gitattributes"), "*.bin filter=x\n").unwrap();
+        std::fs::write(at("image.bin"), "bytes\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: unknown\n"));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unwritable_object_store_gets_no_verdict() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(cwd) = repo() else { return };
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        // git refuses every new object once it cannot make their fan-out dirs.
+        let objects = jsp::join(&[&cwd, ".git", "objects"]);
+        let dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&objects).unwrap().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let lock = |mode: u32| {
+            for dir in &dirs {
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode)).unwrap();
+            }
+            std::fs::set_permissions(&objects, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        std::fs::write(jsp::join(&[&cwd, "other.css"]), "edited\n").unwrap();
+        lock(0o555);
+        let writable = objects_writable(&cwd);
+        let out = run_capture(&cwd, &["changes", "src/App.tsx"]).1;
+        lock(0o755);
+        if !writable {
+            assert_eq!(out, format!("previous: {name}\nchanges: unknown\n"));
+        } // Running as root: permissions do not bind, so there is nothing to prove.
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_file_does_not_lose_the_change_base() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some(cwd) = repo() else { return };
+        let locked = jsp::join(&[&cwd, "locked.txt"]);
+        std::fs::write(&locked, "secret\n").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        let out = run_capture(&cwd, &["changes", "src/App.tsx"]).1;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(out, format!("previous: {name}\nchanges: none\n"));
         let _ = std::fs::remove_dir_all(&cwd);
     }
 }

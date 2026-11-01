@@ -622,6 +622,7 @@ const cases = [
   { id: 'critique-slug-long', verb: 'critique-storage', workspace: 'ctx-full', args: ['slug', 'src/very/deeply/nested/directory/structure/with/many/segments/component-name.tsx'], env: env() },
   { id: 'critique-slug-outside', verb: 'critique-storage', workspace: 'ctx-full', args: ['slug', '../other/Page.tsx'], env: env() },
   { id: 'critique-latest-none', verb: 'critique-storage', workspace: 'ctx-empty', args: ['latest', 'src/x.tsx'], env: env() },
+  { id: 'critique-changes-none', verb: 'critique-storage', workspace: 'ctx-empty', args: ['changes', 'src/App.tsx'], env: env() },
   { id: 'critique-latest-existing', verb: 'critique-storage', workspace: 'ctx-full', args: ['latest', 'src/pages/index.astro'], env: env() },
   { id: 'critique-latest-other-slug', verb: 'critique-storage', workspace: 'ctx-full', args: ['latest', 'route-pricing'], env: env() },
   { id: 'critique-trend-existing', verb: 'critique-storage', workspace: 'ctx-full', args: ['trend', 'src-pages-index-astro'], env: env() },
