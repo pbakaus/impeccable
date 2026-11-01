@@ -27,6 +27,20 @@ export default [
   { id: 'live-boot-context-missing-product', verb: 'live', workspace: 'live-vite', setup: (ws) => { rm(ws, 'PRODUCT.md'); }, files: F },
   { id: 'live-boot-context-missing-design-empty', verb: 'live', workspace: 'live-vite', setup: (ws) => { write(ws, 'DESIGN.md', ''); }, files: F },
   { id: 'live-boot-context-missing-both', verb: 'live', workspace: 'live-vite', setup: (ws) => { rm(ws, 'PRODUCT.md'); rm(ws, 'DESIGN.md'); }, files: F },
+  // #1022: live resolves the pair through the same resolver as `impeccable
+  // context`, so IMPECCABLE_CONTEXT_DIR works when the documents live outside
+  // the app tree. Boot proceeds to the config gate instead of context_missing.
+  {
+    id: 'live-boot-context-dir-override', verb: 'live', workspace: 'live-vite', files: F,
+    setup: (ws) => {
+      rm(ws, CFG);
+      rm(ws, 'PRODUCT.md');
+      rm(ws, 'DESIGN.md');
+      write(ws, 'governance/context/PRODUCT.md', '# Elsewhere\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nweb\n\n## Positioning\nFound through IMPECCABLE_CONTEXT_DIR.\n');
+      write(ws, 'governance/context/DESIGN.md', '# Design: Elsewhere\n\n## Colors\n- **Ink** (#111): Text.\n');
+    },
+    env: { IMPECCABLE_CONTEXT_DIR: '<WS>/governance/context' },
+  },
   { id: 'live-boot-config-invalid-json', verb: 'live', workspace: 'live-html', setup: (ws) => write(ws, CFG, '{ nope'), files: F },
   { id: 'live-boot-config-invalid-schema', verb: 'live', workspace: 'live-html', setup: (ws) => write(ws, CFG, JSON.stringify({ files: ['index.html'], insertBefore: '</body>', commentSyntax: 'vue' })), files: F },
   { id: 'live-boot-sveltekit-config-missing', verb: 'live', workspace: 'live-sveltekit', setup: (ws) => rm(ws, CFG), files: F },
