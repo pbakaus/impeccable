@@ -538,7 +538,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
             if meta.is_dir() {
                 walk(root, &full, out);
             } else if meta.is_file() {
-                let rel = jsp::relative("/", root, &full);
+                let rel = jsp::to_posix(&jsp::relative("/", root, &full));
                 if rel.starts_with("scripts/bin/") {
                     continue;
                 }

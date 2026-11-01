@@ -23,3 +23,8 @@
 <img src="" srcset="/a.png 1x" alt="">
 <img srcset="" alt="">
 <img data-srcset="/lazy.png 1x" class="lazyload" alt="">
+<img ngSrc="/assets/hero.png" width="640" height="360" alt="Hero banner" priority />
+<img [ngSrc]="user.avatarUrl" width="48" height="48" [alt]="user.name" />
+<img [src]="logoUrl" [alt]="companyName" width="120" height="40" />
+<img [attr.src]="iconUrl" [attr.alt]="iconLabel" width="16" height="16" />
+<img [alt]="x">

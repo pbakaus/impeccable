@@ -587,6 +587,8 @@ const cases = [
   { id: 'surface-brief-read-none', verb: 'surface-brief', workspace: 'ctx-empty', args: ['read', 'src/x.tsx'], env: env() },
   { id: 'surface-brief-read-invalid-target', verb: 'surface-brief', workspace: 'ctx-full', args: ['read', 'route:../etc'], env: env() },
   { id: 'surface-brief-read-monorepo-child', verb: 'surface-brief', workspace: 'ctx-monorepo', setup: (ws) => write(ws, 'apps/a/.impeccable/surfaces/src-app-tsx.md', '---\nversion: 1\nslug: "src-app-tsx"\nprimary_target: "src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: A\n'), args: ['read', 'apps/a/src/App.tsx'], env: env() },
+  { id: 'surface-brief-read-monorepo-legacy', verb: 'surface-brief', workspace: 'ctx-monorepo', cwd: 'apps/a', setup: (ws) => write(ws, 'apps/a/.impeccable/surfaces/apps-a-src-app-tsx.md', '---\nversion: 1\nslug: "apps-a-src-app-tsx"\nprimary_target: "apps/a/src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: A, written from the repo root\n'), args: ['read', 'src/App.tsx'], env: env() },
+  { id: 'surface-brief-read-monorepo-prefix-dir', verb: 'surface-brief', workspace: 'ctx-monorepo', cwd: 'apps/a', setup: (ws) => { write(ws, 'apps/a/a/src/App.tsx', 'export default 1\n'); write(ws, 'apps/a/.impeccable/surfaces/a-src-app-tsx.md', '---\nversion: 1\nslug: "a-src-app-tsx"\nprimary_target: "a/src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: nested a\n'); }, args: ['read', 'src/App.tsx'], env: env() },
   { id: 'surface-brief-write-usage', verb: 'surface-brief', workspace: 'ctx-full', args: ['write', 'src/pages/about.astro'], env: env() },
   {
     id: 'surface-brief-write-read-list', verb: 'surface-brief', workspace: 'ctx-full',
@@ -602,7 +604,7 @@ const cases = [
   },
   { id: 'surface-brief-write-route', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'Root route brief.'), args: ['write', '/', `${WS}/body.md`, 'route:/home/'], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-url', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'URL brief.'), args: ['write', 'https://example.com/pricing/#plans', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
-  { id: 'surface-brief-write-invalid-target', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'x'), args: ['write', '../outside.astro', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
+  { id: 'surface-brief-write-invalid-target', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'x'), args: ['write', '.', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-missing-body', verb: 'surface-brief', workspace: 'ctx-empty', args: ['write', 'src/x.tsx', `${WS}/nope.md`], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-monorepo-child', verb: 'surface-brief', workspace: 'ctx-monorepo', setup: (ws) => write(ws, 'body.md', 'Child brief.'), args: ['write', 'apps/b/src/App.tsx', `${WS}/body.md`], env: env(), files: ['**/.impeccable/surfaces/**'] },
 

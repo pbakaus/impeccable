@@ -28,6 +28,8 @@ pub const SCANNABLE_EXTENSIONS: &[&str] = &[
     ".tsx",
     ".js",
     ".ts",
+    ".mjs",
+    ".cjs",
     ".vue",
     ".svelte",
     ".astro",

@@ -18,7 +18,7 @@ import { hooksJsonFor } from './hooks.js';
 // These files are single-sourced from skill/agents/ so a harness with no
 // subagent capability runs each role inline from the same specialized text.
 const DEGRADED_PREAMBLE = `<!-- Generated from skill/agents/ at build time. Do not edit; edit the agent definition. -->
-This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line when you report. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.`;
+This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line of your closing message to the user, outside the output contract. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.`;
 
 /**
  * Map from frontmatter field name to extraction spec.
