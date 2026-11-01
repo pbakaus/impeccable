@@ -54,7 +54,7 @@ Systematically reduce intensity across these dimensions:
 - **Neutral dominance**: Let neutrals do more work, use color as accent (10% rule)
 - **Gentler contrasts**: High contrast only where it matters most
 - **Tinted grays**: Use warm or cool tinted grays instead of pure gray. Adds depth without loudness
-- **Never gray on color**: If you have gray text on a colored background, use a darker shade of that color or transparency instead
+- **Never gray on color**: If you have gray text on a colored background, use a darker shade of that color instead — transparency ties contrast to whatever sits behind the text
 
 ### Visual Weight Reduction
 - **Typography**: Reduce font weights (900 → 600, 700 → 500), decrease sizes where appropriate
