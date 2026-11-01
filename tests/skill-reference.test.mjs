@@ -78,6 +78,7 @@ describe('skill reference authoring contracts', () => {
     assert.match(rerun, /\*\*Assessment A stays blind to the ledger\.\*\*/);
     assert.match(rerun, /reports a defect only when a change introduced it/);
     assert.match(rerun, /skipping `\.impeccable\/`/);
+    assert.match(rerun, /drops a new finding whose named lines are unchanged since `base`/);
     assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
     assert.match(rerun, /joins the first open group of its heuristic and earns no point of its own/);
   });
