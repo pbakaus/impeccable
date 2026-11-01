@@ -413,12 +413,7 @@ Scenario 23 passed all four runs. Scenario 24 made the right decision in all
 three runs that finished: no scoped roll, `seed: none (pinned)` written with the
 pinning words quoted. Two earlier runs hit 180s and 230s limits before recording
 anything, which is why it now has 420s. Finished runs of 24 used 180K to 530K
-tokens, the most expensive scenario in this file. GPT and Gemini were not run.
-
-In the same full sweep (23 of 28 passed), scenario 19's three denied-launcher
-cases failed but all passed on a rerun, and passed on the base commit. Scenario 17
-failed in all three runs, on the branch and on the base commit, so the failure
-predates this change.
+tokens, the most expensive scenario in this file.
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
