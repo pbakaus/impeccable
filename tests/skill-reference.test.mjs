@@ -79,6 +79,7 @@ describe('skill reference authoring contracts', () => {
     assert.match(rerun, /reports a defect only when a change introduced it/);
     assert.match(rerun, /skipping `\.impeccable\/`/);
     assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
+    assert.match(rerun, /joins the first open group of its heuristic and earns no point of its own/);
   });
 
   it('keeps reduced-motion guidance on the animation build path', () => {

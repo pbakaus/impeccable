@@ -120,8 +120,8 @@ With a ledger from Setup, the run verifies it and reviews only what changed. Sco
 
 - **Assessment A stays blind to the ledger.** It gets the snapshot's `base` and nothing else from it. It runs `git diff <base>` and `git status --porcelain`, reviews those hunks and untracked files alone, skipping `.impeccable/` (the ledger lives there), and reports a defect only when a change introduced it, naming the hunk. Unchanged code is not re-reviewed. With no `base`, or git failing, A does not run.
 - **Assessment B also verifies the ledger**: each `open` or `partial` row against the current code and rendered page, as `fixed`, `partial` or `open`, judged as the row is written. On a native platform the parent does this after A returns.
-- Nothing changed and nothing untracked: run neither. Report the previous score and open rows as they stand and close with Ask the User; nothing new is the correct result.
-- **Scores move only by verified rows.** A heuristic gains a point when every finding in a next-point group is `fixed`; a new P0 or P1 forms a group of its own on its heuristic. Fold a new finding the ledger already holds into its row. A fix that reverses one the ledger issued is a closing question, never an instruction.
+- Nothing changed and nothing untracked: run neither. Report the previous score and open rows as they stand under `Method: unchanged since <timestamp>`, then close with Ask the User; nothing new is the correct result.
+- **Scores move only by verified rows.** A heuristic gains a point when every finding in a next-point group is `fixed`; a new P0 or P1 joins the first open group of its heuristic and earns no point of its own, so a regression gates the next point without taking one back. Fold a new finding the ledger already holds into its row. A fix that reverses one the ledger issued is a closing question, never an instruction.
 - The report carries every ledger row forward with its verdict, then the new findings, then the heuristic table, and leaves out the sections only a fresh review can fill (verdict, impression, personas).
 
 ### Generate Combined Critique Report
