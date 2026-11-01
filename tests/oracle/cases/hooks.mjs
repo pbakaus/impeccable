@@ -122,6 +122,7 @@ export default [
       { verb: 'hook', stdin: claudeEdit('src/components/Card.tsx', { tool_use_id: 'toolu_next' }) },
     ],
   },
+  { id: 'hook-harness-vscode-patch-string', verb: 'hook', workspace: 'hook-project', env: { IMPECCABLE_HOOK_HARNESS: 'vscode' }, stdin: { session_id: 'v1', cwd: WS, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: '*** Begin Patch\n*** Update File: src/components/Card.module.css\n@@\n-a\n+b\n*** End Patch\n' } },
   { id: 'hook-harness-forced-github', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), env: { IMPECCABLE_HOOK_HARNESS: 'github' }, files: CACHE_FILES },
   { id: 'hook-audit-log', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), env: { IMPECCABLE_HOOK_LOG: `${WS}/.impeccable/audit.ndjson` }, files: CACHE_FILES },
   {

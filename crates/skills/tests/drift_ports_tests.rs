@@ -603,6 +603,34 @@ fn check_reports_stale_impeccable_in_home_rooted_tree() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn check_ignores_engine_binary_installed_beside_the_skill() {
+    let root = temp_root("check-1247-engine-bin");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &project, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=project", "--no-hooks", "--providers=claude"],
+        &project,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    // A real install fetches the engine here; the bundle never ships it.
+    write(&format!("{project}/.claude/skills/impeccable/scripts/bin/windows-x64/impeccable.exe"), "MZ");
+
+    let r = run_cli(&["check"], &project, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
 // ─── inferred agent update scope (d2a9efb9) ──────────────────────────────────
 
 #[test]

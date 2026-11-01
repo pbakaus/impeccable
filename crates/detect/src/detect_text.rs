@@ -2385,6 +2385,13 @@ mod tests {
     }
 
     #[test]
+    fn directory_walk_covers_every_js_source_extension() {
+        for ext in JS_SOURCE_EXTS {
+            assert!(crate::file_system::has_scannable_extension(&format!("a{ext}")), "{ext}");
+        }
+    }
+
+    #[test]
     fn jsx_line_comment_after_sibling_elements_does_not_report_broken_image() {
         let src = r#"function Row({ label, value }: { label: string; value: string }) {
   return (

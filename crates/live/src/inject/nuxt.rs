@@ -74,7 +74,7 @@ export default defineNuxtPlugin(() => {{
   if (!import.meta.dev || typeof document === 'undefined') return;
 
   const expectedSrc = new URL(liveSrc, window.location.href).href;
-  let script = document.querySelector(liveSelector);
+  let script = document.querySelector<HTMLScriptElement>(liveSelector);
   if (script?.src === expectedSrc) return;
   script?.remove();
 

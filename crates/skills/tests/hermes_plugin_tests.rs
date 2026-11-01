@@ -1,6 +1,7 @@
 //! The Hermes design-hook plugin install (#1178): Hermes loads plugins only
 //! from its home dir, so project and global installs both copy there.
 
+use impeccable_common::jsp;
 use impeccable_skills::hook_manifest::{copy_provider_hooks, hook_installed_for_provider};
 use impeccable_skills::providers::Sys;
 use std::collections::HashMap;
@@ -39,8 +40,13 @@ impl Fixture {
         Sys::new(env, self.project.clone())
     }
 
-    fn install(&self, sys: &Sys) -> Result<Vec<&'static str>, String> {
+    fn install(&self, sys: &Sys) -> Result<Vec<String>, String> {
         copy_provider_hooks(sys, &self.bundle, &self.project, &[".hermes"], false, None, None)
+    }
+
+    /// The plugin dir under the default Hermes home, as install reports it.
+    fn plugin_dest(&self) -> String {
+        jsp::join(&[&self.home, ".hermes", "plugins", "impeccable-design-hook"])
     }
 
     fn read(&self, path: &str) -> String {
@@ -64,13 +70,13 @@ fn project_install_writes_the_plugin_under_the_hermes_home() {
     let f = Fixture::new("project");
     let sys = f.sys(None);
     assert!(!installed(&f, &sys));
-    assert_eq!(f.install(&sys).unwrap(), vec![".hermes"]);
+    assert_eq!(f.install(&sys).unwrap(), vec![f.plugin_dest()]);
     assert_eq!(f.read(&format!("home/{PLUGIN}/plugin.yaml")), "name: impeccable-design-hook\n");
     assert!(f.read(&format!("home/{PLUGIN}/__init__.py")).contains("def register"));
     assert!(!Path::new(&f.project).join(".hermes").exists(), "never a project-local plugin");
     assert!(installed(&f, &sys));
     // Idempotent.
-    assert_eq!(f.install(&sys).unwrap(), vec![".hermes"]);
+    assert_eq!(f.install(&sys).unwrap(), vec![f.plugin_dest()]);
     assert!(f.read(&format!("home/{PLUGIN}/__init__.py")).contains("def register"));
 }
 
