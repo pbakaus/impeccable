@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "generate-image: OPENAI_BASE_URL is set but unusable: must start with http:// or https://. Unset it to use api.openai.com/v1.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

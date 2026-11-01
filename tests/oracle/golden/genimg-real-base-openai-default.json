@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "generate-image: OPENAI_API_KEY is not set; use the harness-native image tool instead.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

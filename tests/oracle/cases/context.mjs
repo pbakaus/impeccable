@@ -44,6 +44,7 @@ const REPO = '<REPO>';
 // Env the recording machine may carry that would leak into output.
 const BASE_ENV = {
   OPENAI_API_KEY: null,
+  OPENAI_BASE_URL: null,
   CODEX_HOME: null,
   IMPECCABLE_CONTEXT_DIR: null,
   IMPECCABLE_CATALOG_DIR: null,
@@ -354,6 +355,8 @@ const cases = [
     env: env(), files: IMPECCABLE_FILES,
   },
   { id: 'context-openai-key', verb: 'context', workspace: 'ctx-product-only', env: env({ OPENAI_API_KEY: 'sk-oracle' }), files: IMPECCABLE_FILES },
+  // #832: a configured OpenAI-compatible endpoint is a fallback on its own; the directive names the endpoint and its --model requirement, never OpenAI billing.
+  { id: 'context-base-url', verb: 'context', workspace: 'ctx-product-only', env: env({ OPENAI_BASE_URL: 'http://127.0.0.1:8188/v1' }), files: IMPECCABLE_FILES },
   { id: 'context-no-staleness-check-env', verb: 'context', workspace: 'ctx-legacy', setup: legacySetup, env: env({ IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
   {
     id: 'context-no-staleness-check-config', verb: 'context', workspace: 'ctx-legacy',
@@ -804,6 +807,14 @@ const cases = [
   // generate-image writing a declared slot of a recorded hand marks it generated during that hand (one marker file per slot), so a deterministic regeneration with identical bytes still counts; a path no hand declares gets no marker.
   { id: 'genimg-fake-marks-hand-slot', verb: 'generate-image', workspace: 'ctx-empty', setup: (ws) => { fs.mkdirSync(path.join(ws, '.impeccable/mocks/decision'), { recursive: true }); write(ws, '.impeccable/questions/k1.hand.json', JSON.stringify({ digest: '0123456789abcdef', comps: ['.impeccable/mocks/decision/a.png', '.impeccable/mocks/decision/b.png'], pre: {} })); }, args: ['--prompt', 'A decision comp.', '--out', '.impeccable/mocks/decision/a.png', '--size', '64x40'], env: env({ IMPECCABLE_IMAGE_GEN_FAKE: '1' }), files: ['.impeccable/questions/**'] },
   { id: 'genimg-real-no-key', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png'], env: env() },
+  // #832: OPENAI_BASE_URL re-points the request at an operator-configured OpenAI-compatible endpoint. Unset or pointing at OpenAI verbatim keeps today's behavior; a configured endpoint drops the key requirement, claims no OpenAI billing, and demands its own --model.
+  { id: 'genimg-real-base-openai-default', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png'], env: env({ OPENAI_BASE_URL: 'https://api.openai.com/v1' }) },
+  { id: 'genimg-real-base-model-guard', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png'], env: env({ OPENAI_BASE_URL: 'http://127.0.0.1:9/v1' }) },
+  { id: 'genimg-real-base-invalid', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png'], env: env({ OPENAI_BASE_URL: 'ftp://127.0.0.1:8188/v1', OPENAI_API_KEY: 'sk-oracle' }) },
+  // --ref is no longer refused on a configured endpoint: the guard pass, not the asset upload, is what this case pins. A URL ref that cannot be downloaded reads the same on every OS, so the case never crosses the platform-dependent boundary the send itself would hit (the edits dispatch against a live server is pinned in the Rust tests).
+  { id: 'genimg-real-base-ref', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png', '--model', 'seedream', '--ref', 'http://127.0.0.1:9/cards/world.webp'], env: env({ OPENAI_BASE_URL: 'http://127.0.0.1:9/v1', OPENAI_API_KEY: 'sk-oracle' }), files: ['x.png*'] },
+  // Fake mode ignores the seam entirely: an unusable base must not break a fake generation.
+  { id: 'genimg-fake-base-invalid', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'A comp.', '--out', 'x.png', '--size', '64x40'], env: env({ IMPECCABLE_IMAGE_GEN_FAKE: '1', OPENAI_BASE_URL: 'ftp://localhost/v1' }) },
   // --ref takes a URL too; one that cannot be downloaded names the URL and generates nothing.
   { id: 'genimg-real-ref-url-unreachable', verb: 'generate-image', workspace: 'ctx-empty', args: ['--prompt', 'x', '--out', 'x.png', '--ref', 'http://127.0.0.1:9/cards/world.webp'], env: env({ OPENAI_API_KEY: 'sk-oracle' }), files: ['x.png*'] },
   // Fake mode never fetches a URL ref.
