@@ -38,8 +38,7 @@ use crate::quality::pf0;
 /// The static HTML engine as `impeccable detect` sees it.
 ///
 /// `static_rule_pack` is the rule pack's static-document hook, set by
-/// whichever binary builds `Engines`; the `impeccable` binary leaves it
-/// `None`. The pack's engine-wide hooks travel on `ScanOptions` instead,
+/// whichever host builds `Engines` from its installed pack. The pack's engine-wide hooks travel on `ScanOptions` instead,
 /// because `detect` owns those options and cannot name this crate's trait.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StaticHtmlEngine {

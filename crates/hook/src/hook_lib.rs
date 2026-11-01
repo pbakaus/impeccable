@@ -213,6 +213,7 @@ pub fn get_pending_path(cwd: &str) -> String {
 /// `lib/provider.mjs`: the process cwd, the environment, the command names
 /// printed in messages, and the detector engines.
 pub struct Runtime<'a> {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub proc_cwd: String,
     pub env: HashMap<String, String>,
     /// `IMPECCABLE_COMMAND` (`/impeccable` or `$impeccable`).
@@ -239,6 +240,7 @@ impl<'a> Runtime<'a> {
         let win32 = cfg!(windows);
         let self_command = self_command_spelling(self_cmd, win32);
         Runtime {
+            rule_pack: None,
             proc_cwd,
             env,
             impeccable_command,
@@ -1624,6 +1626,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
 /// The detector option object the hook builds (`{ designSystem? }`).
 #[derive(Default, Clone)]
 pub struct HookScanOptions {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub design_system: Option<Rc<DesignSystem>>,
     /// `ScanOptions::ignored_linked_stylesheet`, from the hook's
     /// `detector.ignoreFiles`.
@@ -1643,7 +1646,7 @@ impl HookScanOptions {
             design_system: self.design_system.clone(),
             viewport: None,
             profile: None,
-            rule_pack: None,
+            rule_pack: self.rule_pack,
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
@@ -1678,7 +1681,7 @@ pub fn design_system_options_for_file(
         Some(Rc::new(move |path: &str| is_ignored_file(&proc_cwd, path, &cwd, &globs)))
     };
     if !config.design_system_enabled {
-        return HookScanOptions { ignored_linked_stylesheet, ..HookScanOptions::default() };
+        return HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..HookScanOptions::default() };
     }
     let project = impeccable_context::context::resolve_project(
         project_cwd,
@@ -1694,7 +1697,7 @@ pub fn design_system_options_for_file(
     } else {
         &project.repo_root
     };
-    HookScanOptions { ignored_linked_stylesheet, ..design_system_options(config, root) }
+    HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..design_system_options(config, root) }
 }
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`
@@ -1708,7 +1711,7 @@ pub fn detector_detect_text(
         profile: None,
         design_system: scan.design_system.as_deref(),
         inline_ignores: true,
-        rule_pack: None,
+        rule_pack: scan.rule_pack,
         tokens: None,
     };
     detect_text(content, file_path, &opts)
