@@ -407,14 +407,6 @@ results remain the completed measurements.
 | 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll and records no `seed: none (pinned)`; stops at the roll, no build |
 | 24 | same fixture; the same prompt also pins the first viewport | runs no scoped `concept-seed` roll and writes `seed: none (pinned)` into the surface brief; stops at that write, no build |
 
-## Pinned-direction baseline (2026-11-01, PR #1265, claude-sonnet-5 only)
-
-Scenario 23 passed all four runs. Scenario 24 made the right decision in all
-three runs that finished: no scoped roll, `seed: none (pinned)` written with the
-pinning words quoted. Two earlier runs hit 180s and 230s limits before recording
-anything, which is why it now has 420s. Finished runs of 24 used 180K to 530K
-tokens, the most expensive scenario in this file.
-
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
 Scenario 19 injects a host permission error before any shell command executes,
