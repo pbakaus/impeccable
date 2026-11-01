@@ -338,7 +338,7 @@ export const SUITES = {
       /^tests\/skill-behavior\/(?!activation[.-])/,
     ],
     commands: [
-      { runner: 'node', files: ['tests/skill-workflow-browser.test.mjs'] },
+      { runner: 'node', files: ['tests/skill-workflow-browser.test.mjs', 'tests/skill-workflow-scope.test.mjs'] },
       {
         runner: 'node', timeoutMs: 240000, wallClockMs: 600000,
         files: ['tests/skill-workflow/finish-handoff.test.mjs'],
