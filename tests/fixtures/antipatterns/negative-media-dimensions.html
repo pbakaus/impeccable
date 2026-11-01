@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Negative media dimensions</title>
+  <style>
+    body { margin: 40px; background: #fff; color: #111; font: 16px/1.5 Georgia, serif; }
+    main { display: grid; grid-template-columns: 480px 480px; gap: 40px; }
+    section { width: 480px; }
+    article { width: 440px; min-height: 120px; padding: 16px; }
+    h1 { font-size: 32px; } h2 { font-size: 24px; } h3 { font-size: 20px; }
+    p { color: #111; background: #fff; }
+    /* Each case has its own ink so pair deduplication cannot hide a media regression. */
+    @media (width > -1px) { #flag-range-width p { color: #eeeeee; } }
+    @media not (max-width: -1px) { #flag-negated-width p { color: #ededed; } }
+    @media (height >= -1em) { #flag-range-height p { color: #ececec; } }
+    @media (-1rem < width <= 80rem) { #flag-chained-width p { color: #ebebeb; } }
+    @media (width: -1px) { #pass-equal-width p { color: #eaeaea; } }
+    @media (max-width: -1px) { #pass-max-width p { color: #e9e9e9; } }
+    @media (height < -1em) { #pass-range-height p { color: #e8e8e8; } }
+    @media (-2px < width < -1px) { #pass-chained-width p { color: #e7e7e7; } }
+    @media not (min-height: -1px) { #pass-negated-height p { color: #e6e6e6; } }
+  </style></head><body><h1>Negative media dimensions</h1><main>
+    <section><h2>Should flag</h2>
+      <article id="flag-range-width"><h3>flag-range-width</h3><p>Text under (width > -1px)</p></article>
+      <article id="flag-negated-width"><h3>flag-negated-width</h3><p>Text under not (max-width: -1px)</p></article>
+      <article id="flag-range-height"><h3>flag-range-height</h3><p>Text under (height >= -1em)</p></article>
+      <article id="flag-chained-width"><h3>flag-chained-width</h3><p>Text under (-1rem &lt; width &lt;= 80rem)</p></article>
+    </section>
+    <section><h2>Should pass</h2>
+      <article id="pass-equal-width"><h3>pass-equal-width</h3><p>Text under (width: -1px)</p></article>
+      <article id="pass-max-width"><h3>pass-max-width</h3><p>Text under (max-width: -1px)</p></article>
+      <article id="pass-range-height"><h3>pass-range-height</h3><p>Text under (height &lt; -1em)</p></article>
+      <article id="pass-chained-width"><h3>pass-chained-width</h3><p>Text under (-2px &lt; width &lt; -1px)</p></article>
+      <article id="pass-negated-height"><h3>pass-negated-height</h3><p>Text under not (min-height: -1px)</p></article>
+    </section>
+</main></body></html>
