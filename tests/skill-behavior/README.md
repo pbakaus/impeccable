@@ -404,6 +404,7 @@ results remain the completed measurements.
 | 20 | PRODUCT.md + DESIGN.md + `index.html`; prompt is `/impeccable generate 2 bold variants of the hero heading` | loads `reference/generate.md`, and before any `live.md` read (live.md alone is the misroute) |
 | 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
 | 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
+| 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll; stops at the roll, no build |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
