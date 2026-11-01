@@ -184,6 +184,9 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         steps.push(insert_scaffold_instructions(event, self_cmd));
     } else if preview_mode == Some("svelte-component") {
         steps.push(svelte_component_instructions(event, scaffold.unwrap()));
+    } else if preview_mode == Some("vue-component") {
+        let scaffold = scaffold.unwrap();
+        steps.push(format!("Vue component preview: edit {}/v1.vue through v{}.vue. Preserve the generated script and all Vue bindings, directives, and components; modify only template design and inline scoped CSS. No global styles, preprocessors, or preview selectors. Put unitless numeric knobs in params.json and CSS dimensions in calc(var(--p-ID, default) * 1px). Do not edit the original source during generation. Follow scaffold.cssAuthoring; reply with --file {}. Accept safely reconciles scoped CSS and chosen values into the original component.", js_str(scaffold.get("componentDir")), count, js_str(scaffold.get("file"))));
     } else if scaffold.is_some() && source_written_false {
         steps.push(deferred_wrapper_instructions(event, scaffold.unwrap()));
     } else if let Some(s) = scaffold {

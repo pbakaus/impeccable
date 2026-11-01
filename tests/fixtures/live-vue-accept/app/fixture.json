@@ -1,0 +1,14 @@
+{
+  "name": "Vite + Vue stateful accept",
+  "config": { "files": ["index.html"], "insertBefore": "</body>", "commentSyntax": "html" },
+  "sourceFiles": ["index.html", "src/App.vue", "src/main.js", "vite.config.js"],
+  "generatedFiles": [],
+  "runtime": {
+    "install": ["npm", "install", "--no-audit", "--no-fund"],
+    "devCommand": ["npx", "vite", "--host", "127.0.0.1"],
+    "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
+    "readyTimeoutMs": 60000,
+    "pickSelector": "section.card",
+    "styling": "plain-css"
+  }
+}

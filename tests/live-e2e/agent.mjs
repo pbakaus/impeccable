@@ -1733,6 +1733,23 @@ async function writeDeferredWrapperWithVariants({ tmp, wrapInfo, sessionId, outp
   await fs.writeFile(filePath, next.join('\n'), 'utf-8');
 }
 
+async function writeVueComponentVariants({ tmp, wrapInfo, output }) {
+  const manifestPath = path.join(tmp, wrapInfo.file);
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const directory = path.join(tmp, manifest.componentDir);
+  const params = {};
+  for (const [index, variant] of output.variants.entries()) {
+    const file = path.join(directory, `v${index + 1}.vue`);
+    const stub = await fs.readFile(file, 'utf8');
+    if (!variant.vueComponent || !stub.includes('<style scoped>')) throw new Error('Expected a scoped Vue test variant');
+    await fs.writeFile(file, stub.replace(/<style scoped>[\s\S]*?<\/style>/, () => `<style scoped>\n${variant.vueComponent.css}\n</style>`));
+    params[index + 1] = variant.params || [];
+  }
+  await fs.writeFile(path.join(directory, 'params.json'), JSON.stringify(params));
+  manifest.arrivedVariants = output.variants.length;
+  await fs.writeFile(manifestPath, JSON.stringify(manifest));
+}
+
 async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
   const manifestPath = path.join(tmp, wrapInfo.file);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
@@ -2066,7 +2083,9 @@ export async function runAgentLoop({
 
         // 3. Write the complete set into the deterministic preview target.
         trace('agent.write.start', { id: event.id, file: wrapInfo.file });
-        if (wrapInfo.previewMode === 'svelte-component') {
+        if (wrapInfo.previewMode === 'vue-component') {
+          await writeVueComponentVariants({ tmp, wrapInfo, output });
+        } else if (wrapInfo.previewMode === 'svelte-component') {
           await writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams: true });
           publishedComponentSessions.set(event.id, { wrapInfo, event, output });
         } else if (wrapInfo.sourceWritten === false) {
@@ -2331,7 +2350,7 @@ async function runEngine(engineBin, verb, args, cwd) {
 // the fake agent replies with the same completion type a real one would).
 // A preview whose variants live in component modules leaves no markers in the
 // user's source, so a failed accept there is an error, not a manual handoff.
-const PREVIEW_MODES_WITHOUT_SOURCE_MARKERS = new Set(['svelte-component']);
+const PREVIEW_MODES_WITHOUT_SOURCE_MARKERS = new Set(['svelte-component', 'vue-component']);
 
 export function completionTypeForAcceptResult(eventType, acceptResult) {
   if (eventType === 'discard') return acceptResult?.handled === true ? 'discarded' : 'error';

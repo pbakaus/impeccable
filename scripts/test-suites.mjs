@@ -11,6 +11,7 @@ export const OPT_IN_SUITES = [
   'skill-activation',
   'skill-workflow',
   'live-svelte-adapter-deepseek',
+  'live-vue-accept',
 ];
 
 const COMMON_INFRA_PATTERNS = [
@@ -350,6 +351,18 @@ export const SUITES = {
         files: ['tests/skill-workflow/full-build.test.mjs'],
       },
     ],
+  },
+  'live-vue-accept': {
+    description: 'Deterministic Vue compiler and browser Tune/Accept/Reload coverage.',
+    optIn: true,
+    needsPlaywright: true,
+    triggers: [
+      /^crates\/live\/src\/(vue_component\.rs|vue_bridge_helper\.mjs|live_accept\.rs|live_wrap\.rs|accept_css\.rs)$/,
+      /^skill\/scripts\/live-browser/,
+      /^tests\/live-vue-accept\.test\.mjs$/,
+      /^tests\/fixtures\/live-vue-accept\//,
+    ],
+    commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs'] }],
   },
   'live-svelte-adapter-deepseek': {
     description: 'DeepSeek-backed Svelte adapter browser sweep.',

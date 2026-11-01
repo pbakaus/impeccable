@@ -5318,7 +5318,7 @@
   }
 
   function isFrameworkComponentPreviewMode(mode) {
-    return mode === 'svelte-component';
+    return mode === 'svelte-component' || mode === 'vue-component';
   }
 
   function parseOriginalMarkupElement(originalMarkup) {
@@ -5732,6 +5732,17 @@
   }
 
   function buildSveltePropValuesFromLiveElement(liveEl, manifest) {
+    if (manifest?.previewMode === 'vue-component') {
+      const instance = liveEl?.__vueParentComponent;
+      if (!instance) throw new Error('Vue preview could not find the selected component instance.');
+      const values = {};
+      for (const entry of manifest.propContract || []) {
+        const name = entry.expr;
+        const value = instance.setupState?.[name] ?? instance.props?.[name] ?? instance.ctx?.[name];
+        values[entry.prop] = typeof value === 'function' && !/^[A-Z]/.test(name) ? () => {} : value;
+      }
+      return values;
+    }
     const contract = manifest?.propContract || [];
     const values = {};
     if (!liveEl || contract.length === 0) return values;
@@ -5918,6 +5929,12 @@
   async function mountSvelteComponentVariant(variantNum) {
     if (!svelteComponentSession || !variantNum) return false;
     const { manifest, mountTargetEl, sessionId } = svelteComponentSession;
+    // A manifest replay replaces the mounted root, including Tune's inline
+    // properties. Keep edits only when remounting the same variant; switching
+    // variants still starts from that variant's defaults.
+    const retainedParams = svelteComponentSession.mountedVariant === variantNum
+      ? { ...paramsCurrentValues }
+      : null;
     // Resolved before the first await so the failure report can name the module
     // the browser could not reach, whichever step threw.
     const extension = manifest.componentExtension || 'svelte';
@@ -5950,6 +5967,7 @@
         target: mountTargetEl,
         props: { ...svelteComponentSession.propValues },
         intro: false,
+        appContext: svelteComponentSession.vueAppContext,
       });
       svelteComponentSession.mountedVariant = variantNum;
       svelteComponentSession.runtime = runtime;
@@ -5962,6 +5980,7 @@
         }
         svelteComponentSession.swapAnchor = null;
         selectedElement = nextAnchor;
+        if (retainedParams) applySavedParamValues(nextAnchor, parseVariantParams(nextAnchor), retainedParams);
       } else {
         requestAnimationFrame(() => {
           if (svelteComponentSession?.sessionId !== sessionId) return;
@@ -5972,6 +5991,7 @@
           }
           svelteComponentSession.swapAnchor = null;
           selectedElement = settledAnchor;
+          if (retainedParams) applySavedParamValues(settledAnchor, parseVariantParams(settledAnchor), retainedParams);
         });
       }
       // Render truth, not publish truth: this is the only point in the whole
@@ -6169,6 +6189,7 @@
         wrapperEl: wrapper,
         mountTargetEl: mountTarget,
         detachedOriginal,
+        vueAppContext: manifest.previewMode === 'vue-component' ? detachedOriginal?.__vueParentComponent?.appContext : null,
         mountedInstance: null,
         mountedVariant: 0,
         runtime: null,
@@ -9991,6 +10012,7 @@ void main() {
       pageUrl: location.pathname,
       paramValues: { ...paramsCurrentValues },
       parameterState: parameterGenerationState,
+      generationPhase,
       origin: sessionOrigin || undefined,
       insertPlaceholder: insertPlaceholderSnapshot || undefined,
       pickedAnchor: pickedAnchorSnapshot || undefined,

@@ -1476,7 +1476,7 @@ fn session_file_metadata_from_poll_reply(file: Option<&Value>, cwd: &str) -> Map
     let Some(manifest) = crate::util::read_json(&full) else {
         return base;
     };
-    if manifest.get("previewMode").and_then(|v| v.as_str()) != Some("svelte-component") {
+    if !matches!(manifest.get("previewMode").and_then(|v| v.as_str()), Some("svelte-component" | "vue-component")) {
         return base;
     }
     let Some(sf) = manifest.get("sourceFile").filter(|v| truthy(Some(v))) else {
@@ -1839,7 +1839,7 @@ fn handle_poll_post(
     // 7. file metadata
     let reply_meta = session_file_metadata_from_poll_reply(msg.get("file"), &cwd);
     // 8. Svelte publish
-    if reply_meta.get("previewMode").and_then(|v| v.as_str()) == Some("svelte-component")
+    if matches!(reply_meta.get("previewMode").and_then(|v| v.as_str()), Some("svelte-component" | "vue-component"))
         && truthy(msg.get("id"))
         && (msg_type.as_deref() == Some("done") || !truthy(msg.get("type")))
     {

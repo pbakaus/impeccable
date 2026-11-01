@@ -364,6 +364,12 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     let rel_target_file = jsp::to_posix(&jsp::relative("/", &cwd, &target_abs));
     let use_svelte_component = resolve_source_traits(&target_file).preview == "component"
         && should_use_svelte_component_injection(&target_file, &env);
+    let use_vue_component = crate::vue_component::enabled(&target_file, &env);
+    let component_mode = if use_vue_component {
+        "vue-component"
+    } else {
+        "svelte-component"
+    };
 
     let style_contents = if is_jsx {
         "style={{ display: \"contents\" }}"
@@ -412,6 +418,34 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     let mut deferred_wrapper: Option<(String, usize, usize)> = None;
     let mut svelte_preview_fallback: Option<String> = None;
 
+    if use_vue_component {
+        match crate::vue_component::scaffold(
+            &id,
+            count,
+            &rel_target_file,
+            (start_line + 1) as i64,
+            (end_line + 1) as i64,
+            &original_lines,
+            &cwd,
+        ) {
+            Scaffold::Session(session) => {
+                output_file = jsp::resolve(&cwd, &[&session.manifest_file]);
+                output_start_line = 1;
+                output_end_line = 1;
+                svelte_session = Some(session);
+            }
+            Scaffold::Fallback(reason) => {
+                eprintln(
+                    io,
+                    &json_compact(
+                        &json!({"error":"unsupported_vue_component_preview","hint":reason}),
+                    ),
+                );
+                return 1;
+            }
+        }
+    }
+
     if use_svelte_component {
         match scaffold_svelte_component_session(
             &id,
@@ -458,10 +492,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     out.insert("file".into(), Value::String(output_rel_file));
     if component_active {
         out.insert("sourceFile".into(), Value::String(rel_target_file.clone()));
-        out.insert(
-            "previewMode".into(),
-            Value::String("svelte-component".into()),
-        );
+        out.insert("previewMode".into(), Value::String(component_mode.into()));
     }
     if let Some(reason) = &svelte_preview_fallback {
         out.insert(
@@ -498,7 +529,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     out.insert(
         "styleMode".into(),
         Value::String(if component_active {
-            "svelte-component".into()
+            component_mode.into()
         } else {
             style_mode.0.into()
         }),
@@ -524,7 +555,9 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     );
     out.insert(
         "cssAuthoring".into(),
-        if component_active {
+        if use_vue_component && component_active {
+            json!({"mode":"vue-component","rules":["Edit the generated vN.vue template and scoped CSS only. Keep the generated script and every existing Vue binding, directive, and component.","Use one inline <style scoped> CSS block. No preprocessors, global selectors, imports, or preview data attributes.","Write params.json keyed by variant number. Numeric knobs are unitless: use calc(var(--p-space, 8) * 1px). Accept preserves selected values mechanically."]})
+        } else if component_active {
             build_svelte_component_css_authoring(count)
         } else {
             build_css_authoring(style_mode, count_len(count))
