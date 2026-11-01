@@ -1,12 +1,12 @@
 /*
  * Popup: the toolbar sheet. Paper ground, the mark and the wordmark at the
- * head, one count, two controls. Tokens and the severity language live in
+ * head, one count, three controls. Tokens and the severity language live in
  * ../shared/kinpaku.css; only layout and the local pieces are here.
  *
  * The count is ink at every value: gold under 2:1 on paper cannot carry a
  * numeral. What findings change is the rule under it, which lights gold.
- * Neither button carries the kit's gold arrow, because popup.js rewrites
- * both labels through textContent and would drop any child element.
+ * No button carries the kit's gold arrow, because popup.js rewrites
+ * the scan and overlay labels through textContent and would drop any child element.
  */
 
 body {
@@ -114,11 +114,12 @@ h1 {
   border-color: oklch(8% 0 0);
 }
 
-.btn-primary:disabled {
+.btn:disabled {
   background: transparent;
   border-color: var(--ks-rule);
   color: var(--ks-text-mute-deep);
   cursor: default;
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -150,6 +151,28 @@ h1 {
 
 .scan-error[hidden] {
   display: none;
+}
+
+.btn-secondary:disabled {
+  border-color: var(--ks-rule);
+  color: var(--ks-text-mute-deep);
+  background: transparent;
+  box-shadow: none;
+}
+
+.copy-status {
+  margin: -4px 0 14px;
+  color: var(--ks-text);
+  font-size: var(--ks-type-micro);
+  line-height: 1.45;
+}
+
+.copy-status:empty {
+  display: none;
+}
+
+.copy-status.is-error {
+  color: var(--ks-vermilion);
 }
 
 /* Foot */
