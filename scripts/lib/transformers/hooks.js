@@ -58,19 +58,20 @@ export const guardedLauncher = (launcherPath, verb = 'hook') =>
 // string starts with `cmd /c`, an ordinary command in both, and cmd.exe gets
 // the guard: a missing launcher exits 0, a failing one non-zero. Backslash
 // separators: PowerShell drops the quotes around a space-free argument, and
-// cmd.exe would read a bare `/` as a switch.
+// cmd.exe would read a bare `/` as a switch. VS Code's `windows` sibling takes
+// the same form (#1249).
 export const windowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
   const quoted = `"${launcherCmdPath.replaceAll('/', '\\')}"`;
   return `cmd /c if exist ${quoted} ${quoted} ${verb}`;
 };
 
-function stopEntry(command, commandWindows) {
+function stopEntry(command, windowsSibling) {
   return {
     hooks: [
       {
         type: 'command',
         command,
-        ...(commandWindows ? { commandWindows } : {}),
+        ...windowsSibling,
         timeout: STOP_TIMEOUT_SECONDS,
         statusMessage: STOP_STATUS_MESSAGE,
       },
@@ -97,14 +98,15 @@ const GITHUB_PROJECT_SCRIPTS = '$(git rev-parse --show-toplevel)/.github/skills/
 // in the matcher (Edit|Write|MultiEdit) alias to Grok's search_replace family.
 const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 
-// `windows: true` adds the `commandWindows` sibling; only Codex-shaped
-// consumers honor it, and an unknown key would fail Codex's strict parser if
-// it were the other way round, so it stays opt-in per manifest.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false, sessionIdentity = false } = {}) {
+// `windowsKey` names the per-OS field the consuming harness reads its Windows
+// command from (`commandWindows` for Codex, `windows` for VS Code Copilot
+// Chat) and adds that sibling to every handler. It stays opt-in per manifest,
+// so each one carries only the field its own consumers read.
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false } = {}) {
   const command = guardedLauncher(launcherIn(scriptsDir));
-  const commandWindows = windows ? windowsLauncherCommand(launcherCmdIn(scriptsDir)) : undefined;
+  const windowsSibling = windowsKey ? { [windowsKey]: windowsLauncherCommand(launcherCmdIn(scriptsDir)) } : {};
   return {
-    ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command,
+    ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command, ...windowsSibling,
       timeout: TIMEOUT_SECONDS, statusMessage: 'Preparing build session' }] }] } : {}),
     PostToolUse: [
       {
@@ -113,14 +115,14 @@ function buildClaudeCompatibleHooks(matcher, scriptsDir, { windows = false, sess
           {
             type: 'command',
             command,
-            ...(commandWindows ? { commandWindows } : {}),
+            ...windowsSibling,
             timeout: TIMEOUT_SECONDS,
             statusMessage: STATUS_MESSAGE,
           },
         ],
       },
     ],
-    Stop: [stopEntry(command, commandWindows)],
+    Stop: [stopEntry(command, windowsSibling)],
   };
 }
 
@@ -137,9 +139,12 @@ export function buildClaudeSettingsManifest() {
 // `.claude/skills/`. No top-level `description`: Codex also loads bundled plugin
 // hooks from `hooks/hooks.json` and its strict parser rejects any field other
 // than `hooks`, failing the whole manifest (issue #330).
+// VS Code Copilot Chat loads this manifest too. On Windows its local hook runner
+// takes the `windows` sibling over `command` and runs it under PowerShell, where
+// the POSIX guard throws a ParserError (#1249). Claude Code, Grok and Codex ignore the key.
 export function buildClaudePluginHooksManifest() {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, { sessionIdentity: true }),
+    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, { sessionIdentity: true, windowsKey: 'windows' }),
   };
 }
 
@@ -148,7 +153,7 @@ export function buildClaudePluginHooksManifest() {
 // instead of relying on its Claude compatibility alias.
 export function buildCodexPluginHooksManifest() {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write|apply_patch', CODEX_PLUGIN_SCRIPTS, { windows: true }),
+    hooks: buildClaudeCompatibleHooks('Edit|Write|apply_patch', CODEX_PLUGIN_SCRIPTS, { windowsKey: 'commandWindows' }),
   };
 }
 
@@ -157,7 +162,7 @@ export function buildCodexPluginHooksManifest() {
 // Codex provider, whose self-consistent bundle keeps the skill at `.codex/skills`.
 export function buildCodexHooksManifest(skillDir = '.codex') {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write|apply_patch', codexProjectScripts(skillDir), { windows: true }),
+    hooks: buildClaudeCompatibleHooks('Edit|Write|apply_patch', codexProjectScripts(skillDir), { windowsKey: 'commandWindows' }),
   };
 }
 
