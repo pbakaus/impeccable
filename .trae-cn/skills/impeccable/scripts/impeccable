@@ -74,6 +74,9 @@ hash_file() {
 }
 
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# VS Code syncs a plugin without the executable bit. Its hooks run this through
+# sh, so restore the bit for the commands the skill runs directly (#1249).
+[ -x "$0" ] || chmod +x "$0" 2>/dev/null || :
 manifest="$dir/engine-checksums.txt"
 
 # What the binary needs to know about its home: the skill directory (for
