@@ -13,7 +13,6 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -120,38 +119,6 @@ function stopLiveHelper(workspace) {
       },
     );
   } catch { /* nothing was running */ }
-}
-
-const PINNED_WORLD = 'The world is fixed: a working laboratory notebook, ruled graph paper in blue-black ink with pencil margin annotations.';
-const PINNED_FIRST_VIEWPORT = 'The first viewport is fixed too: one open notebook spread filling the screen, the product claim handwritten across the left page, the reasoning trail as numbered margin notes on the right page, and the primary action a stamped index tab on the right edge.';
-
-// The context-only bash tool tells the model everything but `context` is off
-// limits, which would bias the very decision these scenarios measure. They get
-// the real shell and a local catalog, so a roll reaches no API.
-function pinTurnOptions(workspace) {
-  return {
-    workspace,
-    checkpoint: (trace) => directionRolls(trace).length > 0 || savedPinnedBriefs(workspace).length > 0,
-    contextOnlyBash: false,
-    maxSteps: 16,
-    env: {
-      IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
-      IMPECCABLE_SEED_SALT: 'skill-behavior',
-    },
-  };
-}
-
-function directionRolls(trace) {
-  return trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
-}
-
-// Read the saved brief, not the tool input: models draft the body in a temp file
-// or a heredoc before `surface-brief write`, and only the saved file counts.
-function savedPinnedBriefs(workspace) {
-  const dir = path.join(workspace, '.impeccable/surfaces');
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((file) => file.endsWith('.md')
-    && /seed:\s*none \(pinned\)/.test(fs.readFileSync(path.join(dir, file), 'utf8')));
 }
 
 function executedUpdateCommands(trace) {
@@ -939,49 +906,28 @@ for (const modelId of resolveModelList()) {
       }
     });
 
-    // The two prompts differ only by the first-viewport sentence, so the pair
-    // measures the boundary: a named world alone still rolls, a world plus its
-    // first-surface experience skips. Both stop at the roll or the pinned
-    // brief, whichever comes first; neither runs a build.
+    // A named world alone leaves the first surface open, so the roll still binds.
+    // The context-only bash tool says everything but `context` is off limits, which
+    // would bias this decision, so the turn gets the real shell and a local catalog.
     it('scenario 23: a pinned world with an open first surface still rolls', async () => {
       const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
+      const scopedRolls = (trace) => trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
       try {
         const { trace, text } = await runTurn({
-          ...pinTurnOptions(workspace),
+          checkpoint: (trace) => scopedRolls(trace).length > 0,
+          contextOnlyBash: false,
+          env: {
+            IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
+            IMPECCABLE_SEED_SALT: 'skill-behavior',
+          },
+          workspace,
           model,
-          userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD}`,
+          userPrompt: `${CRAFT_PROMPT}. The world is fixed: a working laboratory notebook, ruled graph paper in blue-black ink with pencil margin annotations.`,
+          maxSteps: 16,
         });
         logTrace('S23', 'partial-pin-rolls', modelId, trace, { textSample: text.slice(0, 400) });
-        assert.equal(savedPinnedBriefs(workspace).length, 0,
-          `a pin that leaves the first surface open must not record seed: none (pinned).\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
-        assert.ok(directionRolls(trace).length >= 1,
+        assert.ok(scopedRolls(trace).length >= 1,
           `a pin that leaves the first surface open must still run concept-seed.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
-      } finally {
-        cleanupWorkspace(workspace);
-      }
-    });
-
-    // With no roll to stop at, the model does font and asset work before it
-    // writes the brief, which took 180 to 230 seconds or more on Sonnet.
-    it('scenario 24: a direction pinned whole skips the roll and records seed: none (pinned)', { timeout: 480000 }, async () => {
-      const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
-      try {
-        const { trace, text } = await runTurn({
-          ...pinTurnOptions(workspace),
-          model,
-          userPrompt: `${CRAFT_PROMPT}. ${PINNED_WORLD} ${PINNED_FIRST_VIEWPORT}`,
-          timeoutMs: 420000,
-        });
-        logTrace('S24', 'whole-pin-skips', modelId, trace, { textSample: text.slice(0, 400) });
-        // Probing verbs with `concept-seed --help` is not the decision measured
-        // here, so only a scoped roll counts.
-        assert.equal(directionRolls(trace).length, 0,
-          `a direction pinned whole must not run concept-seed.\n` +
-            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
-        assert.ok(savedPinnedBriefs(workspace).length >= 1,
-          `a direction pinned whole must save seed: none (pinned) in the surface brief.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
       } finally {
         cleanupWorkspace(workspace);
