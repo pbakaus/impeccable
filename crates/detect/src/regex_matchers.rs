@@ -1817,10 +1817,19 @@ pub(crate) fn image_source_is_missing(tag: &str, ext: &str) -> bool {
 }
 
 /// `src` or `srcset` (an `<img>` needs either), a binding of one (`:src`,
-/// `v-bind:src`, Svelte `bind:src`, Vue modifiers), or an alias such as lazy
-/// loading's `data-src`, which the original `\bsrc\s*=` matcher accepted.
-fn names_image_source(name: &str) -> bool {
-    let is_source = |n: &str| n.eq_ignore_ascii_case("src") || n.eq_ignore_ascii_case("srcset");
+/// `v-bind:src`, Svelte `bind:src`, Vue modifiers, Angular `[src]` and
+/// `[attr.src]`), Angular's `ngSrc`, or an alias such as lazy loading's
+/// `data-src`, which the original `\bsrc\s*=` matcher accepted.
+pub fn names_image_source(name: &str) -> bool {
+    let is_source = |n: &str| {
+        n.eq_ignore_ascii_case("src")
+            || n.eq_ignore_ascii_case("srcset")
+            || n.eq_ignore_ascii_case("ngSrc")
+    };
+    let name = match name.strip_prefix('[').and_then(|n| n.strip_suffix(']')) {
+        Some(inner) => inner.strip_prefix("attr.").unwrap_or(inner),
+        None => name,
+    };
     let base = name.split('.').next().unwrap_or(name);
     is_source(base)
         || base
