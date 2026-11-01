@@ -27,7 +27,7 @@ Resolve one stable target, run two independent assessments, synthesize a design 
    ```
    Every later command also accepts the resolved target directly and derives the same slug internally; never hand-write a slug. If this exits non-zero, skip persistence and trend for this run, but continue the critique.
 3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently.
-4. **Find the previous run**: the newest `.impeccable/critique/*__<slug>.md`. One with an `All Findings` table is the **ledger**: take `base` from its frontmatter and leave its rows unread, for Assessment B only (see Rerun). An older snapshot without that table, or a user asking for a fresh review, means a first run.
+4. **Find the previous run**: the newest `.impeccable/critique/*__<slug>.md`. One with an `All Findings` table is the **ledger**: take `base` from its frontmatter and leave its rows unread until both assessments are back; Assessment B gets them (see Rerun). An older snapshot without that table, or a user asking for a fresh review, means a first run.
 
 ### Assessment Orchestration
 

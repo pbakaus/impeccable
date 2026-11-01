@@ -83,7 +83,7 @@ describe('skill reference authoring contracts', () => {
     assert.match(rerun, /takes one point from the first heuristic it names/);
     assert.match(rerun, /numbered on from the ledger's last row/);
     assert.match(rerun, /`Method: unchanged since <timestamp>`/);
-    assert.match(critique, /leave its rows unread, for Assessment B only/);
+    assert.match(critique, /leave its rows unread until both assessments are back/);
   });
 
   it('keeps reduced-motion guidance on the animation build path', () => {
