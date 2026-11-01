@@ -377,28 +377,46 @@ fn windows_form_runs_the_shim_in_each_harness_shell() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// VS Code Copilot Chat loads `plugin/hooks/hooks.json` and, on Windows, its
-/// local hook runner takes each handler's `windows` string over `command`
-/// and runs it through `powershell.exe -ExecutionPolicy Bypass -NoProfile -NoLogo -Command` (#1249).
-/// Apply its `${CLAUDE_PLUGIN_ROOT}` substitution (a plain replace, or the
-/// single-quoted rewrite when the root has a space) and run the tracked line.
+/// VS Code Copilot Chat loads `plugin/hooks/hooks.json` and, on Windows, takes
+/// each handler's `windows` string over `command` (#1249). Apply its
+/// `${CLAUDE_PLUGIN_ROOT}` substitution (a plain replace, or a single-quoted path
+/// when the root has a space) and run the tracked line the way each of its
+/// runners does: PowerShell in the Copilot extension's HookExecutor, and
+/// `cmd.exe /c` with escaped arguments in the agent host.
 #[cfg(windows)]
 #[test]
-fn plugin_windows_form_runs_under_vscode_hook_runner() {
+fn plugin_windows_form_runs_under_vscode_hook_runners() {
     use std::process::{Command, Stdio};
+
+    fn hook_executor(line: &str) -> Command {
+        let mut c = Command::new("powershell.exe");
+        c.args(["-ExecutionPolicy", "Bypass", "-NoProfile", "-NoLogo", "-Command", line]);
+        c
+    }
+    fn agent_host(line: &str) -> Command {
+        let mut c = Command::new("cmd.exe");
+        c.args(["/c", line]);
+        c
+    }
+    let runners: [(&str, fn(&str) -> Command); 2] = [("HookExecutor", hook_executor), ("agent host", agent_host)];
 
     let manifest: Value = serde_json::from_str(
         &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../plugin/hooks/hooks.json")).unwrap(),
     )
     .unwrap();
     let template = manifest["hooks"]["Stop"][0]["hooks"][0]["windows"].as_str().unwrap();
+    let token = "${CLAUDE_PLUGIN_ROOT}";
     for (label, dir) in [("plain", "imp-vscode-"), ("space", "imp vscode ")] {
         let root = std::env::temp_dir().join(format!("{dir}{}", std::process::id()));
         let root_str = root.to_str().unwrap();
         let line = if label == "plain" {
-            template.replace("${CLAUDE_PLUGIN_ROOT}", root_str)
+            template.replace(token, root_str)
         } else {
-            template.replace("\"${CLAUDE_PLUGIN_ROOT}", &format!("'{root_str}")).replace(".cmd\"", ".cmd'")
+            template
+                .split(' ')
+                .map(|word| if word.starts_with(token) { format!("'{}'", word.replace(token, root_str)) } else { word.to_string() })
+                .collect::<Vec<_>>()
+                .join(" ")
         };
         let scripts = root.join("skills").join("impeccable").join("scripts");
         let seen = scripts.join("seen-hook.txt");
@@ -408,20 +426,28 @@ fn plugin_windows_form_runs_under_vscode_hook_runner() {
                 std::fs::create_dir_all(&scripts).unwrap();
                 std::fs::write(scripts.join("impeccable.cmd"), "@echo off\r\nfindstr \"^\" > \"%~dp0seen-%1.txt\"\r\nexit /b 0\r\n").unwrap();
             }
-            let at = format!("{label} present={present}: {line}");
-            let child = Command::new("powershell.exe")
-                .args(["-ExecutionPolicy", "Bypass", "-NoProfile", "-NoLogo", "-Command", &line])
-                .stdin(Stdio::piped())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .unwrap_or_else(|e| panic!("{at}: {e}"));
-            let code = probe_and_wait(child, &at);
-            assert_eq!(code, Some(0), "{at}");
-            if present {
-                assert_eq!(std::fs::read_to_string(&seen).unwrap_or_default().trim(), "{\"probe\":1}", "{at}");
-            } else {
-                assert!(!seen.exists(), "{at}");
+            for (runner, spawn) in &runners {
+                let _ = std::fs::remove_file(&seen);
+                let at = format!("{runner} {label} present={present}: {line}");
+                let child = spawn(&line)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap_or_else(|e| panic!("{at}: {e}"));
+                let code = probe_and_wait(child, &at);
+                // cmd.exe does not read single quotes, so a root with a space
+                // stays out of the agent host's reach: a known gap, not a hang.
+                if label == "space" && *runner == "agent host" {
+                    assert!(!seen.exists(), "{at}");
+                    continue;
+                }
+                assert_eq!(code, Some(0), "{at}");
+                if present {
+                    assert_eq!(std::fs::read_to_string(&seen).unwrap_or_default().trim(), "{\"probe\":1}", "{at}");
+                } else {
+                    assert!(!seen.exists(), "{at}");
+                }
             }
         }
         let _ = std::fs::remove_dir_all(&root);

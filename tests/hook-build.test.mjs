@@ -432,10 +432,10 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
     expectCommand(stop.command, 'skills/impeccable/scripts');
     assert.ok(stop.command.includes('${CLAUDE_PLUGIN_ROOT}'));
 
-    // VS Code Copilot Chat's local hook runner takes `windows` over `command` on
-    // Windows and runs it under PowerShell, which cannot parse the POSIX guard (#1249).
-    const windowsForm = 'cmd /c if exist "${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" '
-      + '"${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" hook';
+    // VS Code Copilot Chat takes `windows` over `command` on Windows, where the POSIX
+    // guard cannot parse. Unquoted because its agent host escapes double quotes (#1249).
+    const windowsForm = 'cmd /c if exist ${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd '
+      + '${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd hook';
     for (const event of ['SessionStart', 'PostToolUse', 'Stop']) {
       for (const entry of manifest.hooks[event]) {
         for (const h of entry.hooks) {

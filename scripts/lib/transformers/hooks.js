@@ -58,12 +58,23 @@ export const guardedLauncher = (launcherPath, verb = 'hook') =>
 // string starts with `cmd /c`, an ordinary command in both, and cmd.exe gets
 // the guard: a missing launcher exits 0, a failing one non-zero. Backslash
 // separators: PowerShell drops the quotes around a space-free argument, and
-// cmd.exe would read a bare `/` as a switch. VS Code's `windows` sibling takes
-// the same form (#1249).
+// cmd.exe would read a bare `/` as a switch.
 export const windowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
   const quoted = `"${launcherCmdPath.replaceAll('/', '\\')}"`;
   return `cmd /c if exist ${quoted} ${quoted} ${verb}`;
 };
+
+// Form for VS Code's `windows` sibling (#1249), which has two Windows runners:
+// PowerShell `-Command` in the Copilot extension, and a Node spawn of
+// `cmd.exe /c <line>` in the agent host, which escapes a double quote to `\"` so
+// the guard never finds the launcher. The path stays bare because VS Code
+// substitutes the plugin root itself and single-quotes one with unsafe characters.
+const vscodeWindowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
+  const bare = launcherCmdPath.replaceAll('/', '\\');
+  return `cmd /c if exist ${bare} ${bare} ${verb}`;
+};
+
+const WINDOWS_FORMS = { commandWindows: windowsLauncherCommand, windows: vscodeWindowsLauncherCommand };
 
 function stopEntry(command, windowsSibling) {
   return {
@@ -104,7 +115,7 @@ const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 // so each one carries only the field its own consumers read.
 function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false } = {}) {
   const command = guardedLauncher(launcherIn(scriptsDir));
-  const windowsSibling = windowsKey ? { [windowsKey]: windowsLauncherCommand(launcherCmdIn(scriptsDir)) } : {};
+  const windowsSibling = windowsKey ? { [windowsKey]: WINDOWS_FORMS[windowsKey](launcherCmdIn(scriptsDir)) } : {};
   return {
     ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command, ...windowsSibling,
       timeout: TIMEOUT_SECONDS, statusMessage: 'Preparing build session' }] }] } : {}),
@@ -139,9 +150,9 @@ export function buildClaudeSettingsManifest() {
 // `.claude/skills/`. No top-level `description`: Codex also loads bundled plugin
 // hooks from `hooks/hooks.json` and its strict parser rejects any field other
 // than `hooks`, failing the whole manifest (issue #330).
-// VS Code Copilot Chat loads this manifest too. On Windows its local hook runner
-// takes the `windows` sibling over `command` and runs it under PowerShell, where
-// the POSIX guard throws a ParserError (#1249). Claude Code, Grok and Codex ignore the key.
+// VS Code Copilot Chat loads this manifest too. On Windows it takes the `windows`
+// sibling over `command`, because the POSIX guard throws a ParserError under its
+// PowerShell runner (#1249). Claude Code, Grok and Codex ignore the key.
 export function buildClaudePluginHooksManifest() {
   return {
     hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, { sessionIdentity: true, windowsKey: 'windows' }),
