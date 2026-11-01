@@ -218,6 +218,22 @@ describe('hook manifest builders', () => {
     expectCommand(stop.command, '.grok/skills/impeccable/scripts');
   });
 
+  it('gives the Claude plugin manifest what VS Code needs on every handler (#1249)', () => {
+    const manifest = buildClaudePluginHooksManifest();
+    // Through `sh`: VS Code's agent host syncs the launcher without its executable bit.
+    const launcher = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable';
+    // VS Code takes `windows` over `command` on Windows, where the POSIX guard cannot
+    // parse. Unquoted for a runner that spawns `cmd.exe /c` and escapes double quotes.
+    const windowsForm = 'cmd /c if exist ${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd '
+      + '${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd hook';
+    for (const event of ['SessionStart', 'PostToolUse', 'Stop']) {
+      const handler = manifest.hooks[event][0].hooks[0];
+      assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`, `${event} command`);
+      assert.equal(handler.windows, windowsForm, `${event} windows`);
+      assert.deepEqual(handler.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
+    }
+  });
+
   it('emits commandWindows only for Codex-shaped manifests', () => {
     // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
     // have no per-platform field, and an unknown key is a risk under a strict
@@ -419,9 +435,6 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
 
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
     assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write');
-    // Through `sh`: VS Code's agent host syncs the launcher without its executable bit (#1249).
-    const launcher = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable';
-    assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`);
     // Resolves relative to the installed plugin, not a `.claude/skills/` layout.
     assert.ok(handler.command.includes('${CLAUDE_PLUGIN_ROOT}'),
       `plugin hook command must use $\{CLAUDE_PLUGIN_ROOT}: ${handler.command}`);
@@ -432,19 +445,6 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
     assert.equal(stop.command, handler.command);
-
-    // VS Code Copilot Chat takes `windows` over `command` on Windows, where the POSIX
-    // guard cannot parse. Unquoted because its agent host escapes double quotes (#1249).
-    const windowsForm = 'cmd /c if exist ${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd '
-      + '${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd hook';
-    for (const event of ['SessionStart', 'PostToolUse', 'Stop']) {
-      for (const entry of manifest.hooks[event]) {
-        for (const h of entry.hooks) {
-          assert.equal(h.windows, windowsForm, `${event} windows`);
-          assert.deepEqual(h.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
-        }
-      }
-    }
 
     // The script the plugin hook points at must ship inside the plugin payload.
     assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts')));

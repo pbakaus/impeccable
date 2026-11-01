@@ -406,10 +406,17 @@ fn plugin_windows_form_runs_under_vscode_hook_runners() {
     .unwrap();
     let template = manifest["hooks"]["Stop"][0]["hooks"][0]["windows"].as_str().unwrap();
     let token = "${CLAUDE_PLUGIN_ROOT}";
-    for (label, dir) in [("plain", "imp-vscode-"), ("space", "imp vscode ")] {
-        let root = std::env::temp_dir().join(format!("{dir}{}", std::process::id()));
+    // Not temp_dir(): a CI runner's is 8.3-shortened, and VS Code quotes a `~`.
+    let base = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    for dir in ["imp-vscode-", "imp vscode "] {
+        let root = base.join(format!("{dir}{}", std::process::id()));
         let root_str = root.to_str().unwrap();
-        let line = if label == "plain" {
+        let quoted = !root_str.chars().all(|c| c.is_ascii_alphanumeric() || "_./\\:-".contains(c));
+        if dir == "imp-vscode-" && quoted {
+            eprintln!("skipping the bare-path case: {root_str} is not space-free");
+            continue;
+        }
+        let line = if !quoted {
             template.replace(token, root_str)
         } else {
             template
@@ -428,7 +435,7 @@ fn plugin_windows_form_runs_under_vscode_hook_runners() {
             }
             for (runner, spawn) in &runners {
                 let _ = std::fs::remove_file(&seen);
-                let at = format!("{runner} {label} present={present}: {line}");
+                let at = format!("{runner} present={present}: {line}");
                 let child = spawn(&line)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::null())
@@ -436,9 +443,9 @@ fn plugin_windows_form_runs_under_vscode_hook_runners() {
                     .spawn()
                     .unwrap_or_else(|e| panic!("{at}: {e}"));
                 let code = probe_and_wait(child, &at);
-                // cmd.exe does not read single quotes, so a root with a space
-                // stays out of the agent host's reach: a known gap, not a hang.
-                if label == "space" && *runner == "agent host" {
+                // cmd.exe does not read single quotes, so a root VS Code has to quote
+                // stays out of this runner's reach: a known gap, not a hang.
+                if quoted && *runner == "agent host" {
                     assert!(!seen.exists(), "{at}");
                     continue;
                 }
