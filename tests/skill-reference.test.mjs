@@ -77,6 +77,7 @@ describe('skill reference authoring contracts', () => {
     assert.match(critique, /"base":"<commit>"/);
     assert.match(rerun, /\*\*Assessment A stays blind to the ledger\.\*\*/);
     assert.match(rerun, /reports a defect only when a change introduced it/);
+    assert.match(rerun, /skipping `\.impeccable\/`/);
     assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
   });
 
