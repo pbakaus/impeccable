@@ -4,11 +4,11 @@ Resolve one stable target, run two independent assessments, synthesize a design 
 
 ### Hard Invariants
 
-- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration).
+- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration) and on a rerun where nothing changed (see Rerun), which runs neither and says so in its header.
 - Assessment A and B MUST run as two isolated sub-agents whenever a sub-agent/Task tool is exposed. Running them inline in this context is "possible" but is NOT permitted; it is a degraded run. Inline is allowed ONLY when no sub-agent tool exists (or the user declined, on harnesses that ask). Native platforms run A alone (see Assessment Orchestration).
 - If you degrade for any reason, the report's first line MUST be a banner: `⚠️ DEGRADED: single-context (<reason>)`. A silent degraded critique is a failed critique.
 - Assessment A must finish before detector findings enter the parent synthesis context. Detector output is deterministic, but it still anchors judgment.
-- A skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, or the platform is native (see Assessment Orchestration).
+- A skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, the platform is native (see Assessment Orchestration), or nothing changed since the ledger's `base` (see Rerun).
 - Viewable targets require browser inspection when available.
 - Any local server started only for critique visualization must run in the background, have a recorded stop method, and be stopped before final reporting unless the user asks to keep it.
 - Do not claim a user-visible overlay exists unless script injection succeeded and the detector ran in the page.
@@ -26,7 +26,8 @@ Resolve one stable target, run two independent assessments, synthesize a design 
    {{scripts_path}}/impeccable critique-storage slug "<resolved-path-or-url>"
    ```
    Every later command also accepts the resolved target directly and derives the same slug internally; never hand-write a slug. If this exits non-zero, skip persistence and trend for this run, but continue the critique.
-3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently; it is the only prior-run input critique consumes.
+3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently.
+4. **Find the previous run**: the newest `.impeccable/critique/*__<slug>.md`. One with an `All Findings` table is the **ledger**: take `base` from its frontmatter and leave its rows unread until both assessments are back; Assessment B gets them (see Rerun). An older snapshot without that table, or a user asking for a fresh review, means a first run.
 
 ### Assessment Orchestration
 
@@ -65,7 +66,9 @@ Evaluate:
 - **Emotional journey**: peak-end rule, emotional valleys, reassurance at high-stakes moments.
 - **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4, marking any heuristic the mode-applicability rule allows as `n/a` instead of forcing a number.
 
-Return: design-specificity verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
+Report every defect as its own finding (`F1`, `F2`, ...) with severity, heuristic, location, what is wrong, and the fix. Do **not** cap or bundle them: a quota is what makes every run find a fresh set and the score never move. For each heuristic below 4, name the findings that earn each next point (`F3, F7 -> 3; F9 -> 4`), its P0 and P1 findings first and alone, so fixing the priority issues always earns a point.
+
+Return: design-specificity verdict, heuristic scores with their next points, cognitive load, emotional journey, 2-3 strengths, every finding, persona red flags, and provocative questions.
 
 ### Assessment B: Detector + Browser Evidence
 
@@ -111,6 +114,16 @@ After Assessment B returns usable CLI findings, reuse them. Do not rerun `impecc
 Codex failure accounting: final Run Notes must include target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live-server cleanup, temp-file cleanup, and any fallback signal used. Do not run repo status checks, late API spelunking, or unrelated verification after the report is assembled.
 </codex>
 
+### Rerun
+
+With a ledger from Setup, the run verifies it and reviews only what changed. Scoring every run from zero is what held the score at 28/40 three rounds running (#1264): fixed issues drop out of view and the next most visible gap takes their place.
+
+- **Assessment A stays blind to the ledger.** It gets the snapshot's `base` and nothing else from it. It runs `git diff <base>` and `git status --porcelain`, reviews those hunks and untracked files alone, skipping `.impeccable/` (the ledger lives there), and reports a defect only when a change introduced it, naming the hunk. Unchanged code is not re-reviewed, and the parent drops a new finding whose named lines are unchanged since `base`. With no `base`, or git failing, A does not run.
+- **Assessment B also verifies the ledger**: each `open` or `partial` row against the current code and rendered page, as `fixed`, `partial` or `open`, judged as the row is written. With no sub-agents (native or degraded), the parent writes its own review of the diff before it reads a ledger row, then verifies.
+- Nothing changed, nothing untracked, and a target git covers: run neither. Report the previous score and open rows as they stand under `Method: unchanged since <timestamp>`, then close with Ask the User; nothing new is the correct result. A URL target still gets B, since git cannot vouch for a deployment.
+- **Scores move only by verified rows.** A heuristic gains a point when every finding in a next-point group is `fixed`. A new P0 or P1 takes one point from the first heuristic it names and becomes that point's group by itself, so a regression costs exactly what fixing it earns back; on a heuristic at 0 it joins the first open group instead. Fold a new finding the ledger already holds into its row. A fix that reverses one the ledger issued is a closing question, never an instruction.
+- The report carries every ledger row forward with its verdict, then the new findings numbered on from the ledger's last row, then the heuristic table, and leaves out the sections only a fresh review can fill (verdict, impression, personas).
+
 ### Generate Combined Critique Report
 
 Synthesize both assessments into a single report. Do not simply concatenate. Weave the findings together, noting where the LLM review and detector agree, where the detector caught issues the LLM missed, and where detector findings are false positives.
@@ -151,7 +164,7 @@ Present the Nielsen's 10 heuristics scores as a table:
 
 The applicable maximum is 4 times the number of heuristics you actually scored: **/40** when all ten apply, **/32** when two are `n/a`. Never print `/40` over a partial set.
 
-Be honest with scores. A 4 means genuinely excellent. Most real interfaces score 20-32 out of 40.
+Be honest with scores. A 4 means genuinely excellent. In the Key Issue cell of every heuristic below 4, name the findings that earn each next point (`F3, F7 -> 3; F9 -> 4`); a point nothing names cannot be earned.
 
 **Mode applicability**: heuristics 7 (Flexibility and Efficiency) and 10 (Help and Documentation) may be scored `n/a` on Persuade and Experience surfaces (landing pages, campaigns, portfolios, bodies of work), as may any other heuristic that genuinely cannot apply to the surface under review. Write `n/a` in the Score cell with a one-line reason, and renormalize the total to the applicable maximum (e.g. **24/32** when two heuristics are n/a) so the rating band stays proportional. The persisted snapshot must record the applicable maximum and which heuristics were scored n/a.
 
@@ -172,7 +185,7 @@ A brief gut reaction: what works, what doesn't, and the single biggest opportuni
 Highlight 2-3 things done well. Be specific about why they work.
 
 #### Priority Issues
-The 3-5 most impactful design problems, ordered by importance.
+Every open P0 and P1, ordered by importance.
 
 For each issue, tag with **P0-P3 severity** (see [Issue Severity below](#issue-severity-p0p3) for definitions):
 - **[P?] What**: Name the problem clearly
@@ -193,8 +206,8 @@ For each selected persona, walk through the primary user action and list specifi
 
 Be specific. Name the exact elements and interactions that fail each persona. Don't write generic persona descriptions; write what broke for them.
 
-#### Minor Observations
-Quick notes on smaller issues worth addressing.
+#### All Findings
+Every finding, one row each: `| ID | P | H | Where | What | Fix | Status |`. Status is `open`, `documented` (PRODUCT.md or DESIGN.md records the pattern as deliberate: no points, a closing question instead) or `outside` (not on the target's own screens: no points). The next run verifies this table, so nothing a reviewer found stays out of it.
 
 #### Questions to Consider
 Provocative questions that might unlock better solutions:
@@ -231,7 +244,7 @@ Once the report above is finalized, write it to `.impeccable/critique/` so the u
 
 Skip this step if the Setup slug was null (vague or root-level target).
 
-1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions), but stop before the "Ask the User" / "Recommended Actions" sections that come later.
+1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, the findings table, and questions), but stop before the "Ask the User" / "Recommended Actions" sections that come later.
 
    This is a copy of the report you already delivered above, for later commands to read. It is not delivery. If you find yourself composing the report for the first time inside this heredoc, you have skipped Deliver the Report; go back and send it.
 
@@ -241,10 +254,10 @@ Skip this step if the Setup slug was null (vague or root-level target).
 
 2. **Pass the structured metadata** through `IMPECCABLE_CRITIQUE_META` (JSON), then run the write command:
    ```bash
-   IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>}' \
+   IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>,"base":"<commit>"}' \
      {{scripts_path}}/impeccable critique-storage write "<resolved target>" <body-file>
    ```
-   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not.
+   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. `base` is the working tree at this moment, for the next run to diff against: `git stash create` prints a commit for it without touching the index or the tree, or nothing when the tree is clean, then use `git rev-parse HEAD`; omit the field when git fails. `p0_count` and `p1_count` count open rows. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not.
 
 3. **Delete the temp body file** after the write attempt completes, whether the write succeeded or failed. If deletion fails, mention `temp-file cleanup failed: <reason>` briefly in the final output, but do not block the critique.
 
