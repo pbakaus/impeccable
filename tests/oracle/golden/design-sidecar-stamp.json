@@ -1,0 +1,10 @@
+{
+  "stdout": "Stamped DESIGN.md content fingerprint in .impeccable/design.json.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/design.json": "{\n  \"schemaVersion\": 2,\n  \"source\": \"DESIGN.md\",\n  \"tokens\": {\n    \"colors\": {\n      \"ink\": \"#111111\",\n      \"paper\": \"#fbf7ef\",\n      \"accent\": \"#1a4d8f\"\n    }\n  },\n  \"designMdFingerprint\": {\n    \"algorithm\": \"sha256\",\n    \"normalization\": \"lf-v1\",\n    \"digest\": \"6328e55a27ebbd5887db7615ac3c012e3adf6bb969a1536caf9e695f6edec8b3\"\n  }\n}\n",
+    "DESIGN.md": "---\nname: Oracle Fixture\ncolors:\n  ink: \"#111111\"\n  paper: \"#fbf7ef\"\n  accent: \"#1a4d8f\"\ntypography:\n  body:\n    fontFamily: \"Palatino, Georgia, serif\"\n  heading:\n    fontFamily: \"Palatino, Georgia, serif\"\ncomponents:\n  button:\n    backgroundColor: \"{colors.accent}\"\n---\n\n# Design System: Oracle Fixture\n\n## Overview\nA quiet editorial system: warm paper, ink text, one deep blue accent.\n\n## Colors\n\n### Primary\n- **Ink** (#111111): Text.\n- **Paper** (#fbf7ef): Page background.\n- **Accent** (#1a4d8f): Links and primary actions.\n\n## Typography\n\n**Body Font:** Palatino\n\n### Hierarchy\n- **Body** (400, 17px, 1.55): Paragraphs.\n- **H1** (600, 40px, 1.1): Page title.\n\n## Components\n\n### Button\n- Accent fill, paper text, no shadow.\n"
+  }
+}

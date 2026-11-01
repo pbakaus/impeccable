@@ -850,10 +850,23 @@ fn handle_connection(shared: Shared, mut stream: TcpStream, mut ticket: Ticket) 
             response.insert("present".into(), json!(true));
             response.insert("hasMd".into(), json!(md_stat.is_some()));
             response.insert("hasSidecar".into(), json!(json_stat.is_some()));
-            response.insert(
-                "mdNewerThanJson".into(),
-                json!(matches!((md_stat, json_stat), (Some(m), Some(j)) if m > j + 1000.0)),
-            );
+            let sidecar_status = if json_stat.is_none() {
+                "missing"
+            } else {
+                let bytes = md_path.as_deref().and_then(|p| std::fs::read(p).ok());
+                let sidecar = crate::util::read_json(&json_path);
+                match bytes.as_deref().and_then(|bytes| impeccable_context::design_sidecar::matches_source(
+                    sidecar.as_ref().and_then(|v| v.get("designMdFingerprint")), bytes,
+                )) {
+                    Some(true) => "current",
+                    Some(false) => "stale",
+                    None => "unverified",
+                }
+            };
+            response.insert("sidecarStatus".into(), json!(sidecar_status));
+            // Retain the old response key for older clients, but never infer
+            // content drift from checkout timestamps.
+            response.insert("mdNewerThanJson".into(), json!(sidecar_status == "stale"));
             if md_stat.is_some() {
                 let md = md_path.as_deref().and_then(safe_read).unwrap_or_default();
                 match crate::design_md::parse_design_md(&md) {

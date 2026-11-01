@@ -7275,6 +7275,33 @@ Merging main into `detect-status-row-stripes` again (2026-10-23): the same five 
 
 New fixture `low-contrast-resting-states.html`: a stepper's inactive item beside the active one (opacity 0.3 by stylesheet with an opacity transition, the bright item carrying one more class token) reports as advisory in the URL engine (r13-t1), as does a checkout stepper's next step; text a script parked in its `style` attribute at the start of a reveal (Framer's start values, a scrubbed `max(.2, var(...))` opacity, a set of keys parked alike whose component the page shows lit elsewhere) is not at rest there and passes at its declared colour. The should-flag column carries the review's twins: a lone parked badge, parked nav links, an inline design token, a faint modifier, a clickable plan option, identical class lists, disclosure `summary` elements, unchecked `menuitemcheckbox` items, and keys parked alike whose lit peer is `display: none`. New cases `detect-fixture-json-low-contrast-resting-states-html` and `detect-fixture-text-low-contrast-resting-states-html`, recorded from the binary and reviewed by hand: the static engine reads no transition, transform or `will-change`, so it reports eighteen `low-contrast` warnings (the sixteen URL-engine findings, both advisories at full severity, plus the parked card and keys at their faded colour; it does not resolve the scrubbed opacity and scores that copy as declared), exit 2. The URL behaviour is pinned by `crates/browser/tests/transient_opacity.rs`. No existing per-fixture golden moved. The directory sweeps (`detect-dir-json-all-fixtures` and the other sweep cases) also gain these eighteen findings, but they are not re-recorded here: earlier entries list them as accepted deltas, so the oracle no longer compares them. The snapshot capture also reads computed `cursor` now (`STYLE_PROPS`); older recordings read it as empty. Review round, 2026-10-23 (#1148): three rows after the checkout stepper were added as should-flag twins for the control list (`summary`, `menuitemcheckbox`) and for a lit peer that must be shown; both fixture goldens were re-recorded from the binary and reviewed by hand, gaining exactly those three warnings, exit 2. A fourth row, a stepper item whose active sibling is `display: none` (a bright sibling must be shown), adds one more warning in both goldens.
 
+## Recorded 2026-10-26: DESIGN.md sidecar content provenance (#846)
+
+The sidecar check uses a versioned SHA-256 fingerprint with CRLF normalized to
+LF. Timestamps no longer establish freshness. Sidecars without a supported
+fingerprint are unverified; only a valid fingerprint mismatch is stale.
+Each changed golden was reviewed: changes are limited to this finding, its
+message/count, and its throttle-cache key. Exit codes and source files are
+unchanged. Doctor does not silently certify an old sidecar.
+
+- Context cases: `context-full`, `context-full-oversized-design`,
+  `context-full-many-briefs`, `context-full-target-brief`,
+  `context-full-target-related`, `context-full-target-missing-file`,
+  `context-full-target-last-wins`, `context-legacy`,
+  `context-staleness-throttle`, `context-staleness-cache-env`,
+  `context-build-path-local-over-shared`, `context-build-path-invalid-ignored`.
+- Doctor cases: `doctor-full-text`, `doctor-full-json`,
+  `doctor-order-boot-and-deep`, `doctor-full-sidecar-stale`,
+  `doctor-legacy-json`, `doctor-legacy-text`, `doctor-legacy-fix`,
+  `doctor-legacy-fix-json`, `doctor-legacy-fix-twice`,
+  `doctor-legacy-fix-no-overwrite`, `doctor-fix-clean`,
+  `doctor-target-file`, `doctor-sidecar-schema-missing`.
+  The historical `doctor-full-sidecar-stale` fixture changes only mtime and has
+  no fingerprint, so it now correctly reports unverified.
+- Six new `design-sidecar-*` cases cover help, missing source, invalid target,
+  stamping, a timestamp-only checkout, and changed source with an old timestamp.
+  The last two prove current versus stale after a real stamp.
+
 ## Recorded 2026-10-26: one report per colour pair and per outer panel, counted (corpus/round14-counting)
 
 Taste calls r14-t2 and r14-t5 (`docs/CLI-CONTRACT.md`, "Round 14 counted repeats"). `low-contrast` reports each colour pair once on every path, the full pass included, and `nested-cards` reports an outer panel once; the finding that reports ends ` (and N more)` when it speaks for other elements. The static engine also counts the copies its SAFE_TAGS dedupe used to drop silently, so several pairs gain a count without losing a finding. Each case below was re-recorded from a release build of the binary and reviewed by hand with a script that weighs every finding as one plus its count: per case, no pair or panel lost weight, and the only weight moved is to the copies the dedupe now counts and to the fixture inks that changed.

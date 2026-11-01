@@ -15,6 +15,7 @@ pub mod surface_briefs;
 pub mod artifact_schema;
 pub mod context;
 pub mod staleness;
+pub mod design_sidecar;
 pub mod staleness_notice;
 pub mod context_cli;
 pub mod pin;
