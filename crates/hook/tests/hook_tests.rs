@@ -1635,6 +1635,16 @@ fn harness_detection_and_github_normalization() {
         payload("t", "Stop", "claude"),
         r#"{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"t"}}"#
     );
+    // VS Code's two runners read different fields (#1249).
+    assert_eq!(
+        payload("t", "PostToolUse", "vscode"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"},"additionalContext":"t"}"#
+    );
+    let vscode = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    assert_eq!(resolve_harness(&vscode, None), "vscode");
+    // Grok honors the manifest's `env` too, so its event shape still wins.
+    let grok_shaped: Map<String, Value> = json!({"hookEventName": "PostToolUse", "toolName": "Edit", "toolInput": {}}).as_object().unwrap().clone();
+    assert_eq!(resolve_harness(&vscode, Some(&grok_shaped)), "grok");
     assert_eq!(
         payload("t", "PostToolUse", "cursor"),
         r#"{"additional_context":"t"}"#
@@ -1888,6 +1898,33 @@ fn run_hook_symlinked_cwd_and_umbrella_launch() {
     );
     assert!(t.exists("app/.impeccable/hook.cache.json"));
     assert!(!t.exists(".impeccable"));
+}
+
+/// VS Code reports edits in its tools' own shapes, and keeps every rule per edit (#1249).
+#[test]
+fn run_hook_scans_files_named_by_vscode_tool_inputs() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    let main = t.write("main.css", GRADIENT_CSS);
+    let patch = format!("*** Begin Patch\n*** Update File: {main}\n@@\n-a\n+b\n*** End Patch\n");
+    let inputs = [
+        json!(patch),
+        json!({"input": patch}),
+        json!({"filePath": main, "content": "a"}),
+        json!({"replacements": [{"filePath": main, "oldString": "a", "newString": "b"}]}),
+    ];
+    for (i, tool_input) in inputs.into_iter().enumerate() {
+        let event = json!({"session_id": format!("v{i}"), "cwd": cwd, "hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": tool_input}).to_string();
+        let res = hook::run_hook(&r, &event);
+        assert_eq!(res.audit["emitted"], json!(true), "{i}: {:?}", res.audit);
+    }
+    assert!(!per_edit_tiering_active(&HookConfig::default(), "vscode"));
+    let stop = json!({"session_id": "v0", "cwd": cwd, "hook_event_name": "Stop", "stop_hook_active": false}).to_string();
+    let res = hook::run_stop_hook(&r, &stop);
+    assert_eq!(audit_str(&res.audit, "skipped"), Some("vscode-stop"));
+    assert!(res.stdout.is_empty());
 }
 
 #[test]

@@ -419,7 +419,9 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
 
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
     assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write');
-    expectCommand(handler.command, 'skills/impeccable/scripts');
+    // Through `sh`: VS Code's agent host syncs the launcher without its executable bit (#1249).
+    const launcher = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable';
+    assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`);
     // Resolves relative to the installed plugin, not a `.claude/skills/` layout.
     assert.ok(handler.command.includes('${CLAUDE_PLUGIN_ROOT}'),
       `plugin hook command must use $\{CLAUDE_PLUGIN_ROOT}: ${handler.command}`);
@@ -429,8 +431,7 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
     // Stop deep pass ships in the plugin manifest too, plugin-root-relative.
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
-    expectCommand(stop.command, 'skills/impeccable/scripts');
-    assert.ok(stop.command.includes('${CLAUDE_PLUGIN_ROOT}'));
+    assert.equal(stop.command, handler.command);
 
     // VS Code Copilot Chat takes `windows` over `command` on Windows, where the POSIX
     // guard cannot parse. Unquoted because its agent host escapes double quotes (#1249).
@@ -440,6 +441,7 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
       for (const entry of manifest.hooks[event]) {
         for (const h of entry.hooks) {
           assert.equal(h.windows, windowsForm, `${event} windows`);
+          assert.deepEqual(h.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
         }
       }
     }

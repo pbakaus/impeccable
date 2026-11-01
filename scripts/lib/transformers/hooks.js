@@ -52,6 +52,12 @@ export const LAUNCHER_NAME_WINDOWS = 'impeccable.cmd';
 export const guardedLauncher = (launcherPath, verb = 'hook') =>
   `[ ! -f "${launcherPath}" ] || "${launcherPath}" ${verb}`;
 
+// Same guard, launcher run through `sh`. VS Code's agent host syncs a plugin into
+// its own directory without the executable bit, so running the launcher directly
+// exits 126 and the agent host swallows the error (#1249).
+const guardedLauncherViaSh = (launcherPath, verb = 'hook') =>
+  `[ ! -f "${launcherPath}" ] || sh "${launcherPath}" ${verb}`;
+
 // Windows form for harnesses that read a `commandWindows` sibling (Codex
 // 0.146.0+ selects it on Windows; issue #452). Codex runs it in the session
 // shell, PowerShell by default and cmd.exe only as a fallback (#848), so the
@@ -76,13 +82,13 @@ const vscodeWindowsLauncherCommand = (launcherCmdPath, verb = 'hook') => {
 
 const WINDOWS_FORMS = { commandWindows: windowsLauncherCommand, windows: vscodeWindowsLauncherCommand };
 
-function stopEntry(command, windowsSibling) {
+function stopEntry(command, handlerFields) {
   return {
     hooks: [
       {
         type: 'command',
         command,
-        ...windowsSibling,
+        ...handlerFields,
         timeout: STOP_TIMEOUT_SECONDS,
         statusMessage: STOP_STATUS_MESSAGE,
       },
@@ -113,11 +119,14 @@ const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 // command from (`commandWindows` for Codex, `windows` for VS Code Copilot
 // Chat) and adds that sibling to every handler. It stays opt-in per manifest,
 // so each one carries only the field its own consumers read.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false } = {}) {
-  const command = guardedLauncher(launcherIn(scriptsDir));
-  const windowsSibling = windowsKey ? { [windowsKey]: WINDOWS_FORMS[windowsKey](launcherCmdIn(scriptsDir)) } : {};
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false, guard = guardedLauncher, env } = {}) {
+  const command = guard(launcherIn(scriptsDir));
+  const handlerFields = {
+    ...(windowsKey ? { [windowsKey]: WINDOWS_FORMS[windowsKey](launcherCmdIn(scriptsDir)) } : {}),
+    ...(env ? { env } : {}),
+  };
   return {
-    ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command, ...windowsSibling,
+    ...(sessionIdentity ? { SessionStart: [{ hooks: [{ type: 'command', command, ...handlerFields,
       timeout: TIMEOUT_SECONDS, statusMessage: 'Preparing build session' }] }] } : {}),
     PostToolUse: [
       {
@@ -126,14 +135,14 @@ function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionId
           {
             type: 'command',
             command,
-            ...windowsSibling,
+            ...handlerFields,
             timeout: TIMEOUT_SECONDS,
             statusMessage: STATUS_MESSAGE,
           },
         ],
       },
     ],
-    Stop: [stopEntry(command, windowsSibling)],
+    Stop: [stopEntry(command, handlerFields)],
   };
 }
 
@@ -152,10 +161,17 @@ export function buildClaudeSettingsManifest() {
 // than `hooks`, failing the whole manifest (issue #330).
 // VS Code Copilot Chat loads this manifest too. On Windows it takes the `windows`
 // sibling over `command`, because the POSIX guard throws a ParserError under its
-// PowerShell runner (#1249). Claude Code, Grok and Codex ignore the key.
+// PowerShell runner (#1249). Claude Code, Grok and Codex ignore the key. The `env`
+// tells the hook it runs under VS Code, whose two runners read different output
+// fields; Grok honors `env` too, so the hook checks the event shape first.
 export function buildClaudePluginHooksManifest() {
   return {
-    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, { sessionIdentity: true, windowsKey: 'windows' }),
+    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, {
+      sessionIdentity: true,
+      windowsKey: 'windows',
+      guard: guardedLauncherViaSh,
+      env: { IMPECCABLE_HOOK_HARNESS: 'vscode' },
+    }),
   };
 }
 
