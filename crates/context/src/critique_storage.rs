@@ -355,9 +355,13 @@ fn reveal_hidden_edits(root: &str, index: &str) -> Option<()> {
         .split('\0')
         .filter_map(|entry| {
             let (tag, path) = entry.split_once(' ')?;
-            let assumed = tag.chars().next().is_some_and(|c| c.is_ascii_lowercase());
-            let skipped = tag == "S" && std::path::Path::new(root).join(path).exists();
-            (assumed || skipped).then_some(path)
+            // `S` is skip-worktree, lowercase adds assume-unchanged, so `s` is both.
+            let hidden = if tag.eq_ignore_ascii_case("s") {
+                std::path::Path::new(root).join(path).exists()
+            } else {
+                tag.chars().next().is_some_and(|c| c.is_ascii_lowercase())
+            };
+            hidden.then_some(path)
         })
         .collect();
     // One flag per call: `update-index` acts on the first mark it was given.
@@ -1433,11 +1437,15 @@ mod tests_660 {
     fn a_sparse_checkout_does_not_read_its_absent_files_as_deleted() {
         let Some(cwd) = repo() else { return };
         let absent = jsp::join(&[&cwd, "absent.css"]);
+        let both = jsp::join(&[&cwd, "both.css"]);
         std::fs::write(&absent, "one\n").unwrap();
+        std::fs::write(&both, "one\n").unwrap();
         assert!(git_ok(&cwd, &["add", "-A"]));
         assert!(git_ok(&cwd, &["commit", "-qm", "base"]));
-        assert!(git_ok(&cwd, &["update-index", "--skip-worktree", "absent.css"]));
+        assert!(git_ok(&cwd, &["update-index", "--skip-worktree", "absent.css", "both.css"]));
+        assert!(git_ok(&cwd, &["update-index", "--assume-unchanged", "both.css"]));
         std::fs::remove_file(&absent).unwrap();
+        std::fs::remove_file(&both).unwrap();
         let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
         let tree = git(&cwd, None, &["rev-parse", "HEAD^{tree}"]).unwrap();
         let meta = parse_frontmatter(&std::fs::read_to_string(jsp::join(&[&cwd, ".impeccable", "critique", &name])).unwrap());
