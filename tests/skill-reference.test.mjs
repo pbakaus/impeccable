@@ -111,6 +111,7 @@ describe('skill reference authoring contracts', () => {
     // a fix the row offered from counting.
     assert.match(critique, /its P0 and P1 findings form the first group/);
     assert.match(rerun, /scores 4 minus its Next points groups that still hold an unresolved finding/);
+    assert.match(critique, /rebuild the scores and Next points from the merged ledger/);
     assert.match(rerun, /Judge the row as written/);
     assert.match(rerun, /skip A and report no new findings/);
     // A real run mutated seeded data with nothing to restore it.

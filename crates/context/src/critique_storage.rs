@@ -293,16 +293,21 @@ static INDEX_SEQ: AtomicUsize = AtomicUsize::new(0);
 fn working_tree_id(root: &str, leave_out: Option<&str>) -> Option<String> {
     let real = git(root, None, &["rev-parse", "--git-path", "index"])?;
     let real = std::path::Path::new(root).join(real.trim());
-    let temp = std::env::temp_dir().join(format!(
-        "impeccable-critique-index-{}-{}",
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let dir = std::env::temp_dir().join(format!(
+        "impeccable-critique-{}-{}-{}",
         std::process::id(),
+        nanos,
         INDEX_SEQ.fetch_add(1, Ordering::Relaxed)
     ));
+    private_dir(&dir).ok()?;
+    let temp = dir.join("index");
     let index = temp.to_string_lossy().into_owned();
     let tree = (|| {
         // Seeded from the real index so git rehashes only what changed.
         if real.is_file() {
             std::fs::copy(&real, &temp).ok()?;
+            reveal_hidden_edits(root, &index)?;
         }
         // The add pathspec only stops new files; a tracked one already in the
         // copied index has to be dropped too.
@@ -325,8 +330,45 @@ fn working_tree_id(root: &str, leave_out: Option<&str>) -> Option<String> {
         }
         git(root, Some(&index), &["write-tree"])
     })();
-    let _ = std::fs::remove_file(&temp);
+    let _ = std::fs::remove_dir_all(&dir);
     tree.map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+/// Creates `dir` for this process alone. It fails on anything already there, a
+/// planted symlink included, so the index inside it cannot be redirected.
+fn private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
+/// The seeded index keeps `assume-unchanged` and `skip-worktree`, which make
+/// `add` keep the old content of an edited file. Clear them, except on the files
+/// a sparse checkout left absent, which would otherwise read as deleted.
+fn reveal_hidden_edits(root: &str, index: &str) -> Option<()> {
+    let listed = git(root, Some(index), &["ls-files", "-v", "-z", "--", ":/"])?;
+    let hidden: Vec<&str> = listed
+        .split('\0')
+        .filter_map(|entry| {
+            let (tag, path) = entry.split_once(' ')?;
+            let assumed = tag.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+            let skipped = tag == "S" && std::path::Path::new(root).join(path).exists();
+            (assumed || skipped).then_some(path)
+        })
+        .collect();
+    // One flag per call: `update-index` acts on the first mark it was given.
+    for paths in hidden.chunks(200) {
+        for flag in ["--no-assume-unchanged", "--no-skip-worktree"] {
+            let mut args = vec!["update-index", flag, "--"];
+            args.extend(paths);
+            git(root, Some(index), &args)?;
+        }
+    }
+    Some(())
 }
 
 /// Whether git can add to this repo's object store, as a sandbox guarding
@@ -1362,6 +1404,64 @@ mod tests_660 {
         std::fs::write(at("image.bin"), "bytes\n").unwrap();
         assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: unknown\n"));
         let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn index_flags_do_not_hide_an_edit_from_the_change_base() {
+        let Some(cwd) = repo() else { return };
+        let at = |rel: &str| jsp::join(&[&cwd, rel]);
+        std::fs::write(at("assumed.css"), "one\n").unwrap();
+        std::fs::write(at("skipped.css"), "one\n").unwrap();
+        assert!(git_ok(&cwd, &["add", "-A"]));
+        assert!(git_ok(&cwd, &["commit", "-qm", "base"]));
+        assert!(git_ok(&cwd, &["update-index", "--assume-unchanged", "assumed.css"]));
+        assert!(git_ok(&cwd, &["update-index", "--skip-worktree", "skipped.css"]));
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        assert_eq!(run_capture(&cwd, &["changes", "src/App.tsx"]).1, format!("previous: {name}\nchanges: none\n"));
+        std::fs::write(at("assumed.css"), "two\n").unwrap();
+        std::fs::write(at("skipped.css"), "two\n").unwrap();
+        assert_eq!(
+            run_capture(&cwd, &["changes", "src/App.tsx"]).1,
+            format!("previous: {name}\nchanges: 2 files\nassumed.css\nskipped.css\n")
+        );
+        // The user's own flags stay set.
+        assert!(git(&cwd, None, &["ls-files", "-v"]).unwrap().contains("h assumed.css"));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn a_sparse_checkout_does_not_read_its_absent_files_as_deleted() {
+        let Some(cwd) = repo() else { return };
+        let absent = jsp::join(&[&cwd, "absent.css"]);
+        std::fs::write(&absent, "one\n").unwrap();
+        assert!(git_ok(&cwd, &["add", "-A"]));
+        assert!(git_ok(&cwd, &["commit", "-qm", "base"]));
+        assert!(git_ok(&cwd, &["update-index", "--skip-worktree", "absent.css"]));
+        std::fs::remove_file(&absent).unwrap();
+        let name = snapshot_for(&cwd, "src/App.tsx", "body.md");
+        let tree = git(&cwd, None, &["rev-parse", "HEAD^{tree}"]).unwrap();
+        let meta = parse_frontmatter(&std::fs::read_to_string(jsp::join(&[&cwd, ".impeccable", "critique", &name])).unwrap());
+        assert_eq!(meta["change_base"].as_str(), Some(tree.trim()));
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn private_dir_refuses_what_is_already_there() {
+        let base = tmp();
+        let dir = std::path::Path::new(&base).join("index-dir");
+        assert!(private_dir(&dir).is_ok());
+        assert!(private_dir(&dir).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+            let target = std::path::Path::new(&base).join("elsewhere");
+            std::fs::create_dir(&target).unwrap();
+            let planted = std::path::Path::new(&base).join("planted");
+            std::os::unix::fs::symlink(&target, &planted).unwrap();
+            assert!(private_dir(&planted).is_err());
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[cfg(unix)]

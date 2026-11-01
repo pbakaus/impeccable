@@ -172,7 +172,7 @@ Done or not, deliver, persist, and close as below: the write records the new cha
 
 Synthesize both assessments into a single report. Do not simply concatenate. Weave the findings together, noting where the LLM review and detector agree, where the detector caught issues the LLM missed, and where detector findings are false positives.
 
-Merge A and B into one ledger: deduplicate, drop false positives and `ignore.md` matches silently, and drop nothing else. Continue A's numbering for findings only B caught, and give each a severity and heuristic.
+Merge A and B into one ledger: deduplicate, drop false positives and `ignore.md` matches silently, and drop nothing else. Continue A's numbering for findings only B caught, and give each a severity and heuristic. Then rebuild the scores and Next points from the merged ledger, so every finding that costs points sits in a group: a B-only P0 or P1 joins its heuristic's first group, a P2 or P3 its last, opening one if it has none, and a group a dropped finding leaves empty closes.
 
 The chat response is the primary user-facing deliverable. Present the full structured critique below in chat; do not replace it with a summary and a link. The persisted snapshot is an archive of that run.
 
