@@ -4,11 +4,11 @@ Resolve one stable target, run two independent assessments, synthesize a design 
 
 ### Hard Invariants
 
-- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration).
+- Assessment A (design review) and Assessment B (detector/browser evidence) are both required, except on a native platform (see Assessment Orchestration) and on a rerun where nothing changed (see Rerun), which runs neither and says so in its header.
 - Assessment A and B MUST run as two isolated sub-agents whenever a sub-agent/Task tool is exposed. Running them inline in this context is "possible" but is NOT permitted; it is a degraded run. Inline is allowed ONLY when no sub-agent tool exists (or the user declined, on harnesses that ask). Native platforms run A alone (see Assessment Orchestration).
 - If you degrade for any reason, the report's first line MUST be a banner: `⚠️ DEGRADED: single-context (<reason>)`. A silent degraded critique is a failed critique.
 - Assessment A must finish before detector findings enter the parent synthesis context. Detector output is deterministic, but it still anchors judgment.
-- A skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, or the platform is native (see Assessment Orchestration).
+- A skipped detector is a failed critique run unless `impeccable detect` is missing or crashes after a real attempt, the platform is native (see Assessment Orchestration), or nothing changed since the ledger's `base` (see Rerun).
 - Viewable targets require browser inspection when available.
 - Any local server started only for critique visualization must run in the background, have a recorded stop method, and be stopped before final reporting unless the user asks to keep it.
 - Do not claim a user-visible overlay exists unless script injection succeeded and the detector ran in the page.
@@ -27,7 +27,7 @@ Resolve one stable target, run two independent assessments, synthesize a design 
    ```
    Every later command also accepts the resolved target directly and derives the same slug internally; never hand-write a slug. If this exits non-zero, skip persistence and trend for this run, but continue the critique.
 3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently.
-4. **Find the previous run**: the newest `.impeccable/critique/*__<slug>.md`. One with an `All Findings` table is the **ledger**; it stays in this context and reaches Assessment B only (see Rerun). An older snapshot without that table, or a user asking for a fresh review, means a first run.
+4. **Find the previous run**: the newest `.impeccable/critique/*__<slug>.md`. One with an `All Findings` table is the **ledger**: take `base` from its frontmatter and leave its rows unread, for Assessment B only (see Rerun). An older snapshot without that table, or a user asking for a fresh review, means a first run.
 
 ### Assessment Orchestration
 
@@ -119,10 +119,10 @@ Codex failure accounting: final Run Notes must include target slug, ignore list,
 With a ledger from Setup, the run verifies it and reviews only what changed. Scoring every run from zero is what held the score at 28/40 three rounds running (#1264): fixed issues drop out of view and the next most visible gap takes their place.
 
 - **Assessment A stays blind to the ledger.** It gets the snapshot's `base` and nothing else from it. It runs `git diff <base>` and `git status --porcelain`, reviews those hunks and untracked files alone, skipping `.impeccable/` (the ledger lives there), and reports a defect only when a change introduced it, naming the hunk. Unchanged code is not re-reviewed, and the parent drops a new finding whose named lines are unchanged since `base`. With no `base`, or git failing, A does not run.
-- **Assessment B also verifies the ledger**: each `open` or `partial` row against the current code and rendered page, as `fixed`, `partial` or `open`, judged as the row is written. On a native platform the parent does this after A returns.
-- Nothing changed and nothing untracked: run neither. Report the previous score and open rows as they stand under `Method: unchanged since <timestamp>`, then close with Ask the User; nothing new is the correct result.
-- **Scores move only by verified rows.** A heuristic gains a point when every finding in a next-point group is `fixed`; a new P0 or P1 joins the first open group of its heuristic and earns no point of its own, so a regression gates the next point without taking one back. Fold a new finding the ledger already holds into its row. A fix that reverses one the ledger issued is a closing question, never an instruction.
-- The report carries every ledger row forward with its verdict, then the new findings, then the heuristic table, and leaves out the sections only a fresh review can fill (verdict, impression, personas).
+- **Assessment B also verifies the ledger**: each `open` or `partial` row against the current code and rendered page, as `fixed`, `partial` or `open`, judged as the row is written. With no sub-agents (native or degraded), the parent writes its own review of the diff before it reads a ledger row, then verifies.
+- Nothing changed, nothing untracked, and a target git covers: run neither. Report the previous score and open rows as they stand under `Method: unchanged since <timestamp>`, then close with Ask the User; nothing new is the correct result. A URL target still gets B, since git cannot vouch for a deployment.
+- **Scores move only by verified rows.** A heuristic gains a point when every finding in a next-point group is `fixed`. A new P0 or P1 takes one point from the first heuristic it names and becomes that point's group by itself, so a regression costs exactly what fixing it earns back; on a heuristic at 0 it joins the first open group instead. Fold a new finding the ledger already holds into its row. A fix that reverses one the ledger issued is a closing question, never an instruction.
+- The report carries every ledger row forward with its verdict, then the new findings numbered on from the ledger's last row, then the heuristic table, and leaves out the sections only a fresh review can fill (verdict, impression, personas).
 
 ### Generate Combined Critique Report
 

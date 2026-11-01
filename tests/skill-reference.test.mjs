@@ -80,7 +80,10 @@ describe('skill reference authoring contracts', () => {
     assert.match(rerun, /skipping `\.impeccable\/`/);
     assert.match(rerun, /drops a new finding whose named lines are unchanged since `base`/);
     assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
-    assert.match(rerun, /joins the first open group of its heuristic and earns no point of its own/);
+    assert.match(rerun, /takes one point from the first heuristic it names/);
+    assert.match(rerun, /numbered on from the ledger's last row/);
+    assert.match(rerun, /`Method: unchanged since <timestamp>`/);
+    assert.match(critique, /leave its rows unread, for Assessment B only/);
   });
 
   it('keeps reduced-motion guidance on the animation build path', () => {
