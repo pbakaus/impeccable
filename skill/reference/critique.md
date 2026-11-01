@@ -152,7 +152,7 @@ Applies when Setup step 4 printed `changes: <n> files` or `changes: unknown`.
 
 **Contradictions**: a new fix that reverses a fix the ledger already issued is never issued as an instruction. Make it a closing question naming both.
 
-**Score is arithmetic on the ledger.** A heuristic scores 4 minus its Next points groups that still hold an unresolved finding, floored at 0, so a group whose findings are all `fixed` earns its point and keeps it. New P0 and P1 findings form a new first group on their heuristic. A new P2 joins its heuristic's last group, opening one if it has none, so an open P2 never reads as excellent. A new P3 joins the last group if there is one and otherwise costs nothing. Nothing else moves a score.
+**Score is arithmetic on the ledger.** A heuristic scores 4 minus its Next points groups that still hold an unresolved finding, floored at 0, so a group whose findings are all `fixed` earns its point and keeps it. New P0 and P1 findings form a new first group on their heuristic. A new P2 joins its heuristic's last group that holds no P0 or P1, opening one if it has none, so fixing the priority issues still earns a point and an open P2 never reads as excellent. A new P3 joins such a group if there is one and otherwise costs nothing. Nothing else moves a score.
 
 Report, in this order:
 - The Method line, then `Rerun of <previous>`.
@@ -172,7 +172,7 @@ Done or not, deliver, persist, and close as below: the write records the new cha
 
 Synthesize both assessments into a single report. Do not simply concatenate. Weave the findings together, noting where the LLM review and detector agree, where the detector caught issues the LLM missed, and where detector findings are false positives.
 
-Merge A and B into one ledger: deduplicate, drop false positives and `ignore.md` matches silently, and drop nothing else. Continue A's numbering for findings only B caught, and give each a severity and heuristic. Then rebuild the scores and Next points from the merged ledger, so every finding that costs points sits in a group: a B-only P0 or P1 joins its heuristic's first group, a P2 or P3 its last, opening one if it has none, and a group a dropped finding leaves empty closes.
+Merge A and B into one ledger: deduplicate, drop false positives and `ignore.md` matches silently, and drop nothing else. Continue A's numbering for findings only B caught, and give each a severity and heuristic. Then rebuild the scores and Next points from the merged ledger, so every finding that costs points sits in a group: a B-only P0 or P1 joins its heuristic's first group, a P2 or P3 its last group that holds no P0 or P1, opening one if it has none, and a group a dropped finding leaves empty closes.
 
 The chat response is the primary user-facing deliverable. Present the full structured critique below in chat; do not replace it with a summary and a link. The persisted snapshot is an archive of that run.
 
