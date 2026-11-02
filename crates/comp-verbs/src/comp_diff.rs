@@ -358,11 +358,11 @@ pub fn compare(
         let mut b = region_crop(&aligned, &rr);
         let mut s = score_pair(&a, &b, rr.kind.as_deref());
         let mut offset = (shift.dx, shift.dy);
-        // The global shift fits the body; a region that did not move is cropped unshifted.
+        // The global shift fits the body; a region that did not move (it matches unshifted) is cropped unshifted.
         if shift.dx != 0 || shift.dy != 0 {
             let b0 = region_crop(&as_captured, &rr);
             let s0 = score_pair(&a, &b0, rr.kind.as_deref());
-            if s0.overall > s.overall {
+            if s0.overall > s.overall && verdict_for(&s0, rr.kind.as_deref()) == "match" {
                 (b, s, offset) = (b0, s0, (0, 0));
             }
         }
@@ -864,5 +864,22 @@ mod region_isolation_regression {
         assert_eq!(result.regions[0].verdict, "match", "header: {}", result.regions[0].score.overall);
         assert_eq!(result.regions[1].verdict, "match", "body: {}", result.regions[1].score.overall);
         assert_eq!((result.regions[0].offset, result.regions[1].offset), ((0, 0), (0, result.shift.dy)));
+    }
+
+    #[test]
+    fn displaced_region_keeps_the_shifted_reading() {
+        let page = |body_dy: f64, strip: (f64, f64)| {
+            let mut img = r::create_image(400, 400, [250, 246, 238, 255]);
+            for i in 0..4 {
+                let c = [[20., 90., 160., 255.], [190., 60., 40., 255.]][i % 2];
+                r::fill_rect(&mut img, 20., 80. + body_dy + i as f64 * 60., 360., 30., c);
+            }
+            r::fill_rect(&mut img, 20., strip.0, 360., strip.1, [30., 30., 40., 255.]);
+            img
+        };
+        let spec = json!({ "regions": [{ "id": "strip", "box": { "x": 0.0, "y": 0.85, "w": 1.0, "h": 0.075 } }] });
+        let result = compare(&page(0., (340., 30.)), &page(16., (340., 15.)), Some(&spec), "stretch", "t", None);
+        assert_ne!(result.shift.dy, 0, "fixture must make the body shift win");
+        assert_eq!((result.regions[0].verdict.as_str(), result.regions[0].offset), ("missing", (0, result.shift.dy)));
     }
 }
