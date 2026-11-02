@@ -1,5 +1,5 @@
 {
   "name": "web",
   "private": true,
-  "dependencies": { "react": "19.0.0", "vite": "6.4.3" }
+  "dependencies": { "react": "19.0.0", "vite": "6.4.4" }
 }
