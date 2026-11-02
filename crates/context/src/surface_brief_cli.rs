@@ -36,7 +36,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     };
     match command {
         Some("path") => {
-            let Some(fp) = surface_brief_path_for_target(target, &project_root) else {
+            let Some(fp) = surface_brief_path_for_target(target, &project_root, &cwd) else {
                 io.err("surface brief path requires a concrete target\n");
                 return 1;
             };
@@ -49,7 +49,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Some("read") => {
-            let result = resolve_surface_brief(&project_root, target);
+            let result = resolve_surface_brief_from(&project_root, &cwd, target);
             if let Some(b) = result.brief {
                 io.out(&b.text);
                 return 0;
@@ -72,7 +72,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     return 1;
                 }
             };
-            match write_surface_brief(&project_root, t, &related, &body) {
+            match write_surface_brief(&project_root, &cwd, t, &related, &body) {
                 Ok(fp) => {
                     io.out(&format!("{}\n", rel_out(&fp)));
                     0

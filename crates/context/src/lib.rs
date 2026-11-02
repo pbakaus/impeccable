@@ -8,6 +8,7 @@ pub mod url;
 pub mod http;
 pub mod provider;
 pub mod hook_markers;
+pub mod hermes;
 pub mod target_args;
 pub mod target_slug;
 pub mod surface_briefs;

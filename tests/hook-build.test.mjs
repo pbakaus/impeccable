@@ -6,6 +6,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +21,8 @@ import {
   buildGeminiHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
+import { createTransformer, PROVIDERS } from '../scripts/lib/transformers/index.js';
+import { readSourceFiles } from '../scripts/lib/utils.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -215,6 +218,22 @@ describe('hook manifest builders', () => {
     expectCommand(stop.command, '.grok/skills/impeccable/scripts');
   });
 
+  it('gives the Claude plugin manifest what VS Code needs on every handler (#1249)', () => {
+    const manifest = buildClaudePluginHooksManifest();
+    // Through `sh`: VS Code's agent host syncs the launcher without its executable bit.
+    const launcher = '${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable';
+    // VS Code takes `windows` over `command` on Windows, where the POSIX guard cannot
+    // parse. Unquoted for a runner that spawns `cmd.exe /c` and escapes double quotes.
+    const windowsForm = 'cmd /c if exist ${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd '
+      + '${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd hook';
+    for (const event of ['SessionStart', 'PostToolUse', 'Stop']) {
+      const handler = manifest.hooks[event][0].hooks[0];
+      assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`, `${event} command`);
+      assert.equal(handler.windows, windowsForm, `${event} windows`);
+      assert.deepEqual(handler.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
+    }
+  });
+
   it('emits commandWindows only for Codex-shaped manifests', () => {
     // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
     // have no per-platform field, and an unknown key is a risk under a strict
@@ -266,7 +285,31 @@ describe('hook manifest builders', () => {
     assert.ok(hooksJsonFor('gemini'));
     assert.equal(hooksJsonFor('omp'), null);
     assert.equal(hooksJsonFor('devin'), null);
+    assert.equal(hooksJsonFor('hermes'), null);
     assert.equal(hooksJsonFor('unrecognized'), null);
+  });
+
+  // Hermes has no hook manifest; the design hook ships as a plugin payload.
+  // Built into a temp dist because this suite runs before `bun run build` in CI.
+  it('emits the Hermes design-hook plugin verbatim under .hermes/plugins/', () => {
+    assert.equal(PROVIDERS.hermes.emitHooks, undefined);
+    const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hermes-dist-'));
+    try {
+      createTransformer(PROVIDERS.hermes)(readSourceFiles(REPO_ROOT).skills, distDir);
+      const pluginDir = path.join(distDir, 'hermes/.hermes/plugins/impeccable-design-hook');
+      assert.deepEqual(fs.readdirSync(pluginDir).sort(), ['__init__.py', 'plugin.yaml']);
+      for (const name of ['__init__.py', 'plugin.yaml']) {
+        assert.equal(
+          fs.readFileSync(path.join(pluginDir, name), 'utf8'),
+          fs.readFileSync(path.join(REPO_ROOT, 'skill/hermes-plugin', name), 'utf8'),
+        );
+      }
+      const manifest = fs.readFileSync(path.join(pluginDir, 'plugin.yaml'), 'utf8');
+      assert.match(manifest, /^name: impeccable-design-hook$/m);
+      assert.match(manifest, /^provides_hooks:\n  - transform_tool_result\n  - pre_verify$/m);
+    } finally {
+      fs.rmSync(distDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -392,7 +435,6 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
 
     const handler = manifest.hooks.PostToolUse[0].hooks[0];
     assert.equal(manifest.hooks.PostToolUse[0].matcher, 'Edit|Write');
-    expectCommand(handler.command, 'skills/impeccable/scripts');
     // Resolves relative to the installed plugin, not a `.claude/skills/` layout.
     assert.ok(handler.command.includes('${CLAUDE_PLUGIN_ROOT}'),
       `plugin hook command must use $\{CLAUDE_PLUGIN_ROOT}: ${handler.command}`);
@@ -402,8 +444,7 @@ describe('generated hook artifacts in repo', { skip: SYNCED ? false : 'generated
     // Stop deep pass ships in the plugin manifest too, plugin-root-relative.
     const stop = manifest.hooks.Stop[0].hooks[0];
     assert.equal(stop.timeout, 30);
-    expectCommand(stop.command, 'skills/impeccable/scripts');
-    assert.ok(stop.command.includes('${CLAUDE_PLUGIN_ROOT}'));
+    assert.equal(stop.command, handler.command);
 
     // The script the plugin hook points at must ship inside the plugin payload.
     assert.ok(fs.existsSync(path.join(REPO_ROOT, 'plugin/skills/impeccable/scripts')));

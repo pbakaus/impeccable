@@ -17,6 +17,9 @@ const MAX_REQUEST_BODY: usize = 8 * 1024 * 1024;
 
 const NEXT_CLAIM_GRACE_MS: f64 = 10000.0;
 
+/// Past the once-a-minute timer cadence Chrome gives a tab hidden for 5 minutes.
+const PAGE_CLOSED_GRACE_MS: f64 = 90000.0;
+
 struct Args<'a> {
     argv: &'a [String],
 }
@@ -99,6 +102,52 @@ fn num_field(m: &Map<String, Value>, key: &str) -> Option<f64> {
     m.get(key).and_then(|v| v.as_f64())
 }
 
+/// `~/.impeccable/questions/<key>.root.json`, `{"root": <cwd of --start>}`:
+/// how `--wait`, `--update` and `--stop` find a round from any cwd, since
+/// agent shells reset their cwd between calls.
+fn key_root_file(env: &Env, key: &str) -> String {
+    jsp::join(&[&crate::util::homedir(env), ".impeccable", "questions", &format!("{}.root.json", key)])
+}
+
+fn record_key_root(env: &Env, key: &str, root: &str) -> std::io::Result<()> {
+    let file = key_root_file(env, key);
+    if let Some(dir) = std::path::Path::new(&file).parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    write_atomic(&file, &json_compact(&json!({ "root": root })))
+}
+
+fn recorded_key_root(env: &Env, key: &str) -> Option<String> {
+    safe_read(&key_root_file(env, key))
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.get("root").and_then(Value::as_str).map(str::to_string))
+}
+
+/// Removes the pointer only when it names `root`: a key reused by another
+/// project keeps that project's pointer.
+fn forget_key_root(env: &Env, key: &str, root: &str) {
+    if recorded_key_root(env, key).as_deref() == Some(root) {
+        let _ = std::fs::remove_file(key_root_file(env, key));
+    }
+}
+
+/// The directory a keyed verb works in: its own cwd when the key's state is
+/// there, else the root `--start` recorded for the key when the state is there.
+fn key_root(env: &Env, cwd: &str, key: &str) -> String {
+    let has_state = |root: &str| exists(&state_file(&jsp::join(&[root, ".impeccable", "questions"]), key));
+    if has_state(cwd) {
+        return cwd.to_string();
+    }
+    match recorded_key_root(env, key) {
+        Some(root) if has_state(&root) => root,
+        _ => cwd.to_string(),
+    }
+}
+
+fn missing_state_message(verb: &str, qdir: &str, key: &str) -> String {
+    format!("serve-question: no state file for key {key} in {qdir}, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun {verb} from the directory where --start ran. The page may still be open: do not --start a second server.\n")
+}
+
 fn is_alive(qdir: &str, key: &str) -> bool {
     let Some(state) = read_state(qdir, key) else { return false };
     if let Some(lb) = num_field(&state, "lastBeat") {
@@ -139,7 +188,7 @@ fn is_open_rounds_decision_comp(cwd: &str, path: &str) -> bool {
     state.get("phase").and_then(Value::as_str) == Some("comps") && same_path(&jsp::resolve(cwd, &[chosen]), &jsp::resolve(cwd, &[path]))
 }
 
-fn print_answer(io: &mut Io, raw: &str, served: &[String]) {
+fn print_answer(io: &mut Io, cwd: &str, raw: &str, served: &[String]) {
     io.out(&format!("ANSWER: {}\n", raw));
     let Ok(a) = serde_json::from_str::<Value>(raw) else { return };
     let truthy = |k: &str| a.get(k).map(crate::staleness::js_truthy).unwrap_or(false);
@@ -147,8 +196,7 @@ fn print_answer(io: &mut Io, raw: &str, served: &[String]) {
         io.out("CHOSEN CARD: open the chosen world's board and hero images now, before any code. When your harness only reads files, or runs sandboxed, download them INTO the workspace and open the relative path; a sandboxed viewer rejects absolute paths outside it. They set the craft bar the build must reach.\n");
     }
     let comp = a.get("comp").map(js_str).unwrap_or_default();
-    let cwd = io.cwd.to_string_lossy().to_string();
-    if truthy("comp") && (is_comp_round_comp(&comp) || is_comp_rounds_option_one(&cwd, &comp, served)) {
+    if truthy("comp") && (is_comp_round_comp(&comp) || is_comp_rounds_option_one(cwd, &comp, served)) {
         io.out("APPROVED COMP: the user picked this composition in the comp round, so it is the approved comp. Set \"approved\": true in its prompt sidecar, the image's full file name plus .json (a.png gets a.png.json), record its path in the surface brief, then close the comps phase with build-phase advance. Build from it as it stands; never regenerate it.\n");
     } else if truthy("comp") {
         io.out("CHOSEN COMP: the decision comp at that path is compositional option one. On a comp-led build pass it to build-phase start as --decision-comp <that path>, and the comp round adds two variations beside it where it stands; on a code-led build it returns at the finish review as the critique reference. Never regenerate it from scratch.\n");
@@ -1247,6 +1295,11 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let idle_arg = js_number_arg(&a, "idle-grace", "600");
     let idle_grace_ms = (if idle_arg.is_finite() && idle_arg > 0.0 { idle_arg } else { 600.0 }) * 1000.0;
     let port_arg = js_number_arg(&a, "port", "0");
+    let invoked_cwd = cwd;
+    let cwd = match a.arg("key") {
+        Some(key) if a.has("wait") || a.has("update") || a.has("stop") => key_root(&env, &invoked_cwd, &key),
+        _ => invoked_cwd.clone(),
+    };
     let qdir = jsp::join(&[&cwd, ".impeccable", "questions"]);
 
     if a.has("schema") {
@@ -1280,6 +1333,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 }
                 return 0;
             }
+            if !exists(&state_file(&qdir, &key)) {
+                io.out(&missing_state_message("--wait", &qdir, &key));
+                return 2;
+            }
             if !is_alive(&qdir, &key) {
                 io.out(&format!("serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start --key {} and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.\n", key));
                 return 2;
@@ -1290,7 +1347,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                     by_file || num_field(&state, "claimedAt").map(|c| c != 0.0 && now_ms() - c < NEXT_CLAIM_GRACE_MS).unwrap_or(false)
                 };
                 if let Some(lb) = num_field(&state, "lastBeat") {
-                    if !mid_delivery && lb != 0.0 && now_ms() - lb > 15000.0 {
+                    if !mid_delivery && lb != 0.0 && now_ms() - lb > PAGE_CLOSED_GRACE_MS {
                         saw_close = true;
                         break;
                     }
@@ -1329,7 +1386,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         let collected = safe_read(&answer_file(&qdir, &key)).unwrap_or_default();
         let collected = crate::util::js_trim(&collected).to_string();
-        print_answer(io, &collected, &served);
+        print_answer(io, &cwd, &collected, &served);
         if !missing.is_empty() {
             io.out(&sidecar_missing_line(&env, &cwd, &missing));
         }
@@ -1340,6 +1397,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         let _ = std::fs::remove_file(answer_file(&qdir, &key));
         if !keeps_open {
             let _ = std::fs::remove_file(state_file(&qdir, &key));
+            forget_key_root(&env, &key, &cwd);
             let _ = std::fs::remove_file(hand_file(&qdir, &key));
             let _ = std::fs::remove_file(render_check_file(&qdir, &key));
             let _ = std::fs::remove_dir_all(generated_dir(&qdir, &key));
@@ -1359,6 +1417,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         let _ = std::fs::remove_file(answer_file(&qdir, &key));
         let _ = std::fs::remove_file(state_file(&qdir, &key));
+        forget_key_root(&env, &key, &cwd);
         let _ = std::fs::remove_file(hand_file(&qdir, &key));
         let _ = std::fs::remove_file(render_check_file(&qdir, &key));
         let _ = std::fs::remove_dir_all(generated_dir(&qdir, &key));
@@ -1372,7 +1431,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err("serve-question: --update needs --key and --payload\n");
             return 1;
         };
-        let next_round = match read_json_file(&jsp::resolve(&cwd, &[&pp])) {
+        let next_round = match read_json_file(&jsp::resolve(&invoked_cwd, &[&pp])) {
             Ok(v) => v,
             Err(msg) => {
                 io.err(&format!("{}\n", msg));
@@ -1394,6 +1453,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err(&missing_comps_message(round, &missing, "rerun --update on the same key", "nothing was delivered"));
             return 1;
         }
+        if !exists(&state_file(&qdir, &key)) {
+            io.err(&missing_state_message("--update", &qdir, &key));
+            return 2;
+        }
         if !is_alive(&qdir, &key) {
             io.err("serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.\n");
             return 2;
@@ -1408,7 +1471,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         take_roll(&qdir, roll.as_deref(), &next_round);
         let delivered = next_file(&qdir, &key);
-        let _ = std::fs::copy(jsp::resolve(&cwd, &[&pp]), &delivered);
+        let _ = std::fs::copy(jsp::resolve(&invoked_cwd, &[&pp]), &delivered);
         touch_now(&delivered);
         io.out("next round delivered; the page reloads itself\n");
         if comps_expected(&next_round, &cwd, Some(&hand)) {
@@ -1507,6 +1570,9 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err(&format!("serve-question: log at {}. A sandboxed exec that cannot listen on localhost causes exactly this; rerun this command once through the harness's network-enabled or unsandboxed command tool before falling back.\n", if rel.is_empty() { log_file.clone() } else { rel }));
             return 1;
         };
+        if let Err(e) = record_key_root(&env, &key, &cwd) {
+            io.out(&format!("serve-question: could not record this round's directory in {} ({}); run --wait, --update and --stop for this key from this directory.\n", key_root_file(&env, &key), e));
+        }
         if let Some(notice) = tracked_runtime_notice(&cwd) {
             io.out(&notice);
         }
@@ -1833,7 +1899,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 ignore_questions_dir(&st.qdir);
                 let _ = std::fs::write(answer_file(&st.qdir, &k), format!("{}\n", answer));
             } else {
-                print_answer(io, &answer, &declared_comps(&st.payload));
+                print_answer(io, &st.cwd, &answer, &declared_comps(&st.payload));
                 let _ = io.stdout.flush();
             }
             // Sent after the answer is on disk, off the request loop, within
@@ -3321,7 +3387,7 @@ mod tests {
 
     fn answer_lines(raw: &str) -> String {
         let (mut io, cap) = Io::captured("", std::env::temp_dir(), Env::new());
-        print_answer(&mut io, raw, &[]);
+        print_answer(&mut io, &std::env::temp_dir().to_string_lossy(), raw, &[]);
         let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
         out
     }
@@ -3348,7 +3414,7 @@ mod tests {
         let decision_page: Vec<String> = vec![slot.into(), ".impeccable/mocks/decision/b.png".into()];
         let answer = |raw: &str, served: &[String]| {
             let (mut io, cap) = Io::captured("", dir.clone(), Env::new());
-            print_answer(&mut io, raw, served);
+            print_answer(&mut io, &dir.to_string_lossy(), raw, served);
             let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
             out
         };

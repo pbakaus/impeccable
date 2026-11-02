@@ -483,6 +483,10 @@ describe('degraded-mode fallback reference generation', () => {
     expect(content).toContain('material_fixes');
   });
 
+  test('the disclosure stays out of the output contract (#1245)', () => {
+    expect(readDegraded('codex', '.codex', 'manual-edit-applier')).toContain('outside the output contract');
+  });
+
   test('generated fallbacks pass through provider-block compilation (codex keeps its block, others strip it)', () => {
     // Standalone provider blocks are the shape compileProviderBlocks compiles.
     // A synthetic agent proves the degraded path runs the same compilation as

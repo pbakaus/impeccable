@@ -1532,10 +1532,13 @@ pub fn check_element_glow(
 
 /// JS: detect-html.mjs#checkElementBrokenImage(el)
 pub fn check_element_broken_image(el: &StaticElement<'_>) -> Vec<RuleHit> {
-    // `srcset` is a source too (HTML Standard: an img needs `src` or `srcset`).
-    if el.get_attribute("srcset").is_some_and(|set| {
-        let set = js::trim(set);
-        !set.is_empty() && set != "#"
+    // A usable source is `src`, `srcset` (HTML Standard: an img needs either)
+    // or a binding of one (`:src`, `[ngSrc]`, `data-src`).
+    if el.attributes().any(|(name, value)| {
+        let value = js::trim(value);
+        impeccable_detect::regex_matchers::names_image_source(name)
+            && !value.is_empty()
+            && value != "#"
     }) {
         return Vec::new();
     }
@@ -1545,14 +1548,10 @@ pub fn check_element_broken_image(el: &StaticElement<'_>) -> Vec<RuleHit> {
             "<img> with no src attribute".to_string(),
         )];
     };
-    let trimmed = js::trim(src);
-    if trimmed.is_empty() || trimmed == "#" {
-        return vec![RuleHit::new(
-            "broken-image",
-            format!("<img src=\"{}\">", src),
-        )];
-    }
-    Vec::new()
+    vec![RuleHit::new(
+        "broken-image",
+        format!("<img src=\"{}\">", src),
+    )]
 }
 
 /// JS: checks.mjs#checkElementOversizedH1(el, style, tag, window)

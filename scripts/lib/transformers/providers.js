@@ -207,10 +207,10 @@ export const PROVIDERS = {
     // (license, compatibility, metadata) are spec-defined; harness-specific
     // extensions (user-invocable, argument-hint, allowed-tools) are NOT
     // recognized by the Hermes skill loader and would be silently ignored.
-    // Hermes also has no hook surface, no equivalent of Claude's slash
-    // commands, and no per-skill tool ACL -- so no emitHooks, no agentFormat,
-    // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
+    // The design hook ships as a Python plugin (skill/hermes-plugin/) under
+    // .hermes/plugins/, since Hermes hooks are in-process plugin callbacks.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
+    pluginPayload: { source: 'hermes-plugin', dest: 'plugins/impeccable-design-hook' },
   },
   devin: {
     provider: 'devin',

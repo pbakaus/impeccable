@@ -122,7 +122,7 @@ test('native engine package, download, cache, and skill installation', {
     assertProbe(await fixture.run(['engine-probe']));
     assert.deepEqual(requests, [asset]);
     assert.deepEqual(fs.readFileSync(fixture.cached), binary);
-    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), digest);
+    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), `${digest} ${binary.length}`);
     requests.length = 0;
     assertProbe(await fixture.run(['engine-probe']));
     assert.deepEqual(requests, []);

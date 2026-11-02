@@ -1,0 +1,9 @@
+{
+  "stdout": "next round delivered; the page reloads itself\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "proj/.impeccable/questions/k1.next.json": "{\"title\":\"Pick\",\"options\":[{\"id\":\"a\",\"label\":\"A\",\"thesis\":\"One.\"},{\"id\":\"b\",\"label\":\"B\",\"thesis\":\"Two.\"}]}"
+  }
+}

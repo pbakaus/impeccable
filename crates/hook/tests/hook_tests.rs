@@ -159,6 +159,22 @@ fn session_start_persists_only_a_literal_session_identity() {
 }
 
 #[test]
+fn session_start_writes_the_session_identity_once_across_resumes() {
+    let t = Tmp::new();
+    let env_path = t.write("session.env", "export EXISTING=kept\n");
+    let r = rt_with(&t.path(), env(&[("CLAUDE_ENV_FILE", &env_path)]));
+    let mut io = Io::captured("", t.0.clone(), HashMap::new()).0;
+    for session in ["owner-123", "owner-123", "other-456", "owner-123", "owner-123"] {
+        let event = json!({"hook_event_name":"SessionStart", "session_id":session, "cwd":t.path()}).to_string();
+        assert_eq!(hook::run(&r, &event, &mut io), 0);
+    }
+    assert_eq!(
+        t.read("session.env"),
+        "export EXISTING=kept\nexport IMPECCABLE_SESSION_ID='owner-123'\nexport IMPECCABLE_SESSION_ID='other-456'\nexport IMPECCABLE_SESSION_ID='owner-123'\n"
+    );
+}
+
+#[test]
 fn unfinished_comp_stop_is_owned_bounded_and_does_not_reopen_on_unrelated_turn() {
     let t = Tmp::new();
     t.write("index.html", "<main>In progress</main>");
@@ -1619,6 +1635,16 @@ fn harness_detection_and_github_normalization() {
         payload("t", "Stop", "claude"),
         r#"{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"t"}}"#
     );
+    // VS Code's two runners read different fields (#1249).
+    assert_eq!(
+        payload("t", "PostToolUse", "vscode"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"},"additionalContext":"t"}"#
+    );
+    let vscode = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    assert_eq!(resolve_harness(&vscode, None), "vscode");
+    // Grok honors the manifest's `env` too, so its event shape still wins.
+    let grok_shaped: Map<String, Value> = json!({"hookEventName": "PostToolUse", "toolName": "Edit", "toolInput": {}}).as_object().unwrap().clone();
+    assert_eq!(resolve_harness(&vscode, Some(&grok_shaped)), "grok");
     assert_eq!(
         payload("t", "PostToolUse", "cursor"),
         r#"{"additional_context":"t"}"#
@@ -1872,6 +1898,33 @@ fn run_hook_symlinked_cwd_and_umbrella_launch() {
     );
     assert!(t.exists("app/.impeccable/hook.cache.json"));
     assert!(!t.exists(".impeccable"));
+}
+
+/// VS Code reports edits in its tools' own shapes, and keeps every rule per edit (#1249).
+#[test]
+fn run_hook_scans_files_named_by_vscode_tool_inputs() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    let main = t.write("main.css", GRADIENT_CSS);
+    let patch = format!("*** Begin Patch\n*** Update File: {main}\n@@\n-a\n+b\n*** End Patch\n");
+    let inputs = [
+        json!(patch),
+        json!({"input": patch}),
+        json!({"filePath": main, "content": "a"}),
+        json!({"replacements": [{"filePath": main, "oldString": "a", "newString": "b"}]}),
+    ];
+    for (i, tool_input) in inputs.into_iter().enumerate() {
+        let event = json!({"session_id": format!("v{i}"), "cwd": cwd, "hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": tool_input}).to_string();
+        let res = hook::run_hook(&r, &event);
+        assert_eq!(res.audit["emitted"], json!(true), "{i}: {:?}", res.audit);
+    }
+    assert!(!per_edit_tiering_active(&HookConfig::default(), "vscode"));
+    let stop = json!({"session_id": "v0", "cwd": cwd, "hook_event_name": "Stop", "stop_hook_active": false}).to_string();
+    let res = hook::run_stop_hook(&r, &stop);
+    assert_eq!(audit_str(&res.audit, "skipped"), Some("vscode-stop"));
+    assert!(res.stdout.is_empty());
 }
 
 #[test]
@@ -2921,6 +2974,41 @@ fn codex_stop_emits_decision_block() {
     assert_eq!(out["decision"], json!("block"));
     assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
     assert!(out.get("hookSpecificOutput").is_none());
+}
+
+#[test]
+fn hermes_harness_shapes_each_pass() {
+    // #1178: the Hermes plugin sets the harness explicitly and sends
+    // Claude-shaped events; its pre_verify gate reads Codex's Stop shape.
+    let forced = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let claude = json!({ "hook_event_name": "Stop", "session_id": "s" }).as_object().cloned().unwrap();
+    assert_eq!(resolve_harness(&forced, Some(&claude)), "hermes");
+    assert_eq!(payload("findings", "Stop", "hermes"), r#"{"decision":"block","reason":"findings"}"#);
+    assert_eq!(payload("  ", "Stop", "hermes"), "");
+    assert_eq!(
+        payload("t", "PostToolUse", "hermes"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"}}"#
+    );
+
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    let edit = json!({
+        "session_id": "h1", "cwd": cwd, "hook_event_name": "PostToolUse",
+        "tool_name": "Write", "tool_input": { "file_path": css },
+    })
+    .to_string();
+    let quiet = hook::run_hook(&r, &edit);
+    assert_eq!(audit_str(&quiet.audit, "harness"), Some("hermes"));
+    assert!(!quiet.stdout.contains("[side-tab]"), "side-tab is deferred to Stop: {}", quiet.stdout);
+    let stop = stop_event(&cwd, "h1");
+    let deep = hook::run_stop_hook(&r, &stop);
+    let out: Value = serde_json::from_str(&deep.stdout).unwrap();
+    assert_eq!(out["decision"], json!("block"));
+    assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
+    assert!(out.get("hookSpecificOutput").is_none());
+    assert_eq!(hook::run_stop_hook(&r, &stop).stdout, "", "a repeat Stop stays silent");
 }
 
 // ── live-preview stand-down ───────────────────────────────────────────────
