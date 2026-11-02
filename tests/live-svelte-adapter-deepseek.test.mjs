@@ -504,7 +504,7 @@ async function clickPendingTrash(page) {
     .catch(() => {});
   const clicked = await page.evaluate(() => {
     const dock = window.__impeccableLiveQuery('#impeccable-live-pending-dock');
-    const btn = [...(dock?.querySelectorAll('button') || [])].find((candidate) => /Discard copy edits/i.test(candidate.getAttribute('aria-label') || candidate.title || ''));
+    const btn = [...(dock?.querySelectorAll('button') || [])].find((candidate) => /Discard (copy )?edits/i.test(candidate.getAttribute('aria-label') || candidate.title || ''));
     if (!btn) return false;
     btn.click();
     return true;

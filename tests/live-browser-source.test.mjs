@@ -153,8 +153,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply copy edit' : 'Apply copy edits';/,
-      'the staged apply pill should use Apply copy edits copy',
+      /function pendingApplyLabel\(count\)[\s\S]{0,80}return count === 1 \? 'Apply edit' : 'Apply edits';/,
+      'the staged apply pill counts removals too, so it says edits, not copy edits',
     );
     assert.match(
       SOURCE,
@@ -223,7 +223,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function manualApplyLoadingText\(fallbackCount\)[\s\S]*?Fixing apply issue, attempt[\s\S]*?Verifying copy edits[\s\S]*?Applying ' \+ remaining \+ ' copy edit/,
+      /function manualApplyLoadingText\(fallbackCount\)[\s\S]*?Fixing apply issue, attempt[\s\S]*?Verifying edits[\s\S]*?Applying ' \+ remaining \+ ' edit/,
       'Apply loading text should cover applying, verifying, and repair states',
     );
     assert.match(
@@ -256,7 +256,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /pendingTrashTooltipEl\.textContent = 'Discard copy edits';/,
+      /pendingTrashTooltipEl\.textContent = 'Discard edits';/,
       'the discard button should use tooltip copy',
     );
     assert.match(
@@ -347,6 +347,43 @@ describe('live-browser source contracts', () => {
       /parentElement/,
       'source hints should come from the edited leaf itself, not inherited generated-container ancestors',
     );
+  });
+
+  it('offers a Remove badge beside Edit copy that stages a removal op and can undo it', () => {
+    const badge = SOURCE.match(/function renderEditBadge\(mode\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(badge);
+    assert.match(
+      badge,
+      /if \(selectedElement && hasTextRows\(selectedElement\)\) \{[\s\S]{0,120}chip\(EDIT_COPY_ICON, EDIT_COPY_LABEL, ACCENT, enterEditingMode\)[\s\S]{0,40}\}[\s\S]{0,40}chip\(REMOVE_ELEMENT_ICON, REMOVE_ELEMENT_LABEL, REMOVE_BADGE_FILL, removeSelectedElement\)/,
+      'Remove renders last on every selection, after a pencil that only shows when there is copy to edit',
+    );
+    assert.doesNotMatch(SOURCE, /renderEditBadge\(hasTextRows\(selectedElement\) \? 'idle' : 'hidden'\)/, 'selections without text rows must still get the Remove badge');
+    const remove = SOURCE.match(/async function removeSelectedElement\(\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(remove);
+    assert.match(remove, /if \(pendingApplyInFlight\) \{ showManualApplyBusyToast\(\); return; \}/, 'Remove is blocked while an apply runs');
+    assert.match(remove, /deleted: true,\s*removeElement: true,/, 'a removal is a deleted op flagged removeElement for the applier');
+    assert.match(remove, /leaf: copyEditLeafContext\(target, originalText, ''\)/, 'the applier gets the element markup through leaf');
+    assert.match(remove, /\/manual-edit-stash\?token=[\s\S]*?element: extractContext\(parent \|\| target\)[\s\S]*?ops: \[op\]/, 'removals stage through the same buffer as copy edits');
+    assert.match(remove, /target\.setAttribute\(REMOVED_ATTR, ref \|\| op\.tag\);/, 'the element is hidden by attribute, never detached (frameworks own the node)');
+    assert.doesNotMatch(remove, /target\.remove\(\)|removeChild\(target\)/);
+    assert.match(remove, /action: \{ label: 'Undo', onClick: \(\) => undoElementRemoval\(target, ref\) \}/, 'the toast offers Undo');
+    const undo = SOURCE.match(/async function undoElementRemoval\(target, ref\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(undo);
+    assert.match(undo, /\/manual-edit-discard\?token=[\s\S]*?&ref=' \+ encodeURIComponent\(ref \|\| ''\)/, 'Undo discards only that op by ref, not the whole page');
+    assert.match(undo, /target\.removeAttribute\(REMOVED_ATTR\);/);
+    assert.match(undo, /if \(res\.status === 409\) \{[\s\S]{0,260}return;/, 'Undo leaves the removal staged while an Apply owns the page');
+    assert.match(remove, /if \(!originalText\) \{[\s\S]{0,300}return;[\s\S]{0,20}\}/, 'an element nothing identifies in source is refused before staging');
+    const original = SOURCE.match(/function removalOriginalText\(el\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(original, /if \(el\.id\) return el\.id;[\s\S]{0,160}if \(cls\) return cls;/, 'a class name is the last identifying fallback');
+    const restore = SOURCE.match(/function restoreDiscardedManualEdits\(entries\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(restore, /if \(op\?\.removeElement === true\) \{ restoreRemovedElement\(op\); continue; \}/, 'Discard restores removed elements before the text-leaf path');
+    assert.match(restore, /op\?\.supersededOp \? \[op, op\.supersededOp\] : \[op\]/, 'Discard also restores the copy edit a removal superseded');
+    const keys = SOURCE.match(/function handleKeyDown\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(keys, /if \(isRemoveKey\(e\) && state === 'CONFIGURING' && selectedElement && configureKind !== 'insert'\) \{[\s\S]{0,120}removeSelectedElement\(\);/, 'Delete or Backspace removes the selected element');
+    assert.match(SOURCE, /function isRemoveKey\(e\) \{[\s\S]{0,200}!e\.metaKey && !e\.ctrlKey && !e\.altKey && !e\.shiftKey/, 'only an unmodified Delete or Backspace counts');
+    assert.match(SOURCE, /function shouldPassthroughElementNav\(deepActive, e\) \{[\s\S]{0,200}!isRemoveKey\(e\)\) return false;[\s\S]{0,160}if \(deepActive\.value\) return false;/, 'the key reaches the handler only from an empty prompt');
+    const strip = SOURCE.match(/function stripManualEditRuntimeState\(root\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.match(strip, /root\.querySelectorAll\('\[' \+ REMOVED_ATTR \+ '\]'\)\) removed\.remove\(\);[\s\S]{0,40}root\.removeAttribute\(REMOVED_ATTR\);/, 'context clones drop removed descendants and the marker');
   });
 
   it('keeps sendEvent fire-and-forget by default while accept/discard opt into rejection', () => {

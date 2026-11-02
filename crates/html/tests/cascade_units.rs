@@ -550,8 +550,9 @@ fn background_longhands_ride_beside_the_expansion() {
             ("backgroundColor", "var(--x)"),
         ])
     );
-    // A whole final layer that is a `var()` is unknown paint beneath the
-    // image, as before, not its color.
+    // A whole final layer that is a `var()` names no color here: the
+    // expansion stores it as the color slot's `var()` (#1217), not these
+    // longhands.
     assert_eq!(
         pairs("background", "url(a.png), var(--brand)"),
         own(&[

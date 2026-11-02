@@ -106,18 +106,7 @@ pub fn devin_global_config_dir(env: &Env, _cwd: &str, home: &str) -> String {
     jsp::join(&[home, ".config", "devin"])
 }
 
-/// JS: hermesGlobalHome(home): honor $HERMES_HOME only when it sits under
-/// `home` (resolved against cwd like `path.resolve`).
-pub fn hermes_global_home(env: &Env, cwd: &str, home: &str) -> String {
-    if let Some(env_home) = env.get("HERMES_HOME").filter(|v| !v.is_empty()) {
-        let resolved_env = jsp::resolve(cwd, &[env_home]);
-        let resolved_home = jsp::resolve(cwd, &[home]);
-        if resolved_env == resolved_home || resolved_env.starts_with(&format!("{resolved_home}/")) {
-            return resolved_env;
-        }
-    }
-    jsp::join(&[home, ".hermes"])
-}
+pub use impeccable_context::hermes::hermes_global_home;
 
 /// JS: dshGlobalHome(home): honor $DSH_HOME only when it sits under `home`
 /// (resolved against cwd like `path.resolve`), mirroring hermesGlobalHome.

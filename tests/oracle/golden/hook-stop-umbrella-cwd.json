@@ -26,7 +26,7 @@
     }
   ],
   "files": {
-    "app/.impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"u1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/app/src/b.css\":{\"editCount\":1,\"findings\":[\"side-tab:2\",\"gradient-text:1\"]}},\"footerShown\":true}}}",
-    "site/.impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"u1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/site/src/a.css\":{\"editCount\":1,\"findings\":[\"side-tab:1\"],\"cleanAcked\":true}}}}}"
+    "app/.impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"u1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/app/src/b.css\":{\"editCount\":1,\"findings\":[\"side-tab:border-left: 4px solid #6366f1#1\",\"gradient-text:background-clip: text + gradient#1\"]}},\"footerShown\":true}}}",
+    "site/.impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"u1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/site/src/a.css\":{\"editCount\":1,\"findings\":[\"side-tab:border-left: 4px solid #6366f1#1\"],\"cleanAcked\":true}}}}}"
   }
 }

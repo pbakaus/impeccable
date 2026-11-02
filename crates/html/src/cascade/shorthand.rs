@@ -771,10 +771,14 @@ pub fn background_paint_parts(value: &str) -> (String, String) {
     )
 }
 
-/// The background color a shorthand names where `expand_static_declaration`
-/// does not look: after the image (`url(x) #17150f`), or as the final layer
-/// of a list (`url(x), #17150f`). `None` when the expansion already read one
-/// before the first image, or when there is none.
+/// The background color a shorthand names after its image (`url(x) #17150f`)
+/// or as the final layer of a list (`url(x), #17150f`), restated beside the
+/// expansion's own read of the final layer (#1217) so a literal color wins
+/// the slot where the expansion keeps a `var()` in front of it
+/// (`url(x) var(--tile) #17150f`). `None` when the expansion already read one
+/// before the first image, when there is none, and for a whole final layer
+/// that is a `var()`, which the expansion stores as the color slot's `var()`
+/// for the compute loop to resolve.
 fn color_outside_image(v: &str) -> Option<String> {
     let first = BG_IMAGE_SPLIT_RE.find(v)?;
     if !extract_static_color(&v[..first.start()]).is_empty() {
@@ -796,8 +800,8 @@ fn color_outside_image(v: &str) -> Option<String> {
         // is not read. The compute loop resolves it, and a repeat,
         // position, or size it turns out to hold computes as `transparent`
         // for every reader (`color_slot_or_transparent`). A whole final
-        // layer that is a `var()` stays what it was: unknown paint beneath
-        // the image, not its color.
+        // layer that is a `var()` names no color here: the expansion stores
+        // it as the color slot's `var()` (#1217).
         let tokens = join_slashes(split_tokens(&outside).iter().flat_map(|t| unglue(t)).collect());
         // A literal color beside the `var()` is the color, as it is without
         // one; the tokens that hold a `var()` are left out of that read so
@@ -990,6 +994,42 @@ static ZERO_LENGTH_RE: Lazy<Regex> =
 static BORDER_SIDE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^border-(top|right|bottom|left)$").expect("BORDER_SIDE_RE"));
 
+/// One `background` layer with every gradient and `url()` call cut out to
+/// its closing paren, so a color written flush against one
+/// (`rgb(0,0,0)linear-gradient(...)`) survives. A paren inside a quoted
+/// URL is part of the URL.
+fn without_images(layer: &str) -> String {
+    let mut out = String::new();
+    let mut rest = layer;
+    while let Some(m) = BG_IMAGE_SPLIT_RE.find(rest) {
+        out.push_str(&rest[..m.start()]);
+        out.push(' ');
+        let mut depth = 1;
+        let mut quote: Option<u8> = None;
+        let mut escaped = false;
+        let mut end = rest.len();
+        for (i, b) in rest.bytes().enumerate().skip(m.end()) {
+            match (quote, b) {
+                _ if escaped => escaped = false,
+                (_, b'\\') => escaped = true,
+                (Some(q), _) if b == q => quote = None,
+                (Some(_), _) => {}
+                (None, b'"' | b'\'') => quote = Some(b),
+                (None, b'(') => depth += 1,
+                (None, b')') => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                end = i + 1;
+                break;
+            }
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn box4(names: [&str; 4], vals: [String; 4]) -> Vec<Expanded> {
     let [a, b, c, d] = vals;
     vec![
@@ -1016,15 +1056,15 @@ pub fn expand_static_declaration(prop: &str, value: &str) -> Vec<Expanded> {
         if has_image {
             out.push(("backgroundImage".into(), v.to_string()));
         }
-        let before_image: &str = if has_image {
-            match BG_IMAGE_SPLIT_RE.find(v) {
-                Some(m) => &v[..m.start()],
-                None => v,
-            }
+        // The color lives in the final comma-separated layer, so that layer
+        // with its images taken out is all that can name it.
+        let color_text = if has_image {
+            let layers = split_css_list(v);
+            without_images(layers.last().map(String::as_str).unwrap_or(v))
         } else {
-            v
+            v.to_string()
         };
-        let color = extract_static_color(if has_image { before_image } else { v });
+        let color = extract_static_color(&color_text);
         if !color.is_empty() {
             out.push(("backgroundColor".into(), color.clone()));
         }

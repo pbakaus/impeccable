@@ -20,6 +20,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/hero.html\":{\"editCount\":1,\"findings\":[\"low-contrast:0:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample\"]}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/hero.html\":{\"editCount\":1,\"findings\":[\"low-contrast:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample#1\"]}},\"footerShown\":true}}}"
   }
 }

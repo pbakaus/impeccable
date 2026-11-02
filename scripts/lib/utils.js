@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { PROVIDERS } from './transformers/providers.js';
 
 // Per-project artifacts live inside `scripts/` of an installed skill but
 // belong to the consuming project, not the distributable skill. The build
@@ -281,6 +282,18 @@ export function readSourceFiles(rootDir) {
     scripts.push(...readSkillScripts(scriptsDir));
   }
 
+  // Provider payloads beside the skill: the dirs provider configs declare
+  // as pluginPayload.source (skill/hermes-plugin/), emitted verbatim.
+  const payloads = {};
+  for (const source of new Set(Object.values(PROVIDERS).map(c => c.pluginPayload?.source).filter(Boolean))) {
+    const dir = path.join(skillDir, source);
+    if (!fs.existsSync(dir)) continue;
+    payloads[source] = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(f => f.isFile())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(f => ({ name: f.name, content: fs.readFileSync(path.join(dir, f.name), 'utf-8') }));
+  }
+
   const agents = [];
   const agentsDir = path.join(skillDir, 'agents');
   if (fs.existsSync(agentsDir)) {
@@ -328,7 +341,8 @@ export function readSourceFiles(rootDir) {
     filePath: skillMdPath,
     references,
     scripts,
-    agents
+    agents,
+    payloads,
   });
 
   return { skills };

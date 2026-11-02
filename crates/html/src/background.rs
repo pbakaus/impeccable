@@ -1437,7 +1437,32 @@ mod tests {
         assert!(beneath("url(a.png), url(b.png)"));
         assert!(beneath("url(a.png), linear-gradient(#000, #fff)"));
         assert!(beneath("url(a.png), url(b.png), #17150f"));
-        assert!(beneath("url(a.png), var(--below)"));
+        // A whole final layer that is a `var()` is the color slot's `var()`
+        // since #1217 reads the color from the final layer: resolved to a
+        // color it is the element's own, not paint beneath the image, and
+        // unresolved, or resolved to anything the color parser cannot read,
+        // it stops the walk.
+        let level = |rule: &str| -> LevelPaint {
+            let doc =
+                document(&format!("<style>.x {{ {rule} }}</style><p class=x>Text</p>"));
+            let el = doc.query_selector(".x").expect("element");
+            analyze_level(&el)
+        };
+        assert!(matches!(level("background: url(a.png), var(--below);"), LevelPaint::Stop));
+        assert!(matches!(
+            level("--below: url(b.png); background: url(a.png), var(--below);"),
+            LevelPaint::Stop
+        ));
+        match level("--below: #17150f; background: url(a.png), var(--below);") {
+            LevelPaint::Image(layer) => {
+                assert!(!layer.layers_beneath);
+                assert_eq!(
+                    layer.color.as_ref().map(|c| (c.r, c.g, c.b)),
+                    Some((23.0, 21.0, 15.0))
+                );
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     fn document(html: &str) -> StaticDocument {

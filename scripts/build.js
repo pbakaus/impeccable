@@ -572,6 +572,18 @@ function syncRootHookManifests(rootDir) {
   return synced;
 }
 
+function syncRootPluginPayloads(distDir, rootDir) {
+  const synced = [];
+  for (const config of Object.values(PROVIDERS)) {
+    if (!config.pluginPayload) continue;
+    const src = path.join(distDir, config.provider, config.configDir, config.pluginPayload.dest);
+    if (!fs.existsSync(src)) continue;
+    mirrorDirContentsSync(src, path.join(rootDir, config.configDir, config.pluginPayload.dest));
+    synced.push(path.join(config.configDir, config.pluginPayload.dest).split(path.sep).join('/'));
+  }
+  return synced;
+}
+
 /**
  * Every skill copy in dist gets the engine binaries the launcher looks for
  * (`scripts/bin/<os>-<arch>/impeccable[.exe]`), so the release zips are
@@ -790,6 +802,11 @@ async function build() {
     const syncedHooks = syncRootHookManifests(ROOT_DIR);
     if (syncedHooks.length > 0) {
       console.log(`🪝 Synced hook manifests to: ${syncedHooks.join(', ')}`);
+    }
+
+    const syncedPlugins = syncRootPluginPayloads(DIST_DIR, ROOT_DIR);
+    if (syncedPlugins.length > 0) {
+      console.log(`🪝 Synced provider plugins to: ${syncedPlugins.join(', ')}`);
     }
 
     // Remove deprecated skill stubs from local harness dirs. They exist

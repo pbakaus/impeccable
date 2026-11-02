@@ -14,6 +14,6 @@
     }
   ],
   "files": {
-    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/Hero.tsx\":{\"editCount\":1,\"findings\":[\"ai-color-palette:1\"],\"stopBaseline\":{\"version\":1,\"engine\":\"<ENGINE_VERSION>\",\"counts\":{}},\"cleanAcked\":true}},\"footerShown\":true}}}"
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/Hero.tsx\":{\"editCount\":1,\"findings\":[\"ai-color-palette:text-purple-700 on heading#1\"],\"stopBaseline\":{\"version\":1,\"engine\":\"<ENGINE_VERSION>\",\"counts\":{}},\"cleanAcked\":true}},\"footerShown\":true}}}"
   }
 }

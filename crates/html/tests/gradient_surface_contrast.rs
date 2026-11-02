@@ -94,6 +94,41 @@ body { background: #ffffff; }
 }
 
 #[test]
+fn a_trailing_shorthand_colour_is_the_ground_under_faint_grid_lines() {
+    // #1212: the colour sits in the last comma-separated layer of `background`,
+    // after the gradients, and is the ground the text is read against.
+    let html = r#"<!doctype html><html><head><style>
+body{
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(0deg,  rgba(255,255,255,0.025) 1px, transparent 1px),
+    #0b0d10;
+  background-size:44px 44px;
+  color:#e7edf3; font-size:16px; margin:0; min-height:100vh;
+}
+</style></head><body><p>This copy is very readable on the dark ground.</p></body></html>
+"#;
+    let snippets = low_contrast_snippets(html, Path::new("/tmp/grid.html"));
+    assert!(snippets.is_empty(), "{snippets:?}");
+    // Minified, the colour sits flush against the gradient.
+    let minified = html.replace(
+        "linear-gradient(0deg,  rgba(255,255,255,0.025) 1px, transparent 1px),\n    #0b0d10",
+        "rgb(11,13,16)linear-gradient(0deg,rgba(255,255,255,0.025) 1px,transparent 1px)",
+    );
+    assert_ne!(minified, html);
+    let snippets = low_contrast_snippets(&minified, Path::new("/tmp/grid.html"));
+    assert!(snippets.is_empty(), "{snippets:?}");
+    // A paren inside a quoted URL does not end the image or hide the colour.
+    for value in ["url('a(1.png') #000", "url('x)red.png') #000"] {
+        let color = impeccable_html::cascade::expand_static_declaration("background", value)
+            .into_iter()
+            .find(|(k, _)| k == "backgroundColor")
+            .map(|(_, v)| v);
+        assert_eq!(color.as_deref(), Some("#000"), "{value}");
+    }
+}
+
+#[test]
 fn fixture_passes_every_should_pass_case_the_static_engine_can_read() {
     let snippets = fixture_snippets();
     for (case, color) in [
