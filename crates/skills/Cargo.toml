@@ -17,5 +17,5 @@ sha2 = "0.10"
 ring = "0.17.14"
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 url = "2"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 libc = "0.2"
