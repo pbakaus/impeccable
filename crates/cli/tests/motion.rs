@@ -1,4 +1,9 @@
-use std::{path::PathBuf, process::Command};
+use std::{io::Write, path::PathBuf, process::Command};
+
+// Keep fixture findings in CI logs even when the assertions pass.
+fn print_findings(name: &str, report: &serde_json::Value) {
+    writeln!(std::io::stdout().lock(), "{name}: {}", report["findings"]).unwrap();
+}
 
 #[test]
 fn motion_fixtures() {
@@ -62,7 +67,7 @@ fn motion_fixtures() {
                     .exists()
             );
         }
-        println!("{name}: {}", report["findings"]);
+        print_findings(name, &report);
         if name == "swap-while-growing" || name == "smooth" {
             let reduced = output.join(format!("{name}-reduced"));
             let result = Command::new(env!("CARGO_BIN_EXE_impeccable"))
@@ -94,7 +99,13 @@ fn motion_fixtures() {
                 .iter()
                 .any(|f| f["kind"] == "reduced-motion-ignored");
             assert_eq!(ignored, name == "swap-while-growing", "{report}");
-            println!("{name}-reduced: {}", report["findings"]);
+            if name == "smooth" {
+                assert!(
+                    report["findings"].as_array().unwrap().is_empty(),
+                    "{report}"
+                );
+            }
+            print_findings(&format!("{name}-reduced"), &report);
         }
     }
     std::fs::remove_dir_all(output).unwrap();

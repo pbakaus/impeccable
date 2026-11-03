@@ -283,6 +283,24 @@ fn element<'a>(frame: &'a Value, id: &Value) -> Option<&'a Value> {
 fn finding(kind: &str, el: &Value, frame: &Value, magnitude: f64) -> Value {
     json!({"kind":kind,"element":el["selector"],"frameIndex":frame["index"],"timeMs":frame["timeMs"],"magnitude":magnitude})
 }
+fn visible_content_change(before: &Value, after: &Value, a: &Value, b: &Value) -> bool {
+    if number(&a["opacity"]) <= 0.02 || number(&b["opacity"]) <= 0.02 {
+        return false;
+    }
+    if a["content"] != b["content"] {
+        return true;
+    }
+    let empty = vec![];
+    let old = a["children"].as_array().unwrap_or(&empty);
+    let new = b["children"].as_array().unwrap_or(&empty);
+    old.iter()
+        .filter(|id| !new.contains(id))
+        .any(|id| element(before, id).is_some_and(|e| number(&e["opacity"]) > 0.02))
+        || new
+            .iter()
+            .filter(|id| !old.contains(id))
+            .any(|id| element(after, id).is_some_and(|e| number(&e["opacity"]) > 0.02))
+}
 /// Deterministic heuristics over recorded element and overlap evidence; no browser needed.
 pub fn analyze(frames: &[Value]) -> Vec<Value> {
     let mut findings = vec![];
@@ -336,6 +354,7 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
                 continue;
             };
             if number(&b["clipped"]) > 0.02
+                && number(&b["opacity"]) > 0.02
                 && samples[0].is_some_and(|v| number(&v["clipped"]) < 0.01)
                 && samples[last].is_some_and(|v| number(&v["clipped"]) < 0.01)
             {
@@ -360,7 +379,7 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
                                 .is_some_and(|(a, b)| delta(a, b) > 2.)
                         })
                     });
-                if (a["content"] != b["content"] || a["children"] != b["children"])
+                if visible_content_change(&frames[i - 1], &frames[i], a, b)
                     && moving
                     && frames[i]["viewTransition"] != true
                 {
@@ -606,6 +625,20 @@ mod tests {
         let mut swapped = frames;
         swapped[4]["elements"][0]["content"] = json!("replacement");
         assert!(analyze(&swapped).iter().any(|f| f["kind"] == "end-jump"));
+    }
+    #[test]
+    fn motion_fading_in_new_content_is_not_an_instant_swap() {
+        let mut frames: Vec<_> = [0., 0., 10., 20., 30., 30.]
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| frame(i, x, 1., "", 0.))
+            .collect();
+        frames[0]["elements"][0]["children"] = json!([]);
+        for (i, frame) in frames.iter_mut().enumerate().skip(1) {
+            frame["elements"][0]["children"] = json!([2]);
+            frame["elements"].as_array_mut().unwrap().push(json!({"id":2,"selector":"#copy","box":[0,0,100,100],"opacity":([0.,0.,0.3,0.6,1.,1.][i]),"content":"New content","clipped":0}));
+        }
+        assert!(!analyze(&frames).iter().any(|f| f["kind"] == "content-swap"));
     }
     #[test]
     fn motion_reduced_checks_distance_and_duration() {

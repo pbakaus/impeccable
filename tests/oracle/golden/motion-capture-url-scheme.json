@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Motion capture: URL must use http, https, or file\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
