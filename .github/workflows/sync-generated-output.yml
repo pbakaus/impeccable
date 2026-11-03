@@ -27,6 +27,7 @@ env:
     .agents
     .codex
     .claude
+    .commandcode
     .cursor
     .devin
     .dsh
