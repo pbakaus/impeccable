@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>clipped-container</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}#card{width:180px;height:100px;background:#eedcc5;padding:20px;box-sizing:border-box}#shell{overflow:hidden;height:180px;width:300px}</style>
+<button id="go">Run motion</button><div id="region"><div id="shell"><div id="card">Growing child</div></div></div>
+<script>document.querySelector('#go').onclick=()=>{document.querySelector('#card').animate([{height:'100px'},{height:'260px'},{height:'100px'}],{duration:600,fill:'both'});};</script>

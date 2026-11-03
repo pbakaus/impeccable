@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>late-hover-lift</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}#card{width:180px;height:100px;background:#eedcc5;padding:20px;box-sizing:border-box}</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Late lift</div></div>
+<script>document.querySelector('#go').onclick=()=>{const c=document.querySelector('#card');const a=c.animate([{width:'180px'},{width:'280px'}],{duration:600,fill:'forwards'});a.onfinish=()=>{c.style.transform='translateY(-12px)'};};</script>

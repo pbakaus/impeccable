@@ -22,4 +22,5 @@ base64 = "0.22"
 sha2 = "0.10"
 
 [dev-dependencies]
+url = "2"
 serde_json = { workspace = true }

@@ -812,6 +812,14 @@ impl<'a> Page<'a> {
         out
     }
 
+    /// Capture-only animation timeline control and trusted input on a disposable page.
+    pub fn motion_command(&mut self, method: &str, params: Value) -> CdpResult<Value> {
+        match method {
+            "Animation.enable" | "Animation.setPlaybackRate" | "Input.dispatchMouseEvent" | "Input.dispatchKeyEvent" => self.send(method, params),
+            _ => Err(CdpError::new("Unsupported motion protocol command")),
+        }
+    }
+
     /// Start a fresh diagnostic journal before navigation. Cache, authentication,
     /// and service-worker behavior remain unchanged. No response is refetched.
     pub fn begin_response_capture(&mut self) -> CdpResult<()> {
