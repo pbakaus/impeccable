@@ -176,6 +176,8 @@ fn record(
     page.set_reduced_motion(reduce)?;
     page.goto(&o.url, "load", Duration::from_secs(30))?;
     page.evaluate_value("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))")?;
+    // Capture the resting state, not an unrelated entrance half-way through.
+    page.evaluate_value("Promise.race([Promise.all(document.getAnimations().filter(a=>a.playState==='running').map(a=>a.finished.catch(()=>{}))),new Promise((_,reject)=>setTimeout(()=>reject(Error('Page did not reach rest before the interaction')),10000))])")?;
     let region=match &o.region {
         None=>json!([0,0,1000,760]),
         Some(s)=>match serde_json::from_str::<Value>(s) {
@@ -299,7 +301,31 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
                 let d = delta(a, b);
                 if d > 2. {
                     findings.push(finding(kind, b, &frames[i], d));
+                } else if i == last
+                    && a["content"] != b["content"]
+                    && number(&a["opacity"]) > 0.02
+                    && number(&b["opacity"]) > 0.02
+                {
+                    findings.push(finding(kind, b, &frames[i], 1.));
                 }
+            } else if b["pseudo"] != true
+                && number(&b["opacity"]) > 0.02
+                && !frames[i - 1]["outsideIds"]
+                    .as_array()
+                    .is_some_and(|ids| ids.contains(&b["id"]))
+            {
+                findings.push(finding(kind, b, &frames[i], 1.));
+            }
+        }
+        for a in frames[i - 1]["elements"].as_array().into_iter().flatten() {
+            if a["pseudo"] != true
+                && number(&a["opacity"]) > 0.02
+                && element(&frames[i], &a["id"]).is_none()
+                && !frames[i]["outsideIds"]
+                    .as_array()
+                    .is_some_and(|ids| ids.contains(&a["id"]))
+            {
+                findings.push(finding(kind, a, &frames[i], 1.));
             }
         }
     }
@@ -478,7 +504,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             None
         };
         let capture = record(&o, &io.env, o.reduce, true)?;
-        let mut findings = analyze(&capture.frames);
+        let mut findings = if number(&capture.meta["duration"]) > 0. {
+            analyze(&capture.frames)
+        } else {
+            vec![]
+        };
         if let Some(base) = &baseline {
             findings.extend(reduced_findings(&capture, base));
         }
@@ -563,6 +593,19 @@ mod tests {
                 "{kind}: {findings:?}"
             );
         }
+    }
+    #[test]
+    fn motion_boundary_presence_and_content() {
+        let frames: Vec<_> = (0..5).map(|i| frame(i, 0., 1., "card", 0.)).collect();
+        let mut removed = frames.clone();
+        removed[4]["elements"] = json!([]);
+        assert!(analyze(&removed).iter().any(|f| f["kind"] == "end-jump"));
+        let mut appeared = frames.clone();
+        appeared[0]["elements"] = json!([]);
+        assert!(analyze(&appeared).iter().any(|f| f["kind"] == "start-jump"));
+        let mut swapped = frames;
+        swapped[4]["elements"][0]["content"] = json!("replacement");
+        assert!(analyze(&swapped).iter().any(|f| f["kind"] == "end-jump"));
     }
     #[test]
     fn motion_reduced_checks_distance_and_duration() {

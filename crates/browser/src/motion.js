@@ -57,7 +57,7 @@
     return [x,y,Math.max(0,Math.min(a[0]+a[2],b[0]+b[2])-x),Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-y)];
   };
   const snapshot = region => {
-    const elements = [];
+    const elements = [], outsideIds = [];
     const nodes = [];
     const walk = root => { for (const el of root.children || []) { nodes.push(el); walk(el); if (el.shadowRoot) walk(el.shadowRoot); } };
     walk(document);
@@ -65,7 +65,7 @@
       const cs = getComputedStyle(el), box = rect(el.getBoundingClientRect());
       if (cs.display === 'none' || cs.visibility !== 'visible' || box[2] <= 0 || box[3] <= 0) continue;
       const inRegion = intersect(box, region);
-      if (!inRegion[2] || !inRegion[3]) continue;
+      if (!inRegion[2] || !inRegion[3]) { outsideIds.push(id(el)); continue; }
       let clip = box.slice(), opacity = Number(cs.opacity);
       for (let p = el.parentElement; p; p = p.parentElement) {
         const style = getComputedStyle(p), r = rect(p.getBoundingClientRect());
@@ -112,7 +112,7 @@
       const ai=stack.indexOf(ea), bi=stack.indexOf(eb);
       if (ai>=0 && bi>=0) paint[a.id+':'+b.id]=ai<bi ? a.id : b.id;
     }
-    return {elements, paint, viewTransition};
+    return {elements, paint, viewTransition, outsideIds};
   };
   globalThis.__impeccableMotion = {
     snapshot,
