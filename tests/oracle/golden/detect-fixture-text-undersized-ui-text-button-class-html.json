@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/undersized-ui-text-button-class.html\n  [tiny-text] 11.5px body text\n    → Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.\n\n1 anti-pattern found.\n\n── Advisory (not counted as failures) ──\n\n<REPO>/tests/fixtures/antipatterns/undersized-ui-text-button-class.html\n  [undersized-ui-text] 10px functional text \"View the full analysis\" (below 11px floor)\n    → Interactive and content-bearing UI text (links, buttons, nav items, labels, table cells, meta rows, timecodes) below 11px is a legibility failure, not a style choice. WCAG sets no absolute pixel floor, but functional text under 11px is a defensible quality bar: it fails on high-DPI and small viewports and it degrades tap and read targets. The 11px floor holds even inside a footer; only non-interactive legal smallprint gets the softer 10px floor. Being ON the DESIGN.md size ramp does not exempt a value here: adding 8px to the ramp launders the token but not the legibility problem, and that is exactly the escape hatch this rule closes. Exempts sup/sub, visually-hidden (sr-only) text, and code/terminal contexts. Decorative letterspaced micro-labels are still functional and stay in scope.\n  [tiny-text] 9px body text\n    → Body text below 12px is hard to read, especially on high-DPI screens. Use at least 14px for body content, 16px is ideal.\n\n2 advisory notes. Suppress with --no-advisory.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

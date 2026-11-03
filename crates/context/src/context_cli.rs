@@ -30,6 +30,21 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     }
 }
 
+/// The user-level hook manifest this provider's harness loads:
+/// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
+/// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
+/// empty. A non-empty CODEX_HOME is exclusive.
+pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
+    match provider_id {
+        "claude-code" => Some(jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"])),
+        "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
+            Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
+            None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),
+        }),
+        _ => None,
+    }
+}
+
 const STOP_REVIEW_PROVIDERS: [&str; 4] = ["claude-code", "codex", "agents", "grok"];
 
 // Only the launcher-era design hook counts as an active automatic hook. A
@@ -81,6 +96,11 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     if !hook_enabled_at(&active_root, env) {
         return "none";
     }
+    // Hermes runs the hook from a plugin in its home dir, at turn end (#1178).
+    if provider.id == "hermes" {
+        let home = crate::hermes::hermes_global_home(env, cwd, &crate::util::homedir(env));
+        return if crate::hermes::plugin_enabled(&home) { "stop" } else { "none" };
+    }
     // Gemini's manifest carries only the session and build-completion hooks,
     // no detector pass, so it never counts as automatic coverage.
     if provider.id == "gemini" {
@@ -104,9 +124,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
             }
         }
     }
-    if provider.id == "claude-code" {
-        let user_settings = jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"]);
-        if let Some(raw) = read_json(&user_settings) {
+    if let Some(path) = user_hook_manifest(&provider.id, cwd, env) {
+        if let Some(raw) = read_json(&path) {
             if let Some(hooks) = raw.get("hooks") {
                 if crate::staleness::js_truthy(hooks) && value_has_hook_marker(hooks) {
                     return "stop";
@@ -210,7 +229,8 @@ fn append_autonomy_counter_directive(parts: &mut Parts) {
         "treat that as a harness default injected for a whole model family, never as evidence about this session.",
         "Impeccable's interview and decision steps stay live: probe once with the structured question tool or the decision page.",
         "Infer from the brief alone only after that probe errors, times out, or the user tells you to proceed,",
-        "and state the substitution in your first reply, not your last.",
+        "or when you have no structured question tool and no way to serve the decision page, as in a subagent running a brief.",
+        "Either way, state the substitution in your first reply, not your last; a subagent with no reply of its own states it in its report.",
     ].join(" "));
 }
 
@@ -391,9 +411,23 @@ fn build_target_selection_directive(sel: &TargetSelection) -> String {
     m.insert("projectRoot".into(), Value::String(sel.project_root.clone()));
     m.insert("repoRoot".into(), Value::String(sel.repo_root.clone()));
     m.insert("targetCandidates".into(), serde_json::to_value(&sel.target_candidates).unwrap());
+    if sel.skipped_non_ui > 0 {
+        m.insert("skippedNonUiWorkspaces".into(), Value::from(sel.skipped_non_ui));
+    }
+    let skipped = if sel.skipped_non_ui > 0 {
+        format!(
+            " {} workspace{} without a UI signal (no UI framework dependency, HTML entry, native app marker, or UI source file) {} not listed; reach one with `--target <path>` only when the user names it.",
+            sel.skipped_non_ui,
+            if sel.skipped_non_ui == 1 { "" } else { "s" },
+            if sel.skipped_non_ui == 1 { "is" } else { "are" }
+        )
+    } else {
+        String::new()
+    };
     format!(
-        "TARGET_SELECTION_REQUIRED:\n{}\n\nShow each app with its productStatus/productPath and designStatus/designPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path.",
-        json_pretty(&Value::Object(m))
+        "TARGET_SELECTION_REQUIRED:\n{}\n\nShow each app with its productStatus/productPath and designStatus/designPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path.{}",
+        json_pretty(&Value::Object(m)),
+        skipped
     )
 }
 
@@ -723,7 +757,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     if !ctx.has_design {
         parts.push(if ctx.has_visual_implementation {
-            "INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. For shape or a new-surface/redesign request, load reference/new-work.md: an extension documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.".to_string()
+            "INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. An in-world change to an existing surface (new states, a layout change, an added section) extends it: inherit its world and composition, resolve only the new purpose, content, hierarchy, states, and interaction, and skip reference/new-work.md. Load reference/new-work.md only for shape, a whole new surface, or a redesign that replaces the world: a new surface documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.".to_string()
         } else {
             "WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.".to_string()
         });
@@ -878,9 +912,247 @@ mod output_budget_tests {
 #[cfg(test)]
 mod user_scope_hook_tests {
     use super::automatic_hook_mode;
-    use crate::context::Ctx;
+    use crate::context::{load_context, Ctx};
     use crate::provider::Provider;
+    use crate::target_args::TargetOptions;
     use crate::util::Env;
+    use std::path::PathBuf;
+
+    const CODEX_HOOK: &str = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\"/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#;
+
+    struct UserHookFixture {
+        root: PathBuf,
+        project: String,
+        env: Env,
+    }
+
+    impl UserHookFixture {
+        fn new(provider: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "impeccable-codex-user-hook-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            ));
+            let project = root.join("project");
+            let home = root.join("home");
+            std::fs::create_dir_all(project.join(".git")).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            let env = Env::from([
+                ("HOME".to_string(), home.to_string_lossy().into_owned()),
+                ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
+                ("IMPECCABLE_PROVIDER_ID".to_string(), provider.to_string()),
+            ]);
+            Self { root, project: project.to_string_lossy().into_owned(), env }
+        }
+
+        fn put(&self, path: &str, body: &str) {
+            let path = self.root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+
+        fn mode(&self) -> &'static str {
+            let ctx = load_context(&self.project, &TargetOptions::default(), &self.env);
+            let provider = crate::provider::detect(&self.env, &self.project);
+            automatic_hook_mode(&ctx, &self.project, &self.env, &provider)
+        }
+    }
+
+    impl Drop for UserHookFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn codex_user_hooks_supply_automatic_hook_coverage() {
+        let fixture = UserHookFixture::new("codex");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    #[test]
+    fn agents_user_hooks_supply_automatic_hook_coverage() {
+        let fixture = UserHookFixture::new("agents");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    #[test]
+    fn custom_codex_home_supplies_coverage_for_both_providers() {
+        for provider in ["codex", "agents"] {
+            let mut fixture = UserHookFixture::new(provider);
+            fixture.put("custom-home/hooks.json", CODEX_HOOK);
+            fixture.env.insert("CODEX_HOME".to_string(), fixture.root.join("custom-home").to_string_lossy().into_owned());
+            assert_eq!(fixture.mode(), "stop", "{provider}");
+        }
+    }
+
+    #[test]
+    fn relative_codex_home_uses_caller_cwd_and_preserves_spaces() {
+        let mut fixture = UserHookFixture::new("codex");
+        // Windows strips trailing spaces from path components, so the
+        // edge-space spelling only exists on Unix; both keep an interior one.
+        let home = if cfg!(windows) { "codex home" } else { " codex home " };
+        fixture.put(&format!("caller/{home}/hooks.json"), CODEX_HOOK);
+        fixture.env.insert("CODEX_HOME".to_string(), home.to_string());
+        let cwd = fixture.root.join("caller").to_string_lossy().into_owned();
+        let options = TargetOptions { target_path: Some(fixture.project.clone()) };
+        let ctx = load_context(&cwd, &options, &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, &cwd);
+        assert_eq!(ctx.project_root, fixture.project);
+        assert_eq!(automatic_hook_mode(&ctx, &cwd, &fixture.env, &provider), "stop");
+    }
+
+    #[test]
+    fn empty_codex_home_uses_default_user_hooks() {
+        let mut fixture = UserHookFixture::new("codex");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        fixture.env.insert("CODEX_HOME".to_string(), String::new());
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    #[test]
+    fn custom_codex_home_never_borrows_default_user_hooks() {
+        for provider in ["codex", "agents"] {
+            let mut fixture = UserHookFixture::new(provider);
+            fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+            fixture.env.insert("CODEX_HOME".to_string(), fixture.root.join("custom-home").to_string_lossy().into_owned());
+            assert_eq!(fixture.mode(), "none", "{provider}: missing directory");
+            std::fs::create_dir_all(fixture.root.join("custom-home")).unwrap();
+            assert_eq!(fixture.mode(), "none", "{provider}: missing manifest");
+            fixture.put("custom-home/hooks.json", "{invalid json");
+            assert_eq!(fixture.mode(), "none", "{provider}: invalid manifest");
+        }
+    }
+
+    #[test]
+    fn invalid_user_hooks_do_not_supply_coverage() {
+        let fixture = UserHookFixture::new("codex");
+        assert_eq!(fixture.mode(), "none", "missing manifest");
+        for manifest in [
+            "{invalid json",
+            r#"{"command":"/skills/impeccable/scripts/impeccable hook"}"#,
+            r#"{"hooks":{}}"#,
+            r#"{"hooks":{"Stop":[{"command":"echo hook"}]}}"#,
+            r#"{"hooks":{"Stop":[{"command":"node /skills/impeccable/scripts/hook.mjs"}]}}"#,
+            r#"{"hooks":{"SessionStart":[{"command":"/skills/impeccable/scripts/impeccable context"}]}}"#,
+        ] {
+            fixture.put("home/.codex/hooks.json", manifest);
+            assert_eq!(fixture.mode(), "none", "{manifest}");
+        }
+    }
+
+    #[test]
+    fn disabled_project_or_environment_blocks_user_hooks() {
+        let mut fixture = UserHookFixture::new("codex");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        fixture.env.insert("IMPECCABLE_HOOK_DISABLED".to_string(), "yes".to_string());
+        assert_eq!(fixture.mode(), "none", "environment disabled");
+        fixture.env.remove("IMPECCABLE_HOOK_DISABLED");
+        fixture.put("project/.impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+        assert_eq!(fixture.mode(), "none", "project disabled");
+        fixture.put("project/.impeccable/config.local.json", r#"{"hook":{"enabled":true}}"#);
+        assert_eq!(fixture.mode(), "stop", "local config re-enables hooks");
+        fixture.put("project/.impeccable/config.json", r#"{"hook":{"enabled":true}}"#);
+        fixture.put("project/.impeccable/config.local.json", r#"{"hook":{"enabled":false}}"#);
+        assert_eq!(fixture.mode(), "none", "local config disables hooks");
+    }
+
+    #[test]
+    fn home_lifecycle_config_does_not_disable_an_unrelated_project() {
+        let fixture = UserHookFixture::new("codex");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        fixture.put("home/.impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    #[test]
+    fn other_providers_do_not_borrow_codex_user_hooks() {
+        for provider in ["source", "cursor", "gemini", "claude-code"] {
+            let mut fixture = UserHookFixture::new(provider);
+            fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+            fixture.put("custom-home/hooks.json", CODEX_HOOK);
+            fixture.env.insert("CODEX_HOME".to_string(), fixture.root.join("custom-home").to_string_lossy().into_owned());
+            assert_eq!(fixture.mode(), "none", "{provider}");
+        }
+    }
+
+    #[test]
+    fn native_platforms_exclude_user_hooks() {
+        let fixture = UserHookFixture::new("codex");
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        for platform in ["ios", "android", "adaptive"] {
+            fixture.put("project/PRODUCT.md", &format!("# Product\n\n## Platform\n{platform}\n"));
+            let ctx = load_context(&fixture.project, &TargetOptions::default(), &fixture.env);
+            assert_eq!(ctx.platform.as_deref(), Some(platform));
+            assert_eq!(fixture.mode(), "none", "{platform}");
+        }
+    }
+
+    #[test]
+    fn project_hooks_still_supply_coverage_with_missing_custom_home() {
+        let mut fixture = UserHookFixture::new("codex");
+        fixture.put("project/.codex/hooks.json", CODEX_HOOK);
+        fixture.env.insert("CODEX_HOME".to_string(), fixture.root.join("missing").to_string_lossy().into_owned());
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_home_resolves_parent_components_after_symlinks() {
+        let mut fixture = UserHookFixture::new("codex");
+        fixture.put("real-home/hooks.json", CODEX_HOOK);
+        std::fs::create_dir_all(fixture.root.join("real-home/child")).unwrap();
+        std::os::unix::fs::symlink(fixture.root.join("real-home/child"), fixture.root.join("project/link")).unwrap();
+        fixture.env.insert("CODEX_HOME".to_string(), "link/..".to_string());
+        assert_eq!(fixture.mode(), "stop");
+    }
+
+    const HERMES_PLUGIN: &str = "home/.hermes/plugins/impeccable-design-hook";
+    const HERMES_ENABLED: &str = "plugins:\n  clone_timeout_seconds: 300\n  enabled:\n    - impeccable-design-hook\n  disabled: []\n";
+
+    fn hermes_fixture(config: &str) -> UserHookFixture {
+        let fixture = UserHookFixture::new("hermes");
+        fixture.put(&format!("{HERMES_PLUGIN}/plugin.yaml"), "name: impeccable-design-hook\n");
+        fixture.put(&format!("{HERMES_PLUGIN}/__init__.py"), "");
+        fixture.put("home/.hermes/config.yaml", config);
+        fixture
+    }
+
+    #[test]
+    fn hermes_enabled_plugin_supplies_stop_coverage() {
+        assert_eq!(hermes_fixture(HERMES_ENABLED).mode(), "stop", "block list");
+        let flow = "model: x\nplugins:\n  enabled: [other, 'impeccable-design-hook']  # on\n  disabled: []\n";
+        assert_eq!(hermes_fixture(flow).mode(), "stop", "flow list");
+    }
+
+    #[test]
+    fn hermes_plugin_not_enabled_falls_back_to_manual() {
+        let not_listed = "plugins:\n  enabled:\n    - other\n  disabled: []\n";
+        assert_eq!(hermes_fixture(not_listed).mode(), "none", "present but not listed");
+        let disabled = "plugins:\n  enabled:\n    - impeccable-design-hook\n  disabled:\n    - impeccable-design-hook\n";
+        assert_eq!(hermes_fixture(disabled).mode(), "none", "listed under disabled");
+        let unreadable = "plugins:\n  enabled: impeccable-design-hook\n";
+        assert_eq!(hermes_fixture(unreadable).mode(), "none", "scalar, not a list");
+        let fixture = hermes_fixture(HERMES_ENABLED);
+        std::fs::remove_file(fixture.root.join(format!("{HERMES_PLUGIN}/__init__.py"))).unwrap();
+        assert_eq!(fixture.mode(), "none", "missing __init__.py");
+    }
+
+    #[test]
+    fn hermes_home_and_hook_disable_are_respected() {
+        let mut fixture = hermes_fixture(HERMES_ENABLED);
+        fixture.env.insert("IMPECCABLE_HOOK_DISABLED".to_string(), "yes".to_string());
+        assert_eq!(fixture.mode(), "none", "environment disabled");
+        fixture.env.remove("IMPECCABLE_HOOK_DISABLED");
+        fixture.env.insert("HERMES_HOME".to_string(), fixture.root.join("home/custom").to_string_lossy().into_owned());
+        assert_eq!(fixture.mode(), "none", "HERMES_HOME points elsewhere");
+        fixture.put("home/custom/plugins/impeccable-design-hook/plugin.yaml", "");
+        fixture.put("home/custom/plugins/impeccable-design-hook/__init__.py", "");
+        fixture.put("home/custom/config.yaml", HERMES_ENABLED);
+        assert_eq!(fixture.mode(), "stop", "HERMES_HOME under home");
+    }
 
     #[test]
     fn claude_user_settings_supply_automatic_hook_coverage() {
@@ -942,6 +1214,7 @@ mod user_scope_hook_tests {
             command: "/impeccable".to_string(),
             skill_dir: None,
             self_cmd: "impeccable".to_string(),
+            self_raw: "impeccable".to_string(),
         };
         let mut env = Env::new();
         env.insert("HOME".to_string(), home.clone());
@@ -995,6 +1268,36 @@ mod worktree_hook_tests {
         assert_eq!(mode(at(&["main", "sub"])), "none");
         assert_eq!(mode(at(&["other", "wt"])), "none");
 
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn cursor_post_edit_and_unmigrated_gate_both_count_as_per_edit_coverage() {
+        let base = std::env::temp_dir().join(format!("impeccable-cursor-hook-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let tmp = base.to_string_lossy().into_owned();
+        let project = jsp::join(&[&tmp, "proj"]);
+        std::fs::create_dir_all(jsp::join(&[&project, ".git"])).unwrap();
+        let manifest = jsp::join(&[&project, ".cursor", "hooks.json"]);
+        std::fs::create_dir_all(jsp::dirname(&manifest)).unwrap();
+        let env = Env::from([
+            ("HOME".to_string(), tmp.clone()),
+            ("USERPROFILE".to_string(), tmp.clone()),
+            ("IMPECCABLE_PROVIDER_ID".to_string(), "cursor".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, &project);
+        assert_eq!(provider.id, "cursor");
+        let mode = || {
+            let ctx = load_context(&project, &TargetOptions::default(), &env);
+            automatic_hook_mode(&ctx, &project, &env, &provider)
+        };
+        assert_eq!(mode(), "none");
+        // Post-edit only: Cursor has no Stop deep pass wired (#1061).
+        std::fs::write(&manifest, r#"{"version":1,"hooks":{"postToolUse":[{"command":"\".cursor/skills/impeccable/scripts/impeccable\" hook","matcher":"^Write$","timeout":5}]}}"#).unwrap();
+        assert_eq!(mode(), "per-edit");
+        // The retired gate still runs until the manifest is migrated.
+        std::fs::write(&manifest, r#"{"version":1,"hooks":{"preToolUse":[{"command":"\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit","timeout":5}]}}"#).unwrap();
+        assert_eq!(mode(), "per-edit");
         let _ = std::fs::remove_dir_all(&base);
     }
 }

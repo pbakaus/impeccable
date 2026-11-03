@@ -14,6 +14,9 @@ const PORT_NORM = [
   ['Stopped live server on port \\d+\\.', 'g', 'Stopped live server on port <PORT>.'],
 ];
 
+const CSP_UNKNOWN_REFERENCE_HTML = '<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv="Content-Security-Policy" content="img-src https://a.example/?a&b; script-src \'self\'" />\n</head>\n<body>\n<h1>Hi</h1>\n</body>\n</html>\n';
+const CSP_QUOTE_STYLES_HTML = '<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv="Content-Security-Policy" content=\'script-src &#39;self&#39; https://a.example; object-src &#x27;none&#x27;\' />\n<meta http-equiv="Content-Security-Policy" content="script-src https://example.com/a~" />\n</head>\n<body>\n<h1>Hi</h1>\n</body>\n</html>\n';
+
 export default [
   // --- live.mjs (boot) ---
   { id: 'live-help', verb: 'live', workspace: 'live-html', args: ['--help'] },
@@ -55,6 +58,11 @@ export default [
     id: 'live-boot-full-cycle', verb: 'live', workspace: 'live-html', files: [...F, 'index.html', 'public/**'], normalize: PORT_NORM,
     steps: [{ verb: 'live' }, { verb: 'live-inject', args: ['--check'] }, { verb: 'live-server', args: ['stop'] }],
   },
+  {
+    id: 'live-server-background-static-subdir', verb: 'live-server', workspace: 'live-workspaces', cwd: 'static-mock', normalize: PORT_NORM,
+    setup: (ws) => { fakeGit(ws); rm(ws, 'apps/admin'); write(ws, 'static-mock/index.html', '<!doctype html><title>mock</title><main><h1>Mock</h1></main>\n'); },
+    steps: [{ args: ['--background'] }, { args: ['stop', '--keep-inject'] }],
+  },
 
   // --- live-inject.mjs ---
   { id: 'live-inject-help', verb: 'live-inject', workspace: 'live-html', args: ['--help'] },
@@ -88,6 +96,12 @@ export default [
     setup: (ws) => write(ws, 'index.html', '<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'">\n</head>\n<body>\n<h1 class="hero-title">Hi</h1>\n</body>\n</html>\n'),
     args: ['--port', '8412', '--token', 't'],
   },
+  // Issue #1125: a single-quoted content attribute with entity-encoded quotes, and a policy whose base64 marker holds `+`. The first case pins the patched file; the second pins that remove restores it byte for byte.
+  { id: 'live-inject-csp-meta-quote-styles', verb: 'live-inject', workspace: 'live-html', files: [...F, 'index.html'], setup: (ws) => write(ws, 'index.html', CSP_QUOTE_STYLES_HTML), args: ['--port', '8412', '--token', 't'] },
+  { id: 'live-inject-csp-meta-quote-styles-remove', verb: 'live-inject', workspace: 'live-html', files: [...F, 'index.html'], setup: (ws) => write(ws, 'index.html', CSP_QUOTE_STYLES_HTML), steps: [{ args: ['--port', '8412', '--token', 't'] }, { args: ['--remove'] }] },
+  // `&b;` is not an HTML named reference, so its `;` ends img-src: blob: joins img-src and the existing script-src gains the origin, with no second script-src. The second case pins the byte-identical remove.
+  { id: 'live-inject-csp-meta-unknown-reference', verb: 'live-inject', workspace: 'live-html', files: [...F, 'index.html'], setup: (ws) => write(ws, 'index.html', CSP_UNKNOWN_REFERENCE_HTML), args: ['--port', '8412', '--token', 't'] },
+  { id: 'live-inject-csp-meta-unknown-reference-remove', verb: 'live-inject', workspace: 'live-html', files: [...F, 'index.html'], setup: (ws) => write(ws, 'index.html', CSP_UNKNOWN_REFERENCE_HTML), steps: [{ args: ['--port', '8412', '--token', 't'] }, { args: ['--remove'] }] },
   { id: 'live-inject-next-jsx', verb: 'live-inject', workspace: 'live-next', files: [...F, 'app/**'], steps: [{ args: ['--port', '8412', '--token', 't'] }, { args: ['--remove'] }] },
   { id: 'live-inject-astro-inline', verb: 'live-inject', workspace: 'live-astro', files: [...F, 'src/**'], steps: [{ args: ['--port', '8412', '--token', 't'] }, { args: ['--remove'] }] },
   { id: 'live-inject-sveltekit-adapter', verb: 'live-inject', workspace: 'live-sveltekit', files: [...F, 'src/**'], steps: [{ args: ['--port', '8412', '--token', 't'] }, { args: ['--port', '8412', '--token', 't'] }, { args: ['--remove'] }, { args: ['--remove'] }] },

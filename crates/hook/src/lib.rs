@@ -13,7 +13,9 @@
 pub mod admin;
 pub mod before_edit;
 pub mod hook;
+pub mod hook_claim;
 pub mod hook_lib;
+pub mod hook_sessions;
 mod build_completion;
 mod stop_baseline;
 pub mod util;
@@ -30,7 +32,7 @@ fn runtime<'a>(io: &Io, html: &'a dyn HtmlEngine) -> Runtime<'a> {
         cwd,
         io.env.clone(),
         provider.command,
-        &provider.self_cmd,
+        &provider.self_raw,
         html,
     )
 }
@@ -42,7 +44,8 @@ pub fn run_hook(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
     hook::run(&rt, &stdin, io)
 }
 
-/// `impeccable hook-before-edit` (Cursor preToolUse gate). Exit 0.
+/// `impeccable hook-before-edit` (the retired Cursor preToolUse gate, kept
+/// for manifests not yet migrated to the post-edit hook). Exit 0.
 pub fn run_hook_before_edit(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
     let stdin = io.stdin().to_string();
     let rt = runtime(io, html);

@@ -74,6 +74,24 @@ pub fn holds_only_phrasing(dom: &dyn Dom, el: ElId) -> bool {
         .all(|c| paints_nothing(dom, c) || (is_inline_phrasing(dom, c) && holds_only_phrasing(dom, c)))
 }
 
+/// The children of `el` that set their own lines: a box laid out at block
+/// level (a nested list under a list item's own words, a `<p>` inside a
+/// cell). An inline-level box (`inline-flex`, `inline-block`) sits on one of
+/// `el`'s lines and is not one, and a box whose display the capture did not
+/// record is not counted.
+pub fn block_children(dom: &dyn Dom, el: ElId) -> Vec<ElId> {
+    dom.children(el)
+        .into_iter()
+        .filter(|&c| {
+            let display = dom.style(c, "display");
+            !paints_nothing(dom, c)
+                && !display.is_empty()
+                && !display.starts_with("inline")
+                && !matches!(display.as_str(), "contents" | "ruby" | "ruby-text")
+        })
+        .collect()
+}
+
 fn usable(r: &Rect) -> bool {
     r.all_finite() && r.width > 0.0 && r.height > 0.0
 }
@@ -214,18 +232,25 @@ pub fn line_pitch_px(dom: &dyn Dom, el: ElId, own: f64) -> f64 {
 pub fn scrolling_ancestor_cuts(dom: &dyn Dom, el: ElId, text: &Rect) -> bool {
     let root = dom.document_element();
     let body = dom.body();
-    let mut cur = dom.parent(el);
+    // The flat tree: a component that slots its items into a scroller of its
+    // own shadow tree (ibm.com's `c4d-cta-block-item-row`, whose
+    // `div.scroll-container` scrolls the third card into view) scrolls them
+    // as surely as a light-DOM parent would.
+    let mut cur = dom.flat_parent(el);
     while let Some(p) = cur {
         if Some(p) == root || Some(p) == body {
             break;
         }
-        if scrolls_x(dom, p) || moves_a_track(dom, el, p) {
+        // A moved track is looked for on the light tree between `el` and
+        // the clip, so only a clip on that tree is asked.
+        let light = || std::iter::successors(dom.parent(el), |a| dom.parent(*a)).any(|a| a == p);
+        if scrolls_x(dom, p) || (light() && moves_a_track(dom, el, p)) {
             let cr = dom.rect(p);
             if cr.all_finite() && (text.left < cr.left - 1.0 || text.right > cr.right + 1.0) {
                 return true;
             }
         }
-        cur = dom.parent(p);
+        cur = dom.flat_parent(p);
     }
     false
 }
@@ -277,28 +302,42 @@ pub fn rides_a_running_track(dom: &dyn Dom, el: ElId) -> bool {
         if Some(clip) == root || Some(clip) == body {
             break;
         }
-        if matches!(overflow_x(dom, clip).as_str(), "hidden" | "clip") {
-            let client = dom.client_width(clip);
-            let mut inner = dom.parent(el);
-            while let Some(t) = inner {
-                if t == clip {
-                    break;
-                }
-                let content = dom.scroll_width(t);
-                if client.is_finite()
-                    && client > 0.0
-                    && content.is_finite()
-                    && content > client + 1.0
-                    && is_transformed(dom, t)
-                    && runs_endless_animation(dom, t)
-                    && holds_row(dom, t)
-                {
-                    return true;
-                }
-                inner = dom.parent(t);
-            }
+        if runs_a_track_inside(dom, el, clip) {
+            return true;
         }
         cur = dom.parent(clip);
+    }
+    false
+}
+
+/// Whether `clip`, a box that hides its horizontal overflow, holds a track
+/// that is moving at capture and carries `el`: a box between the two whose
+/// content runs past `clip`'s width, which a running, endlessly repeating CSS
+/// animation transforms and which lays out a row ([`rides_a_running_track`]
+/// for one clip).
+pub(crate) fn runs_a_track_inside(dom: &dyn Dom, el: ElId, clip: ElId) -> bool {
+    if !matches!(overflow_x(dom, clip).as_str(), "hidden" | "clip") {
+        return false;
+    }
+    let client = dom.client_width(clip);
+    if !(client.is_finite() && client > 0.0) {
+        return false;
+    }
+    let mut inner = dom.parent(el);
+    while let Some(t) = inner {
+        if t == clip {
+            break;
+        }
+        let content = dom.scroll_width(t);
+        if content.is_finite()
+            && content > client + 1.0
+            && is_transformed(dom, t)
+            && runs_endless_animation(dom, t)
+            && holds_row(dom, t)
+        {
+            return true;
+        }
+        inner = dom.parent(t);
     }
     false
 }
@@ -315,11 +354,16 @@ fn runs_endless_animation(dom: &dyn Dom, el: ElId) -> bool {
     if counts.is_empty() {
         return false;
     }
+    // A paused animation (`animation-play-state: paused`, a pause control or
+    // a reduced-motion rule) moves nothing before the capture.
+    let states_raw = dom.style(el, "animationPlayState");
+    let states: Vec<&str> = states_raw.split(',').map(js::trim).collect();
     dom.style(el, "animationName").split(',').enumerate().any(|(i, name)| {
         let name = js::trim(name);
         !name.is_empty()
             && name != "none"
             && counts[i % counts.len()] == "infinite"
+            && states[i % states.len()] != "paused"
             && dom.keyframes(name).is_none_or(|frames| {
                 frames.iter().any(|f| {
                     f.decls.iter().any(|(p, v)| match p.strip_prefix("-webkit-").unwrap_or(p) {
@@ -367,7 +411,7 @@ fn is_transformed(dom: &dyn Dom, el: ElId) -> bool {
 
 /// Whether two consecutive children with area sit side by side: one starts
 /// where the other ends, on overlapping lines.
-fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
     let boxes: Vec<Rect> = dom
         .children(el)
         .into_iter()
@@ -461,6 +505,10 @@ mod tests {
         assert!(runs_endless_animation(&d, track), "the translate property");
         d.keyframes.remove("beat");
         assert!(runs_endless_animation(&d, track), "unread keyframes");
+        d.set_style(track, "animationPlayState", "paused");
+        assert!(!runs_endless_animation(&d, track), "a paused track");
+        d.set_style(track, "animationPlayState", "running");
+        assert!(runs_endless_animation(&d, track), "a running track");
     }
 
     #[test]

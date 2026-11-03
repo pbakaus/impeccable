@@ -181,10 +181,11 @@ pub fn vc_css_url_source_point(node: u32, el: u32, intrinsic_w: f64, intrinsic_h
     }
 }
 
-/// `{ ...sample, method: 'canvas-background-image' }` when sampled.
+/// `{ ...sample, method: 'canvas-background-image' }` when sampled, laid
+/// over `node`'s own `background-color` where the pixel is translucent.
 #[wasm_bindgen]
-pub fn vc_css_url_finish(sample_json: &str) -> String {
-    out(&vc::css_url_finish(parse(sample_json)))
+pub fn vc_css_url_finish(node: u32, sample_json: &str) -> String {
+    out(&with_dom(|dom| vc::css_url_finish(dom, node, parse(sample_json))))
 }
 
 /// A sampled color that ends the walk (no compositing beneath).

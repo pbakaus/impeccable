@@ -13,6 +13,7 @@ use crate::live_http::{
     read_request_deadline, send_response, set_header_timeout, watch_close, Request, Response,
     StreamResponse, Ticket, Turnstile, READ_REQUEST_DEADLINE,
 };
+use crate::manifests::RootsManifest;
 use crate::manual_edits::apply as manual_apply;
 use crate::manual_edits::buffer as manual_buffer;
 use crate::paths::{
@@ -81,6 +82,17 @@ Endpoints:
   /status              Durable recovery status (token-protected)
   /health              Health check";
 
+/// The detached child's argv. `--target` was consumed by `enter_live_root`;
+/// forward the resolved root so the child re-enters it instead of
+/// re-resolving from its new cwd (#1086).
+fn background_child_args(argv: &[String], roots: Option<&RootsManifest>) -> Vec<String> {
+    argv.iter()
+        .filter(|a| *a != "--background")
+        .cloned()
+        .chain(roots.map(|r| format!("--target={}", r.app_root)))
+        .collect()
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
     let roots = match enter_live_root(&mut argv, io) {
@@ -100,11 +112,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
 
     if argv.iter().any(|a| a == "--background") {
-        let child_args: Vec<String> = argv
-            .iter()
-            .filter(|a| *a != "--background")
-            .cloned()
-            .collect();
+        let child_args = background_child_args(&argv, roots.as_ref());
         return match crate::server::spawn_detached_with_args(&cwd, &env, &child_args) {
             Some(info) => {
                 println(io, &serde_json::to_string(&info).unwrap_or_default());
@@ -177,6 +185,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             manual_edit_activity: None,
             next_manual_edit_seq: 1,
             pending_apply_deferreds: Vec::new(),
+            commits_in_progress: Vec::new(),
             last_poll_at: 0,
             timed_out_apply_ids: Vec::new(),
             next_poll_id: 1,
@@ -458,7 +467,11 @@ fn stop(argv: &[String], cwd: &str, io: &mut Io) -> i32 {
         Some(port) => println(io, &format!("Stopped live server on port {}.", port)),
         None => println(io, "No running live server found."),
     }
-    if !keep_inject {
+    // No live config means nothing was ever injected (inject reads its target
+    // files from that config), so there is no tag to remove and nothing to
+    // report (#951).
+    let injectable = std::path::Path::new(&crate::paths::resolve_live_config_path(cwd, &env)).exists();
+    if !keep_inject && injectable {
         // JS: execFileSync(node, [live-inject.mjs, '--remove'], { cwd })
         // with the child's stderr inherited.
         let (mut child_io, captured) = Io::captured("", std::path::PathBuf::from(cwd), env.clone());
@@ -2189,6 +2202,59 @@ fn handle_manual_edit_route(
                 return;
             }
             let page_url = req.query_get("pageUrl").map(String::from);
+            let op_ref = req
+                .query_get("ref")
+                .map(String::from)
+                .filter(|r| !r.is_empty());
+            // `ref` scopes the discard to one staged op on the page (the
+            // browser's Undo for a removal). It never rolls a transaction
+            // back, so it refuses while an Apply owns the page's edits: a
+            // second tab could otherwise undo an op the agent is applying.
+            if let (Some(pu), Some(r)) = (page_url.as_deref(), op_ref.as_deref()) {
+                let mut st = lock(shared);
+                if manual_apply::apply_in_flight(&st, pu) {
+                    drop(st);
+                    respond(
+                        stream,
+                        cors,
+                        json_res(
+                            409,
+                            json!({ "error": "manual_edit_apply_in_flight", "pageUrl": pu, "ref": r }),
+                        ),
+                    );
+                    return;
+                }
+                let (entries, discarded) =
+                    match manual_buffer::remove_ops_by_ref(&cwd, &env, pu, r) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            drop(st);
+                            respond(
+                                stream,
+                                cors,
+                                json_res(500, json!({ "error": "discard_failed", "message": e })),
+                            );
+                            return;
+                        }
+                    };
+                let (total, per_page) = manual_buffer::count_by_page(&cwd, &env);
+                let mut details = Map::new();
+                details.insert("pageUrl".into(), json!(pu));
+                details.insert("ref".into(), json!(r));
+                details.insert("discarded".into(), json!(discarded));
+                details.insert("totalCount".into(), json!(total));
+                st.record_manual_edit_activity("manual_edit_discarded", details);
+                drop(st);
+                respond(
+                    stream,
+                    cors,
+                    json_res(
+                        200,
+                        json!({ "discarded": discarded, "entries": entries, "canceledApplyEvents": [], "totalCount": total, "perPage": per_page }),
+                    ),
+                );
+                return;
+            }
             let mut st = lock(shared);
             let buffer = manual_buffer::read_buffer(&cwd, &env);
             let transaction_rollback = manual_apply::rollback_transaction(
@@ -2385,6 +2451,9 @@ fn handle_manual_edit_commit(
         details.insert(k, v);
     }
     st.record_manual_edit_activity("manual_edit_commit_started", details);
+    // Listed before the lock drops, so a ref-scoped discard cannot slip in
+    // while the evidence build below reads the buffer outside the lock.
+    st.begin_commit(page_url.as_deref());
     drop(st);
     // The commit itself waits on an agent (JS: awaited); later requests must
     // not queue behind it.
@@ -2517,6 +2586,7 @@ fn handle_manual_edit_commit(
                     .unwrap_or(Value::Null),
             );
             st.record_manual_edit_activity("manual_edit_commit_failed", details);
+            st.end_commit(page_url.as_deref());
             // finally: clear transaction (result undefined -> not kept)
             if let Some(t) = &transaction {
                 manual_apply::clear_manual_apply_transaction(
@@ -2559,6 +2629,9 @@ fn handle_manual_edit_commit(
         .map(|s| json!(s))
         .unwrap_or(Value::Null);
     let mut st = lock(shared);
+    // The queue, the deferreds, or the transaction on disk carry the
+    // in-flight signal from here on.
+    st.end_commit(page_url.as_deref());
     if result.get("needsManualDecision") == Some(&Value::Bool(true)) {
         let mut details = Map::new();
         details.insert("pageUrl".into(), page_url_val.clone());
@@ -2982,5 +3055,44 @@ mod content_type_tests {
         ] {
             assert!(releases_ticket_up_front(path, "GET"), "{path}");
         }
+    }
+}
+
+#[cfg(test)]
+mod background_tests {
+    use super::*;
+
+    // #1086: from a static subdir of a workspace the parent falls back to the
+    // repo root, where a child resolving on its own would pick the sibling
+    // app. The child must land on the parent's root.
+    #[test]
+    fn background_child_re_enters_the_parents_root() {
+        let ws = std::env::temp_dir().join(format!("impeccable-bg-roots-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&ws);
+        for (rel, body) in [
+            ("package.json", "{ \"name\": \"repro-root\", \"private\": true }\n"),
+            ("pnpm-workspace.yaml", "packages:\n  - \"apps/*\"\n"),
+            ("apps/web/package.json", "{ \"name\": \"web\", \"private\": true }\n"),
+            ("apps/web/index.html", "<!doctype html><title>web</title>\n"),
+            ("static-mock/index.html", "<!doctype html><title>mock</title>\n"),
+        ] {
+            let abs = ws.join(rel);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(abs, body).unwrap();
+        }
+        std::fs::create_dir_all(ws.join(".git")).unwrap();
+        let env: Env = [("HOME".to_string(), "/nonexistent-home".to_string())]
+            .into_iter()
+            .collect();
+
+        let (mut parent, _) = Io::captured("", ws.join("static-mock"), env.clone());
+        let mut argv = vec!["--background".to_string()];
+        let roots = enter_live_root(&mut argv, &mut parent).unwrap();
+
+        let (mut child, _) = Io::captured("", parent.cwd.clone(), env);
+        let mut child_argv = background_child_args(&argv, roots.as_ref());
+        enter_live_root(&mut child_argv, &mut child).unwrap();
+        let _ = std::fs::remove_dir_all(&ws);
+        assert_eq!(child.cwd, parent.cwd);
     }
 }

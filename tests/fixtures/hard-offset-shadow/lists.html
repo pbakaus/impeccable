@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shadow list validity regression</title>
+<style>
+body { margin:32px; color:#222; background:#fff; font:16px/1.5 Georgia,serif; }
+main { display:grid; grid-template-columns:280px 280px; gap:40px; }
+.card { width:220px; height:96px; padding:12px; margin:24px 0; background:#fff; }
+h1 { font-size:28px; } h2 { font-size:22px; } h3 { font-size:18px; margin:0; }
+#flag-0 { box-shadow:inset 0 0 1px black, 4px 4px black; }
+#flag-1 { box-shadow:4px 4px black, 0 0 1px black; }
+#flag-2 { box-shadow:0 0 transparent, 4px 4px black; }
+#flag-3 { box-shadow:0 0 0 -1px black, 4px 4px black; }
+#pass-0 { box-shadow:0 0 -1px black, 4px 4px black; }
+#pass-1 { box-shadow:4px 4px black, 0 0 -1px black; }
+#pass-2 { box-shadow:4px black, 4px 4px black; }
+#pass-3 { box-shadow:4px 4px black, 4px 4px red blue; }
+#pass-4 { box-shadow:4px 4px black,; }
+#pass-5 { box-shadow:,4px 4px black; }
+#pass-6 { box-shadow:4px 4px black, none; }
+#pass-7 { box-shadow:inset 0 0 -1px black, 4px 4px black; }
+</style></head><body><h1>Whole shadow declarations</h1><main><section><h2>Should flag</h2>
+<div class="card" id="flag-0"><h3>Inset plus outer</h3></div>
+<div class="card" id="flag-1"><h3>Outer plus soft</h3></div>
+<div class="card" id="flag-2"><h3>Transparent plus outer</h3></div>
+<div class="card" id="flag-3"><h3>Negative spread plus outer</h3></div>
+</section><section><h2>Should pass</h2>
+<div class="card" id="pass-0"><h3>Negative blur first</h3></div>
+<div class="card" id="pass-1"><h3>Negative blur last</h3></div>
+<div class="card" id="pass-2"><h3>Missing offset</h3></div>
+<div class="card" id="pass-3"><h3>Duplicate paint</h3></div>
+<div class="card" id="pass-4"><h3>Trailing comma</h3></div>
+<div class="card" id="pass-5"><h3>Leading comma</h3></div>
+<div class="card" id="pass-6"><h3>None inside list</h3></div>
+<div class="card" id="pass-7"><h3>Invalid inset layer</h3></div>
+</section></main></body></html>

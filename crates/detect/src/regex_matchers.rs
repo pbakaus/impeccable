@@ -7,7 +7,8 @@ use impeccable_core::checks::css_scan::{
     CssHostIndex,
 };
 use impeccable_core::checks::rules::{
-    find_gray_on_color_bg, find_solid_chromatic_bg, is_near_black_neutral_class, DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
+    find_gray_on_color_bg, find_solid_chromatic_bg, is_near_black_neutral_class, is_radius_property,
+    DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
 };
 use impeccable_core::color::is_neutral_color;
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
@@ -863,6 +864,26 @@ fn brace_scope_corners(
     index: usize,
     base: DeclaredCorners,
 ) -> DeclaredCorners {
+    let (chunks, unknown) = brace_scope_statements(source, i, index);
+    let mut corners = if unknown {
+        DeclaredCorners::unknown()
+    } else {
+        base
+    };
+    for (statements, theme_scale) in chunks.iter().rev() {
+        apply_statements(&mut corners, statements, *theme_scale);
+    }
+    corners
+}
+
+/// The statement chunks [`brace_scope_corners`] reads, innermost scope first,
+/// each with whether it is a theme-scale object, and whether the walk could
+/// not name the element.
+fn brace_scope_statements(
+    source: &SourceText,
+    i: usize,
+    index: usize,
+) -> (Vec<(Vec<String>, bool)>, bool) {
     let text = source.text.as_str();
     let b = text.as_bytes();
     let (mut start, mut end, mut open) = block_bounds(b, source.line_starts[i] + index);
@@ -898,19 +919,11 @@ fn brace_scope_corners(
         }
         (start, end, open) = block_bounds(b, selector_start);
     }
-    let mut corners = if unknown {
-        DeclaredCorners::unknown()
-    } else {
-        base
-    };
-    for &(s, e, object) in chunks.iter().rev() {
-        apply_statements(
-            &mut corners,
-            &split_statements(&text[s..e], object),
-            object && theme_scale,
-        );
-    }
-    corners
+    let chunks = chunks
+        .iter()
+        .map(|&(s, e, object)| (split_statements(&text[s..e], object), object && theme_scale))
+        .collect();
+    (chunks, unknown)
 }
 
 /// The indentation-syntax Sass reading of [`brace_scope_corners`]: the lines
@@ -921,6 +934,21 @@ fn brace_scope_corners(
 /// Otherwise the statements apply over `base`: the cascade's `0`, or unknown
 /// corners to learn which ones the scope declares.
 fn sass_scope_corners(source: &SourceText, i: usize, base: DeclaredCorners) -> DeclaredCorners {
+    let (chunks, unknown) = sass_scope_statements(source, i);
+    let mut corners = if unknown {
+        DeclaredCorners::unknown()
+    } else {
+        base
+    };
+    for statements in chunks.iter().rev() {
+        apply_statements(&mut corners, statements, false);
+    }
+    corners
+}
+
+/// The statement chunks [`sass_scope_corners`] reads, innermost scope first,
+/// and whether an interpolated parent selector made the scope unknown.
+fn sass_scope_statements(source: &SourceText, i: usize) -> (Vec<Vec<String>>, bool) {
     let indent = |l: &str| l.len() - l.trim_start().len();
     let blank = |l: &str| l.trim().is_empty();
     let mut chunks: Vec<Vec<String>> = Vec::new();
@@ -981,15 +1009,7 @@ fn sass_scope_corners(source: &SourceText, i: usize, base: DeclaredCorners) -> D
         }
         at = pj;
     }
-    let mut corners = if unknown {
-        DeclaredCorners::unknown()
-    } else {
-        base
-    };
-    for statements in chunks.iter().rev() {
-        apply_statements(&mut corners, statements, false);
-    }
-    corners
+    (chunks, unknown)
 }
 
 /// Whether a `side-tab` match is the stripe-child form: a narrow coloured
@@ -1087,6 +1107,107 @@ pub fn side_tab_known_square_in_sheet<'s>(
     index
         .get_or_init(|| CssHostIndex::new(index_text))
         .is_declaration_known_square(source.offset(i, m.index), side, sheet)
+}
+
+/// Whether some statement declares a radius. A statement that might bring
+/// one in unseen (a mixin, `@apply`) is not one.
+fn declares_radius(statements: &[String]) -> bool {
+    statements.iter().any(|s| {
+        !is_unseen_declaration_source(s)
+            && split_declaration(s).is_some_and(|(prop, _)| is_radius_property(&prop))
+    })
+}
+
+/// The text a stylesheet index is built on for the match at `at` on line `i`:
+/// the source itself in stylesheet text, a component file's blanked `<style>`
+/// text (`style_text`) when the match sits inside one, `None` in markup.
+pub fn style_index_text<'s>(
+    block_context: bool,
+    source: &'s SourceText,
+    i: usize,
+    at: usize,
+    style_text: Option<&'s (String, Vec<(usize, usize)>)>,
+) -> Option<&'s str> {
+    if block_context {
+        return Some(source.text());
+    }
+    let pos = source.offset(i, at);
+    let (text, spans) = style_text?;
+    spans
+        .iter()
+        .any(|(s, e)| *s <= pos && pos <= *e)
+        .then_some(text.as_str())
+}
+
+/// What a file contributes to [`Scope::element_declares_radius`]: the pieces
+/// to read a match's own element, built only when a matcher asks.
+pub struct ElementSource<'a, 's> {
+    pub lines: &'a [&'a str],
+    pub source: &'s once_cell::unsync::OnceCell<SourceText>,
+    pub index: &'a once_cell::unsync::OnceCell<CssHostIndex<'s>>,
+    pub i: usize,
+    pub block_context: bool,
+    pub sass: bool,
+    pub style_text: Option<&'s (String, Vec<(usize, usize)>)>,
+}
+
+/// What a [`Matcher`]'s `test` reads: dereferenced it is the match's context
+/// text, the line or in stylesheet text the lines around it, and
+/// [`element_declares_radius`](Self::element_declares_radius) answers from
+/// the stylesheet instead of the distance between lines.
+pub struct Scope<'a, 's> {
+    text: &'a str,
+    element: Option<ElementSource<'a, 's>>,
+}
+
+impl<'a, 's> Scope<'a, 's> {
+    /// A scope over markup text alone.
+    #[cfg(test)]
+    pub fn line(text: &'a str) -> Self {
+        Scope { text, element: None }
+    }
+
+    pub fn in_file(text: &'a str, element: ElementSource<'a, 's>) -> Self {
+        Scope {
+            text,
+            element: Some(element),
+        }
+    }
+
+    /// Whether a radius declaration styles the match's own element, or `None`
+    /// where the match is in markup and has no stylesheet to read. Braces
+    /// syntax reads the match's own rule scope, so a radius on a
+    /// pseudo-element rule that holds the accent counts, and asks the
+    /// stylesheet's [`CssHostIndex`] for the rules tied to the match's box,
+    /// the way side-tab does. Indented Sass reads its own scope. A scope the
+    /// reader cannot see through asserts nothing.
+    pub fn element_declares_radius(&self, m: &MatchCtx) -> Option<bool> {
+        let e = self.element.as_ref()?;
+        let source = e.source.get_or_init(|| SourceText::new(e.lines));
+        let index_text = style_index_text(e.block_context, source, e.i, m.index, e.style_text)?;
+        if e.sass {
+            let (chunks, _) = sass_scope_statements(source, e.i);
+            return Some(chunks.iter().any(|c| declares_radius(c)));
+        }
+        let index = e.index.get_or_init(|| CssHostIndex::new(index_text));
+        let pos = source.offset(e.i, m.index);
+        // With no brace or template quote before it the text around the match
+        // is not one scope; the index holds a template's top-level declarations.
+        let in_block = block_bounds(source.text().as_bytes(), pos).0 > 0;
+        let own_scope = in_block && {
+            let (chunks, _) = brace_scope_statements(source, e.i, m.index);
+            chunks.iter().any(|(statements, _)| declares_radius(statements))
+        };
+        Some(own_scope || index.declaration_declares_radius(pos))
+    }
+}
+
+impl std::ops::Deref for Scope<'_, '_> {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.text
+    }
 }
 
 re!(MARKUP_TAG_NAME_RE, r"^<([A-Za-z][-\w.:]*)".to_string());
@@ -1258,7 +1379,7 @@ pub struct Matcher {
     pub id: &'static str,
     /// Match every occurrence on one line, in order.
     pub find_all: fn(&str) -> Vec<MatchCtx>,
-    pub test: fn(&MatchCtx, &str) -> bool,
+    pub test: fn(&MatchCtx, &Scope) -> bool,
     pub fmt: fn(&MatchCtx, &str) -> String,
 }
 
@@ -1630,46 +1751,731 @@ re!(
     CUBIC_BEZIER_RE,
     format!("cubic-bezier\\({WS}*([0-9.-]+){WS}*,{WS}*([0-9.-]+){WS}*,{WS}*([0-9.-]+){WS}*,{WS}*([0-9.-]+){WS}*\\)")
 );
-re!(
-    BROKEN_IMG_SRC_RE,
-    format!(
-        "<{img}{B}[^>]*?{B}{src}{WS}*={WS}*(?:\"\"|''|\"{WS}+\"|'{WS}+'|\"#\"|'#')",
-        img = ci("img"),
-        src = ci("src")
-    )
-);
-re!(IMG_OPEN_RE, format!("<{}{B}", ci("img")));
-re!(SRC_ATTR_RE, format!("{B}{}{WS}*=", ci("src")));
+/// Read attributes, not substrings of an attribute value or expression.
+/// Dynamic bindings/spreads cannot establish a missing source statically.
+pub(crate) fn image_source_is_missing(tag: &str, ext: &str) -> bool {
+    let shorthand = matches!(ext, ".svelte" | ".astro");
+    let vue = ext == ".vue";
+    let b = tag.as_bytes();
+    let mut p = 4; // <img
+    while p < b.len() {
+        while p < b.len() && (b[p].is_ascii_whitespace() || b[p] == b'/') { p += 1; }
+        if p >= b.len() || b[p] == b'>' { break; }
+        if b[p] == b'{' {
+            let Some(close) = matching_close(b, p) else { return false; };
+            let expression = tag[p + 1..close].trim();
+            if shorthand && (matches!(expression, "src" | "srcset") || expression.starts_with("...")) {
+                return false;
+            }
+            // JSX spreads also leave the source unknown.
+            if matches!(ext, ".jsx" | ".tsx" | ".js") && expression.starts_with("...") {
+                return false;
+            }
+            p = close + 1;
+            continue;
+        }
+        let start = p;
+        while p < b.len() && !b[p].is_ascii_whitespace() && !matches!(b[p], b'=' | b'>' | b'/') { p += 1; }
+        let name = &tag[start..p];
+        while p < b.len() && b[p].is_ascii_whitespace() { p += 1; }
+        let source = names_image_source(name);
+        let directive = name.contains(':');
+        if vue && ((source && directive) || name == "v-bind") {
+            return false;
+        }
+        if p >= b.len() || b[p] != b'=' {
+            // Svelte `bind:src` alone is shorthand for `bind:src={src}`;
+            // a bare `src` is still empty.
+            if source && directive { return false; }
+            continue;
+        }
+        p += 1;
+        while p < b.len() && b[p].is_ascii_whitespace() { p += 1; }
+        let value_start = p;
+        let value = if p < b.len() && matches!(b[p], b'\'' | b'"') {
+            let quote = b[p];
+            p += 1;
+            let start = p;
+            while p < b.len() && b[p] != quote { p += 1; }
+            let value = &tag[start..p];
+            p = (p + 1).min(b.len());
+            Some(value)
+        } else if p < b.len() && b[p] == b'{' {
+            p = matching_close(b, p).map(|close| close + 1).unwrap_or(b.len());
+            None
+        } else {
+            while p < b.len() && !b[p].is_ascii_whitespace() && b[p] != b'>' { p += 1; }
+            Some(&tag[value_start..p])
+        };
+        // Any source with a value, or bound to an expression, is present.
+        let empty = value.is_some_and(|v| v.trim().is_empty() || v.trim() == "#");
+        if source && !empty {
+            return false;
+        }
+    }
+    true
+}
 
-/// Hand-written port of `/<img\b(?:(?!\bsrc\s*=)[^>])*>/gi`.
-fn find_img_without_src(line: &str) -> Vec<MatchCtx> {
-    let mut out = Vec::new();
-    let mut pos = 0;
-    while let Some(m) = IMG_OPEN_RE.find_at(line, pos) {
-        let run_start = m.end();
-        let gt = line[run_start..].find('>').map(|i| i + run_start);
-        match gt {
-            Some(gt) => {
-                let has_src = SRC_ATTR_RE
-                    .find_at(line, run_start)
-                    .map(|s| s.start() < gt)
-                    .unwrap_or(false);
-                if has_src {
-                    pos = m.end();
+/// `src` or `srcset` (an `<img>` needs either), a binding of one (`:src`,
+/// `v-bind:src`, Svelte `bind:src`, Vue modifiers, Angular `[src]` and
+/// `[attr.src]`), Angular's `ngSrc`, or an alias such as lazy loading's
+/// `data-src`, which the original `\bsrc\s*=` matcher accepted.
+pub fn names_image_source(name: &str) -> bool {
+    let is_source = |n: &str| {
+        n.eq_ignore_ascii_case("src")
+            || n.eq_ignore_ascii_case("srcset")
+            || n.eq_ignore_ascii_case("ngSrc")
+    };
+    let name = match name.strip_prefix('[').and_then(|n| n.strip_suffix(']')) {
+        Some(inner) => inner.strip_prefix("attr.").unwrap_or(inner),
+        None => name,
+    };
+    let base = name.split('.').next().unwrap_or(name);
+    is_source(base)
+        || base
+            .rsplit_once(|c| c == ':' || c == '-')
+            .is_some_and(|(_, last)| is_source(last))
+}
+
+/// How far a tag may run past its `<img`, so an unclosed one costs little.
+const MAX_IMG_TAG_BYTES: usize = 8 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MarkupContext {
+    Text,
+    Tag,
+    AttributeValue,
+    Expression,
+    Comment,
+    RawText,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct MarkupScanOptions {
+    /// Attribute strings take backslash escapes (JSX).
+    pub jsx: bool,
+    /// `{...}` opens a template expression.
+    pub expressions: bool,
+    /// Expressions may hold elements whose children are text (JSX, Astro).
+    pub nested_tags: bool,
+    pub raw_text: bool,
+    pub markup: bool,
+}
+
+/// One scan of a source file, retaining the lexical context at every byte and
+/// the bounded closing offset of each real `<img` start tag.
+pub(crate) struct MarkupContextIndex {
+    context: Vec<MarkupContext>,
+    images: Vec<(usize, usize)>,
+}
+
+enum MarkupFrame {
+    Text,
+    /// An element opened inside an expression: its children are text until
+    /// the matching closing tag (an empty name is a fragment).
+    Children {
+        name_start: usize,
+        name_end: usize,
+    },
+    Tag {
+        start: usize,
+        name_start: usize,
+        name_end: usize,
+        closing: bool,
+        nested: bool,
+        raw_eligible: bool,
+        image_slot: Option<usize>,
+        quote: Option<u8>,
+        escaped: bool,
+        last_non_space: Option<u8>,
+    },
+    Expression {
+        start: usize,
+        depth: usize,
+        quote: Option<u8>,
+        escaped: bool,
+        line_comment: bool,
+        block_comment: bool,
+        regex_can_start: bool,
+        word: Vec<u8>,
+    },
+    RawText(RawTag),
+}
+
+#[derive(Clone, Copy)]
+enum RawTag {
+    Script,
+    Style,
+}
+
+fn void_element(name: &[u8]) -> bool {
+    [
+        b"area".as_slice(),
+        b"base",
+        b"br",
+        b"col",
+        b"embed",
+        b"hr",
+        b"img",
+        b"input",
+        b"link",
+        b"meta",
+        b"source",
+        b"track",
+        b"wbr",
+    ]
+    .iter()
+    .any(|v| name.eq_ignore_ascii_case(v))
+}
+
+fn expression_frame(start: usize, regex_can_start: bool) -> MarkupFrame {
+    MarkupFrame::Expression {
+        start,
+        depth: 1,
+        quote: None,
+        escaped: false,
+        line_comment: false,
+        block_comment: false,
+        regex_can_start,
+        word: Vec::new(),
+    }
+}
+
+/// Open the tag at `p` (already checked by `tag_open`), recording an image
+/// candidate, and return the offset just past its name.
+fn open_tag_frame(
+    b: &[u8],
+    p: usize,
+    (name_start, name_end, closing): (usize, usize, bool),
+    nested: bool,
+    raw_eligible: bool,
+    context: &mut [MarkupContext],
+    images: &mut Vec<(usize, usize)>,
+    stack: &mut Vec<MarkupFrame>,
+) -> usize {
+    mark_range(context, p, name_end, MarkupContext::Tag);
+    let image_slot = (!closing && image_tag_start(b, p)).then(|| {
+        images.push((p, 0));
+        images.len() - 1
+    });
+    stack.push(MarkupFrame::Tag {
+        start: p,
+        name_start,
+        name_end,
+        closing,
+        nested,
+        raw_eligible,
+        image_slot,
+        quote: None,
+        escaped: false,
+        last_non_space: b.get(name_end.wrapping_sub(1)).copied(),
+    });
+    name_end
+}
+
+fn tag_open(b: &[u8], at: usize) -> Option<(usize, usize, bool)> {
+    if b.get(at) != Some(&b'<') {
+        return None;
+    }
+    let mut p = at + 1;
+    let closing = b.get(p) == Some(&b'/');
+    if closing {
+        p += 1;
+    }
+    let name_start = p;
+    if !b.get(p).is_some_and(u8::is_ascii_alphabetic) {
+        return None;
+    }
+    p += 1;
+    while b
+        .get(p)
+        .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b':' | b'_' | b'.'))
+    {
+        p += 1;
+    }
+    Some((name_start, p, closing))
+}
+
+fn starts_with_ascii_case_insensitive(b: &[u8], at: usize, needle: &[u8]) -> bool {
+    b.get(at..at.saturating_add(needle.len()))
+        .is_some_and(|part| part.eq_ignore_ascii_case(needle))
+}
+
+fn image_tag_start(b: &[u8], at: usize) -> bool {
+    starts_with_ascii_case_insensitive(b, at, b"<img")
+        && b.get(at + 4)
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && *c != b'_')
+}
+
+fn skip_js_regex(b: &[u8], start: usize) -> Option<usize> {
+    let mut p = start + 1;
+    let mut escaped = false;
+    let mut in_class = false;
+    while p < b.len() && !matches!(b[p], b'\n' | b'\r') {
+        match b[p] {
+            b'\\' if !escaped => escaped = true,
+            b'[' if !escaped => in_class = true,
+            b']' if !escaped => in_class = false,
+            b'/' if !escaped && !in_class => {
+                p += 1;
+                while b.get(p).is_some_and(u8::is_ascii_alphabetic) {
+                    p += 1;
+                }
+                return Some(p);
+            }
+            _ => escaped = false,
+        }
+        p += 1;
+    }
+    None
+}
+
+fn regex_prefix_keyword(word: &[u8]) -> bool {
+    matches!(
+        word,
+        b"return"
+            | b"throw"
+            | b"case"
+            | b"delete"
+            | b"void"
+            | b"typeof"
+            | b"new"
+            | b"in"
+            | b"of"
+            | b"instanceof"
+            | b"yield"
+            | b"await"
+            | b"else"
+    )
+}
+
+fn mark_range(context: &mut [MarkupContext], start: usize, end: usize, kind: MarkupContext) {
+    let len = context.len();
+    context[start.min(len)..end.min(len)].fill(kind);
+}
+
+/// Tokenize markup and template expressions in one forward pass. JS/TS input
+/// arrives with its code literals masked by `mask_js_literals`; template
+/// expressions are scanned here so their strings and comments stay opaque.
+///
+/// A tag or template expression still open `MAX_IMG_TAG_BYTES` past its
+/// opener, or at the end of the file, was never one: the scan resumes just
+/// after the opener in the enclosing mode, so an unclosed quote or brace
+/// cannot hide the rest of the file. Each opener rewinds at most once.
+pub(crate) fn scan_markup_context(text: &str, options: MarkupScanOptions) -> MarkupContextIndex {
+    let b = text.as_bytes();
+    let mut context = vec![MarkupContext::Text; b.len()];
+    if !options.markup {
+        return MarkupContextIndex {
+            context,
+            images: Vec::new(),
+        };
+    }
+
+    let mut images = Vec::new();
+    let mut stack = vec![MarkupFrame::Text];
+    let mut p = 0usize;
+    loop {
+        // JSX arrives with its code literals masked, so a long expression
+        // there (a component body) hides nothing and is not bounded.
+        let opener = match stack.last() {
+            Some(MarkupFrame::Tag { start, .. }) => Some((*start, true)),
+            Some(MarkupFrame::Expression { start, .. }) => Some((*start, !options.jsx)),
+            _ => None,
+        };
+        if let Some((opener, windowed)) = opener {
+            if p >= b.len() || (windowed && p - opener > MAX_IMG_TAG_BYTES) {
+                stack.pop();
+                mark_range(&mut context, opener, p, MarkupContext::Text);
+                images.truncate(images.partition_point(|(start, _)| *start < opener));
+                p = opener + 1;
+                continue;
+            }
+        }
+        if p >= b.len() {
+            break;
+        }
+        match stack.last_mut().expect("markup scan has a root frame") {
+            MarkupFrame::Text | MarkupFrame::Children { .. } => {
+                let children = match stack.last() {
+                    Some(MarkupFrame::Children {
+                        name_start,
+                        name_end,
+                    }) => Some((*name_start, *name_end)),
+                    _ => None,
+                };
+                if b.get(p..p + 4) == Some(b"<!--") {
+                    let end = b[p + 4..]
+                        .windows(3)
+                        .position(|w| w == b"-->")
+                        .map(|i| p + 4 + i + 3)
+                        .unwrap_or(b.len());
+                    mark_range(&mut context, p, end, MarkupContext::Comment);
+                    p = end;
                     continue;
                 }
-                out.push(MatchCtx {
-                    groups: vec![Some(line[m.start()..gt + 1].to_string())],
-                    index: m.start(),
-                });
-                pos = gt + 1;
+                if b[p] == b'<' {
+                    if let Some((start, end)) = children {
+                        if start == end && b.get(p..p + 3) == Some(b"</>") {
+                            mark_range(&mut context, p, p + 3, MarkupContext::Tag);
+                            stack.pop();
+                            p += 3;
+                            continue;
+                        }
+                        if b.get(p..p + 2) == Some(b"<>") {
+                            mark_range(&mut context, p, p + 2, MarkupContext::Tag);
+                            stack.push(MarkupFrame::Children {
+                                name_start: p + 1,
+                                name_end: p + 1,
+                            });
+                            p += 2;
+                            continue;
+                        }
+                    }
+                    if let Some(open) = tag_open(b, p) {
+                        p = open_tag_frame(
+                            b,
+                            p,
+                            open,
+                            children.is_some(),
+                            options.raw_text && children.is_none(),
+                            &mut context,
+                            &mut images,
+                            &mut stack,
+                        );
+                        continue;
+                    }
+                }
+                if options.expressions && b[p] == b'{' {
+                    context[p] = MarkupContext::Expression;
+                    // In Svelte and Vue text, `{/` closes a block (`{/if}`);
+                    // it never opens a regex.
+                    let block_close = !options.nested_tags && b.get(p + 1) == Some(&b'/');
+                    stack.push(expression_frame(p, !block_close));
+                }
+                p += 1;
             }
-            None => {
-                pos = m.end();
+            MarkupFrame::Tag {
+                start,
+                name_start,
+                name_end,
+                closing,
+                nested,
+                raw_eligible,
+                image_slot,
+                quote,
+                escaped,
+                last_non_space,
+            } => {
+                if let Some(q) = *quote {
+                    context[p] = MarkupContext::AttributeValue;
+                    if options.jsx && b[p] == b'\\' && !*escaped {
+                        *escaped = true;
+                    } else {
+                        if b[p] == q && !*escaped {
+                            *quote = None;
+                        }
+                        *escaped = false;
+                    }
+                    p += 1;
+                    continue;
+                }
+                match b[p] {
+                    b'"' | b'\'' => {
+                        context[p] = MarkupContext::AttributeValue;
+                        *quote = Some(b[p]);
+                        *escaped = false;
+                        p += 1;
+                    }
+                    b'{' if options.expressions => {
+                        context[p] = MarkupContext::Expression;
+                        stack.push(expression_frame(p, true));
+                        p += 1;
+                    }
+                    b'>' => {
+                        context[p] = MarkupContext::Tag;
+                        let tag_start = *start;
+                        let tag_end = p + 1;
+                        let (name_start, name_end) = (*name_start, *name_end);
+                        let is_closing = *closing;
+                        let is_nested = *nested;
+                        let name = &b[name_start..name_end];
+                        let is_raw_script = name.eq_ignore_ascii_case(b"script");
+                        let is_raw_style = name.eq_ignore_ascii_case(b"style");
+                        let self_closing = *last_non_space == Some(b'/');
+                        if let Some(slot) = image_slot {
+                            if tag_end - tag_start <= MAX_IMG_TAG_BYTES
+                                && context[tag_start] == MarkupContext::Tag
+                            {
+                                images[*slot].1 = tag_end;
+                            }
+                        }
+                        let enter_raw = *raw_eligible && !is_closing && !self_closing;
+                        stack.pop();
+                        if is_closing {
+                            if let Some(MarkupFrame::Children {
+                                name_start: open_start,
+                                name_end: open_end,
+                            }) = stack.last()
+                            {
+                                if b[*open_start..*open_end] == *name {
+                                    stack.pop();
+                                }
+                            }
+                        } else if enter_raw && (is_raw_script || is_raw_style) {
+                            stack.push(MarkupFrame::RawText(if is_raw_script {
+                                RawTag::Script
+                            } else {
+                                RawTag::Style
+                            }));
+                        } else if is_nested && !self_closing && !void_element(name) {
+                            stack.push(MarkupFrame::Children {
+                                name_start,
+                                name_end,
+                            });
+                        }
+                        p += 1;
+                    }
+                    b'<' => {
+                        // A second unquoted `<` means this opener was malformed.
+                        // Reprocess it in the parent mode so a real following tag
+                        // is still found without rescanning the preceding bytes.
+                        stack.pop();
+                    }
+                    c => {
+                        context[p] = MarkupContext::Tag;
+                        if !c.is_ascii_whitespace() {
+                            // The `/` closing a `/* comment */` is not a
+                            // self-closing slash.
+                            let ends_comment = c == b'/' && *last_non_space == Some(b'*');
+                            *last_non_space = Some(if ends_comment { 0 } else { c });
+                        }
+                        p += 1;
+                    }
+                }
+            }
+            MarkupFrame::Expression {
+                depth,
+                quote,
+                escaped,
+                line_comment,
+                block_comment,
+                regex_can_start,
+                word,
+                ..
+            } => {
+                context[p] = MarkupContext::Expression;
+                let c = b[p];
+                if *line_comment {
+                    if c == b'\n' {
+                        *line_comment = false;
+                    }
+                    context[p] = MarkupContext::Comment;
+                    p += 1;
+                    continue;
+                }
+                if *block_comment {
+                    context[p] = MarkupContext::Comment;
+                    if c == b'*' && b.get(p + 1) == Some(&b'/') {
+                        context[p + 1] = MarkupContext::Comment;
+                        *block_comment = false;
+                        p += 2;
+                    } else {
+                        p += 1;
+                    }
+                    continue;
+                }
+                if let Some(q) = *quote {
+                    if c == b'\\' && !*escaped {
+                        *escaped = true;
+                    } else {
+                        if c == q && !*escaped {
+                            *quote = None;
+                        }
+                        *escaped = false;
+                    }
+                    p += 1;
+                    continue;
+                }
+                if c == b'/' && !word.is_empty() && !matches!(b.get(p + 1), Some(b'/') | Some(b'*'))
+                {
+                    *regex_can_start = regex_prefix_keyword(word);
+                    word.clear();
+                }
+                if c == b'/' && b.get(p + 1) == Some(&b'/') {
+                    *line_comment = true;
+                    context[p] = MarkupContext::Comment;
+                    context[p + 1] = MarkupContext::Comment;
+                    p += 2;
+                    continue;
+                }
+                if c == b'/' && b.get(p + 1) == Some(&b'*') {
+                    *block_comment = true;
+                    context[p] = MarkupContext::Comment;
+                    context[p + 1] = MarkupContext::Comment;
+                    p += 2;
+                    continue;
+                }
+                if c == b'/' && word.is_empty() && *regex_can_start {
+                    if let Some(end) = skip_js_regex(b, p) {
+                        mark_range(&mut context, p, end, MarkupContext::Expression);
+                        p = end;
+                        *regex_can_start = false;
+                        continue;
+                    }
+                }
+                if c.is_ascii_whitespace() {
+                    if !word.is_empty() {
+                        *regex_can_start = regex_prefix_keyword(word);
+                        word.clear();
+                    }
+                    p += 1;
+                    continue;
+                }
+                if c.is_ascii_alphanumeric() || c == b'_' || c == b'$' {
+                    word.push(c.to_ascii_lowercase());
+                    if word.len() > 16 {
+                        word.clear();
+                        word.push(0);
+                    }
+                    p += 1;
+                    continue;
+                }
+                if !word.is_empty() {
+                    *regex_can_start = regex_prefix_keyword(word);
+                    word.clear();
+                }
+                // Like a regex, an element starts only where a value can
+                // (`return <img`, `(<img`), not after one (`a<b`).
+                if options.nested_tags && c == b'<' && *regex_can_start {
+                    *regex_can_start = false;
+                    if b.get(p..p + 2) == Some(b"<>") {
+                        mark_range(&mut context, p, p + 2, MarkupContext::Tag);
+                        stack.push(MarkupFrame::Children {
+                            name_start: p + 1,
+                            name_end: p + 1,
+                        });
+                        p += 2;
+                        continue;
+                    }
+                    if let Some(open) = tag_open(b, p) {
+                        p = open_tag_frame(
+                            b,
+                            p,
+                            open,
+                            true,
+                            false,
+                            &mut context,
+                            &mut images,
+                            &mut stack,
+                        );
+                        continue;
+                    }
+                }
+                match c {
+                    b'\'' | b'"' | b'`' => {
+                        *quote = Some(c);
+                        *escaped = false;
+                        *regex_can_start = false;
+                    }
+                    b'{' => {
+                        *depth += 1;
+                        *regex_can_start = true;
+                    }
+                    b'}' => {
+                        *depth -= 1;
+                        *regex_can_start = false;
+                        if *depth == 0 {
+                            stack.pop();
+                        }
+                    }
+                    b')' | b']' | b'.' => *regex_can_start = false,
+                    _ => *regex_can_start = true,
+                }
+                p += 1;
+            }
+            MarkupFrame::RawText(tag) => {
+                let needle = match tag {
+                    RawTag::Script => b"</script".as_slice(),
+                    RawTag::Style => b"</style".as_slice(),
+                };
+                let after = p + needle.len();
+                if starts_with_ascii_case_insensitive(b, p, needle)
+                    && b.get(after)
+                        .is_none_or(|c| c.is_ascii_whitespace() || *c == b'>')
+                {
+                    stack.pop();
+                } else {
+                    context[p] = MarkupContext::RawText;
+                    p += 1;
+                }
             }
         }
     }
+
+    images.retain(|(start, end)| *end > *start);
+    MarkupContextIndex { context, images }
+}
+
+/// Scan the image candidates starting on one line, using the file-wide
+/// context index. Tag ends were collected during that single scan and are
+/// accepted only within the existing 8 KiB image-tag window.
+pub(crate) fn find_broken_images_in_line(
+    text: &str,
+    index: &MarkupContextIndex,
+    cursor: &mut usize,
+    line_start: usize,
+    line_end: usize,
+) -> Vec<MatchCtx> {
+    let mut out = Vec::new();
+    while *cursor < index.images.len() && index.images[*cursor].0 < line_start {
+        *cursor += 1;
+    }
+    while *cursor < index.images.len() {
+        let (start, end) = index.images[*cursor];
+        if start >= line_end {
+            break;
+        }
+        *cursor += 1;
+        if index.context.get(start) != Some(&MarkupContext::Tag) {
+            continue;
+        }
+        let tag = &text[start..end];
+        if image_source_is_missing(tag, "") {
+            let tag = if tag.contains('\n') {
+                tag.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            } else {
+                tag.to_string()
+            };
+            out.push(MatchCtx {
+                groups: vec![Some(tag)],
+                index: start - line_start,
+            });
+        }
+    }
     out
+}
+
+/// Matcher fallback for focused unit coverage. Production uses the shared
+/// file-wide index built by `run_regex_matchers`.
+pub(crate) fn find_broken_images(text: &str) -> Vec<MatchCtx> {
+    let line_end = text.find('\n').unwrap_or(text.len());
+    let index = scan_markup_context(
+        text,
+        MarkupScanOptions {
+            jsx: true,
+            expressions: true,
+            nested_tags: true,
+            raw_text: true,
+            markup: true,
+        },
+    );
+    let mut cursor = 0;
+    find_broken_images_in_line(text, &index, &mut cursor, 0, line_end)
 }
 
 pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
@@ -1770,7 +2576,12 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "border-accent-on-rounded",
             find_all: |l| all(&BORDER_ACCENT_CSS_RE, l),
-            test: |m, line| num(m.g(1)) >= 3.0 && has_border_radius(line),
+            test: |m, scope| {
+                num(m.g(1)) >= 3.0
+                    && scope
+                        .element_declares_radius(m)
+                        .unwrap_or_else(|| has_border_radius(scope))
+            },
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
@@ -1867,14 +2678,8 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         },
         Matcher {
             id: "broken-image",
-            find_all: |l| all(&BROKEN_IMG_SRC_RE, l),
+            find_all: find_broken_images,
             test: |_, _| true,
-            fmt: |m, _| slice_utf16_start(m.whole(), 100),
-        },
-        Matcher {
-            id: "broken-image",
-            find_all: find_img_without_src,
-            test: |m, _| !SRC_ATTR_RE.is_match(m.whole()),
             fmt: |m, _| slice_utf16_start(m.whole(), 100),
         },
     ]
@@ -2037,6 +2842,11 @@ fn analyze_monotonous_spacing(content: &str, file_path: &str) -> Vec<Finding> {
     );
     ordered.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     let dominant = ordered[0].0.clone();
+    // A most common value of zero is resetting spacing (`p-0`, `gap: 0px`),
+    // not repeating one gap.
+    if dominant == "0" {
+        return vec![];
+    }
     vec![finding(
         "monotonous-spacing",
         file_path,
@@ -2245,6 +3055,8 @@ pub fn analyzer_rule_id(i: usize) -> String {
         "marketing-buzzword",
         "aphoristic-cadence",
         "dark-glow",
+        "radial-halo",
+        "marquee",
     ];
     IDS.get(i)
         .map(|s| s.to_string())
@@ -2259,7 +3071,7 @@ mod tests {
         let mut out = vec![];
         for m in REGEX_MATCHERS.iter().filter(|m| m.id == id) {
             for c in (m.find_all)(line) {
-                if (m.test)(&c, line) {
+                if (m.test)(&c, &Scope::line(line)) {
                     out.push((m.fmt)(&c, line));
                 }
             }
@@ -2711,6 +3523,48 @@ mod tests {
         assert_eq!(
             run("bounce-easing", "cubic-bezier(0.68, -0.55, 0.265, 1.55)"),
             vec!["cubic-bezier(0.68, -0.55, 0.265, 1.55)"]
+        );
+    }
+
+    #[test]
+    fn broken_image_context_scan_ignores_markup_literals_and_raw_text() {
+        let svelte = r#"<!-- <img alt> -->
+<script>const marker = '<img alt>';</script>
+<style>body::before { content: '<img alt>'; }</style>
+<div title="<img alt>"></div>
+<div title={/* <img alt> */ "'<img alt>'"}></div>
+<img alt="actual">"#;
+        let index = scan_markup_context(
+            svelte,
+            MarkupScanOptions {
+                jsx: false,
+                expressions: true,
+                nested_tags: false,
+                raw_text: true,
+                markup: true,
+            },
+        );
+        assert_eq!(index.images.len(), 1);
+        assert_eq!(
+            &svelte[index.images[0].0..index.images[0].1],
+            "<img alt=\"actual\">"
+        );
+
+        let jsx = r#"const View = () => <Box icon={<img alt="" />} title={'<img>'}>{'<img>'}{/* <img> */}{/<img>/}</Box>;"#;
+        let index = scan_markup_context(
+            jsx,
+            MarkupScanOptions {
+                jsx: true,
+                expressions: true,
+                nested_tags: true,
+                raw_text: false,
+                markup: true,
+            },
+        );
+        assert_eq!(index.images.len(), 1);
+        assert_eq!(
+            &jsx[index.images[0].0..index.images[0].1],
+            "<img alt=\"\" />"
         );
     }
 

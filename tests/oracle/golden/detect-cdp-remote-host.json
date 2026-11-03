@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --cdp only attaches to a DevTools port on this machine (127.0.0.1, localhost or [::1]), not 10.0.0.5\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

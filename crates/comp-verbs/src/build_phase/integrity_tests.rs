@@ -466,7 +466,7 @@ fn responsive_rejects_a_contradicted_control_even_above_the_overall_bar() {
         let png = png_io::encode_png(image, &[]).unwrap();
         ws.write(".impeccable/review/desktop.png", &png);
         ws.write(".impeccable/review/mobile.png", &png);
-        let gate = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None);
+        let gate = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
         let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
         assert!(report["overall"].as_f64().unwrap() >= RESPONSIVE_MIN);
         if !accepted {
@@ -544,7 +544,7 @@ fn responsive_revalidates_legacy_or_changed_plate_receipts() {
         util::json_pretty(&json!({"comp":"comp.png","regions":[region]})).as_bytes(),
     );
     state["plates"] = json!({"art":{"status":"ok","score":0.9}});
-    let g = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None);
+    let g = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
     assert!(!g.ok, "a missing asset cannot inherit legacy approval");
     assert!(
         g.reasons.iter().any(|r| r.contains("plate missing")),
@@ -594,7 +594,7 @@ fn responsive_failures_replace_previous_success_evidence() {
         let image = std::fs::read(ws.path.join("comp.png")).unwrap();
         ws.write(".impeccable/review/desktop.png", &image);
         ws.write(".impeccable/review/mobile.png", &image);
-        let good = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None);
+        let good = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
         assert!(good.ok, "{:?}", good.reasons);
         let report: Value =
             serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
@@ -608,7 +608,7 @@ fn responsive_failures_replace_previous_success_evidence() {
             std::fs::remove_file(ws.path.join("diff/regions/button.png")).unwrap();
             std::fs::create_dir(ws.path.join("diff/regions/button.png")).unwrap();
         }
-        let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None);
+        let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
         assert!(!bad.ok);
         assert_no_current_measurements(&ws);
         let report: Value =
@@ -635,7 +635,7 @@ fn failed_preflight_clears_complete_evidence_for_both_gates() {
         ws.write(".impeccable/review/desktop.png", &image);
         ws.write(".impeccable/review/mobile.png", &image);
         let run = |state: &mut Value| if responsive {
-            gate_responsive(&ws.io(), state, RESPONSIVE_MIN, "diff", None)
+            gate_responsive(&ws.io(), state, RESPONSIVE_MIN, "diff", None, None)
         } else {
             gate_hero(&ws.io(), state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan, None)
         };
@@ -1132,7 +1132,7 @@ fn responsive_does_not_relitigate_an_accepted_first_viewport_score() {
     let current = reviewed_hero(true, false);
     let run = |approved: Option<&Image>| {
         let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","phases":{}});
-        gate_responsive(&ws.io(), &mut state, 0.999, "diff", Some(&DesktopRenderer { desktop: png(&current), approved: approved.map(png) }))
+        gate_responsive(&ws.io(), &mut state, 0.999, "diff", None, Some(&DesktopRenderer { desktop: png(&current), approved: approved.map(png) }))
     };
     let unreviewed = run(None);
     assert!(!unreviewed.ok && unreviewed.reasons.iter().any(|r| r.contains("scores")), "{:?}", unreviewed.reasons);
@@ -1251,7 +1251,7 @@ fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missi
     let mut state = json!({"comp":"comp.png","phases":{}});
     // A full-page desktop capture: the sign-off is there, 40px lower, past the frame.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     assert!(!gate.ok);
     let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
     assert!(reason.contains("is displaced, not missing") && reason.contains("about 40px lower") && reason.contains("400x360 first viewport"), "{reason}");
@@ -1266,12 +1266,12 @@ fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missi
     assert_eq!(region["blocking"], true);
     // A native frame is the first viewport alone: the column above says where it went.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 360, true), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
     assert!(reason.contains("is displaced, not missing: the content above it in its column sits about"), "{reason}");
     // Gone is still missing.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(0.0, 360, false), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     assert!(gate.reasons.iter().any(|r| r == "at desktop width, region sign-off is missing"), "{:?}", gate.reasons);
     assert_eq!(gate.worst_crops[0]["verdict"], "missing");
 }
@@ -1294,7 +1294,7 @@ fn a_missing_control_does_not_borrow_its_identical_neighbour() {
         {"id":"first","kind":"control","medium":"semantic","note":"first icon control","box":{"x":0.19,"y":0.49,"w":0.16,"h":0.09},"px":{"x":38,"y":98,"w":32,"h":18}},
         {"id":"second","kind":"control","medium":"semantic","note":"second icon control","box":{"x":0.19,"y":0.61,"w":0.16,"h":0.09},"px":{"x":38,"y":122,"w":32,"h":18}}]})).as_bytes());
     let mut state = json!({"comp":"comp.png","phases":{}});
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     assert!(gate.reasons.iter().any(|r| r == "at desktop width, region second is missing"), "{:?} {:?}", gate.reasons, gate.advisories);
     // Two distinct controls that both moved down a row: the first lands in the
     // second's old box, which the second no longer occupies, so it is found.
@@ -1307,7 +1307,7 @@ fn a_missing_control_does_not_borrow_its_identical_neighbour() {
     bars(&mut desktop, 148.);
     ws.write("comp.png", &png(&comp));
     ws.write(".impeccable/review/desktop.png", &png(&desktop));
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     assert!(!gate.reasons.iter().any(|r| r.contains("region first is missing")), "{:?} {}", gate.reasons, report["regions"]);
     assert!(gate.advisories.iter().any(|a| a.contains("region first sits about 24px lower")), "{:?}", gate.advisories);
@@ -1322,7 +1322,7 @@ fn responsive_reads_a_region_shifted_inside_the_first_viewport_as_drift() {
         r::fill_rect(&mut moved, 230.0 + k as f64 * 22.0, 306.0, 14.0, 18.0, [20.0, 20.0, 20.0, 255.0]);
     }
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&moved, &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
     assert!(gate.ok, "{:?}", gate.reasons);
     assert!(gate.advisories.iter().any(|a| a.starts_with("(advisory, still inside the first viewport) at desktop width, region sign-off sits about 24px higher")), "{:?}", gate.advisories);
 }
@@ -1346,7 +1346,7 @@ fn a_present_plate_off_its_box_at_desktop_width_is_drift_not_missing() {
     r::blit(&mut desktop, &r::crop(&comp, 10., 10., 60., 60.), 26., 26.);
     ws.write(".impeccable/review/desktop.png", &png(&desktop));
     ws.write(".impeccable/review/mobile.png", &png(&desktop));
-    let gate = gate_responsive(&io, &mut state, 0.1, "diff", None);
+    let gate = gate_responsive(&io, &mut state, 0.1, "diff", None, None);
     assert!(!gate.reasons.iter().any(|r| r.contains("art is missing")), "{:?}", gate.reasons);
     let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     assert_eq!(report["regions"][0]["verdict"], "drift", "{report}");
@@ -1369,7 +1369,7 @@ fn reviewed_desktop_workspace() -> Workspace {
 fn run_reviewed_desktop(ws: &Workspace, current: &Image, approved: Option<&Image>, min: f64) -> (Gate, Value) {
     let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
     let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","phases":{}});
-    let gate = gate_responsive(&ws.io(), &mut state, min, "diff", Some(&DesktopRenderer { desktop: png(current), approved: approved.map(png) }));
+    let gate = gate_responsive(&ws.io(), &mut state, min, "diff", None, Some(&DesktopRenderer { desktop: png(current), approved: approved.map(png) }));
     let report = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     (gate, report)
 }
@@ -1440,6 +1440,33 @@ fn responsive_failures_print_crops_and_escalate_after_three_attempts() {
     let state: Value = serde_json::from_slice(&std::fs::read(ws.path.join(".impeccable/build/state.json")).unwrap()).unwrap();
     assert_eq!(state["phases"]["responsive"]["history"].as_array().unwrap().len(), 3);
     assert_eq!(state["phases"]["responsive"]["status"], "open");
+}
+
+#[test]
+fn forced_responsive_advance_records_inputs_so_finish_ships() {
+    let ws = menu_workspace();
+    ws.write("index.html", b"<main>Menu</main>");
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phase":"responsive","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    let mut io = ws.io();
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    #[cfg(unix)] {
+        // Unfingerprintable inputs (a symlink) could never be checked at ship, so force cannot close.
+        std::os::unix::fs::symlink("index.html", ws.path.join("link.html")).unwrap();
+        assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+        let state = load_state(&io).unwrap();
+        assert!(state["phases"]["responsive"]["status"] == "open" && state["responsiveInputSha256"].is_null());
+        std::fs::remove_file(ws.path.join("link.html")).unwrap();
+    }
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["phases"]["responsive"]["forced"].is_object() && state["responsiveInputSha256"].is_string());
+    let finish = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
 }
 
 #[test]
@@ -1567,6 +1594,43 @@ fn native_ship_is_refused_when_an_input_changes_while_the_final_capture_runs() {
     assert_eq!(state["phases"]["responsive"]["status"], "open");
     let reasons = state["phases"]["responsive"]["gate"]["reasons"].as_array().unwrap();
     assert!(reasons.iter().any(|r| r.as_str().unwrap().contains("capture input changed: index.html")), "{reasons:?}");
+}
+
+/// Records the entry each capture asked for, then defers to `ManifestRenderer`.
+struct RecordingRenderer { inner: ManifestRenderer, asked: std::cell::RefCell<Vec<String>> }
+impl EntryRenderer for RecordingRenderer {
+    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+        self.asked.borrow_mut().push(request.artifact.clone());
+        self.inner.capture_entry(request)
+    }
+}
+
+#[test]
+fn responsive_and_ship_capture_the_entry_artifact_names() {
+    // The recorded artifact is a framework source route; --artifact names the built entry.
+    let (ws, desktop) = finished_native_workspace();
+    ws.write("src/pages/index.astro", b"<h1>Headline</h1>");
+    let mut state = load_state(&ws.io()).unwrap();
+    state["artifact"] = json!("src/pages/index.astro");
+    save_state(&ws.io(), &state);
+    let renderer = RecordingRenderer { inner: ManifestRenderer { desktop, changed_during: None }, asked: Default::default() };
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship", "--artifact", "index.html"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&renderer)), 0);
+    assert_eq!(*renderer.asked.borrow(), ["index.html"]);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["artifact"], "src/pages/index.astro");
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("owner"))["status"], "complete");
+
+    renderer.asked.borrow_mut().clear();
+    let mut state = load_state(&io).unwrap();
+    state["phase"] = json!("responsive");
+    state["phases"]["responsive"]["status"] = json!("open");
+    save_state(&io, &state);
+    let advance = ["advance", "--artifact", "index.html"].map(String::from);
+    assert_eq!(run_with_renderer(&advance, &mut io, &no_organic_scan, Some(&renderer)), 0);
+    assert_eq!(*renderer.asked.borrow(), ["index.html"]);
+    assert_eq!(load_state(&io).unwrap()["artifact"], "src/pages/index.astro");
 }
 
 /// A native renderer whose capture leaves no input manifest.

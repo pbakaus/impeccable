@@ -17,10 +17,10 @@ colors:
 typography:
   display:
     fontFamily: "Cormorant Garamond, Georgia, serif"
-    fontSize: "clamp(2.5rem, 7vw, 4.5rem)"
+    fontSize: "4.5rem"
     fontWeight: 300
     lineHeight: 1
-    letterSpacing: "normal"
+    letterSpacing: "0em"
   body:
     # ...
 rounded:
@@ -68,7 +68,7 @@ Omit irrelevant sections rather than filling them with invented rules. Put respo
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
 
-If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file first. STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer. The choice is refresh, overwrite, or merge.
+If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file first. Ask with Codex's structured user-input/question tool when available, or directly in chat if it is not, and wait for the answer before continuing. The choice is refresh, overwrite, or merge.
 
 ## Two paths
 
@@ -325,7 +325,7 @@ If the project has **no component library yet** (bare landing page, new project)
 
 #### Tonal ramps
 
-For each color token, generate an 8-step `tonalRamp` array: dark to light, same hue and chroma, stepped lightness from ~15% to ~95%. The panel renders this as a strip under the swatch. If the project already defines a tonal scale (Material `surface-container-low` family, Tailwind-style `blue-50..blue-900`), use those values. Otherwise synthesize in OKLCH.
+For each color token, generate an 8-step `tonalRamp` array: dark to light, same hue, chroma reduced near white and black, stepped lightness from ~15% to ~95%. The panel renders this as a strip under the swatch. If the project already defines a tonal scale (Material `surface-container-low` family, Tailwind-style `blue-50..blue-900`), use those values. Otherwise synthesize in OKLCH.
 
 #### Narrative mapping
 

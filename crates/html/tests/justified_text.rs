@@ -127,7 +127,23 @@ fn fixture_flag_and_pass_cases() {
         .filter(|f| f.antipattern == "justified-text")
         .count();
     assert_eq!(
-        hits, 3,
+        hits, 5,
         "expected one hit per should-flag case, got {findings:?}"
     );
+}
+
+#[test]
+fn text_that_fits_one_line_does_not_flag() {
+    // 300px at 32px holds about 18 characters: "Research topics" fits one
+    // line, and a lone justified line is set ragged.
+    let one_line = page(
+        "h2 { text-align: justify; width: 300px; font-size: 32px; }",
+        "<h2>Research topics</h2>",
+    );
+    assert_eq!(justified_hits(&one_line), 0, "{one_line}");
+    let wraps = page(
+        "h2 { text-align: justify; width: 300px; font-size: 32px; }",
+        "<h2>Loss functions and structured prediction</h2>",
+    );
+    assert_eq!(justified_hits(&wraps), 1, "{wraps}");
 }

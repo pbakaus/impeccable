@@ -40,6 +40,8 @@ pub struct FakeEl {
     /// The rects of the element's rendered text. `None` is a DOM that cannot
     /// say where the lines are, the way a snapshot without them cannot.
     pub text_line_rects: Option<Vec<Rect>>,
+    /// `Dom::last_word_rects`: the word before the last, then the last.
+    pub last_word_rects: Option<[Rect; 2]>,
     /// Selectors (exact strings) this element matches beyond `*` and its tag.
     pub selectors: Vec<String>,
     /// `id` IDL property override (`None` = "not a string", falls back to attr).
@@ -74,6 +76,12 @@ pub struct FakeDom {
     /// A recording made before shadow trees were captured
     /// ([`Dom::shadow_trees_recorded`] answers `false`).
     pub shadow_trees_unrecorded: bool,
+    /// [`Dom::text_wrap_pretty_supported`]; `None` is a probe that did not ask.
+    pub text_wrap_pretty_supported: Option<bool>,
+    /// [`Dom::document_font_faces`]; `None` is a capture that did not ask.
+    pub font_faces: Option<Vec<(String, String)>>,
+    /// [`Dom::rendered_faces`]; `None` is a capture that did not measure.
+    pub rendered_faces: Option<Vec<(String, bool)>>,
     pub els: Vec<FakeEl>,
     pub document_element: Option<ElId>,
     pub body: Option<ElId>,
@@ -217,6 +225,13 @@ impl FakeDom {
             self.el_mut(id).direct_text_rect = Some(Rect::from_xywh(left, top, right - left, bottom - top));
         }
         self.el_mut(id).text_line_rects = Some(rects);
+        self
+    }
+    /// Where the last two words of `id`'s text rendered: the word before the
+    /// last, then the last, each `(x, y, w, h)`.
+    pub fn set_last_words(&mut self, id: ElId, before: (f64, f64, f64, f64), last: (f64, f64, f64, f64)) -> &mut Self {
+        let rect = |(x, y, w, h): (f64, f64, f64, f64)| Rect::from_xywh(x, y, w, h);
+        self.el_mut(id).last_word_rects = Some([rect(before), rect(last)]);
         self
     }
     pub fn add_text(&mut self, id: ElId, text: &str) -> &mut Self {
@@ -589,6 +604,15 @@ impl Dom for FakeDom {
     fn shadow_trees_recorded(&self) -> bool {
         !self.shadow_trees_unrecorded
     }
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        self.text_wrap_pretty_supported
+    }
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        self.font_faces.clone()
+    }
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        self.rendered_faces.clone()
+    }
     fn pseudo_style(&self, el: ElId, pseudo: &str, prop: &str) -> Option<String> {
         let e = &self.els[el as usize];
         // A pseudo with no declared props at all reads as `content: none`
@@ -655,5 +679,8 @@ impl Dom for FakeDom {
     fn text_line_rects(&self, el: ElId) -> Option<Vec<Rect>> {
         let rects = self.els[el as usize].text_line_rects.clone()?;
         Some(super::dom::merge_text_rects_into_lines(rects))
+    }
+    fn last_word_rects(&self, el: ElId) -> Option<[Rect; 2]> {
+        self.els[el as usize].last_word_rects
     }
 }

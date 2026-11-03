@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/low-contrast-settled-states.html\n  [low-contrast] 1.2:1 (need 3:1) — text #ededed on #ffffff (and 1 more)\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n1 anti-pattern found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

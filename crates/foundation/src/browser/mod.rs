@@ -234,4 +234,11 @@ fn is_zero(v: &f64) -> bool {
 pub struct CollectResult {
     pub groups: Vec<FindingGroup>,
     pub page_level: Vec<BrowserFinding>,
+    /// Elements whose `low-contrast` verdict another finding now counts
+    /// (` (and N more)`): copies collapsed onto the pair's reporting element
+    /// and copies the SAFE_TAGS dedupe counted. A later pass that scores
+    /// contrast by element (the visual-contrast analyses and pixel reads)
+    /// treats them as reported.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collapsed: Vec<dom::ElId>,
 }

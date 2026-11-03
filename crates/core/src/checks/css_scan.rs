@@ -4,14 +4,14 @@
 //! `crate::js_ext_a::utf16_index`) and/or a `selector`.
 
 use crate::checks::rules::{
-    extract_shadow_lengths, find_shadow_color, glow_is_perceptible, DeclaredCorners, ANY, B, D,
-    NOMINAL_CARD_WIDTH_PX,
+    extract_shadow_lengths, find_shadow_color, glow_is_perceptible, is_radius_property,
+    DeclaredCorners, ANY, B, D, NOMINAL_CARD_WIDTH_PX,
 };
 use crate::color::{
     color_to_hex, has_chroma, parse_any_color, relative_luminance, split_top_level_commas, Rgba,
 };
 
-use crate::js::{self, ci, math_min, number_to_string, parse_float, WS, WS_CHARS};
+use crate::js::{self, ci, math_max, math_min, number_to_string, parse_float, WS, WS_CHARS};
 
 use crate::js_ext_a::{
     advance_utf16, is_word_byte, last_index_of_byte, split_commas_outside_parens, split_ws,
@@ -108,10 +108,16 @@ re!(
 /// JS: checks.mjs#cssTextHasDarkRootBg
 pub fn css_text_has_dark_root_bg(content: &str, custom_props: &CustomProps) -> bool {
     // A token such as `--color-background: #0a0a0a` is not a background.
-    if DARK_BG_RE
-        .find_iter(content)
-        .any(|m| starts_css_property_token(content, m.start()))
-        || TW_DARK_BG_RE.is_match(content)
+    // The pattern reads only the leading channel of a hex (`#00` to `#23`),
+    // so the colour it matched has to be dark as a whole: a bright mint
+    // `#00d68f` leads with `00` (observations-1010 row 4).
+    if DARK_BG_RE.find_iter(content).any(|m| {
+        starts_css_property_token(content, m.start())
+            && m.as_str()
+                .split_once(':')
+                .and_then(|(_, v)| parse_any_color(Some(js::trim(v))))
+                .map_or(true, |c| relative_luminance(&c) < 0.1)
+    }) || TW_DARK_BG_RE.is_match(content)
     {
         return true;
     }
@@ -262,7 +268,15 @@ re!(
 
 /// JS: checks.mjs#scanCssTextForGridBackground
 pub fn scan_css_text_for_grid_background(content: &str) -> Vec<IndexedHit> {
-    for blk in GRID_BLOCK_RE.captures_iter(content) {
+    grid_background_hits(content).take(1).collect()
+}
+
+/// Every block of `content` that paints a two-axis grid-line background, in
+/// source order, read lazily: [`scan_css_text_for_grid_background`] keeps
+/// the first, and a walk that picks the first candidate the page shows
+/// reads on only past one it passes over.
+pub fn grid_background_hits(content: &str) -> impl Iterator<Item = IndexedHit> + '_ {
+    GRID_BLOCK_RE.captures_iter(content).filter_map(|blk| {
         let block = blk
             .get(1)
             .or_else(|| blk.get(2))
@@ -282,20 +296,17 @@ pub fn scan_css_text_for_grid_background(content: &str) -> Vec<IndexedHit> {
             bg_joined.push(';');
         }
         if hairline_count == 0 {
-            continue;
+            return None;
         }
         let has_px_cell =
             SIZE_DECL_PX_RE.is_match(block) || SHORTHAND_PX_ANY_RE.is_match(&bg_joined);
         // A single hairline is a line, divider, or rail, not a grid, even
         // when tiled by a 2D px cell (issue #615).
-        if hairline_count >= 2 && has_px_cell {
-            return vec![IndexedHit {
-                index: blk.get(0).unwrap().start(),
-                snippet: "two-axis grid-line gradient background".to_string(),
-            }];
-        }
-    }
-    Vec::new()
+        (hairline_count >= 2 && has_px_cell).then(|| IndexedHit {
+            index: blk.get(0).unwrap().start(),
+            snippet: "two-axis grid-line gradient background".to_string(),
+        })
+    })
 }
 
 // ─── scanCssTextForRadialHalo ───────────────────────────────────────────────
@@ -572,6 +583,15 @@ re!(
         target = ci("target")
     )
 );
+
+/// Whether a selector styles a selection, hover or focus state: a stripe
+/// there marks the chosen item, not a card. The stripe scans skip it.
+pub(crate) fn selector_is_state_indicator(selector: &str) -> bool {
+    STATE_PSEUDO_TARGET_RE.is_match(selector)
+        || ARIA_SELECTED_TRUE_RE.is_match(selector)
+        || has_aria_current_not_false(selector)
+        || selector_has_state_word(selector, false)
+}
 
 // ─── scanCssTextForPseudoStripe ─────────────────────────────────────────────
 re!(COMMENT_RE, format!(r"/\*{ANY}*?\*/"));
@@ -1534,6 +1554,33 @@ impl<'a> CssHostIndex<'a> {
         corners
     }
 
+    /// Whether a radius declaration styles the box the declaration at `pos`
+    /// sits on, the stylesheet reading side-tab takes: a rule
+    /// [`tied_rules`](Self::tied_rules) ties to the box's hosts sets one, so
+    /// `.card` rules and grouped selectors count and a compound that adds to
+    /// the host (`.card.is-active`) does not. A pseudo-element's own rules
+    /// count too: the host forms name its element, the block's selectors as
+    /// written name the pseudo-element itself. A statement that might bring a
+    /// radius in unseen (a mixin, `@apply`) is not one.
+    pub fn declaration_declares_radius(&self, pos: usize) -> bool {
+        let Some(mut hosts) = self.declaration_hosts(pos) else {
+            return false;
+        };
+        if let Some(Some(b)) = self.declaration_block(pos) {
+            for selector in &self.hosts[b] {
+                if !hosts.contains(selector) {
+                    hosts.push(selector.clone());
+                }
+            }
+        }
+        self.tied_rules(&hosts).iter().any(|id| {
+            self.rules[*id]
+                .decls
+                .iter()
+                .any(|d| matches!(d, RadiusDecl::Set(prop, _) if is_radius_property(prop)))
+        })
+    }
+
     /// The radius rules naming one of `hosts`, in source order: what
     /// [`corners_for_hosts`](Self::corners_for_hosts) applies.
     fn tied_rules(&self, hosts: &[String]) -> Vec<usize> {
@@ -1623,22 +1670,35 @@ impl<'a> CssHostIndex<'a> {
         side: usize,
         sheet: &DeclaredCorners,
     ) -> bool {
+        self.hosts_known_square(self.declaration_hosts(pos), side, sheet)
+    }
+
+    /// The host selectors of the box the declaration at `pos` (a byte offset
+    /// into the text the index was built on) styles: the innermost block
+    /// around it, or `&` at the top level of a CSS-in-JS template. `None`
+    /// when the box cannot be named: the declaration or an enclosing selector
+    /// is interpolated.
+    pub fn declaration_hosts(&self, pos: usize) -> Option<Vec<String>> {
+        match self.declaration_block(pos)? {
+            None => Some(vec!["&".to_string()]),
+            Some(b) if self.hosts_unknown[b] => None,
+            Some(b) => Some(self.host_forms(&self.hosts[b])),
+        }
+    }
+
+    /// The innermost block around the declaration at `pos`, `Some(None)` at
+    /// the top level, `None` inside an interpolation the walk read as text.
+    fn declaration_block(&self, pos: usize) -> Option<Option<usize>> {
         let pos = self.content_offset(pos);
         if self
             .interpolations
             .iter()
             .any(|(start, end)| *start <= pos && pos <= *end)
         {
-            return false;
+            return None;
         }
         let before = self.opens.partition_point(|open| *open < pos);
-        let block = (0..before).rev().find(|b| self.closes[*b] >= pos);
-        let hosts = match block {
-            None => Some(vec!["&".to_string()]),
-            Some(b) if self.hosts_unknown[b] => None,
-            Some(b) => Some(self.host_forms(&self.hosts[b])),
-        };
-        self.hosts_known_square(hosts, side, sheet)
+        Some((0..before).rev().find(|b| self.closes[*b] >= pos))
     }
 
     /// [`side_stripe_on_rounded_host`](Self::side_stripe_on_rounded_host)'s
@@ -2353,6 +2413,41 @@ fn sample_arc(
         .collect()
 }
 
+/// The vertex count of a `polygon()` body (the text between its
+/// parentheses) that approximates an organic contour, the shape the
+/// organic-clip-path rule reports: at least [`ORGANIC_POLYGON_MIN_VERTICES`]
+/// comma-separated points (a leading fill rule counts as one, as the rule
+/// has always counted it), every coordinate off a 25% grid on average, and
+/// neither rectilinear nor a zigzag. `None` otherwise.
+pub(crate) fn organic_polygon_vertices(body: &str) -> Option<usize> {
+    let points: Vec<&str> = body
+        .split(',')
+        .map(js::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if points.len() < ORGANIC_POLYGON_MIN_VERTICES {
+        return None;
+    }
+    // Vertices sitting on a coarse grid (multiples of 25%) are geometric;
+    // a contour has arbitrary values.
+    let mut off_grid = 0usize;
+    for p in &points {
+        for n in SIGNED_NUM_RE.find_iter(p) {
+            let v = parse_float(n.as_str());
+            if (v - js::math_round(v / 25.0) * 25.0).abs() > 0.5 {
+                off_grid += 1;
+            }
+        }
+    }
+    if off_grid < points.len() {
+        return None;
+    }
+    if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
+        return None;
+    }
+    Some(points.len())
+}
+
 /// JS: checks.mjs#scanCssTextForOrganicClipPath
 ///
 /// The same declaration repeated (one inline style per button) reports once
@@ -2385,36 +2480,14 @@ pub fn scan_css_text_for_organic_clip_path(style_text: &str) -> Vec<PatternFindi
             });
             continue;
         }
-        let points: Vec<&str> = body
-            .split(',')
-            .map(js::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if points.len() < ORGANIC_POLYGON_MIN_VERTICES {
+        let Some(vertices) = organic_polygon_vertices(body) else {
             continue;
-        }
-        // Vertices sitting on a coarse grid (multiples of 25%) are geometric;
-        // a contour has arbitrary values.
-        let mut off_grid = 0usize;
-        for p in &points {
-            for n in SIGNED_NUM_RE.find_iter(p) {
-                let v = parse_float(n.as_str());
-                if (v - js::math_round(v / 25.0) * 25.0).abs() > 0.5 {
-                    off_grid += 1;
-                }
-            }
-        }
-        if off_grid < points.len() {
-            continue;
-        }
-        if polygon_is_rectilinear(body) || polygon_is_zigzag(body) {
-            continue;
-        }
+        };
         push(&mut findings, PatternFinding {
             id: "organic-clip-path".to_string(),
             snippet: format!(
                 "clip-path: polygon() with {} vertices approximating an organic contour",
-                points.len()
+                vertices
             ),
             selector: enclosing_css_selector(style_text, index),
             index: None,
@@ -2886,6 +2959,20 @@ re!(
     format!(r"{B}(?:w|h|size)-(?:1|1\.5|2|2\.5|3|3\.5|4){B}")
 );
 
+/// The longest side of a pulsing dot over its shortest.
+const PULSE_DOT_MAX_ASPECT: f64 = 1.5;
+
+/// The px size an unprefixed Tailwind spacing class (`w-2`, `h-1.5`) gives
+/// one side, at Tailwind's 4px step; `None` when the class names none.
+fn tw_side_px(cls: &str, side: &str) -> Option<f64> {
+    cls.split_ascii_whitespace().find_map(|token| {
+        let n = token.strip_prefix(side)?.strip_prefix('-')?;
+        (!n.is_empty() && n.bytes().all(|b| b.is_ascii_digit() || b == b'.'))
+            .then(|| parse_float(n) * 4.0)
+            .filter(|px| px.is_finite())
+    })
+}
+
 /// JS: checks.mjs#scanCssTextForPulsingDot. `markup` defaults to `content`.
 pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec<PatternFinding> {
     let markup = markup.unwrap_or(content);
@@ -2946,6 +3033,11 @@ pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec
         if w < 2.0 || h < 2.0 || w > 16.0 || h > 16.0 {
             continue;
         }
+        // A dot is about as wide as it is tall: a 3 by 6px bar with rounded
+        // ends (a waveform's bar) is not one, however round its radius.
+        if math_max(w, h) > PULSE_DOT_MAX_ASPECT * math_min(w, h) {
+            continue;
+        }
         let radius = resolve_var_refs(
             decls.get("border-radius").map(|s| s.as_str()).unwrap_or(""),
             &custom_props,
@@ -2994,6 +3086,16 @@ pub fn scan_css_text_for_pulsing_dot(content: &str, markup: Option<&str>) -> Vec
         }
         if !TW_TINY_SIZE_RE.is_match(cls) {
             continue;
+        }
+        // With both sides named, the dot gates of the declaration path
+        // apply: `w-1 h-4` is a 4 by 16px bar, not a dot.
+        if let (Some(w), Some(h)) = (tw_side_px(cls, "w"), tw_side_px(cls, "h")) {
+            if w < 2.0 || h < 2.0 || w > 16.0 || h > 16.0 {
+                continue;
+            }
+            if math_max(w, h) > PULSE_DOT_MAX_ASPECT * math_min(w, h) {
+                continue;
+            }
         }
         let key = format!("tw:{}", cls);
         if seen.contains(&key) {
@@ -3121,7 +3223,12 @@ mod tests {
     fn enclosing_selector_matches_node() {
         let cases: &[(&str, usize, Option<&str>)] = &[
             (".a { color: red }", 8, Some(".a")),
-            ("@media (x) { .b { c: d } }", 20, None),
+            // The first rule inside an at-rule block follows its brace
+            // (observations-1004 row 25: incredible.one's bounce rule).
+            ("@media (x) { .b { c: d } }", 20, Some(".b")),
+            ("@supports (x) { @media (y) {.b{c:d}} }", 32, Some(".b")),
+            ("@keyframes k { from { c: d } }", 22, None),
+            ("@keyframes k { 50% { c: d } }", 22, None),
             ("@media (x) { .b { c: d } }", 12, None),
             ("50% { c: d }", 6, None),
             ("from, to { c: d }", 12, None),
@@ -3133,6 +3240,22 @@ mod tests {
             ("<style>.q{r}", 10, None),
             (".a{b}.c{d}", 8, Some(".c")),
             (".a { b }", 0, None),
+            // Review of #1042: a nested style rule has no selector of its
+            // own (CSS nesting), whether it follows the parent's brace, a
+            // declaration, or an at-rule nested in the parent.
+            (".card { & > .s { c: d } }", 18, None),
+            (".card { c: d; .s { c: d } }", 21, None),
+            (".card { @media (x) { & .s { c: d } } }", 31, None),
+            ("@media (x) { .a{b} .c { d } }", 25, Some(".c")),
+            // A quoted or escaped brace opens no block.
+            (".q::before { content: \"{\"; } .gone { c: d }", 40, Some(".gone")),
+            (".q::before { content: '\\{'; } .gone { c: d }", 40, Some(".gone")),
+            // A quoted brace or semicolon in the selector itself bounds
+            // nothing either (second review of #1042).
+            ("[data-template*=\"{\"] { c: d }", 23, Some("[data-template*=\"{\"]")),
+            (".a{b} [title='x;y'] { c: d }", 22, Some("[title='x;y']")),
+            // A stray quote ends at its line.
+            ("a[x=\"] {}\n.c{d}\n.b { c: d }", 21, Some(".b")),
         ];
         for (text, idx, want) in cases {
             assert_eq!(
@@ -3141,6 +3264,20 @@ mod tests {
                 "{text:?} @ {idx}"
             );
         }
+        // #1076: a quoted brace or semicolon in an at-rule's header does
+        // not cut the header short, so the rule inside keeps its selector.
+        for text in [
+            "@supports (content: \"}\") { .b { c: d } }",
+            "@supports (content: \"{\") { .b { c: d } }",
+            "@supports (content: \"a;b\") { .b { c: d } }",
+            "@media (x) { @supports (content: 'x;y') { .b { c: d } } }",
+        ] {
+            let idx = text.find("c: d").unwrap();
+            assert_eq!(enclosing_css_selector(text, idx).as_deref(), Some(".b"), "{text:?}");
+        }
+        // A quoted semicolon still ends nothing in a rule nested in a style rule.
+        let nested = ".card { content: \"a;b\"; @media (x) { .s { c: d } } }";
+        assert_eq!(enclosing_css_selector(nested, nested.find("c: d").unwrap()), None);
     }
 
     #[test]
@@ -3258,6 +3395,128 @@ mod tests {
         let m =
             collect_pulse_keyframes("@keyframes n {50%{transform: translateY(2px) scale(1.2)}}");
         assert_eq!(m.entries(), &[("n".to_string(), true)]);
+    }
+
+    /// observations-1010 row 11: an eye that blinks on one axis (looot.ai's
+    /// `asblink`) and a dot that runs along a connector by its `left`
+    /// (zcad.ai's `handoff-network-flow`) are not pulses. A dot that swells
+    /// and fades, and one that breathes a pixel by its margin, still are.
+    #[test]
+    fn a_blink_and_a_travelling_dot_are_not_pulses() {
+        let pulses = |css: &str| collect_pulse_keyframes(css).entries()[0].1;
+        assert!(!pulses("@keyframes asblink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}"));
+        assert!(!pulses("@keyframes bar{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}"));
+        assert!(!pulses(
+            "@keyframes handoff-network-flow { 0% { opacity: 0; left: 0px; transform: scale(0.7); } 14% { opacity: 0.9; } 100% { opacity: 0; left: calc(100% - 4px); transform: scale(0.95); } }"
+        ));
+        assert!(!pulses("@keyframes m { 0% { opacity: 1; margin-top: 0 } 100% { opacity: .2; margin-top: 24px } }"));
+        assert!(!pulses("@keyframes bob { 0%,100% { opacity: 1; top: 0 } 50% { opacity: .6; top: -6px } }"));
+        // Should-flag twins.
+        assert!(pulses("@keyframes dot { 0%,100% { transform: scale(.5); opacity: 1 } 50% { transform: scale(1); opacity: .5 } }"));
+        assert!(pulses("@keyframes sq { 0%,100% { transform: scaleX(1) scaleY(1) } 50% { transform: scaleX(1.3) scaleY(1.3) } }"));
+        assert!(pulses("@keyframes blinkfade { 0%,100% { transform: scaleY(1); opacity: 1 } 50% { transform: scaleY(.1); opacity: .4 } }"));
+        assert!(pulses("@keyframes breathe { 0%,100% { opacity: 1; margin-top: 0 } 50% { opacity: .5; margin-top: -1px } }"));
+        assert!(pulses("@keyframes still { 0%,100% { opacity: 1; left: 8px } 50% { opacity: .5; left: 8px } }"));
+        // Review of round 14: a ripple kept centred while it grows, by a
+        // shorthand that moves every side, by a margin that changes with
+        // the size, or by both opposite offsets, is a ping.
+        assert!(pulses("@keyframes r1 { 0% { width: 8px; height: 8px; margin: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin: -4px; opacity: .3 } }"));
+        assert!(pulses("@keyframes r2 { 0%,100% { margin: 4px; opacity: 1 } 50% { margin: 0; opacity: .4 } }"));
+        assert!(pulses("@keyframes r3 { 0% { inset: 0; opacity: 1 } 100% { inset: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r4 { 0% { width: 8px; height: 8px; margin-left: 0; margin-top: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin-left: -4px; margin-top: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r5 { 0% { top: 4px; bottom: 4px; opacity: 1 } 100% { top: -4px; bottom: -4px; opacity: 0 } }"));
+        // Zero in any unit is zero: `left: 0` to `left: 0%` does not move.
+        assert!(pulses("@keyframes z { 0% { left: 0; opacity: 1 } 100% { left: 0%; opacity: .3 } }"));
+        assert!(pulses("@keyframes z2 { 0% { top: 0px; opacity: 1 } 100% { top: -0.0em; opacity: .3 } }"));
+        assert!(!pulses("@keyframes z3 { 0% { left: 0; opacity: 1 } 100% { left: 50%; opacity: .3 } }"));
+    }
+
+    /// observations-1010 row 4: `DARK_BG_RE` reads the leading channel of a
+    /// hex, so the colour it matched must be dark as a whole.
+    #[test]
+    fn a_dark_background_declaration_is_dark_as_a_whole() {
+        assert!(!dark(".badge{background:#00d68f}"));
+        assert!(!dark(".chip{background-color:#1fd1f9}"));
+        assert!(!dark(".k{background:#1ff}"));
+        assert!(dark(".footer{background:#111}"));
+        assert!(dark(".footer{background:#0a0a0a}"));
+        assert!(dark(".x{background-color:#1a1a2e}"));
+        assert!(dark(".x{background:rgb(12, 14, 20)}"));
+    }
+
+    /// observations-1004 row 25: keyframes that move their box 4px or more,
+    /// or change its height alone, are not a pulse, however they fade.
+    #[test]
+    fn pulse_keyframes_that_move_or_resize_are_not_pulses() {
+        let pulses = |css: &str| collect_pulse_keyframes(css).entries()[0].1;
+        // imageto3d.studio's library-node-float.
+        assert!(!pulses(
+            "@keyframes f { 0% { opacity: 0.35; transform: none; } 50% { opacity: 0.55; transform: translateY(-14px); } 100% { opacity: 0.35; transform: none; } }"
+        ));
+        assert!(!pulses("@keyframes f { 0%, 100% { opacity: .4; translate: 0 0 } 50% { opacity: 1; translate: 0 -8px } }"));
+        assert!(!pulses("@keyframes f { 0% { opacity: 1; transform: translate3d(0, 0, 0) } 50% { opacity: .5; transform: translate3d(0, 0.5rem, 0) } }"));
+        // juskoe's wavePulse.
+        assert!(!pulses(
+            "@keyframes w { 0% { opacity: 0.4; height: 4px; } 50% { opacity: 1; height: 16px; } 100% { opacity: 0.4; height: 4px; } }"
+        ));
+        // Review of round 11: real pulses that must stay pulses.
+        // A centred ring, its translation spelled two ways.
+        assert!(pulses(
+            "@keyframes r { 0% { transform: translate(-50%,-50%) scale(1); opacity: 1 } 100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0 } }"
+        ));
+        // A GPU layer hint against no translation.
+        assert!(pulses("@keyframes g { 0%,100% { transform: translateZ(0) scale(1) } 50% { transform: scale(1.4); opacity: .4 } }"));
+        // A ripple that grows both sides.
+        assert!(pulses("@keyframes p { 0% { width: 10px; height: 10px; opacity: 1 } 100% { width: 30px; height: 30px; opacity: 0 } }"));
+        // An online dot that breathes a pixel, and a typing indicator's 2px bob.
+        assert!(pulses("@keyframes b { 0%,100% { opacity: 1; transform: translateY(0) } 50% { opacity: .5; transform: translateY(-1px) } }"));
+        assert!(pulses("@keyframes ty { 0%,60%,100% { opacity: .35; transform: none } 30% { opacity: 1; transform: translateY(-2px) } }"));
+        // A scale before the translate shrinks the travel (`scale(.5)
+        // translateY(6px)` moves 3px), so the travel is unknown and the
+        // pulse stays a pulse; a scale after the translate leaves it alone.
+        assert!(pulses("@keyframes s { 0% { opacity: 1; transform: scale(.5) translateY(0) } 100% { opacity: .4; transform: scale(.5) translateY(6px) } }"));
+        assert!(!pulses("@keyframes s2 { 0% { opacity: 1; transform: translateY(0) scale(.5) } 100% { opacity: .4; transform: translateY(6px) scale(.5) } }"));
+        // A percentage that changes cannot be read, and decides nothing.
+        assert!(pulses("@keyframes q { 0% { transform: translate(-50%, -50%); opacity: 1 } 100% { transform: translate(-50%, -60%); opacity: 0 } }"));
+        // Review of #1042: a percentage on one axis leaves the other read,
+        // so a centred float travels on y; a percentage that matches on
+        // both steps reads the px beside it.
+        assert!(!pulses("@keyframes c { 0%,100% { opacity: .4; transform: translate(-50%, 0) } 50% { opacity: 1; transform: translate(-50%, -14px) } }"));
+        assert!(!pulses("@keyframes c2 { 0%,100% { opacity: .4; transform: translate(-50%, -50%) } 50% { opacity: 1; transform: translate(-50%, -50%) translateY(-12px) } }"));
+        // A nested call cuts the arguments short: they decide nothing.
+        assert!(pulses("@keyframes c4 { 0%,100% { opacity: .4; transform: translate(calc(0px), 8px) } 50% { opacity: 1; transform: translate(0px, 8px) } }"));
+        assert!(pulses("@keyframes c3 { 0%,100% { opacity: .4; transform: translate(calc(-50% + 2px), 0) } 50% { opacity: 1; transform: translateX(-50%) } }"));
+        // One height, or one step that translates, decides nothing.
+        assert!(pulses("@keyframes h { 0%, 100% { opacity: .4; height: 8px } 50% { opacity: 1 } }"));
+        assert!(pulses("@keyframes s { 0% { opacity: 1 } 50% { opacity: .5; transform: translateY(6px) } }"));
+        // Review of #1042, second round: two spellings of one height are one
+        // size, and a matrix step's translation is unknown, not zero.
+        assert!(pulses("@keyframes e { 0%,100% { opacity: .4; height: 8px; width: 8px } 50% { opacity: 1; height: 8.0px; width: 8px } }"));
+        assert!(pulses("@keyframes m { 0%,100% { opacity: .4; transform: translateY(8px) } 50% { opacity: 1; transform: matrix(1, 0, 0, 1, 0, 8) } }"));
+    }
+
+    /// observations-1004 row 25 (juskoe 10047255): a pulsing box twice as
+    /// tall as it is wide is a bar, not a dot.
+    #[test]
+    fn a_pulsing_bar_is_not_a_dot() {
+        let dots = |w: &str, h: &str| {
+            scan_css_text_for_pulsing_dot(
+                &format!(".d{{width:{w};height:{h};border-radius:9999px;animation:blip 1s infinite}} @keyframes blip{{50%{{opacity:.3}}}}"),
+                None,
+            )
+            .len()
+        };
+        assert_eq!(dots("8px", "8px"), 1);
+        assert_eq!(dots("6px", "9px"), 1, "1.5 to 1");
+        assert_eq!(dots("3px", "6px"), 0, "a waveform bar");
+        assert_eq!(dots("12px", "4px"), 0, "a pill");
+        // Review of #1042: the utility-class form reads both sides too.
+        let tw = |cls: &str| scan_css_text_for_pulsing_dot("", Some(&format!("<span class=\"{cls}\"></span>"))).len();
+        assert_eq!(tw("animate-pulse w-2 h-2 rounded-full"), 1);
+        assert_eq!(tw("animate-ping size-2 rounded-full"), 1);
+        assert_eq!(tw("animate-pulse w-2 h-3 rounded-full"), 1, "1.5 to 1");
+        assert_eq!(tw("animate-pulse w-1 h-4 rounded-full"), 0, "a 4 by 16px bar");
+        assert_eq!(tw("animate-pulse w-1 h-12 rounded-full"), 0, "a tall bar");
     }
 
     #[test]

@@ -24,7 +24,7 @@ Form a platform hypothesis: `web`, `ios`, `android`, or `adaptive` (one product 
 
 ## Step 3: Interview for product truth
 
-STOP and call the AskUserQuestion tool to clarify. Ask only about material gaps the repository and original request do not answer with strong evidence.
+Ask with the AskUserQuestion tool and wait for the answer before continuing. Ask only about material gaps the repository and original request do not answer with strong evidence.
 
 Use the structured question tool when available; otherwise ask and wait. Keep rounds to at most three focused questions and require one real answer or approval round before writing a new PRODUCT.md. Confirm inferences.
 

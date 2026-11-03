@@ -72,7 +72,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if let Some(sel) =
         resolve_target_selection(&live_target.original_cwd, &live_target.target_options, &env)
     {
-        let payload = json!({
+        let mut payload = json!({
             "ok": false,
             "error": "target_selection_required",
             "targetPath": null,
@@ -81,6 +81,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             "targetCandidates": sel.target_candidates,
             "hint": "Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.",
         });
+        if sel.skipped_non_ui > 0 {
+            payload["skippedNonUiWorkspaces"] = json!(sel.skipped_non_ui);
+        }
         println(io, &json_pretty(&payload));
         return 0;
     }

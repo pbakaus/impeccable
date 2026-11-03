@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: an intro that ends on its own</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .cine-intro { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; color: #fff;
+      background: radial-gradient(130% 120% at 50% 28%, rgb(11, 22, 38) 0%, rgb(4, 5, 7) 70%); }
+    /* A tirionai.com-shaped intro (corpus run 1006): `div.cine-intro`, fixed,
+       a radial-gradient fill and no background colour, a brand line and a
+       progress count (61 characters), gone after 1.5 seconds. The URL engine
+       waits for it and hides nothing. Pinned by
+       crates/browser/tests/overlay_hiding.rs. */
+  </style>
+</head>
+<body>
+  <div class="cine-intro" aria-hidden="true"><div><b>TIRIONAI</b><p>For the places you can't always watch. RENDERING <span id="pct">0</span>%</p></div></div>
+  <h1>A page under an intro</h1>
+  <p class="body-copy" style="max-width: 640px;">This page has copy of its own under the layer: a product, its pricing, its support hours and a note on shipping. A visitor reads it once the layer in front of it is gone, and the scan should read it too. It runs long enough to be more than a title.</p>
+  <p class="faint" id="covered-copy">Faint copy the intro covers.</p>
+  <script>
+    let n = 0;
+    const t = setInterval(() => { n += 10; document.getElementById('pct').textContent = n; }, 150);
+    setTimeout(() => { clearInterval(t); document.querySelector('.cine-intro').remove(); }, 1500);
+  </script>
+</body>
+</html>

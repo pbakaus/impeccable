@@ -1,0 +1,5 @@
+{
+  "name": "@acme/ui",
+  "private": true,
+  "peerDependencies": { "react": "^19" }
+}

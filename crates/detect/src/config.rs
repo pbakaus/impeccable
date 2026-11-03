@@ -746,11 +746,13 @@ fn glob_to_regex(glob: &str) -> Option<Regex> {
         let c = chars[i];
         if c == '*' {
             if chars.get(i + 1) == Some(&'*') {
-                re.push_str(DOT);
-                re.push('*');
                 i += 2;
                 if chars.get(i) == Some(&'/') {
+                    re.push_str(&format!("(?:{DOT}*/)?"));
                     i += 1;
+                } else {
+                    re.push_str(DOT);
+                    re.push('*');
                 }
             } else {
                 re.push_str("[^/]*");
@@ -1027,28 +1029,7 @@ fn extract_finding_ignore_value_raw(finding: &Finding, rule: &str) -> String {
 
 /// JS `decodeURIComponent` with the source's `try { } catch { raw }` fallback.
 pub fn decode_uri_component(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' {
-            if i + 2 < bytes.len() {
-                let hex = &s[i + 1..i + 3];
-                if let Ok(v) = u8::from_str_radix(hex, 16) {
-                    out.push(v);
-                    i += 3;
-                    continue;
-                }
-            }
-            return s.to_string();
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    match String::from_utf8(out) {
-        Ok(v) => v,
-        Err(_) => s.to_string(),
-    }
+    impeccable_core::browser::driver::decode_uri_component(s).unwrap_or_else(|| s.to_string())
 }
 
 re!(
@@ -1188,6 +1169,18 @@ mod tests {
     }
 
     #[test]
+    fn globstar_slash_keeps_the_directory_boundary() {
+        let nested = ["src/**/a.html".to_string()];
+        assert!(matches_any_glob("src/a.html", &nested));
+        assert!(matches_any_glob("src/pages/a.html", &nested));
+        assert!(!matches_any_glob("src/xa.html", &nested));
+        let leading = ["**/foo.html".to_string()];
+        assert!(matches_any_glob("foo.html", &leading));
+        assert!(matches_any_glob("bar/foo.html", &leading));
+        assert!(!matches_any_glob("barfoo.html", &leading));
+    }
+
+    #[test]
     fn colors() {
         assert_eq!(color_ignore_key("#fff"), "255,255,255,255");
         assert_eq!(
@@ -1207,6 +1200,9 @@ mod tests {
         assert_eq!(normalize_ignore_value(" 'Open+Sans' "), "open sans");
         assert_eq!(decode_uri_component("Open%20Sans"), "Open Sans");
         assert_eq!(decode_uri_component("bad%zz"), "bad%zz");
+        assert_eq!(decode_uri_component("/tmp/%中.html"), "/tmp/%中.html");
+        assert_eq!(decode_uri_component("%E"), "%E");
+        assert_eq!(decode_uri_component("%+1"), "%+1");
     }
 
     #[test]

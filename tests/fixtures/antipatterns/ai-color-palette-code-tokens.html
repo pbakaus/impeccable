@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ai-color-palette code tokens fixture</title>
+<!--
+  observations-1006 row 4 (nitrostack.ai): the keywords of a highlighted code
+  sample are coloured by the language. A run in a monospace face with its
+  whitespace kept, beside runs in other colours, is code and supplies no
+  tell hue. A one-colour terminal line, a pre-line run and a monospace line
+  whose whitespace collapses are still read.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; background: #ffffff; color: #111111; margin: 0; }
+  .col { display: inline-block; width: 560px; vertical-align: top; padding: 24px; }
+  .dark { background: #0b0b12; padding: 24px; width: 480px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  .purple { color: #c084fc; }
+  .cyan { color: #22d3ee; }
+  .code-line { white-space: pre; color: #e5e7eb; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <div class="dark">
+    <p class="mono purple" id="flag-mono">Ship agents faster than ever</p>
+    <p class="cyan" id="flag-cyan">Built for the next wave of builders</p>
+    <p class="mono purple" id="flag-pre" style="white-space: pre">&gt; ship --now</p>
+    <p class="mono cyan" id="flag-preline" style="white-space: pre-line">Agents that ship while you sleep</p>
+  </div>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <div class="dark" id="pass-code">
+    <div class="mono code-line"><span class="purple">import</span> { <span class="cyan">Agent</span> } <span class="purple">from</span> "sdk";</div>
+    <div class="mono code-line"><span class="purple">const</span> agent = <span class="purple">new</span> <span class="cyan">Agent</span>();</div>
+  </div>
+</div>
+</body>
+</html>

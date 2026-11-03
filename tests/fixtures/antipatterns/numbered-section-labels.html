@@ -76,6 +76,16 @@
       margin-bottom: 8px;
     }
     .large-h2 { font-size: 44px; }
+
+    /* ── a leading hash, in bare and in drawn articles ── */
+    .hash-index {
+      font-size: 11px;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .feature-h3-large { font-size: 40px; margin: 0 0 12px; }
+    .drawn-card { display: block; background: #f3efe6; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); color: inherit; text-decoration: none; margin-bottom: 16px; }
   </style>
 </head>
 <body>
@@ -126,6 +136,18 @@
       <p>A 15px index beside a 44px heading still reads as a micro label.</p>
     </section>
 
+    <!-- A leading hash is the number. Each pair sits in an article nothing
+         draws as a card, so the article is a section, not a card. -->
+    <article>
+      <div><span class="hash-index">#1 Connect</span><h3 class="feature-h3-large">Xi connects</h3></div>
+      <p>A hash index over a feature heading in a bare article.</p>
+    </article>
+
+    <article>
+      <div><span class="hash-index">#2 Remember</span><h3 class="feature-h3-large">Omicron remembers</h3></div>
+      <p>The second feature repeats the hash scaffold.</p>
+    </article>
+
   </div>
 
   <!-- ══ SHOULD PASS ══ -->
@@ -171,6 +193,21 @@
       <h3>Lambda sits in a card</h3>
       <p>Per-card indices are item numbering, not section scaffolding.</p>
     </article>
+
+    <article class="card">
+      <span class="hash-index">#3 Experiment</span>
+      <h3 class="feature-h3-large">Pi keeps its card</h3>
+      <p>The same hash index in an article drawn as a card is the card's own numbering.</p>
+    </article>
+
+    <!-- A card component that draws the card on a link or a div around
+         the semantic article: the article is a card. -->
+    <a class="drawn-card" href="#rho"><article><span class="hash-index">#4 Plan</span><h3 class="feature-h3-large">Rho sits in a linked card</h3></article></a>
+    <div class="drawn-card"><article><span class="hash-index">#5 Build</span><h3 class="feature-h3-large">Sigma sits in a drawn wrapper</h3></article></div>
+
+    <!-- A ranked list: "#N Rated" is a rank, not a section number. -->
+    <article><span class="hash-index">#1 Rated</span><h3 class="feature-h3-large">Tau ranks first</h3></article>
+    <article><span class="hash-index">#2 Rated</span><h3 class="feature-h3-large">Upsilon ranks second</h3></article>
 
     <nav aria-label="Progress">
       <span class="sec-index">11</span>

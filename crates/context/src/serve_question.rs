@@ -8,9 +8,17 @@ use crate::question_page::PAGE;
 use crate::util::{exists, is_dir, iso_now, json_compact, json_pretty, mtime_ms, now_ms, safe_read, utf16_len, Env};
 use impeccable_common::Io;
 use serde_json::{json, Map, Value};
+use impeccable_common::http::{Response, SerialServer};
 use std::sync::{Arc, Mutex};
 
+/// Ceiling on a POST body (`/answer`, `/build-path`, `/heartbeat`). The page
+/// sends a few hundred bytes; the cap only bounds a hostile local client.
+const MAX_REQUEST_BODY: usize = 8 * 1024 * 1024;
+
 const NEXT_CLAIM_GRACE_MS: f64 = 10000.0;
+
+/// Past the once-a-minute timer cadence Chrome gives a tab hidden for 5 minutes.
+const PAGE_CLOSED_GRACE_MS: f64 = 90000.0;
 
 struct Args<'a> {
     argv: &'a [String],
@@ -76,8 +84,68 @@ fn read_state(qdir: &str, key: &str) -> Option<Map<String, Value>> {
     serde_json::from_str::<Value>(&text).ok()?.as_object().cloned()
 }
 
+/// The URL a detached daemon recorded in its state file, polled until
+/// `deadline_ms`. A state file without a url is not ready yet: the daemon
+/// replaces it atomically, but one built before that could still be caught
+/// between creating the file and writing it.
+fn wait_for_daemon_url(qdir: &str, key: &str, deadline_ms: f64) -> Option<String> {
+    loop {
+        let url = read_state(qdir, key).and_then(|s| s.get("url").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string));
+        if url.is_some() || now_ms() >= deadline_ms {
+            return url;
+        }
+        sleep_ms(100);
+    }
+}
+
 fn num_field(m: &Map<String, Value>, key: &str) -> Option<f64> {
     m.get(key).and_then(|v| v.as_f64())
+}
+
+/// `~/.impeccable/questions/<key>.root.json`, `{"root": <cwd of --start>}`:
+/// how `--wait`, `--update` and `--stop` find a round from any cwd, since
+/// agent shells reset their cwd between calls.
+fn key_root_file(env: &Env, key: &str) -> String {
+    jsp::join(&[&crate::util::homedir(env), ".impeccable", "questions", &format!("{}.root.json", key)])
+}
+
+fn record_key_root(env: &Env, key: &str, root: &str) -> std::io::Result<()> {
+    let file = key_root_file(env, key);
+    if let Some(dir) = std::path::Path::new(&file).parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    write_atomic(&file, &json_compact(&json!({ "root": root })))
+}
+
+fn recorded_key_root(env: &Env, key: &str) -> Option<String> {
+    safe_read(&key_root_file(env, key))
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.get("root").and_then(Value::as_str).map(str::to_string))
+}
+
+/// Removes the pointer only when it names `root`: a key reused by another
+/// project keeps that project's pointer.
+fn forget_key_root(env: &Env, key: &str, root: &str) {
+    if recorded_key_root(env, key).as_deref() == Some(root) {
+        let _ = std::fs::remove_file(key_root_file(env, key));
+    }
+}
+
+/// The directory a keyed verb works in: its own cwd when the key's state is
+/// there, else the root `--start` recorded for the key when the state is there.
+fn key_root(env: &Env, cwd: &str, key: &str) -> String {
+    let has_state = |root: &str| exists(&state_file(&jsp::join(&[root, ".impeccable", "questions"]), key));
+    if has_state(cwd) {
+        return cwd.to_string();
+    }
+    match recorded_key_root(env, key) {
+        Some(root) if has_state(&root) => root,
+        _ => cwd.to_string(),
+    }
+}
+
+fn missing_state_message(verb: &str, qdir: &str, key: &str) -> String {
+    format!("serve-question: no state file for key {key} in {qdir}, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun {verb} from the directory where --start ran. The page may still be open: do not --start a second server.\n")
 }
 
 fn is_alive(qdir: &str, key: &str) -> bool {
@@ -120,7 +188,7 @@ fn is_open_rounds_decision_comp(cwd: &str, path: &str) -> bool {
     state.get("phase").and_then(Value::as_str) == Some("comps") && same_path(&jsp::resolve(cwd, &[chosen]), &jsp::resolve(cwd, &[path]))
 }
 
-fn print_answer(io: &mut Io, raw: &str, served: &[String]) {
+fn print_answer(io: &mut Io, cwd: &str, raw: &str, served: &[String]) {
     io.out(&format!("ANSWER: {}\n", raw));
     let Ok(a) = serde_json::from_str::<Value>(raw) else { return };
     let truthy = |k: &str| a.get(k).map(crate::staleness::js_truthy).unwrap_or(false);
@@ -128,8 +196,7 @@ fn print_answer(io: &mut Io, raw: &str, served: &[String]) {
         io.out("CHOSEN CARD: open the chosen world's board and hero images now, before any code. When your harness only reads files, or runs sandboxed, download them INTO the workspace and open the relative path; a sandboxed viewer rejects absolute paths outside it. They set the craft bar the build must reach.\n");
     }
     let comp = a.get("comp").map(js_str).unwrap_or_default();
-    let cwd = io.cwd.to_string_lossy().to_string();
-    if truthy("comp") && (is_comp_round_comp(&comp) || is_comp_rounds_option_one(&cwd, &comp, served)) {
+    if truthy("comp") && (is_comp_round_comp(&comp) || is_comp_rounds_option_one(cwd, &comp, served)) {
         io.out("APPROVED COMP: the user picked this composition in the comp round, so it is the approved comp. Set \"approved\": true in its prompt sidecar, the image's full file name plus .json (a.png gets a.png.json), record its path in the surface brief, then close the comps phase with build-phase advance. Build from it as it stands; never regenerate it.\n");
     } else if truthy("comp") {
         io.out("CHOSEN COMP: the decision comp at that path is compositional option one. On a comp-led build pass it to build-phase start as --decision-comp <that path>, and the comp round adds two variations beside it where it stands; on a code-led build it returns at the finish review as the critique reference. Never regenerate it from scratch.\n");
@@ -1228,6 +1295,11 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     let idle_arg = js_number_arg(&a, "idle-grace", "600");
     let idle_grace_ms = (if idle_arg.is_finite() && idle_arg > 0.0 { idle_arg } else { 600.0 }) * 1000.0;
     let port_arg = js_number_arg(&a, "port", "0");
+    let invoked_cwd = cwd;
+    let cwd = match a.arg("key") {
+        Some(key) if a.has("wait") || a.has("update") || a.has("stop") => key_root(&env, &invoked_cwd, &key),
+        _ => invoked_cwd.clone(),
+    };
     let qdir = jsp::join(&[&cwd, ".impeccable", "questions"]);
 
     if a.has("schema") {
@@ -1261,6 +1333,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 }
                 return 0;
             }
+            if !exists(&state_file(&qdir, &key)) {
+                io.out(&missing_state_message("--wait", &qdir, &key));
+                return 2;
+            }
             if !is_alive(&qdir, &key) {
                 io.out(&format!("serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start --key {} and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.\n", key));
                 return 2;
@@ -1271,7 +1347,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                     by_file || num_field(&state, "claimedAt").map(|c| c != 0.0 && now_ms() - c < NEXT_CLAIM_GRACE_MS).unwrap_or(false)
                 };
                 if let Some(lb) = num_field(&state, "lastBeat") {
-                    if !mid_delivery && lb != 0.0 && now_ms() - lb > 15000.0 {
+                    if !mid_delivery && lb != 0.0 && now_ms() - lb > PAGE_CLOSED_GRACE_MS {
                         saw_close = true;
                         break;
                     }
@@ -1310,7 +1386,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         let collected = safe_read(&answer_file(&qdir, &key)).unwrap_or_default();
         let collected = crate::util::js_trim(&collected).to_string();
-        print_answer(io, &collected, &served);
+        print_answer(io, &cwd, &collected, &served);
         if !missing.is_empty() {
             io.out(&sidecar_missing_line(&env, &cwd, &missing));
         }
@@ -1321,6 +1397,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         let _ = std::fs::remove_file(answer_file(&qdir, &key));
         if !keeps_open {
             let _ = std::fs::remove_file(state_file(&qdir, &key));
+            forget_key_root(&env, &key, &cwd);
             let _ = std::fs::remove_file(hand_file(&qdir, &key));
             let _ = std::fs::remove_file(render_check_file(&qdir, &key));
             let _ = std::fs::remove_dir_all(generated_dir(&qdir, &key));
@@ -1340,6 +1417,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         let _ = std::fs::remove_file(answer_file(&qdir, &key));
         let _ = std::fs::remove_file(state_file(&qdir, &key));
+        forget_key_root(&env, &key, &cwd);
         let _ = std::fs::remove_file(hand_file(&qdir, &key));
         let _ = std::fs::remove_file(render_check_file(&qdir, &key));
         let _ = std::fs::remove_dir_all(generated_dir(&qdir, &key));
@@ -1353,7 +1431,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err("serve-question: --update needs --key and --payload\n");
             return 1;
         };
-        let next_round = match read_json_file(&jsp::resolve(&cwd, &[&pp])) {
+        let next_round = match read_json_file(&jsp::resolve(&invoked_cwd, &[&pp])) {
             Ok(v) => v,
             Err(msg) => {
                 io.err(&format!("{}\n", msg));
@@ -1375,6 +1453,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             io.err(&missing_comps_message(round, &missing, "rerun --update on the same key", "nothing was delivered"));
             return 1;
         }
+        if !exists(&state_file(&qdir, &key)) {
+            io.err(&missing_state_message("--update", &qdir, &key));
+            return 2;
+        }
         if !is_alive(&qdir, &key) {
             io.err("serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.\n");
             return 2;
@@ -1389,7 +1471,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         take_roll(&qdir, roll.as_deref(), &next_round);
         let delivered = next_file(&qdir, &key);
-        let _ = std::fs::copy(jsp::resolve(&cwd, &[&pp]), &delivered);
+        let _ = std::fs::copy(jsp::resolve(&invoked_cwd, &[&pp]), &delivered);
         touch_now(&delivered);
         io.out("next round delivered; the page reloads itself\n");
         if comps_expected(&next_round, &cwd, Some(&hand)) {
@@ -1475,11 +1557,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             cmd.spawn()
         };
         let _ = spawned; // detached: never waited on
-        let deadline = now_ms() + 8000.0;
-        while now_ms() < deadline && !exists(&state_file(&qdir, &key)) {
-            sleep_ms(100);
-        }
-        if !exists(&state_file(&qdir, &key)) {
+        let Some(daemon_url) = wait_for_daemon_url(&qdir, &key, now_ms() + 8000.0) else {
             let tail = safe_read(&log_file)
                 .map(|t| {
                     let lines: Vec<&str> = crate::util::js_trim(&t).split('\n').collect();
@@ -1491,12 +1569,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             let rel = jsp::relative(&cwd, &cwd, &log_file);
             io.err(&format!("serve-question: log at {}. A sandboxed exec that cannot listen on localhost causes exactly this; rerun this command once through the harness's network-enabled or unsandboxed command tool before falling back.\n", if rel.is_empty() { log_file.clone() } else { rel }));
             return 1;
+        };
+        if let Err(e) = record_key_root(&env, &key, &cwd) {
+            io.out(&format!("serve-question: could not record this round's directory in {} ({}); run --wait, --update and --stop for this key from this directory.\n", key_root_file(&env, &key), e));
         }
-        let state = read_state(&qdir, &key).unwrap_or_default();
         if let Some(notice) = tracked_runtime_notice(&cwd) {
             io.out(&notice);
         }
-        io.out(&format!("QUESTION URL: {}\n", state.get("url").map(js_str).unwrap_or_default()));
+        io.out(&format!("QUESTION URL: {}\n", daemon_url));
         io.out(&format!("QUESTION KEY: {}\n", key));
         io.out("Open the URL for the user now: in-app browser when the harness has one, otherwise the system opener (macOS `open`, Linux `xdg-open`), otherwise show the URL.\n");
         if comps_expected(&start_payload, &cwd, Some(&hand)) {
@@ -1527,14 +1607,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
     }
     let port = if port_arg.is_finite() && port_arg >= 0.0 { port_arg as u16 } else { 0 };
-    let server = match tiny_http::Server::http(("127.0.0.1", port)) {
+    let server = match SerialServer::bind(("127.0.0.1", port), MAX_REQUEST_BODY) {
         Ok(s) => s,
         Err(e) => {
             io.err(&format!("Error: listen EADDRINUSE: {}\n", e));
             return 1;
         }
     };
-    let actual_port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(port);
+    let actual_port = server.port();
     let url = format!("http://127.0.0.1:{}/", actual_port);
     if a.has("detached-serve") {
         let _ = std::fs::create_dir_all(&qdir);
@@ -1545,7 +1625,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         if !comps.is_empty() {
             st["comps"] = json!(comps);
         }
-        let _ = std::fs::write(state_file(&qdir, &key), json_compact(&st));
+        let _ = impeccable_common::fsx::write_atomic(state_file(&qdir, &key), json_compact(&st).as_bytes());
     } else {
         io.out(&format!("QUESTION URL: {}\n", url));
         io.out("Waiting for the user to choose in the browser (Ctrl-C aborts)...\n");
@@ -1555,7 +1635,6 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     }
     let _ = io.stdout.flush();
     let started_at = now_ms();
-    let server = Arc::new(server);
     // Lifetime watchdog thread; exits the process like the JS setInterval.
     {
         let state = state.clone();
@@ -1579,31 +1658,23 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             }
         });
     }
-    for mut request in server.incoming_requests() {
-        let method = request.method().as_str().to_string();
-        let raw_url = request.url().to_string();
+    while let Some(mut request) = server.recv() {
+        let method = request.request.method.clone();
+        let raw_url = request.request.target.clone();
         // JS: every request passes the Host allowlist first; a foreign or
         // missing Host header is a 403.
-        let host = request
-            .headers()
-            .iter()
-            .find(|h| h.field.equiv("Host"))
-            .map(|h| h.value.as_str().to_string());
+        let host = request.request.header("Host").map(str::to_string);
         if !allowed_host(host.as_deref(), actual_port) {
-            let _ = request.respond(tiny_http::Response::empty(403));
+            request.respond(&Response::new(403));
             continue;
         }
         // JS: new URL(req.url, 'http://127.0.0.1'); a target the URL parser
         // rejects is a 400.
         let Some((path, query)) = parse_request_url(&raw_url) else {
-            let _ = request.respond(tiny_http::Response::empty(400));
+            request.respond(&Response::new(400));
             continue;
         };
-        let origin = request
-            .headers()
-            .iter()
-            .find(|h| h.field.equiv("Origin"))
-            .map(|h| h.value.as_str().to_string());
+        let origin = request.request.header("Origin").map(str::to_string);
         let mut st = state.lock().unwrap();
         if method == "GET" && path == "/" {
             if let Some(pending) = st.next_file() {
@@ -1622,23 +1693,21 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                             } else {
                                 s.insert("comps".into(), json!(comps));
                             }
-                            let _ = std::fs::write(state_file(&st.qdir, &k), json_compact(&Value::Object(s)));
+                            let _ = impeccable_common::fsx::write_atomic(state_file(&st.qdir, &k), json_compact(&Value::Object(s)).as_bytes());
                         }
                     }
                 }
             }
             let html = st.page(st.awaiting_next);
-            let resp = tiny_http::Response::from_string(html)
-                .with_header(tiny_http::Header::from_bytes("content-type", "text/html; charset=utf-8").unwrap());
-            let _ = request.respond(resp);
+            request.respond(&Response::new(200).header("content-type", "text/html; charset=utf-8").text(&html));
             continue;
         }
         if method == "POST" && path == "/heartbeat" {
             if let Some(code) = reject_detached_post(st.detached_key.as_deref(), origin.as_deref(), &query, actual_port) {
-                let _ = request.respond(tiny_http::Response::empty(code));
+                request.respond(&Response::new(code));
                 continue;
             }
-            let _ = request.respond(tiny_http::Response::empty(204));
+            request.respond(&Response::new(204));
             st.last_beat_seen = Some(now_ms());
             if let Some(k) = st.detached_key.clone() {
                 let now = now_ms();
@@ -1646,7 +1715,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                     st.last_beat_write = Some(now);
                     if let Some(mut s) = read_state(&st.qdir, &k) {
                         s.insert("lastBeat".into(), Value::from(now as i64));
-                        let _ = std::fs::write(state_file(&st.qdir, &k), json_compact(&Value::Object(s)));
+                        let _ = impeccable_common::fsx::write_atomic(state_file(&st.qdir, &k), json_compact(&Value::Object(s)).as_bytes());
                     }
                 }
             }
@@ -1654,9 +1723,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         if method == "GET" && path == "/next-status" {
             let ready = st.next_file().map(|p| exists(&p)).unwrap_or(false);
-            let resp = tiny_http::Response::from_string(format!("{{\"ready\":{}}}", ready))
-                .with_header(tiny_http::Header::from_bytes("content-type", "application/json").unwrap());
-            let _ = request.respond(resp);
+            request.respond(&Response::new(200).header("content-type", "application/json").text(&format!("{{\"ready\":{}}}", ready)));
             continue;
         }
         if method == "GET" && path.starts_with("/img/") {
@@ -1679,11 +1746,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                             "image/jpeg"
                         };
                         let bytes = std::fs::read(&abs).unwrap_or_default();
-                        let resp = tiny_http::Response::from_data(bytes).with_header(tiny_http::Header::from_bytes("content-type", ty).unwrap());
-                        let _ = request.respond(resp);
+                        request.respond(&Response::new(200).header("content-type", ty).bytes(bytes));
                     }
                     _ => {
-                        let _ = request.respond(tiny_http::Response::empty(404));
+                        request.respond(&Response::new(404));
                     }
                 }
                 continue;
@@ -1706,14 +1772,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                         if raw { "'none'" } else { "'unsafe-inline'" },
                         if raw { "sandbox" } else { "sandbox allow-scripts" }
                     );
-                    let mut resp = tiny_http::Response::from_string(body);
+                    let mut resp = Response::new(200).text(&body);
                     for (k, v) in [("content-type", "text/html; charset=utf-8"), ("cache-control", "no-store"), ("x-content-type-options", "nosniff"), ("referrer-policy", "no-referrer"), ("content-security-policy", csp.as_str())] {
-                        resp = resp.with_header(tiny_http::Header::from_bytes(k, v).unwrap());
+                        resp = resp.header(k, v);
                     }
-                    let _ = request.respond(resp);
+                    request.respond(&resp);
                 }
                 None => {
-                    let _ = request.respond(tiny_http::Response::empty(404));
+                    request.respond(&Response::new(404));
                 }
             }
             continue;
@@ -1722,13 +1788,16 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             // JS: both handlers start with rejectDetachedPost (the /answer gate
             // from #555, the /build-path gate from the follow-up commit).
             if let Some(code) = reject_detached_post(st.detached_key.as_deref(), origin.as_deref(), &query, actual_port) {
-                let _ = request.respond(tiny_http::Response::empty(code));
+                request.respond(&Response::new(code));
                 continue;
             }
-            let mut body = String::new();
-            let _ = std::io::Read::read_to_string(request.as_reader(), &mut body);
-            let ok_resp = || tiny_http::Response::from_string("{\"ok\":true}")
-                .with_header(tiny_http::Header::from_bytes("content-type", "application/json").unwrap());
+            if request.request.body_truncated {
+                request.respond(&Response::new(413));
+                continue;
+            }
+            // Read as UTF-8 or not at all, as `read_to_string` did.
+            let body = String::from_utf8(std::mem::take(&mut request.request.body)).unwrap_or_default();
+            let ok_resp = || Response::new(200).header("content-type", "application/json").text("{\"ok\":true}");
             if path == "/build-path" {
                 let value = serde_json::from_str::<Value>(&body).ok().and_then(|v| v.get("value").and_then(|x| x.as_str()).map(|s| s.to_string()));
                 if let Some(value) = value.filter(|v| v == "comp" || v == "code") {
@@ -1748,10 +1817,10 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 // caller: the 200 reached the client (a separate process) while this
                 // one could still be preempted before the write landed, so a poller
                 // that trusted the 200 could look for the flip file and miss it.
-                let _ = request.respond(ok_resp());
+                request.respond(&ok_resp());
                 continue;
             }
-            let _ = request.respond(ok_resp());
+            request.respond(&ok_resp());
             // /answer
             let parsed = serde_json::from_str::<Value>(&body).ok().and_then(|v| v.as_object().cloned()).unwrap_or_default();
             let option_id = parsed.get("optionId").cloned().unwrap_or(Value::Null);
@@ -1830,7 +1899,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
                 ignore_questions_dir(&st.qdir);
                 let _ = std::fs::write(answer_file(&st.qdir, &k), format!("{}\n", answer));
             } else {
-                print_answer(io, &answer, &declared_comps(&st.payload));
+                print_answer(io, &st.cwd, &answer, &declared_comps(&st.payload));
                 let _ = io.stdout.flush();
             }
             // Sent after the answer is on disk, off the request loop, within
@@ -1859,7 +1928,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             }
             continue;
         }
-        let _ = request.respond(tiny_http::Response::empty(404));
+        request.respond(&Response::new(404));
     }
     0
 }
@@ -2540,7 +2609,33 @@ mod tests {
         assert!(PAGE.contains("--ks-font: system-ui,"));
         assert!(PAGE.contains("aria-label=\"Impeccable\""));
         assert!(PAGE.contains("color-scheme: light"));
-        assert!(!PAGE.contains("color-scheme: dark"));
+    }
+
+    #[test]
+    fn question_page_follows_system_theme_for_chrome_only() {
+        assert!(PAGE.contains("@media (prefers-color-scheme: dark)"));
+        assert!(PAGE.contains("color-scheme: dark"));
+        assert!(PAGE.contains("--review-media-paper"));
+    }
+
+    // Issue #1054: WKWebView in-app browsers can flatten the card's 3D context
+    // and ignore backface-visibility, painting the back face mirrored over the
+    // front. The visible face is chosen by an opacity swap instead, driven by
+    // the turn's computed angle rather than a timer, so a flip reversed
+    // mid-turn still swaps at edge-on.
+    #[test]
+    fn card_flip_does_not_depend_on_backface_visibility() {
+        assert!(!PAGE.contains("backface-visibility: hidden"));
+        assert!(PAGE.contains(".face.back { opacity: 0; }"));
+        assert!(PAGE.contains(".card[data-face=\"back\"] .face.back { opacity: 1; }"));
+        assert!(PAGE.contains(".card[data-face=\"back\"] .face.front { opacity: 0; }"));
+        assert!(!PAGE.contains(".face.front, .face.back { transition"), "no timed swap: a reversed flip shortens the turn");
+        assert!(!PAGE.contains(".card.flipped .face.back { opacity"), "the flipped class is the target, not the shown face");
+        // The swap reads the real rotation each frame of the turn.
+        assert!(PAGE.contains("new DOMMatrixReadOnly(t).m11 < 0 ? 'back' : 'front'"));
+        assert!(PAGE.contains("card.classList.toggle('flipped');\n    syncFace(card);"));
+        assert!(PAGE.contains("card.classList.remove('flipped'); syncFace(card);"));
+        assert!(PAGE.contains("@media (prefers-reduced-motion: reduce) { .card-inner { transition: none; } }"));
     }
 
     fn temp_project(name: &str) -> std::path::PathBuf {
@@ -2549,6 +2644,30 @@ mod tests {
         std::fs::create_dir_all(dir.join(".impeccable/questions")).unwrap();
         std::fs::create_dir_all(dir.join(".impeccable/mocks/decision")).unwrap();
         dir
+    }
+
+    // --start reads the daemon's URL from its state file. A file that exists
+    // but has no url yet (empty, as a non-atomic write leaves it, or url-less)
+    // keeps --start polling; only a recorded url ends the wait.
+    #[test]
+    fn start_waits_for_a_state_file_that_records_the_url() {
+        let dir = temp_project("state-not-ready");
+        let qdir = dir.join(".impeccable/questions").to_string_lossy().into_owned();
+        let state = state_file(&qdir, "k1");
+        std::fs::write(&state, "").unwrap();
+        assert_eq!(wait_for_daemon_url(&qdir, "k1", now_ms() + 250.0), None);
+        std::fs::write(&state, json_compact(&json!({ "pid": 1, "port": 0 }))).unwrap();
+        assert_eq!(wait_for_daemon_url(&qdir, "k1", now_ms() + 250.0), None);
+        let writer = {
+            let state = state.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                impeccable_common::fsx::write_atomic(&state, json_compact(&json!({ "pid": 1, "url": "http://127.0.0.1:9/" })).as_bytes()).unwrap();
+            })
+        };
+        assert_eq!(wait_for_daemon_url(&qdir, "k1", now_ms() + 5000.0).as_deref(), Some("http://127.0.0.1:9/"));
+        writer.join().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn run_captured(dir: &std::path::Path, args: &[&str]) -> (i32, String) {
@@ -3268,7 +3387,7 @@ mod tests {
 
     fn answer_lines(raw: &str) -> String {
         let (mut io, cap) = Io::captured("", std::env::temp_dir(), Env::new());
-        print_answer(&mut io, raw, &[]);
+        print_answer(&mut io, &std::env::temp_dir().to_string_lossy(), raw, &[]);
         let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
         out
     }
@@ -3295,7 +3414,7 @@ mod tests {
         let decision_page: Vec<String> = vec![slot.into(), ".impeccable/mocks/decision/b.png".into()];
         let answer = |raw: &str, served: &[String]| {
             let (mut io, cap) = Io::captured("", dir.clone(), Env::new());
-            print_answer(&mut io, raw, served);
+            print_answer(&mut io, &dir.to_string_lossy(), raw, served);
             let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
             out
         };
@@ -3910,6 +4029,38 @@ mod tests {
             return 0;
         }
         server.join().unwrap()
+    }
+
+    /// A decision page opens a socket per card image and keeps some idle.
+    /// Under tiny_http 0.12 part of such a burst was never answered (#1071);
+    /// every request must be.
+    #[test]
+    fn a_burst_of_connections_is_fully_served() {
+        let dir = temp_project("burst");
+        let qdir = dir.join(".impeccable/questions");
+        let payload = json!({ "options": [{ "id": "a", "label": "A" }, { "id": "b", "label": "B" }] });
+        std::fs::write(dir.join("payload.json"), payload.to_string()).unwrap();
+        let cwd = dir.clone();
+        let server = std::thread::spawn(move || {
+            let (mut io, _cap) = Io::captured("", cwd, Env::from([("IMPECCABLE_SELF".to_string(), "impeccable".to_string()), ("IMPECCABLE_NO_TELEMETRY".to_string(), "1".to_string())]));
+            let argv: Vec<String> = ["--payload", "payload.json", "--detached-serve", "--key", "pk", "--timeout", "0", "--no-open"].iter().map(|s| s.to_string()).collect();
+            run(&argv, &mut io)
+        });
+        let deadline = now_ms() + 5000.0;
+        let port = loop {
+            if let Some(p) = read_state(&qdir.to_string_lossy(), "pk").and_then(|s| s.get("port").and_then(Value::as_u64)) {
+                break p as u16;
+            }
+            assert!(now_ms() < deadline, "server never wrote its state");
+            sleep_ms(20);
+        };
+        let addr: std::net::SocketAddr = ([127, 0, 0, 1], port).into();
+        let request = format!("GET /img/0 HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\r\n");
+        for _ in 0..3 {
+            assert_eq!(impeccable_common::http::burst_answered(addr, request.as_bytes(), 4, 8), 8, "connections stranded");
+        }
+        ureq::post(&format!("http://127.0.0.1:{}/answer?key=pk", port)).send_string(&json!({ "optionId": "a" }).to_string()).unwrap();
+        assert_eq!(server.join().unwrap(), 0);
     }
 
     #[test]

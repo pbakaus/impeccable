@@ -18,7 +18,7 @@ import { hooksJsonFor } from './hooks.js';
 // These files are single-sourced from skill/agents/ so a harness with no
 // subagent capability runs each role inline from the same specialized text.
 const DEGRADED_PREAMBLE = `<!-- Generated from skill/agents/ at build time. Do not edit; edit the agent definition. -->
-This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line when you report. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.`;
+This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line of your closing message to the user, outside the output contract. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.`;
 
 /**
  * Map from frontmatter field name to extraction spec.
@@ -451,6 +451,19 @@ export function createTransformer(config) {
       }
     }
 
+    // Emit a provider plugin verbatim from the skill's payloads (Hermes:
+    // skill/hermes-plugin/ -> .hermes/plugins/impeccable-design-hook/). A
+    // skill without the payload emits none; tests/hook-build.test.mjs pins
+    // that the real source carries it.
+    let pluginInfo = '';
+    const payloadFiles = config.pluginPayload ? skills.flatMap(skill => skill.payloads?.[config.pluginPayload.source] ?? []) : [];
+    if (payloadFiles.length > 0) {
+      for (const file of payloadFiles) {
+        writeFile(path.join(providerDir, configDir, config.pluginPayload.dest, file.name), file.content);
+      }
+      pluginInfo = ` (${config.pluginPayload.dest})`;
+    }
+
     const skillWord = skills.length === 1 ? 'skill' : 'skills';
     const refInfo = refCount > 0 ? ` (${refCount} reference files)` : '';
     const scriptInfo = scriptCount > 0 ? ` (${scriptCount} script files)` : '';
@@ -458,6 +471,6 @@ export function createTransformer(config) {
     const hooksInfo = hooksEmitted
       ? ` (${config.hooksManifestRel || path.join('hooks', 'hooks.json')})`
       : '';
-    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}${hooksInfo}`);
+    console.log(`✓ ${displayName}: ${skills.length} ${skillWord}${refInfo}${scriptInfo}${agentInfo}${hooksInfo}${pluginInfo}`);
   };
 }

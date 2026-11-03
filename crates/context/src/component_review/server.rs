@@ -2,10 +2,10 @@ use super::{
     manifest::{digest, relative},
     store,
 };
+use impeccable_common::http::{Exchange, Request, Response, SerialServer};
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::{
-    io::Read,
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
@@ -13,9 +13,12 @@ use std::{
 
 const JS: &str = include_str!("../../assets/component-review.js");
 const HTML: &str = "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Component review · Impeccable</title><link rel='stylesheet' href='/review.css'></head><body><main id='review'></main><script src='/review.js' defer></script></body></html>";
-const CSS: &str = "@font-face{font-family:Albert Sans;src:url(/fonts/albertsans.ttf)}@font-face{font-family:Alumni Sans;src:url(/fonts/alumnisans.ttf)}@font-face{font-family:JetBrains Mono;src:url(/fonts/jetbrainsmono.ttf)}body{margin:0;background:#fafafa;--font-sans:'Albert Sans',Arial,sans-serif;--font-display:'Alumni Sans',Arial,sans-serif;--font-mono:'JetBrains Mono',monospace}body>p{padding:24px;font:16px var(--font-sans)}";
-fn respond(req: tiny_http::Request, code: u16, body: Vec<u8>, mime: &str, csp: &str) {
-    let mut response = tiny_http::Response::from_data(body).with_status_code(code);
+const CSS: &str = concat!("@font-face{font-family:Albert Sans;src:url(/fonts/albertsans.ttf)}@font-face{font-family:Alumni Sans;src:url(/fonts/alumnisans.ttf)}@font-face{font-family:JetBrains Mono;src:url(/fonts/jetbrainsmono.ttf)}body{margin:0;color:var(--ks-text,#292929);background:var(--ks-paper,#fafafa);--font-sans:'Albert Sans',Arial,sans-serif;--font-display:'Alumni Sans',Arial,sans-serif;--font-mono:'JetBrains Mono',monospace}body>p{padding:24px;font:16px var(--font-sans)}", include_str!("../../../../ui/component-review/theme.css"));
+/// Decision bodies over this are refused. The reader keeps one byte more so
+/// an oversized body is told apart from one exactly at the limit.
+const MAX_DECISION: usize = 512 * 1024;
+fn respond(req: Exchange, code: u16, body: Vec<u8>, mime: &str, csp: &str) {
+    let mut response = Response::new(code).bytes(body);
     for (k, v) in [
         ("Content-Type", mime),
         ("Cache-Control", "no-store"),
@@ -23,20 +26,15 @@ fn respond(req: tiny_http::Request, code: u16, body: Vec<u8>, mime: &str, csp: &
         ("Content-Security-Policy", csp),
         ("Referrer-Policy", "no-referrer"),
     ] {
-        response = response.with_header(tiny_http::Header::from_bytes(k, v).unwrap());
+        response = response.header(k, v);
     }
     if mime.starts_with("font/") {
-        response = response.with_header(
-            tiny_http::Header::from_bytes("Access-Control-Allow-Origin", "*").unwrap(),
-        );
+        response = response.header("Access-Control-Allow-Origin", "*");
     }
-    let _ = req.respond(response);
+    req.respond(&response);
 }
-fn header<'a>(req: &'a tiny_http::Request, name: &'static str) -> Option<&'a str> {
-    req.headers()
-        .iter()
-        .find(|h| h.field.equiv(name))
-        .map(|h| h.value.as_str())
+fn header<'a>(req: &'a Request, name: &'static str) -> Option<&'a str> {
+    req.header(name)
 }
 pub fn authorized(
     method: &str,
@@ -92,12 +90,9 @@ pub struct Limits {
 /// one (idle timeout or interrupt). service.json never outlives the server.
 pub fn serve(dir: &Path, port: u16, io: &mut Io, limits: Limits, stop: Option<&AtomicBool>) -> Result<i32, String> {
     store::read(&dir.join("current.json"))?;
-    let server = tiny_http::Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())?;
-    let actual = server
-        .server_addr()
-        .to_ip()
-        .ok_or("listener is not TCP")?
-        .port();
+    let server =
+        SerialServer::bind(("127.0.0.1", port), MAX_DECISION + 1).map_err(|e| e.to_string())?;
+    let actual = server.port();
     let service = json!({"url":format!("http://127.0.0.1:{actual}/"),"pid":std::process::id()});
     store::write(&dir.join("service.json"), &service)?;
     struct Registration<'a>(&'a Path);
@@ -129,17 +124,17 @@ pub fn serve(dir: &Path, port: u16, io: &mut Io, limits: Limits, stop: Option<&A
             return Ok(4);
         }
         let wait = limits.grace.min(limits.idle).min(Duration::from_secs(1));
-        let Some(mut req) = server.recv_timeout(wait).map_err(|e| e.to_string())? else {
+        let Some(req) = server.recv_timeout(wait)? else {
             continue;
         };
         last = Instant::now();
-        let method = req.method().as_str().to_string();
-        let path = req.url().split('?').next().unwrap_or("").to_string();
+        let method = req.request.method.clone();
+        let path = req.request.target.split('?').next().unwrap_or("").to_string();
         if !authorized(
             &method,
-            header(&req, "Host"),
-            header(&req, "Origin"),
-            header(&req, "Sec-Fetch-Site"),
+            header(&req.request, "Host"),
+            header(&req.request, "Origin"),
+            header(&req.request, "Sec-Fetch-Site"),
             actual,
         ) {
             respond(
@@ -176,20 +171,16 @@ pub fn serve(dir: &Path, port: u16, io: &mut Io, limits: Limits, stop: Option<&A
                     "application/json",
                 )),
                 ("POST", "/decision") => {
-                    if !header(&req, "Content-Type")
+                    if !header(&req.request, "Content-Type")
                         .is_some_and(|t| t.starts_with("application/json"))
                     {
                         return Err("expected application/json".into());
                     }
-                    let mut data = Vec::new();
-                    req.as_reader()
-                        .take(512 * 1024 + 1)
-                        .read_to_end(&mut data)
-                        .map_err(|e| e.to_string())?;
-                    if data.len() > 512 * 1024 {
+                    let data = &req.request.body;
+                    if req.request.body_truncated || data.len() > MAX_DECISION {
                         return Err("decision exceeds 512 KiB".into());
                     }
-                    let body: Value = serde_json::from_slice(&data).map_err(|e| e.to_string())?;
+                    let body: Value = serde_json::from_slice(data).map_err(|e| e.to_string())?;
                     Ok((
                         serde_json::to_vec(&store::submit(dir, &body)?).unwrap(),
                         "application/json",

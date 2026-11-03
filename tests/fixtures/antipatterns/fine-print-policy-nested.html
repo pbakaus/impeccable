@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A policy page whose paragraphs carry their own legal marker (decision 3 review, round 13)</title>
+<!--
+  The policy body below is a legal-content wrapper whose paragraphs each
+  carry a legal-paragraph class. The inner marker does not settle it: the
+  outer wrapper is the page's body, so every paragraph stays advisory under
+  line-length. The footer's legal paragraph, inside a legal wrapper too,
+  is exempt.
+
+  line-length needs layout: these rows report in the browser engine only.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #fff; margin: 24px; }
+  .legal-content p { font-size: 14px; line-height: 21px; width: 1100px; margin: 0 0 16px; }
+  footer .legal p { font-size: 12px; line-height: 18px; width: 1100px; }
+</style>
+</head>
+<body>
+<h1>Privacy policy</h1>
+<div class="legal-content">
+  <p class="legal-paragraph adv-policy-nested">By creating an account you agree that we may process the information you provide for the purposes described in this policy. We keep account data for as long as your account stays open and for up to ninety days after you close it, unless the law requires us to keep it longer. You can ask us for a copy of your data or ask us to delete it at any time from the privacy page in your settings.</p>
+  <p class="legal-paragraph adv-policy-nested">We collect the information you give us when you sign up, such as your name, your email address and your billing details, and the information your devices send us when you use the service, such as your browser type, your language and the pages you visit. We use it to run the service, to keep it secure, to answer your questions and to send you the receipts and notices the law requires.</p>
+  <p class="legal-paragraph adv-policy-nested">We share your information with the companies that host the service, process payments and send our emails, each under a contract that lets them use it only to do that work for us. We do not sell your information, and we do not share it with advertisers. When the law requires us to hand information to a court or a regulator, we tell you first unless the law forbids it.</p>
+  <p class="legal-paragraph adv-policy-nested">You can change what we send you from the notification page in your settings, and you can close your account at any time. Closing it deletes your projects and your profile within thirty days; backups that hold them roll over within ninety. If you live in a country whose law gives you more rights over your data, you have those rights here too, and you can ask our privacy team to act on them.</p>
+  <p class="legal-paragraph adv-policy-nested">We change this policy when the service or the law changes. When a change affects what we collect or how we use it, we email you at least thirty days before it takes effect and show a notice in the app, so you can read it and decide whether to keep your account. Earlier versions of this policy stay on this page, with the date each one took effect and a summary of what changed.</p>
+  <p class="legal-paragraph adv-policy-nested">We store your information in data centres in the regions you choose when you create a workspace, and we copy it to a second region only to recover from an outage. Everyone at the company who can reach it signs a confidentiality agreement, works on a managed device with its disk encrypted, and reaches production systems only through an audited gateway that records each session.</p>
+  <p class="legal-paragraph adv-policy-nested">Children under sixteen may not open an account. If we learn that a child has given us information, we delete it and close the account. If you think a child has signed up, write to our privacy team and we will look into it within five business days. Questions about this policy, and complaints about how we handled your data, go to the same address, and you can also take them to your local data protection authority.</p>
+</div>
+<footer>
+  <div class="legal"><p class="legal-paragraph ex-footer-legal">Example Inc. is a software company, not a bank. Payments are processed by our partner banks, each a member of the deposit insurance scheme in its country, and your balances are held with them on your behalf.</p></div>
+</footer>
+</body>
+</html>

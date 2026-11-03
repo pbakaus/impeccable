@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --cdp requires a DevTools port or URL, e.g. --cdp 9222 or --cdp ws://127.0.0.1:9222/devtools/browser/<id>\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contrast surfaces: clipped words, tiles over a fill, gradient text, shade on a band (browser-only)</title>
+  <!--
+    Four surfaces the URL engine used to read wrong (corpus observations-1006
+    section 6, branch 4). Each should-pass case has a should-flag twin that
+    differs in one property.
+
+    1. A word whose background is clipped to its text, inside a light
+       heading on a dark section: its gradient paints only its own glyphs,
+       so it is no ground for the heading's other words.
+    2. A translucent texture tile over a section's own dark fill: the tile is
+       laid over that fill, not over the page under the section.
+    3. Gradient text through transparent glyphs on a solid ground: scored by
+       its best stop, reported only where even that one fails. The same pale
+       tagline over a dark backdrop laid beneath it (an absolute sibling) is
+       read on that backdrop, not on the white page.
+    4. A navy drop shadow on a teal gradient band darkens it in the band's
+       own hue: no glow. A cyan glow on the same band lifts it, and a maroon
+       shadow, dark but in a hue of its own, reads as a coloured shadow.
+
+    Ratios are far from their bars so the reading does not depend on fonts.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1.label { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    .case { margin: 0 0 32px; }
+    .dark { background-color: #0b0b10; padding: 24px; width: 560px; box-sizing: border-box;
+      background-image: radial-gradient(120% 120% at 50% 0%, rgba(99, 102, 241, 0.2) 0%, rgba(0, 0, 0, 0) 60%); }
+    .hero { font: 700 36px/44px system-ui; margin: 0; color: #f1f1f4; }
+    .hero span { background-image: linear-gradient(135deg, #818cf8, #c084fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .grain { width: 560px; padding: 40px 24px; box-sizing: border-box;
+      background: #111111 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' fill='%23ffffff' fill-opacity='0.1'/%3E%3C/svg%3E") repeat; background-size: 180px 180px; }
+    .grain.pale { background-color: #ededed; }
+    .grain h2 { margin: 0; font: 700 32px/40px system-ui; color: #f5f5f5; }
+    .panel { background: #f4f1ff; padding: 16px; width: 360px; }
+    .tagline { margin: 0 0 8px; font: 400 16px/24px system-ui; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+    .tagline.pale { background-image: linear-gradient(to right, #67e8f9, #60a5fa, #a78bfa); }
+    .tagline.deep { background-image: linear-gradient(to right, #67e8f9, #4c1d95); }
+    .night { position: relative; width: 360px; padding: 16px; }
+    .night .backdrop { position: absolute; inset: 0; background: #0b1020; }
+    .night .tagline { position: relative; z-index: 1; }
+    .band { background-image: linear-gradient(90deg, #042f2e, #0f766e); padding: 40px; display: flex; gap: 40px; }
+    .tile { display: block; width: 160px; height: 72px; background: #f1f5f9; color: #0f172a; text-decoration: none; font: 600 16px/72px system-ui; text-align: center; }
+    #pass-navy-drop-shadow-on-band { box-shadow: rgba(0, 29, 56, 0.2) 0px 12px 28px 0px; }
+    #flag-maroon-shadow-on-band { box-shadow: rgba(76, 5, 25, 0.9) 0px 12px 40px 0px; }
+    #flag-cyan-glow-on-band { box-shadow: rgba(34, 211, 238, 0.6) 0px 0px 28px 0px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="col">
+      <h1 class="label">Should flag</h1>
+      <div class="case">
+        <div class="dark"><p class="hero" id="flag-dim-heading-with-gradient-word" style="color: #34343c">A <span>caption editor for every</span> clip</p></div>
+      </div>
+      <div class="case">
+        <div class="grain pale"><h2 id="flag-heading-on-a-pale-tiled-section">Design your next board</h2></div>
+      </div>
+      <div class="case">
+        <div class="panel"><p class="tagline pale" id="flag-pale-gradient-tagline">What if every idea had a launch pad?</p></div>
+      </div>
+      <div class="case">
+        <div class="band"><a class="tile" href="#" id="flag-cyan-glow-on-band">Partner</a><a class="tile" href="#" id="flag-maroon-shadow-on-band">Partner</a></div>
+      </div>
+    </div>
+    <div class="col">
+      <h1 class="label">Should pass</h1>
+      <div class="case">
+        <div class="dark"><p class="hero" id="pass-light-heading-with-gradient-word">A <span>caption editor for every</span> clip</p></div>
+      </div>
+      <div class="case">
+        <div class="grain"><h2 id="pass-heading-on-a-dark-tiled-section">Design your next board</h2></div>
+      </div>
+      <div class="case">
+        <div class="panel"><p class="tagline deep" id="pass-gradient-tagline-with-a-deep-stop">What if every idea had a launch pad?</p></div>
+      </div>
+      <div class="case">
+        <div class="night"><div class="backdrop"></div><p class="tagline pale" id="pass-pale-gradient-tagline-on-a-dark-backdrop">What if every idea had a launch pad?</p></div>
+      </div>
+      <div class="case">
+        <div class="band"><a class="tile" href="#" id="pass-navy-drop-shadow-on-band">Partner</a></div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

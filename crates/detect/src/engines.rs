@@ -41,6 +41,10 @@ pub struct ScanOptions {
     /// browser engine reports them as before; it only stops letting one of
     /// them stand in for another rule's finding (vanishing ink).
     pub unreported_rules: Vec<String>,
+    /// Whether `detector.ignoreFiles` waives a linked stylesheet (given its
+    /// absolute path). The static HTML engine still reads it for the cascade
+    /// but leaves it out of the page-level pattern scan.
+    pub ignored_linked_stylesheet: Option<Rc<dyn Fn(&str) -> bool>>,
 }
 
 /// A URL scan's findings plus the notes the CLI prints about how the page
@@ -96,6 +100,19 @@ pub trait UrlEngine {
     /// no shared mode; `detect_url` is used per target instead.
     fn open_shared(&self) -> Option<Box<dyn SharedBrowser + '_>> {
         None
+    }
+    /// `--cdp`: scan a page of an app that is already running, through its
+    /// DevTools endpoint, with the same passes and output as a URL scan. The
+    /// engine attaches without launching, navigating, resizing or closing
+    /// anything, and leaves the page as it found it. `target` is the
+    /// `--target` substring of the page's URL or title.
+    fn detect_cdp_scan(
+        &self,
+        _endpoint: &crate::cdp_endpoint::CdpEndpoint,
+        _target: Option<&str>,
+        _options: &ScanOptions,
+    ) -> Result<UrlScan, EngineError> {
+        Err(EngineError::new("this build cannot attach to a running app (--cdp)"))
     }
 }
 

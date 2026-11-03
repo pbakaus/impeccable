@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta property="og:site_name" content="Northwind" />
+  <title>Low contrast: the state a visitor meets (browser-only)</title>
+  <!--
+    Each case is read at the state a visitor meets, not the frame the scan
+    caught. A call to action still waiting out its entrance delay is read at
+    the entrance's end frame. A notification row a paused loop holds part
+    way through its fade is a frame of the loop, so no pass reads it faded.
+    A white link that is the whole label of its control, on its own white
+    card, is a real 1.0:1, which the link path used to drop as a walk that
+    missed the photo. A white label beside the bars of a menu button in a
+    white header, and a white note in no control, are hidden on purpose. The site's name set huge
+    and faint in the footer is a decorative shape and reports as advisory.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    .case { margin: 0 0 32px; }
+    @keyframes actions-reveal { 0% { opacity: 0; } 100% { opacity: 1; } }
+    .entrance { opacity: 0; animation: actions-reveal 0.6s ease 40s 1 forwards; }
+    .cta { display: inline-block; padding: 12px 24px; border-radius: 8px; font: 600 16px/24px system-ui; color: #ffffff; background: linear-gradient(90deg, #8f9bff, #7fd8e0); text-decoration: none; }
+    @keyframes notif-cycle { 0% { opacity: 0; } 30% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes notif-breathe { 0% { opacity: 0.2; } 100% { opacity: 1; } }
+    .notif { background: #ffffff; border: 1px solid #e2e8f0; padding: 12px; animation-duration: 9s; animation-iteration-count: infinite; animation-play-state: paused; animation-delay: 0s; }
+    .notif.loop { animation-name: notif-cycle; animation-delay: -0.6s; }
+    .notif.breathe { animation-name: notif-breathe; }
+    .notif p { margin: 0; font: 600 12px/16px system-ui; color: #0f172a; }
+    .card { background: #ffffff; border: 2px solid #ffedd5; border-radius: 8px; padding: 32px; text-align: center; }
+    .ghost-link { display: inline-block; border: 1px solid #ffffff; color: #ffffff; padding: 12px 32px; font: 500 18px/28px system-ui; text-decoration: none; }
+    .hero { position: relative; height: 120px; }
+    .hero img { position: absolute; inset: 0; width: 100%; height: 120px; }
+    .hero .over { position: relative; padding: 40px 24px; }
+    .site-header { width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 16px 0; background: #ffffff; }
+    .menu-toggle { display: flex; gap: 8px; align-items: center; background: none; border: 0; font: 400 14px/20px system-ui; }
+    .menu-label { color: #ffffff; }
+    .bars { width: 20px; height: 14px; border-top: 2px solid #111111; border-bottom: 2px solid #111111; }
+    .aside-wrap { background: #ffffff; padding: 16px; }
+    .aside-note { font: 400 14px/20px system-ui; color: #ffffff; }
+    footer { width: 1200px; margin: 0 auto; overflow: hidden; }
+    .wordmark { display: block; font: 700 200px/1 system-ui; color: rgba(0, 0, 0, 0.07); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header class="site-header"><strong>Northwind</strong><button class="menu-toggle" type="button"><span class="menu-label" id="pass-hidden-menu-label">Menu</span><span class="bars"></span></button></header>
+  <main>
+    <div class="col">
+      <h1>Should flag</h1>
+      <div class="case"><div class="entrance"><a class="cta" id="flag-cta-waiting-out-its-entrance" href="#start">Get started today</a></div></div>
+      <div class="case"><div class="card"><a class="ghost-link" id="flag-white-link-on-white-card" href="#chat">Start Chat</a></div></div>
+      <div class="case"><div class="notif breathe"><p id="flag-row-in-a-paused-breath">Quiz on Wednesday, room B-204</p></div></div>
+    </div>
+    <div class="col">
+      <h1>Should pass</h1>
+      <div class="case"><div class="notif loop"><p id="pass-row-in-a-paused-loop">Quiz on Thursday, room B-205</p></div></div>
+      <div class="case"><div class="aside-wrap"><span class="aside-note" id="pass-opens-in-a-new-tab">Opens in a new tab</span></div></div>
+      <div class="case"><div class="hero"><img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGOQs4nCihiGlgQAhsctASkFMAkAAAAASUVORK5CYII="><div class="over"><a class="ghost-link" id="pass-white-link-on-photo" href="#tour">Take the tour</a></div></div></div>
+    </div>
+  </main>
+  <footer><span class="wordmark" id="advisory-footer-wordmark">Northwind</span><span class="wordmark" id="flag-footer-slogan">Trade</span></footer>
+</body>
+</html>

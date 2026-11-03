@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consent hiding: a cookie lock that blurs the page</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0 0 12px; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .body-copy { max-width: 640px; }
+    /* A ktk.de-shaped lock (corpus run 1006): the notice is a role=dialog box
+       in a fixed layer, an empty transparent fixed layer beside it takes the
+       hit tests below it, and the page wrapper carries an inline
+       filter: blur(4px). The URL engine hides
+       the layer and the empty lock and removes the blur; the small blurred
+       decoration #deco keeps its own. Pinned by
+       crates/browser/tests/consent_hiding.rs. */
+    #lock { position: fixed; inset: 0; z-index: 9008; }
+    #block { position: fixed; top: 0; left: 0; right: 0; z-index: 9010; }
+    .text { position: relative; z-index: 9012; width: 640px; margin: 30px auto; padding: 24px; background: #ffffff; }
+    .text p { margin: 0 0 12px; font-size: 14px; color: #b0b0b0; }
+  </style>
+</head>
+<body>
+  <div id="page" style="filter: blur(4px); min-height: 100vh;">
+  <h1>A page under a cookie lock</h1>
+  <p class="body-copy">This page has enough copy of its own to be a page and not a consent wall. It describes a product, its pricing and its support hours, and a visitor reads it once the notice below is out of the way. The notice is the site's own, written without any consent manager's markup.</p>
+  <p class="faint" id="covered-copy" style="position: absolute; top: 700px; left: 80px; width: 520px;">Faint copy the notice covers.</p>
+  <a href="#" id="covered-cta" style="position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px; background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none;">Start free trial</a>
+  </div>
+  <div id="deco" style="filter: blur(8px); width: 120px; height: 120px; background: #ffd400;"></div>
+    <div id="lock"></div>
+    <div id="block">
+      <div class="text" role="dialog">
+        <p id="notice-text">Diese Website verwendet Cookies. Wir verwenden Cookies, die für die Funktion unserer Webseiten notwendig sind.</p>
+        <button type="submit">Alle Cookies akzeptieren</button>
+      </div>
+    </div>
+</body>
+</html>

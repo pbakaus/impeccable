@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stays: a fixed blurred decoration beside a cookie bar</title>
+  <!-- An 80px blur is a decoration, and a bottom bar is not a lock. Review probe from work/round12/harness-review.md, pinned by crates/browser/tests/consent_hiding.rs. -->
+</head>
+<body style="margin:0;background:#fff">
+<div class="aurora" style="position:fixed;inset:-10%;z-index:-1;filter:blur(80px);background:radial-gradient(circle at 30% 30%,#ff9ad5,transparent 60%),radial-gradient(circle at 70% 60%,#8ad4ff,transparent 60%)"></div>
+<main style="position:relative;max-width:720px;margin:0 auto;padding:120px 24px 24px;font:17px/1.6 Georgia,serif;color:#222;background:#fff"><h1>Weekly notes</h1><p>Our kitchen bakes every morning from five. This week we are trying a brown butter batch with sea salt and a rye flour shortbread. Orders placed before noon ship the same day; orders after noon ship the next morning. Thank you for reading and for supporting a small shop.</p><p>Pickup is at the side door on Elm Street. Bring your order number. We close early on Sundays.</p></main>
+<div class="cookie-bar" style="position:fixed;left:0;right:0;bottom:0;background:#111;color:#eee;padding:12px 20px;font:14px sans-serif;z-index:10">We use cookies to measure visits. <button>Accept</button> <button>Decline</button></div>
+</body>
+</html>

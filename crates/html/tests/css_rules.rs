@@ -6,7 +6,9 @@
 //! @import / @font-face / @keyframes, unicode, escapes) plus every `<style>`
 //! block and .css file under the public repo's tests/, skill/ and cli/.
 //! Regenerate `fixtures/css-rules.json` with
-//! `node crates/html/tests/fixtures/gen-css-rules.mjs`.
+//! `node crates/html/tests/fixtures/gen-css-rules.mjs`, then restore the
+//! hand-edited signed-number cases (see `cascade::rules`, "Signed numbers
+//! keep their space").
 
 use impeccable_html::cascade::rules::{collect_static_css_rules, CssRule};
 use impeccable_html::cascade::values::unwrap_css_at_layer;
@@ -71,5 +73,58 @@ fn collect_static_css_rules_matches_node() {
         failures.len(),
         checked,
         failures.join("\n")
+    );
+}
+
+/// A number after another number or a function keeps its space, so a box
+/// shorthand splits into the values the author wrote. css-tree alone writes
+/// `0 0 0 -24px` as `0 0 0-24px`, `10% 0` as `10%0` and `var(--x) 0` as
+/// `var(--x)0`.
+#[test]
+fn signed_values_in_shorthands_keep_their_space() {
+    let rules = collect_static_css_rules(
+        ".a{margin:-8px}\
+         .b{margin:0 -8px}\
+         .c{margin:0 -8px 4px}\
+         .d{margin:0 -8px 0 0}\
+         .e{margin:0 0 0 -24px}\
+         .f{inset:0 -1px}\
+         .g{margin:0 +8px 0 -0.5em}\
+         .h{margin:0 calc(-1 * 8px) 0 -2%}\
+         .i{margin:0 var(--pull) 0 -8px}\
+         .j{--pull:0 -8px; margin:var(--pull, 0 -4px)}\
+         .k{padding:8px 16px 4px 2px}\
+         .l{box-shadow:0 -2px 0 4px}\
+         .m{margin:0 var(--x) +2px calc(1px) 0}\
+         .n{margin:10% 0 0 -24px}",
+    );
+    let got: Vec<(String, String, String)> = rules
+        .iter()
+        .flat_map(|r| {
+            r.declarations
+                .iter()
+                .map(|d| (r.selector.clone(), d.prop.clone(), d.value.clone()))
+        })
+        .collect();
+    let s = |a: &str, b: &str, c: &str| (a.to_string(), b.to_string(), c.to_string());
+    assert_eq!(
+        got,
+        vec![
+            s(".a", "margin", "-8px"),
+            s(".b", "margin", "0 -8px"),
+            s(".c", "margin", "0 -8px 4px"),
+            s(".d", "margin", "0 -8px 0 0"),
+            s(".e", "margin", "0 0 0 -24px"),
+            s(".f", "inset", "0 -1px"),
+            s(".g", "margin", "0 +8px 0 -0.5em"),
+            s(".h", "margin", "0 calc(-1*8px) 0 -2%"),
+            s(".i", "margin", "0 var(--pull) 0 -8px"),
+            s(".j", "--pull", "0 -8px"),
+            s(".j", "margin", "var(--pull, 0 -4px)"),
+            s(".k", "padding", "8px 16px 4px 2px"),
+            s(".l", "box-shadow", "0 -2px 0 4px"),
+            s(".m", "margin", "0 var(--x) +2px calc(1px) 0"),
+            s(".n", "margin", "10% 0 0 -24px"),
+        ]
     );
 }

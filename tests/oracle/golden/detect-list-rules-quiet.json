@@ -1,0 +1,7 @@
+{
+  "stdout": "side-tab\nborder-accent-on-rounded\noverused-font\nflat-type-hierarchy\ngradient-text\nai-color-palette\ncream-palette\nnested-cards\nmonotonous-spacing\nbounce-easing\npulsing-dot\nblinking-cursor\nshape-assembled-illustration\norganic-clip-path\nburied-raster\nhard-offset-shadow\ndark-glow\nradial-halo\nradial-spotlight-glow\nmarquee\nicon-tile-stack\nitalic-serif-display\nhero-eyebrow-chip\nkicker-above-heading\nnumbered-section-labels\nem-dash-overuse\nmarketing-buzzword\naphoristic-cadence\noversized-h1\nextreme-negative-tracking\nbroken-image\nscript-error\ncontent-hidden-at-rest\nedge-flush-cards\ntext-occlusion\nfirst-viewport-column-overflow\ngray-on-color\nlow-contrast\nline-length\ncramped-padding\nbody-text-viewport-edge\ntight-leading\nskipped-heading\nheading-rhythm\njustified-text\nstraggler\nunbalanced-heading\ntiny-text\nundersized-ui-text\nall-caps-body\nwide-tracking\ntext-overflow\nrepeated-container-text\nclipped-overflow-container\ndesign-system-font\ndesign-system-color\ndesign-system-radius\ndesign-system-font-size\ngpt-thin-border-wide-shadow\nrepeating-stripes-gradient\ncodex-grid-background\ntheater-slop-phrase\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

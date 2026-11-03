@@ -1,0 +1,46 @@
+/* Local review chrome. Keep the vendored site kit and inspected artwork independent. */
+:root, :host {
+  --review-media-paper: oklch(97.8% 0 0);
+  --review-media-raised: oklch(99.5% 0 0);
+  --review-media-deep: oklch(95% 0 0);
+  --review-media-gray: oklch(92% 0 0);
+  --review-media-gray-2: oklch(88% 0 0);
+}
+
+/* Embedded artwork keeps the review's original light presentation, including SVG and HTML. */
+img, iframe { color-scheme: light; }
+
+@media (prefers-color-scheme: dark) {
+  :root, :host {
+    color-scheme: dark;
+    --ks-paper: oklch(22% 0 0);
+    --ks-paper-raised: oklch(27% 0 0);
+    --ks-paper-deep: oklch(18% 0 0);
+    --ks-gray: oklch(31% 0 0);
+    --ks-gray-2: oklch(36% 0 0);
+    --ks-ink: oklch(93% 0 0);
+    --ks-text: oklch(88% 0 0);
+    --ks-text-muted: oklch(75% 0 0);
+    --ks-text-faint: oklch(72% 0 0);
+    --ks-text-mute-deep: oklch(60% 0 0);
+    --ks-rule: oklch(93% 0 0 / 0.16);
+    --ks-edge: oklch(93% 0 0 / 0.45);
+    --ks-patina: oklch(76% 0.088 190);
+    --ks-patina-deep: oklch(76% 0.088 190);
+    --ks-patina-ink: oklch(82% 0.07 188);
+    --ks-patina-pale: oklch(38% 0.045 190);
+    --ks-vermilion: oklch(76% 0.12 35);
+    --ks-link-on-paper-line: oklch(93% 0 0 / 0.35);
+    --ks-lift: 0 2px 10px oklch(0% 0 0 / 0.3);
+    --ks-lift-1: 0 2px 10px oklch(0% 0 0 / 0.3);
+    --ks-lift-2: 0 8px 24px oklch(0% 0 0 / 0.4);
+    --ks-cap-lift: inset 0 1px 0 oklch(100% 0 0 / 0.06), 0 1px 3px oklch(0% 0 0 / 0.3);
+    --ks-cap-press: inset 0 1px 2px oklch(0% 0 0 / 0.4);
+    --ks-track-recess: inset 0 1px 3px oklch(0% 0 0 / 0.4);
+  }
+
+  .ks-button.ks-button-primary:active {
+    background: var(--ks-text-muted);
+    border-color: var(--ks-text-muted);
+  }
+}

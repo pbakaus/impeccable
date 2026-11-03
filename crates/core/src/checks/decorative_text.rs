@@ -36,6 +36,21 @@
 //!   caption on it or beside it (r8-t1). Sentence-length copy inside is
 //!   still copy. `undersized-ui-text` and `tiny-text` report text in a
 //!   mockup as advisory too.
+//! - **Ghost wordmarks**: the site's own name set as a shape, not a line to
+//!   read: display type at [`WORDMARK_MIN_PX`] or more, or at
+//!   [`WORDMARK_H1_SCALE`] times the page's largest `h1` (and at least
+//!   [`WORDMARK_H1_PATH_MIN_PX`]), painted at
+//!   [`WORDMARK_MAX_OPACITY`] or less (its opacity and its ink's alpha
+//!   together), whose words are the site's name (screen.movie's 222px
+//!   "Screen Movie" at 0.1 in the footer, incredible.one's 272px
+//!   "Incredible" at 0.07 alpha). Outside controls; a heading may carry it.
+//! - **Ghost words**: display type at [`WORDMARK_MIN_PX`] or more that the
+//!   page sets aside from reading and pointing (`aria-hidden`, no pointer
+//!   events, or behind a negative `z-index`), shown at
+//!   [`WORDMARK_MAX_OPACITY`] or less or at most [`GHOST_MAX_RATIO`] from
+//!   its ground, whatever it says (taste call r14-t3), unless its words are
+//!   part of a visually hidden heading or of the document title. Outside
+//!   controls.
 //!
 //! The adapters gather [`DecorativeTextFacts`] against their own DOM; the
 //! decision is made here, once, for both engines.
@@ -52,6 +67,21 @@ pub const AVATAR_MIN_ASPECT: f64 = 0.8;
 pub const AVATAR_MAX_ASPECT: f64 = 1.25;
 /// How far the text's centre may sit from the box's, as a share of the box.
 pub const AVATAR_CENTRE_TOLERANCE: f64 = 0.15;
+
+/// Type at least this large, in px, is display type a wordmark can be.
+pub const WORDMARK_MIN_PX: f64 = 120.0;
+/// Type at least this many times the page's largest `h1` is display type.
+pub const WORDMARK_H1_SCALE: f64 = 3.0;
+/// The least size the [`WORDMARK_H1_SCALE`] path accepts, so a page whose
+/// `h1` is a small logo does not make body-sized type display.
+pub const WORDMARK_H1_PATH_MIN_PX: f64 = 80.0;
+/// The most a wordmark may show of its ink, its opacity and its colour's
+/// alpha together, and still be a shape rather than a line to read.
+pub const WORDMARK_MAX_OPACITY: f64 = 0.25;
+
+/// The most contrast a ghost word's ink may have with its ground and still
+/// read as a shape behind the page rather than a line (taste call r14-t3).
+pub const GHOST_MAX_RATIO: f64 = 1.5;
 
 /// Whether a box is the size and shape of a small avatar.
 pub fn avatar_sized(width: f64, height: f64) -> bool {
@@ -85,6 +115,9 @@ pub struct DecorativeTextFacts {
     /// The element is, or sits in, an interactive control whose whole text
     /// is this element's text: the element is the control's label.
     pub control_label: bool,
+    /// The element is, or sits in, an interactive control, whatever else the
+    /// control's text holds.
+    pub in_control: bool,
     /// A small square or round box that paints itself holds this text and
     /// nothing else, centred in it ([`avatar_sized`], [`centred_in`]).
     pub avatar_box: bool,
@@ -106,6 +139,33 @@ pub struct DecorativeTextFacts {
     /// ([`crate::checks::text_context::in_framed_demo`], taste calls r5-p26
     /// and r8-t1).
     pub framed_demo: bool,
+    /// The element's computed font size in px, 0 where it was not read.
+    pub font_size_px: f64,
+    /// The largest computed font size of an `h1` on the page in px, 0 where
+    /// there is none. Read only where the type is between
+    /// [`WORDMARK_H1_PATH_MIN_PX`] and [`WORDMARK_MIN_PX`], the sizes the
+    /// `h1` decides; 0 otherwise.
+    pub largest_h1_px: f64,
+    /// How much of its ink the text shows: its effective opacity times its
+    /// colour's alpha. Read only where the type is display size; 1 otherwise.
+    pub shown_opacity: f64,
+    /// The names the site goes by (its host name, its `og:site_name`, its
+    /// title and the title's parts). Read only where the type is display
+    /// size and faint; empty otherwise.
+    pub site_names: Vec<String>,
+    /// The text is set aside from reading and pointing: it, or a box it sits
+    /// in, is `aria-hidden="true"`, it takes no pointer events, or a box it
+    /// sits in is laid behind the page at a negative `z-index`. Read only
+    /// where the type is at least [`WORDMARK_MIN_PX`]; false otherwise.
+    pub ghost_marked: bool,
+    /// The ink stands at most [`GHOST_MAX_RATIO`] from its ground, where the
+    /// caller measured it; false where it did not.
+    pub faint_ground: bool,
+    /// The text's words run word for word inside a visually hidden heading
+    /// on the page or the document title: the visible copy of the page's
+    /// heading, set `aria-hidden` beside an sr-only one. Read only where
+    /// [`Self::ghost_marked`] holds.
+    pub names_page_heading: bool,
 }
 
 /// The shape a text with no reading job was recognised by.
@@ -115,6 +175,10 @@ pub enum DecorativeShape {
     VersionStamp,
     Signature,
     Mockup,
+    Wordmark,
+    /// Display type set aside from reading and shown as a shape: a ghost
+    /// word behind a slide (taste call r14-t3).
+    GhostWord,
 }
 
 /// The decorative shape these facts show, if any.
@@ -127,6 +191,30 @@ pub fn classify_decorative_text(f: &DecorativeTextFacts) -> Option<DecorativeSha
     }
     if (f.mockup_ancestor || f.framed_demo) && !is_sentence_copy(&f.text) {
         return Some(DecorativeShape::Mockup);
+    }
+    // Any text inside a control is part of what the control says, a site
+    // name beside other words in a link included.
+    if !f.in_control
+        && !f.control_label
+        && is_wordmark_size(f.font_size_px, f.largest_h1_px)
+        && f.shown_opacity <= WORDMARK_MAX_OPACITY
+        && names_the_site(&f.text, &f.site_names)
+    {
+        return Some(DecorativeShape::Wordmark);
+    }
+    // Taste call r14-t3: display type the page sets aside from reading and
+    // pointing, shown faint, is a shape whatever it says (intel.com's 240px
+    // "效率" behind a slide at 1.3:1, aproov.es's 410px "oo" at 0.055). The
+    // site-name test is the wordmark's alone.
+    if !f.in_control
+        && !f.control_label
+        && f.font_size_px.is_finite()
+        && f.font_size_px >= WORDMARK_MIN_PX
+        && f.ghost_marked
+        && !f.names_page_heading
+        && (f.shown_opacity <= WORDMARK_MAX_OPACITY || f.faint_ground)
+    {
+        return Some(DecorativeShape::GhostWord);
     }
     if f.avatar_box
         && !f.control_label
@@ -147,6 +235,40 @@ pub fn classify_decorative_text(f: &DecorativeTextFacts) -> Option<DecorativeSha
         }
     }
     None
+}
+
+/// Whether type at `font_size` is display type for a wordmark: at least
+/// [`WORDMARK_MIN_PX`], or [`WORDMARK_H1_SCALE`] times the page's largest
+/// `h1` where it has one.
+pub fn is_wordmark_size(font_size: f64, largest_h1: f64) -> bool {
+    font_size.is_finite()
+        && font_size > 0.0
+        && (font_size >= WORDMARK_MIN_PX
+            || (largest_h1 > 0.0 && font_size >= WORDMARK_H1_PATH_MIN_PX && font_size >= largest_h1 * WORDMARK_H1_SCALE))
+}
+
+/// The words of `text`, lower-cased, letters and digits only.
+fn name_words(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
+/// Whether `text` is the site's name: its words, run together, are one of
+/// `names` run together (`Screen Movie` and the host `screen.movie`), or they
+/// open one of `names` word for word (`Screen Movie` and the title `Screen
+/// Movie Blog`). At least three letters.
+pub fn names_the_site(text: &str, names: &[String]) -> bool {
+    let words = name_words(text);
+    let joined: String = words.concat();
+    if joined.chars().count() < 3 {
+        return false;
+    }
+    names.iter().any(|name| {
+        let name_words = name_words(name);
+        name_words.concat() == joined || name_words.starts_with(&words)
+    })
 }
 
 /// One letter or two, in any script, and nothing else.
@@ -301,10 +423,47 @@ const MOCKUP_COPY_PARTS: &[&str] = &[
     "licence",
 ];
 
+/// The words a class names page furniture by: a label, a chip, navigation.
+const FURNITURE_WORDS: &[&str] = &[
+    "meta", "label", "badge", "chip", "pill", "tag", "kicker", "eyebrow", "breadcrumb",
+    "timestamp", "category", "caption", "nav",
+];
+
+/// Parts that start with a furniture word and name something else.
+const FURNITURE_FALSE_FRIENDS: &[&str] = &["pillar", "pillars", "navy"];
+
+/// Whether a `class` attribute names page furniture. Each token is split
+/// into its parts ([`token_parts`]: hyphen, underscore, camelCase), and a
+/// part names furniture when it starts with a furniture word (`tagline`,
+/// `taglist`, `navbar`, `navigation`) or ends with one or its plural
+/// (`hottags`, `subnav`, `muibreadcrumbs`, `utilitynavigation`). A word
+/// buried inside a part is not read: portzero.net's `px-stage-compact` was
+/// a tag, and so were `owl-stage`, `instagram`, `vantagens`, `percentage`
+/// and `unavailable` (observations-1006 row 19).
+pub fn class_names_furniture(class: &str) -> bool {
+    class.split_ascii_whitespace().any(|token| {
+        token_parts(token).iter().any(|part| {
+            // Tailwind arbitrary values keep their brackets in a part
+            // (`bg-[var(--navy)]` gives `navy)]`): read letters and digits.
+            let part: String = part.chars().filter(|c| c.is_alphanumeric()).collect();
+            if part.is_empty() || FURNITURE_FALSE_FRIENDS.contains(&part.as_str()) {
+                return false;
+            }
+            FURNITURE_WORDS.iter().any(|w| {
+                part.starts_with(w)
+                    || part.ends_with(w)
+                    || part.strip_suffix('s').is_some_and(|stem| stem.ends_with(w))
+                    || (*w == "nav" && (part.ends_with("navi") || part.ends_with("navigation")))
+                    || (*w == "category" && part.ends_with("categories"))
+            })
+        })
+    })
+}
+
 /// A class or id token's parts: split on `-`, `_`, `:`, `/` and `.`, and
 /// where a lower-case letter meets a capital (`heroIllustration`), lower
 /// cased.
-pub(crate) fn token_parts(token: &str) -> Vec<String> {
+pub fn token_parts(token: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut cur = String::new();
     let mut prev_lower = false;
@@ -435,6 +594,63 @@ mod tests {
 
     fn facts(text: &str) -> DecorativeTextFacts {
         DecorativeTextFacts { text: text.to_string(), ..Default::default() }
+    }
+
+    #[test]
+    fn a_ghost_wordmark_is_the_site_name_as_a_faint_display_shape() {
+        let names = vec!["screenmovie".to_string(), "screen".to_string(), "Screen Movie Blog".to_string()];
+        let ghost = |text: &str, size: f64, h1: f64, shown: f64| DecorativeTextFacts {
+            font_size_px: size,
+            largest_h1_px: h1,
+            shown_opacity: shown,
+            site_names: names.clone(),
+            ..facts(text)
+        };
+        let shape = |f: &DecorativeTextFacts| classify_decorative_text(f);
+        // screen.movie's footer: 222px at 0.1.
+        assert_eq!(shape(&ghost("Screen Movie", 222.0, 64.0, 0.1)), Some(DecorativeShape::Wordmark));
+        assert_eq!(shape(&ghost("SCREEN", 222.0, 64.0, 0.1)), Some(DecorativeShape::Wordmark));
+        // Three times the largest h1 is display type too.
+        assert_eq!(shape(&ghost("Screen Movie", 100.0, 32.0, 0.2)), Some(DecorativeShape::Wordmark));
+        // Read as a line: visible enough, small, another word, or a control.
+        assert_eq!(shape(&ghost("Screen Movie", 222.0, 64.0, 0.4)), None);
+        assert_eq!(shape(&ghost("Screen Movie", 96.0, 48.0, 0.1)), None);
+        // A small logo h1 does not make body-sized type display.
+        assert_eq!(shape(&ghost("Screen Movie", 60.0, 16.0, 0.1)), None);
+        assert_eq!(shape(&ghost("Record faster", 222.0, 64.0, 0.1)), None);
+        assert_eq!(shape(&ghost("Movie", 222.0, 64.0, 0.1)), None);
+        assert_eq!(shape(&DecorativeTextFacts { control_label: true, ..ghost("Screen Movie", 222.0, 64.0, 0.1) }), None);
+        // Review of #1044: part of a link's label, beside its other words.
+        assert_eq!(shape(&DecorativeTextFacts { in_control: true, ..ghost("Screen Movie", 222.0, 64.0, 0.1) }), None);
+        // An adapter that reads no layout leaves the size at 0.
+        assert_eq!(shape(&ghost("Screen Movie", 0.0, 0.0, 0.0)), None);
+        // A word that names nothing needs the ghost marks (r14-t3).
+        assert_eq!(shape(&ghost("oo", 410.0, 64.0, 0.055)), None);
+        assert!(!names_the_site("Sc", &["sc".to_string()]));
+    }
+
+    #[test]
+    fn a_ghost_word_is_display_type_set_aside_and_faint() {
+        let ghost = |text: &str, size: f64, shown: f64, marked: bool, faint: bool| DecorativeTextFacts {
+            font_size_px: size,
+            shown_opacity: shown,
+            ghost_marked: marked,
+            faint_ground: faint,
+            ..facts(text)
+        };
+        let shape = |f: &DecorativeTextFacts| classify_decorative_text(f);
+        // aproov.es: 410px, aria-hidden, at 0.055.
+        assert_eq!(shape(&ghost("oo", 410.0, 0.055, true, false)), Some(DecorativeShape::GhostWord));
+        // intel.com: 240px, aria-hidden, shown whole but 1.3:1 on its ground.
+        assert_eq!(shape(&ghost("效率", 240.0, 1.0, true, true)), Some(DecorativeShape::GhostWord));
+        // Twins: the same words not set aside, shown, under 120px, or a control.
+        assert_eq!(shape(&ghost("oo", 410.0, 0.055, false, true)), None);
+        assert_eq!(shape(&ghost("效率", 240.0, 1.0, true, false)), None);
+        assert_eq!(shape(&ghost("效率", 110.0, 0.1, true, true)), None);
+        assert_eq!(shape(&DecorativeTextFacts { in_control: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
+        assert_eq!(shape(&DecorativeTextFacts { control_label: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
+        // The page's own heading, shown aria-hidden beside an sr-only copy.
+        assert_eq!(shape(&DecorativeTextFacts { names_page_heading: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
     }
 
     #[test]
@@ -578,6 +794,29 @@ mod tests {
         assert!(!is_sentence_copy("Draft saved"));
         assert!(!is_sentence_copy("$ npm run build --watch"));
         assert!(is_sentence_copy("Your export is ready to download."));
+    }
+
+    /// observations-1006 row 19: furniture classes are read by part.
+    #[test]
+    fn furniture_classes_are_read_by_part() {
+        for class in [
+            "meta", "post-meta", "label", "field-label", "tag", "taglist", "tagline",
+            "post__tags", "hottags", "tagChip", "nav", "site-nav", "subnav", "navbar",
+            "mainNavigation", "block-utilitynavigation", "corenavi", "muiBreadcrumbs",
+            "breadcrumb", "badge", "chip", "chips", "pill", "pills", "kicker", "eyebrow",
+            "timestamp", "category", "product-categories", "caption", "figcaption",
+            "card x-badge",
+        ] {
+            assert!(class_names_furniture(class), "{class}");
+        }
+        for class in [
+            "px-stage-compact", "owl-stage", "instagram", "icon-instagram",
+            "footer__vantagens", "subscription-block__avantages", "icon-percentage",
+            "cmp-unavailable", "hotsite-patagonia", "pillars", "text-navy", "bg-[var(--navy)]",
+            "", "hero",
+        ] {
+            assert!(!class_names_furniture(class), "{class}");
+        }
     }
 
     #[test]

@@ -208,10 +208,23 @@ pub struct TargetSelection {
     pub project_root: String,
     pub repo_root: String,
     pub target_candidates: Vec<TargetCandidate>,
+    /// Package workspaces left out for lacking a UI signal (#1014).
+    pub skipped_non_ui: usize,
 }
 
-/// JS: resolveTargetSelection
+/// JS: resolveTargetSelection. Offers only workspaces with a UI signal
+/// (#1014); see `discover_ui_target_candidates`.
 pub fn resolve_target_selection(cwd: &str, options: &TargetOptions, env: &Env) -> Option<TargetSelection> {
+    target_selection(cwd, options, env, true)
+}
+
+/// The same selection over every workspace, unfiltered. `doctor` sweeps all of
+/// them, UI or not.
+pub fn resolve_workspace_selection(cwd: &str, options: &TargetOptions, env: &Env) -> Option<TargetSelection> {
+    target_selection(cwd, options, env, false)
+}
+
+fn target_selection(cwd: &str, options: &TargetOptions, env: &Env, ui_only: bool) -> Option<TargetSelection> {
     if has_target_option(options) {
         return None;
     }
@@ -219,11 +232,20 @@ pub fn resolve_target_selection(cwd: &str, options: &TargetOptions, env: &Env) -
     if !project.is_monorepo || jsp::resolve(&project.project_root, &[]) != jsp::resolve(&project.repo_root, &[]) {
         return None;
     }
-    let cands = discover_target_candidates(&project.repo_root, env);
+    let (cands, skipped_non_ui) = if ui_only {
+        discover_ui_target_candidates(&project.repo_root, env)
+    } else {
+        (discover_target_candidates(&project.repo_root, env), 0)
+    };
     if cands.is_empty() {
         return None;
     }
-    Some(TargetSelection { project_root: project.project_root, repo_root: project.repo_root, target_candidates: cands })
+    Some(TargetSelection {
+        project_root: project.project_root,
+        repo_root: project.repo_root,
+        target_candidates: cands,
+        skipped_non_ui,
+    })
 }
 
 /// JS: resolveProject
@@ -462,21 +484,60 @@ pub fn is_ignored_workspace_discovery_dir(name: &str) -> bool {
 
 /// JS: discoverTargetCandidates
 pub fn discover_target_candidates(repo_root: &str, env: &Env) -> Vec<TargetCandidate> {
+    discover_candidate_roots(repo_root)
+        .into_iter()
+        .map(|c| build_target_candidate(repo_root, c.rel, c.root, env))
+        .collect()
+}
+
+/// The workspace candidates a target selection offers (#1014): every
+/// `projectRoots` match, plus the package-workspace and `apps/`/`packages/`
+/// candidates that show a UI signal (`has_ui_signal`). Returns the list and
+/// how many non-UI workspaces were left out. When the filter would leave no
+/// candidate at all, the unfiltered list comes back with a count of 0, so a
+/// monorepo the heuristic misreads still gets a choice.
+pub fn discover_ui_target_candidates(repo_root: &str, env: &Env) -> (Vec<TargetCandidate>, usize) {
+    let all = discover_candidate_roots(repo_root);
+    let kept: Vec<CandidateRoot> = all.iter().filter(|c| c.explicit || has_ui_signal(&c.root)).cloned().collect();
+    let (kept, skipped) = if kept.is_empty() {
+        (all, 0)
+    } else {
+        let skipped = all.len() - kept.len();
+        (kept, skipped)
+    };
+    let cands = kept.into_iter().map(|c| build_target_candidate(repo_root, c.rel, c.root, env)).collect();
+    (cands, skipped)
+}
+
+#[derive(Debug, Clone)]
+struct CandidateRoot {
+    rel: String,
+    root: String,
+    /// Named by an `.impeccable/config.json` `projectRoots` pattern, so never
+    /// filtered: the user picked it.
+    explicit: bool,
+}
+
+fn discover_candidate_roots(repo_root: &str) -> Vec<CandidateRoot> {
     // Map preserving insertion order; JS Map.set on an existing key keeps position.
     let mut order: Vec<String> = Vec::new();
-    let mut roots: BTreeMap<String, String> = BTreeMap::new();
-    let mut set = |rel: String, root: String| {
-        if !roots.contains_key(&rel) {
-            order.push(rel.clone());
-        }
-        roots.insert(rel, root);
+    let mut roots: BTreeMap<String, (String, bool)> = BTreeMap::new();
+    let mut set = |rel: String, root: String, explicit: bool| {
+        let was_explicit = match roots.get(&rel) {
+            Some((_, e)) => *e,
+            None => {
+                order.push(rel.clone());
+                false
+            }
+        };
+        roots.insert(rel, (root, explicit || was_explicit));
     };
     let groups = read_project_pattern_groups(repo_root);
-    for patterns in &groups {
+    for (gi, patterns) in groups.iter().enumerate() {
         for pattern in patterns {
             for root in discover_roots_for_pattern(repo_root, pattern) {
                 let rel = jsp::to_posix(&jsp::relative("/", repo_root, &root));
-                set(rel, root);
+                set(rel, root, gi == 0);
             }
         }
     }
@@ -490,36 +551,114 @@ pub fn discover_target_candidates(repo_root: &str, env: &Env) -> Vec<TargetCandi
                 }
                 let root = jsp::join(&[&base, &e.name]);
                 let rel = jsp::to_posix(&jsp::relative("/", repo_root, &root));
-                set(rel, root);
+                set(rel, root, false);
             }
         }
     }
-    let mut entries: Vec<(String, String)> = order
+    let mut entries: Vec<CandidateRoot> = order
         .into_iter()
         .filter(|rel| !rel.is_empty() && !rel.starts_with(".."))
         .filter(|rel| is_selectable_candidate(repo_root, rel, &groups))
         .map(|rel| {
-            let root = roots.get(&rel).cloned().unwrap();
-            (rel, root)
+            let (root, explicit) = roots.get(&rel).cloned().unwrap();
+            CandidateRoot { rel, root, explicit }
         })
         .collect();
-    entries.sort_by(|a, b| locale_compare(&a.0, &b.0));
+    entries.sort_by(|a, b| locale_compare(&a.rel, &b.rel));
     entries
-        .into_iter()
-        .map(|(rel, root)| {
-            let target_example = find_target_example(repo_root, &root);
-            let ctx = resolve_context(repo_root, &TargetOptions { target_path: Some(target_example.clone()) }, env);
-            TargetCandidate {
-                name: jsp::basename(&root),
-                path: rel,
-                target_example,
-                product_status: context_source_status(ctx.product_path.as_deref(), repo_root, &root),
-                product_path: context_source_path(ctx.product_path.as_deref(), repo_root),
-                design_status: context_source_status(ctx.design_path.as_deref(), repo_root, &root),
-                design_path: context_source_path(ctx.design_path.as_deref(), repo_root),
+}
+
+fn build_target_candidate(repo_root: &str, rel: String, root: String, env: &Env) -> TargetCandidate {
+    let target_example = find_target_example(repo_root, &root);
+    let ctx = resolve_context(repo_root, &TargetOptions { target_path: Some(target_example.clone()) }, env);
+    TargetCandidate {
+        name: jsp::basename(&root),
+        path: rel,
+        target_example,
+        product_status: context_source_status(ctx.product_path.as_deref(), repo_root, &root),
+        product_path: context_source_path(ctx.product_path.as_deref(), repo_root),
+        design_status: context_source_status(ctx.design_path.as_deref(), repo_root, &root),
+        design_path: context_source_path(ctx.design_path.as_deref(), repo_root),
+    }
+}
+
+/// Dependencies that mark a workspace as rendering a UI. Matched against the
+/// keys of `dependencies`, `devDependencies`, and `peerDependencies`.
+const UI_DEPENDENCIES: [&str; 32] = [
+    "react", "react-dom", "react-native", "@react-native/metro-config", "expo", "next", "gatsby",
+    "@remix-run/react", "react-router", "vue", "nuxt", "svelte", "@sveltejs/kit", "solid-js", "@solidjs/start",
+    "preact", "lit", "astro", "@angular/core", "@builder.io/qwik", "ember-source", "alpinejs", "htmx.org", "vite",
+    "storybook", "@11ty/eleventy", "@docusaurus/core", "vitepress", "electron", "@tauri-apps/api", "@ionic/core",
+    "@stencil/core",
+];
+const UI_DEPENDENCY_PREFIXES: [&str; 3] = ["@storybook/", "@remix-run/", "@react-router/"];
+/// Fixed paths that mark a UI entry: HTML entries, and the native app
+/// markers `staleness.rs` reads as native evidence plus Android manifests.
+/// `pubspec.yaml` is checked separately: every Dart package has one, so only
+/// a Flutter one counts (`is_flutter_pubspec`).
+const UI_ENTRY_PATHS: [&str; 10] = [
+    "index.html",
+    "public/index.html",
+    "src/index.html",
+    "ios/Podfile",
+    "ios/Runner.xcodeproj",
+    "android/build.gradle",
+    "android/build.gradle.kts",
+    "app/src/main/AndroidManifest.xml",
+    "src/main/AndroidManifest.xml",
+    "angular.json",
+];
+/// Directories listed one level deep (never recursed) for a UI or style file.
+const UI_SHALLOW_DIRS: [&str; 9] = ["", "src", "app", "pages", "components", "public", "static", "styles", "templates"];
+
+static FLUTTER_PUBSPEC_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?m)^\s*(sdk:\s*flutter\b|flutter:\s*(#.*)?$)").unwrap());
+
+/// A pubspec that depends on the Flutter SDK or carries a `flutter:` section.
+/// A pure Dart package (models, CLI, API client) has neither.
+fn is_flutter_pubspec(body: &str) -> bool {
+    FLUTTER_PUBSPEC_RE.is_match(body)
+}
+
+/// A workspace shows a UI signal when its package.json depends on a UI
+/// framework, it has its own PRODUCT.md or DESIGN.md, a fixed UI entry path
+/// exists (HTML entry, native app marker), or a one-level listing of the
+/// workspace root or a usual source dir holds a UI or style file (or an
+/// Xcode project). Every check is a read, a stat or a single directory
+/// listing, so the boot never walks a workspace tree (Tier-1 budget).
+pub fn has_ui_signal(root: &str) -> bool {
+    if let Some(pkg) = read_json(&jsp::join(&[root, "package.json"])) {
+        for field in ["dependencies", "devDependencies", "peerDependencies"] {
+            let Some(deps) = pkg.get(field).and_then(|v| v.as_object()) else { continue };
+            if deps.keys().any(|k| {
+                UI_DEPENDENCIES.contains(&k.as_str()) || UI_DEPENDENCY_PREFIXES.iter().any(|p| k.starts_with(p))
+            }) {
+                return true;
             }
+        }
+    }
+    if first_existing(root, &all_context_names()).is_some() {
+        return true;
+    }
+    if UI_ENTRY_PATHS.iter().any(|rel| exists(&jsp::join(&[root, rel]))) {
+        return true;
+    }
+    if safe_read(&jsp::join(&[root, "pubspec.yaml"])).is_some_and(|body| is_flutter_pubspec(&body)) {
+        return true;
+    }
+    UI_SHALLOW_DIRS.iter().any(|rel| {
+        let dir = if rel.is_empty() { root.to_string() } else { jsp::join(&[root, rel]) };
+        let Some(entries) = read_dir_entries(&dir) else { return false };
+        entries.iter().any(|e| {
+            let ext = jsp::extname(&e.name).to_lowercase();
+            if e.is_dir {
+                return rel.is_empty() && (ext == ".xcodeproj" || ext == ".xcworkspace");
+            }
+            e.is_file
+                && (UI_EXTENSIONS.contains(&ext.as_str()) || STYLE_EXTENSIONS.contains(&ext.as_str()))
+                && !RE_MIN.is_match(&e.name.to_lowercase())
         })
-        .collect()
+    })
 }
 
 /// Approximation of `String.prototype.localeCompare` (ICU root collation) for
@@ -1259,4 +1398,175 @@ pub fn has_visual_implementation(project_root: &str) -> bool {
     }
     let _ = is_dir;
     styled >= 3
+}
+
+#[cfg(test)]
+mod ui_target_tests {
+    use super::*;
+
+    struct Tmp(std::path::PathBuf);
+    impl Tmp {
+        fn new(tag: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "impeccable-ui-targets-{}-{}-{}",
+                tag,
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            Tmp(p)
+        }
+        fn root(&self) -> String {
+            self.0.to_string_lossy().into_owned()
+        }
+        fn put(&self, rel: &str, body: &str) {
+            let abs = self.0.join(rel);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(abs, body).unwrap();
+        }
+    }
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn env() -> Env {
+        Env::from([
+            ("HOME".to_string(), "/nonexistent-impeccable-home".to_string()),
+            ("USERPROFILE".to_string(), "/nonexistent-impeccable-home".to_string()),
+        ])
+    }
+
+    /// A Turborepo-style tree: three apps (one API), two UI packages, and
+    /// three tooling packages.
+    fn monorepo(t: &Tmp) {
+        t.put("package.json", r#"{"name":"mono","private":true,"workspaces":["apps/*","packages/*","tooling/*"]}"#);
+        t.put("apps/web/package.json", r#"{"name":"web","dependencies":{"next":"15.0.0","react":"19.0.0"}}"#);
+        t.put("apps/web/app/page.tsx", "export default function Page() { return null; }\n");
+        t.put("apps/api/package.json", r#"{"name":"api","dependencies":{"hono":"4.0.0"}}"#);
+        t.put("apps/api/src/index.ts", "export {};\n");
+        t.put("apps/static/package.json", r#"{"name":"static"}"#);
+        t.put("apps/static/index.html", "<!doctype html><title>s</title>\n");
+        t.put("packages/ui/package.json", r#"{"name":"@m/ui","peerDependencies":{"react":"^19"}}"#);
+        t.put("packages/stories/package.json", r#"{"name":"stories","devDependencies":{"@storybook/react":"8.0.0"}}"#);
+        t.put("packages/tsconfig/package.json", r#"{"name":"@m/tsconfig"}"#);
+        t.put(
+            "packages/eslint-config/package.json",
+            r#"{"name":"@m/eslint-config","dependencies":{"eslint-plugin-react":"7.0.0"}}"#,
+        );
+        t.put("packages/eslint-config/index.js", "module.exports = {};\n");
+        t.put("tooling/scripts/package.json", r#"{"name":"scripts"}"#);
+        t.put("tooling/scripts/src/run.ts", "export {};\n");
+    }
+
+    fn paths(cands: &[TargetCandidate]) -> Vec<&str> {
+        cands.iter().map(|c| c.path.as_str()).collect()
+    }
+
+    #[test]
+    fn ui_signal_reads_dependencies_html_and_styled_source() {
+        let t = Tmp::new("signal");
+        monorepo(&t);
+        t.put("packages/plain-css/package.json", r#"{"name":"plain-css"}"#);
+        t.put(
+            "packages/plain-css/src/theme.css",
+            ":root { --a: #fff; --b: #000; --c: #f00; }\nbody { color: var(--a); background: var(--b); }\n",
+        );
+        let r = t.root();
+        let at = |rel: &str| jsp::join(&[&r, rel]);
+        assert!(has_ui_signal(&at("apps/web")));
+        assert!(has_ui_signal(&at("apps/static")));
+        assert!(has_ui_signal(&at("packages/ui")));
+        assert!(has_ui_signal(&at("packages/stories")));
+        assert!(has_ui_signal(&at("packages/plain-css")));
+        // Native apps carry no web dependency or HTML entry (review on #1047).
+        t.put(
+            "apps/flutter/pubspec.yaml",
+            "name: flutter_app\ndependencies:\n  flutter:\n    sdk: flutter\n",
+        );
+        // A pure Dart package is not a UI (review on #1047).
+        t.put("packages/models/pubspec.yaml", "name: models\ndependencies:\n  json_annotation: ^4.0.0\n");
+        t.put("packages/models/lib/models.dart", "class User {}\n");
+        assert!(!has_ui_signal(&at("packages/models")));
+        t.put("apps/flutter/lib/main.dart", "void main() {}\n");
+        t.put("apps/ios/ios/Podfile", "platform :ios, '15.0'\n");
+        t.put("apps/swift/Demo.xcodeproj/project.pbxproj", "// pbx\n");
+        t.put("apps/android/app/src/main/AndroidManifest.xml", "<manifest/>\n");
+        t.put("apps/documented/PRODUCT.md", "# P\n");
+        for app in ["apps/flutter", "apps/ios", "apps/swift", "apps/android", "apps/documented"] {
+            assert!(has_ui_signal(&at(app)), "{}", app);
+        }
+        // No tree walk: styles nested below the first level do not count.
+        t.put("packages/deep/src/a/b/theme.css", ":root { --a: #fff; --b: #000; --c: #f00; }\n");
+        assert!(!has_ui_signal(&at("packages/deep")));
+        assert!(!has_ui_signal(&at("apps/api")));
+        assert!(!has_ui_signal(&at("packages/tsconfig")));
+        assert!(!has_ui_signal(&at("packages/eslint-config")));
+        assert!(!has_ui_signal(&at("tooling/scripts")));
+    }
+
+    #[test]
+    fn selection_offers_ui_workspaces_and_counts_the_rest() {
+        let t = Tmp::new("filter");
+        monorepo(&t);
+        let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
+        assert_eq!(paths(&cands), ["apps/static", "apps/web", "packages/stories", "packages/ui"]);
+        assert_eq!(skipped, 4);
+        // The unfiltered list (doctor, bare-name resolution) is unchanged.
+        assert_eq!(discover_target_candidates(&t.root(), &env()).len(), 8);
+        let sel = resolve_target_selection(&t.root(), &TargetOptions::default(), &env()).unwrap();
+        assert_eq!((sel.target_candidates.len(), sel.skipped_non_ui), (4, 4));
+        let all = resolve_workspace_selection(&t.root(), &TargetOptions::default(), &env()).unwrap();
+        assert_eq!((all.target_candidates.len(), all.skipped_non_ui), (8, 0));
+    }
+
+    #[test]
+    fn native_app_beside_a_web_app_stays_listed() {
+        let t = Tmp::new("native");
+        monorepo(&t);
+        t.put("apps/mobile/pubspec.yaml", "name: mobile\nflutter:\n  uses-material-design: true\n");
+        t.put("apps/mobile/lib/main.dart", "void main() {}\n");
+        let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
+        assert!(paths(&cands).contains(&"apps/mobile"));
+        assert!(paths(&cands).contains(&"apps/web"));
+        assert_eq!(skipped, 4);
+    }
+
+    #[test]
+    fn explicit_project_roots_are_never_filtered() {
+        let t = Tmp::new("explicit");
+        monorepo(&t);
+        t.put(".impeccable/config.json", r#"{"projectRoots":["tooling/*"]}"#);
+        let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
+        let p = paths(&cands);
+        assert!(p.contains(&"tooling/scripts"));
+        assert!(p.contains(&"apps/web"));
+        assert!(!p.contains(&"packages/tsconfig"));
+        assert_eq!(skipped, 3);
+    }
+
+    #[test]
+    fn negated_project_roots_still_hide_a_workspace() {
+        let t = Tmp::new("negated");
+        monorepo(&t);
+        t.put(".impeccable/config.json", r#"{"projectRoots":["!packages/stories","!apps/static"]}"#);
+        let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
+        assert_eq!(paths(&cands), ["apps/web", "packages/ui"]);
+        assert_eq!(skipped, 4);
+        let all = discover_target_candidates(&t.root(), &env());
+        assert!(!paths(&all).iter().any(|p| *p == "packages/stories" || *p == "apps/static"));
+    }
+
+    #[test]
+    fn no_ui_workspace_falls_back_to_the_full_list() {
+        let t = Tmp::new("fallback");
+        t.put("pnpm-workspace.yaml", "packages:\n  - \"packages/*\"\n");
+        t.put("package.json", r#"{"name":"mono","private":true}"#);
+        t.put("packages/core/package.json", r#"{"name":"core"}"#);
+        t.put("packages/tsconfig/package.json", r#"{"name":"tsconfig"}"#);
+        let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
+        assert_eq!(paths(&cands), ["packages/core", "packages/tsconfig"]);
+        assert_eq!(skipped, 0);
+    }
 }

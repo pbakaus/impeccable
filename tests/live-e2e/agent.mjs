@@ -31,7 +31,10 @@ import { engineEnv } from '../lib/engine-bin.mjs';
 const execFileP = promisify(execFile);
 const CARBONIZE_HMR_BOUNDARY_MS = 250;
 
-export const STEER_MARKER_ATTR = 'data-impeccable-steer';
+// Outside the reserved data-impeccable-* namespace on purpose: an LLM agent
+// often carries the marker into its variants, and `live-complete` refuses an
+// accepted source that still holds a data-impeccable-* attribute.
+export const STEER_MARKER_ATTR = 'data-e2e-steer';
 export const STEER_MARKER_VALUE = 'e2e';
 
 // ---------------------------------------------------------------------------
@@ -220,7 +223,11 @@ export function createFakeAgent({ autoRepairMountFailures = true } = {}) {
     /** @type {LiveAgent['applyManualEdits']} */
     async applyManualEdits(event, context = {}) {
       const batch = await loadManualEditEventBatch(event, { tmp: context.tmp });
-      return applyManualEditBatchToSource(batch, { tmp: context.tmp, repair: event.repair || null });
+      return applyManualEditBatchToSource(batch, {
+        tmp: context.tmp,
+        repair: event.repair || null,
+        devOrigin: context.devOrigin || null,
+      });
     },
 
     /** @type {LiveAgent['handleSteer']} */
@@ -824,7 +831,67 @@ function normalizeVariantSelectorQuotes(css) {
   );
 }
 
-export async function applyManualEditBatchToSource(batch, { tmp, sourceEdits, repair = null } = {}) {
+// Vite's bundled chokidar drops a `change` event that arrives within 50 ms of
+// the previous one for the same path (`_throttle(EV_CHANGE, path, 50)` in
+// FSWatcher._emit) and never emits a trailing one. A chunked manual Apply
+// writes the same file once per chunk, and this agent answers each chunk in a
+// few milliseconds, so on Linux (inotify) the last chunk's write was often
+// swallowed: the file on disk was right, but Vite kept serving the previous
+// transform forever and a reload showed old copy (#1081). A real agent spends
+// seconds per chunk and never gets this close.
+//
+// So when the dev server serves the file under its source path (Vite), the
+// fake agent waits until the served module changes after each write. A new
+// transform proves the watcher already emitted that change, so starting the
+// throttle window from the moment it is observed puts the next write to the
+// same file safely outside it. Where the module cannot be fetched, the window
+// is counted from the write itself.
+const WATCHER_CHANGE_THROTTLE_MS = 50;
+const WATCHER_CHANGE_MARGIN_MS = 50;
+const DEV_MODULE_OBSERVE_TIMEOUT_MS = 10_000;
+const lastSourceChangeSeenAt = new Map();
+
+async function writeWatchedSourceFile(fullPath, body, { moduleUrl = null } = {}) {
+  const last = lastSourceChangeSeenAt.get(fullPath);
+  if (last !== undefined) {
+    const wait = last + WATCHER_CHANGE_THROTTLE_MS + WATCHER_CHANGE_MARGIN_MS - Date.now();
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+  const previous = await fs.readFile(fullPath, 'utf-8').catch(() => null);
+  const servedBefore = moduleUrl && previous !== body ? await fetchServedModule(moduleUrl) : null;
+  // Publish atomically: a direct write briefly exposes a truncated file that
+  // the dev server can read mid-Apply and answer with a full reload. The temp
+  // file sits beside the target so the rename stays on one filesystem, and
+  // its `.tmp` extension is no source module any framework resolves.
+  const temporaryPath = `${fullPath}.impeccable-manual-apply-${process.pid}.tmp`;
+  try {
+    await fs.writeFile(temporaryPath, body, 'utf-8');
+    await fs.rename(temporaryPath, fullPath);
+  } catch (err) {
+    await fs.rm(temporaryPath, { force: true }).catch(() => {});
+    throw err;
+  }
+  if (servedBefore !== null) {
+    const deadline = Date.now() + DEV_MODULE_OBSERVE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const served = await fetchServedModule(moduleUrl);
+      if (served !== null && served !== servedBefore) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  lastSourceChangeSeenAt.set(fullPath, Date.now());
+}
+
+async function fetchServedModule(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function applyManualEditBatchToSource(batch, { tmp, sourceEdits, repair = null, devOrigin = null } = {}) {
   if (!tmp) throw new Error('manual edit apply requires tmp project root');
   const fileCache = new Map();
   const filesTouched = new Set();
@@ -948,7 +1015,9 @@ export async function applyManualEditBatchToSource(batch, { tmp, sourceEdits, re
   }
 
   for (const file of filesTouched) {
-    await fs.writeFile(safeProjectPath(tmp, file), fileCache.get(file), 'utf-8');
+    await writeWatchedSourceFile(safeProjectPath(tmp, file), fileCache.get(file), {
+      moduleUrl: devOrigin ? `${devOrigin}/${file}` : null,
+    });
   }
 
   const status = failed.length === 0 ? 'done' : (appliedEntryIds.length > 0 ? 'partial' : 'error');
@@ -1856,6 +1925,7 @@ export async function runAgentLoop({
   wrapTarget = { classes: 'hero-title', tag: 'h1' },
   steerSourceFile,
   steerTarget,
+  devOrigin = null,
 }) {
   const base = `http://127.0.0.1:${port}`;
   // Everything the agent needs to republish a component session without
@@ -2102,7 +2172,7 @@ export async function runAgentLoop({
           throw new Error('agent does not implement applyManualEdits');
         }
         log("Using source hints first; I'll only touch the hinted copy.");
-        const result = await agent.applyManualEdits(event, { tmp, engineBin });
+        const result = await agent.applyManualEdits(event, { tmp, engineBin, devOrigin });
         if (process.env.IMPECCABLE_E2E_DEBUG) {
           log(`manual_edit_apply result: ${JSON.stringify(result)}`);
         }
@@ -2205,7 +2275,7 @@ export async function runAgentLoop({
         }
       } catch (err) {
         if (signal.aborted) return;
-        log('accept failed: ' + err.message);
+        log('accept failed: ' + err.message + ' STDOUT=' + (err.stdout || '') + ' STDERR=' + (err.stderr || ''));
       }
       continue;
     }

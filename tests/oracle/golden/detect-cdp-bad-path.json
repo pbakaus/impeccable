@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --cdp expects a DevTools port or a ws://.../devtools/browser/<id> or .../devtools/page/<id> URL; got ws://127.0.0.1:9222/json/list\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

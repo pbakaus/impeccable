@@ -12,7 +12,7 @@
 
   Should pass: a card on a track that a running, endlessly repeating
   animation moves stands wherever the capture caught it (paseo.sh). The
-  animation here is paused at its first frame so the fixture holds still.
+  animation here runs, but over a duration so long that it holds still for the capture.
 
   Should flag: the same line with no clip runs past the page, and the same
   card on a track a script parked with a transform shows a 7px gutter.
@@ -28,10 +28,11 @@
   .window { overflow: hidden; width: 1280px; margin: 24px 0; }
   .track { display: flex; width: 2100px; }
   .parked { transform: translateX(-96px); }
-  .running { animation: slide 60s linear infinite paused; }
+  .running { animation: slide 100000s linear infinite; }
   @keyframes slide { from { transform: translateX(-96px); } to { transform: translateX(-1496px); } }
   .quote { flex: 0 0 700px; padding: 16px 31px 16px 16px; }
-  .quote p { margin: 0; }
+  /* Right-aligned lines end at the box's edge whatever the host's face, so the gutter the card shows is the box's. */
+  .quote p { margin: 0; text-align: right; }
 </style>
 </head>
 <body>

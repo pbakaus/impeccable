@@ -35,6 +35,85 @@ IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5 IMPECCABLE_SKILL_BEHAVIOR_VERBO
   node --test --test-timeout=600000 --test-name-pattern="scenario 6" tests/skill-behavior/scenarios.test.mjs
 ```
 
+## Skill activation (`activation.eval.mjs`, issue #375)
+
+`bun run test:skill-activation` is a separate opt-in suite for the frontmatter
+`description` in `skill/SKILL.src.md`, the one line every harness loads into
+every session. It does not load the skill body. It simulates the selection
+step: a system prompt lists twelve skills (impeccable plus eleven neighbours
+such as frontend-dev, docs-writer, dataviz and brand-identity, from
+`activation-cases.mjs`), the user message is one request, and the model has a
+`Skill` tool beside Read, Edit, Write and Bash. An activation is a `Skill` call
+naming `impeccable`; starting the work directly or loading another skill is a
+miss.
+
+The 54 cases are 34 positives (every command family, five document-shaped
+requests, three native) and 20 negatives (clear non-UI work plus the #744 near
+neighbours: frontend code with no visual decision, and visual work that is not
+an interface). Cases ending in `_744` are the pinned #744 prompts.
+
+```bash
+bun run test:skill-activation                                   # gate: current description, 2 models x 2 samples, about $1
+node tests/skill-behavior/activation.eval.mjs                   # same run, report only
+ACTIVATION_VARIANTS=current,previous ACTIVATION_SAMPLES=3 \
+  node tests/skill-behavior/activation.eval.mjs                 # compare against the v4.5 description
+ACTIVATION_DESCRIPTION_FILE=draft.txt ACTIVATION_VARIANTS=current,file \
+  node tests/skill-behavior/activation.eval.mjs                 # try a draft before editing SKILL.src.md
+```
+
+The gate fails on any false activation, or when recall drops under 40%
+(Sonnet) or 75% (Gemini), or document-shaped recall under 50%. Run it whenever
+the description changes, and compare variants at three samples before shipping
+a rewrite: single cells swing between 0/3 and 3/3 across runs, so read the
+category totals, not individual cases.
+
+### Baseline (2026-10-16, claude-sonnet-5 and gemini-3.7-flash, 3 samples, first action)
+
+`previous` is the 118-word description shipped through v4.5 (301 tokens);
+`current` is the 81-word rewrite that replaced it (211 tokens). "Other" is the
+25 positives that are neither document-shaped nor native.
+
+| Model | Description | Recall | Document | Native | Other | False positives |
+|---|---|---|---|---|---|---|
+| Sonnet | previous | 35/99 (35%) | 3/15 | 2/9 | 30/75 | 0/21 |
+| Sonnet | current | 54/99 (55%) | 12/15 | 8/9 | 34/75 | 0/21 |
+| Gemini | previous | 75/99 (76%) | 4/15 | 7/9 | 64/75 | 0/21 |
+| Gemini | current | 88/99 (89%) | 13/15 | 9/9 | 66/75 | 0/21 |
+
+The negatives in this round were the seven near neighbours; over all rounds
+the 13 clear non-UI negatives never fired either (0/112 per model for
+`previous`).
+
+What the measurement found:
+
+- The previous description never named DESIGN.md or native platforms. "Write
+  a DESIGN.md", "Document our design system" and "Create a style guide" went to
+  docs-writer or straight to work (0/3 on both models), which is #744's
+  completion finding. SwiftUI and Compose requests scored 0/3 on Sonnet.
+- Shorter is not free. A 53-word rewrite (`short` in the script) fixed those
+  cases but lost the core UI asks it did not name: ambitious effects went from
+  3/3 to 0/3 on both models, and token extraction, form simplification,
+  component and motion requests all dropped. Its non-document, non-native
+  recall fell from 35/75 to 27/75 (Sonnet) and from 65/75 to 56/75 (Gemini). A
+  34-word version lost more. The verb enumeration does real work; the long
+  topic list (cognitive load, i18n, anti-patterns, theming) did not.
+- Sonnet decides at the first step. When its first action is not `Skill`, it
+  explores with Bash or Read and almost never loads the skill afterwards (2 of
+  about 135 runs with four steps and stubbed results). Polish, accessibility
+  review, empty states, responsive fixes and edge-case hardening miss on
+  Sonnet under every description tried; wording alone does not reach them.
+- A direct UI performance ask (`ui_performance`, added after the baseline
+  above) fired 0/3 on both models under both descriptions: dropping
+  "performance" and "optimize" from the description lost nothing there, and
+  naming them did not help either. Through the gate it costs about one
+  point of recall.
+- Gemini's misses mostly go to the frontend-dev neighbour, so results depend
+  on the roster. The roster is a guess at a typical install, not a measurement.
+
+This is a simulated harness, not Claude Code itself, and neither model is the
+Haiku that #744 measured. Treat it as a regression gate and a way to compare
+drafts, not as a prediction of production activation rates.
+
 ## How it works
 
 ### Protocol versus full completion
@@ -399,6 +478,15 @@ These are single samples per case and candidate, not reliability estimates.
 This API harness starts with the skill loaded and readable references. It
 does not measure activation, reproduce Windows command parsing, or establish
 fallback behavior when the host also denies required file reads or writes.
+
+### Named craft-floor read (2026-10-23, #744)
+
+An outside measurement in acceptEdits mode found 0 of 21 craft-floor reads
+before the first UI edit on the denied-launcher path: "follow applicable steps
+2–3" did not get the agent into `reference/`. The fallback now names
+`reference/craft-floor.md` and the pre-edit timing explicitly. Scenario 19's
+assertions are unchanged. Not yet rerun: one combined `test:skill-behavior`
+run is planned after #1114 and #1118 land, so there is no new result here.
 Keep #744 open; evaluate activation separately with #375.
 
 To repeat only these cases (provider keys and an engine binary required):

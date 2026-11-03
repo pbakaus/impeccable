@@ -13,10 +13,11 @@ use impeccable_core::checks::measures::{
     resolve_length_px, TRACKED_LABEL_MAX_CHARS,
 };
 use impeccable_core::checks::rules::RuleHit;
+use impeccable_core::checks::text_context::FinePrint;
 use impeccable_core::checks::text_rules::{
     font_weight_number, is_bold_title_leading, is_cjk_text, is_line_clamp,
     is_under_ui_text_floor, justifies_without_word_spaces_text, tracking_is_crushed,
-    ALL_CAPS_LONG_RUN, JUSTIFY_NARROW_CHARS_PER_LINE, LEADING_DISPLAY_TYPE_PX,
+    ALL_CAPS_LONG_RUN, JUSTIFY_NARROW_CHARS_PER_LINE, LEADING_CAPS_LABEL_MIN_RATIO, LEADING_DISPLAY_TYPE_PX,
     LEADING_HEADING_CONTEXT, NON_RENDERED_TAGS, QUALITY_TEXT_TAGS, SMALLPRINT_TEXT_FLOOR_PX,
     SR_ONLY_SELECTOR, UI_TEXT_FLOOR_PX,
 };
@@ -363,12 +364,55 @@ fn is_in_control(el: &StaticElement<'_>) -> bool {
     }
     false
 }
+/// Whether `el` is drawn as a button by its class, as the browser engine
+/// reads it: a class token `btn` or one ending in `-btn` / `_btn`, on the
+/// text's own box or a box around it holding no more text than one
+/// control, at most three boxes up, and the text is not fine print.
+fn is_button_label(el: &StaticElement<'_>) -> bool {
+    let names_button = |cls: &str| {
+        cls.split_ascii_whitespace().any(|token| {
+            let t = js::to_lower_case(token);
+            t == "btn" || t.ends_with("-btn") || t.ends_with("_btn")
+        })
+    };
+    let mut cur = Some(*el);
+    for _ in 0..3 {
+        let Some(c) = cur else { return false };
+        if !(c.contains(el) && el.contains(&c))
+            && utf16_len(js::trim(&collapse_ws(&c.text_content()))) > FOCUSABLE_CONTROL_MAX_CHARS
+        {
+            return false;
+        }
+        if c.get_attribute("class").is_some_and(|cls| names_button(cls)) {
+            return !crate::text_context::is_fine_print(el);
+        }
+        cur = c.parent_element();
+    }
+    false
+}
 const FURNITURE_ELEMENTS: &str = "nav, [role=\"navigation\"], td, th, [role=\"gridcell\"], [role=\"cell\"], caption, figcaption, dt, dd, footer";
-/// Class markers of page furniture. As in the browser engine, they are not
-/// read off `html`, which holds a page's script state flags
-/// (`html.js-nav-ready` is not navigation).
-const FURNITURE_CLASSES: &str = "[class*=\"meta\" i], [class*=\"label\" i], [class*=\"badge\" i], [class*=\"chip\" i], [class*=\"pill\" i], [class*=\"tag\" i], [class*=\"kicker\" i], [class*=\"eyebrow\" i], [class*=\"breadcrumb\" i], [class*=\"timestamp\" i], [class*=\"category\" i], [class*=\"caption\" i], [class*=\"nav\" i]";
 const SMALLPRINT: &str = "small, footer, [class*=\"legal\" i], [class*=\"copyright\" i], [class*=\"fineprint\" i], [class*=\"fine-print\" i], [class*=\"smallprint\" i], [class*=\"small-print\" i], [class*=\"disclaimer\" i], [class*=\"disclosure\" i], [class*=\"footnote\" i]";
+
+/// Whether `el` or a box around it carries a class that names page
+/// furniture, read by part as the browser engine does
+/// (`impeccable_core::checks::decorative_text::class_names_furniture`). The
+/// markers are not read off `html`, which holds a page's script state flags
+/// (`html.js-nav-ready` is not navigation).
+fn has_furniture_class(el: StaticElement<'_>) -> bool {
+    let mut cur = Some(el);
+    while let Some(c) = cur {
+        if c.tag_lower() == "html" {
+            return false;
+        }
+        if c.get_attribute("class").is_some_and(|cls| {
+            impeccable_core::checks::decorative_text::class_names_furniture(cls)
+        }) {
+            return true;
+        }
+        cur = c.parent_element();
+    }
+    false
+}
 
 fn has_unresolved_var(value: &str) -> bool {
     js::to_lower_case(value).contains("var(")
@@ -394,17 +438,150 @@ const MARGIN_KEYS: [&str; 4] = ["marginTop", "marginRight", "marginBottom", "mar
 /// (`table` > `tbody` > `tr` > `td`).
 const MAX_INSULATE_DEPTH: usize = 4;
 
+const TABLEISH_TAGS: &[&str] = &["TABLE", "TBODY", "THEAD", "TFOOT", "TR", "TD", "TH"];
+
+/// Whether a transform, or a relative or sticky offset, moves `style`'s box off where the
+/// layout put it. Its children's declared padding then says nothing about
+/// where their text lands (`left: -24px` over `padding: 24px` puts it on the
+/// rule), so the walk cannot read clearance through it. An offset this
+/// engine cannot resolve may move the box, so it counts.
+fn is_offset_static(style: &StyleValues) -> bool {
+    let transform = js::to_lower_case(js::trim(sv(style, "transform")));
+    if !transform.is_empty() && transform != "none" {
+        return true;
+    }
+    let pos = js::to_lower_case(js::trim(sv(style, "position")));
+    if !matches!(pos.as_str(), "relative" | "sticky") {
+        return false;
+    }
+    ["top", "right", "bottom", "left"].iter().any(|k| {
+        let v = js::to_lower_case(js::trim(sv(style, k)));
+        if v.is_empty() || v == "auto" {
+            return false;
+        }
+        has_unresolved_var(&v) || resolve_length_px(Some(&v), 16.0).is_none_or(|px| px != 0.0)
+    })
+}
+
+/// Whether `style`'s box keeps its children's vertical margins inside it: a
+/// flex or grid container (its items' margins never collapse with it), a
+/// `flow-root` or any other display that starts a new formatting context,
+/// or a float. Only plain block flow lets a child's margin collapse through.
+fn holds_child_margins_static(style: &StyleValues) -> bool {
+    let display = js::to_lower_case(js::trim(sv(style, "display")));
+    if !matches!(display.as_str(), "" | "block" | "list-item") {
+        return true;
+    }
+    let float = js::to_lower_case(js::trim(sv(style, "float")));
+    !float.is_empty() && float != "none"
+}
+
+fn is_transparent_wrapper_static(el: &StaticElement<'_>, style: &StyleValues) -> bool {
+    if has_visible_background_boundary(style, el) {
+        return false;
+    }
+    let tag = js::to_upper_case(&el.tag_lower());
+    if TABLEISH_TAGS.contains(&tag.as_str()) {
+        return false;
+    }
+    // An out-of-flow overlay's padding insets the overlay itself, not the
+    // parent's box, so it can never speak for the parent's edges (the
+    // browser rule rejects these positions too).
+    let pos = js::to_lower_case(js::trim(sv(style, "position")));
+    if matches!(pos.as_str(), "fixed" | "absolute") {
+        return false;
+    }
+    // A scroll/clip container is a boundary of its own: its children may be
+    // clipped, not inset. Only layout can clear those (pass-table-wrap).
+    for key in ["overflow", "overflowX", "overflowY"] {
+        let v = js::to_lower_case(js::trim(sv(style, key)));
+        if matches!(
+            v.as_str(),
+            "scroll" | "auto" | "hidden" | "clip"
+        ) {
+            return false;
+        }
+    }
+    let bw = |k: &str| pf0(sv(style, k));
+    let border_w = [
+        bw("borderTopWidth"),
+        bw("borderRightWidth"),
+        bw("borderBottomWidth"),
+        bw("borderLeftWidth"),
+    ];
+    let bc = |k: &str| {
+        // An unresolved colour may paint: treat it as an edge.
+        let value = sv(style, k);
+        !has_unresolved_var(value) && css_color_is_transparent(Some(value))
+    };
+    if (border_w[0] > 0.0 && !bc("borderTopColor"))
+        || (border_w[1] > 0.0 && !bc("borderRightColor"))
+        || (border_w[2] > 0.0 && !bc("borderBottomColor"))
+        || (border_w[3] > 0.0 && !bc("borderLeftColor"))
+    {
+        return false;
+    }
+    // A shadow draws an edge of its own (a card), whatever its colour.
+    let shadow = js::trim(sv(style, "boxShadow"));
+    if !shadow.is_empty() && shadow != "none" {
+        return false;
+    }
+    let outline_w = pf0(sv(style, "outlineWidth"));
+    let outline_style_val = sv(style, "outlineStyle");
+    let outline_color_val = sv(style, "outlineColor");
+    let outline_visible = outline_w > 0.0
+        && (has_unresolved_var(outline_color_val)
+            || !css_color_is_transparent(Some(outline_color_val)))
+        && !outline_style_val.is_empty()
+        && outline_style_val != "none";
+    if outline_visible {
+        return false;
+    }
+    // Text of the wrapper's own renders where the wrapper does, so a label
+    // short enough to slip the pass-through's length bar (`Sale`) still sits
+    // on the edge. Only a wrapper holding no text of its own can be seen
+    // through.
+    !has_nonblank_direct_text(el)
+}
+
 /// Whether `el` keeps the container's text off side `s`.
 ///
 /// An element that holds one element and no text of its own is a pass-through
 /// (`<h3>` around a padded `<button>`, `<a>` around a padded card), so the
 /// question goes to what it wraps: the padding that insets the text often sits
 /// a step or two below the container's own child. Where it holds several
-/// children the question stops, because any one of them can reach the edge on
-/// its own and the padding of another says nothing about it. The browser rule
+/// children the question usually stops, because any one of them can reach the
+/// edge on its own and the padding of another says nothing about it. The one
+/// exception is a transparent page-shell wrapper (issue #963): a single
+/// padding-free block holding several padded sections (`header`/`main`/
+/// `footer`) insets every side at its children, has no boundary of its own,
+/// and renders the same as the sections sitting directly in the coloured
+/// wrapper. There every child must insulate the side. Anything laid out
+/// side by side instead of stacked (flex rows, grids, tables, inline runs,
+/// marquees) still stops the walk: without layout there is no telling which
+/// child reaches a side, so a padded sibling must never clear another
+/// child's flush text. The browser rule
 /// measures where the glyphs land and needs none of this; the static scan has
 /// no layout, so it reads the declarations that would move them.
-fn insulates_side(el: &StaticElement<'_>, s: usize, font_size: Option<f64>, depth: usize) -> bool {
+///
+/// `margins_count` is false for the children of a multi-child transparent
+/// shell on a vertical side where the margin really collapses out of the
+/// coloured box: only a plain block shell inside a parent that does not stop
+/// collapse lets a child's top/bottom margin escape. A flex column, a
+/// `flow-root`, or a border, padding or clip on the parent holds the margin
+/// where the reader sees it, so there it still counts as inset.
+/// Horizontal margins never collapse and always count. Single-child
+/// pass-throughs keep the caller's flag: their margin behavior is the
+/// pre-#963 rule.
+fn insulates_side(
+    el: &StaticElement<'_>,
+    s: usize,
+    font_size: Option<f64>,
+    depth: usize,
+    margins_count: bool,
+    outer_stops_collapse: bool,
+    sole: bool,
+) -> bool {
     const CHILD_INSULATE_THRESHOLD: f64 = 4.0;
     let style = el.style();
     // A side this engine cannot resolve (an unresolved var(), or an em or %
@@ -412,16 +589,97 @@ fn insulates_side(el: &StaticElement<'_>, s: usize, font_size: Option<f64>, dept
     let insulates = |key: &str| {
         side_len(style, key, font_size).is_none_or(|v| v >= CHILD_INSULATE_THRESHOLD)
     };
-    if insulates(PAD_KEYS[s]) || insulates(MARGIN_KEYS[s]) {
+    if insulates(PAD_KEYS[s]) || (margins_count && insulates(MARGIN_KEYS[s])) {
         return true;
     }
-    if depth == 0 || el.has_direct_text_longer_than(4) {
+    if depth == 0 || el.has_direct_text_longer_than(4) || is_offset_static(style) {
         return false;
     }
     let children = el.children();
     match children.as_slice() {
-        [only] => insulates_side(only, s, font_size, depth - 1),
-        _ => false,
+        [only] => insulates_side(
+            only,
+            s,
+            font_size,
+            depth - 1,
+            margins_count,
+            outer_stops_collapse,
+            sole,
+        ),
+        _ => {
+            if children.is_empty() || depth == 0 {
+                return false;
+            }
+            // #963: transparent shell holding several padded sections. Only
+            // a shell that is all the coloured box holds is seen through: a
+            // sibling beside it may reach the edge on its own, and the
+            // shell's padded sections say nothing about it.
+            if !sole || !is_transparent_wrapper_static(el, style) {
+                return false;
+            }
+            // Only stacked block-level content: side-by-side children
+            // (flex rows, grids, inline runs, marquees) may each reach a
+            // different stretch of an edge, so their padding cannot speak
+            // for one another. A column flex stacks like blocks.
+            let display = js::to_lower_case(js::trim(sv(style, "display")));
+            let stacked = match display.as_str() {
+                "" | "block" | "flow-root" => true,
+                "flex" | "inline-flex" => {
+                    let dir = js::to_lower_case(js::trim(sv(style, "flexDirection")));
+                    matches!(dir.as_str(), "column" | "column-reverse")
+                }
+                _ => false,
+            };
+            if !stacked {
+                return false;
+            }
+            // Vertical margins collapse through a plain block shell and out
+            // of a parent with no border, padding or clip on that side;
+            // horizontal margins never do. A `flow-root` or a flex column
+            // holds the margins inside, so they inset the reader's view.
+            // A border of any colour or padding on the shell's side holds
+            // them too (a transparent wrapper may carry either).
+            let shell_border = side_len(style, ["borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth"][s], font_size)
+                .is_none_or(|v| v > 0.0);
+            let shell_pad = side_len(style, PAD_KEYS[s], font_size).is_none_or(|v| v > 0.0);
+            // A float holds them as a flow-root does.
+            let shell_stops = holds_child_margins_static(style) || shell_border || shell_pad;
+            let stops_below = outer_stops_collapse || shell_stops;
+            let child_margins = s == 1 || s == 3 || stops_below;
+            // An out-of-flow child is placed by its own offsets, not by the
+            // shell (a badge pinned to the card's corner), and the browser
+            // rule leaves its text out of the wrapper's; it is left out here
+            // too, and the in-flow children decide. Of those, one an offset
+            // moves (`padding: 24px; left: -24px`) or a negative margin pulls
+            // onto the side cannot vouch for it with its own padding.
+            let in_flow: Vec<&StaticElement<'_>> = children
+                .iter()
+                .filter(|c| {
+                    let pos = js::to_lower_case(js::trim(sv(c.style(), "position")));
+                    !matches!(pos.as_str(), "absolute" | "fixed")
+                })
+                .collect();
+            !in_flow.is_empty()
+                && in_flow.iter().all(|c| {
+                    let cs = c.style();
+                    // A negative margin only cancels clearance when it eats
+                    // the padding down past the threshold. Both lengths are
+                    // the child's, so an em resolves on its own font size;
+                    // one this engine cannot read keeps the warning.
+                    let child_fs = {
+                        let fs = js::to_lower_case(js::trim(sv(cs, "fontSize")));
+                        fs.strip_suffix("px").and_then(|n| n.trim().parse::<f64>().ok())
+                    };
+                    let pulled = js::trim(sv(cs, MARGIN_KEYS[s])).starts_with('-')
+                        && !matches!(
+                            (side_len(cs, PAD_KEYS[s], child_fs), side_len(cs, MARGIN_KEYS[s], child_fs)),
+                            (Some(pad), Some(margin)) if pad + margin >= 4.0
+                        );
+                    !is_offset_static(cs)
+                        && !pulled
+                        && insulates_side(c, s, font_size, depth - 1, child_margins, stops_below, true)
+                })
+        }
     }
 }
 
@@ -551,11 +809,37 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     side_len(style, "paddingLeft", font_size),
                 ];
                 const PAD_THRESHOLD: f64 = 2.0;
+                // A child's vertical margin only escapes the coloured box
+                // when nothing between them stops it: a border, any padding
+                // on the side, or a clip holds it where the reader sees it.
+                let clips = ["overflow", "overflowX", "overflowY"].iter().any(|key| {
+                    matches!(
+                        js::to_lower_case(js::trim(sv(style, key))).as_str(),
+                        "hidden" | "scroll" | "auto"
+                    )
+                });
+                // Any border holds the margin, whatever its colour: a
+                // transparent one reserving space stops collapse as surely as
+                // a painted rule. So does a box that is a flex or grid
+                // container or starts a formatting context of its own.
+                let holds_margins = holds_child_margins_static(style);
                 let mut children_insulate = [false; 4];
                 for s in 0..4 {
-                    children_insulate[s] = children
-                        .iter()
-                        .any(|c| insulates_side(c, s, font_size, MAX_INSULATE_DEPTH));
+                    let stops_collapse = (border_w[s] > 0.0 && bs(["borderTopStyle", "borderRightStyle", "borderBottomStyle", "borderLeftStyle"][s]))
+                        || pad[s].is_some_and(|v| v > 0.0)
+                        || clips
+                        || holds_margins;
+                    children_insulate[s] = children.iter().any(|c| {
+                        insulates_side(
+                            c,
+                            s,
+                            font_size,
+                            MAX_INSULATE_DEPTH,
+                            true,
+                            stops_collapse,
+                            children.len() == 1,
+                        )
+                    });
                 }
                 let side_names = ["top", "right", "bottom", "left"];
                 let mut flush_sides: Vec<&str> = Vec::new();
@@ -634,8 +918,26 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 // line-height: 1.3 exactly is never flagged for hitting the floor
                 // (46.8 / 36 is 1.2999999999999998 in binary floats).
                 let shown = js::math_round(ratio * 100.0) / 100.0;
+                // Preformatted monospace text is drawn line by line (box
+                // art, a code sample), as the browser engine reads it. This
+                // cascade carries no `white-space`, so a `pre` stands for it,
+                // monospace by the browser's default unless a face is set.
+                let family = sv(style, "fontFamily");
+                let is_code_run = el.closest("pre").is_some()
+                    && (family.is_empty() || impeccable_core::checks::text_rules::is_monospace_family(family));
+                // Capitals have no descenders to crowd the line below
+                // (r13-t3), as the browser engine reads them. With no layout
+                // the lead-text exemption, which counts lines, is browser-only.
+                // A label is set solid or looser, and here, with no lines to
+                // count (the browser bounds it to three), shorter than a
+                // sentence: the nearest stand-in without layout.
+                let caps = sv(style, "textTransform") == "uppercase"
+                    && shown >= LEADING_CAPS_LABEL_MIN_RATIO
+                    && utf16_len(&collapse_ws(js::trim(&el.text_content()))) < ALL_CAPS_LONG_RUN;
                 if ratio > 0.0
                     && shown < 1.3
+                    && !caps
+                    && !is_code_run
                     && !is_non_rendered_text(el, tag, Some(style))
                     && !is_visually_hidden(el, style)
                     && !is_heading_text(el)
@@ -675,9 +977,15 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 sv(style, "webkitHyphens")
             }
         };
-        let narrow = declared_measure_px(el, font_size)
-            .is_some_and(|w| chars_per_line(w, font_size) <= JUSTIFY_NARROW_CHARS_PER_LINE);
-        if hyphens != "auto" && narrow && !justifies_without_word_spaces_text(&el.direct_text()) {
+        // Text short enough to fit one line of the measure renders on one
+        // line, and the one line of a justified block is set ragged: no word
+        // space is stretched (a short heading in a narrow column).
+        let direct = el.direct_text();
+        let narrow = declared_measure_px(el, font_size).is_some_and(|w| {
+            let per_line = chars_per_line(w, font_size);
+            per_line <= JUSTIFY_NARROW_CHARS_PER_LINE && utf16_len(js::trim(&direct)) as f64 > per_line
+        });
+        if hyphens != "auto" && narrow && !justifies_without_word_spaces_text(&direct) {
             findings.push(RuleHit::new(
                 "justified-text",
                 "text-align: justify without hyphens: auto".to_string(),
@@ -699,7 +1007,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
             "caption",
             "figcaption",
         ];
-        let in_ui_context = el.closest(TINY_TEXT_UI_CONTEXT).is_some();
+        let in_ui_context = el.closest(TINY_TEXT_UI_CONTEXT).is_some() || is_button_label(el);
         let is_uppercase = sv_opt(style, "textTransform") == Some("uppercase");
         if !skip_tags.contains(&tag)
             && !in_ui_context
@@ -707,11 +1015,15 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
             && !is_non_rendered_text(el, tag, Some(style))
         {
             // Fine print (taste call r5-p27) and text in a mockup (r5-p26)
-            // report as advisory.
-            findings.push(advisory_if(
-                RuleHit::new("tiny-text", format!("{}px body text", number_to_string(font_size))),
-                crate::text_context::is_fine_print(el) || crate::text_context::in_mock_context(el),
-            ));
+            // report as advisory; a legal or footnote block reports nothing
+            // (decision 3, round 13).
+            let fine_print = crate::text_context::fine_print(el);
+            if fine_print != FinePrint::Exempt {
+                findings.push(advisory_if(
+                    RuleHit::new("tiny-text", format!("{}px body text", number_to_string(font_size))),
+                    fine_print == FinePrint::Advisory || crate::text_context::in_mock_context(el),
+                ));
+            }
         }
     }
 
@@ -738,7 +1050,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
             if !is_exempt_context && !is_visually_hidden(el, style) {
                 let is_interactive = is_in_control(el);
                 let is_furniture = el.closest(FURNITURE_ELEMENTS).is_some()
-                    || el.closest(FURNITURE_CLASSES).is_some_and(|m| m.tag_lower() != "html");
+                    || has_furniture_class(*el);
                 let is_smallprint = el.closest(SMALLPRINT).is_some();
                 let floor = if !is_interactive && is_smallprint {
                     SMALLPRINT_TEXT_FLOOR_PX
@@ -746,8 +1058,9 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     UI_TEXT_FLOOR_PX
                 };
                 // A 0.1px tolerance under each floor, as the browser engine.
+                let drawn_as_button = is_button_label(el);
                 if is_under_ui_text_floor(font_size, floor)
-                    && (is_interactive || is_furniture || dt_len <= 20)
+                    && (is_interactive || is_furniture || drawn_as_button || dt_len <= 20)
                 {
                     let excerpt = slice_utf16_prefix(&direct_text, 40);
                     // A label with no reading job (taste call r5-p3) and

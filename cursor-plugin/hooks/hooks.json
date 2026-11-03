@@ -1,9 +1,10 @@
 {
   "version": 1,
   "hooks": {
-    "preToolUse": [
+    "postToolUse": [
       {
-        "command": "[ ! -f \"${CURSOR_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable\" ] || \"${CURSOR_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable\" hook-before-edit",
+        "command": "[ ! -f \"${CURSOR_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable\" ] || \"${CURSOR_PLUGIN_ROOT}/skills/impeccable/scripts/impeccable\" hook",
+        "matcher": "^Write$",
         "timeout": 5
       }
     ]

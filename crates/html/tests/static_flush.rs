@@ -101,6 +101,51 @@ fn text_on_the_way_down_stops_the_walk() {
     );
 }
 
+/// Issue #963: a single padding-free wrapper holding several padded sections
+/// insets every side at its children and renders the same as the sections
+/// sitting directly in the coloured wrapper.
+#[test]
+fn transparent_shell_holding_padded_sections_does_not_flag() {
+    let style = "body { margin: 0; background: #eee; }
+         .page { background: #fff; }
+         header, main, footer { padding: 24px 32px; }";
+    let direct = page(
+        style,
+        "<div class=\"page\"><header><a href=\"#\">Home</a></header>\
+         <main><h1>Heading</h1><p>Body text.</p></main>\
+         <footer><p>Footer text.</p></footer></div>",
+    );
+    assert_eq!(scan(&direct), Vec::<String>::new());
+
+    let wrapped = page(
+        style,
+        "<div class=\"page\"><div class=\"inner\"><header><a href=\"#\">Home</a></header>\
+         <main><h1>Heading</h1><p>Body text.</p></main>\
+         <footer><p>Footer text.</p></footer></div></div>",
+    );
+    assert_eq!(scan(&wrapped), Vec::<String>::new());
+}
+
+/// Issue #963 scope: only a stacked, edgeless shell is seen through. A row
+/// flex shell lays its sections side by side, and a shell with a shadow is a
+/// card of its own; both stop the walk and the page still flags.
+#[test]
+fn row_or_shadowed_shells_are_not_seen_through() {
+    let body = "<div class=\"page\"><div class=\"inner\"><header><a href=\"#\">Home</a></header>\
+         <main><h1>Heading</h1><p>Body text.</p></main></div></div>";
+    let expect =
+        vec!["<div> \"page\": children flush against bg on all sides (no inset)".to_string()];
+    for inner in ["display: flex;", "box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);"] {
+        let style = format!(
+            "body {{ margin: 0; background: #eee; }}
+             .page {{ background: #fff; }}
+             .inner {{ {inner} }}
+             header, main {{ padding: 24px 32px; }}"
+        );
+        assert_eq!(scan(&page(&style, body)), expect, "{inner}");
+    }
+}
+
 /// White on an unpainted page is the canvas, not an edge; on a page that asks
 /// for a dark scheme the browser paints a dark canvas and the same card is a
 /// strong edge.
@@ -122,6 +167,112 @@ fn the_canvas_follows_the_colour_scheme() {
     assert_eq!(
         scan(&dark),
         vec!["<div> \"card\": children flush against bg on all sides (no inset)".to_string()]
+    );
+}
+
+/// An absolutely positioned overlay's padding insets the overlay itself, not
+/// the parent's box: it can never speak for the parent's edges. The walk must
+/// stop at it, exactly like the browser rule does.
+#[test]
+fn a_positioned_shell_does_not_clear_the_walk() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .rail { position: absolute; top: 0; left: 0; }
+         .rail p { margin: 0; padding: 24px; }",
+        "<div class=\"page\"><div class=\"rail\"><p>Rail one</p><p>Rail two</p></div></div>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<div> \"page\": children flush against bg on all sides (no inset)".to_string()]
+    );
+}
+
+/// A transparent shell does not stop margin collapse: the first and last
+/// vertical margins of its children collapse through it (and through a
+/// padding-free page) out of the coloured box, so the text touches the edge
+/// even though the declarations say 24px. Only padding (which never
+/// collapses) holds; horizontal margins never collapse either.
+#[test]
+fn margins_collapse_through_a_transparent_shell() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .inner { padding: 0; margin: 0; }
+         .inner p { margin: 24px 0; padding: 0 24px; }",
+        "<div class=\"page\"><div class=\"inner\">\
+         <p>First paragraph of copy.</p><p>Second paragraph of copy.</p></div></div>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<div> \"page\": children flush against bg on top/bottom (no inset)".to_string()]
+    );
+}
+
+/// A `flow-root` shell holds its children's vertical margins inside its own
+/// box, so they really do inset the coloured page; only plain block flow lets
+/// them collapse out.
+#[test]
+fn a_flow_root_shell_keeps_margin_clearance() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .inner { display: flow-root; padding: 0; margin: 0; }
+         .inner p { margin: 24px 0; padding: 0 24px; }",
+        "<div class=\"page\"><div class=\"inner\">\
+         <p>First paragraph of copy.</p><p>Second paragraph of copy.</p></div></div>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A flex column stacks like a block but its items' margins never collapse,
+/// so the same declarations are visible air between the text and the edge.
+#[test]
+fn a_column_flex_shell_keeps_margin_clearance() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .inner { display: flex; flex-direction: column; padding: 0; margin: 0; }
+         .inner p { margin: 24px 0; padding: 0 24px; }",
+        "<div class=\"page\"><div class=\"inner\">\
+         <p>First paragraph of copy.</p><p>Second paragraph of copy.</p></div></div>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A border on the coloured box stops the collapse at the box, so the margin
+/// keeps the text off the rule even though the shell in between is plain
+/// block.
+#[test]
+fn a_border_on_the_coloured_box_keeps_margin_clearance() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 1px solid #123; }
+         .inner { padding: 0; margin: 0; }
+         .inner p { margin: 24px 0; padding: 0 24px; }",
+        "<div class=\"page\"><div class=\"inner\">\
+         <p>First paragraph of copy.</p><p>Second paragraph of copy.</p></div></div>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// The text of the wrapper itself renders where the wrapper does. A label
+/// short enough to slip the pass-through's length bar (`Sale`) still sits on
+/// the page's edge, so the shell is not seen through.
+#[test]
+fn a_short_label_in_the_shell_keeps_the_warning() {
+    let html = page(
+        "body { margin: 0; }
+         .page { background: #123; padding: 0; border: 0; }
+         .inner { padding: 0; margin: 0; }
+         .inner section { padding: 24px 32px; }",
+        "<div class=\"page\"><div class=\"inner\">Sale\
+         <section><p>First block of copy.</p></section>\
+         <section><p>Second block of copy.</p></section></div></div>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<div> \"page\": children flush against bg on all sides (no inset)".to_string()]
     );
 }
 
@@ -183,5 +334,38 @@ fn the_flush_fixture_reports_its_flag_column() {
     assert!(
         flagged.len() >= 5,
         "file scan lost flag cases: {flagged:?}"
+    );
+}
+
+/// `cramped-padding-shell.html` (PR #1059): a shell's relative offset carries
+/// its padded children onto the rule, and a border of any colour or a card
+/// that is a flex, grid or flow-root container holds the children's margins
+/// inside. The file scan reads all of it from the declarations, so the two
+/// columns hold exactly.
+#[test]
+fn the_shell_fixture_reports_exactly_its_flag_column() {
+    let Some(path) = fixture("cramped-padding-shell.html") else {
+        eprintln!("fixture not found; skipping");
+        return;
+    };
+    let src = std::fs::read_to_string(&path).unwrap();
+    let mut flagged: Vec<String> = scan(&src)
+        .iter()
+        .map(|snippet| snippet.split('"').nth(1).unwrap_or_default().to_string())
+        .collect();
+    flagged.sort();
+    assert_eq!(
+        flagged,
+        vec![
+            "flag-shell-em-pull".to_string(),
+            "flag-shell-loose-sibling".to_string(),
+            "flag-shell-margins-escape".to_string(),
+            "flag-shell-negative-margin".to_string(),
+            "flag-shell-offset-left".to_string(),
+            "flag-shell-offset-top".to_string(),
+            "flag-shell-paragraph-offset".to_string(),
+            "flag-shell-shorthand-pull".to_string(),
+            "flag-shell-transform".to_string(),
+        ]
     );
 }

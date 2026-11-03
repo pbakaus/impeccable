@@ -185,6 +185,23 @@ const __impeccableDom = {
     // producer carries it too; both routes read the same corpus.
     return __snapLinkedStylesheetText();
   },
+  // Dom::text_wrap_pretty_supported as -1 / 0 / 1, as check_visibility
+  // travels; the helper lives in 15-snapshot.js beside the CSSOM walk.
+  text_wrap_pretty_supported() {
+    const v = __snapTextWrapPrettySupported();
+    return v === null ? -1 : (v ? 1 : 0);
+  },
+  // Dom::document_font_faces and Dom::rendered_faces as JSON, or undefined
+  // where they cannot be read; the readers live in 15-snapshot.js beside
+  // the snapshot fields of the same names.
+  document_font_faces() {
+    const v = __snapFontFaces();
+    return v === null ? undefined : JSON.stringify(v);
+  },
+  rendered_faces() {
+    const v = __snapRenderedFaces();
+    return v === null ? undefined : JSON.stringify(v);
+  },
   document_html_for_patterns() {
     const docClone = document.documentElement.cloneNode(true);
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) node.remove();
@@ -357,5 +374,13 @@ const __impeccableDom = {
       out.push(r.left, r.top, r.width, r.height, r.top, r.right, r.bottom, r.left);
     }
     return out;
+  },
+  // Dom::last_word_rects: the word before the last, then the last, in eights
+  // as text_rects lays them out; empty under two words. The walk lives in
+  // 15-snapshot.js, which the in-page bundle concatenates after this file.
+  last_word_rects(el) {
+    const rects = __snapLastWordRects(__el(el), __rendersNoText);
+    if (!rects) return [];
+    return rects.flatMap(r => [r.left, r.top, r.width, r.height, r.top, r.right, r.bottom, r.left]);
   },
 };

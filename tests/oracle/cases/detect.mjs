@@ -64,6 +64,24 @@ export default function cases() {
   }
 
   out.push(
+    ...[false, true].map(noAdvisory => ({
+      id: `detect-hard-offset-shadow-lists-${noAdvisory ? 'no-advisory' : 'advisory'}`,
+      verb: 'detect',
+      args: ['--no-config', '--json', ...(noAdvisory ? ['--no-advisory'] : []), 'lists.html'],
+      setup: ws => fs.copyFileSync(path.join(REPO_ROOT, 'tests/fixtures/hard-offset-shadow/lists.html'), path.join(ws, 'lists.html')),
+    })),
+    ...[false, true].map(noAdvisory => ({
+      id: `detect-hard-offset-shadow-colors-${noAdvisory ? 'no-advisory' : 'advisory'}`,
+      verb: 'detect',
+      args: ['--no-config', '--json', ...(noAdvisory ? ['--no-advisory'] : []), 'colors.html'],
+      setup: ws => fs.copyFileSync(path.join(REPO_ROOT, 'tests/fixtures/hard-offset-shadow/colors.html'), path.join(ws, 'colors.html')),
+    })),
+    ...[false, true].map(noAdvisory => ({
+      id: `detect-hard-offset-shadow-${noAdvisory ? 'no-advisory' : 'advisory'}`,
+      verb: 'detect',
+      args: ['--no-config', '--json', ...(noAdvisory ? ['--no-advisory'] : []), 'shadow.html'],
+      setup: ws => fs.writeFileSync(path.join(ws, 'shadow.html'), '<div style="width:220px;height:96px;color:#222;background:#fff;box-shadow:4px 4px 0 #333"></div>'),
+    })),
     { id: 'detect-dir-json-all-fixtures', verb: 'detect', args: ['--no-config', '--json', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },
     { id: 'detect-dir-text-all-fixtures', verb: 'detect', args: ['--no-config', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },
     { id: 'detect-dir-quiet-all-fixtures', verb: 'detect', args: ['--no-config', '--quiet', `<REPO>/tests/fixtures/antipatterns`], isolateHome: false, timeoutMs: 180_000 },
@@ -127,6 +145,26 @@ function Thumb({ url }: { url?: string }) {
 
     // Flag surface and errors
     { id: 'detect-help', verb: 'detect', args: ['--help'] },
+    { id: 'detect-github-json', verb: 'detect', args: ['--github', '--json'] },
+    { id: 'detect-github-list-rules', verb: 'detect', args: ['--list-rules', '--github'] },
+    {
+      id: 'detect-github', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(
+        path.join(ws, 'card.html'),
+        '<div style="border-left: 4px solid #ff0000; border-radius: 10px">x</div>\n',
+      ),
+      args: ['--no-config', '--github', 'card.html'],
+    },
+    {
+      id: 'detect-github-clean', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
+      args: ['--no-config', '--github', 'ok.css'],
+    },
+    { id: 'detect-list-rules', verb: 'detect', args: ['--list-rules'] },
+    { id: 'detect-list-rules-json', verb: 'detect', args: ['--list-rules', '--json'] },
+    { id: 'detect-list-rules-quiet', verb: 'detect', args: ['--list-rules', '--quiet'] },
+    { id: 'detect-list-rules-with-target', verb: 'detect', args: ['--list-rules', 'src/'] },
+    { id: 'detect-list-rules-with-cdp', verb: 'detect', args: ['--list-rules', '--cdp', '9222'] },
     { id: 'detect-no-args', verb: 'detect', args: [] },
     { id: 'detect-missing-file', verb: 'detect', args: ['--no-config', 'does-not-exist.html'] },
     { id: 'detect-missing-file-json', verb: 'detect', args: ['--no-config', '--json', 'does-not-exist.html'] },
@@ -162,6 +200,17 @@ function Thumb({ url }: { url?: string }) {
     },
     { id: 'detect-unknown-flag', verb: 'detect', args: ['--bogus', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
     { id: 'detect-bad-viewport', verb: 'detect', args: ['--viewport', 'wide', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
+    // --cdp / --target (#951): the flag surface only. Attaching needs a
+    // running browser, which the oracle cannot host; crates/browser/tests/
+    // cdp_attach.rs covers the scan.
+    { id: 'detect-cdp-missing-value', verb: 'detect', args: ['--cdp', '--json'] },
+    { id: 'detect-cdp-remote-host', verb: 'detect', args: ['--cdp', '10.0.0.5:9222', '--json'] },
+    { id: 'detect-cdp-bad-port', verb: 'detect', args: ['--cdp=70000'] },
+    { id: 'detect-cdp-bad-path', verb: 'detect', args: ['--cdp', 'ws://127.0.0.1:9222/json/list'] },
+    { id: 'detect-cdp-with-targets', verb: 'detect', args: ['--cdp', '9222', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
+    { id: 'detect-cdp-with-viewport', verb: 'detect', args: ['--cdp', '9222', '--viewport', '390x844'] },
+    { id: 'detect-target-without-cdp', verb: 'detect', args: ['--target', 'app', `<REPO>/tests/fixtures/antipatterns/blinking-cursor.html`], isolateHome: false },
+    { id: 'detect-target-missing-value', verb: 'detect', args: ['--cdp', '9222', '--target'] },
     { id: 'cli-help', verb: 'cli-help', args: [] },
     {
       id: 'cli-version', verb: 'cli-version', args: [],
@@ -212,6 +261,56 @@ function Thumb({ url }: { url?: string }) {
         );
       },
       args: ['--json', 'index.html'],
+    },
+
+    // #1087: a linked stylesheet that detector.ignoreFiles waives is not
+    // reported again under the page that links it; the page's own <style>
+    // still is.
+    ...[
+      ['detect-linked-sheet-dir-json', null, '.'],
+      ['detect-linked-sheet-dir-ignored-json', ['vendor/**'], '.'],
+      ['detect-linked-sheet-file-ignored-json', ['vendor/**'], 'index.html'],
+    ].map(([id, ignoreFiles, target]) => ({
+      id, verb: 'detect',
+      setup: (ws) => {
+        fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"linked-sheet"}\n');
+        fs.mkdirSync(path.join(ws, 'vendor'));
+        fs.writeFileSync(
+          path.join(ws, 'index.html'),
+          '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>mock</title>\n<style>.band { background: repeating-linear-gradient(45deg, #111 0 10px, #eee 10px 20px); }</style>\n<link rel="stylesheet" href="vendor/lib.css"></head><body><main><h1>Mock</h1></main></body></html>\n',
+        );
+        fs.writeFileSync(
+          path.join(ws, 'vendor', 'lib.css'),
+          '.unused-text { background-image: linear-gradient(90deg, #f00, #00f); background-clip: text; -webkit-background-clip: text; color: transparent; }\n',
+        );
+        if (ignoreFiles) {
+          fs.mkdirSync(path.join(ws, '.impeccable'));
+          fs.writeFileSync(
+            path.join(ws, '.impeccable', 'config.json'),
+            JSON.stringify({ detector: { ignoreFiles } }) + '\n',
+          );
+        }
+      },
+      args: ['--json', target],
+    })),
+
+    // `**/` must match root and nested paths without swallowing adjacent names.
+    {
+      id: 'detect-ignore-globstar-directory-boundary-json', verb: 'detect',
+      setup: (ws) => {
+        fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"globstar-ignore"}\n');
+        fs.mkdirSync(path.join(ws, 'docs'), { recursive: true });
+        fs.mkdirSync(path.join(ws, '.impeccable'));
+        fs.writeFileSync(
+          path.join(ws, '.impeccable', 'config.json'),
+          JSON.stringify({ detector: { ignoreFiles: ['**/index.html'] } }) + '\n',
+        );
+        const html = '<style>.card { border-left: 4px solid #ff0000; border-radius: 10px; }</style>\n<div class="card">Card</div>\n';
+        for (const file of ['index.html', 'docs/index.html', 'safeindex.html', 'docs/safeindex.html']) {
+          fs.writeFileSync(path.join(ws, file), html);
+        }
+      },
+      args: ['--json', '.'],
     },
 
     // A DESIGN.md that declares a purple switches ai-color-palette's

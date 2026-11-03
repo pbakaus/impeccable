@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stays: a fixed page background beside a cookie bar</title>
+  <!-- An empty fixed full-screen gradient behind the page is not a lock layer. Review probe from work/round12/harness-review.md, pinned by crates/browser/tests/consent_hiding.rs. -->
+</head>
+<body style="margin:0;background:#fff">
+<div class="page-bg" style="position:fixed;inset:0;z-index:-1;background:linear-gradient(160deg,#0b1020,#1d2b5a)"></div>
+<main style="position:relative;max-width:720px;margin:0 auto;padding:40px 24px;font:18px/1.6 sans-serif;color:#f2f4ff"><h1 id="night-title">Nightfield</h1><p>Nightfield is a quiet observatory app. It maps the sky above you, names what you are looking at, and keeps a log of every clear night. It works offline and keeps your location on your device.</p><p>Download it for free and try it under the next clear sky. The full star catalogue is included with no subscription.</p></main>
+<div class="cookie-bar" style="position:fixed;left:0;right:0;bottom:0;background:#111;color:#eee;padding:12px 20px;font:14px sans-serif;z-index:10">We use cookies to measure visits. <button>Accept</button> <button>Decline</button></div>
+</body>
+</html>

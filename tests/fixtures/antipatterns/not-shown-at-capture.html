@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Not shown at capture: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for text that is not presented at capture (round 12, branch 1).
+
+       Should pass, each beside a should-flag twin that differs in the one
+       fact the engine reads:
+       - faint links in a closed off-canvas drawer: role=dialog,
+         aria-modal=true and inert, laid out under an opaque page sheet at a
+         higher z-index (low-contrast). Twins: faint text in an inert section
+         that is not a dialog (the page behind an open modal), and in an open
+         dialog that carries no inert;
+       - faint copy under frosted glass at 0.8 alpha with a 12px backdrop
+         blur (low-contrast). Twin: the same glass at 0.5;
+       - a short, centred line in a wide paragraph whose box runs past the
+         opaque card that hides all of its text (low-contrast). Twin: a card
+         that hides only part of the text;
+       - a 10px breadcrumb link under an opaque panel (undersized-ui-text).
+         Twin: the same link under a panel at 0.5 alpha;
+       - a rain layer in transparent ink, which a canvas would draw, under a subline
+         (text-occlusion). Twin: the same layer in dark ink;
+       - a faint chip part way past the edge of a ticker an endless
+         animation moves (low-contrast). Twin: the same strip held still by
+         a static transform.
+
+       Should flag, from the first review's probes:
+       - an inert dialog on screen with nothing stacked over it;
+       - a 40px heading under 0.8 glass with a 12px blur, which large type
+         reads through;
+       - a headline wider than its running ticker's window;
+       - a 10px crumb under a bar placed at the bottom of a full-window
+         fixed wrapper, which a scroll lifts it out from under.
+
+       Each contrast case wears a colour of its own, so the page's one report
+       of a colour pair never hides another. Every cell sits in the first
+       800px, since the hit tests ask only points inside the viewport.
+
+       The static HTML engine measures no boxes and runs no hit tests, so it
+       reports what it can see in both columns. The URL behaviour is pinned
+       by crates/browser/tests/not_shown_at_capture.rs. */
+
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; height: 1600px; position: relative; }
+    h2.case-title { position: absolute; margin: 0; font: 600 13px/17px system-ui; color: #333; }
+    .cell { position: absolute; margin: 0; white-space: nowrap; }
+
+    /* A closed drawer under the page sheet. */
+    .drawer { position: absolute; top: 70px; left: 20px; width: 300px; height: 90px; z-index: 0; background: #ffffff; }
+    .sheet { position: absolute; top: 60px; left: 10px; width: 590px; height: 110px; z-index: 1; background: #ffffff; }
+    .drawer a, .shown a { display: inline-block; margin: 20px 0 0 20px; font: 16px/20px system-ui; }
+    .shown { position: absolute; top: 70px; width: 300px; height: 60px; z-index: 1; background: #ffffff; }
+
+    /* Frosted glass over faint copy. */
+    .glass { position: absolute; top: 196px; width: 560px; height: 48px; z-index: 2; backdrop-filter: blur(12px); }
+
+    /* A wide paragraph under a card that hides its text. */
+    .wide { position: absolute; top: 300px; width: 560px; margin: 0; text-align: center; font: 14px/20px system-ui; }
+    .card { position: absolute; top: 284px; height: 52px; z-index: 2; background: #ffffff; }
+
+    /* A small breadcrumb under a panel. */
+    .crumb { position: absolute; top: 396px; font: 10px/14px system-ui; color: #111; }
+    .panel { position: absolute; top: 384px; width: 200px; height: 40px; z-index: 2; }
+
+    /* A rain layer under a hero subline. */
+    .rain { position: absolute; top: 470px; width: 560px; height: 60px; margin: 0; font: 16px/20px monospace; }
+    .rain-off { color: transparent; }
+    .rain-on { color: #333333; }
+    .subline { position: absolute; top: 478px; margin: 0; font: 16px/20px system-ui; color: #111; z-index: 1; }
+
+    /* A ticker strip. */
+    .ticker { position: absolute; top: 590px; width: 560px; height: 40px; overflow: hidden; background: #ffffff; }
+    .track { display: flex; width: 1600px; }
+    .track span { flex: 0 0 200px; font: 16px/40px system-ui; color: #111; }
+    .running { animation: slide 100000s linear infinite; }
+    .still { transform: translateX(-100px); }
+    @keyframes slide { from { transform: translateX(-100px); } to { transform: translateX(-800px); } }
+
+    /* Review twins. */
+    .glass-big { position: absolute; top: 650px; left: 20px; width: 560px; height: 56px; z-index: 2; background: rgba(251, 250, 249, 0.8); backdrop-filter: blur(12px); }
+    .wide-ticker { position: absolute; top: 720px; left: 20px; width: 560px; height: 40px; overflow: hidden; background: #ffffff; }
+    .wide-track { display: flex; width: 3000px; animation: slide 100000s linear infinite; }
+    .wide-track span { flex: 0 0 1300px; font: 24px/40px system-ui; color: #111; white-space: nowrap; }
+    .toast-layer { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+    .toast-bar { position: absolute; bottom: 0; left: 640px; width: 300px; height: 70px; background: #222222; pointer-events: auto; }
+  </style>
+</head>
+<body>
+  <h2 class="case-title" style="top: 40px; left: 20px;">Should pass</h2>
+  <h2 class="case-title" style="top: 40px; left: 640px;">Should flag</h2>
+
+  <!-- A closed drawer: role=dialog, aria-modal and inert, under the sheet. -->
+  <nav class="drawer" role="dialog" aria-modal="true" aria-label="Menu" inert>
+    <a id="pass-drawer-link" href="#tarife" style="color: #a1a1a1;">Tarife und Optionen</a>
+  </nav>
+  <div class="sheet"></div>
+  <section class="shown" style="left: 640px;" inert>
+    <a id="flag-inert-section" href="#news" style="color: #a2a2a2;">Behind the modal</a>
+  </section>
+  <div class="shown" style="left: 960px;" role="dialog" aria-modal="true" aria-label="Open">
+    <a id="flag-open-dialog" href="#accept" style="color: #a3a3a3;">Accept all cookies</a>
+  </div>
+
+  <!-- Faint copy under frosted glass. -->
+  <p class="cell" id="pass-glass-copy" style="top: 208px; left: 40px; color: #a4a4a4;">Free shipping on every order</p>
+  <div class="glass" style="left: 20px; background: rgba(251, 250, 249, 0.8);"></div>
+  <p class="cell" id="flag-glass-copy" style="top: 208px; left: 660px; color: #a5a5a5;">Free returns within thirty days</p>
+  <div class="glass" style="left: 640px; background: rgba(251, 250, 249, 0.5);"></div>
+
+  <!-- A wide paragraph whose text a card hides, and one it half hides. -->
+  <p class="wide" id="pass-card-text" style="left: 20px; color: #a6a6a6;">Continue to the site</p>
+  <div class="card" style="left: 180px; width: 240px;"></div>
+  <p class="wide" id="flag-card-text" style="left: 640px; color: #a7a7a7;">Continue to the site</p>
+  <div class="card" style="left: 820px; width: 100px;"></div>
+
+  <!-- A 10px breadcrumb under an opaque panel, and under a faint one. -->
+  <a class="crumb" id="pass-covered-crumb" href="#guides" style="left: 40px;">Guides</a>
+  <div class="panel" style="left: 20px; background: #ffffff;"></div>
+  <a class="crumb" id="flag-shown-crumb" href="#plans" style="left: 660px;">Plans</a>
+  <div class="panel" style="left: 640px; background: rgba(255, 255, 255, 0.5);"></div>
+
+  <!-- A rain layer without ink, and one with it. -->
+  <div class="rain rain-off" id="pass-rain" aria-hidden="true" style="left: 20px;">fn let match ret u32 end check fn let match</div>
+  <p class="subline" style="left: 40px;">Write code a model can read</p>
+  <div class="rain rain-on" id="flag-rain" aria-hidden="true" style="left: 640px;">fn let match ret u32 end check fn let match</div>
+  <p class="subline" style="left: 660px;">Write code a model can read</p>
+
+  <!-- A chip part way past a ticker's edge, running and held still. -->
+  <div class="ticker" style="left: 20px;">
+    <div class="track running">
+      <span>Mollie</span><span>Stripe</span><span>Adyen</span><span id="pass-ticker-chip" style="color: #a8a8a8;">Qonto Bank</span><span>Mollie</span><span>Stripe</span><span>Adyen</span><span>Qonto</span>
+    </div>
+  </div>
+  <div class="ticker" style="left: 640px;">
+    <div class="track still">
+      <span>Mollie</span><span>Stripe</span><span>Adyen</span><span id="flag-ticker-chip" style="color: #a9a9a9;">Qonto Bank</span><span>Mollie</span><span>Stripe</span><span>Adyen</span><span>Qonto</span>
+    </div>
+  </div>
+
+  <!-- Review twins: all should flag. -->
+  <div class="shown" style="top: 650px; left: 640px;" role="dialog" aria-modal="true" aria-label="Chat" inert>
+    <a id="flag-inert-dialog" href="#chat" style="color: #b1b1b1;">How can we help today?</a>
+  </div>
+  <h2 class="cell" id="flag-glass-heading" style="top: 652px; left: 30px; font: 600 40px/48px system-ui; color: #b2b2b2;">Ship faster</h2>
+  <div class="glass-big"></div>
+  <div class="wide-ticker">
+    <div class="wide-track"><span id="flag-wide-headline" style="color: #b3b3b3;">Markets close higher as central banks hold rates steady for a third month</span><span>Markets close higher as central banks hold rates steady for a third month</span></div>
+  </div>
+  <a class="crumb" id="flag-bar-crumb" href="#guides" style="top: 760px; left: 660px;">Guides</a>
+  <div class="toast-layer"><div class="toast-bar"></div></div>
+</body>
+</html>

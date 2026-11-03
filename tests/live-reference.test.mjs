@@ -181,6 +181,12 @@ describe('live reference authoring contract', () => {
       assert.match(generateMd, new RegExp('`' + action + '`'), `generate.md must name \`${action}\``);
     }
   });
+
+  it('discloses the Apply subprocess route in the README', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8');
+    assert.match(readme, /--permission-mode bypassPermissions/);
+    assert.match(readme, /IMPECCABLE_LIVE_COPY_AGENT=chat/);
+  });
 });
 
 // The action vocabulary lives in the engine (crates/live/src/vocabulary.rs);

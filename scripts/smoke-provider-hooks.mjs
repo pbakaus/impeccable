@@ -65,16 +65,8 @@ const providerSmoke = {
     confirmedFixture: 'src/__impeccable_provider_smoke_confirmed_cursor.html',
     agentChoiceFixture: 'src/__impeccable_provider_smoke_font_choice_cursor.html',
     launcher: '.cursor/skills/impeccable/scripts/impeccable',
-    hookVerb: 'hook-before-edit',
-    event: (file) => ({
-      hook_event_name: 'preToolUse',
-      cwd: targetRepo,
-      tool_name: 'Write',
-      tool_input: {
-        file_path: file,
-        content: readFileSync(file, 'utf8'),
-      },
-    }),
+    hookVerb: 'hook',
+    event: (file) => cursorPostToolUseEvent('confirmed-cursor', file),
   },
 };
 
@@ -405,7 +397,10 @@ function verifyInstallShape() {
   const cursor = readText('.cursor/hooks.json');
   assertCount(claude, '.claude/skills/impeccable/scripts/impeccable" hook', 1, 'Claude hook');
   assertCount(codex, '.agents/skills/impeccable/scripts/impeccable" hook', 1, 'Codex hook');
-  assertCount(cursor, '.cursor/skills/impeccable/scripts/impeccable" hook-before-edit', 1, 'Cursor preToolUse');
+  assertCount(cursor, '.cursor/skills/impeccable/scripts/impeccable" hook', 1, 'Cursor postToolUse');
+  if (cursor.includes('hook-before-edit') || cursor.includes('"preToolUse"')) {
+    throw new Error('Cursor manifest still runs the retired preToolUse gate');
+  }
   for (const text of [claude, codex, cursor]) {
     if (text.includes('.mjs')) throw new Error('a Node hook script still appears in hook manifests');
   }
@@ -497,23 +492,18 @@ function runDirectContractChecks() {
   requireFinding('direct Codex hook', `${codex.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
 
   clearRuntimeState();
-  const pre = run('.cursor/skills/impeccable/scripts/impeccable', ['hook-before-edit'], {
+  const cursor = run('.cursor/skills/impeccable/scripts/impeccable', ['hook'], {
     cwd: targetRepo,
     env,
-    logName: 'direct-cursor-before.log',
-    input: JSON.stringify({
-      hook_event_name: 'preToolUse',
-      cwd: targetRepo,
-      tool_name: 'Write',
-      tool_input: {
-        file_path: join(targetRepo, directSmokeFile),
-        content: badFixtureContent(),
-      },
-    }),
+    logName: 'direct-cursor.log',
+    input: JSON.stringify(cursorPostToolUseEvent('direct-cursor', file)),
   });
-  requireFinding('direct Cursor preToolUse hook', `${pre.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
+  requireFinding('direct Cursor postToolUse hook', `${cursor.stdout}\n${readMaybe(join(smokeDir, 'direct.ndjson'))}`);
+  if (!/^\{"additional_context":/.test(cursor.stdout)) {
+    throw new Error(`direct Cursor hook did not answer with additional_context: ${cursor.stdout}`);
+  }
 
-  record('direct script contracts', true, 'Claude, Codex, and Cursor preToolUse scripts detect side-tab');
+  record('direct script contracts', true, 'Claude, Codex, and Cursor post-edit hooks detect side-tab');
 }
 
 function runConfirmedExceptionPersistenceChecks() {
@@ -557,12 +547,7 @@ function runConfirmedExceptionForProvider(provider) {
 
   clearTransientHookState();
   const second = runInstalledProviderHook(provider, file, afterLog);
-  if (provider === 'cursor') {
-    const payload = JSON.parse(second.stdout || '{}');
-    if (payload.permission !== 'allow') {
-      throw new Error('Cursor confirmed ignore-value did not allow the proposed write');
-    }
-  } else if (/overused-font|Required design corrections/.test(second.stdout || '')) {
+  if (/overused-font|Required design corrections/.test(second.stdout || '')) {
     throw new Error(`${provider} confirmed ignore-value emitted a correction after persistence`);
   }
 
@@ -610,12 +595,7 @@ function runAgentChosenFontExceptionForProvider(provider) {
 
   clearTransientHookState();
   const second = runInstalledProviderHook(provider, file, afterLog);
-  if (provider === 'cursor') {
-    const payload = JSON.parse(second.stdout || '{}');
-    if (payload.permission !== 'allow') {
-      throw new Error('Cursor agent-chosen ignore-value did not allow the proposed write');
-    }
-  } else if (/overused-font|Required design corrections/.test(second.stdout || '')) {
+  if (/overused-font|Required design corrections/.test(second.stdout || '')) {
     throw new Error(`${provider} agent-chosen ignore-value emitted a correction after persistence`);
   }
 
@@ -791,27 +771,14 @@ function runCursorProviderSmoke() {
     logName: 'cursor-provider.log',
     cursorReady: true,
   });
-  const evidence = `${res.stdout}\n${res.stderr}\n${readMaybe(join(smokeDir, 'cursor.ndjson'))}\n${readMaybe(join(targetRepo, '.impeccable', 'hook.pending.json'))}\n${readMaybe(join(targetRepo, '.impeccable', 'hook.cache.json'))}`;
+  const evidence = `${res.stdout}\n${res.stderr}\n${readMaybe(join(smokeDir, 'cursor.ndjson'))}\n${readMaybe(join(targetRepo, '.impeccable', 'hook.cache.json'))}`;
+  requireFile(providerSmoke.cursor.fixture, 'Cursor provider fixture');
   requireFinding('Cursor provider hook', evidence);
   const auditEvents = readAuditEvents(join(smokeDir, 'cursor.ndjson'));
-  if (!auditEvents.some((event) => event.event === 'preToolUse' && event.blocked === true)) {
-    throw new Error('Cursor provider evidence lacks a preToolUse audit entry with blocked=true');
+  if (!auditEvents.some((event) => event.harness === 'cursor' && event.emitted === true)) {
+    throw new Error('Cursor provider evidence lacks a cursor-harness audit entry that emitted additional_context');
   }
-  const fixturePath = join(targetRepo, providerSmoke.cursor.fixture);
-  const intentionalIgnore = auditEvents.some((event) =>
-    event.event === 'preToolUse'
-    && event.file === fixturePath
-    && event.skipped === 'config-ignore-file'
-  );
-  if (existsSync(fixturePath)) {
-    const fixtureContent = readFileSync(fixturePath, 'utf8');
-    if (/border-left\s*:\s*[2-9]\d*px/i.test(fixtureContent)) {
-      if (!intentionalIgnore || !/ignoreFiles|ignore-file/i.test(evidence)) {
-        throw new Error('Cursor provider left the blocked side-tab fixture on disk without an explicit Impeccable ignore-file escape hatch');
-      }
-    }
-  }
-  record('cursor provider', true, 'Cursor agent triggered preToolUse hook, blocked side-tab, and only proceeded through explicit ignore handling for the intentional fixture');
+  record('cursor provider', true, 'Cursor Write triggered the postToolUse hook and side-tab detection');
 }
 
 function ensureCursorAgent() {
@@ -902,6 +869,19 @@ function fontExceptionPrompt(provider, rel) {
     'The final config must use ignoreValues for overused-font=roboto and must not add overused-font to ignoreRules.',
     'After updating the config, stop.',
   ].join(' ');
+}
+
+// The envelope Cursor sends on postToolUse for an agent file edit
+// (docs/CLI-CONTRACT.md, Cursor hooks contract).
+function cursorPostToolUseEvent(conversationId, file) {
+  return {
+    conversation_id: conversationId,
+    session_id: conversationId,
+    hook_event_name: 'postToolUse',
+    workspace_roots: [targetRepo],
+    tool_name: 'Write',
+    tool_input: { file_path: file, content: readFileSync(file, 'utf8') },
+  };
 }
 
 function postToolUseEvent(sessionId, file, toolName) {

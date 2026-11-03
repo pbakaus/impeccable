@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Low contrast: a page under a backdrop scrim (browser-only)</title>
+  <!--
+    smartbi.ca's shape: a fixed, full-window `body::before` backdrop at
+    `z-index: 2147483600` over the whole page, here at 0.6 black. It dims
+    the teal eyebrow and its white page alike, so the eyebrow's failing ratio
+    of its own colours is still measured: the element pass hands it to the
+    pixels (the backdrop filter on the copy keeps them from reading it), and
+    with no pixel verdict it stands as advisory with its ratio (round 13
+    decision 2, "measure through it"). The near-black body copy passes.
+  -->
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #ffffff; color: #111111; }
+    body::before { content: ""; position: fixed; left: 0; top: 0; width: 1280px; height: 800px; background-color: rgba(0, 0, 0, 0.6); z-index: 2147483600; }
+    .copy { width: 560px; padding: 48px 24px; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+    .eyebrow { margin: 0 0 8px; font: 600 12px/16px system-ui; color: #4dc7cc; text-transform: uppercase; }
+    p { margin: 0; font: 400 16px/24px system-ui; color: #111111; }
+  </style>
+</head>
+<body>
+  <div class="copy">
+    <div class="eyebrow" id="flag-eyebrow-under-scrim">How it works</div>
+    <p id="pass-body-under-scrim">Body copy in near black on the white page.</p>
+  </div>
+</body>
+</html>

@@ -75,6 +75,24 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       });
     }
 
+    if (key === 'devin') {
+      test('emits argument-hint but neither user-invocable nor allowed-tools', () => {
+        transform([{
+          name: 'test',
+          description: 'Test',
+          body: 'Ask {{model}}.',
+          userInvocable: true,
+          argumentHint: '[target]',
+          allowedTools: ['Bash(npx impeccable *)'],
+        }], TEST_DIR);
+        const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
+        expect(content).toContain('argument-hint: "[target]"');
+        expect(content).not.toContain('user-invocable');
+        expect(content).not.toContain('allowed-tools');
+        expect(content).toContain('Ask Devin.');
+      });
+    }
+
     if (key === 'dsh') {
       test('uses DSH tools and resource paths without installing unsupported hooks or agents', () => {
         transform([{
@@ -86,7 +104,7 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
           references: [{ name: 'polish', content: 'Run `{{scripts_path}}/impeccable detect`.', filePath: '/fake/polish.md' }],
         }], TEST_DIR);
         const content = fs.readFileSync(skillPath(config, 'impeccable'), 'utf8');
-        expect(content).toContain('call the ask_user_question tool');
+        expect(content).toContain('Ask with the ask_user_question tool');
         expect(content).toContain('.dsh/skills/impeccable/scripts/impeccable context');
         expect(parseFrontmatter(content).frontmatter['allowed-tools']).toBeUndefined();
         const root = path.join(TEST_DIR, 'dsh', '.dsh');

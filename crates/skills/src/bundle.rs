@@ -44,21 +44,49 @@ const MAX_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const MAX_COMPRESSION_RATIO: u64 = 200;
 const RATIO_GUARD_FLOOR: u64 = 1024 * 1024;
 
+/// How long a download may wait to connect.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long a download may go without receiving (or sending) a byte before
+/// it is abandoned. There is deliberately no cap on the whole transfer: a
+/// slow but steady connection must finish (#1115, where a 120 s total cap
+/// failed the ~17 MB bundle below ~140 KB/s), and [`MAX_DOWNLOAD_BYTES`]
+/// already bounds what a response can send. ureq's `timeout()` would replace
+/// this per-read limit with a deadline for the whole request, so it is not
+/// set.
+const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn download_agent(connect: std::time::Duration, idle: std::time::Duration) -> ureq::AgentBuilder {
+    impeccable_context::http::agent_builder()
+        .timeout_connect(connect)
+        .timeout_read(idle)
+        .timeout_write(idle)
+}
+
+/// A socket read or write timeout surfaces as `WouldBlock` on Unix and
+/// `TimedOut` on Windows; name it as the stall it is.
+fn describe_io_error(e: &std::io::Error, url: &str, idle: std::time::Duration) -> String {
+    match e.kind() {
+        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {
+            format!("no data received for {} s downloading {url}; check the network and retry", idle.as_secs())
+        }
+        _ => e.to_string(),
+    }
+}
+
 /// In-memory GET for the small payloads (`/api/commands`, the engine binary
 /// and its sidecars). Non-2xx → `HTTP <status>`. The bundle itself goes
 /// through `download_file`, which streams to disk. Reads are capped at
 /// [`MAX_DOWNLOAD_BYTES`]; a longer response is an error, not a truncation.
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let agent = impeccable_context::http::agent_builder()
-        .timeout_connect(std::time::Duration::from_secs(30))
-        .build();
+    let agent = download_agent(CONNECT_TIMEOUT, IDLE_TIMEOUT).build();
     match agent.get(url).call() {
         Ok(res) => {
             let mut body = Vec::new();
             res.into_reader()
                 .take(MAX_DOWNLOAD_BYTES + 1)
                 .read_to_end(&mut body)
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| describe_io_error(&e, url, IDLE_TIMEOUT))?;
             if body.len() as u64 > MAX_DOWNLOAD_BYTES {
                 return Err(format!("response too large downloading {url} (over {MAX_DOWNLOAD_BYTES} bytes)"));
             }
@@ -79,16 +107,18 @@ pub struct FetchResponse {
 }
 
 fn ureq_fetch(url: &str) -> Result<FetchResponse, String> {
-    let agent = impeccable_context::http::agent_builder()
-        .timeout_connect(std::time::Duration::from_secs(30))
-        .timeout(std::time::Duration::from_secs(120))
-        .redirects(0)
-        .build();
+    ureq_fetch_with(url, CONNECT_TIMEOUT, IDLE_TIMEOUT)
+}
+
+/// One transport hop with a connect timeout and an idle timeout, and no cap
+/// on the whole transfer (see [`IDLE_TIMEOUT`]).
+fn ureq_fetch_with(url: &str, connect: std::time::Duration, idle: std::time::Duration) -> Result<FetchResponse, String> {
+    let agent = download_agent(connect, idle).redirects(0).build();
     match agent.get(url).call() {
         Ok(res) => Ok(FetchResponse {
             status: res.status(),
             location: res.header("location").map(str::to_string),
-            body: Box::new(res.into_reader()),
+            body: Box::new(IdleNamedReader { inner: res.into_reader(), url: url.to_string(), idle }),
         }),
         Err(ureq::Error::Status(code, res)) => Ok(FetchResponse {
             status: code,
@@ -96,6 +126,25 @@ fn ureq_fetch(url: &str) -> Result<FetchResponse, String> {
             body: Box::new(res.into_reader()),
         }),
         Err(ureq::Error::Transport(t)) => Err(t.to_string()),
+    }
+}
+
+/// Names a read timeout as a stall (`describe_io_error`) while keeping the
+/// error an `io::Error`, so `download_file_capped`'s cleanup still runs.
+struct IdleNamedReader<R> {
+    inner: R,
+    url: String,
+    idle: std::time::Duration,
+}
+
+impl<R: Read> Read for IdleNamedReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buf).map_err(|e| match e.kind() {
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, describe_io_error(&e, &self.url, self.idle))
+            }
+            _ => e,
+        })
     }
 }
 
@@ -112,41 +161,44 @@ pub fn download_file_with(
     dest: &str,
     fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
 ) -> Result<(), String> {
-    download_file_capped(url, dest, fetch, MAX_DOWNLOAD_BYTES)
+    download_file_capped(url, dest, fetch, MAX_DOWNLOAD_BYTES).map_err(BundleError::into_detail)
 }
 
+/// Failures of the request or the response body are `Download`; failures to
+/// create or write `dest` are `Unpack`.
 fn download_file_capped(
     url: &str,
     dest: &str,
     fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
     max_bytes: u64,
-) -> Result<(), String> {
+) -> Result<(), BundleError> {
+    use BundleError::{Download, Unpack};
     let mut current = url.to_string();
     let mut hops_left = 5;
     loop {
         // JS: new URL(current) throws `Invalid URL` (a TypeError) first.
-        let parsed = url::Url::parse(&current).map_err(|_| "Invalid URL".to_string())?;
+        let parsed = url::Url::parse(&current).map_err(|_| Download("Invalid URL".to_string()))?;
         if parsed.scheme() != "https" {
-            return Err("Refusing non-HTTPS URL".to_string());
+            return Err(Download("Refusing non-HTTPS URL".to_string()));
         }
-        let res = fetch(&current)?;
+        let res = fetch(&current).map_err(Download)?;
         if res.status >= 300 && res.status < 400 {
             let Some(location) = res.location else {
-                return Err(format!("HTTP {}", res.status));
+                return Err(Download(format!("HTTP {}", res.status)));
             };
             if hops_left <= 0 {
-                return Err("Too many redirects".to_string());
+                return Err(Download("Too many redirects".to_string()));
             }
             hops_left -= 1;
             // JS: new URL(location, current).href
             current = parsed
                 .join(&location)
-                .map_err(|_| "Invalid URL".to_string())?
+                .map_err(|_| Download("Invalid URL".to_string()))?
                 .to_string();
             continue;
         }
         if res.status != 200 {
-            return Err(format!("HTTP {}", res.status));
+            return Err(Download(format!("HTTP {}", res.status)));
         }
         // JS-PARITY: the `if (!res.body) throw new Error('Empty response
         // body')` guard has no ureq equivalent — a response always carries a
@@ -160,36 +212,45 @@ fn download_file_capped(
             // EEXIST comes from the `wx` open itself: JS leaves the existing
             // file alone and rethrows.
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Err(util::node_error("open", dest, &e));
+                return Err(Unpack(util::node_error("open", dest, &e)));
             }
             Err(e) => {
                 util::rm_rf(dest);
-                return Err(util::node_error("open", dest, &e));
+                return Err(Unpack(util::node_error("open", dest, &e)));
             }
         };
         // Stream at most `max_bytes` to disk; a longer response is rejected
-        // and the partial file removed (triage C4).
-        let copied = std::io::copy(&mut res.body.take(max_bytes + 1), &mut file)
-            .and_then(|n| {
-                use std::io::Write;
-                file.flush().map(|_| n)
-            });
-        match copied {
-            Ok(n) if n > max_bytes => {
-                drop(file);
-                util::rm_rf(dest);
-                return Err(format!(
-                    "response too large downloading {current} (over {max_bytes} bytes)"
-                ));
+        // and the partial file removed (triage C4). Reads and writes are
+        // separate calls so a full disk is not reported as a network failure.
+        use std::io::Write;
+        let mut body = res.body.take(max_bytes + 1);
+        let mut buffer = [0u8; 64 * 1024];
+        let mut copied = 0u64;
+        let result = loop {
+            match body.read(&mut buffer) {
+                Ok(0) => break file.flush().map_err(|e| Unpack(e.to_string())),
+                Ok(n) => {
+                    copied += n as u64;
+                    if let Err(e) = file.write_all(&buffer[..n]) {
+                        break Err(Unpack(e.to_string()));
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => break Err(Download(e.to_string())),
             }
-            Ok(_) => {}
-            Err(e) => {
-                drop(file);
-                util::rm_rf(dest);
-                return Err(e.to_string());
+        };
+        let result = result.and_then(|()| {
+            if copied > max_bytes {
+                Err(Download(format!("response too large downloading {current} (over {max_bytes} bytes)")))
+            } else {
+                Ok(())
             }
+        });
+        if result.is_err() {
+            drop(file);
+            util::rm_rf(dest);
         }
-        return Ok(());
+        return result;
     }
 }
 
@@ -291,50 +352,138 @@ fn extract_zip_from<R: Read + std::io::Seek>(reader: R, target_dir: &str, cwd: &
 /// JS: downloadAndExtractBundle() after #479: a mkdtemp staging dir holds
 /// both the zip and the extracted tree; any failure removes the whole
 /// staging dir before rethrowing. Returns the staging dir (caller removes).
-pub fn download_and_extract_bundle(sys: &Sys) -> Result<String, String> {
+pub fn download_and_extract_bundle(sys: &Sys) -> Result<String, BundleError> {
+    #[cfg(test)]
+    if let Some(forced) = test_seam::take() {
+        return forced;
+    }
     if let Some(local) = sys.env.get("IMPECCABLE_BUNDLE_PATH").filter(|v| !v.is_empty()) {
-        return copy_or_extract_local_bundle(sys, local);
+        return copy_or_extract_local_bundle(sys, local).map_err(BundleError::Local);
     }
     download_remote_bundle(sys, &mut ureq_fetch, bundle_signature::trusted_keys())
+}
+
+/// Lets in-crate command tests stand in for the network: the next
+/// `download_and_extract_bundle` on this thread returns the forced result.
+#[cfg(test)]
+pub(crate) mod test_seam {
+    use super::BundleError;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static NEXT: RefCell<Option<Result<String, BundleError>>> = const { RefCell::new(None) };
+    }
+
+    pub(crate) fn force(result: Result<String, BundleError>) {
+        NEXT.with(|n| *n.borrow_mut() = Some(result));
+    }
+
+    pub(super) fn take() -> Option<Result<String, BundleError>> {
+        NEXT.with(|n| n.borrow_mut().take())
+    }
+}
+
+/// Why no bundle was produced. A remote failure names the step that failed,
+/// so a network problem never reads as a signature problem (#1138).
+#[derive(Debug)]
+pub enum BundleError {
+    /// Fetching the release, its signature or its ZIP failed: connect error,
+    /// HTTP error status, stall, size cap.
+    Download(String),
+    /// The release could not be authenticated.
+    Verify(String),
+    /// Staging, saving, reading back or extracting the bundle on this machine failed
+    /// (disk space, permissions, an entry the extractor refuses).
+    Unpack(String),
+    /// An `IMPECCABLE_BUNDLE_PATH` bundle could not be read.
+    Local(String),
+}
+
+impl BundleError {
+    /// A bundle that failed authentication, which `install` treats as fatal
+    /// even over an existing installation (#734). Every other failure over an
+    /// existing installation (offline, a stall, an HTTP error, a full disk)
+    /// leaves the installed skills as they are and exits 0 (#1138).
+    pub fn is_fatal_over_existing_install(&self) -> bool {
+        matches!(self, BundleError::Verify(_))
+    }
+
+    /// The failure without the "nothing was installed" advice, for the
+    /// non-fatal line printed over an existing installation.
+    pub fn summary(&self) -> String {
+        match self {
+            BundleError::Download(e) => format!("Could not download skill bundle: {e}"),
+            BundleError::Verify(e) => format!("{}{e}", bundle_signature::ERROR_PREFIX),
+            BundleError::Unpack(e) => format!("Could not unpack skill bundle: {e}"),
+            BundleError::Local(e) => e.clone(),
+        }
+    }
+
+    fn into_detail(self) -> String {
+        match self {
+            BundleError::Download(e) | BundleError::Verify(e) | BundleError::Unpack(e) | BundleError::Local(e) => e,
+        }
+    }
+}
+
+impl std::fmt::Display for BundleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const RETRY: &str = ". Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/new";
+        match self {
+            BundleError::Download(e) => write!(f, "Could not download skill bundle: {e}{RETRY}"),
+            BundleError::Verify(e) => write!(f, "{}{e}{RETRY}", bundle_signature::ERROR_PREFIX),
+            BundleError::Unpack(e) => write!(f, "Could not unpack skill bundle: {e}{RETRY}"),
+            BundleError::Local(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<BundleError> for String {
+    fn from(e: BundleError) -> String {
+        e.to_string()
+    }
 }
 
 fn download_remote_bundle(
     sys: &Sys,
     fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
     keys: Result<TrustedKeys, String>,
-) -> Result<String, String> {
-    keys.and_then(|keys| download_and_extract_signed_bundle(sys, fetch, &keys))
-        .map_err(|e| format!("{}{e}. Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/479", bundle_signature::ERROR_PREFIX))
+) -> Result<String, BundleError> {
+    download_and_extract_signed_bundle(sys, fetch, &keys.map_err(BundleError::Verify)?)
 }
 
 fn download_and_extract_signed_bundle(
     sys: &Sys,
     fetch: &mut dyn FnMut(&str) -> Result<FetchResponse, String>,
     keys: &TrustedKeys,
-) -> Result<String, String> {
+) -> Result<String, BundleError> {
+    use BundleError::{Download, Unpack, Verify};
     let tmp = util::tmpdir(&sys.env);
-    let staging = util::mkdtemp(&jsp::join(&[&tmp, "impeccable-update-"]))?;
+    let staging = util::mkdtemp(&jsp::join(&[&tmp, "impeccable-update-"])).map_err(Unpack)?;
     let tmp_zip = jsp::join(&[&staging, "bundle.zip"]);
     let tmp_signature = jsp::join(&[&staging, "bundle.sig.json"]);
-    let result = (|| -> Result<(), String> {
+    let result = (|| -> Result<(), BundleError> {
         // Resolve once, then request both assets from that exact release. Never
         // pair a latest-version lookup with a independently changing ZIP URL.
-        let response = fetch(&format!("{API_BASE}/api/download/bundle/universal"))?;
+        let response = fetch(&format!("{API_BASE}/api/download/bundle/universal")).map_err(Download)?;
         if !matches!(response.status, 301 | 302 | 303 | 307 | 308) {
-            return Err(format!("Expected a signed bundle release redirect (HTTP {})", response.status));
+            // An error status is the server failing; any other answer is not
+            // the pinned release redirect.
+            let error = format!("Expected a signed bundle release redirect (HTTP {})", response.status);
+            return Err(if response.status >= 400 { Download(error) } else { Verify(error) });
         }
-        let location = response.location.ok_or("Missing bundle release redirect")?;
-        let version = bundle_signature::release_version(&location)?;
+        let location = response.location.ok_or_else(|| Verify("Missing bundle release redirect".into()))?;
+        let version = bundle_signature::release_version(&location).map_err(Verify)?;
         download_file_capped(&format!("{location}.sig.json"), &tmp_signature, fetch, MAX_SIGNATURE_BYTES)?;
-        download_file_with(&location, &tmp_zip, fetch)?;
-        let signature = std::fs::read(&tmp_signature).map_err(|e| e.to_string())?;
-        let file = std::fs::File::open(&tmp_zip).map_err(|e| e.to_string())?;
+        download_file_capped(&location, &tmp_zip, fetch, MAX_DOWNLOAD_BYTES)?;
+        let signature = std::fs::read(&tmp_signature).map_err(|e| Unpack(e.to_string()))?;
+        let file = std::fs::File::open(&tmp_zip).map_err(|e| Unpack(e.to_string()))?;
         let mut reader = std::io::BufReader::new(file);
-        bundle_signature::verify_reader(&mut reader, &signature, &version, keys)?;
+        bundle_signature::verify_reader(&mut reader, &signature, &version, keys).map_err(Verify)?;
         // Reuse the verified file handle rather than reopening by pathname.
         use std::io::Seek;
-        reader.rewind().map_err(|e| e.to_string())?;
-        extract_zip_from(reader, &staging, &sys.cwd)?;
+        reader.rewind().map_err(|e| Unpack(e.to_string()))?;
+        extract_zip_from(reader, &staging, &sys.cwd).map_err(Unpack)?;
         util::rm_rf(&tmp_zip);
         util::rm_rf(&tmp_signature);
         Ok(())
@@ -389,7 +538,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
             if meta.is_dir() {
                 walk(root, &full, out);
             } else if meta.is_file() {
-                let rel = jsp::relative("/", root, &full);
+                let rel = jsp::to_posix(&jsp::relative("/", root, &full));
                 if rel.starts_with("scripts/bin/") {
                     continue;
                 }
@@ -405,7 +554,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
 }
 
 static PROVIDER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\.(claude|cursor|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
+    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
 });
 
 /// JS: normalizeForHash(content)
@@ -873,6 +1022,52 @@ pub fn link_provider_skills(io: &mut Io, bundle_root: &str, root: &str, targets:
 mod tests {
     use super::*;
 
+    /// A one-shot HTTP server on 127.0.0.1 that sends `chunks` pieces of a
+    /// `chunks * 1024`-byte body, sleeping `gap` before each.
+    fn slow_server(chunks: usize, gap: std::time::Duration) -> String {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut seen = Vec::new();
+            let mut byte = [0u8; 1];
+            while !seen.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+                seen.push(byte[0]);
+            }
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", chunks * 1024);
+            let _ = stream.write_all(head.as_bytes());
+            for _ in 0..chunks {
+                std::thread::sleep(gap);
+                if stream.write_all(&[b'x'; 1024]).and_then(|_| stream.flush()).is_err() {
+                    return;
+                }
+            }
+        });
+        format!("http://{addr}/bundle.zip")
+    }
+
+    #[test]
+    fn slow_steady_download_outlasts_the_idle_timeout() {
+        // #1115: the whole transfer takes ~3 s, three times the idle limit,
+        // and still completes because bytes keep arriving.
+        let url = slow_server(15, std::time::Duration::from_millis(200));
+        let res = ureq_fetch_with(&url, CONNECT_TIMEOUT, std::time::Duration::from_secs(1)).unwrap();
+        assert_eq!(res.status, 200);
+        let mut body = Vec::new();
+        res.body.take(MAX_DOWNLOAD_BYTES).read_to_end(&mut body).unwrap();
+        assert_eq!(body.len(), 15 * 1024);
+    }
+
+    #[test]
+    fn stalled_download_fails_with_an_idle_message() {
+        let url = slow_server(1, std::time::Duration::from_secs(3));
+        let res = ureq_fetch_with(&url, CONNECT_TIMEOUT, std::time::Duration::from_millis(500)).unwrap();
+        let mut body = Vec::new();
+        let err = res.body.take(MAX_DOWNLOAD_BYTES).read_to_end(&mut body).unwrap_err();
+        assert!(err.to_string().starts_with("no data received for 0 s downloading http://127.0.0.1:"), "{err}");
+    }
+
     fn tmp_dir(tag: &str) -> String {
         static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
@@ -934,7 +1129,7 @@ mod tests {
                 body: Box::new(std::io::repeat(b'a')),
             })
         };
-        let err = download_file_capped("https://x/bundle", &dest, &mut fetch, 4096).unwrap_err();
+        let err = download_file_capped("https://x/bundle", &dest, &mut fetch, 4096).unwrap_err().into_detail();
         assert!(err.contains("response too large"), "{err}");
         assert!(!std::path::Path::new(&dest).exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -976,8 +1171,49 @@ mod tests {
             panic!("A failed keyring must never reach the network");
         };
         let error = download_remote_bundle(&sys, &mut fetch, Err("Invalid compiled bundle signing keyring".into())).unwrap_err();
-        assert!(error.starts_with(bundle_signature::ERROR_PREFIX), "{error}");
-        assert!(error.contains("Invalid compiled bundle signing keyring"), "{error}");
+        assert!(matches!(error, BundleError::Verify(_)), "{error}");
+        assert!(error.to_string().starts_with(bundle_signature::ERROR_PREFIX), "{error}");
+        assert!(error.to_string().contains("Invalid compiled bundle signing keyring"), "{error}");
+    }
+
+    #[test]
+    fn transport_and_staging_failures_name_their_step() {
+        let release = "https://github.com/pbakaus/impeccable/releases/download/skill-v4.2.0/universal.zip";
+        struct Stalled;
+        impl Read for Stalled {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "no data received"))
+            }
+        }
+        for case in ["connect", "zip-stall"] {
+            let root = tmp_dir(case);
+            let sys = Sys::new([("TMPDIR".into(), root.clone()), ("TEMP".into(), root.clone())].into(), root.clone());
+            let mut fetch = |url: &str| -> Result<FetchResponse, String> {
+                match (case, url) {
+                    ("connect", _) => Err("connection refused".into()),
+                    (_, u) if u.ends_with("/api/download/bundle/universal") => Ok(FetchResponse { status: 302, location: Some(release.into()), body: Box::new(std::io::empty()) }),
+                    (_, u) if u.ends_with(".sig.json") => Ok(FetchResponse { status: 200, location: None, body: Box::new(std::io::Cursor::new(b"{}".to_vec())) }),
+                    _ => Ok(FetchResponse { status: 200, location: None, body: Box::new(Stalled) }),
+                }
+            };
+            let error = download_remote_bundle(&sys, &mut fetch, Ok(Default::default())).unwrap_err();
+            assert!(matches!(error, BundleError::Download(_)), "{case}: {error}");
+            assert!(error.to_string().starts_with("Could not download skill bundle: "), "{case}: {error}");
+            util::rm_rf(&root);
+        }
+        let unwritable = Sys::new([("TMPDIR".into(), "/nonexistent/impeccable".into()), ("TEMP".into(), "/nonexistent/impeccable".into())].into(), "/".into());
+        let mut fetch = |_: &str| -> Result<FetchResponse, String> { panic!("staging fails before any request") };
+        let error = download_remote_bundle(&unwritable, &mut fetch, Ok(Default::default())).unwrap_err();
+        assert!(matches!(error, BundleError::Unpack(_)), "{error}");
+        let mut fetch = |_: &str| -> Result<FetchResponse, String> {
+            Ok(FetchResponse { status: 200, location: None, body: Box::new(std::io::Cursor::new(b"zip".to_vec())) })
+        };
+        let error = download_file_capped("https://example.com/b.zip", "/nonexistent/impeccable/b.zip", &mut fetch, MAX_DOWNLOAD_BYTES).unwrap_err();
+        assert!(matches!(error, BundleError::Unpack(_)), "a failed save is not a download failure: {error}");
+        assert!(!BundleError::Local("Local bundle not found: x".into()).is_fatal_over_existing_install());
+        assert!(!BundleError::Download("connection refused".into()).is_fatal_over_existing_install());
+        assert!(!BundleError::Unpack("disk full".into()).is_fatal_over_existing_install());
+        assert!(BundleError::Verify("digest mismatch".into()).is_fatal_over_existing_install());
     }
 
     #[test]
@@ -997,10 +1233,15 @@ mod tests {
             };
             let error = download_and_extract_signed_bundle(&sys, &mut fetch, &Default::default()).unwrap_err();
             if matches!(status, 301 | 302 | 303 | 307 | 308) {
-                assert_eq!(error, "reached signature download", "HTTP {status}");
+                assert!(matches!(&error, BundleError::Download(m) if m == "reached signature download"), "HTTP {status}: {error}");
                 assert_eq!(requests, 2);
             } else {
-                assert!(error.contains("Expected a signed bundle release redirect"), "{error}");
+                assert!(error.to_string().contains("Expected a signed bundle release redirect"), "{error}");
+                if status >= 400 {
+                    assert!(matches!(error, BundleError::Download(_)), "HTTP {status}: {error}");
+                } else {
+                    assert!(matches!(error, BundleError::Verify(_)), "HTTP {status}: {error}");
+                }
                 assert_eq!(requests, 1);
             }
             assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
@@ -1062,6 +1303,12 @@ mod tests {
                 util::rm_rf(&staging);
             } else {
                 let error = result.unwrap_err();
+                if matches!(case, "missing" | "oversized" | "downgrade") {
+                    assert!(matches!(error, BundleError::Download(_)), "{case}: {error}");
+                } else {
+                    assert!(matches!(error, BundleError::Verify(_)), "{case}: {error}");
+                }
+                let error = error.to_string();
                 if case == "malformed-zip" {
                     assert!(error.contains("size"), "must reject before ZIP parsing: {error}");
                 }

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consent hiding: a site notice whose text sits in a display: contents span</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0 0 12px; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .body-copy { max-width: 640px; }
+    /* A blueeyes.com.tw-shaped notice (corpus run 1006): the site's own
+       fixed bar, generic names, no dialog role, a translucent dark fill, over
+       the copy at the foot of the first screen. Its text names cookies and it
+       offers a consent choice, so the URL engine hides it and scores the copy
+       under it. Pinned by crates/browser/tests/consent_hiding.rs. */
+    .cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; height: 170px; padding: 24px 40px;
+      background: rgba(0, 0, 0, 0.8); z-index: 9999; }
+    .cookie-banner p { margin: 0 0 12px; max-width: 760px; font-size: 14px; color: #666666; }
+  </style>
+</head>
+<body>
+  <!-- The site's own notice, its sentence inside a display: contents span (no box of its own). Greptile probe on #1106, pinned by crates/browser/tests/consent_hiding.rs. -->
+  <h1>A page under the site's own cookie notice</h1>
+  <p class="body-copy">This page has enough copy of its own to be a page and not a consent wall. It describes a product, its pricing and its support hours, and a visitor reads it once the notice below is out of the way. The notice is the site's own, written without any consent manager's markup.</p>
+  <p class="faint" id="covered-copy" style="position: absolute; top: 700px; left: 80px; width: 520px;">Faint copy the notice covers.</p>
+  <a href="#" id="covered-cta" style="position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px; background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none;">Start free trial</a>
+  <div class="cookie-banner" id="cookieBanner">
+    <span id="notice-text" style="display: contents;">By clicking Accept you agree to our use of cookies to improve the site. See the <a href="#">privacy policy</a>.</span>
+    <button type="button">Accept</button>
+  </div>
+</body>
+</html>

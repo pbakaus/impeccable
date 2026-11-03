@@ -8,7 +8,8 @@
     The flush form of cramped-padding reports text that runs against a
     visible boundary with no inset. These cases, from observations-28 row 13,
     are sides where no boundary shows: text a sideways scroll or an ellipsis
-    cuts, a band that runs on into a sibling of the same fill, a fill laid on
+    cuts, a band that runs on into a sibling of the same fill (or into the
+    next component's box of that fill), a fill laid on
     a positioned layer of the same colour, and a chip a transform draws at
     0.3. The flag column keeps the sides that do show an edge. Browser engine
     only: the static engine has no layout, and reports some of the pass cases.
@@ -31,6 +32,7 @@
     .band-top { margin: 0; padding: 12px 16px 0; }
     .band-next { padding: 4px 16px 12px; }
     .band-next.other { background: #e0e7ff; }
+    .white-wrap { background: #ffffff; }
     .layer-host { position: relative; padding: 0 16px; }
     .layer-host .layer { position: absolute; inset: 0; background: #f5f5f5; }
     .layer-host .content { position: relative; }
@@ -56,6 +58,10 @@
         <span class="case-label">two stacked bands in different colours: the edge between them shows, and the text sits on it</span>
         <div><div class="band flag-band-next-differs"><p class="band-top">The first band's text runs to its bottom edge with no padding under it at all.</p></div><div class="band band-next other">The next band is painted another colour.</div></div>
       </div>
+      <div class="case">
+        <span class="case-label">a band that closes its component where the next component's container starts, in another colour</span>
+        <div><div><section><div class="band flag-component-next-differs"><p class="band-top">The band's text runs to its bottom edge with no padding under it at all.</p></div></section></div><div><section><div class="white-wrap"><div class="band band-next other">The next component's container is painted another colour.</div></div></section></div></div>
+      </div>
     </div>
 
     <div class="col" data-col="pass">
@@ -71,6 +77,10 @@
       <div class="case">
         <span class="case-label">two stacked bands in one grey: the edge between them is no edge (cencora.com)</span>
         <div><div class="band pass-same-band"><p class="band-top">The first band's text runs to its bottom edge with no padding under it at all.</p></div><div class="band band-next">The next band is the same grey.</div></div>
+      </div>
+      <div class="case">
+        <span class="case-label">a band that closes its component where the next component's container starts in the same grey, three wrappers away (americanexpress.com)</span>
+        <div><div><section><div class="band pass-component-same-band"><p class="band-top">The band's text runs to its bottom edge with no padding under it at all.</p></div></section></div><div><section><div class="white-wrap"><div class="band band-next">The next component's container is the same grey.</div></div></section></div></div>
       </div>
       <div class="case">
         <span class="case-label">a grey grid on a section whose grey is an absolutely positioned layer beside the content (hp.com)</span>

@@ -1,0 +1,17 @@
+{
+  "steps": [
+    {
+      "stdout": "{\"pid\":<PID>,\"port\":<PORT>,\"token\":\"<UUID>\"}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Stopped live server on port <PORT>.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {}
+}

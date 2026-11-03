@@ -4,7 +4,7 @@
     "argumentHint": "[feature description]"
   },
   "init": {
-    "description": "Sets up a project for impeccable. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles); offers DESIGN.md (visual: colors, typography, components) when code exists; pre-configures live mode; then recommends the best commands to run next. Every other command reads these files before doing work. Use once per project.",
+    "description": "Sets up a project for impeccable. Runs a multi-round discovery interview when context is missing and writes PRODUCT.md (strategic: users, brand, principles); pre-configures live mode; then recommends the best commands to run next. Every other command reads these files before doing work. Use once per project.",
     "argumentHint": ""
   },
   "document": {
@@ -88,7 +88,7 @@
     "argumentHint": "[target]"
   },
   "shape": {
-    "description": "Plan UX and UI before code. Runs a required multi-round discovery interview, uses visual probes when available, and produces a user-confirmed design brief for implementation.",
+    "description": "Plan UX and UI before code. Runs a discovery interview (one round by default), uses visual probes when available, and produces a user-confirmed design brief for implementation.",
     "argumentHint": "[feature to shape]"
   },
   "typeset": {

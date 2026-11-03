@@ -78,6 +78,7 @@ impl HtmlEngine for StaticHtmlEngine {
             text_content_analyzers: Some(&analyzers),
             profile: profile_sink.as_ref().map(|s| s as &dyn ProfileSink),
             warn: Some(&warn),
+            ignored_linked_stylesheet: options.ignored_linked_stylesheet.as_deref(),
             static_rule_pack: self.static_rule_pack,
             rule_pack: options.rule_pack,
         };

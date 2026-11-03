@@ -1,0 +1,7 @@
+{
+  "stdout": "::warning file=card.html,title=Side-tab accent border::[side-tab] border-left: 4px + border-radius: 10px%0AThick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

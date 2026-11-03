@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stays: a blurred paywall teaser beside a cookie bar</title>
+  <!-- A 5px blur on a teaser is the site's; a bottom bar is not a lock, so the blur stays. Review probe from work/round12/harness-review.md, pinned by crates/browser/tests/consent_hiding.rs. -->
+</head>
+<body style="margin:0;background:#fff">
+<article class="teaser" style="filter:blur(5px);padding:24px;font:18px/1.6 Georgia,serif;color:#222;min-height:90vh"><h1>Inside the harbour deal</h1><p>The council met on Tuesday to vote on the lease. Members argued for three hours over the berth fees and the dredging schedule, and the final vote came close to midnight. What follows is the full account of how the deal changed in its last week.</p><p>Subscribers can read the full story.</p></article>
+<div class="paywall" style="position:absolute;left:0;right:0;top:40vh;background:#fff;padding:24px;text-align:center;font:16px sans-serif">Subscribe to keep reading. <a href="#s">Subscribe</a></div>
+<div class="cookie-bar" style="position:fixed;left:0;right:0;bottom:0;background:#111;color:#eee;padding:12px 20px;font:14px sans-serif;z-index:10">We use cookies to measure visits. <button>Accept</button> <button>Decline</button></div>
+</body>
+</html>

@@ -28,7 +28,7 @@ Identify weaknesses and edge cases:
    - Number formats (1,000 vs 1.000)
    - Currency symbols
 
-**CRITICAL**: Designs that only work with perfect data aren't production-ready. Harden against reality.
+Designs that only work with perfect data aren't production-ready.
 
 ## Hardening Dimensions
 
@@ -107,6 +107,25 @@ border-inline-end: 1px solid; /* Not border-right */
 
 /* Or use dir attribute */
 [dir="rtl"] .arrow { transform: scaleX(-1); }
+```
+
+**Arabic-script specifics** (Arabic, Persian, Urdu, Pashto, Kurdish):
+- Preserve Zero-Width Non-Joiner (U+200C). Persian and Kurdish use ZWNJ between compound-word parts to break cursive joining while keeping the word together. A filter or sanitizer that strips it changes meaning. Never normalize it away.
+- Handle Yeh and Kaf variants. Persian uses ی (U+06CC) and ک (U+06A9), while Arabic uses ي (U+064A) and ك (U+0643). Preserve the original form in storage. For search and validation, treat the corresponding letters as equivalent so that Arabic-keyboard input matches Persian text. Rejecting one variant locks out users whose keyboard sends the other.
+- Support locale-aware digits. Persian (`fa-IR`) and Arabic locales use Eastern Arabic-Indic numerals (۰-۹ and ٠-٩). Use `Intl.NumberFormat` with the correct locale rather than hardcoding Western digits.
+
+```javascript
+// ✅ Locale-aware digit formatting
+new Intl.NumberFormat('fa-IR').format(1234); // ۱٬۲۳۴
+new Intl.NumberFormat('ar-SA').format(1234); // ١٬٢٣٤
+```
+
+- Respect calendar systems. Persian users expect the Solar Hijri (Jalali) calendar; many Arabic-speaking users expect the Hijri (Islamic) calendar. Use `Intl.DateTimeFormat` with the appropriate locale or calendar parameter.
+
+```javascript
+// ✅ Locale-appropriate calendar
+new Intl.DateTimeFormat('fa-IR').format(new Date());
+new Intl.DateTimeFormat('ar-SA-u-ca-islamic').format(new Date());
 ```
 
 **Character set support**:
@@ -313,9 +332,7 @@ const throttledScroll = throttle(handleScroll, 100);
 - Visual regression tests
 - Accessibility tests (axe, WAVE)
 
-**IMPORTANT**: Hardening is about expecting the unexpected. Real users will do things you never imagined.
-
-**NEVER**:
+**Avoid**:
 - Assume perfect input (validate everything)
 - Ignore internationalization (design for global)
 - Leave error messages generic ("Error occurred")

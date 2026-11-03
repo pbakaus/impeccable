@@ -6,7 +6,7 @@ Identify reusable patterns, components, and design tokens, then extract and cons
 
 Find the design system, component library, or shared UI directory. Understand its structure: component organization, naming conventions, design token structure, import/export conventions.
 
-**CRITICAL**: If no design system exists, do not create one yet. STOP and call the `question` tool to clarify. Understand the preferred location and structure first.
+If no design system exists, do not create one yet. Ask with the `question` tool and wait for the answer before continuing. Understand the preferred location and structure first.
 
 ## Step 2: Identify Patterns
 
@@ -31,7 +31,7 @@ Create a systematic plan:
 - **Naming conventions**: Component names, token names, prop names that match existing patterns
 - **Migration path**: How to refactor existing uses to consume the new shared versions
 
-**IMPORTANT**: Design systems grow incrementally. Extract what is clearly reusable now, not everything that might someday be reusable.
+Design systems grow incrementally. Extract what is clearly reusable now, not everything that might someday be reusable.
 
 ## Step 4: Extract & Enrich
 
@@ -59,7 +59,7 @@ Update design system documentation:
 - Add examples and guidelines
 - Update any Storybook or component catalog
 
-**NEVER**:
+**Avoid**:
 - Extract one-off, context-specific implementations without generalization
 - Create components so generic they are useless
 - Extract without considering existing design system conventions

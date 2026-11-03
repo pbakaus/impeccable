@@ -13,10 +13,10 @@ use super::{BrowserFinding, ElFinding};
 use crate::checks::measures::resolve_length_px;
 use crate::checks::rules::{check_kicker_above_heading, KickerCandidate, RuleHit};
 use crate::checks::text_rules::{
-    check_em_dash_overuse, check_numbered_section_labels, is_kicker_candidate,
+    check_em_dash_overuse_less, check_numbered_section_labels, is_kicker_candidate,
     is_numbered_section_label_candidate, is_repeated_text_container, parse_numbered_label_text,
     strip_edge_quotes, HEADING_TAGS, KICKER_CARD_CONTEXT_SELECTOR, KICKER_SKIP_SELECTOR, LEADING_DISPLAY_TYPE_PX,
-    KickerCandidateInput, NumberedLabelCandidate, NumberedLabelCandidateInput,
+    KickerCandidateInput, NumberedLabel, NumberedLabelCandidate, NumberedLabelCandidateInput,
     REPEATED_TEXT_CONTAINER_TAGS, REPEATED_TEXT_SKIP_SELECTOR,
 };
 use crate::js::{self, parse_float, parse_int};
@@ -79,10 +79,15 @@ pub fn is_kicker_card_context(dom: &dyn Dom, heading: ElId, kicker: ElId) -> boo
 /// counts: an h3 or lower set under display size. A section's own heading in
 /// a painted panel (redoubt.agency's h2 in the hero's side panel,
 /// vestra.ai's 40px h3 across a feature band) keeps its eyebrow reported.
+///
+/// A label pinned to the card as a badge (absolutely positioned) is the
+/// card's own at any title size: void5.lovable.app's "Most popular"
+/// straddles the top edge of its pricing card over a 24px h3.
 fn kicker_in_painted_card(dom: &dyn Dom, heading: ElId, kicker: ElId) -> bool {
-    if kicker_heading_level(dom, heading) < 3.0 || font_size_of(dom, heading) >= LEADING_DISPLAY_TYPE_PX {
+    if kicker_heading_level(dom, heading) < 3.0 {
         return false;
     }
+    let display_size = font_size_of(dom, heading) >= LEADING_DISPLAY_TYPE_PX;
     let viewport = {
         let h = dom.inner_height();
         if num_truthy(h) {
@@ -98,12 +103,45 @@ fn kicker_in_painted_card(dom: &dyn Dom, heading: ElId, kicker: ElId) -> bool {
             return false;
         }
         if super::page_checks::is_card_like_dom(dom, c) {
-            return dom.rect(c).height < viewport && dom.contains(c, kicker);
+            return dom.rect(c).height < viewport
+                && dom.contains(c, kicker)
+                && (!display_size || kicker_is_badge(dom, kicker, c));
         }
         cur = dom.parent(c);
     }
     false
 }
+
+/// Whether `kicker` is pinned to `card` as a badge: absolutely positioned,
+/// out of the flow the heading sits in, and set on the card's top edge (its
+/// box reaching to within 2px of the card's top or across it:
+/// void5.lovable.app's `-top-3` "Most popular") or painted in a fill of its
+/// own apart from the card's. An eyebrow placed absolutely inside the
+/// card's padding, in the card's colour, is still an eyebrow. A filled pill
+/// in flow is not enough either: integroai.tech sets its "What we do"
+/// eyebrow as an amber pill over a card's 24px title, and quoin.ai's
+/// "Early-adopter rate" pill in an offer panel has the same shape, so the
+/// in-flow pill keeps the size test.
+fn kicker_is_badge(dom: &dyn Dom, kicker: ElId, card: ElId) -> bool {
+    if dom.style(kicker, "position") != "absolute" {
+        return false;
+    }
+    let (k, c) = (dom.rect(kicker), dom.rect(card));
+    let on_top_edge = k.all_finite() && c.all_finite() && k.top <= c.top + 2.0 && k.bottom > c.top - 2.0;
+    let own_fill = crate::color::parse_any_color(Some(&dom.style(kicker, "backgroundColor")))
+        .filter(|f| f.alpha_or_one() >= BADGE_MIN_FILL_ALPHA)
+        .is_some_and(|f| {
+            let card_fill = crate::color::parse_any_color(Some(&dom.style(card, "backgroundColor")));
+            card_fill.map_or(true, |cf| {
+                (f.r - cf.r).abs() > 3.0 || (f.g - cf.g).abs() > 3.0 || (f.b - cf.b).abs() > 3.0
+            })
+        });
+    on_top_edge || own_fill
+}
+
+/// The fill alpha a badge has to paint to read as its own colour
+/// ([`kicker_is_badge`]).
+const BADGE_MIN_FILL_ALPHA: f64 = 0.9;
 
 static HEADING_LEVEL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^h([1-6])$").expect("HEADING_LEVEL_RE"));
@@ -192,6 +230,9 @@ pub fn collect_kicker_candidates_with_elements(dom: &dyn Dom) -> Vec<(ElId, Kick
         };
         let kicker = found.label;
         if found.levels > 0 && !label_near_heading(dom, kicker, heading) {
+            continue;
+        }
+        if label_beside_heading(dom, label_type_element(dom, kicker), heading) {
             continue;
         }
         if super::dom::closest_or_none(dom, kicker, KICKER_SKIP_SELECTOR).is_some() {
@@ -348,7 +389,18 @@ pub fn collect_numbered_section_label_candidates(dom: &dyn Dom) -> Vec<NumberedL
         // (gig-connect's venue capacity, a people icon and "35" over the card
         // photo), not a section number. A plain "01" in a painted card stays:
         // numbered pricing and feature cards are the tell itself.
-        if is_kicker_card_context(dom, heading, label) || numbered_label_holds_media(dom, label) {
+        if (is_kicker_card_context(dom, heading, label) && !in_an_unpainted_article(dom, heading, label))
+            || numbered_label_holds_media(dom, label)
+        {
+            continue;
+        }
+        // A label or heading the layout does not render numbers nothing on
+        // screen: juskoe.vercel.app sets its 13px "01" to "03" in a
+        // `md:hidden` block, at `display: none` on desktop, beside headings
+        // that show. Only that is asked, not the whole Text gate: a label at
+        // opacity 0 in a scroll-driven stage (v0-applestylescroll's sticky
+        // feature panels) is one a visitor scrolls into view.
+        if not_displayed(dom, heading) || not_displayed(dom, label) {
             continue;
         }
         let label_text = {
@@ -359,7 +411,8 @@ pub fn collect_numbered_section_label_candidates(dom: &dyn Dom) -> Vec<NumberedL
                 t
             }
         };
-        let Some(parsed) = parse_numbered_label_text(Some(&label_text)) else {
+        let Some(parsed) = parse_numbered_label_text(Some(&label_text)).or_else(|| parse_hash_numbered_label(&label_text))
+        else {
             continue;
         };
         let heading_text = collapsed_text_content(dom, heading);
@@ -393,7 +446,161 @@ pub fn collect_numbered_section_label_candidates(dom: &dyn Dom) -> Vec<NumberedL
             heading_text: strip_edge_quotes_slice(&heading_text, 60),
         });
     }
+    // `#` labels that all carry the same word after the number ("#1 Rated",
+    // "#2 Rated", "#3 Rated") are a ranked list, not named sections.
+    let hash_words: Vec<Option<String>> =
+        candidates.iter().filter(|c| c.label_text.starts_with('#')).map(|c| hash_label_word(&c.label_text)).collect();
+    if hash_words.len() >= 2 && hash_words[0].is_some() && hash_words.iter().all(|w| *w == hash_words[0]) {
+        candidates.retain(|c| !c.label_text.starts_with('#'));
+    }
     candidates
+}
+
+/// Whether `el` or an ancestor is `display: none`, or `content-visibility:
+/// hidden` on a box it applies to: the layout renders none of `el`'s text at
+/// any scroll position (on `el` itself the box lays out, its words do not).
+/// A value the capture did not record renders.
+fn not_displayed(dom: &dyn Dom, el: ElId) -> bool {
+    let mut cur = Some(el);
+    while let Some(c) = cur {
+        let display = dom.style(c, "display");
+        if display == "none" {
+            return true;
+        }
+        if super::dom::content_visibility_applies(&display)
+            && js::to_lower_case(&dom.style(c, "contentVisibility")) == "hidden"
+        {
+            return true;
+        }
+        cur = dom.parent(c);
+    }
+    false
+}
+
+/// A numbered label written with a leading `#`: "#1 Connect", "#6
+/// Experiment" (nousresearch.com's feature labels), or a bare "#03". One or
+/// two digits right after the `#`, then nothing or a space and a word.
+static HASH_LABEL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^#([0-9]{1,2})(?: [^ ].*)?$").expect("HASH_LABEL_RE"));
+
+/// Words that make a `#` label a rank ("#1 Rated", "#2 Best seller"), not a
+/// section number.
+const RANKING_WORDS: &[&str] = &[
+    "rated", "ranked", "rank", "best", "top", "in", "pick", "choice", "overall", "seller", "bestseller",
+    "selling", "voted", "place", "trending",
+];
+
+/// The first word after the number of a `#` label, lowercased: "#1 Connect"
+/// reads "connect", a bare "#03" reads none.
+fn hash_label_word(text: &str) -> Option<String> {
+    let rest = text.strip_prefix('#')?.trim_start_matches(|c: char| c.is_ascii_digit());
+    rest.split_whitespace()
+        .next()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .filter(|w| !w.is_empty())
+}
+
+/// [`parse_numbered_label_text`] for a label with a leading `#`, which the
+/// shared parser (pinned by the frozen vectors) reads as no number. The text
+/// is whitespace-collapsed and trimmed first, and held to the same 40
+/// characters and index of 40 at most.
+fn parse_hash_numbered_label(raw: &str) -> Option<NumberedLabel> {
+    let text = js::trim(&collapse_ws(raw)).to_string();
+    if utf16_len(&text) > 40 {
+        return None;
+    }
+    if hash_label_word(&text).is_some_and(|w| RANKING_WORDS.contains(&w.as_str())) {
+        return None;
+    }
+    let index = parse_int(&HASH_LABEL_RE.captures(&text)?[1], 10);
+    (index.is_finite() && index <= 40.0).then_some(NumberedLabel { index, text })
+}
+
+/// How many wrappers past an article the drawn-box walk climbs: a card
+/// component that draws the card on a `div` around the semantic article.
+const ARTICLE_WRAPPER_LEVELS: usize = 3;
+
+/// The card contexts that hold an article and keep it a card whatever
+/// either paints: a link, a button, a list item.
+const ARTICLE_HOLDER_SELECTOR: &str = "a,button,li,[role=\"listitem\"],[role=\"option\"]";
+
+/// Whether the card context that holds a numbered label and its heading is
+/// an `article` nothing draws as a box. nousresearch.com wraps each feature
+/// in a bare `article.landing-feature`, its "#1 Connect" label over a 46px
+/// h3 on the section's own grey, which is a section, not a card.
+///
+/// The article is a card when a link, button or list item holds it, or when
+/// a box that also holds the label is drawn ([`draws_a_box`]): from the
+/// heading's parent up to the article, then up to
+/// [`ARTICLE_WRAPPER_LEVELS`] wrappers past it whose only element child is
+/// the box below (a card component drawn on a `div` or `a` around the
+/// article). The walk stops at a box that holds anything else, the grid or
+/// section the cards sit in, after asking it once: drawn, and holding no
+/// other article (an image over the article), it is the card.
+fn in_an_unpainted_article(dom: &dyn Dom, heading: ElId, label: ElId) -> bool {
+    let Ok(Some(item)) = dom.closest(heading, KICKER_CARD_CONTEXT_SELECTOR) else {
+        return false;
+    };
+    if tag_lower(dom, item) != "article" {
+        return false;
+    }
+    if dom.parent(item).is_some_and(|p| super::dom::closest_or_none(dom, p, ARTICLE_HOLDER_SELECTOR).is_some()) {
+        return false;
+    }
+    let mut cur = dom.parent(heading);
+    while let Some(c) = cur {
+        if dom.contains(c, label) && draws_a_box(dom, c) {
+            return false;
+        }
+        if c == item {
+            break;
+        }
+        cur = dom.parent(c);
+    }
+    let body = dom.body();
+    let mut below = item;
+    for _ in 0..ARTICLE_WRAPPER_LEVELS {
+        let Some(up) = dom.parent(below) else { break };
+        if Some(up) == body {
+            break;
+        }
+        if dom.children(up).as_slice() != [below] {
+            // A drawn box that holds the article beside other content but
+            // no other article (an image over an unpainted article) still
+            // draws the card; the grid or section of articles does not.
+            let other_article = dom
+                .query_all(Some(up), "article")
+                .unwrap_or_default()
+                .into_iter()
+                .any(|a| a != item && !dom.contains(item, a) && !dom.contains(a, item));
+            if !other_article && draws_a_box(dom, up) {
+                return false;
+            }
+            break;
+        }
+        if draws_a_box(dom, up) {
+            return false;
+        }
+        below = up;
+    }
+    true
+}
+
+/// Whether `el` is drawn as a box a reader sees around what it holds: a card
+/// ([`super::page_checks::is_card_like_dom`]), a fill that differs from the
+/// surface under it, a shadow, or a border drawn on three sides or more (a
+/// square bordered card).
+fn draws_a_box(dom: &dyn Dom, el: ElId) -> bool {
+    if super::page_checks::is_card_like_dom(dom, el) || super::page_checks::fill_differs_from_surface(dom, el) {
+        return true;
+    }
+    let shadow = crate::checks::measures::parse_shadow_layers(&dom.style(el, "boxShadow"));
+    if shadow.iter().any(|l| {
+        l.alpha >= crate::checks::measures::FAINT_PAINT_ALPHA && (l.x != 0.0 || l.y != 0.0 || l.blur > 0.0 || l.spread != 0.0)
+    }) {
+        return true;
+    }
+    super::element_checks::drawn_border_sides(dom, el) >= 3
 }
 
 /// The media that make a numbered label a picture rather than a section
@@ -448,7 +655,110 @@ pub fn check_em_dash_overuse_dom(dom: &dyn Dom) -> Vec<RuleHit> {
         Some(t) => without_choice_lines(dom, &without_lone_dash_cells(&t)),
         None => dom.text_content(body),
     };
-    hits(check_em_dash_overuse(Some(&text)))
+    // Lowercased: `text-transform` changes the case `innerText` reports.
+    let rendered = collapse_ws(&text).to_lowercase();
+    hits(check_em_dash_overuse_less(Some(&text), list_separator_dashes(dom, &rendered)))
+}
+
+/// Whether `term` is the whole text of an element inside `li` (a link, a
+/// `strong`, a `code`), a few levels down at most.
+fn term_is_own_element(dom: &dyn Dom, li: ElId, term: &str) -> bool {
+    let mut stack: Vec<(ElId, usize)> = dom.children(li).into_iter().map(|k| (k, 1)).collect();
+    let mut visited = 0usize;
+    while let Some((el, depth)) = stack.pop() {
+        visited += 1;
+        if visited > 32 {
+            return false;
+        }
+        if collapsed_text_content(dom, el) == term {
+            return true;
+        }
+        if depth < 3 {
+            stack.extend(dom.children(el).into_iter().map(|k| (k, depth + 1)));
+        }
+    }
+    false
+}
+
+/// The most words a list item's leading term has before the dash that
+/// separates it from its description ([`list_separator_dashes`]).
+const SEPARATOR_TERM_MAX_WORDS: usize = 6;
+/// The longest a leading term runs, in characters: a term in a language set
+/// without spaces is one "word" by the count above.
+const SEPARATOR_TERM_MAX_CHARS: usize = 60;
+/// How many items of one list have to share the shape before their dashes
+/// are read as separators.
+const SEPARATOR_MIN_ITEMS: usize = 3;
+/// The most list items read for the shape.
+const SEPARATOR_MAX_ITEMS: usize = 2000;
+
+/// How many em dashes on the page separate a short leading term from its
+/// description in a list item (`Weather — Current conditions for any
+/// city`, `<a>Your first ten minutes</a> — the demo, signing up, ...`), in
+/// lists where at least [`SEPARATOR_MIN_ITEMS`] items under one ancestor
+/// (the list's own parent, so a docs index of one-item lists counts too)
+/// share that shape. Such a dash is a separator, like a colon or a tab
+/// stop, not punctuation in a sentence: karmaboard.app's 20 "em dashes" are
+/// its widget list, takejournal.com's its docs index. The term is the
+/// item's leading text, up to [`SEPARATOR_TERM_MAX_WORDS`] words and no
+/// sentence end, a bullet or check glyph before it aside, and it reads as a
+/// label: an element of its own, or followed by a description that opens
+/// capitalised or in an uncased script. The item has to be painted, and its
+/// term and dash have to be in the rendered text the count reads. Prose items
+/// whose dash falls later, and every dash in paragraphs, still count. Each
+/// item gives at most its first dash; an item that holds a nested list is
+/// read through its own items.
+fn list_separator_dashes(dom: &dyn Dom, rendered: &str) -> usize {
+    let mut groups: Vec<(Option<ElId>, usize)> = Vec::new();
+    for li in dom.query_all(None, "li").unwrap_or_default().into_iter().take(SEPARATOR_MAX_ITEMS) {
+        let r = dom.rect(li);
+        if !(r.width >= 1.0 && r.height >= 1.0) {
+            continue;
+        }
+        if !dom.query_all(Some(li), "li").unwrap_or_default().is_empty() {
+            continue;
+        }
+        let text = collapsed_text_content(dom, li);
+        let text = text.trim_start_matches(|c: char| !c.is_alphanumeric());
+        let Some((term, rest)) = text.split_once('—') else { continue };
+        let term = term.trim();
+        let rest = rest.trim();
+        if term.is_empty()
+            || term.chars().count() > SEPARATOR_TERM_MAX_CHARS
+            || term.split_whitespace().count() > SEPARATOR_TERM_MAX_WORDS
+            || term.contains(['.', '!', '?', '。', '！', '？'])
+            || rest.is_empty()
+        {
+            continue;
+        }
+        // The term reads as a label, not a clause: it is an element of its
+        // own (takejournal.com's linked titles), or what follows the dash
+        // opens like a description, capitalised or in a script with no case
+        // (karmaboard.app's "Weather — Current conditions"). Prose runs on in
+        // lowercase ("We ship every week — and every update is free").
+        let opens_description = rest.chars().next().is_some_and(|c| c.is_alphabetic() && !c.is_lowercase());
+        if !opens_description && !term_is_own_element(dom, li, term) {
+            continue;
+        }
+        // Text a visitor does not see is not in `innerText`, so its dashes
+        // were never counted (a closed menu at `visibility: hidden`): the
+        // item has to be painted, and the term with its dash has to be in
+        // the rendered text the count was taken from.
+        if super::painted::unpainted_at_capture(dom, li, super::painted::OwnOpacity::Counts).is_some()
+            || !{
+                let term = term.to_lowercase();
+                rendered.contains(&format!("{term} —")) || rendered.contains(&format!("{term}—"))
+            }
+        {
+            continue;
+        }
+        let key = dom.parent(li).and_then(|list| dom.parent(list));
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, n)) => *n += 1,
+            None => groups.push((key, 1)),
+        }
+    }
+    groups.iter().filter(|(_, n)| *n >= SEPARATOR_MIN_ITEMS).map(|(_, n)| n).sum()
 }
 
 /// `innerText` without the lines a rendered `<select>`'s choices put there.
@@ -572,6 +882,33 @@ pub fn label_near_heading(dom: &dyn Dom, label: ElId, heading: ElId) -> bool {
     }
     let gap = (h.top - l.bottom).max(h.left - l.right).max(0.0);
     gap <= LABEL_CLIMBED_MAX_GAP_PX
+}
+
+/// Whether the box that sets a label's text (`label_type`, from
+/// [`label_type_element`]) sits beside `heading` or under it rather than
+/// above it: it lies wholly to one side of the heading and does not end
+/// above the heading's top by at least half its own height (cronwatch.dev's
+/// "RUNS" column at the h2's own top, 40px to its left), or it starts at or
+/// below the heading's bottom (pfgc.com's portrait caption in the next
+/// column, whose 480px wrapper starts higher than the heading). A label with
+/// no box is not measured and keeps the candidate.
+///
+/// The kicker collector's own test; [`label_near_heading`] is shared with
+/// the numbered-label and hero-eyebrow rules and stays as it is.
+pub fn label_beside_heading(dom: &dyn Dom, label_type: ElId, heading: ElId) -> bool {
+    let l = dom.rect(label_type);
+    let h = dom.rect(heading);
+    if !l.all_finite() || !h.all_finite() {
+        return false;
+    }
+    if l.width <= 0.0 || l.height <= 0.0 || h.width <= 0.0 || h.height <= 0.0 {
+        return false;
+    }
+    if l.top >= h.bottom - 1.0 {
+        return true;
+    }
+    let to_one_side = l.right <= h.left + 1.0 || l.left >= h.right - 1.0;
+    to_one_side && l.bottom > h.top + l.height / 2.0
 }
 
 /// The element that sets a label's type: the label itself when it has text of
@@ -826,6 +1163,45 @@ mod tests {
         assert_eq!(check_kicker_above_heading_dom(&d, None).len(), 1);
     }
 
+    /// observations-1006 row 9. cronwatch.dev sets "RUNS" in a column beside
+    /// its h2, at the same top; pfgc.com's portrait caption sits in the
+    /// column before the heading, below it. Neither is above the heading.
+    /// The same label stacked above (cronwatch's phone layout), or above and
+    /// to the left, is a kicker.
+    #[test]
+    fn kicker_skips_a_label_beside_or_below_its_heading() {
+        let kicker_at = |label: (f64, f64, f64, f64), wrapped: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            let sec = d.add(Some(body), "section");
+            let kicker = d.add(Some(sec), "p");
+            d.add_text(kicker, "Runs");
+            d.set_styles(
+                kicker,
+                &[("fontSize", "12px"), ("letterSpacing", "1.2px"), ("textTransform", "uppercase")],
+            );
+            d.set_rect(kicker, label.0, label.1, label.2, label.3);
+            let parent = if wrapped {
+                let w = d.add(Some(sec), "div");
+                d.set_rect(w, 292.0, 894.0, 885.0, 172.0);
+                w
+            } else {
+                sec
+            };
+            let h = d.add(Some(parent), "h2");
+            d.add_text(h, "The dashboard, showing a day");
+            d.set_style(h, "fontSize", "28px");
+            d.set_rect(h, 292.0, 894.0, 885.0, 32.0);
+            check_kicker_above_heading_dom(&d, None).len()
+        };
+        for wrapped in [false, true] {
+            assert_eq!(kicker_at((102.0, 894.0, 150.0, 23.0), wrapped), 0, "beside, wrapped {wrapped}");
+            assert_eq!(kicker_at((102.0, 940.0, 150.0, 23.0), wrapped), 0, "below, wrapped {wrapped}");
+            assert_eq!(kicker_at((292.0, 860.0, 150.0, 23.0), wrapped), 1, "stacked, wrapped {wrapped}");
+            assert_eq!(kicker_at((102.0, 862.0, 150.0, 23.0), wrapped), 1, "above left, wrapped {wrapped}");
+        }
+    }
+
     /// The kicker rule hands a label over a display h1 to the hero rule only
     /// where the hero rule reports it. A small-caps kicker at 0.1em is not
     /// caps to the hero rule, so it stays a kicker; the same label set in
@@ -942,6 +1318,202 @@ mod tests {
         );
     }
 
+    /// juskoe.vercel.app (10047099): the small "01" to "03" labels sit in a
+    /// `md:hidden` block at `display: none` on desktop, beside headings a
+    /// visitor sees. The same labels shown report.
+    #[test]
+    fn numbered_labels_the_layout_does_not_render_are_not_counted() {
+        let build = |hide_labels: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            for (i, idx) in ["01", "02", "03"].iter().enumerate() {
+                let y = 100.0 + i as f64 * 300.0;
+                let sec = d.add(Some(body), "section");
+                d.set_rect(sec, 40.0, y, 600.0, 200.0);
+                let mobile = d.add(Some(sec), "div");
+                let label = d.add(Some(mobile), "span");
+                d.add_text(label, idx);
+                d.set_styles(
+                    label,
+                    &[
+                        ("fontSize", "13px"),
+                        ("letterSpacing", "1px"),
+                        ("fontWeight", "700"),
+                        ("fontFamily", "monospace"),
+                        ("textTransform", "none"),
+                        ("color", "rgb(0, 0, 0)"),
+                    ],
+                );
+                if hide_labels {
+                    d.set_style(mobile, "display", "none");
+                    for el in [mobile, label] {
+                        d.el_mut(el).check_visibility = Some(false);
+                        d.set_rect(el, 0.0, 0.0, 0.0, 0.0);
+                    }
+                } else {
+                    d.set_rect(mobile, 40.0, y, 600.0, 18.0);
+                    d.set_rect(label, 40.0, y, 20.0, 18.0);
+                    d.set_text_rect(label, 40.0, y, 20.0, 18.0);
+                }
+                let h = d.add(Some(sec), "h3");
+                d.add_text(h, &format!("Press a hotkey number {}", i + 1));
+                d.set_style(h, "fontSize", "28px");
+                d.set_rect(h, 40.0, y + 24.0, 600.0, 36.0);
+                d.set_text_rect(h, 40.0, y + 24.0, 400.0, 36.0);
+            }
+            d
+        };
+        assert_eq!(check_numbered_section_labels_dom(&build(false)).len(), 3);
+        assert!(check_numbered_section_labels_dom(&build(true)).is_empty());
+
+        // `content-visibility: hidden` on the label (the block before the
+        // heading) or the heading itself keeps its box and lays out none of
+        // its words.
+        let labels = |d: &FakeDom| -> Vec<ElId> {
+            d.query_all(None, "span").unwrap_or_default().into_iter().filter_map(|s| d.parent(s)).collect()
+        };
+        for on_heading in [false, true] {
+            let mut d = build(false);
+            let els = if on_heading { d.query_all(None, "h3").unwrap_or_default() } else { labels(&d) };
+            assert_eq!(els.len(), 3);
+            for el in els {
+                d.set_styles(el, &[("display", "block"), ("contentVisibility", "hidden")]);
+            }
+            assert!(check_numbered_section_labels_dom(&d).is_empty(), "on heading: {on_heading}");
+        }
+        // On a plain inline box it does nothing.
+        let mut d = build(false);
+        for el in labels(&d) {
+            d.set_styles(el, &[("display", "inline"), ("contentVisibility", "hidden")]);
+        }
+        assert_eq!(check_numbered_section_labels_dom(&d).len(), 3);
+
+        // v0-applestylescroll-momo.vercel.app (215483): the same labels in a
+        // scroll-driven stage at opacity 0, which a visitor scrolls into
+        // view, still count.
+        let mut d = build(false);
+        let stage_labels: Vec<ElId> = d
+            .query_all(None, "span")
+            .unwrap_or_default();
+        for label in stage_labels {
+            let mobile = d.parent(label).unwrap();
+            d.set_style(mobile, "opacity", "0");
+        }
+        assert_eq!(check_numbered_section_labels_dom(&d).len(), 3);
+    }
+
+    /// nousresearch.com miss 458: "#1 Connect" to "#6 Experiment", 10px
+    /// uppercase over 46px h3s, each pair in a bare `article` on the
+    /// section's grey. The `#` reads as the number, and an article drawn as
+    /// nothing is not a card. The same articles drawn as cards keep the
+    /// card exemption, and a ranking word after the number still parses as
+    /// a label only when its text is the label's.
+    #[test]
+    fn numbered_labels_read_a_hash_and_need_a_drawn_article() {
+        let build = |card: bool, texts: [&str; 2]| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(242, 242, 242)");
+            for (i, text) in texts.iter().enumerate() {
+                let article = d.add(Some(body), "article");
+                d.set_rect(article, 95.0, 2461.0 + i as f64 * 600.0, 333.0, 540.0);
+                if card {
+                    d.set_styles(
+                        article,
+                        &[
+                            ("boxShadow", "rgba(0, 0, 0, 0.1) 0px 2px 8px 0px"),
+                            ("borderRadius", "12px"),
+                            ("backgroundColor", "rgb(255, 255, 255)"),
+                        ],
+                    );
+                }
+                let head = d.add(Some(article), "div");
+                let label = d.add(Some(head), "p");
+                d.add_text(label, text);
+                d.set_styles(
+                    label,
+                    &[
+                        ("fontSize", "10px"),
+                        ("textTransform", "uppercase"),
+                        ("fontWeight", "400"),
+                        ("fontFamily", "sans-serif"),
+                        ("color", "rgb(0, 0, 0)"),
+                    ],
+                );
+                let h = d.add(Some(head), "h3");
+                d.add_text(h, &format!("Feature {}", i + 1));
+                d.set_style(h, "fontSize", "46px");
+            }
+            check_numbered_section_labels_dom(&d)
+        };
+        let hits = build(false, ["#1 Connect", "#2 Remember"]);
+        assert_eq!(hits.len(), 2, "{hits:?}");
+        assert_eq!(hits[0].snippet, "tiny numbered label \"#1 Connect\" beside h3 \"Feature 1\" (2 on page)");
+        assert!(build(true, ["#1 Connect", "#2 Remember"]).is_empty(), "drawn as cards");
+        assert_eq!(build(false, ["#01", "#02"]).len(), 2, "a bare hash index");
+        assert!(build(false, ["#1Connect", "#2Remember"]).is_empty(), "no space after the number");
+        assert!(build(false, ["#123 Connect", "#124 Remember"]).is_empty(), "three digits");
+    }
+
+    /// Review of round 11: a card drawn outside the article (a link or a
+    /// `div` card component around it) keeps the card exemption, and a
+    /// ranked list of `#` labels is not section numbering.
+    #[test]
+    fn numbered_labels_keep_cards_drawn_around_the_article_and_skip_ranks() {
+        let build = |wrapper: Option<&str>, texts: [&str; 3]| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            d.set_style(body, "backgroundColor", "rgb(255, 255, 255)");
+            let grid = d.add(Some(body), "div");
+            for (i, text) in texts.iter().enumerate() {
+                let parent = match wrapper {
+                    Some(tag) => {
+                        let w = d.add(Some(grid), tag.trim_end_matches("+img"));
+                        d.set_styles(
+                            w,
+                            &[
+                                ("boxShadow", "rgba(0, 0, 0, 0.12) 0px 2px 8px 0px"),
+                                ("borderRadius", "16px"),
+                                ("backgroundColor", "rgb(243, 239, 230)"),
+                            ],
+                        );
+                        // A card drawn around an image and an unpainted
+                        // article (second review of round 11).
+                        if tag.ends_with("+img") {
+                            d.add(Some(w), "img");
+                        }
+                        w
+                    }
+                    None => grid,
+                };
+                let article = d.add(Some(parent), "article");
+                d.set_rect(article, 24.0 + i as f64 * 360.0, 100.0, 330.0, 300.0);
+                let label = d.add(Some(article), "span");
+                d.add_text(label, text);
+                d.set_styles(
+                    label,
+                    &[
+                        ("fontSize", "11px"),
+                        ("textTransform", "uppercase"),
+                        ("fontFamily", "monospace"),
+                        ("color", "rgb(102, 102, 102)"),
+                    ],
+                );
+                let h = d.add(Some(article), "h3");
+                d.add_text(h, &format!("Step {}", i + 1));
+                d.set_style(h, "fontSize", "28px");
+            }
+            check_numbered_section_labels_dom(&d).len()
+        };
+        assert_eq!(build(None, ["01", "02", "03"]), 3, "bare articles");
+        assert_eq!(build(Some("a"), ["01", "02", "03"]), 0, "a link around each article");
+        assert_eq!(build(Some("div"), ["#1", "#2", "#3"]), 0, "a drawn div around each article");
+        assert_eq!(build(Some("div+img"), ["01", "02", "03"]), 0, "a drawn card holding an image and the article");
+        assert_eq!(build(None, ["#1 Rated", "#2 Rated", "#3 Rated"]), 0, "a ranking word");
+        assert_eq!(build(None, ["#1 Fast", "#2 Fast", "#3 Fast"]), 0, "one word repeated");
+        assert_eq!(build(None, ["#1 Plan", "#2 Build", "#3 Ship"]), 3, "named sections");
+    }
+
     /// gig-connect-six.vercel.app: a capacity badge, a people icon and a
     /// count in one box, is not a section number.
     #[test]
@@ -998,6 +1570,69 @@ mod tests {
         assert_eq!(hits[0].snippet, "8 em-dashes in body text");
         d.el_mut(body).inner_text = Some("no dashes here".to_string());
         assert!(check_em_dash_overuse_dom(&d).is_empty());
+    }
+
+    /// observations-1010 row 9 (karmaboard.app 10136822, takejournal.com
+    /// 10138354): a list of short terms, each set off from its description
+    /// by a dash, separates with the dash; it does not punctuate. Eight
+    /// sentences with a dash mid-sentence still report, in paragraphs or in
+    /// list items whose dash falls after a clause.
+    #[test]
+    fn em_dash_skips_list_separators() {
+        let page = |tag: &str, lines: &[String], in_lists: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            let mut text = String::new();
+            let mut holder = body;
+            for (i, line) in lines.iter().enumerate() {
+                if in_lists && (i == 0 || tag == "li-single") {
+                    holder = d.add(Some(body), "ul");
+                    d.set_rect(holder, 0.0, 40.0 * i as f64, 600.0, 40.0);
+                }
+                let el = d.add(Some(holder), if tag == "p" { "p" } else { "li" });
+                d.set_rect(el, 0.0, 40.0 * i as f64, 600.0, 30.0);
+                let mark = d.add(Some(el), "span");
+                d.add_text(mark, "✓");
+                let words = d.add(Some(el), "span");
+                d.add_text(words, line);
+                text.push_str(&format!("✓{line}\n"));
+            }
+            d.el_mut(body).inner_text = Some(text);
+            check_em_dash_overuse_dom(&d).len()
+        };
+        let terms: Vec<String> = ["Time & Date", "Weather", "US Headlines", "World Headlines", "Quote of the Day", "On This Day", "Market Movers", "Flights"]
+            .iter()
+            .map(|t| format!("{t} — A short line on what the widget shows."))
+            .collect();
+        assert_eq!(page("li", &terms, true), 0, "a widget list");
+        assert_eq!(page("li-single", &terms, true), 0, "a docs index of one-item lists");
+        assert_eq!(page("p", &terms, false), 1, "the same lines as paragraphs");
+        let prose: Vec<String> = (0..8)
+            .map(|i| format!("Sentence {i} runs on for a good while before it turns — and then it ends."))
+            .collect();
+        assert_eq!(page("li", &prose, true), 1, "items whose dash falls after a clause");
+        let bullets: Vec<String> = (0..9)
+            .map(|i| format!("We ship update {i} — and every update is free for you."))
+            .collect();
+        assert_eq!(page("li", &bullets, true), 1, "short clauses that run on in lowercase");
+        // Separator items whose text never reached the rendered text take
+        // nothing off the count of the dashes that did.
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        let list = d.add(Some(body), "ul");
+        d.set_rect(list, 0.0, 0.0, 600.0, 200.0);
+        for t in ["Weather", "Flights", "Headlines"] {
+            let li = d.add(Some(list), "li");
+            d.set_rect(li, 0.0, 0.0, 600.0, 30.0);
+            d.add_text(li, &format!("{t} — Live in the menu panel."));
+        }
+        d.el_mut(body).inner_text = Some("a — b — c — d — e — f — g — h — i".to_string());
+        assert_eq!(check_em_dash_overuse_dom(&d).len(), 1, "eight prose dashes stand");
+        // A label set in capitals by `text-transform` is in the rendered
+        // text all the same.
+        d.el_mut(body).inner_text = Some("WEATHER — LIVE IN THE MENU PANEL.\nFLIGHTS — LIVE IN THE MENU PANEL.\nHEADLINES — LIVE IN THE MENU PANEL.\na — b — c — d — e — f — g — h".to_string());
+        assert!(check_em_dash_overuse_dom(&d).is_empty(), "three uppercase separators come off the ten");
+        assert_eq!(page("p", &prose, false), 1, "eight prose sentences");
     }
 
     /// visiby.net: a pricing matrix marks every missing feature with a lone

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A cookie strip inside a fixed header</title>
+  <!-- The strip goes and the header with its nav stays. Review probe from work/round12/harness-review.md, pinned by crates/browser/tests/consent_hiding.rs. -->
+</head>
+<body style="margin:0;background:#fff">
+<header class="site-header" style="position:fixed;top:0;left:0;right:0;z-index:20;background:#fff;font:15px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.1)"><div class="cookie-strip" style="background:#222;color:#eee;padding:8px 20px">We use cookies for analytics. <button>OK</button></div><div style="display:flex;gap:20px;padding:14px 20px;align-items:center"><span class="logo" id="own" style="color:#bbb;font-weight:700">Northwind</span><a href="#p" style="color:#bbb">Products</a><a href="#pr" style="color:#bbb">Pricing</a></div></header>
+<main style="position:relative;max-width:720px;margin:0 auto;padding:120px 24px 24px;font:17px/1.6 Georgia,serif;color:#222;background:#fff"><h1>Weekly notes</h1><p>Our kitchen bakes every morning from five. This week we are trying a brown butter batch with sea salt and a rye flour shortbread. Orders placed before noon ship the same day; orders after noon ship the next morning. Thank you for reading and for supporting a small shop.</p><p>Pickup is at the side door on Elm Street. Bring your order number. We close early on Sundays.</p></main>
+</body>
+</html>

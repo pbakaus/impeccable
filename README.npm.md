@@ -1,6 +1,6 @@
 # Impeccable CLI
 
-Detect UI anti-patterns and design quality issues from the command line, and install the Impeccable design skill into your AI coding harness. The detector scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 59 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
+Detect UI anti-patterns and design quality issues from the command line, and install the Impeccable design skill into your AI coding harness. The detector scans HTML, CSS, JSX, TSX, Vue, and Svelte files for 62 deterministic rules, including AI-generated UI tells, accessibility violations, and general design quality problems.
 
 The npm package is a small launcher. It runs the `impeccable` engine binary for your platform, installed alongside it as an optional dependency (`@impeccable/cli-<os>-<arch>`), and falls back to a per-user cache or a one-time download when that package is missing.
 
@@ -36,6 +36,11 @@ npx impeccable detect https://example.com
 
 # JSON output for CI/tooling
 npx impeccable detect --json src/
+
+# GitHub Actions annotations
+npx impeccable detect --github src/
+# Catalog of detector rules (no scan)
+npx impeccable detect --list-rules
 ```
 
 `npx impeccable skills <command>` is the legacy namespace and still works.
@@ -57,7 +62,7 @@ npx impeccable detect --json src/
 
 **Quality**: tiny body text, cramped padding, long line lengths, small touch targets
 
-59 deterministic detector rules in total. See the full catalog at [impeccable.style/slop](https://impeccable.style/slop).
+62 deterministic detector rules in total. See the full catalog at [impeccable.style/slop](https://impeccable.style/slop).
 
 ## Exit Codes
 
@@ -65,16 +70,18 @@ npx impeccable detect --json src/
 - `1`: at least one requested target could not be scanned
 - `2`: scan completed with primary findings
 
-Operational failure takes precedence when a multi-target scan is partial. In JSON mode, stdout remains a findings array and diagnostics are written to stderr.
+Operational failure takes precedence when a multi-target scan is partial. In JSON mode, stdout remains a findings array and diagnostics are written to stderr. With `--github`, stdout is one GitHub Actions annotation per finding; GitHub displays at most 10 annotations of each type per step and 50 per job, and the rest stay in the log.
 
 ## Options
 
 ```
 impeccable detect [options] [file-or-dir-or-url...]
 
-  --json      Output findings as JSON
-  --scope     Only report rules in a design domain (type, layout)
-  --help      Show help
+  --json        Output findings as JSON
+  --github      Write GitHub Actions annotations for each finding
+  --list-rules  Print the detector rule catalog and exit
+  --scope       Only report rules in a design domain (type, layout)
+  --help        Show help
 ```
 
 ## Requirements

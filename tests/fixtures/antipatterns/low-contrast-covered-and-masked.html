@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Low contrast, under a higher panel or a mask fade</title>
+  <!--
+    Browser-only reads. Below the fold, tab panels stacked in one grid cell
+    (apple.com's gallery): the active panel at z-index 2 paints a white fill
+    over the others at 0, and the caption of a hidden panel is not seen.
+    The active panel's own caption is. A demo frame that fades its lower
+    edge out with a mask (arc.net's mobile frame) leaves a label in the
+    faded band unpainted; a label in its clear zone is painted.
+  -->
+  <style>
+    body { margin: 0; padding: 32px; font-family: system-ui, sans-serif; font-size: 16px; line-height: 1.6; color: #1a1a1a; background: #ffffff; }
+    .spacer { height: 1400px; }
+    h2 { font-size: 18px; margin: 0 0 16px; }
+    .gallery { display: grid; width: 600px; height: 200px; margin: 0 0 48px; }
+    .panel { grid-area: 1 / 1; background: #ffffff; z-index: 0; }
+    .panel.active { z-index: 2; }
+    .caption { color: #aaaaaa; font-size: 14px; margin: 150px 0 0 20px; }
+    .frame { width: 400px; height: 160px; background: #ffffff; -webkit-mask-image: linear-gradient(#000 100px, transparent 140px); mask-image: linear-gradient(#000 100px, transparent 140px); position: relative; }
+    .frame span { position: absolute; left: 20px; color: #aaaaaa; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="spacer"></div>
+  <h2>Stacked panels</h2>
+  <div class="gallery">
+    <div class="panel active"><p id="flag-active-caption" class="caption" style="color: #a0a0a0">Answer calls from your Mac</p></div>
+    <div class="panel" aria-hidden="true"><p id="pass-hidden-caption" class="caption" style="color: #a1a1a1">Copy here and paste there</p></div>
+  </div>
+  <h2>A frame with a mask fade</h2>
+  <div class="frame">
+    <span id="flag-clear-label" style="top: 20px; color: #a2a2a2">Library</span>
+    <span id="pass-faded-label" style="top: 140px; color: #a3a3a3">Downloads</span>
+  </div>
+</body>
+</html>

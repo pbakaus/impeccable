@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: an age gate stays</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    /* An age gate on the same kind of layer: it asks a question with two
+       answers, so it is not a splash and stays. Pinned by
+       crates/browser/tests/overlay_hiding.rs. */
+    .splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; color: #fff; cursor: pointer; }
+    #gate-hint { color: #333; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="splash"><p id="gate-hint">Are you 18? Enter</p><button type="button">Yes</button><button type="button">No</button></div>
+  <h1>A page under an age gate</h1>
+  <p class="faint" id="covered-copy">Faint copy the gate covers.</p>
+</body>
+</html>

@@ -109,8 +109,16 @@ fn a_thin_stripe_is_read_against_the_far_corners() {
             ("border-left: 2px + border-radius: 12px".to_string(), "div.card.flag-left-far-rounded".to_string()),
             ("border-left: 2px + border-radius: 6px".to_string(), "div.card.flag-left-uneven-far".to_string()),
             ("border-left: 4px".to_string(), "div.card.flag-left-wide-far-rounded".to_string()),
+            ("border-left: 4px + border-radius: 32px".to_string(), "div.flag-padded-pill".to_string()),
             ("border-right: 2px + border-radius: 12px".to_string(), "div.card.flag-right-far-rounded".to_string()),
         ]
+    );
+    // observations-1010 rows 6 and 17: an arc on a ring and a band on a
+    // closed menu panel are not accents; the open panel is.
+    let bands = findings(&engine, port, "side-tab-far-corners.html", "border-accent-on-rounded");
+    assert_eq!(
+        bands,
+        vec![("border-top: 3px + border-radius: 4px".to_string(), "div.panel.flag-band-open-panel".to_string())]
     );
 }
 
@@ -179,7 +187,7 @@ fn table_cells_are_not_cards() {
     let Some(engine) = engine() else { return };
     let port = serve();
     let found = findings(&engine, port, "edge-flush-cards-table.html", "edge-flush-cards");
-    assert_cases(&found, &["flag-card-rail"], &["pass-data-table", "table"], "edge-flush-cards");
+    assert_cases(&found, &["flag-card-rail"], &["pass-data-table", "table", "pass-inset-rail"], "edge-flush-cards");
 }
 
 #[test]

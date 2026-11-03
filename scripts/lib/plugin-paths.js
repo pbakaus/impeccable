@@ -97,8 +97,22 @@ export function rewritePluginMarkdown(content, { isSkillEntrypoint = true } = {}
     // is what gets quoted; the verb and its arguments follow unquoted.
     .replace(
       /(?<!["\w/])(\$\{CLAUDE_SKILL_DIR\}|<skill-base-dir>)\/scripts\/impeccable(\.cmd)?(?=[\s`])/g,
-      '"$1/scripts/impeccable$2"',
+      (_, dir, cmd) => quoteLauncher(dir, Boolean(cmd)),
     );
+}
+
+/**
+ * Spell a quoted launcher path as a command (issue #744). The sh launcher is
+ * `"<dir>/scripts/impeccable"`. The `.cmd` launcher also gets PowerShell's call
+ * operator: PowerShell parses a quoted string followed by an argument as an
+ * expression and fails with `Unexpected token 'context'`, so `& "…"` is the
+ * only quoted form that runs there. The `&` is safe because the `.cmd` spelling
+ * only ever reaches a Windows shell without sh; it never lands on the sh
+ * launcher, where a leading `&` is a syntax error. Shared by every rewrite that
+ * quotes launcher paths (plugin, VS Code, Cursor plugin).
+ */
+export function quoteLauncher(dir, windowsCmd = false) {
+  return windowsCmd ? `& "${dir}/scripts/impeccable.cmd"` : `"${dir}/scripts/impeccable"`;
 }
 
 /**
@@ -162,6 +176,13 @@ export function verifyPluginSkillRewrite(skillMdPath) {
       `Plugin rewrite drift: ${skillMdPath} is missing the \${CLAUDE_SKILL_DIR} resolution sentence. ` +
       "SKILL.src.md's Setup step 1 fallback sentence no longer matches the replacement in " +
       'scripts/lib/plugin-paths.js (issue #523); update SETUP_FALLBACK_TEXT to the new wording.',
+    );
+  }
+  if (/(?<!& )"\$\{CLAUDE_SKILL_DIR\}\/scripts\/impeccable\.cmd"/.test(content)) {
+    throw new Error(
+      `Plugin rewrite drift: ${skillMdPath} quotes the impeccable.cmd launcher without PowerShell's ` +
+      'call operator. A quoted path followed by a verb fails to parse in PowerShell (issue #744); ' +
+      'every quoted .cmd spelling must go through quoteLauncher in scripts/lib/plugin-paths.js.',
     );
   }
   if (content.includes('<skill-base-dir>')) {

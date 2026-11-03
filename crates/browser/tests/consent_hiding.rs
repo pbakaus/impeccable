@@ -9,7 +9,11 @@
 //! - A Cookiebot-shaped modal injected late, on the first scroll, with an
 //!   underlay and an inline scroll lock on `<body>`: caught by the hide pass
 //!   after the reveal sweep, recorded in the evidence, and the lock undone.
-//! - A notice the site wrote itself (generic names, no vendor) stays.
+//! - A cookie notice the site wrote itself (no vendor markup) is hidden, and
+//!   so are a ktk.de-shaped lock's empty layer and the blur it put on the
+//!   page; a newsletter or sign-in modal, a bar that only links a cookie
+//!   policy, and a notice over a page too short to be more than it stay.
+//! - Tarteaucitron's banner is hidden.
 //! - A page that is only a consent wall is refused as one; with the banners
 //!   kept it is scanned, since the banner is what that scan asked for.
 //! - A short page under an ordinary banner (a sign-in form) is not a wall.
@@ -111,6 +115,7 @@ const KEEP: ScanOptions = ScanOptions {
     keep_consent_banners: true,
     keep_overlays: false,
     unreported_rules: Vec::new(),
+    ignored_linked_stylesheet: None,
 };
 
 #[test]
@@ -187,17 +192,100 @@ fn a_late_cookiebot_modal_is_caught_and_its_scroll_lock_undone() {
 }
 
 #[test]
-fn a_notice_the_site_wrote_itself_stays() {
+fn a_cookie_notice_the_site_wrote_itself_is_hidden() {
     let Some(engine) = engine() else { return };
     let port = serve();
     let url = format!("http://127.0.0.1:{port}/site-notice.html");
     let scan = engine.detect_url_scan(&url, &ScanOptions::default()).expect("scan");
     let shown = flagged(&scan.findings);
-    assert!(!has(&shown, "low-contrast", "#covered-copy"), "{shown:#?}");
-    assert!(!has(&shown, "low-contrast", "#covered-cta"), "{shown:#?}");
-    assert!(has(&shown, "low-contrast", "#notice-text"), "{shown:#?}");
-    assert!(scan.findings.iter().all(|f| f.extras.get("consentHidden").is_none()));
-    assert!(scan.notes.is_empty());
+    assert!(has(&shown, "low-contrast", "#covered-copy"), "{shown:#?}");
+    assert!(!has(&shown, "low-contrast", "#notice-text"), "{shown:#?}");
+    for f in &scan.findings {
+        assert_eq!(f.extras.get("consentHidden"), Some(&serde_json::json!(["cookie notice"])), "{f:?}");
+    }
+    let mut browser = engine.launch().expect("launch");
+    let (_, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    let (kept, _) = detect_url_evidence(&mut browser, &url, &KEEP, "load", 100, &EvidenceRequest::default()).expect("scan");
+    browser.close();
+    let consent = evidence.consent.as_ref().expect("consent report");
+    assert_eq!(consent.hidden, vec!["cookie notice"]);
+    assert_eq!(consent.matched, vec![("cookie notice".to_string(), vec!["div#cookieBanner".to_string()])]);
+    // Kept (--no-consent-hiding), the bar stays and its own text is scored.
+    assert!(has(&flagged(&kept), "low-contrast", "#notice-text"), "{kept:#?}");
+}
+
+/// The same notice with its sentence in a `display: contents` span, which
+/// has no box of its own: the text still renders, so it is still a notice.
+#[test]
+fn a_site_notice_whose_text_has_no_box_of_its_own_is_hidden() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/site-notice-contents.html");
+    let mut browser = engine.launch().expect("launch");
+    let (findings, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    assert!(has(&flagged(&findings), "low-contrast", "#covered-copy"), "{findings:#?}");
+    let consent = evidence.consent.as_ref().expect("consent report");
+    assert_eq!(consent.hidden, vec!["cookie notice"]);
+}
+
+/// The site's own notices that are not cookie notices, and one over a page
+/// too short to be more than its notice, stay on the page.
+#[test]
+fn dialogs_that_are_not_cookie_notices_stay() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    for (page, own) in [
+        ("site-notice-short.html", "#notice-text"),
+        ("site-newsletter.html", "#modal-text"),
+        ("site-login.html", "#modal-text"),
+        ("site-policy-link.html", "#modal-text"),
+    ] {
+        let url = format!("http://127.0.0.1:{port}/{page}");
+        let scan = engine.detect_url_scan(&url, &ScanOptions::default()).expect("scan");
+        let shown = flagged(&scan.findings);
+        assert!(has(&shown, "low-contrast", own), "{page}: {shown:#?}");
+        assert!(scan.findings.iter().all(|f| f.extras.get("consentHidden").is_none()), "{page}");
+        assert!(scan.notes.is_empty(), "{page}: {:?}", scan.notes);
+    }
+}
+
+#[test]
+fn a_cookie_lock_its_empty_layer_and_the_blur_go() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/site-lock-blur.html");
+    let mut browser = engine.launch().expect("launch");
+    let (findings, evidence) =
+        detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+            .expect("scan");
+    browser.close();
+    let shown = flagged(&findings);
+    assert!(has(&shown, "low-contrast", "#covered-copy"), "{shown:#?}");
+    assert!(!has(&shown, "low-contrast", "#notice-text"), "{shown:#?}");
+    let consent = evidence.consent.as_ref().expect("consent report");
+    assert_eq!(consent.matched, vec![("cookie notice".to_string(), vec!["div#block".to_string()])]);
+    assert_eq!(consent.unlocked, vec!["filter div#page"]);
+    let snap = evidence.scan_snapshot.as_deref().unwrap();
+    assert!(snap.contains("lock div#block"), "the empty lock layer is marked hidden");
+}
+
+#[test]
+fn a_tarteaucitron_banner_is_hidden() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let url = format!("http://127.0.0.1:{port}/tarteaucitron.html");
+    let scan = engine.detect_url_scan(&url, &ScanOptions::default()).expect("scan");
+    let shown = flagged(&scan.findings);
+    assert!(has(&shown, "low-contrast", "#covered-copy"), "{shown:#?}");
+    assert!(!has(&shown, "low-contrast", "#tarteaucitronDisclaimerAlert"), "{shown:#?}");
+    for f in &scan.findings {
+        assert_eq!(f.extras.get("consentHidden"), Some(&serde_json::json!(["Tarteaucitron"])), "{f:?}");
+    }
 }
 
 #[test]
@@ -547,4 +635,65 @@ fn tealium_and_transcend_banners_are_hidden() {
             assert!(has(&flagged(&kept.findings), "low-contrast", "#utiqMessage"), "{:#?}", kept.findings);
         }
     }
+}
+
+/// The review's probes (work/round12/harness-review.md): page parts that
+/// mention cookies, or sit beside a real cookie bar, stay as they are.
+#[test]
+fn page_parts_that_look_like_a_notice_stay() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    for page in ["stay-announce.html", "stay-header.html", "stay-cart.html", "stay-gdpr-modal.html", "stay-hidden-policy.html"] {
+        let url = format!("http://127.0.0.1:{port}/{page}");
+        let scan = engine.detect_url_scan(&url, &ScanOptions::default()).expect("scan");
+        assert!(has(&flagged(&scan.findings), "low-contrast", "#own"), "{page}: {:#?}", flagged(&scan.findings));
+        assert!(scan.findings.iter().all(|f| f.extras.get("consentHidden").is_none()), "{page}");
+    }
+}
+
+#[test]
+fn a_notice_inside_a_header_or_a_stack_goes_alone() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let mut browser = engine.launch().expect("launch");
+    for (page, notice) in [("header-strip.html", "div.cookie-strip"), ("bottom-stack.html", "div.cookies")] {
+        let url = format!("http://127.0.0.1:{port}/{page}");
+        let (findings, evidence) =
+            detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+                .expect("scan");
+        assert!(has(&flagged(&findings), "low-contrast", "#own"), "{page}: {:#?}", flagged(&findings));
+        let consent = evidence.consent.as_ref().expect("consent report");
+        assert_eq!(consent.matched, vec![("cookie notice".to_string(), vec![notice.to_string()])], "{page}");
+    }
+    browser.close();
+}
+
+#[test]
+fn backgrounds_and_blurs_beside_a_cookie_bar_stay() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let mut browser = engine.launch().expect("launch");
+    for page in [
+        "stay-bg-layer.html",
+        "stay-bg-image.html",
+        "stay-bg-canvas.html",
+        "stay-blur-deco.html",
+        "stay-blur-deco-absolute.html",
+        "stay-blur-paywall.html",
+    ] {
+        let url = format!("http://127.0.0.1:{port}/{page}");
+        let (findings, evidence) =
+            detect_url_evidence(&mut browser, &url, &ScanOptions::default(), "load", 100, &EvidenceRequest::default())
+                .expect("scan");
+        let consent = evidence.consent.as_ref().expect("consent report");
+        assert_eq!(consent.matched, vec![("cookie notice".to_string(), vec!["div.cookie-bar".to_string()])], "{page}");
+        assert!(consent.unlocked.is_empty(), "{page}: {:?}", consent.unlocked);
+        assert!(!evidence.scan_snapshot.as_deref().unwrap().contains("lock div.cookie-bar"), "{page}");
+        // The light title on the dark image is not read against white (the
+        // review's probe: hiding the background made it 1.1:1).
+        if page == "stay-bg-image.html" {
+            assert!(!has(&flagged(&findings), "low-contrast", "#night-title"), "{page}: {:#?}", flagged(&findings));
+        }
+    }
+    browser.close();
 }

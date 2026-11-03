@@ -57,11 +57,24 @@ fn session_id_of(event: &Map<String, Value>) -> Option<Value> {
         .cloned()
 }
 
+/// Cursor's cap on a hook's `additional_context` (characters, after trim).
+const CURSOR_ADDITIONAL_CONTEXT_MAX_CHARS: f64 = 10_000.0;
+
 fn session_key(v: &Option<Value>) -> String {
     match v {
         Some(v) => crate::util::js_string(v),
         None => "unknown".to_string(),
     }
+}
+
+/// Records the root whose cache this edit just wrote, so a Stop from a
+/// session cwd above it finds it (#1101). Only for a named session, and only
+/// for harnesses that run a Stop pass: Cursor and GitHub Copilot install none.
+fn record_session_root(rt: &Runtime, harness: &str, session_value: &Option<Value>, project_cwd: &str) {
+    if session_value.is_none() || matches!(harness, "cursor" | "github") {
+        return;
+    }
+    crate::hook_sessions::record_root(rt, &session_key(session_value), project_cwd);
 }
 
 /// JS: runHook({ stdinJson, env, cwd })
@@ -113,6 +126,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     };
 
     let harness = resolve_harness(rt, Some(&event));
+    let raw_event = event.clone();
     let event = normalize_hook_event(rt, &event, &rt.proc_cwd, harness);
     audit.insert("harness".into(), Value::from(harness));
 
@@ -145,7 +159,13 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
 
-    let config = read_config(&project_cwd);
+    let mut config = read_config(&project_cwd);
+    if harness == "cursor" {
+        // Cursor rejects a postToolUse `additional_context` longer than
+        // 10,000 characters and drops it, so a raised `limits.maxChars`
+        // must not push the findings past that.
+        config.limits.max_chars = config.limits.max_chars.min(CURSOR_ADDITIONAL_CONTEXT_MAX_CHARS);
+    }
     if !config.enabled {
         return result(
             &audit,
@@ -163,6 +183,18 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             vec![
                 ("skipped", Value::from("native-platform")),
                 ("platform", Value::String(platform.unwrap_or_default())),
+                ("durationMs", ms_since(started)),
+            ],
+        );
+    }
+
+    // Several Impeccable hooks can fire for one edit (home and project
+    // manifests, a plugin and a project hook): only the first scans.
+    if crate::hook_claim::claim_event(rt, &raw_event, &project_cwd, &primary_files) == crate::hook_claim::Claim::Duplicate {
+        return result(
+            &audit,
+            vec![
+                ("skipped", Value::from("duplicate-event")),
                 ("durationMs", ms_since(started)),
             ],
         );
@@ -216,10 +248,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
-        let rel_for_match = relativize(rt, file_path, &project_cwd);
-        if matches_any_glob_list(&rel_for_match, &config.ignore_files)
-            || matches_any_glob_list(file_path, &config.ignore_files)
-        {
+        if is_ignored_file(&rt.proc_cwd, file_path, &project_cwd, &config.ignore_files) {
             last_skip = "config-ignore-file";
             continue;
         }
@@ -331,7 +360,8 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             cache_dirty = true;
             deferred_total += deferred.len();
         }
-        let fresh = dedupe_against_cache(&immediate, &mut cache, &session_id, file_path);
+        let immediate_keys = finding_cache_keys(&immediate);
+        let fresh = dedupe_against_cache(&immediate, &immediate_keys, &mut cache, &session_id, file_path);
         audit.insert("findings".into(), Value::from(raw_count));
         audit.insert("freshFindings".into(), Value::from(fresh.len()));
         if deferred_total > 0 {
@@ -348,7 +378,12 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if harness == "grok" {
             touch_file(&mut cache, &session_id, file_path);
         } else {
-            remember_findings(&mut cache, &session_id, file_path, &immediate);
+            // Deferred findings a Stop pass already reported stay remembered;
+            // the rest of the old list is dropped (see the Stop pass).
+            let known = known_findings(ensure_file(&mut cache, &session_id, file_path));
+            let mut keys = immediate_keys;
+            keys.extend(finding_cache_keys(&deferred).into_iter().filter(|k| known.contains(k)));
+            remember_findings(&mut cache, &session_id, file_path, &keys);
         }
         cache_dirty = true;
 
@@ -362,7 +397,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         if !immediate.is_empty() && pending_winner.is_none() {
             pending_winner = Some(Pending {
                 file_path: file_path.clone(),
-                known: immediate.iter().map(finding_cache_key).collect(),
+                known: immediate.iter().map(pending_label).collect(),
             });
         } else if immediate.is_empty() && clean_winner.is_none() {
             if quiet_mode || !should_emit_ack_for_file(file_path, &config) {
@@ -408,7 +443,9 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         let text =
             append_design_system_note_once(rt, &rendered, scan, &mut cache, &session_id, &config);
         commit_footer_shown(rt, &mut cache, &session_id, &text);
-        persist_cache(rt, &project_cwd, &cache);
+        if persist_cache(rt, &project_cwd, &cache) {
+            record_session_root(rt, harness, &session_value, &project_cwd);
+        }
         let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();
         return RunResult {
             stdout: payload(&text, "PostToolUse", harness),
@@ -472,11 +509,11 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // this, clean-edit editCount bumps would stop persisting the moment
     // state relocates. Under stock paths the cache sits inside
     // `.impeccable/`, so the extra check changes nothing there.
-    if deferred_total > 0
+    let wants_persist = deferred_total > 0
         || (cache_dirty
-            && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))))
-    {
-        persist_cache(rt, &project_cwd, &cache);
+            && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))));
+    if wants_persist && persist_cache(rt, &project_cwd, &cache) {
+        record_session_root(rt, harness, &session_value, &project_cwd);
     }
 
     if detector_threw_any && pending_winner.is_none() && clean_winner.is_none() {
@@ -633,6 +670,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     };
     let harness = resolve_harness(rt, Some(&event));
     audit.insert("harness".into(), Value::from(harness));
+    // Neither VS Code route shows Stop output usably, and every rule already ran
+    // per edit (`per_edit_tiering_active`), so a deep pass would only burn its budget
+    // and mark the footer shown when nobody saw it (#1249).
+    if harness == "vscode" {
+        return result(&audit, vec![("skipped", Value::from("vscode-stop")), ("durationMs", ms_since(started))]);
+    }
     let event = normalize_hook_event(rt, &event, &rt.proc_cwd, harness);
     // Stop-hook re-entry guard (#400): Claude Code and Codex send
     // `stop_hook_active`; Grok sends `stopHookActive`, copied onto the
@@ -657,16 +700,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
     }
-    let project_cwd = rt.resolve(&[str_field(&event, "cwd").unwrap_or(&rt.proc_cwd)]);
-    audit.insert("cwd".into(), Value::String(project_cwd.clone()));
     let session_value = session_id_of(&event);
     let session_id = session_key(&session_value);
+    let named_session = session_value.is_some();
+    // The build-completion stage keeps the session cwd: `build-phase` writes
+    // its state under its own cwd. Only the touched-file scan moves to the
+    // root the per-edit pass keyed this session's cache to (#1088).
+    let session_cwd = rt.resolve(&[str_field(&event, "cwd").unwrap_or(&rt.proc_cwd)]);
+    audit.insert("cwd".into(), Value::String(session_cwd.clone()));
     audit.insert(
         "session".into(),
         session_value.unwrap_or_else(|| Value::from("unknown")),
     );
 
-    let config = read_config(&project_cwd);
+    let config = read_config(&session_cwd);
     if !config.enabled {
         return result(
             &audit,
@@ -680,10 +727,10 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // included. Resolving the platform reads PRODUCT.md, so it is paid only
     // when there is a build state to remind about or touched files to scan.
     let mut platform_memo: Option<Option<String>> = None;
-    let native_skip = |platform_memo: &mut Option<Option<String>>| -> Option<RunResult> {
-        let platform = platform_memo.get_or_insert_with(|| resolve_project_platform(rt, &project_cwd)).clone();
+    let native_skip = |audit: &Map<String, Value>, cwd: &str, platform_memo: &mut Option<Option<String>>| -> Option<RunResult> {
+        let platform = platform_memo.get_or_insert_with(|| resolve_project_platform(rt, cwd)).clone();
         is_native_platform(platform.as_deref()).then(|| result(
-            &audit,
+            audit,
             vec![
                 ("skipped", Value::from("native-platform")),
                 ("platform", Value::String(platform.unwrap_or_default())),
@@ -691,12 +738,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         ))
     };
-    if std::path::Path::new(&project_cwd).join(".impeccable/build/state.json").is_file() {
-        if let Some(skip) = native_skip(&mut platform_memo) { return skip; }
+    if std::path::Path::new(&session_cwd).join(".impeccable/build/state.json").is_file() {
+        if let Some(skip) = native_skip(&audit, &session_cwd, &mut platform_memo) { return skip; }
     }
-    let mut cache = read_cache(&project_cwd);
-    if matches!(harness, "claude" | "codex" | "gemini") {
-        if let Some(message) = crate::build_completion::reminder(rt, &project_cwd, &session_id, stop_hook_active, &mut cache) {
+    let mut cache = read_cache(&session_cwd);
+    if matches!(harness, "claude" | "codex" | "gemini" | "hermes") {
+        if let Some(message) = crate::build_completion::reminder(rt, &session_cwd, &session_id, stop_hook_active, &mut cache) {
             return RunResult {
                 stdout: payload(&message, "Stop", harness),
                 audit: with(&audit, vec![("kind", Value::from("build-completion")), ("emitted", Value::Bool(true)), ("durationMs", ms_since(started))]),
@@ -709,102 +756,159 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     if truthy(rt.env("IMPECCABLE_HOOK_COMPLETION_ONLY")) {
         return result(&audit, vec![("skipped", Value::from("no-build-continuation")), ("durationMs", ms_since(started))]);
     }
-    let touched = touched_files(&cache, &session_id);
-    if touched.is_empty() {
-        return result(
-            &audit,
-            vec![
-                ("skipped", Value::from("no-touched-files")),
-                ("durationMs", ms_since(started)),
-            ],
-        );
+    // The roots to scan: the nearest one from the session cwd up whose cache
+    // this session touched (#1088), then every root the per-edit pass
+    // recorded for this session (#1101), which finds projects below a session
+    // cwd that sits above them. Without a recorded root this is the walk up
+    // alone, as before.
+    let mut roots = vec![resolve_stop_cwd(rt, &session_cwd, &session_id)];
+    if named_session {
+        for root in crate::hook_sessions::recorded_roots(rt, &session_id) {
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
     }
-    if let Some(skip) = native_skip(&mut platform_memo) { return skip; }
-    let mut scans = HashMap::new();
 
-    let mut fresh_groups: Vec<Group> = Vec::new();
+    // Each root is scanned under its own config and cache, as the per-edit
+    // pass did. The session cwd's cache keeps the build marker.
+    struct RootPass {
+        cwd: String,
+        config: HookConfig,
+        cache: Cache,
+        groups: Vec<Group>,
+        scans: HashMap<String, HookScanOptions>,
+        dirty: bool,
+    }
+    let mut passes: Vec<RootPass> = Vec::new();
+    let mut first_skip: Option<RunResult> = None;
     let mut scanned = 0usize;
-    let mut cache_dirty = false;
     let mut pre_existing = 0usize;
     let mut new_findings = 0usize;
     let mut unknown = 0usize;
-    for file_path in &touched {
-        if scanned >= STOP_MAX_FILES {
-            break;
+    for root in &roots {
+        let mut root_audit = audit.clone();
+        if *root != session_cwd {
+            root_audit.insert("cwd".into(), Value::String(root.clone()));
         }
-        if has_path_traversal(file_path)
-            || is_sensitive_path(file_path)
-            || is_generated_path(file_path)
-        {
+        let at_session_cwd = *root == session_cwd;
+        let root_config = if at_session_cwd { config.clone() } else { read_config(root) };
+        if !root_config.enabled {
+            first_skip.get_or_insert_with(|| result(
+                &root_audit,
+                vec![("skipped", Value::from("config-disabled")), ("durationMs", ms_since(started))],
+            ));
             continue;
         }
-        let ext = js::to_lower_case(&jsp::extname(file_path));
-        let configured = match_configured_extension(file_path, &config.extensions);
-        if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
+        let mut root_cache = if at_session_cwd { cache.clone() } else { read_cache(root) };
+        let touched = touched_files(&root_cache, &session_id);
+        if touched.is_empty() {
+            first_skip.get_or_insert_with(|| result(
+                &root_audit,
+                vec![("skipped", Value::from("no-touched-files")), ("durationMs", ms_since(started))],
+            ));
             continue;
         }
-        let rel = relativize(rt, file_path, &project_cwd);
-        if matches_any_glob_list(&rel, &config.ignore_files)
-            || matches_any_glob_list(file_path, &config.ignore_files)
-        {
+        let mut root_memo = if at_session_cwd { platform_memo.clone() } else { None };
+        if let Some(skip) = native_skip(&root_audit, root, &mut root_memo) {
+            first_skip.get_or_insert(skip);
             continue;
         }
-        if !exists(file_path) || !is_scan_target_inside_project(rt, file_path, &project_cwd) {
-            continue;
-        }
-        scanned += 1;
-        let content = match std::fs::read(file_path) {
-            Ok(b) => String::from_utf8_lossy(&b).into_owned(),
-            Err(_) => continue,
-        };
-        if crate::hook_lib::has_live_preview_markers(&content) {
-            continue;
-        }
-        let use_html_engine = uses_html_engine(file_path, &config.extensions);
-        let scan = scans.entry(file_path.clone()).or_insert_with(|| {
-            design_system_options_for_file(rt, &config, &project_cwd, file_path)
-        });
-        // JS: a detector failure tells us nothing about the file. Leave
-        // whatever was remembered alone rather than recording an empty scan
-        // as truth. (detectText cannot throw here: the Rust engine returns
-        // findings directly.)
-        let findings = if use_html_engine {
-            match detector_detect_html(rt, file_path, scan) {
-                Ok(f) => f,
-                Err(_) => continue,
+        let mut scans = HashMap::new();
+        let mut groups: Vec<Group> = Vec::new();
+        let mut dirty = false;
+        for file_path in &touched {
+            if scanned >= STOP_MAX_FILES {
+                break;
             }
-        } else {
-            detector_detect_text(&content, file_path, scan)
-        };
-        if !use_html_engine {
-            stop_baseline::reconcile(&mut cache, &session_id, file_path, &findings);
-        }
-        let filtered = filter_findings(findings, &config);
-        let classified = stop_baseline::classify(&cache, &session_id, file_path, use_html_engine, filtered.clone());
-        pre_existing += classified.pre_existing;
-        new_findings += classified.new;
-        unknown += classified.unknown;
-        let fresh = dedupe_against_cache(&classified.findings, &mut cache, &session_id, file_path);
-        // JS: sync to the live scan, including empty. Remembering only
-        // `fresh` (or skipping the write on a clean Stop) left stale keys in
-        // place, so a finding that was fixed and later reintroduced never
-        // fired again.
-        remember_findings(&mut cache, &session_id, file_path, &filtered);
-        cache_dirty = true;
-        if !fresh.is_empty() {
-            fresh_groups.push(Group {
-                file_path: file_path.clone(),
-                findings: fresh,
+            if has_path_traversal(file_path)
+                || is_sensitive_path(file_path)
+                || is_generated_path(file_path)
+            {
+                continue;
+            }
+            let ext = js::to_lower_case(&jsp::extname(file_path));
+            let configured = match_configured_extension(file_path, &root_config.extensions);
+            if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
+                continue;
+            }
+            if is_ignored_file(&rt.proc_cwd, file_path, root, &root_config.ignore_files) {
+                continue;
+            }
+            if !exists(file_path) || !is_scan_target_inside_project(rt, file_path, root) {
+                continue;
+            }
+            scanned += 1;
+            let content = match std::fs::read(file_path) {
+                Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+                Err(_) => continue,
+            };
+            if crate::hook_lib::has_live_preview_markers(&content) {
+                continue;
+            }
+            let use_html_engine = uses_html_engine(file_path, &root_config.extensions);
+            let scan = scans.entry(file_path.clone()).or_insert_with(|| {
+                design_system_options_for_file(rt, &root_config, root, file_path)
             });
+            // JS: a detector failure tells us nothing about the file. Leave
+            // whatever was remembered alone rather than recording an empty scan
+            // as truth. (detectText cannot throw here: the Rust engine returns
+            // findings directly.)
+            let findings = if use_html_engine {
+                match detector_detect_html(rt, file_path, scan) {
+                    Ok(f) => f,
+                    Err(_) => continue,
+                }
+            } else {
+                detector_detect_text(&content, file_path, scan)
+            };
+            if !use_html_engine {
+                stop_baseline::reconcile(&mut root_cache, &session_id, file_path, &findings);
+            }
+            let filtered = filter_findings(findings, &root_config);
+            let classified = stop_baseline::classify(&root_cache, &session_id, file_path, use_html_engine, filtered.clone());
+            pre_existing += classified.pre_existing;
+            new_findings += classified.new;
+            unknown += classified.unknown;
+            // Occurrence numbers come from the whole scan: classify drops the
+            // pre-existing findings, and counting over the survivors would
+            // shift the keys of the ones that stay.
+            let keys = finding_cache_keys(&filtered);
+            let kept_keys: Vec<String> = classified.kept.iter().map(|&i| keys[i].clone()).collect();
+            let fresh = dedupe_against_cache(&classified.findings, &kept_keys, &mut root_cache, &session_id, file_path);
+            // JS: sync to the live scan, including empty. Remembering only
+            // `fresh` (or skipping the write on a clean Stop) left stale keys in
+            // place, so a finding that was fixed and later reintroduced never
+            // fired again.
+            remember_findings(&mut root_cache, &session_id, file_path, &keys);
+            dirty = true;
+            if !fresh.is_empty() {
+                groups.push(Group {
+                    file_path: file_path.clone(),
+                    findings: fresh,
+                });
+            }
         }
+        passes.push(RootPass { cwd: root.clone(), config: root_config, cache: root_cache, groups, scans, dirty });
+    }
+    if passes.is_empty() {
+        // Every root fell out at a gate: report the first, as a single root did.
+        return first_skip.expect("at least one root");
+    }
+    if passes[0].cwd != session_cwd {
+        audit.insert("cwd".into(), Value::String(passes[0].cwd.clone()));
+    }
+    if passes.len() > 1 {
+        audit.insert("roots".into(), Value::from(passes.len()));
     }
     audit.insert("scannedFiles".into(), Value::from(scanned));
     audit.insert("preExistingFindings".into(), Value::from(pre_existing));
     audit.insert("newFindings".into(), Value::from(new_findings));
     audit.insert("unknownFindings".into(), Value::from(unknown));
-    if fresh_groups.is_empty() {
-        if cache_dirty {
-            persist_cache(rt, &project_cwd, &cache);
+    let emitting: Vec<usize> = (0..passes.len()).filter(|&i| !passes[i].groups.is_empty()).collect();
+    if emitting.is_empty() {
+        for pass in passes.iter().filter(|p| p.dirty) {
+            persist_cache(rt, &pass.cwd, &pass.cache);
         }
         return result(
             &audit,
@@ -815,8 +919,16 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
-    let scan = &scans[&fresh_groups[0].file_path];
-    let short = footer_mode_short(&mut cache, &session_id);
+    // The first root with findings leads: its config sets the render caps, and
+    // its cache carries the footer mode and the design-system note. Findings
+    // from several roots render as one grouped list, root by root, with paths
+    // relative to the session cwd so each names its project.
+    let lead = emitting[0];
+    let fresh_groups: Vec<Group> = emitting.iter().flat_map(|&i| std::mem::take(&mut passes[i].groups)).collect();
+    let display_cwd = if emitting.len() == 1 { passes[lead].cwd.clone() } else { session_cwd.clone() };
+    let config = passes[lead].config.clone();
+    let scan = passes[lead].scans[&fresh_groups[0].file_path].clone();
+    let short = footer_mode_short(&mut passes[lead].cache, &session_id);
     let first_unknown = fresh_groups.iter().flat_map(|group| &group.findings)
         .position(|f| f.name.starts_with("[attribution unknown]"));
     let mut attribution_note = if first_unknown.is_some() {
@@ -831,7 +943,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         &fresh_groups,
         render_config,
         &RenderOpts {
-            cwd: Some(project_cwd.clone()),
+            cwd: Some(display_cwd.clone()),
             short_footer: short,
             reserve_chars: if note.is_empty() { 0.0 } else { (utf16_len(note) + 2) as f64 },
         },
@@ -862,15 +974,31 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     }
     let text = if shows_unknown { format!("{attribution_note}\n\n{rendered}") } else { rendered };
     let text =
-        append_design_system_note_once(rt, &text, scan, &mut cache, &session_id, &config);
+        append_design_system_note_once(rt, &text, &scan, &mut passes[lead].cache, &session_id, &config);
     // Findings shown over a comp build already recorded as shipped: a fix voids
     // that finish, so say so with the findings, not after the agent stops.
-    let text = match crate::build_completion::finished_build_note(rt, &project_cwd, &session_id, &mut cache) {
+    let note = match passes.iter().position(|p| p.cwd == session_cwd) {
+        Some(i) => {
+            passes[i].dirty = true;
+            crate::build_completion::finished_build_note(rt, &session_cwd, &session_id, &mut passes[i].cache)
+        }
+        None => {
+            let note = crate::build_completion::finished_build_note(rt, &session_cwd, &session_id, &mut cache);
+            if note.is_some() { persist_cache(rt, &session_cwd, &cache); }
+            note
+        }
+    };
+    let text = match note {
         Some(note) => format!("{text}\n\n{note}"),
         None => text,
     };
-    commit_footer_shown(rt, &mut cache, &session_id, &text);
-    persist_cache(rt, &project_cwd, &cache);
+    for &i in &emitting {
+        commit_footer_shown(rt, &mut passes[i].cache, &session_id, &text);
+        passes[i].dirty = true;
+    }
+    for pass in passes.iter().filter(|p| p.dirty) {
+        persist_cache(rt, &pass.cwd, &pass.cache);
+    }
     let all: usize = fresh_groups.iter().map(|g| g.findings.len()).sum();
     RunResult {
         stdout: payload(&text, "Stop", harness),

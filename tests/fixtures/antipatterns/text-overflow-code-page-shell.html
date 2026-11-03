@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Text overflow: code in a page shell that scrolls (browser-only)</title>
+  <!--
+    The whole page sits in #app, a full-width shell at overflow: auto, the way
+    an app shell keeps its own scroll. A scroll region holds what overflows
+    it, but this one is the page: a command line set in a 560px column that
+    runs past the right edge of the screen is cut there, as on a page with no
+    shell. The same line in a 560px box that scrolls sideways is the
+    author's scroller, and a line that fits reports nothing.
+  -->
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, sans-serif; color: #1a1a1a; background: #ffffff; }
+    #app { width: 100%; height: 100%; overflow: auto; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    h2 { font-size: 16px; line-height: 24px; margin: 0 0 8px; }
+    .case { margin: 0 0 32px; }
+    .late { margin-top: 320px; }
+    pre { width: 528px; margin: 0; padding: 16px; font: 14px/20px ui-monospace, Menlo, monospace; white-space: pre; background: #f4f4f5; color: #18181b; }
+    .scroller { width: 560px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <main>
+      <div class="col">
+        <h1>Should flag</h1>
+        <div class="case late"><h2>A command past the screen edge</h2><pre id="flag-code-in-a-scrolling-shell">$ acme deploy project=my-really-long-project-identifier region=us-east-1 environment=production confirm=yes cache=off verbose=yes output=json log-level=debug timeout=600</pre></div>
+      </div>
+      <div class="col">
+        <h1>Should pass</h1>
+        <div class="case"><h2>The same command in a box that scrolls</h2><div class="scroller"><pre id="pass-code-in-a-scroll-box">$ acme deploy project=my-really-long-project-identifier region=us-east-1 environment=production confirm=yes cache=off verbose=yes output=json log-level=debug timeout=600</pre></div></div>
+        <div class="case"><h2>A command that fits</h2><pre id="pass-code-that-fits">$ acme deploy</pre></div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

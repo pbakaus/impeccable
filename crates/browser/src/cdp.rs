@@ -12,10 +12,10 @@
 //! auditable against puppeteer's source.
 //!
 //! Everything here is synchronous: one websocket, one thread; events that
-//! arrive while a command is in flight are queued and drained by the page
-//! state machine after every call.
+//! arrive while a command is in flight are handled by the page state machine
+//! as they come, and the rest are swept up after every call.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -32,6 +32,14 @@ use tungstenite::{Message, WebSocket};
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// puppeteer's per-command `protocolTimeout` (180 s).
 const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(180);
+/// How many distinct uncaught errors a page keeps: the scan reports a few
+/// per kind (`SCRIPT_ERROR_CAP` in lib.rs), and a page that throws a new
+/// message every tick must not grow the list without bound (issue #1253).
+const PAGE_ERROR_CAP: usize = 50;
+/// How long a screenshot of an attached page may take. A window that paints
+/// no frames (hidden on some systems) never answers one, and the scan of
+/// someone else's app should not sit on it for the protocol timeout.
+const ATTACHED_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub struct CdpError {
@@ -114,11 +122,15 @@ pub fn default_chrome_args(user_args: &[String], dangerous_no_sandbox: bool) -> 
 }
 
 /// A running headless browser: the process, its temp profile, and the
-/// browser-level CDP connection.
+/// browser-level CDP connection. A browser reached with [`Browser::connect`]
+/// (`detect --cdp`) belongs to someone else: it has no process or profile
+/// here, and closing it only drops the connection.
 pub struct Browser {
-    child: Child,
-    user_data_dir: PathBuf,
+    child: Option<Child>,
+    user_data_dir: Option<PathBuf>,
     conn: Connection,
+    /// The DevTools websocket URL this connection was opened on.
+    ws_url: String,
     /// Sessions of `worker` targets whose exceptions count as page errors,
     /// keyed by session id → owning page session id.
     worker_owner: HashMap<String, String>,
@@ -251,7 +263,7 @@ impl Browser {
                 )));
             }
         };
-        let mut conn = match Connection::connect(&ws_url) {
+        let mut conn = match Connection::connect(&ws_url, LAUNCH_TIMEOUT) {
             Ok(c) => c,
             Err(e) => {
                 let _ = child.kill();
@@ -269,40 +281,120 @@ impl Browser {
         // timeout, so a navigation deadline measures only the navigation.
         let _ = conn.send(None, "Storage.getCookies", json!({}), PROTOCOL_TIMEOUT);
         Ok(Browser {
-            child,
-            user_data_dir,
+            child: Some(child),
+            user_data_dir: Some(user_data_dir),
             conn,
+            ws_url,
             worker_owner: HashMap::new(),
         })
     }
 
+    /// Connect to a browser someone else runs, at its DevTools websocket
+    /// (`/devtools/browser/<id>`). Nothing is launched, and [`Browser::close`]
+    /// leaves the browser running.
+    pub fn connect(ws_url: &str) -> CdpResult<Browser> {
+        let conn = Connection::connect(ws_url, Duration::from_secs(10))?;
+        Ok(Browser {
+            child: None,
+            user_data_dir: None,
+            conn,
+            ws_url: ws_url.to_string(),
+            worker_owner: HashMap::new(),
+        })
+    }
+
+    /// The DevTools websocket URL this connection uses. For a launched
+    /// browser its port is the one Chrome picked for `--remote-debugging-port=0`.
+    pub fn ws_url(&self) -> &str {
+        &self.ws_url
+    }
+
     /// `browser.close()`: `Browser.close`, wait for exit, remove the temp
-    /// profile.
+    /// profile. On a browser reached with [`Browser::connect`] it closes the
+    /// connection and nothing else.
     pub fn close(mut self) {
+        if self.child.is_none() {
+            let _ = self.conn.ws.close(None);
+            let _ = self.conn.ws.flush();
+            return;
+        }
         let _ = self
             .conn
             .send(None, "Browser.close", json!({}), Duration::from_secs(5));
         let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(25))
+        if let Some(child) = self.child.as_mut() {
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(25))
+                    }
+                    _ => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        break;
+                    }
                 }
-                _ => {
-                    let _ = self.child.kill();
-                    let _ = self.child.wait();
+            }
+        }
+        if let Some(dir) = self.user_data_dir.as_ref() {
+            for _ in 0..10 {
+                if std::fs::remove_dir_all(dir).is_ok() || !dir.exists() {
                     break;
                 }
+                std::thread::sleep(Duration::from_millis(100));
             }
         }
-        for _ in 0..10 {
-            if std::fs::remove_dir_all(&self.user_data_dir).is_ok() || !self.user_data_dir.exists()
-            {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(100));
+    }
+
+    /// `Target.getTargets`: every target the browser knows, as CDP
+    /// `TargetInfo` objects.
+    pub fn targets(&mut self) -> CdpResult<Vec<Value>> {
+        let res = self.conn.send(None, "Target.getTargets", json!({}), PROTOCOL_TIMEOUT)?;
+        Ok(res.get("targetInfos").and_then(Value::as_array).cloned().unwrap_or_default())
+    }
+
+    /// Attach to a page someone else opened, without changing it: no new
+    /// document scripts, no network or auto-attach setup, and
+    /// [`Page::close`] detaches instead of closing the target. Every
+    /// evaluation runs in an isolated world on the page's current document,
+    /// so the page's own scripts never see the scan's globals and the scan
+    /// never sees what the page did to its built-ins. A navigation ends the
+    /// world, and the next evaluation fails instead of reading the new
+    /// document.
+    pub fn attach_page(&mut self, target_id: &str) -> CdpResult<Page<'_>> {
+        let attached = self.conn.send(
+            None,
+            "Target.attachToTarget",
+            json!({ "targetId": target_id, "flatten": true }),
+            PROTOCOL_TIMEOUT,
+        )?;
+        let session_id = attached
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| CdpError::new("Target.attachToTarget returned no sessionId"))?
+            .to_string();
+        let mut page = Page {
+            browser: self,
+            session_id,
+            target_id: target_id.to_string(),
+            frames: HashMap::new(),
+            main_frame_id: String::new(),
+            page_errors: Vec::new(),
+            swapped: false,
+            same_document_navigation: false,
+            iframe_sessions: HashSet::new(),
+            main_document_response: None,
+            response_capture: None,
+            execution_contexts: HashMap::new(),
+            attached: true,
+            default_world: None,
+        };
+        if let Err(e) = page.initialize_attached() {
+            page.close();
+            return Err(e);
         }
+        Ok(page)
     }
 
     /// Browser-reported capture environment, independent of page script overrides.
@@ -349,6 +441,8 @@ impl Browser {
             main_document_response: None,
             response_capture: None,
             execution_contexts: HashMap::new(),
+            attached: false,
+            default_world: None,
         };
         page.initialize()?;
         Ok(page)
@@ -357,12 +451,17 @@ impl Browser {
 
 impl Drop for Browser {
     fn drop(&mut self) {
-        // Belt and braces for the error paths that skip `close()`.
-        if let Ok(None) = self.child.try_wait() {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
+        // Belt and braces for the error paths that skip `close()`. A browser
+        // this process did not launch is never touched.
+        if let Some(child) = self.child.as_mut() {
+            if let Ok(None) = child.try_wait() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
         }
-        let _ = std::fs::remove_dir_all(&self.user_data_dir);
+        if let Some(dir) = self.user_data_dir.as_ref() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 }
 
@@ -376,21 +475,30 @@ struct OriginAuth {
     header: String,
 }
 
-/// One websocket to the browser; JSON-RPC ids and an event queue.
+/// One websocket to the browser, and its JSON-RPC ids.
 struct Connection {
     ws: WebSocket<TcpStream>,
     next_id: u64,
-    events: VecDeque<Value>,
     auth: Option<OriginAuth>,
 }
 
+/// What [`Connection::next`] read: the awaited reply's result, or an event
+/// that arrived ahead of it.
+enum Reply {
+    Result(Value),
+    Event(Value),
+}
+
 impl Connection {
-    fn connect(ws_url: &str) -> CdpResult<Connection> {
+    fn connect(ws_url: &str, timeout: Duration) -> CdpResult<Connection> {
         let parsed = url_host_port(ws_url)
             .ok_or_else(|| CdpError::new(format!("Unexpected DevTools endpoint: {ws_url}")))?;
-        let stream = TcpStream::connect(&parsed).map_err(|e| {
+        let stream = connect_tcp(&parsed, timeout).map_err(|e| {
             CdpError::new(format!("Could not connect to the browser at {ws_url}: {e}"))
         })?;
+        // The handshake reads under a deadline too: a port that accepts and
+        // never answers (not a DevTools server) fails instead of hanging.
+        let _ = stream.set_read_timeout(Some(timeout));
         let _ = stream.set_nodelay(true);
         let request = ws_url
             .into_client_request()
@@ -405,7 +513,6 @@ impl Connection {
         Ok(Connection {
             ws,
             next_id: 0,
-            events: VecDeque::new(),
             auth: None,
         })
     }
@@ -487,26 +594,16 @@ impl Connection {
         Ok(id)
     }
 
-    /// Send a command and wait for its result. Events that arrive meanwhile
-    /// are queued. A `{ error }` reply becomes `Protocol error (method): message`
-    /// (puppeteer's wording).
-    fn send(
-        &mut self,
-        session_id: Option<&str>,
-        method: &str,
-        params: Value,
-        timeout: Duration,
-    ) -> CdpResult<Value> {
-        let id = self.post(session_id, method, params)?;
-        let deadline = Instant::now() + timeout;
+    /// Read until the reply to `id` or an event, whichever comes first.
+    /// Replies to other commands (fire-and-forget posts) are dropped. A
+    /// `{ error }` reply becomes `Protocol error (method): message`
+    /// (puppeteer's wording); `deadline` passing is the command's timeout.
+    fn next(&mut self, id: u64, method: &str, deadline: Instant) -> CdpResult<Reply> {
         loop {
-            let msg = match self.read_one(deadline)? {
-                Some(m) => m,
-                None => {
-                    return Err(CdpError::new(format!(
-                        "{method} timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
-                    )));
-                }
+            let Some(msg) = self.read_one(deadline)? else {
+                return Err(CdpError::new(format!(
+                    "{method} timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
+                )));
             };
             if msg.get("id").and_then(Value::as_u64) == Some(id) {
                 if let Some(err) = msg.get("error") {
@@ -518,12 +615,32 @@ impl Connection {
                     };
                     return Err(CdpError::new(format!("Protocol error ({method}): {full}")));
                 }
-                return Ok(msg.get("result").cloned().unwrap_or(Value::Null));
+                return Ok(Reply::Result(msg.get("result").cloned().unwrap_or(Value::Null)));
             }
             if msg.get("method").is_some() {
-                self.events.push_back(msg);
+                return Ok(Reply::Event(msg));
             }
-            // Replies to fire-and-forget posts are dropped.
+        }
+    }
+
+    /// Send a browser-level command and wait for its result. These run
+    /// outside any page (the target list, a new target, a page's close), so
+    /// an event that arrives meanwhile has no listener and is dropped. A
+    /// page's commands go through [`Page::send_with_timeout`], which handles
+    /// its events as they come.
+    fn send(
+        &mut self,
+        session_id: Option<&str>,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> CdpResult<Value> {
+        let id = self.post(session_id, method, params)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Reply::Result(value) = self.next(id, method, deadline)? {
+                return Ok(value);
+            }
         }
     }
 
@@ -572,10 +689,9 @@ impl Connection {
         }
     }
 
-    /// Pull queued events, then any events already readable without waiting.
+    /// Events already readable without waiting.
     fn take_events(&mut self) -> Vec<Value> {
-        let mut out: Vec<Value> = self.events.drain(..).collect();
-        // Non-blocking sweep of what's already on the wire.
+        let mut out = Vec::new();
         let deadline = Instant::now() + Duration::from_millis(1);
         while let Ok(Some(msg)) = self.read_one(deadline) {
             if msg.get("method").is_some() {
@@ -584,6 +700,20 @@ impl Connection {
         }
         out
     }
+}
+
+/// `TcpStream::connect` over every address `host:port` resolves to, each
+/// with a deadline.
+pub(crate) fn connect_tcp(host_port: &str, timeout: Duration) -> std::io::Result<TcpStream> {
+    use std::net::ToSocketAddrs;
+    let mut last = std::io::Error::new(std::io::ErrorKind::NotFound, "no address");
+    for addr in host_port.to_socket_addrs()? {
+        match TcpStream::connect_timeout(&addr, timeout) {
+            Ok(s) => return Ok(s),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 fn url_host_port(ws_url: &str) -> Option<String> {
@@ -629,10 +759,18 @@ pub struct Page<'a> {
     main_document_response: Option<Value>,
     response_capture: Option<crate::response_capture::ResponseCapture>,
     execution_contexts: HashMap<i64, String>,
+    /// A page this process attached to rather than opened
+    /// ([`Browser::attach_page`]): screenshots never resize its view, no
+    /// evaluation counts as a user gesture, and closing detaches.
+    attached: bool,
+    /// Where [`Page::evaluate`] runs when set: the isolated world an
+    /// attached page is scanned in.
+    default_world: Option<IsolatedWorld>,
 }
 
 /// An opaque, document-bound isolated execution context. Never falls back to
 /// the page world or a newly navigated document.
+#[derive(Clone)]
 pub struct IsolatedWorld {
     unique_id: String,
     context_id: i64,
@@ -650,11 +788,26 @@ pub enum EvalOutcome {
 
 impl<'a> Page<'a> {
     fn send(&mut self, method: &str, params: Value) -> CdpResult<Value> {
+        self.send_with_timeout(method, params, PROTOCOL_TIMEOUT)
+    }
+
+    /// Send a command on this page's session and wait for its result. An
+    /// event that arrives while the reply is pending is handled as it comes,
+    /// never queued: the page decides how many it sends (a console or
+    /// exception flood) and how long the command takes (a sweep of a tall
+    /// page, a busy main thread), so a queue held until the reply grew by
+    /// hundreds of MB a second on such a page (issue #1253).
+    fn send_with_timeout(&mut self, method: &str, params: Value, timeout: Duration) -> CdpResult<Value> {
         let sid = self.session_id.clone();
-        let out = self
-            .browser
-            .conn
-            .send(Some(&sid), method, params, PROTOCOL_TIMEOUT);
+        let id = self.browser.conn.post(Some(&sid), method, params)?;
+        let deadline = Instant::now() + timeout;
+        let out = loop {
+            match self.browser.conn.next(id, method, deadline) {
+                Ok(Reply::Result(value)) => break Ok(value),
+                Ok(Reply::Event(ev)) => self.on_event(&ev),
+                Err(e) => break Err(e),
+            }
+        };
         self.pump_events();
         out
     }
@@ -749,6 +902,55 @@ impl<'a> Page<'a> {
         Ok(())
     }
 
+    /// The non-owning setup [`Browser::attach_page`] does: the frame tree
+    /// with the current document's loader, Runtime for execution contexts
+    /// and the page's errors, then an isolated world on that document as the
+    /// default for every evaluation. Domains enabled here are this session's
+    /// and end with it.
+    fn initialize_attached(&mut self) -> CdpResult<()> {
+        self.send("Page.enable", json!({}))?;
+        let tree = self.send("Page.getFrameTree", json!({}))?;
+        let Some(ft) = tree.get("frameTree") else {
+            return Err(CdpError::new("the page has no frame tree"));
+        };
+        self.handle_frame_tree(ft, None);
+        let loader = ft.pointer("/frame/loaderId").and_then(Value::as_str).unwrap_or("").to_string();
+        let main = self.main_frame_id.clone();
+        if let Some(frame) = self.frames.get_mut(&main) {
+            frame.loader_id = loader;
+        }
+        self.send("Runtime.enable", json!({}))?;
+        let world = self.create_isolated_world()?;
+        self.default_world = Some(world);
+        Ok(())
+    }
+
+    /// Whether this page was attached to ([`Browser::attach_page`]) rather
+    /// than opened.
+    pub fn is_attached(&self) -> bool {
+        self.attached
+    }
+
+    /// `Page.getLayoutMetrics`: the visual viewport's document position and
+    /// size, `(x, y, width, height)` in CSS pixels, and the layout
+    /// viewport's size.
+    pub fn viewport_metrics(&mut self) -> CdpResult<((f64, f64, f64, f64), (f64, f64))> {
+        let res = self.send("Page.getLayoutMetrics", json!({}))?;
+        let num = |v: Option<&Value>, k: &str| v.and_then(|v| v.get(k)).and_then(Value::as_f64);
+        let visual = res.get("cssVisualViewport").or_else(|| res.get("visualViewport"));
+        let layout = res.get("cssLayoutViewport").or_else(|| res.get("layoutViewport"));
+        let missing = || CdpError::new("Page.getLayoutMetrics returned no viewport");
+        Ok((
+            (
+                num(visual, "pageX").ok_or_else(missing)?,
+                num(visual, "pageY").ok_or_else(missing)?,
+                num(visual, "clientWidth").ok_or_else(missing)?,
+                num(visual, "clientHeight").ok_or_else(missing)?,
+            ),
+            (num(layout, "clientWidth").ok_or_else(missing)?, num(layout, "clientHeight").ok_or_else(missing)?),
+        ))
+    }
+
     fn handle_frame_tree(&mut self, tree: &Value, parent: Option<String>) {
         let Some(frame) = tree.get("frame") else {
             return;
@@ -774,7 +976,8 @@ impl<'a> Page<'a> {
         }
     }
 
-    /// Drain queued CDP events into page state (frames, errors, auto-attach).
+    /// Sweep the CDP events already readable into page state (frames, errors,
+    /// auto-attach).
     fn pump_events(&mut self) {
         let events = self.browser.conn.take_events();
         for ev in events {
@@ -886,7 +1089,7 @@ impl<'a> Page<'a> {
                         .get(session)
                         .map(|owner| *owner == self.session_id)
                         .unwrap_or(false);
-                if counts {
+                if counts && self.page_errors.len() < PAGE_ERROR_CAP {
                     if let Some(details) = params.get("exceptionDetails") {
                         // First line, trimmed, 160 characters, deduped. One
                         // throw that surfaces both synchronously and as an
@@ -1413,7 +1616,13 @@ impl<'a> Page<'a> {
 
     /// `page.evaluate(<expression string>)`: `Runtime.evaluate` with
     /// `awaitPromise` + `returnByValue`, in the main world.
+    /// On an attached page it runs in the page's isolated world instead
+    /// ([`Browser::attach_page`]).
     pub fn evaluate(&mut self, expression: &str) -> CdpResult<EvalOutcome> {
+        if let Some(world) = self.default_world.clone() {
+            self.validate_world(&world)?;
+            return self.evaluate_with_context(expression, Some(&world.unique_id));
+        }
         self.evaluate_with_context(expression, None)
     }
 
@@ -1432,7 +1641,9 @@ impl<'a> Page<'a> {
         } else {
             expression
         };
-        let mut params = json!({"expression":expression,"returnByValue":true,"awaitPromise":true,"userGesture":true});
+        // An attached page keeps its own user-activation state: a gesture
+        // granted here would outlive the scan (autoplay, popups, fullscreen).
+        let mut params = json!({"expression":expression,"returnByValue":true,"awaitPromise":true,"userGesture":!self.attached});
         if let Some(id) = unique_context {
             params["uniqueContextId"] = json!(id);
         }
@@ -1515,15 +1726,20 @@ impl<'a> Page<'a> {
             (y, height)
         };
         let round = |v: f64| impeccable_core::js::math_round(v);
-        let res = self.send(
+        let timeout = if self.attached { ATTACHED_SCREENSHOT_TIMEOUT } else { PROTOCOL_TIMEOUT };
+        let res = self.send_with_timeout(
             "Page.captureScreenshot",
             json!({
                 "format": "png",
                 "optimizeForSpeed": false,
                 "fromSurface": true,
                 "clip": { "x": round(x), "y": round(y), "width": round(width), "height": round(height), "scale": 1 },
-                "captureBeyondViewport": true,
+                // A beyond-viewport capture lays the page out at the size of
+                // the clip for the shot, which an attached app's window would
+                // show: it reads what is on screen instead.
+                "captureBeyondViewport": !self.attached,
             }),
+            timeout,
         )?;
         Ok(res
             .get("data")
@@ -1556,7 +1772,7 @@ impl<'a> Page<'a> {
                 "quality": quality.min(100),
                 "fromSurface": true,
                 "clip": { "x": x, "y": y, "width": width.round(), "height": height.round(), "scale": 1 },
-                "captureBeyondViewport": true,
+                "captureBeyondViewport": !self.attached,
             }),
         )?;
         Ok(res
@@ -1624,17 +1840,25 @@ impl<'a> Page<'a> {
     }
 
     /// `page.close()`: `Target.closeTarget`, errors swallowed like the JS
-    /// `page.close().catch(() => {})`.
+    /// `page.close().catch(() => {})`. An attached page is detached from
+    /// instead, and stays open.
     pub fn close(self) {
-        let target_id = self.target_id.clone();
-        let _ = self.browser.conn.send(
-            None,
-            "Target.closeTarget",
-            json!({ "targetId": target_id }),
-            Duration::from_secs(10),
-        );
-        // Detached sessions may keep queued events; drop anything stale.
-        self.browser.conn.events.clear();
+        if self.attached {
+            let _ = self.browser.conn.send(
+                None,
+                "Target.detachFromTarget",
+                json!({ "sessionId": self.session_id }),
+                Duration::from_secs(10),
+            );
+        } else {
+            let target_id = self.target_id.clone();
+            let _ = self.browser.conn.send(
+                None,
+                "Target.closeTarget",
+                json!({ "targetId": target_id }),
+                Duration::from_secs(10),
+            );
+        }
         // Interception (origin-scoped auth) dies with the page; a shared
         // browser's next page must not inherit it.
         if self
@@ -2274,6 +2498,64 @@ mod tests {
         assert_eq!(lists.len(), 1);
         let features = lists[0].trim_start_matches("--disable-features=");
         assert!(features.split(',').any(|f| f == "DeviceBoundSessions"));
+    }
+
+    /// The installed browser for a page-level test, or `None` when there is
+    /// none (the test then passes without running).
+    fn test_browser() -> Option<Browser> {
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        let exe = crate::discovery::find_browser(&env).ok()?;
+        Browser::launch(&exe, &[], false).ok()
+    }
+
+    /// A worker the page spawns while a command is in flight is held by
+    /// auto-attach until its attach event is answered. Handled as it arrives,
+    /// the worker runs and the command's promise settles; queued until the
+    /// reply, the two waited on each other for the protocol timeout.
+    #[test]
+    fn an_event_during_a_command_is_handled_before_the_reply() {
+        let Some(mut browser) = test_browser() else { return };
+        let mut page = browser.new_page().unwrap();
+        page.goto("about:blank", "load", Duration::from_secs(15)).unwrap();
+        let outcome = page
+            .evaluate_value(
+                r#"new Promise((resolve) => {
+  const worker = new Worker(URL.createObjectURL(new Blob(['postMessage(1)'], { type: 'text/javascript' })));
+  worker.onmessage = () => resolve('ran');
+  worker.onerror = (e) => resolve('error: ' + e.message);
+  setTimeout(() => resolve('held'), 5000);
+})"#,
+            )
+            .unwrap();
+        assert_eq!(outcome.as_str(), Some("ran"));
+        page.close();
+        browser.close();
+    }
+
+    /// A page that throws a new error every tick keeps its first
+    /// [`PAGE_ERROR_CAP`] and the scan keeps up with the rest.
+    #[test]
+    fn a_page_that_throws_without_end_keeps_its_first_errors() {
+        let Some(mut browser) = test_browser() else { return };
+        let mut page = browser.new_page().unwrap();
+        page.goto("about:blank", "load", Duration::from_secs(15)).unwrap();
+        page.evaluate_value(
+            r#"(() => {
+  let n = 0;
+  const tick = () => { for (let i = 0; i < 20; i++) Promise.reject(new Error('tick ' + (n++))); setTimeout(tick, 0); };
+  tick();
+  return true;
+})()"#,
+        )
+        .unwrap();
+        let started = Instant::now();
+        page.evaluate_value("new Promise((resolve) => setTimeout(() => resolve(true), 1000))").unwrap();
+        assert!(started.elapsed() < Duration::from_secs(20), "the flood starved the command: {:?}", started.elapsed());
+        let errors = page.page_errors();
+        assert!(!errors.is_empty());
+        assert!(errors.len() <= PAGE_ERROR_CAP, "{} errors kept", errors.len());
+        page.close();
+        browser.close();
     }
 }
 

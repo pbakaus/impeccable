@@ -428,6 +428,9 @@ export async function bootFixtureSession({
         atomicDelayMs,
         steerSourceFile: runtime.steer?.sourceFile,
         steerTarget: runtime.steer?.target,
+        // Lets the fake agent see when the dev server has picked up a source
+        // write before it writes the same file again (see agent.mjs).
+        devOrigin: (runtime.scheme || 'http') === 'http' ? `http://127.0.0.1:${devPort}` : null,
       };
       agentDone = Promise.all([runAgentLoop({ ...loopOptions, log: (m) => log('[worker] ' + m) })]);
     }

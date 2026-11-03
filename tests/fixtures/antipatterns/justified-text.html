@@ -47,7 +47,33 @@
       line-height: 1.6;
     }
 
+    /* The paragraph's words all sit in one inline span, so the span carries
+       the text and the paragraph's 280px measure. */
+    .narrow-justify-span {
+      text-align: justify;
+      width: 280px;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    .narrow-justify-lead {
+      text-align: justify;
+      width: 240px;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
     /* ── PASS: the premise does not reach these ── */
+
+    /* A short heading in a narrow column: one line, and the one line of a
+       justified block is set ragged. */
+    .narrow-justify-heading {
+      text-align: justify;
+      width: 300px;
+      font-size: 32px;
+      line-height: 1.2;
+      margin: 0;
+    }
 
     /* A long measure: 760px at 16px is about 95 characters per line, enough
        words per line that the extra space spreads out instead of pooling. */
@@ -105,6 +131,17 @@
           <p>A sidebar is the worst place to justify: the measure is short enough that a single long word pushed to the next line doubles every remaining space on the line above it.</p>
         </div>
       </div>
+
+      <h3>Narrow justified paragraph set in one span</h3>
+      <div class="case">
+        <span class="case-label">280px column, every word inside an inline span</span>
+        <p class="narrow-justify-span"><span>Wrapping the whole paragraph in a span changes nothing about its lines: the paragraph still sets them at its narrow measure and stretches the few word spaces each one holds.</span></p>
+      </div>
+      <h3>Narrow paragraph with a one-line lead-in and a long emphasis</h3>
+      <div class="case">
+        <span class="case-label">240px column, the paragraph's own words on one line, the rest in an em</span>
+        <p class="narrow-justify-lead">See the note below here: <em>Justified lines in a narrow column stretch the spaces between words until rivers of white run down the page and break the reading rhythm.</em></p>
+      </div>
     </div>
 
     <div class="col" data-col="pass">
@@ -114,6 +151,17 @@
       <div class="case">
         <span class="case-label">760px column, about 95 characters per line</span>
         <p class="wide-justify">At a long measure there are enough word spaces on every line that the leftover width spreads thinly across all of them, which is why books and newspapers have justified comfortably for centuries without anyone seeing a river in the page.</p>
+      </div>
+
+      <h3>Links inside a justified paragraph at a long measure</h3>
+      <div class="case">
+        <span class="case-label">760px column; the links inherit justify but are set on the paragraph's lines</span>
+        <p class="wide-justify">The links in a long paragraph, such as <a href="#">this reference to an earlier chapter</a> or <u>an underlined title of a paper</u>, take the measure of the paragraph around them, whose lines are long enough to absorb the stretch.</p>
+      </div>
+
+      <h3>One-line heading in a narrow column</h3>
+      <div class="case">
+        <h4 class="narrow-justify-heading">Research topics</h4>
       </div>
 
       <h3>Narrow justified paragraph with hyphens: auto</h3>

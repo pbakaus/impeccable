@@ -221,3 +221,27 @@ fn checks_shim_helpers() {
     assert_eq!(resolve_length_px("50%", 10.0), Some(5.0));
     assert_eq!(resolve_length_px("1.5", 10.0), Some(15.0));
 }
+
+/// A box shorthand read from a stylesheet with a negative side and an
+/// unresolved `var()` expands to four sides: the var() stays whole for the
+/// later resolution and the negative side keeps its sign.
+#[test]
+fn stylesheet_margin_shorthand_keeps_negative_and_var_sides() {
+    use impeccable_html::cascade::rules::collect_static_css_rules;
+    let rules = collect_static_css_rules(".a{margin:0 var(--pull) 0 -8px}.b{margin:0 -8px 0 0}");
+    let mut specified: SpecifiedStore<&str> = SpecifiedStore::new();
+    for (i, (node, rule)) in ["a", "b"].iter().zip(&rules).enumerate() {
+        for d in &rule.declarations {
+            apply_static_declaration(&mut specified, *node, &d.prop, &d.value, &meta(false, [0, 1, 0], i as i64, false));
+        }
+    }
+    let sides = |node: &str| -> Vec<String> {
+        let map = specified.get(&node).expect("node entry");
+        ["marginTop", "marginRight", "marginBottom", "marginLeft"]
+            .iter()
+            .map(|k| map.get(*k).map(|d| d.value.clone()).unwrap_or_default())
+            .collect()
+    };
+    assert_eq!(sides("a"), vec!["0", "var(--pull)", "0", "-8px"]);
+    assert_eq!(sides("b"), vec!["0", "-8px", "0", "0"]);
+}

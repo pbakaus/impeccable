@@ -181,6 +181,16 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         skill_guideline: Some("a produced material must survive to the screen"),
     },
     Antipattern {
+        id: "hard-offset-shadow",
+        category: "quality",
+        scopes: None,
+        severity: Some("advisory"),
+        name: "Hard offset shadow",
+        description: "A visible, unblurred shadow displaced by at least 4px can belong to an intentional neobrutalist direction. Check whether it fits the intended design; this is a review prompt, not evidence of AI authorship or a request to remove it automatically. Waive intentional uses with data-impeccable-ignore=\"hard-offset-shadow\".",
+        skill_section: Some("Depth"),
+        skill_guideline: Some("review hard offset shadows against the intended direction"),
+    },
+    Antipattern {
         id: "dark-glow",
         category: "slop",
         scopes: None,
@@ -467,6 +477,26 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         severity: None,
         name: "Justified text",
         description: "In a column this narrow, justifying without hyphenation stretches the word spaces until vertical rivers of white run down the block. Use text-align: left, widen the measure, or enable hyphens: auto if you must justify. Scripts that justify on a character grid or by elongating glyphs, such as CJK, Thai and Arabic, are not affected and are not reported.",
+        skill_section: None,
+        skill_guideline: None,
+    },
+    Antipattern {
+        id: "straggler",
+        category: "quality",
+        scopes: Some(&["type"]),
+        severity: Some("advisory"),
+        name: "Straggler",
+        description: "The last line of this paragraph holds one word, which leaves a hole under the block. Set text-wrap: pretty on body copy (Chrome, Safari) to pull a word down beside it. Where a browser ignores it, edit the last sentence or bind the last two words with a no-break space. Keep it if the break is intended.",
+        skill_section: None,
+        skill_guideline: None,
+    },
+    Antipattern {
+        id: "unbalanced-heading",
+        category: "quality",
+        scopes: Some(&["type"]),
+        severity: Some("advisory"),
+        name: "Unbalanced heading",
+        description: "This heading wraps with its last line far shorter than the line above, often one word alone. Set text-wrap: balance on headings so the lines come out near even, or rewrite it to fit. Keep it if the break carries weight on purpose.",
         skill_section: None,
         skill_guideline: None,
     },
@@ -819,7 +849,10 @@ mod tests {
 
     #[test]
     fn registry_shape() {
-        assert_eq!(ANTIPATTERNS.len(), 59);
+        assert_eq!(ANTIPATTERNS.len(), 62);
+        assert!(is_advisory_rule("hard-offset-shadow"));
+        assert_eq!(get_antipattern("hard-offset-shadow").unwrap().category, "quality");
+        assert!(!IMMEDIATE_TIER_RULES.contains(&"hard-offset-shadow"));
         assert_eq!(ANTIPATTERNS[0].id, "side-tab");
         assert_eq!(rule_scopes(), vec!["type", "layout"]);
         assert!(is_advisory_rule("em-dash-overuse"));

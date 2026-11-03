@@ -224,4 +224,25 @@ describe('live chrome under a modal dialog', () => {
     await page.evaluate(() => d2.close());
     assert.equal(await outlineParent('inside'), 'impeccable-live-top-layer');
   });
+
+  // The execCommand clipboard fallback (plain-HTTP origins, issue #1055)
+  // selects text in a textarea. On <body> under a modal that textarea is
+  // inert and the copy fails, so it mounts in the top-layer host instead.
+  it('copies through the selection fallback while a modal is open', async () => {
+    await click('#open');
+    await page.evaluate(() => {
+      window.copies = [];
+      document.addEventListener('copy', () => {
+        const ta = document.getElementById('impeccable-live-clipboard');
+        window.copies.push({ text: String(getSelection()) || ta?.value.slice(ta.selectionStart, ta.selectionEnd) || '', parent: ta?.parentElement?.id || null });
+      });
+      document.getElementById('impeccable-live-bar').onclick = () => {
+        window.copied = window.live.copyTextViaSelection('oklch(62% 0.18 250)');
+      };
+    });
+    await click('#impeccable-live-bar');
+    assert.equal(await page.evaluate(() => window.copied), true);
+    assert.deepEqual(await page.evaluate(() => window.copies), [{ text: 'oklch(62% 0.18 250)', parent: 'impeccable-live-top-layer' }]);
+    assert.equal(await page.evaluate(() => document.getElementById('impeccable-live-clipboard')), null, 'the textarea is removed afterwards');
+  });
 });

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Undersized UI text class parts fixture</title>
+<!--
+  observations-1006 row 19 (portzero.net): furniture classes are read by
+  part. A box whose class holds a furniture word as a part, or at the start
+  or end of one (`taglist`, `tagline`, `subnav`), is furniture; a word
+  buried inside a part (`px-stage-compact`, `instagram-feed`) is not, and
+  that text is judged as copy.
+-->
+<style>
+  body { margin: 0; font-family: Arial, sans-serif; background: #ffffff; color: #111111; }
+  .col { display: inline-block; vertical-align: top; width: 480px; padding: 24px; }
+  .small { font-size: 9.5px; line-height: 14px; margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <div class="taglist"><p class="small">Design systems, typography and colour</p></div>
+  <div class="hero-tagline"><p class="small">The tunnel for your local development server</p></div>
+  <div class="footer-subnav"><p class="small">Privacy policy and terms of service</p></div>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <div class="px-stage-compact"><p class="small">nodejs-typescript-process.acme.tunnel.example</p></div>
+  <div class="instagram-feed"><p class="small">Photos from our latest community meetup</p></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --cdp scans the page of a running app and takes no file or URL targets\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

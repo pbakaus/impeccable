@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cramped Padding Through a Transparent Shell; Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for cramped-padding's flush shape seen through a transparent
+       shell (issue #963, PR #1059).
+
+       Every card is a coloured box with no padding of its own holding one
+       padding-free, edgeless wrapper (the shell) around two paragraphs. The
+       paragraphs carry the inset, and the question is whether it reaches the
+       reader:
+
+       - A relative offset or a transform on the shell moves the paragraphs
+         with it, so a shell carried 24px left lands 24px-padded text on the
+         left rule.
+       - A border of any colour on the card, a transparent one included,
+         stops the paragraphs' vertical margins from collapsing out of it.
+       - A negative margin cancels a paragraph's padding on that side, and a
+         sibling beside the shell can reach the edge on its own, so neither
+         is cleared by the shell. An absolutely pinned paragraph is placed by
+         its own offsets and is left out, as the browser rule does.
+       - A card that is a flex or grid container, a flow-root or a float
+         holds its children's vertical margins inside, so they inset the
+         text.
+
+       crates/html/tests/static_flush.rs and crates/browser/tests/
+       transparent_shell.rs both read this file: every flag- card must be
+       reported and no pass- card. */
+
+    body { font-family: system-ui, sans-serif; background: #fafafa; padding: 24px; margin: 0; color: #0f172a; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1100px; margin: 0 auto; }
+    .col h2 { font-size: 22px; font-weight: 700; margin: 0 0 16px; color: #0f172a; line-height: 1.2; }
+    .col h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin: 28px 0 10px; color: #64748b; }
+    .case { margin-bottom: 14px; }
+    .case-label { display: block; font-size: 12px; color: #64748b; margin-bottom: 8px; font-style: italic; max-width: 60ch; }
+
+    .card { width: 480px; padding: 0; background: #1e293b; color: #f8fafc; }
+    .ruled { background: #ffffff; color: #0f172a; border: 1px solid #8a8a8a; }
+    .shell { padding: 0; margin: 0; }
+    .card p { font-size: 16px; line-height: 24px; }
+    .padded p { margin: 0; padding: 24px; }
+    .spaced p { margin: 24px 0; padding: 0 24px; }
+
+    .shift-left { position: relative; left: -24px; }
+    .shift-up { position: relative; top: -24px; }
+    .anchored { position: relative; }
+    .clear-border { border: 1px solid transparent; }
+    .flex-card { display: flex; flex-direction: column; }
+    .grid-card { display: grid; }
+    .flow-root-card { display: flow-root; }
+    .shift-transform { transform: translateX(-24px); }
+    .float-case { display: flow-root; }
+    .float-card { float: left; }
+    .shift-each p { position: relative; left: -24px; }
+    .float-shell { float: left; width: 480px; }
+    .pull-each p { margin-left: -24px; }
+    .shorthand-pull-each p { margin: 0 0 0 -24px; }
+    .nudge-each p { margin-left: -1px; }
+    .em-pull-each p { font-size: 32px; line-height: 40px; margin-left: -0.75em; }
+    .pinned { position: relative; height: 160px; }
+    .pinned .shell p + p { position: absolute; left: -24px; top: 72px; }
+    .card > .loose { margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col" data-col="flag">
+      <h2>Should flag</h2>
+
+      <h3>Shell offset to the left rule</h3>
+      <div class="case">
+        <span class="case-label">the shell is carried 24px left, onto the card's rule, with the padded paragraphs inside it.</span>
+        <div class="flag-shell-offset-left card ruled padded" id="flag-shell-offset-left">
+          <div class="shell shift-left"><p>Copy a relative offset carried onto the rule.</p><p>A second paragraph beside it.</p></div>
+        </div>
+      </div>
+
+      <h3>Shell offset to the top rule</h3>
+      <div class="case">
+        <span class="case-label">the shell is carried 24px up, so the first paragraph's padding sits above the card.</span>
+        <div class="flag-shell-offset-top card ruled padded" id="flag-shell-offset-top">
+          <div class="shell shift-up"><p>Copy a relative offset lifted onto the rule.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Shell carried by a transform</h3>
+      <div class="case">
+        <span class="case-label">a translateX(-24px) on the shell carries the padded paragraphs onto the card's left rule.</span>
+        <div class="flag-shell-transform card ruled padded" id="flag-shell-transform">
+          <div class="shell shift-transform"><p>Copy a transform carried onto the rule.</p><p>A second paragraph beside it.</p></div>
+        </div>
+      </div>
+
+      <h3>Paragraphs offset inside the shell</h3>
+      <div class="case">
+        <span class="case-label">each padded paragraph is carried 24px left by its own relative offset, onto the card's rule.</span>
+        <div class="flag-shell-paragraph-offset card ruled padded shift-each" id="flag-shell-paragraph-offset">
+          <div class="shell"><p>Copy its own offset carried onto the rule.</p><p>A second paragraph beside it.</p></div>
+        </div>
+      </div>
+
+      <h3>Paragraphs pulled by a negative margin</h3>
+      <div class="case">
+        <span class="case-label">each padded paragraph has margin-left: -24px, which cancels its padding on the left rule.</span>
+        <div class="flag-shell-negative-margin card ruled padded pull-each" id="flag-shell-negative-margin">
+          <div class="shell"><p>Copy a negative margin pulled onto the rule.</p><p>A second paragraph beside it.</p></div>
+        </div>
+      </div>
+
+      <h3>Paragraphs pulled by a margin shorthand</h3>
+      <div class="case">
+        <span class="case-label">each padded paragraph has margin: 0 0 0 -24px, the same pull written as a shorthand.</span>
+        <div class="flag-shell-shorthand-pull card ruled padded shorthand-pull-each" id="flag-shell-shorthand-pull">
+          <div class="shell"><p>Copy a shorthand margin pulled onto the rule.</p><p>A second paragraph beside it.</p></div>
+        </div>
+      </div>
+
+      <h3>Unpadded paragraph beside the shell</h3>
+      <div class="case">
+        <span class="case-label">a padded shell sits beside an unpadded paragraph that touches the card's rules.</span>
+        <div class="flag-shell-loose-sibling card ruled padded" id="flag-shell-loose-sibling">
+          <div class="shell"><p>Copy padded off the rule.</p><p>A second padded paragraph.</p></div>
+          <p class="loose">Copy beside the shell with no inset.</p>
+        </div>
+      </div>
+
+      <h3>Paragraphs pulled by an em margin</h3>
+      <div class="case">
+        <span class="case-label">32px paragraphs with margin-left: -0.75em, which is -24px at their own size and cancels the padding.</span>
+        <div class="flag-shell-em-pull card ruled padded em-pull-each" id="flag-shell-em-pull">
+          <div class="shell"><p>Large copy pulled onto the rule.</p><p>A second large line.</p></div>
+        </div>
+      </div>
+
+      <h3>Margins collapse through a plain card</h3>
+      <div class="case">
+        <span class="case-label">no border, padding or formatting context on the card: the paragraphs' margins escape it.</span>
+        <div class="flag-shell-margins-escape card spaced" id="flag-shell-margins-escape">
+          <div class="shell"><p>Copy whose margin collapses out of the card.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col" data-col="pass">
+      <h2>Should pass</h2>
+
+      <h3>Positioned shell with no offset</h3>
+      <div class="case">
+        <span class="case-label">position: relative alone moves nothing, so the paragraphs' padding still insets the text.</span>
+        <div class="pass-shell-anchored card ruled padded" id="pass-shell-anchored">
+          <div class="shell anchored"><p>Copy inside a shell that only anchors.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Transparent border holds the margins</h3>
+      <div class="case">
+        <span class="case-label">a 1px transparent border on the card stops the paragraphs' margins collapsing out of it.</span>
+        <div class="pass-shell-clear-border card spaced clear-border" id="pass-shell-clear-border">
+          <div class="shell"><p>Copy held off the edge by its margin.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Flex card holds the margins</h3>
+      <div class="case">
+        <span class="case-label">the card is a flex column: its item's margins never collapse out of it.</span>
+        <div class="pass-shell-flex-card card spaced flex-card" id="pass-shell-flex-card">
+          <div class="shell"><p>Copy in a flex card's only item.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Grid card holds the margins</h3>
+      <div class="case">
+        <span class="case-label">the card is a grid: its item's margins never collapse out of it.</span>
+        <div class="pass-shell-grid-card card spaced grid-card" id="pass-shell-grid-card">
+          <div class="shell"><p>Copy in a grid card's only item.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Flow-root card holds the margins</h3>
+      <div class="case">
+        <span class="case-label">the card is a flow-root: it contains its children's margins.</span>
+        <div class="pass-shell-flow-root-card card spaced flow-root-card" id="pass-shell-flow-root-card">
+          <div class="shell"><p>Copy in a flow-root card.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Pinned label inside the shell</h3>
+      <div class="case">
+        <span class="case-label">the second paragraph is absolutely pinned; its own offsets place it, not the shell (like a badge on a card corner), so the in-flow paragraph decides.</span>
+        <div class="pass-shell-pinned-label card ruled padded pinned" id="pass-shell-pinned-label">
+          <div class="shell"><p>Copy in normal flow, padded off the rule.</p><p>Pinned label copy.</p></div>
+        </div>
+      </div>
+
+      <h3>Paragraphs nudged by a small negative margin</h3>
+      <div class="case">
+        <span class="case-label">margin-left: -1px against 24px of padding still leaves the text 23px off the rule.</span>
+        <div class="pass-shell-slight-pull card ruled padded nudge-each" id="pass-shell-slight-pull">
+          <div class="shell"><p>Copy nudged a pixel, still well inset.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Floated shell holds the margins</h3>
+      <div class="case">
+        <span class="case-label">the shell is floated, so the paragraphs' margins stay inside the float.</span>
+        <div class="pass-shell-floated-shell card spaced" id="pass-shell-floated-shell">
+          <div class="shell float-shell"><p>Copy in a floated shell.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+
+      <h3>Floated card holds the margins</h3>
+      <div class="case float-case">
+        <span class="case-label">the card is floated, which starts a formatting context that contains its children's margins.</span>
+        <div class="pass-shell-float-card card spaced float-card" id="pass-shell-float-card">
+          <div class="shell"><p>Copy in a floated card.</p><p>A second paragraph below it.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -26,7 +26,7 @@ Each comp is a direction test, not a screenshot specification. Core UI text, res
 
 Show the three together on the decision page (`impeccable serve-question`, one option per comp with the comp as its hero), or in the harness only when it renders images inline; a text-only surface does not count as display. Ask what should carry forward, what feels false to the world, and whether the selected concept should be approved, combined, revised, or rejected. Then stop and wait. A structured simulated user counts as attended and receives the same question.
 
-Do not begin code until the user approves a direction or explicitly delegates the choice. If they delegate, choose using the task brief, PRODUCT.md, and DESIGN.md, and state the evidence. Approval refines the task concept; it does not modify DESIGN.md.
+Do not begin code until the user approves a direction or explicitly delegates the choice. If they delegate, choose using the task brief, PRODUCT.md, and DESIGN.md (the chosen direction on a new world), and state the evidence. Approval refines the task concept; it does not modify DESIGN.md.
 
 This approval point has no substitute and no skip condition. When the structured question tool errors, fall back to the decision page; only after both fail may you treat the choice as delegated, and a delegated pick is recorded exactly as an approval is and disclosed in your first reply, not your last. The finish reviewer treats comp-round comps with no recorded approval as a material finding; decision comps under `.impeccable/mocks/decision/` are the direction round's hand, not comp-round output, and imply no approval on their own.
 

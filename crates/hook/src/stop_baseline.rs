@@ -200,6 +200,8 @@ pub fn invalidate(cache: &mut Cache, session: &str, file: &str) {
 #[derive(Default)]
 pub struct Classified {
     pub findings: Vec<Finding>,
+    /// Input index of each entry in `findings`.
+    pub kept: Vec<usize>,
     pub pre_existing: usize,
     pub new: usize,
     pub unknown: usize,
@@ -218,7 +220,7 @@ pub fn classify(
         baseline(cache, session, file)
     };
     let mut result = Classified::default();
-    for mut finding in findings {
+    for (index, mut finding) in findings.into_iter().enumerate() {
         let known = baseline.as_mut().filter(|_| independent(&finding));
         if let Some(counts) = known {
             let key = key(&finding);
@@ -235,6 +237,7 @@ pub fn classify(
             finding.name = format!("[attribution unknown] {}", finding.name);
         }
         result.findings.push(finding);
+        result.kept.push(index);
     }
     result
 }
@@ -259,6 +262,29 @@ mod tests {
         // before the session, or of the stylesheets a DOM scan reads.
         assert_eq!(classify(&cache, "s", "a.css", false, vec![font]).unknown, 1);
         assert_eq!(classify(&cache, "s", "a.css", true, vec![css]).unknown, 1);
+    }
+
+    #[test]
+    fn stop_baseline_survivors_keep_their_occurrence_keys() {
+        use crate::hook_lib::{dedupe_against_cache, finding_cache_keys, remember_findings};
+        let same = |line: f64| finding("side-tab", "a.css", "border-left: 4px solid red", line);
+        let scan = [same(1.0), same(2.0), same(3.0), same(4.0)];
+        let mut cache = Cache::new();
+        ensure_file(&mut cache, "s", "a.css").insert(
+            FIELD.into(),
+            json!({
+                "version": 1, "engine": env!("CARGO_PKG_VERSION"), "counts": counts(&scan[..2]),
+            }),
+        );
+        let keys = finding_cache_keys(&scan);
+        // Stop already reported the first three; the fourth is the new one.
+        remember_findings(&mut cache, "s", "a.css", &keys[..3]);
+        let classified = classify(&cache, "s", "a.css", false, scan.to_vec());
+        assert_eq!(classified.kept, vec![2, 3]);
+        let kept: Vec<String> = classified.kept.iter().map(|&i| keys[i].clone()).collect();
+        let fresh = dedupe_against_cache(&classified.findings, &kept, &mut cache, "s", "a.css");
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].line, 4.0);
     }
 
     #[test]

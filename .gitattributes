@@ -1,6 +1,65 @@
+# cmd.exe parses batch files by byte offset, and an LF-only `.cmd` breaks
+# `call :label` and `goto` (#1098). Every checkout and `git archive` writes
+# the source launcher and its tracked provider copies with CRLF; the build
+# also emits batch files with CRLF whatever the working tree holds
+# (scripts/lib/utils.js), and `bun run build` fails if any emitted copy has a
+# bare LF.
+*.cmd text eol=crlf
+
 # The oracle replays goldens recorded from a POSIX checkout, and a finding's
 # snippet carries the fixture's own bytes, so these files have to arrive with
 # LF on every platform. `-text` disables end-of-line conversion outright, which
 # is also safe for any binary that lands under these trees.
 tests/fixtures/** -text
 tests/oracle/** -text
+
+# The review bundle embeds CSS as text. Keep its input and generated output
+# byte-identical when a Windows checkout would otherwise convert them to CRLF.
+ui/component-review/theme.css text eol=lf
+crates/context/assets/component-review.js text eol=lf
+
+# Machine-written files that a line diff cannot usefully show. `-diff` makes
+# `git diff`, `git show` and `git log -p` print "Binary files differ" instead
+# of the content; `linguist-generated` collapses them in GitHub's PR view.
+# The in-page bundle carries the wasm module as one ~2.7 MB line, and each
+# golden is a JSON object whose captured output is one escaped string, so a
+# one-character change rewrites the whole file in a diff. AGENTS.md
+# ("Reviewing a PR") has the commands for reading these changes on purpose;
+# `git diff --text` restores the raw diff. The bytes, merges and `git diff
+# --exit-code` checks are unaffected.
+crates/live/assets/detect-antipatterns-browser.js -diff linguist-generated
+tests/oracle/golden/** -diff linguist-generated
+tests/oracle/vectors/**/*.jsonl -diff linguist-generated
+
+# Written by `cargo xtask bundle` but small and worth reading: collapsed on
+# GitHub, kept diffable locally.
+crates/live/assets/antipatterns.json linguist-generated
+
+# Provider output that `bun run build:release` writes and
+# .github/workflows/sync-generated-output.yml commits back to main (keep this
+# list in step with GENERATED_PATHS there). Collapsed on GitHub only.
+.agent/** linguist-generated
+.agents/** linguist-generated
+.codex/** linguist-generated
+.claude/** linguist-generated
+.cursor/** linguist-generated
+.devin/** linguist-generated
+.dsh/** linguist-generated
+.gemini/** linguist-generated
+.github/agents/** linguist-generated
+.github/hooks/** linguist-generated
+.github/skills/** linguist-generated
+.grok/** linguist-generated
+.hermes/** linguist-generated
+.kiro/** linguist-generated
+.opencode/** linguist-generated
+.pi/** linguist-generated
+.omp/** linguist-generated
+.qoder/** linguist-generated
+.rovodev/** linguist-generated
+.trae/** linguist-generated
+.trae-cn/** linguist-generated
+.veto/** linguist-generated
+.vibe/** linguist-generated
+plugin/** linguist-generated
+cursor-plugin/** linguist-generated

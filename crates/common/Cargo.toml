@@ -8,12 +8,12 @@ publish.workspace = true
 [features]
 # Seed keys and references (`seed` module): CSPRNG keys and a salted,
 # one-way reference. Off by default so the wasm build never pulls getrandom.
-seed = ["dep:sha2", "dep:getrandom", "dep:serde_json"]
+seed = ["dep:sha2", "dep:getrandom"]
 
 [dependencies]
 sha2 = { version = "0.10", optional = true }
 getrandom = { version = "0.2", optional = true }
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

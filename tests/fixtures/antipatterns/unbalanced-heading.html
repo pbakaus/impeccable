@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unbalanced heading fixture (browser-only)</title>
+  <!--
+    unbalanced-heading reads the rendered lines, so it needs layout: the
+    static engine never reports it. The headings are set in a monospace face
+    on columns sized in `ch`, so every line holds a known number of
+    characters and the breaks land on the same words whatever monospace face
+    the machine has. Each width carries half a character of slack, so a font
+    whose advance rounds up still fits the full lines.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 40px; color: #1a1a1a; background: #fff; }
+    .label { font-size: 14px; line-height: 20px; margin: 32px 0 8px; color: #475569; }
+    .head { font: 700 26px/1.15 ui-monospace, Menlo, Consolas, monospace; margin: 0; }
+    .card { width: 360px; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; }
+    .card .head { font-size: 22px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1200px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+
+    <div class="col" data-col="flag">
+    <!-- FLAG: the last line is a leftover -->
+      <p class="label">Flag: a hero heading whose last word wraps alone</p>
+      <h1 class="head flag-hero" style="width: 32.5ch">Design that holds up under real content</h1>
+
+      <p class="label">Flag: a three-line heading with a one-word tail</p>
+      <h2 class="head flag-three-lines" style="width: 24.5ch">Ship the release notes your users will actually read</h2>
+
+      <p class="label">Flag: a centred heading with a one-word tail</p>
+      <h2 class="head flag-centred" style="width: 34.5ch; text-align: center">Everything you need to run a small studio</h2>
+
+      <p class="label">Flag: a card heading with a one-word tail</p>
+      <div class="card"><h3 class="head flag-card" style="width: 28.5ch">Billing that grows with your team</h3></div>
+
+      <!-- pretty inherited from an ancestor does not stand the rule down:
+           Chromium's pretty pulls "and" down beside "shape", and a two-word
+           tail at 31% of the line above is still a leftover. -->
+      <p class="label">Flag: a heading under text-wrap pretty on an ancestor that pretty leaves uneven</p>
+      <div style="text-wrap: pretty"><h2 class="head flag-pretty-ancestor" style="width: 32.5ch">Plans for teams of every size and shape</h2></div>
+    </div>
+
+    <div class="col" data-col="pass">
+    <!-- PASS: balanced, one line, near even, stacked, or a statement -->
+      <p class="label">Pass: the hero heading set with text-wrap balance</p>
+      <h1 class="head pass-balance" style="width: 32.5ch; text-wrap: balance">Design that holds up under real content</h1>
+
+      <!-- pretty inherited from an ancestor does not stand the rule down; the
+           rule reads the lines Chromium set, and Chromium's pretty pulls
+           "real" down, so the tail is no longer a leftover. -->
+      <p class="label">Pass: the hero heading under text-wrap pretty set on an ancestor</p>
+      <div style="text-wrap: pretty"><h1 class="head pass-pretty-ancestor" style="width: 32.5ch">Design that holds up under real content</h1></div>
+
+      <p class="label">Pass: a heading that fits one line</p>
+      <h2 class="head pass-one-line" style="width: 32.5ch">Design that holds up</h2>
+
+      <p class="label">Pass: a heading whose two lines are near even</p>
+      <h2 class="head pass-even" style="width: 22.5ch">Release notes people actually read</h2>
+
+      <p class="label">Pass: a heading built from a title and a subtitle block</p>
+      <h2 class="head pass-stacked" style="width: 32.5ch"><span style="display: block">Design that holds up under real</span><span style="display: block">content</span></h2>
+
+      <p class="label">Pass: a statement set as a four-line heading</p>
+      <h2 class="head pass-statement" style="width: 20.5ch">We build the tools that small teams use to run the whole of their studio day</h2>
+
+      <p class="label">Pass: a two-word heading that wraps</p>
+      <h3 class="head pass-two-words" style="width: 16.5ch">Documentation hub</h3>
+
+      <p class="label">Pass: a heading in a column a few words wide</p>
+      <h3 class="head pass-narrow" style="width: 16.5ch">Workspace member list</h3>
+
+      <p class="label">Pass: a heading broken by the author</p>
+      <h2 class="head pass-break" style="width: 32.5ch">Design that holds up<br>for good</h2>
+    </div>
+
+  </div>
+</body>
+</html>

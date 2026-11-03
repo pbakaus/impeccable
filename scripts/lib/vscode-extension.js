@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { rewritePluginMarkdownTree } from './plugin-paths.js';
+import { quoteLauncher, rewritePluginMarkdownTree } from './plugin-paths.js';
 
 const PROJECT_SCRIPTS = '.github/skills/impeccable/scripts';
 const PROJECT_FALLBACK =
@@ -22,7 +22,7 @@ export function rewriteVSCodeMarkdown(content, { isSkillEntrypoint = false } = {
   }
   return content.replaceAll(PROJECT_SCRIPTS, '<skill-base-dir>/scripts')
     .replace(/(?<!["\w/])<skill-base-dir>\/scripts\/impeccable(\.cmd)?(?=[\s`])/g,
-      '"<skill-base-dir>/scripts/impeccable$1"');
+      (_, cmd) => quoteLauncher('<skill-base-dir>', Boolean(cmd)));
 }
 
 /** Stage a declarative skill extension, independently of repo-install sidecars. */

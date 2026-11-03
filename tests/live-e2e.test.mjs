@@ -56,6 +56,7 @@ import {
   installLiveQueryHelpers,
   isMountErrorCardVisible,
   openTunePanel,
+  closeTunePanel,
   pickElement,
   readComputedFontWeight,
   runLiveChromeBottomBarSmoke,
@@ -784,6 +785,10 @@ for (const { name, fixture } of fixtures) {
           const applied = await setTuneRange(page, scenario.rangeLabel, scenario.rangeValue);
           assert.equal(applied, scenario.rangeValue, 'range knob took the requested value');
           await chooseTuneStep(page, scenario.stepsLabel, scenario.stepsOptionLabel);
+
+          t.diagnostic('Closing and reopening Tune before accepting the edited values');
+          await closeTunePanel(page);
+          await openTunePanel(page);
 
           t.diagnostic(`Accepting variant ${targetVariant} with tuned params`);
           await clickAccept(page, { expectedVariant: targetVariant });
@@ -2038,6 +2043,12 @@ async function runManualEditStage(page, stage, { t, fixture, session, agentMode,
   }
 
   if (stage.refreshAfterApply) {
+    // The pre-reload checks above can pass on the overlay's in-page copy, so
+    // a reload is only meaningful once the dev server serves the applied
+    // source. Wait for that explicitly instead of racing its file watcher.
+    await waitForDevServerModules(page, tmp, stage.edits || [], {
+      timeout: agentMode === 'llm' ? 60_000 : 20_000,
+    });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await waitForHandshake(page);
     for (const edit of stage.edits || []) {
@@ -2203,6 +2214,53 @@ function assertSourceMatches(tmp, file, pattern) {
     true,
     `source ${file} should match ${pattern}`,
   );
+}
+
+/**
+ * Poll the dev server until every source file an Apply stage edited is served
+ * with the applied copy, so a following reload cannot render a module the
+ * server transformed before the last write. Only texts present on disk are
+ * expected; a file the server does not serve under its source path (non-Vite
+ * frameworks) is skipped. A timeout here means the dev server never saw the
+ * final write, which a reload would report as missing copy.
+ */
+async function waitForDevServerModules(page, tmp, edits, { timeout = 20_000 } = {}) {
+  const expectedByFile = new Map();
+  for (const edit of edits) {
+    if (!edit.expectedSourceFile || !edit.expectedVisibleText) continue;
+    const texts = expectedByFile.get(edit.expectedSourceFile) || [];
+    texts.push(edit.expectedVisibleText);
+    expectedByFile.set(edit.expectedSourceFile, texts);
+  }
+  for (const [file, texts] of expectedByFile) {
+    const onDisk = readFileSync(join(tmp, file), 'utf-8');
+    const expected = texts.filter((text) => onDisk.includes(text));
+    if (expected.length === 0) continue;
+    const deadline = Date.now() + timeout;
+    let missing = expected;
+    for (;;) {
+      // Each request is bounded by what is left of the deadline, so a stalled
+      // dev server cannot hold this wait past its timeout.
+      const requestMs = Math.max(250, Math.min(5_000, deadline - Date.now()));
+      const result = await page.evaluate(async ({ url, requestMs }) => {
+        try {
+          const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(requestMs) });
+          return res.ok ? { text: await res.text() } : { notServed: true };
+        } catch (err) {
+          return { error: String(err?.message || err) };
+        }
+      }, { url: '/' + file, requestMs }).catch((err) => ({ error: err.message }));
+      if (result.notServed) break;
+      if (typeof result.text === 'string') {
+        missing = expected.filter((text) => !result.text.includes(text));
+        if (missing.length === 0) break;
+      }
+      if (Date.now() > deadline) {
+        throw new Error(`dev server still serves a stale /${file} after Apply; missing ${JSON.stringify(missing)} although the file on disk has them`);
+      }
+      await page.waitForTimeout(100);
+    }
+  }
 }
 
 async function assertVisibleText(page, selector, text, { timeout = 20_000 } = {}) {

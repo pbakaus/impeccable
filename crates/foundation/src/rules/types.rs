@@ -125,6 +125,11 @@ pub struct BorderOpts {
     /// reported. The recorded call vectors predate the corner read and leave
     /// this `None`, which replays the behavior they pin.
     pub corners: Option<Corners>,
+    /// The element's border-box `[width, height]`, when the caller could
+    /// read it. `None` (the recorded call vectors, a static element with no
+    /// resolved size) skips the circle test.
+    #[serde(default)]
+    pub box_size: Option<[f64; 2]>,
 }
 
 // ─── isEmojiOnlyText ────────────────────────────────────────────────────────
@@ -302,6 +307,14 @@ pub struct ColorOpts {
     /// as they recorded.
     #[serde(default)]
     pub same_color_surface_is_unread: bool,
+    /// The adapter's knowledge that the glyphs paint no colour of their own:
+    /// a transparent text fill (`-webkit-text-fill-color`), or an ancestor
+    /// whose background is clipped to the text, which paints them instead
+    /// (resend.com's `em` inside a gradient-clipped `h1`). `color` is not
+    /// what a reader sees, so no contrast verdict is taken on it, on any
+    /// path. The recorded call vectors predate the field and leave it false.
+    #[serde(default)]
+    pub ink_unread: bool,
 }
 
 // ─── checkHoverContrast ─────────────────────────────────────────────────────

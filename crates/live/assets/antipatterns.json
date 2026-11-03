@@ -57,7 +57,8 @@
     "id": "bounce-easing",
     "name": "Bounce or elastic easing",
     "category": "slop",
-    "description": "Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead."
+    "description": "Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.",
+    "severity": "advisory"
   },
   {
     "id": "pulsing-dot",
@@ -69,13 +70,15 @@
     "id": "blinking-cursor",
     "name": "Decorative blinking cursor",
     "category": "slop",
-    "description": "A blinking text cursor animated into a hero or landing section simulates typing where no input exists. It borrows the dev-tool aesthetic as decoration. Real editable fields draw their own caret; anywhere else, let the composition hold attention without a fake prompt."
+    "description": "A blinking text cursor animated into a hero or landing section simulates typing where no input exists. It borrows the dev-tool aesthetic as decoration. Real editable fields draw their own caret; anywhere else, let the composition hold attention without a fake prompt.",
+    "severity": "advisory"
   },
   {
     "id": "shape-assembled-illustration",
     "name": "Shape-assembled illustration",
     "category": "slop",
-    "description": "A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic."
+    "description": "A large inline SVG that builds a pictorial scene from a pile of primitive shapes reads as placeholder clip art, not illustration. Icons, logos, and data graphics are fine at their scale; a hero-sized visual deserves real artwork, a photograph, or a deliberately drawn graphic.",
+    "severity": "advisory"
   },
   {
     "id": "organic-clip-path",
@@ -88,6 +91,13 @@
     "name": "Raster buried under a wash or opacity",
     "category": "quality",
     "description": "A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file."
+  },
+  {
+    "id": "hard-offset-shadow",
+    "name": "Hard offset shadow",
+    "category": "quality",
+    "description": "A visible, unblurred shadow displaced by at least 4px can belong to an intentional neobrutalist direction. Check whether it fits the intended design; this is a review prompt, not evidence of AI authorship or a request to remove it automatically. Waive intentional uses with data-impeccable-ignore=\"hard-offset-shadow\".",
+    "severity": "advisory"
   },
   {
     "id": "dark-glow",
@@ -141,13 +151,15 @@
     "id": "numbered-section-labels",
     "name": "Tiny numbered section labels",
     "category": "slop",
-    "description": "Small numeric index labels riding next to section headings, repeated section after section, are AI editorial scaffolding — a page numbering its own chapters instead of earning structure. Let hierarchy, content, and rhythm carry the sequence."
+    "description": "Small numeric index labels riding next to section headings, repeated section after section, are AI editorial scaffolding — a page numbering its own chapters instead of earning structure. Let hierarchy, content, and rhythm carry the sequence.",
+    "severity": "advisory"
   },
   {
     "id": "em-dash-overuse",
     "name": "Em-dash overuse",
     "category": "slop",
-    "description": "Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses."
+    "description": "Em-dash saturation in body copy is an AI cadence tell. Advisory only: humans use em-dashes legitimately, so this fires only on saturation — at least 8 em-dashes (— or --) at a density near one per 500 characters of body text — never on a long article that uses a few. Prefer commas, colons, periods, or parentheses.",
+    "severity": "advisory"
   },
   {
     "id": "marketing-buzzword",
@@ -183,13 +195,15 @@
     "id": "script-error",
     "name": "Uncaught script error on load",
     "category": "quality",
-    "description": "A script threw an uncaught exception or failed to parse while the page loaded. Broken JavaScript silently kills reveals, interactions, and dynamic content, and can leave most of a page invisible. Fix the error before judging anything else."
+    "description": "A script threw an uncaught exception or failed to parse while the page loaded. Broken JavaScript silently kills reveals, interactions, and dynamic content, and can leave most of a page invisible. Fix the error before judging anything else.",
+    "severity": "error"
   },
   {
     "id": "content-hidden-at-rest",
     "name": "Content invisible at rest",
     "category": "quality",
-    "description": "A large share of the page text sits at opacity 0 or visibility hidden even after every reveal handler had a chance to run. This is the failed-reveal signature: the content shipped but never becomes visible. Make content visible by default and let JavaScript enhance its entrance instead of gating its existence."
+    "description": "A large share of the page text sits at opacity 0 or visibility hidden even after every reveal handler had a chance to run. This is the failed-reveal signature: the content shipped but never becomes visible. Make content visible by default and let JavaScript enhance its entrance instead of gating its existence.",
+    "severity": "error"
   },
   {
     "id": "edge-flush-cards",
@@ -264,6 +278,20 @@
     "description": "In a column this narrow, justifying without hyphenation stretches the word spaces until vertical rivers of white run down the block. Use text-align: left, widen the measure, or enable hyphens: auto if you must justify. Scripts that justify on a character grid or by elongating glyphs, such as CJK, Thai and Arabic, are not affected and are not reported."
   },
   {
+    "id": "straggler",
+    "name": "Straggler",
+    "category": "quality",
+    "description": "The last line of this paragraph holds one word, which leaves a hole under the block. Set text-wrap: pretty on body copy (Chrome, Safari) to pull a word down beside it. Where a browser ignores it, edit the last sentence or bind the last two words with a no-break space. Keep it if the break is intended.",
+    "severity": "advisory"
+  },
+  {
+    "id": "unbalanced-heading",
+    "name": "Unbalanced heading",
+    "category": "quality",
+    "description": "This heading wraps with its last line far shorter than the line above, often one word alone. Set text-wrap: balance on headings so the lines come out near even, or rewrite it to fit. Keep it if the break carries weight on purpose.",
+    "severity": "advisory"
+  },
+  {
     "id": "tiny-text",
     "name": "Tiny body text",
     "category": "quality",
@@ -303,7 +331,8 @@
     "id": "clipped-overflow-container",
     "name": "Positioned child clipped by overflow container",
     "category": "quality",
-    "description": "A clipping container (overflow hidden or clip) wrapping an absolutely-positioned child cuts off tooltips, menus, and popovers that need to escape. Let the overflow be visible, or move the positioned layer out of the clip."
+    "description": "A clipping container (overflow hidden or clip) wrapping an absolutely-positioned child cuts off tooltips, menus, and popovers that need to escape. Let the overflow be visible, or move the positioned layer out of the clip.",
+    "severity": "advisory"
   },
   {
     "id": "design-system-font",
@@ -315,42 +344,49 @@
     "id": "design-system-color",
     "name": "Color outside DESIGN.md",
     "category": "quality",
-    "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift."
+    "description": "A literal color is outside the DESIGN.md palette and sidecar tonal ramps. This may be legitimate, but it should be an intentional design-system addition rather than drift.",
+    "severity": "advisory"
   },
   {
     "id": "design-system-radius",
     "name": "Radius outside DESIGN.md",
     "category": "quality",
-    "description": "A border-radius value is outside the DESIGN.md rounded scale. Use a documented radius token or update the design system if the new shape is intentional."
+    "description": "A border-radius value is outside the DESIGN.md rounded scale. Use a documented radius token or update the design system if the new shape is intentional.",
+    "severity": "advisory"
   },
   {
     "id": "design-system-font-size",
     "name": "Font size outside DESIGN.md",
     "category": "quality",
-    "description": "A literal font-size is off the type ramp documented in DESIGN.md typography. Use a documented size step or update the design system if the new step is intentional."
+    "description": "A literal font-size is off the type ramp documented in DESIGN.md typography. Use a documented size step or update the design system if the new step is intentional.",
+    "severity": "advisory"
   },
   {
     "id": "gpt-thin-border-wide-shadow",
     "name": "Hairline border with wide shadow",
     "category": "slop",
-    "description": "Every card of this row wears a hairline border paired with a wide, diffuse shadow, which is a recurring generated-UI signature. One floating panel earns both; a whole row wearing them reads as a default nobody chose. Across the row, commit to one: a defined edge or a soft elevation."
+    "description": "Every card of this row wears a hairline border paired with a wide, diffuse shadow, which is a recurring generated-UI signature. One floating panel earns both; a whole row wearing them reads as a default nobody chose. Across the row, commit to one: a defined edge or a soft elevation.",
+    "severity": "advisory"
   },
   {
     "id": "repeating-stripes-gradient",
     "name": "Repeating-gradient stripes",
     "category": "slop",
-    "description": "Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture or leave the surface plain."
+    "description": "Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture or leave the surface plain.",
+    "severity": "advisory"
   },
   {
     "id": "codex-grid-background",
     "name": "Decorative grid-line background",
     "category": "slop",
-    "description": "A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface."
+    "description": "A decorative grid or line-field background drawn with hairline linear-gradient layers tiled by a fixed pixel cell is a recurring generated-UI signature. Reserve grid overlays for actual canvas, map, blueprint, or measurement surfaces; elsewhere use product structure or a plain surface.",
+    "severity": "advisory"
   },
   {
     "id": "theater-slop-phrase",
     "name": "Theater framing copy",
     "category": "slop",
-    "description": "Dismissing something as \"theater\" is a recurring generated-copy tic. Say plainly what the thing does or does not do."
+    "description": "Dismissing something as \"theater\" is a recurring generated-copy tic. Say plainly what the thing does or does not do.",
+    "severity": "advisory"
   }
 ]

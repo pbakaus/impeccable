@@ -130,30 +130,102 @@ pub fn enclosing_css_selector(css_text: &str, index: usize) -> Option<String> {
     let before_open = SELECTOR_COMMENT_RE.replace_all(&css_text[..open], |c: &regex::Captures| {
         " ".repeat(c[0].len())
     });
-    let prev_close = match (
-        before_open.rfind('}'),
-        before_open.rfind(';'),
-    ) {
-        (Some(a), Some(b)) => Some(a.max(b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    };
-    let slice_start = prev_close.map(|p| p + 1).unwrap_or(0);
+    // The selector starts after the last `}`, `;` or `{` before its block:
+    // the first rule inside `@media (...) {` or `@supports (...) {` follows
+    // the at-rule's own brace, not a declaration.
+    // A delimiter in a quoted string (`[data-template*="{"]`) or escaped
+    // (`\{`) bounds nothing.
+    let slice_start = last_unquoted_delimiter(&before_open, b"{};").map(|p| p + 1).unwrap_or(0);
+    // Only a grouping at-rule may enclose the rule. Inside a style rule
+    // (`.card { & > .stripe { … } }`, CSS nesting) the selector means
+    // nothing without its parent, so the match stays unscoped as before.
+    if !enclosed_only_by_at_rules(&before_open[..slice_start]) {
+        return None;
+    }
     let no_comments = SELECTOR_COMMENT_RE.replace_all(&css_text[slice_start..open], "");
     let raw_trim = js::trim(&no_comments);
     let raw = WS_RUN_RE.replace_all(raw_trim, " ").into_owned();
     if raw.is_empty()
         || raw.starts_with('@')
         || raw.as_bytes()[0].is_ascii_digit()
-        || raw.bytes().any(|b| b == b'{' || b == b'}' || b == b'<')
+        || last_unquoted_delimiter(&raw, b"{}<").is_some()
     {
         return None;
     }
-    if KEYFRAME_STEP_RE.is_match(&raw) {
+    if KEYFRAME_STEP_RE.is_match(&raw) || raw.contains('&') {
         return None;
     }
     Some(raw)
+}
+
+/// The byte offset of the last of `delims` in `css` outside quoted strings
+/// and escapes.
+fn last_unquoted_delimiter(css: &str, delims: &[u8]) -> Option<usize> {
+    let bytes = css.as_bytes();
+    let mut quote: Option<u8> = None;
+    let mut last = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' {
+            i += 2;
+            continue;
+        }
+        match quote {
+            // A newline ends an unterminated string in CSS, so one stray
+            // quote cannot swallow the rest of the sheet.
+            Some(q) if b == q || b == b'\n' => quote = None,
+            Some(_) => {}
+            None if b == b'"' || b == b'\'' => quote = Some(b),
+            None if delims.contains(&b) => last = Some(i),
+            None => {}
+        }
+        i += 1;
+    }
+    last
+}
+
+/// Whether every block still open at the end of `css` (comments already
+/// blanked) is a grouping at-rule (`@media`, `@supports`, `@layer`, …):
+/// the header before each unclosed `{` starts with `@`.
+fn enclosed_only_by_at_rules(css: &str) -> bool {
+    let bytes = css.as_bytes();
+    // Each open block as (where its header starts, its `{`).
+    let mut open: Vec<(usize, usize)> = Vec::new();
+    // A brace or semicolon in a quoted string (`content: "{"`, an at-rule
+    // header's `@supports (content: "a;b")`) or escaped (`\{`) opens,
+    // closes and ends nothing.
+    let mut quote: Option<u8> = None;
+    let mut head_start = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\\' {
+            i += 2;
+            continue;
+        }
+        match quote {
+            // A newline ends an unterminated string, as in
+            // [`last_unquoted_delimiter`].
+            Some(q) if b == q || b == b'\n' => quote = None,
+            Some(_) => {}
+            None => match b {
+                b'"' | b'\'' => quote = Some(b),
+                b'{' => {
+                    open.push((head_start, i));
+                    head_start = i + 1;
+                }
+                b'}' => {
+                    open.pop();
+                    head_start = i + 1;
+                }
+                b';' => head_start = i + 1,
+                _ => {}
+            },
+        }
+        i += 1;
+    }
+    open.iter().all(|&(start, brace)| js::trim(&css[start..brace]).starts_with('@'))
 }
 
 // ─── Rule-block helpers ─────────────────────────────────────────────────────
@@ -338,6 +410,311 @@ re!(
     )
 );
 
+re!(KEYFRAME_STEP_BLOCK_RE, r"([^{};]+)\{([^{}]*)\}".to_string());
+re!(
+    TRANSLATE_FN_RE,
+    format!(r"{}(?:x|y|z|3d)?\([^)]*\)", ci("translate"))
+);
+
+/// How far a keyframe step may move its box before the step travels, in px.
+const PULSE_TRAVEL_MIN_PX: f64 = 4.0;
+
+/// A translation component as (px, percent): any zero (`0`, `0px`, `0%`) is
+/// (0, 0), a px / rem / em length converts to px, a percentage is kept as
+/// one, and anything else (`calc()`, a `var()`) is unknown.
+fn translate_component(value: &str) -> Option<(f64, f64)> {
+    let v = js::trim(value);
+    if is_zero_offset(Some(v)) {
+        return Some((0.0, 0.0));
+    }
+    if let Some(n) = v.strip_suffix('%') {
+        let n = js::trim(n);
+        if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'+') {
+            let pct = parse_float(n);
+            return pct.is_finite().then_some((0.0, pct));
+        }
+        return None;
+    }
+    css_length_to_px(v).map(|px| (px, 0.0))
+}
+
+/// One axis of a step's translation: the px and percent parts summed, or
+/// `None` when a part on that axis cannot be read.
+type TranslateAxis = Option<(f64, f64)>;
+
+fn add_axis(axis: &mut TranslateAxis, part: Option<(f64, f64)>) {
+    *axis = match (*axis, part) {
+        (Some((px, pct)), Some((dpx, dpct))) => Some((px + dpx, pct + dpct)),
+        _ => None,
+    };
+}
+
+/// The translation a step declares, per axis (x, y, z): the sum of the
+/// `translate*()` functions in its `transform` plus its `translate`, `none`
+/// or a transform without one being no translation. An axis is unknown when
+/// one of its components cannot be read; the other axes still read, so a
+/// centred float (`translate(-50%, -14px)`) moves on y. `None` when the step
+/// declares neither property.
+fn step_translation(decls: &DeclMap) -> Option<[TranslateAxis; 3]> {
+    let transform = decls.get("transform").map(|v| js::to_lower_case(js::trim(v)));
+    let translate = decls.get("translate").map(|v| js::to_lower_case(js::trim(v)));
+    if transform.is_none() && translate.is_none() {
+        return None;
+    }
+    let mut out: [TranslateAxis; 3] = [Some((0.0, 0.0)); 3];
+    if let Some(t) = &transform {
+        // A matrix carries its translation in its last terms, which this does
+        // not read: every axis is unknown rather than still.
+        if t.contains("matrix") {
+            return Some([None; 3]);
+        }
+        // A scale, rotate, skew or perspective before a translate changes how
+        // far that translate moves the box (`scale(.5) translateY(6px)`
+        // travels 3px), which this does not compute: unknown, not the
+        // declared distance. After the translate it leaves the travel alone.
+        if let Some(first) = TRANSLATE_FN_RE.find(t) {
+            let before = &t[..first.start()];
+            if ["scale", "rotate", "skew", "perspective"].iter().any(|f| before.contains(f)) {
+                return Some([None; 3]);
+            }
+        }
+        for m in TRANSLATE_FN_RE.find_iter(t) {
+            let f = m.as_str();
+            let Some(open) = f.find('(') else { continue };
+            let name = &f[..open];
+            let inner = &f[open + 1..f.len() - 1];
+            // A nested call (`translate(calc(0px), 8px)`) ends the match at
+            // its own `)`, cutting the arguments short: none of them reads.
+            if inner.contains('(') {
+                let axes: &[usize] = match name {
+                    "translatex" => &[0],
+                    "translatey" => &[1],
+                    "translatez" => &[2],
+                    _ => &[0, 1, 2],
+                };
+                for &i in axes {
+                    out[i] = None;
+                }
+                continue;
+            }
+            let args: Vec<&str> = inner.split(',').map(js::trim).collect();
+            let part = |i: usize| args.get(i).map_or(Some((0.0, 0.0)), |a| translate_component(a));
+            match name {
+                "translatex" => add_axis(&mut out[0], part(0)),
+                "translatey" => add_axis(&mut out[1], part(0)),
+                "translatez" => add_axis(&mut out[2], part(0)),
+                _ => {
+                    for (i, axis) in out.iter_mut().enumerate() {
+                        add_axis(axis, part(i));
+                    }
+                }
+            }
+        }
+    }
+    if let Some(t) = translate.filter(|t| t != "none") {
+        for (i, part) in t.split_ascii_whitespace().take(3).enumerate() {
+            add_axis(&mut out[i], translate_component(part));
+        }
+    }
+    Some(out)
+}
+
+/// Whether two steps' readings of one axis travel apart: both read, the
+/// same percentage, and px parts [`PULSE_TRAVEL_MIN_PX`] or more apart.
+fn axis_travels(a: TranslateAxis, b: TranslateAxis) -> bool {
+    match (a, b) {
+        (Some((apx, apct)), Some((bpx, bpct))) => {
+            (apct - bpct).abs() < 1e-9 && (apx - bpx).abs() >= PULSE_TRAVEL_MIN_PX
+        }
+        _ => false,
+    }
+}
+
+/// Whether a keyframes body moves its box or changes its height, read from
+/// the steps that declare it. It moves when two steps' translations, read
+/// in px, differ by [`PULSE_TRAVEL_MIN_PX`] or more on an axis whose
+/// percentage part is the same in both: a float
+/// (imageto3d.studio's `library-node-float`, `transform: none` to
+/// `translateY(-14px)`). A centred ring that repeats `translate(-50%, -50%)`
+/// at every step, a `translateZ(0)` layer hint, a dot that breathes a
+/// pixel up and a typing indicator that bobs 2px do not travel; neither
+/// does a translation that cannot be read (a percentage that changes). It
+/// resizes when two steps declare different `height`s and the same `width`
+/// (or none): a waveform bar (juskoe's `wavePulse`, `height: 4px` to
+/// `16px`). A ripple that grows both sides is a ping, and a step that
+/// declares nothing leaves the reading as it was.
+fn keyframes_move_or_resize(body: &str) -> bool {
+    let mut translations: Vec<[TranslateAxis; 3]> = Vec::new();
+    let mut sizes: Vec<(String, Option<String>)> = Vec::new();
+    // Per step: the offsets, margins and box size it declares.
+    let mut offsets: Vec<Vec<(&'static str, String)>> = Vec::new();
+    for step in KEYFRAME_STEP_BLOCK_RE.captures_iter(body) {
+        let decls = parse_css_decl_block(&step[2]);
+        if let Some(t) = step_translation(&decls) {
+            translations.push(t);
+        }
+        let mut step_offsets: Vec<(&'static str, String)> = Vec::new();
+        for &prop in PULSE_OFFSET_PROPS.iter().chain(["width", "height"].iter()) {
+            if let Some(v) = decls.get(prop) {
+                step_offsets.push((prop, js::to_lower_case(&v.split_ascii_whitespace().collect::<Vec<_>>().join(" "))));
+            }
+        }
+        offsets.push(step_offsets);
+        if let Some(h) = decls.get("height") {
+            let norm = |v: &str| js::to_lower_case(&v.split_ascii_whitespace().collect::<String>());
+            sizes.push((norm(h), decls.get("width").map(|w| norm(w))));
+        }
+    }
+    let travels = translations.iter().any(|a| {
+        translations.iter().any(|b| (0..3).any(|i| axis_travels(a[i], b[i])))
+    });
+    // Two spellings of one length (`8px`, `8.0px`) are one size.
+    let same = |a: &str, b: &str| match (css_length_to_px(a), css_length_to_px(b)) {
+        (Some(x), Some(y)) => (x - y).abs() < 1e-6,
+        _ => a == b,
+    };
+    let same_opt = |a: &Option<String>, b: &Option<String>| match (a, b) {
+        (Some(a), Some(b)) => same(a, b),
+        (None, None) => true,
+        _ => false,
+    };
+    let resizes = sizes.iter().any(|(h, _)| !same(h, &sizes[0].0))
+        && sizes.iter().all(|(_, w)| same_opt(w, &sizes[0].1));
+    // An offset that changes between steps moves the box along its
+    // containing block: zcad.ai's connector dot runs `left: 0px` to
+    // `left: calc(100% - 4px)` (observations-1010 row 11). Two px lengths
+    // under [`PULSE_TRAVEL_MIN_PX`] apart are a breath, not travel; values
+    // that cannot both be read in px travel when they differ. An offset that
+    // changes with the box's size, or with the offset on its opposite side,
+    // keeps a growing dot centred: that is a ripple, not travel.
+    let changed = |a: &[(&'static str, String)], b: &[(&'static str, String)], prop: &str| -> bool {
+        let get = |s: &[(&'static str, String)]| s.iter().find(|(p, _)| *p == prop).map(|(_, v)| v.clone());
+        match (get(a), get(b)) {
+            (Some(va), Some(vb)) => match (offset_px(&va), offset_px(&vb)) {
+                (Some(x), Some(y)) => (x - y).abs() >= PULSE_TRAVEL_MIN_PX,
+                _ => va != vb,
+            },
+            _ => false,
+        }
+    };
+    let offset_travels = offsets.iter().any(|a| {
+        offsets.iter().any(|b| {
+            if changed(a, b, "width") || changed(a, b, "height") {
+                return false;
+            }
+            PULSE_OFFSET_PROPS
+                .iter()
+                .any(|&prop| changed(a, b, prop) && !changed(a, b, pulse_opposite_offset(prop)))
+        })
+    });
+    travels || resizes || offset_travels
+}
+
+/// An offset or margin in px: a length [`css_length_to_px`] reads, or a
+/// bare `0`.
+fn offset_px(v: &str) -> Option<f64> {
+    if is_zero_length(v) {
+        return Some(0.0);
+    }
+    css_length_to_px(v)
+}
+
+/// Whether `v` is a zero in any unit (`0`, `0px`, `0%`, `-0.0em`): zero is
+/// zero whatever its unit, so `left: 0` to `left: 0%` is no move.
+fn is_zero_length(v: &str) -> bool {
+    let v = js::trim(v);
+    let digits = v.trim_start_matches(['-', '+']);
+    let end = digits.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(digits.len());
+    let (number, unit) = digits.split_at(end);
+    !number.is_empty()
+        && number.chars().any(|c| c.is_ascii_digit())
+        && number.chars().all(|c| c == '0' || c == '.')
+        && unit.chars().all(|c| c.is_ascii_alphabetic() || c == '%')
+}
+
+/// The box offsets and margins a keyframe step can move a dot with: one
+/// side each. A shorthand that sets every side (`inset`, `margin`) moves
+/// all four at once, which keeps a dot in place.
+const PULSE_OFFSET_PROPS: [&str; 16] = [
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "inset-inline-start",
+    "inset-inline-end",
+    "inset-block-start",
+    "inset-block-end",
+    "margin-left",
+    "margin-right",
+    "margin-top",
+    "margin-bottom",
+    "margin-inline-start",
+    "margin-inline-end",
+    "margin-block-start",
+    "margin-block-end",
+];
+
+/// The offset on the other side of the box from `prop`.
+fn pulse_opposite_offset(prop: &str) -> &'static str {
+    match prop {
+        "left" => "right",
+        "right" => "left",
+        "top" => "bottom",
+        "bottom" => "top",
+        "inset-inline-start" => "inset-inline-end",
+        "inset-inline-end" => "inset-inline-start",
+        "inset-block-start" => "inset-block-end",
+        "inset-block-end" => "inset-block-start",
+        "margin-left" => "margin-right",
+        "margin-right" => "margin-left",
+        "margin-top" => "margin-bottom",
+        "margin-bottom" => "margin-top",
+        "margin-inline-start" => "margin-inline-end",
+        "margin-inline-end" => "margin-inline-start",
+        "margin-block-start" => "margin-block-end",
+        _ => "margin-block-start",
+    }
+}
+
+re!(
+    SCALE_FN_RE,
+    format!(
+        r"{B}({}(?:{}|{}|{}|3{})?)\(",
+        ci("scale"),
+        ci("x"),
+        ci("y"),
+        ci("z"),
+        ci("d")
+    )
+);
+
+/// Whether every scale the keyframes declare in a `transform` runs along
+/// one axis (all `scaleX()` or all `scaleY()`): an eye that blinks
+/// (looot.ai's `asblink`, `scaleY(1)` to `scaleY(.1)`) or a bar that fills,
+/// not a dot that swells. A body with no scale, or any `scale()`,
+/// `scale3d()` or `scale:` property, is not.
+fn scales_on_one_axis(body: &str) -> bool {
+    let mut axis: Option<String> = None;
+    for step in KEYFRAME_STEP_BLOCK_RE.captures_iter(body) {
+        let decls = parse_css_decl_block(&step[2]);
+        if decls.get("scale").is_some_and(|v| js::trim(v) != "none") {
+            return false;
+        }
+        let Some(t) = decls.get("transform") else { continue };
+        for m in SCALE_FN_RE.captures_iter(t) {
+            let name = js::to_lower_case(&m[1]);
+            if name != "scalex" && name != "scaley" {
+                return false;
+            }
+            match &axis {
+                Some(a) if *a != name => return false,
+                _ => axis = Some(name),
+            }
+        }
+    }
+    axis.is_some()
+}
+
 /// JS: checks.mjs#collectPulseKeyframes (Map name -> pulses?)
 pub fn collect_pulse_keyframes(content: &str) -> JsMap<bool> {
     let mut map: JsMap<bool> = JsMap::new();
@@ -346,9 +723,10 @@ pub fn collect_pulse_keyframes(content: &str) -> JsMap<bool> {
         let after = m.get(0).unwrap().end();
         let (i, closed) = scan_brace_block(content, after);
         let body = brace_body(content, after, i, closed);
-        let pulses = OPACITY_DECL_RE.is_match(body)
+        let pulses = (OPACITY_DECL_RE.is_match(body)
             || BOX_SHADOW_DECL_RE.is_match(body)
-            || TRANSFORM_SCALE_RE.is_match(body);
+            || (TRANSFORM_SCALE_RE.is_match(body) && !scales_on_one_axis(body)))
+            && !keyframes_move_or_resize(body);
         let name = &m[1];
         if !map.has(name) || pulses {
             map.set(name, pulses);

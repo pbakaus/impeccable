@@ -96,6 +96,11 @@ pub fn is_fine_print_dom(dom: &dyn Dom, el: ElId) -> bool {
     text_context::is_fine_print(&DomNode::new(dom, el))
 }
 
+/// Which tier of legal fine print the element's text is in.
+pub fn fine_print_dom(dom: &dyn Dom, el: ElId) -> text_context::FinePrint {
+    text_context::fine_print(&DomNode::new(dom, el))
+}
+
 /// Whether the element's text is a label with no reading job.
 pub fn is_micro_label_dom(dom: &dyn Dom, el: ElId) -> bool {
     text_context::is_micro_label(&DomNode::new(dom, el))

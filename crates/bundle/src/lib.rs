@@ -267,12 +267,16 @@ pub fn check_capture_contract() -> Result<(), String> {
 pub fn registry_json() -> String {
     let rows: Vec<serde_json::Value> = impeccable_core::registry::all_antipatterns()
         .map(|ap| {
-            serde_json::json!({
+            let mut row = serde_json::json!({
                 "id": ap.id,
                 "name": ap.name,
                 "category": ap.category,
                 "description": ap.description,
-            })
+            });
+            if let Some(severity) = ap.severity {
+                row["severity"] = serde_json::json!(severity);
+            }
+            row
         })
         .collect();
     let mut s = serde_json::to_string_pretty(&rows).expect("registry json");
@@ -458,6 +462,8 @@ mod tests {
         let rows: Vec<serde_json::Value> = serde_json::from_str(&json).expect("valid json");
         assert_eq!(rows.len(), impeccable_core::registry::all_antipatterns().count());
         for row in &rows {
+            let ap = impeccable_core::registry::get_antipattern(row["id"].as_str().unwrap()).unwrap();
+            assert_eq!(row.get("severity").and_then(|v| v.as_str()), ap.severity);
             for key in ["id", "name", "category", "description"] {
                 assert!(row.get(key).is_some(), "row missing {key}: {row}");
             }

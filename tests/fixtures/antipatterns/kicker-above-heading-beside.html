@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kicker beside its heading fixture</title>
+<!--
+  observations-1006 row 9. A tracked caps label in a column beside its h2
+  (cronwatch.dev's "RUNS", at the heading's own top) and a caption in the
+  column before the heading that sits below it (pfgc.com) are not above the
+  heading. The same label stacked above the heading is a kicker.
+-->
+<style>
+  body { margin: 0; font-family: Arial, sans-serif; background: #f6f2ec; color: #171411; }
+  .col { display: inline-block; vertical-align: top; width: 600px; padding: 24px; }
+  .label { margin: 0; font-size: 12px; line-height: 16px; letter-spacing: 0.12em; text-transform: uppercase; color: #5b5046; }
+  h2 { margin: 0; font-size: 28px; line-height: 32px; }
+  .stack .label { margin-bottom: 8px; }
+  .row { display: grid; grid-template-columns: 150px 1fr; gap: 40px; margin-top: 48px; }
+  .split { display: grid; grid-template-columns: 200px 1fr; gap: 40px; height: 240px; margin-top: 48px; }
+  .split .figure { display: flex; flex-direction: column; justify-content: flex-end; height: 240px; padding: 16px; box-sizing: border-box; background: #d9cfc2; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <section class="stack" style="margin-top: 48px">
+    <p class="label">Runs</p>
+    <h2>The dashboard, showing a day of six jobs</h2>
+  </section>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <section class="row">
+    <p class="label">Checks</p>
+    <div><h2>It notices what never ran</h2></div>
+  </section>
+  <section class="split">
+    <div class="figure"><div><span class="label">Jamie Guadagnino</span></div></div>
+    <div><div><h2>Developing your future</h2><p>A short quote from the person pictured.</p></div></div>
+  </section>
+</div>
+</body>
+</html>

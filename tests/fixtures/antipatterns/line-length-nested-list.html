@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Line length, a list item heading a nested list</title>
+  <!--
+    Browser-only reads. A list item whose own words head a nested list
+    (github.com's release notes) does not own the nested items' lines: each
+    nested item is measured on its own. The same item whose own words run
+    several long lines above the nested list is still charged.
+  -->
+  <style>
+    body { margin: 0; padding: 32px; font-family: monospace; font-size: 16px; line-height: 24px; color: #1a1a1a; background: #ffffff; }
+    ul.notes { width: 110ch; margin: 0 0 32px; }
+    ul.notes ul { padding-left: 2ch; }
+  </style>
+</head>
+<body>
+  <ul class="notes">
+    <li id="pass-heading-item">Fast Refresh Fixes
+      <ul>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 0, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 1, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 2, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 3, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 4, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 5, keeping state</li>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls in case 6, keeping state</li>
+      </ul>
+    </li>
+    <li id="flag-long-item">This release item explains its change in one long paragraph of its own words before the list of details, running well past the measure a reader can follow, then on for a second line and a third line so that the eye has to track back across the full width every time.
+      <ul>
+        <li>Fix Fast Refresh to find and remount edits to components wrapped behind lazy() calls</li>
+      </ul>
+    </li>
+  </ul>
+</body>
+</html>

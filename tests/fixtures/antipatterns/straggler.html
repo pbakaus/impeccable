@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Straggler fixture (browser-only)</title>
+  <!--
+    straggler reads the rendered lines, so it needs layout: the static engine
+    never reports it. The copy is set in a monospace face on columns sized in
+    `ch`, so every line holds a known number of characters and the breaks
+    land on the same words whatever monospace face the machine has. Each
+    width carries half a character of slack, so a font whose advance rounds up
+    still fits the full lines, and no word fits in half a character.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px 40px; color: #1a1a1a; background: #fff; }
+    h2 { font-size: 14px; line-height: 20px; margin: 32px 0 8px; color: #475569; }
+    .copy { font: 16px/24px ui-monospace, Menlo, Consolas, monospace; margin: 0; padding: 0; }
+    ul.copy { list-style: none; }
+    a { color: inherit; }
+    .pass-pretty-rule { text-wrap: pretty }
+    .pull-quote { text-wrap: pretty }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1200px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+
+    <div class="col" data-col="flag">
+    <!-- FLAG: one word alone on the last line -->
+      <h2>Flag: a paragraph whose last word wraps alone</h2>
+      <p class="copy flag-paragraph" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Flag: a list item whose last word wraps alone</h2>
+      <ul class="copy"><li class="flag-list-item" style="width: 32.5ch">Every invoice exports as a PDF with your logo, your terms, and a link your client can pay it from.</li></ul>
+
+      <h2>Flag: a blockquote whose last word wraps alone</h2>
+      <blockquote class="copy flag-quote" style="width: 37.5ch">Good typography is invisible until it fails, and then the failure is the only thing anyone sees on the page at all.</blockquote>
+
+      <h2>Flag: a figure caption whose last word wraps alone</h2>
+      <figure style="margin: 0"><figcaption class="copy flag-caption" style="width: 32.5ch">Figure 2. Weekly active readers across the first six months after the launch of the new reader.</figcaption></figure>
+
+      <h2>Flag: a straggler in a paragraph with inline links</h2>
+      <p class="copy flag-inline" style="width: 36.5ch">Read the full <a href="#changelog">changelog</a> for every fix in this release, and the <em>migration notes</em> for the two breaking changes.</p>
+
+      <h2>Flag: a centered paragraph whose last word wraps alone</h2>
+      <p class="copy flag-centered" style="width: 39.5ch; text-align: center">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Flag: a right-aligned paragraph whose last word wraps alone</h2>
+      <p class="copy flag-right" style="width: 39.5ch; text-align: right">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <!--
+        Chromium applies pretty, so the rows about it read through the
+        computed style. The dropped-declaration read (#1136, a browser whose
+        CSS.supports('text-wrap', 'pretty') is false) is pinned by the FakeDom
+        tests in line_breaks.rs: no browser the URL engine drives drops it.
+      -->
+      <h2>Flag: a pretty rule elsewhere on the page does not reach this paragraph</h2>
+      <p class="copy flag-pretty-elsewhere" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+    </div>
+
+    <div class="col" data-col="pass">
+    <!-- PASS: the wrap is chosen, the tail is not one word, or the column cannot avoid it -->
+      <h2>Pass: the same paragraph set with text-wrap pretty</h2>
+      <p class="copy pass-pretty" style="width: 39.5ch; text-wrap: pretty">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Pass: the same paragraph set pretty by a style rule</h2>
+      <p class="copy pass-pretty-rule" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Pass: the same paragraph under an ancestor set pretty</h2>
+      <div style="text-wrap: pretty"><p class="copy pass-pretty-ancestor" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p></div>
+
+      <h2>Pass: the same paragraph set with text-wrap balance</h2>
+      <p class="copy pass-balance" style="width: 39.5ch; text-wrap: balance">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Pass: two words on the last line</h2>
+      <p class="copy pass-two-words" style="width: 40.5ch">Line breaks decide how a block of text sits on the page, and two words on the last line read as an ending.</p>
+
+      <h2>Pass: a long last word that fills its line</h2>
+      <p class="copy pass-long-word" style="width: 40.5ch">Every product page in the catalog now ships with internationalization.</p>
+
+      <h2>Pass: a sidebar item too narrow for two words a line</h2>
+      <ul class="copy"><li class="pass-narrow" style="width: 18.5ch">Billing settings and invoice history</li></ul>
+
+      <h2>Pass: a sign-off ended by a break</h2>
+      <p class="copy pass-break" style="width: 39.5ch">Thanks for reading this far, and see you in the next issue of the letter.<br>Sam</p>
+
+      <h2>Pass: a paragraph that ends on an inline icon</h2>
+      <p class="copy pass-inline-icon" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'/%3E" width="16" height="16" alt=""> text.</p>
+
+      <h2>Pass: a one-line paragraph</h2>
+      <p class="copy pass-one-line" style="width: 39.5ch">One line of copy, short of the column.</p>
+    </div>
+
+  </div>
+
+  <div class="col" data-col="pass">
+    <!-- Issue #1073: narrow letters fooled a count of the last line's
+         characters into reading "it fills." as one word (16px Verdana at
+         840px, mid-band of the widths where it misfired). The no-break
+         space keeps the two words on one line in any face, so the row
+         passes on a machine without Verdana too. It sits under the grid:
+         at 840px it would widen the pass column and wrap the flag headings. -->
+    <h2>Pass: two narrow words on a short last line</h2>
+    <p class="pass-narrow-letters" style="width: 840px; font: 16px/1.6 Verdana, sans-serif; margin: 0">Every room has a shape of its own, and the furniture in it slowly bends toward whatever open space it&nbsp;fills.</p>
+  </div>
+</body>
+</html>

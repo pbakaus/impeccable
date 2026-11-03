@@ -202,12 +202,16 @@ pub fn decorative_text_facts(el: &StaticElement<'_>) -> DecorativeTextFacts {
         in_kbd: ancestors_inclusive(el).any(|c| c.tag_lower() == "kbd"),
         font_family: sv(el.style(), "fontFamily").to_string(),
         in_heading,
-        control_label: control.is_some_and(|c| collapsed_text(&c) == text),
+        control_label: control.as_ref().is_some_and(|c| collapsed_text(c) == text),
+        in_control: control.is_some(),
         signature_marked,
         mockup_ancestor,
         picture_ancestor,
         framed_demo: crate::text_context::in_framed_demo(el),
         text,
+        // The static engine reads no layout, so the ghost-wordmark shape,
+        // which needs the type's rendered size and opacity, never applies.
+        ..Default::default()
     }
 }
 

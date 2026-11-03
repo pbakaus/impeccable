@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Low contrast: what the pixel pass reads (browser-only)</title>
+  <!--
+    White copy over a photo the contrast walk cannot read is handed to the
+    pixel pass. Two cases it used to refuse: a soft dark text-shadow halo
+    (the pass hid the halo with the glyphs, most of the clip repainted, and
+    no verdict came back) and a backdrop filter under a fill at 0.8 alpha or
+    more (the pass refused every backdrop filter, and the element pass's
+    verdict stood as advisory). The pixels now score both. The halo twins
+    differ only in the photo: on a dark photo the same copy passes, and the
+    pixels' verdict replaces the element pass's. The glass link sits over a
+    photo half pale and half dark, so only its pixels can say (about 4.1:1).
+    A glow in the ink's own colour and a drop shadow under grey copy are not
+    halos the glyphs are read over: both pass (about 7:1 and 4.6:1).
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    .case { margin: 0 0 32px; }
+    .photo-band { position: relative; width: 560px; height: 120px; background-color: #979797; overflow: hidden; }
+    .photo-band img { pointer-events: none; position: absolute; left: 0; top: 0; width: 560px; height: 120px; }
+    .photo-band .copy { position: relative; padding: 40px 24px; }
+    .photo-band p { margin: 0; font: 400 14px/20px system-ui; color: #fbfaf8; text-shadow: rgba(34, 35, 33, 0.55) 0px 2px 12px; }
+    .photo-band .glass { position: relative; margin: 32px 24px; padding: 16px; background-color: rgba(18, 36, 44, 0.82); backdrop-filter: blur(24px); }
+    .photo-band .glass a { font: 500 13px/20px system-ui; color: rgba(255, 255, 255, 0.55); text-decoration: none; }
+    .dark-ground { background: #0b1020; padding: 24px; }
+    .glow { margin: 0; font: 400 15px/22px system-ui; color: #f472b6; text-shadow: 0 0 4px #f472b6, 0 0 10px #f472b6, 0 0 20px #db2777; }
+    .drop { margin: 0; font: 400 15px/22px system-ui; color: #757575; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="col">
+      <h1>Should flag: the pixels read it, and it fails</h1>
+      <div class="case">
+        <div class="photo-band">
+          <img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGN48+oJVsQwtCQAMMSugUp7Am0AAAAASUVORK5CYII=">
+          <div class="copy"><p id="flag-halo-copy-on-pale-photo">Join the waitlist for early access</p></div>
+        </div>
+      </div>
+      <div class="case">
+        <div class="photo-band">
+          <img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFklEQVR4nGN48+oJHGnomMARw9CSAABhPmhBVs8gXwAAAABJRU5ErkJggg==">
+          <div class="glass"><a id="flag-link-on-near-opaque-glass" href="#fr">Switch to the French edition</a></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <h1>Should pass: the pixels read it, and it passes</h1>
+      <div class="case">
+        <div class="photo-band">
+          <img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGPQ0DHBihiGlgQARosiAbjQvh4AAAAASUVORK5CYII=">
+          <div class="copy"><p id="pass-halo-copy-on-dark-photo">Join the waitlist for later access</p></div>
+        </div>
+      </div>
+      <div class="case dark-ground">
+        <p class="glow" id="pass-neon-glow-in-its-own-colour">Neon pink copy with a layered glow on navy</p>
+      </div>
+      <div class="case">
+        <p class="drop" id="pass-grey-copy-with-a-drop-shadow">Grey body copy with a slightly larger drop shadow, 4.6 to 1 on white.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

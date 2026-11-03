@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/tight-leading-preformatted.html\n  [tight-leading] line-height 1.25x (need >=1.3)\n    → Line height below 1.3x the font size makes multi-line text hard to read. Use 1.5 to 1.7 for body text so lines have room to breathe.\n\n1 anti-pattern found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

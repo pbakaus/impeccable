@@ -6,8 +6,9 @@
 
 ## Build, Test, and Development Commands
 
-- `cargo build --release -p impeccable` - build this checkout's runtime into `target/release/impeccable`.
+- `cargo build --release -p impeccable` - build this checkout's runtime into `target/release/impeccable`. This one binary is also the detector (`impeccable detect`); there is no separate detector binary. Point `IMPECCABLE_BIN` at it.
 - `cargo test --workspace` - run the Rust workspace tests.
+- `bun run test:rust-changed` - run the Rust tests of the crates your change touches (against the merge base with `origin/main`, working tree included) plus every crate that depends on them; `--print` shows the selection, `--base <ref>` changes the base. Full log in `target/test-rust-changed.log`, one summary line on stdout.
 - `bun run build` - source-first build: regenerate `dist/`, derived site assets, and validation output without syncing tracked harness folders.
 - `bun run build:release` - release/distribution build: run the full build and sync tracked root harness folders plus `plugin/`.
 - `bun run rebuild` - clean and rebuild everything from scratch without syncing tracked harness folders.
@@ -24,7 +25,7 @@ Run `bun run build` after changing anything in `skill/`, transformer code, or us
 
 ## Generated Provider Output Policy
 
-The root harness folders (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`, `.dsh/skills/`, `.gemini/skills/`, `.github/skills/`, `.grok/skills/`, `.hermes/skills/`, `.kiro/skills/`, `.opencode/skills/`, `.pi/skills/`, `.qoder/skills/`, `.rovodev/skills/`, `.trae*/skills/`, `.vibe/skills/`) and `plugin/` stay tracked so `main` remains installable for direct GitHub, `npx skills`, and submodule users. They are still generated artifacts.
+The root harness folders (`.agents/skills/`, `.claude/skills/`, `.cursor/skills/`, `.devin/skills/`, `.dsh/skills/`, `.gemini/skills/`, `.github/skills/`, `.grok/skills/`, `.hermes/skills/`, `.kiro/skills/`, `.opencode/skills/`, `.pi/skills/`, `.qoder/skills/`, `.rovodev/skills/`, `.trae*/skills/`, `.vibe/skills/`) and `plugin/` stay tracked so `main` remains installable for direct GitHub, `npx skills`, and submodule users. They are still generated artifacts.
 
 Normal development should be source-first: stage changes in `crates/`, `browser-bundle/`, `skill/`, `scripts/`, `cli/`, `extension/`, and `tests/`; leave generated harness churn unstaged unless the user asked for it. After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR. The two tracked engine assets under `crates/live/assets/` follow the rule-change workflow below instead.
 
@@ -46,7 +47,7 @@ For Rust, follow the surrounding crate's conventions and workspace formatting co
 
 Tests use Bun's test runner plus Node's built-in `--test`. Name tests `*.test.js` or `*.test.mjs` and place new fixtures near the behavior they cover, usually under `tests/fixtures/`. Prefer targeted test runs while iterating, then finish with `bun run test`. If you change generated outputs or provider transforms, verify both source parsing and at least one affected provider path in `dist/`.
 
-For runtime changes under `crates/`, add a failing regression in the affected crate, run its focused tests, then `cargo test --workspace`. Rebuild with `cargo build --release -p impeccable` and run `IMPECCABLE_BIN="$PWD/target/release/impeccable" bun run test` so the oracle exercises the changed source, not an older downloaded release. Review intended oracle changes by hand; never overwrite goldens just to make a regression pass. `tests/oracle/vectors/calls/` contains frozen function-level vectors and must not be regenerated.
+For runtime changes under `crates/`, add a failing regression in the affected crate, run its focused tests (`cargo test -p <crate> <filter>`), then `bun run test:rust-changed`. The whole `cargo test --workspace` takes about 10 minutes on a 10-core laptop, almost all of it in the Chrome-driven `impeccable-browser` tests (about 5.5 min) and the `impeccable` CLI tests (about 2.3 min), against under 2 minutes to compile the workspace from cold; the script skips the crates a change cannot reach, and selects the whole workspace by itself when `Cargo.toml`, `Cargo.lock` or the toolchain moves. CI's `rust` jobs run the whole workspace on every PR that touches Rust. Run any cargo command that takes more than a minute as a background command and wait for its exit notification; do not poll with `sleep` loops or `pgrep -f` (it matches the polling shell's own command line and never exits). An agent that creates a worktree or its own `CARGO_TARGET_DIR` deletes that target dir when it finishes and `git worktree remove`s the worktree: a stale target dir holds 10 to 25 GB, and 330 of them once filled a 2 TB disk. Rebuild with `cargo build --release -p impeccable` and run `IMPECCABLE_BIN="$PWD/target/release/impeccable" bun run test` so the oracle exercises the changed source, not an older downloaded release. Review intended oracle changes by hand; never overwrite goldens just to make a regression pass. `tests/oracle/vectors/calls/` contains frozen function-level vectors and must not be regenerated.
 
 For changes to the live-mode page JS (`skill/scripts/live-browser*.js`) or an `ENGINE_VERSION` bump, also run `bun run test:live-e2e` (kept out of the default suite because it does real `npm install` per fixture and boots framework dev servers). Scope to one fixture with `IMPECCABLE_E2E_ONLY=<fixture-name>` while iterating; pass `IMPECCABLE_E2E_DEBUG=1` for page-DOM and dev-server-log dumps on failure. Schema and authoring guide for new fixtures live in `tests/framework-fixtures/README.md`.
 
@@ -69,6 +70,27 @@ Run `cargo xtask bundle` after rule or browser-bundle changes and commit its two
 Recent history favors short, imperative subjects such as `Fix: ...`, `Add ...`, `Improve ...`, or `Bump ...`. Keep commits focused and explain the user-facing impact when it is not obvious. PRs should summarize what changed, list validation performed, and call out whether generated provider output was intentionally omitted or intentionally refreshed. Include screenshots for visible `site/` changes and mention affected providers when transform behavior changes.
 
 **Do not bump manifest versions or add changelog entries in a feature PR.** Bumping is a release step: a version in a feature branch conflicts with every other open branch, and a changelog entry describes a release that has not happened yet. Land the code; the maintainer bumps `package.json` / `.claude-plugin/plugin.json` / `extension/manifest.json` and writes `site/pages/changelog.astro` when cutting the release (see **Releases**). The only PR that touches a manifest version is one whose purpose is the release itself.
+
+## Reviewing a PR
+
+The in-page bundle, the oracle goldens and the call vectors are marked `-diff` in `.gitattributes`: one bundle line is the whole wasm module, and each golden's output is one escaped JSON string, so their raw diffs run to megabytes. Read the PR's files from a checkout instead of `git show <ref>:<path>` slices, and read the generated files on purpose:
+
+```sh
+gh pr diff <n> --name-only                                   # what changed
+gh pr diff <n> --exclude 'tests/oracle/golden/*' --exclude 'tests/oracle/vectors/*' --exclude 'crates/live/assets/detect-antipatterns-browser.js'
+git fetch origin pull/<n>/head && git worktree add --detach "${TMPDIR:-/tmp}/pr-<n>" FETCH_HEAD   # Read and grep the PR's files here
+git -C "${TMPDIR:-/tmp}/pr-<n>" merge-tree --write-tree --name-only origin/main HEAD   # tree id, then any files that conflict with main
+gh pr checks <n>
+```
+
+`gh pr diff` ignores `.gitattributes`, hence the `--exclude` flags. A `gh` too old for `--exclude` can skip that line and diff in the worktree instead: `git -C "${TMPDIR:-/tmp}/pr-<n>" diff origin/main...HEAD -- . ':!tests/oracle/golden' ':!tests/oracle/vectors' ':!crates/live/assets/detect-antipatterns-browser.js'`. The pathspec matters there too: a local `git diff` honours the attributes of the checked-out tree, so a branch cut before they landed still prints the raw diff. `git grep` reports these files as binary; use `rg` or `git grep -a`. To review a changed golden by hand, decode it on both sides:
+
+```sh
+g='to_entries[]|"== \(.key)\n\(.value|if type=="string" then . else tojson end)"'; f=tests/oracle/golden/<case>.json
+diff <(git show origin/main:$f 2>/dev/null | jq -r "$g") <(git show HEAD:$f | jq -r "$g")   # in the PR worktree; a new case diffs against nothing
+```
+
+Remove the worktree when done (`git worktree remove "${TMPDIR:-/tmp}/pr-<n>"`).
 
 ## Contributing, Issue, and PR Guidelines
 

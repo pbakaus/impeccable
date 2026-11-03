@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --cdp port must be between 1 and 65535; got 70000\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

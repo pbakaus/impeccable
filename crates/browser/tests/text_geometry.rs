@@ -188,6 +188,16 @@ fn the_text_geometry_rules_measure_the_text() {
         "two paragraphs, the list item, the inline prose, and the 8px left gutter of the paragraph \
          that also runs past the right edge: {edges:?}"
     );
+    // observations-1010 row 19: the page-level name passes over a slider
+    // track that runs past both sides of the window, and names the column
+    // whose width cuts the text.
+    let track = findings(&engine, port, "body-text-viewport-edge-track.html", "body-text-viewport-edge");
+    let named: Vec<&str> = track.iter().filter(|(_, sel)| sel == "body").map(|(s, _)| s.as_str()).collect();
+    assert_eq!(named.len(), 1, "{track:?}");
+    assert!(
+        named[0].starts_with("text runs past the right edge of the 1280px viewport and is cut off: div.wide-column reaches "),
+        "{named:?}"
+    );
     let gutter = edges.iter().find(|(_, sel)| sel.contains("flag-gutter-beside-overflow")).unwrap();
     assert!(gutter.0.ends_with("(left 8px)"), "only the gutter side: {gutter:?}");
     assert_eq!(
@@ -259,17 +269,18 @@ fn the_text_geometry_rules_measure_the_text() {
     let edges = findings(&engine, port, "cramped-padding-edges.html", "cramped-padding");
     assert_cases(
         &edges,
-        &["flag-scroll-start", "flag-band-next-differs"],
+        &["flag-scroll-start", "flag-band-next-differs", "flag-component-next-differs"],
         &[
             "pass-scroll-table",
             "pass-ellipsis-panel",
             "pass-same-band",
+            "pass-component-same-band",
             "pass-layer-grid",
             "pass-scaled-chip",
         ],
         "cramped-padding",
     );
-    assert_eq!(edges.len(), 2, "only the two flag cases: {edges:?}");
+    assert_eq!(edges.len(), 3, "only the three flag cases: {edges:?}");
     for chip in ["flag-price-chip", "flag-price-chip-subpixel"] {
         let (snippet, _) = cramped
             .iter()
@@ -297,6 +308,9 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "flag-under-positioned-box",
             "flag-icon-label-crosses-clip",
             "flag-icon-label-in-clip-margin",
+            "flag-pre-unwrapped",
+            "flag-typing-at-rest",
+            "flag-label-past-button",
         ],
         &[
             "pass-ripple",
@@ -309,6 +323,17 @@ fn text_overflow_and_edge_flush_cards_read_the_x_axis() {
             "pass-hover-tooltip",
             "pass-corner-badge",
             "pass-icon-label-below-clip",
+            "pass-pre",
+            "pass-pre-scroll",
+            "pass-typing-opening",
+            "pass-label-in-padding",
+            "pass-terminal-code",
+            "pass-excerpt-code",
+            "pass-chip-free-space",
+            "pass-highlighter-free-space",
+            "pass-padded-pre-clipped",
+            "pass-padded-pre-free-space",
+            "pass-pre-beside-clipped-text",
         ],
         "text-overflow",
     );
@@ -365,11 +390,11 @@ fn viewport_edge_at_phone_width() {
     let (page, edges): (Vec<_>, Vec<_>) = edges.into_iter().partition(|(_, sel)| sel == "body");
     assert_cases(
         &edges,
-        &["flag-phone-8", "flag-phone-11"],
-        &["pass-phone-12", "pass-phone-14", "pass-phone-24", "past-wide-item"],
+        &["flag-phone-8", "flag-phone-11", "flag-header-first-screen"],
+        &["pass-phone-12", "pass-phone-14", "pass-phone-24", "past-wide-item", "pass-site-header"],
         "body-text-viewport-edge",
     );
-    assert_eq!(edges.len(), 2, "{edges:?}");
+    assert_eq!(edges.len(), 3, "{edges:?}");
     assert_eq!(page.len(), 1, "{page:?}");
     assert!(
         page[0].0.starts_with("text runs past the right edge of the 390px viewport and is cut off: ul.wide-list reaches 114px past it")

@@ -3,28 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Consent hiding: a notice the site wrote itself</title>
+  <title>Consent hiding: a cookie notice the site wrote itself</title>
   <style>
-    /* A cookie notice the site wrote itself: generic class names ("cookie",
-       "consent", "banner"), no known vendor. It is part of the site, so the
-       URL engine leaves it on the page: the copy it covers is not scored and
-       its own faint text is. Pinned by crates/browser/tests/consent_hiding.rs. */
     * { box-sizing: border-box; }
     body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
-    .faint { position: absolute; top: 700px; left: 80px; width: 520px; margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
-    .cta { position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px;
-      background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none; }
+    .faint { margin: 0 0 12px; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .body-copy { max-width: 640px; }
+    /* A blueeyes.com.tw-shaped notice (corpus run 1006): the site's own
+       fixed bar, generic names, no dialog role, a translucent dark fill, over
+       the copy at the foot of the first screen. Its text names cookies and it
+       offers a consent choice, so the URL engine hides it and scores the copy
+       under it. Pinned by crates/browser/tests/consent_hiding.rs. */
     .cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; height: 170px; padding: 24px 40px;
-      background: #ffffff; border-top: 1px solid #d0d7de; z-index: 50; }
-    .cookie-banner p { margin: 0 0 12px; max-width: 760px; font-size: 14px; color: #b0b0b0; }
+      background: rgba(0, 0, 0, 0.8); z-index: 9999; }
+    .cookie-banner p { margin: 0 0 12px; max-width: 760px; font-size: 14px; color: #666666; }
   </style>
 </head>
 <body>
   <h1>A page under the site's own cookie notice</h1>
-  <p class="faint" id="covered-copy">Faint copy the site's notice covers.</p>
-  <a href="#" class="cta" id="covered-cta">Start free trial</a>
-  <div class="cookie-banner" id="cookie-consent" data-cookie-consent="true">
-    <p id="notice-text">We use cookies to keep you signed in and to count visits.</p>
+  <p class="body-copy">This page has enough copy of its own to be a page and not a consent wall. It describes a product, its pricing and its support hours, and a visitor reads it once the notice below is out of the way. The notice is the site's own, written without any consent manager's markup.</p>
+  <p class="faint" id="covered-copy" style="position: absolute; top: 700px; left: 80px; width: 520px;">Faint copy the notice covers.</p>
+  <a href="#" id="covered-cta" style="position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px; background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none;">Start free trial</a>
+  <div class="cookie-banner" id="cookieBanner">
+    <p id="notice-text">By clicking Accept you agree to our use of cookies to improve the site. See the <a href="#">privacy policy</a>.</p>
     <button type="button">Accept</button>
   </div>
 </body>

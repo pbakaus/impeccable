@@ -35,7 +35,19 @@ describe('ci-test-plan', () => {
     assert.equal(outputs.live_e2e, 'false');
     assert.equal(outputs.live_e2e_accept_cleanup, 'false');
     assert.equal(outputs.live_svelte_adapter_deepseek, 'false');
+    assert.equal(outputs.new_work_e2e, 'false');
   });
+
+  for (const file of ['ui/component-review/theme.css', 'tests/review-theme.test.mjs']) {
+    it(`runs source-built review browser checks for ${file}`, () => {
+      const outputs = runPlan({ GITHUB_EVENT_NAME: 'pull_request', CI_CHANGED_FILES: file });
+      assert.equal(outputs.new_work_e2e, 'true');
+      const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+      assert.match(workflow, /new_work_e2e:\s*\$\{\{\s*steps\.plan\.outputs\.new_work_e2e\s*\}\}/);
+      const oracle = workflow.split('\n  oracle:')[1].split('\n    steps:')[0];
+      assert.match(oracle, /needs\.changes\.outputs\.new_work_e2e == 'true'/);
+    });
+  }
 
   it('routes extension changes to detector tests only', () => {
     const outputs = runPlan({

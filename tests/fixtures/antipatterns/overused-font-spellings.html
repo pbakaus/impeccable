@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overused font spellings: should flag</title>
+  <!--
+    overused-font looks a face up on its list with spaces, hyphens and
+    underscores ignored. The `geist` npm package registers its face as
+    `GeistSans`, and the product mockups on the same page name it
+    `Geist Sans`. Both are Geist Sans: they are counted as one face and the
+    finding names it once.
+  -->
+  <style>
+    body { margin: 0; padding: 24px 40px; width: 1000px; color: #1a1a1a; background: #fff; font: 16px/24px GeistSans, "GeistSans Fallback", sans-serif; }
+    h1 { font-size: 32px; line-height: 40px; margin: 0 0 16px; }
+    ul { width: 640px; margin: 0 0 24px; padding-left: 20px; }
+    .mock { display: flex; flex-wrap: wrap; gap: 8px; width: 640px; font-family: "Geist Sans", sans-serif; }
+    .mock span { display: block; padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px; line-height: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Flag: one listed face under two spellings</h1>
+  <ul>
+    <li>Feature line 1 set in the package face</li>
+    <li>Feature line 2 set in the package face</li>
+    <li>Feature line 3 set in the package face</li>
+    <li>Feature line 4 set in the package face</li>
+    <li>Feature line 5 set in the package face</li>
+    <li>Feature line 6 set in the package face</li>
+    <li>Feature line 7 set in the package face</li>
+    <li>Feature line 8 set in the package face</li>
+    <li>Feature line 9 set in the package face</li>
+    <li>Feature line 10 set in the package face</li>
+    <li>Feature line 11 set in the package face</li>
+    <li>Feature line 12 set in the package face</li>
+  </ul>
+  <div class="mock">
+    <span>Mock label 1</span>
+    <span>Mock label 2</span>
+    <span>Mock label 3</span>
+    <span>Mock label 4</span>
+    <span>Mock label 5</span>
+    <span>Mock label 6</span>
+    <span>Mock label 7</span>
+    <span>Mock label 8</span>
+    <span>Mock label 9</span>
+    <span>Mock label 10</span>
+  </div>
+</body>
+</html>

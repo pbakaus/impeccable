@@ -28,9 +28,9 @@ Analyze what makes the design feel too intense:
    - What's working? (Don't throw away good ideas)
    - What's the core message? (Preserve what matters)
 
-If any of these are unclear from the codebase, do not guess. STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer.
+If any of these are unclear from the codebase, do not guess. Ask with Codex's structured user-input/question tool when available, or directly in chat if it is not, and wait for the answer before continuing.
 
-**CRITICAL**: "Quieter" doesn't mean boring or generic. It means refined and easier on the eyes. Think luxury, not laziness.
+"Quieter" means refined and easier on the eyes, not generic. Generic quiet looks like gray text on white, one sans at a uniform weight, and a grid of identical cards; restraint still needs a point of view.
 
 ## Plan Refinement
 
@@ -41,7 +41,7 @@ Create a strategy to reduce intensity while maintaining impact:
 - **Simplification approach**: What can be removed entirely?
 - **Sophistication approach**: How can we signal quality through restraint?
 
-**IMPORTANT**: Subtlety requires precision. Quiet without intent collapses to generic.
+Subtlety requires precision. Quiet without intent collapses to generic.
 
 ## Refine the Design
 
@@ -80,7 +80,7 @@ Systematically reduce intensity across these dimensions:
 - **Align to grid**: Bring rogue elements back into systematic alignment
 - **Even out spacing**: Replace extreme spacing variations with consistent rhythm
 
-**NEVER**:
+**Avoid**:
 - Make everything the same size/weight (hierarchy still matters)
 - Remove all color (quiet ≠ grayscale)
 - Eliminate all personality (maintain character through refinement)

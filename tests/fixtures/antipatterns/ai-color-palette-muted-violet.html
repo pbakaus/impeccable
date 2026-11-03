@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ai-color-palette muted violet fixture</title>
+<!--
+  observations-1004 row 24 (v0-memorial): large copy that is not a heading
+  reports violet ink only at HSL saturation 0.3 or more. A muted lavender
+  gray subtitle (#7a6699, saturation 0.2) reads as neutral text; on an h2 it
+  keeps the heading reading.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; background: #ffffff; color: #111111; }
+  .col { display: inline-block; width: 480px; vertical-align: top; }
+  .subtitle-violet { font-size: 20px; color: #7c3aed; }
+  .subtitle-muted { font-size: 20px; color: #7a6699; }
+  .heading-muted { font-size: 24px; color: #7a6699; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <h3>A violet subtitle</h3>
+  <p class="subtitle-violet">Create a memorial page in minutes</p>
+  <h3>A muted violet heading</h3>
+  <h2 class="heading-muted">Remember them together</h2>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <h3>A lavender gray subtitle</h3>
+  <p class="subtitle-muted">Share stories and photos with the people who knew them</p>
+</div>
+</body>
+</html>

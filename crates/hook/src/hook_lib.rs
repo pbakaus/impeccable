@@ -237,12 +237,13 @@ impl<'a> Runtime<'a> {
         html: &'a dyn HtmlEngine,
     ) -> Self {
         let win32 = cfg!(windows);
+        let self_command = self_command_spelling(self_cmd, win32);
         Runtime {
             proc_cwd,
             env,
             impeccable_command,
-            hook_admin_command: format!("{} hooks", quote_command_arg(self_cmd, win32)),
-            self_command: quote_command_arg(self_cmd, win32),
+            hook_admin_command: format!("{self_command} hooks"),
+            self_command,
             html,
             win32,
             canonical_cache: std::cell::RefCell::new(HashMap::new()),
@@ -336,6 +337,26 @@ pub fn resolve_cache_cwd(rt: &Runtime, primary_file: Option<&str>, session_cwd: 
         }
         dir = parent;
     }
+}
+
+/// The Stop event names no file, so the per-edit pass may have keyed this
+/// session's cache to a project root above the session cwd (#1088). Use the
+/// nearest directory, from the session cwd up to (not including) the home
+/// dir, whose cache lists files this session touched; else the session cwd.
+pub fn resolve_stop_cwd(rt: &Runtime, session_cwd: &str, session_id: &str) -> String {
+    let mut dir = session_cwd.to_string();
+    let home = rt.resolve(&[&rt.homedir()]);
+    while dir != home {
+        if !touched_files(&read_cache(&dir), session_id).is_empty() {
+            return dir;
+        }
+        let parent = jsp::dirname(&dir);
+        if parent == dir {
+            break;
+        }
+        dir = parent;
+    }
+    session_cwd.to_string()
 }
 
 /// JS: resolveProjectPlatform(cwd) — `extractPlatform(loadContext(cwd).product)`.
@@ -938,16 +959,21 @@ pub fn split_findings_by_tier(findings: Vec<Finding>) -> (Vec<Finding>, Vec<Find
 /// JS: perEditTieringActive(config, harness) — Claude Code, Codex, and
 /// Grok Build dispatch our Stop hook; Cursor and GitHub Copilot have no
 /// deep pass wired, so deferring for them would silently drop the
-/// non-immediate rules entirely.
+/// non-immediate rules entirely. Cursor's `stop` hook can only answer with a
+/// `followup_message` that Cursor submits as a new user turn, which is not
+/// wired (#1061), so its post-edit hook keeps the full rule set. VS Code's
+/// Copilot extension only honors a blocking Stop reply, and nothing shows its
+/// agent host using Stop output at all (#1249), so it keeps the full set too.
 pub fn per_edit_tiering_active(config: &HookConfig, harness: &str) -> bool {
-    if harness == "cursor" || harness == "github" {
+    if matches!(harness, "cursor" | "github" | "vscode") {
         return false;
     }
     config.per_edit_rules != "all"
 }
 
-/// JS: findingCacheKey(finding)
-pub fn finding_cache_key(f: &Finding) -> String {
+/// JS: findingCacheKey(finding). The pending ack's label for a finding, with
+/// its line; no longer a cache key (see [`finding_cache_keys`]).
+pub fn pending_label(f: &Finding) -> String {
     let line = if f.line.is_nan() { 0.0 } else { f.line };
     let value = extract_finding_ignore_value(f);
     if line > 0.0 && !value.is_empty() {
@@ -959,7 +985,8 @@ pub fn finding_cache_key(f: &Finding) -> String {
     if !value.is_empty() {
         return format!("{}:0:{}", f.antipattern, value);
     }
-    let snippet = slice_prefix(js::trim(&f.snippet), 80);
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
     if snippet.is_empty() {
         format!("{}:0", f.antipattern)
     } else {
@@ -967,7 +994,48 @@ pub fn finding_cache_key(f: &Finding) -> String {
     }
 }
 
-fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
+/// What a finding says, without where it sits: an edit above it must not
+/// make it a new finding.
+fn finding_identity(f: &Finding) -> String {
+    let value = extract_finding_ignore_value(f);
+    if !value.is_empty() {
+        return format!("{}:{}", f.antipattern, value);
+    }
+    // A finding that counts the copies it speaks for is the same finding
+    // when the count moves: one more link wearing a reported colour pair is
+    // not a new finding to repeat.
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
+    if snippet.is_empty() {
+        f.antipattern.to_string()
+    } else {
+        format!("{}:{}", f.antipattern, snippet)
+    }
+}
+
+/// Cache keys, index-aligned with `findings`: identity plus the occurrence
+/// among identical findings, top to bottom (identical findings on one line
+/// are one occurrence). An edit above a finding leaves its key alone, and one
+/// more identical finding on a new line adds exactly one fresh key.
+pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
+    let line = |i: usize| if findings[i].line.is_nan() { 0.0 } else { findings[i].line };
+    let mut order: Vec<usize> = (0..findings.len()).collect();
+    order.sort_by(|&a, &b| line(a).total_cmp(&line(b)).then(a.cmp(&b)));
+    let mut seen: HashMap<String, (usize, Option<f64>)> = HashMap::new();
+    let mut keys = vec![String::new(); findings.len()];
+    for i in order {
+        let identity = finding_identity(&findings[i]);
+        let (n, last) = seen.entry(identity.clone()).or_insert((0, None));
+        if *last != Some(line(i)) {
+            *n += 1;
+            *last = Some(line(i));
+        }
+        keys[i] = format!("{identity}#{n}");
+    }
+    keys
+}
+
+pub fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
     match entry.get("findings") {
         Some(Value::Array(list)) => list.iter().map(js_string).collect(),
         _ => vec![],
@@ -977,6 +1045,7 @@ fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
 /// JS: dedupeAgainstCache(findings, cache, sessionId, filePath)
 pub fn dedupe_against_cache(
     findings: &[Finding],
+    keys: &[String],
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
@@ -987,12 +1056,11 @@ pub fn dedupe_against_cache(
     let entry = ensure_file(cache, session_id, file_path);
     let mut known = known_findings(entry);
     let mut fresh = Vec::new();
-    for f in findings {
-        let key = finding_cache_key(f);
-        if known.contains(&key) {
+    for (f, key) in findings.iter().zip(keys) {
+        if known.contains(key) {
             continue;
         }
-        known.push(key);
+        known.push(key.clone());
         fresh.push(f.clone());
     }
     fresh
@@ -1003,19 +1071,18 @@ pub fn remember_findings(
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
-    findings: &[Finding],
+    keys: &[String],
 ) {
     let entry = ensure_file(cache, session_id, file_path);
-    let mut keys: Vec<String> = Vec::new();
-    for f in findings {
-        let k = finding_cache_key(f);
-        if !keys.contains(&k) {
-            keys.push(k);
+    let mut unique: Vec<String> = Vec::new();
+    for k in keys {
+        if !unique.contains(k) {
+            unique.push(k.clone());
         }
     }
     entry.insert(
         "findings".into(),
-        Value::Array(keys.into_iter().map(Value::String).collect()),
+        Value::Array(unique.into_iter().map(Value::String).collect()),
     );
     ensure_session(cache, session_id).insert("updatedAt".into(), now_value());
 }
@@ -1023,6 +1090,12 @@ pub fn remember_findings(
 // ── rendering ─────────────────────────────────────────────────────────────
 
 /// JS: quoteCommandArg(value)
+/// How printed hook commands spell the engine: the quoted self path, or
+/// `& '<path>'` when it is the Windows `.cmd` launcher (#744).
+pub fn self_command_spelling(self_cmd: &str, win32: bool) -> String {
+    impeccable_common::launcher::with_call_operator(self_cmd, quote_command_arg(self_cmd, win32))
+}
+
 pub fn quote_command_arg(value: &str, win32: bool) -> String {
     let text = js::trim(value);
     if !text.is_empty()
@@ -1040,7 +1113,20 @@ pub fn quote_command_arg(value: &str, win32: bool) -> String {
 
 /// JS: relativize(filePath, cwd)
 pub fn relativize(rt: &Runtime, file_path: &str, cwd: &str) -> String {
-    let rel = rt.relative(cwd, file_path);
+    relativize_from(&rt.proc_cwd, file_path, cwd)
+}
+
+/// Whether `detector.ignoreFiles` waives `file_path`: its path relative to
+/// `cwd` (when inside it) or the path as given matches a glob.
+pub fn is_ignored_file(proc_cwd: &str, file_path: &str, cwd: &str, globs: &[String]) -> bool {
+    matches_any_glob_list(&relativize_from(proc_cwd, file_path, cwd), globs)
+        || matches_any_glob_list(file_path, globs)
+}
+
+/// [`relativize`] for a caller that holds the process cwd instead of a
+/// [`Runtime`].
+fn relativize_from(proc_cwd: &str, file_path: &str, cwd: &str) -> String {
+    let rel = jsp::relative(proc_cwd, cwd, file_path);
     if rel.is_empty() || rel.starts_with("..") {
         return file_path.to_string();
     }
@@ -1541,6 +1627,9 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
 #[derive(Default, Clone)]
 pub struct HookScanOptions {
     pub design_system: Option<Rc<DesignSystem>>,
+    /// `ScanOptions::ignored_linked_stylesheet`, from the hook's
+    /// `detector.ignoreFiles`.
+    pub ignored_linked_stylesheet: Option<Rc<dyn Fn(&str) -> bool>>,
 }
 
 impl HookScanOptions {
@@ -1560,6 +1649,7 @@ impl HookScanOptions {
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
+            ignored_linked_stylesheet: self.ignored_linked_stylesheet.clone(),
         }
     }
 }
@@ -1571,18 +1661,26 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
     }
     HookScanOptions {
         design_system: load_design_system_for_cwd(project_cwd).map(Rc::new),
+        ..HookScanOptions::default()
     }
 }
 
-/// Resolve design rules for the edited workspace without moving hook state.
+/// Resolve design rules for the edited workspace without moving hook state,
+/// and waive the linked stylesheets `detector.ignoreFiles` covers, matched
+/// like the edited file ([`is_ignored_file`]).
 pub fn design_system_options_for_file(
     rt: &Runtime,
     config: &HookConfig,
     project_cwd: &str,
     file_path: &str,
 ) -> HookScanOptions {
+    let ignored_linked_stylesheet: Option<Rc<dyn Fn(&str) -> bool>> = {
+        let (proc_cwd, globs, cwd) =
+            (rt.proc_cwd.clone(), config.ignore_files.clone(), project_cwd.to_string());
+        Some(Rc::new(move |path: &str| is_ignored_file(&proc_cwd, path, &cwd, &globs)))
+    };
     if !config.design_system_enabled {
-        return HookScanOptions::default();
+        return HookScanOptions { ignored_linked_stylesheet, ..HookScanOptions::default() };
     }
     let project = impeccable_context::context::resolve_project(
         project_cwd,
@@ -1598,7 +1696,7 @@ pub fn design_system_options_for_file(
     } else {
         &project.repo_root
     };
-    design_system_options(config, root)
+    HookScanOptions { ignored_linked_stylesheet, ..design_system_options(config, root) }
 }
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`
@@ -1613,6 +1711,7 @@ pub fn detector_detect_text(
         design_system: scan.design_system.as_deref(),
         inline_ignores: true,
         rule_pack: None,
+        tokens: None,
     };
     detect_text(content, file_path, &opts)
 }
@@ -1724,11 +1823,12 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
+        // Hermes' pre_verify plugin hands this same shape to its verify gate.
         if js::trim(text).is_empty() {
             return String::new();
         }
@@ -1742,6 +1842,11 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         );
         inner.insert("additionalContext".into(), Value::String(text.to_string()));
         out.insert("hookSpecificOutput".into(), Value::Object(inner));
+        // VS Code's Copilot extension reads the nested field, its agent host only
+        // the top-level one (#1249).
+        if harness == "vscode" {
+            out.insert("additionalContext".into(), Value::String(text.to_string()));
+        }
     }
     serde_json::to_string(&Value::Object(out)).unwrap_or_default()
 }
@@ -1815,6 +1920,7 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("claude") => return "claude",
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
+        Some("hermes") => return "hermes",
         _ => {}
     }
     if let Some(ev) = event {
@@ -1848,6 +1954,11 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         if str_field(ev, "turn_id").is_some() {
             return "codex";
         }
+    }
+    // The plugin manifest sets this in the handler's `env`, which Grok honors too,
+    // so it ranks below the event shapes above.
+    if rt.env("IMPECCABLE_HOOK_HARNESS") == Some("vscode") {
+        return "vscode";
     }
     "claude"
 }
@@ -1983,6 +2094,39 @@ fn normalize_github_event(
     out
 }
 
+/// VS Code reports edits in its tools' own shapes (#1249): the agent host's
+/// `Edit` carries the patch itself as `tool_input`; the Copilot extension's tools
+/// take `filePath`, `replacements[].filePath`, or a patch under `input`. Patches go
+/// through the `apply_patch` path, which handles several files.
+fn normalize_vscode_event(event: &Map<String, Value>) -> Map<String, Value> {
+    let raw = event.get("tool_input");
+    let input = raw.and_then(Value::as_object);
+    let replaced = input.and_then(|o| o.get("replacements")).and_then(Value::as_array).map(|edits| {
+        edits
+            .iter()
+            .filter_map(|edit| edit.get("filePath").and_then(Value::as_str))
+            .map(|path| format!("*** Update File: {path}\n"))
+            .collect::<String>()
+    });
+    let patch = if looks_like_apply_patch(raw) {
+        Some(apply_patch_text(raw))
+    } else if let Some(patch) = input.and_then(|o| o.get("input")).filter(|v| looks_like_apply_patch(Some(v))) {
+        Some(apply_patch_text(Some(patch)))
+    } else {
+        replaced
+    };
+    let mut out = event.clone();
+    let mut tool_input = input.cloned().unwrap_or_default();
+    if let Some(patch) = patch {
+        tool_input.insert("command".into(), Value::String(patch));
+        out.insert("tool_name".into(), Value::String("apply_patch".to_string()));
+    } else if let Some(path) = tool_input.get("filePath").cloned() {
+        tool_input.insert("file_path".into(), path);
+    }
+    out.insert("tool_input".into(), Value::Object(tool_input));
+    out
+}
+
 /// JS: hook-lib.mjs#normalizeGrokEvent — Grok Build 1.0.5 (captured
 /// 2026-08-24) sends camelCase `toolName` / `toolInput` / `sessionId` /
 /// `stopHookActive`, plus `cwd` alongside a trailing-slashed
@@ -2051,6 +2195,9 @@ pub fn normalize_hook_event(
     }
     if harness == "grok" {
         return normalize_grok_event(rt, event, project_cwd);
+    }
+    if harness == "vscode" {
+        return normalize_vscode_event(event);
     }
     if harness != "cursor" {
         return event.clone();

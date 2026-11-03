@@ -78,7 +78,7 @@ function createVisualContrast(IO) {
     if (!img) return core('vc_css_url_no_image', IO.handle(node), IO.handle(el), plan.size, plan.position);
     const src = await core('vc_css_url_source_point', IO.handle(node), IO.handle(el), img.w, img.h, plan.size, plan.position, point.x, point.y);
     if (!src.point) return src.sample;
-    return core('vc_css_url_finish', __j(await sampleDrawablePixel(img.ref, [img.w, img.h], src.point)));
+    return core('vc_css_url_finish', IO.handle(node), __j(await sampleDrawablePixel(img.ref, [img.w, img.h], src.point)));
   }
 
   async function sampleImageElement(imgNode, point) {

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --github annotates scan findings and cannot be used with --list-rules\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

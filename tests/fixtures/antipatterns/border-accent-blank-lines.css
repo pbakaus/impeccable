@@ -1,0 +1,72 @@
+/*
+ * A top or bottom accent of 3px or more is flagged when a radius declaration
+ * styles the same element. The answer comes from which rules style the
+ * element, never from how many lines sit between them, so blank lines change
+ * nothing. Every case has its own selector and accent width, so each finding
+ * attributes to one case.
+ */
+
+/* ── FLAG: the radius rule follows the accent rule directly ── */
+.near-card { border-bottom: 3px solid #d0342c; }
+.near-card { border-radius: 12px; }
+
+/* ── FLAG: the same pair with five blank lines between the rules ── */
+.far-card { border-bottom: 4px solid #d0342c; }
+
+
+
+
+
+.far-card { border-radius: 12px; }
+
+/* ── FLAG: one block, the radius several lines below the accent ── */
+.long-card {
+  border-bottom: 5px solid #d0342c;
+  color: #1f2933;
+  padding: 16px;
+  margin: 0;
+  background: #ffffff;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+/* ── FLAG: the radius sits in a media query on the same selector ── */
+.media-card { border-bottom: 6px solid #d0342c; }
+@media (min-width: 40em) {
+  .media-card { border-radius: 12px; }
+}
+
+/* ── FLAG: a pseudo-element's own rules, split across blank lines ── */
+.split-tab::after { border-top: 9px solid #d0342c; }
+
+
+
+
+
+.split-tab::after { border-radius: 12px; }
+
+/* ── PASS: the radius is on another selector, on the same line ── */
+.tabs-line { border-bottom: 7px solid #d0342c; } .zoom-line { border-radius: 12px; }
+
+/* ── PASS: the radius is on another selector, across blank lines ── */
+.tabs-gap { border-bottom: 8px solid #d0342c; }
+
+
+
+
+
+.zoom-gap { border-radius: 12px; }
+
+/* ── PASS: a custom property only names a value ── */
+.token-card { --token-card-radius: 12px; border-bottom: 10px solid #d0342c; }
+
+/* ── PASS: a mixin might carry a radius, but does not assert one ── */
+.apply-card { @apply rounded-lg; border-bottom: 11px solid #d0342c; }
+
+/* ── PASS: the radius rounds a descendant, not the accented box ── */
+.list-card { border-bottom: 12px solid #d0342c; }
+.list-card .title { border-radius: 12px; }
+
+/* ── PASS: the radius rounds a pseudo-element, another box ── */
+.pseudo-card { border-bottom: 13px solid #d0342c; }
+.pseudo-card::after { border-radius: 12px; }

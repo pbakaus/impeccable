@@ -132,23 +132,93 @@ fn codex_gets_command_windows_sibling_pointing_at_cmd_shim() {
 }
 
 #[test]
-fn cursor_runs_hook_before_edit() {
-    let bundle = json!({ "version": 1, "hooks": { "preToolUse": [{ "command": "node \".cursor/skills/impeccable/scripts/hook-before-edit.mjs\"", "timeout": 5 }] } });
+fn cursor_runs_the_post_edit_hook() {
+    let bundle = json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook", "matcher": "^Write$", "timeout": 5 }] } });
     let out = rewrite_hook_commands_for_platform(&bundle, ".cursor", "/proj", false, false);
-    assert_eq!(
-        out["hooks"]["preToolUse"][0]["command"],
-        "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit"
-    );
-    assert!(out["hooks"]["preToolUse"][0].get("commandWindows").is_none());
+    assert_eq!(out, bundle);
+    assert!(out["hooks"]["postToolUse"][0].get("commandWindows").is_none());
+}
+
+const CURSOR_POST_EDIT: &str = "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook";
+
+#[test]
+fn repair_moves_the_retired_cursor_gate_in_both_spellings() {
+    for gate in [
+        "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit",
+        "node \".cursor/skills/impeccable/scripts/hook-before-edit.mjs\"",
+    ] {
+        let home = tmp_dir("cursor-gate-home").to_string_lossy().to_string();
+        let proj = tmp_dir("cursor-gate-proj").to_string_lossy().to_string();
+        let sys = sys_with_home(&home);
+        let manifest = format!("{proj}/.cursor/hooks.json");
+        write(&manifest, &json!({ "version": 1, "hooks": {
+            "preToolUse": [{ "command": "./audit.sh", "matcher": "Shell" }, { "command": gate, "timeout": 5 }],
+        } }).to_string());
+
+        assert_eq!(repair_stale_hook_manifests(&sys, &proj, &[".cursor"], None).unwrap(), [".cursor"], "{gate}");
+
+        let after: Value = serde_json::from_str(&read(&manifest)).unwrap();
+        assert_eq!(after, json!({ "version": 1, "hooks": {
+            "preToolUse": [{ "command": "./audit.sh", "matcher": "Shell" }],
+            "postToolUse": [{ "command": CURSOR_POST_EDIT, "matcher": "^Write$", "timeout": 5 }],
+        } }), "{gate}");
+        // Idempotent.
+        assert!(repair_stale_hook_manifests(&sys, &proj, &[".cursor"], None).unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&proj);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 #[test]
-fn github_manifests_pass_through_and_grok_is_rewritten() {
-    // .github stays untouched: its committed manifest carries a portable
-    // `$(git rev-parse ...)` command that must never become machine-local.
+fn install_from_an_older_bundle_never_runs_the_post_edit_verb_before_the_edit() {
+    let dir = tmp_dir("cursor-old-bundle");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let project = jsp::join(&[&root, "project"]);
+    write(&jsp::join(&[&bundle, ".cursor", "hooks.json"]), &json!({ "version": 1, "hooks": { "preToolUse": [{
+        "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit",
+        "timeout": 5,
+    }] } }).to_string());
+    let sys = sys_with_home("/nonexistent-home");
+
+    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, None, None).unwrap();
+
+    let after: Value = serde_json::from_str(&read(&jsp::join(&[&project, ".cursor", "hooks.json"]))).unwrap();
+    assert_eq!(after, json!({ "version": 1, "hooks": {
+        "postToolUse": [{ "command": CURSOR_POST_EDIT, "matcher": "^Write$", "timeout": 5 }],
+    } }));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+const GITHUB_PORTABLE: &str = "[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
+
+fn github_bundle_manifest() -> Value {
+    json!({ "version": 1, "hooks": { "postToolUse": [{ "type": "command", "matcher": "edit|create|apply_patch", "bash": GITHUB_PORTABLE, "timeoutSec": 5 }] } })
+}
+
+#[test]
+fn github_project_manifest_stays_portable_and_global_install_uses_home() {
+    // Project installs keep the committed `$(git rev-parse ...)` form.
     let bundle = json!({ "version": 1, "hooks": { "postToolUse": [{ "type": "command", "bash": "[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook" }] } });
-    assert_eq!(rewrite_hook_commands_for_platform(&bundle, ".github", "/proj", true, false), bundle);
+    assert_eq!(rewrite_hook_commands_for_platform(&bundle, ".github", "/proj", false, false), bundle);
+    // A global install still writes the manifest into the project, so its
+    // launcher must resolve from the user profile instead of the repository.
+    let global = rewrite_hook_commands_for_platform(&bundle, ".github", "/home/u", true, false);
+    assert_eq!(
+        global["hooks"]["postToolUse"][0]["bash"],
+        "[ ! -f \"$HOME/.github/skills/impeccable/scripts/impeccable\" ] || \"$HOME/.github/skills/impeccable/scripts/impeccable\" hook"
+    );
+    let windows = rewrite_hook_commands_for_platform(&bundle, ".github", r"C:\Users\u", true, true);
+    assert_eq!(
+        windows["hooks"]["postToolUse"][0]["bash"],
+        "[ ! -f 'C:/Users/u/.github/skills/impeccable/scripts/impeccable' ] || 'C:/Users/u/.github/skills/impeccable/scripts/impeccable' hook"
+    );
+    assert!(!windows["hooks"]["postToolUse"][0]["bash"].as_str().unwrap().contains("$HOME"));
     assert!(value_has_impeccable_hook_marker(&bundle));
+}
+
+#[test]
+fn grok_manifest_is_rewritten() {
     // .grok is rewritten like the other command-hook providers (upstream
     // 49571365, #642): a global install must not leave the bundled
     // project-relative path behind.
@@ -184,6 +254,27 @@ fn github_manifests_pass_through_and_grok_is_rewritten() {
     );
 }
 
+/// Pipes the probe event to a hook shell and returns its exit code. A shell
+/// that kept stdin from the shim would leave it reading forever. The bound only
+/// has to tell that from a slow start: Windows PowerShell has taken over 30 s
+/// to start on a cold runner.
+#[cfg(windows)]
+fn probe_and_wait(mut child: std::process::Child, at: &str) -> Option<i32> {
+    use std::io::Write;
+    let _ = child.stdin.take().unwrap().write_all(b"{\"probe\":1}\n");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status.code();
+        }
+        if std::time::Instant::now() > deadline {
+            let _ = child.kill();
+            panic!("timed out: {at}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 /// The Windows form only counts if the shells the harnesses hand it to run it
 /// (#848, #859), so spawn it the way they do: PowerShell 5.1 and 7 with
 /// `-Command` (Grok, Codex), Git Bash with MSYS path conversion off (Grok),
@@ -192,7 +283,6 @@ fn github_manifests_pass_through_and_grok_is_rewritten() {
 #[cfg(windows)]
 #[test]
 fn windows_form_runs_the_shim_in_each_harness_shell() {
-    use std::io::Write;
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
@@ -267,26 +357,12 @@ fn windows_form_runs_the_shim_in_each_harness_shell() {
                 let _ = std::fs::remove_file(&seen);
                 let at = format!("{} absolute={absolute} present={present}: {line}", shell.name);
                 let spawned = (shell.spawn)(line).current_dir(&root).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
-                let mut child = match spawned {
+                let child = match spawned {
                     Ok(child) => child,
                     Err(_) if shell.optional && std::env::var_os("CI").is_none() => continue,
                     Err(e) => panic!("{at}: {e}"),
                 };
-                let _ = child.stdin.take().unwrap().write_all(b"{\"probe\":1}\n");
-                // A shell that kept stdin from the shim would leave it reading
-                // forever. The bound only has to tell that from a slow start:
-                // Windows PowerShell has taken over 30 s to start on a cold runner.
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-                let code = loop {
-                    if let Some(status) = child.try_wait().unwrap() {
-                        break status.code();
-                    }
-                    if std::time::Instant::now() > deadline {
-                        let _ = child.kill();
-                        panic!("timed out: {at}");
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                };
+                let code = probe_and_wait(child, &at);
                 if present && shell.exit.is_some() {
                     assert_eq!(std::fs::read_to_string(&seen).unwrap_or_default().trim(), "{\"probe\":1}", "{at}");
                     assert_eq!(code, shell.exit, "{at}");
@@ -299,6 +375,90 @@ fn windows_form_runs_the_shim_in_each_harness_shell() {
         }
     }
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// VS Code Copilot Chat loads `plugin/hooks/hooks.json` and, on Windows, takes
+/// each handler's `windows` string over `command` (#1249). Apply its
+/// `${CLAUDE_PLUGIN_ROOT}` substitution (a plain replace, or a single-quoted path
+/// when the root has a space) and run the tracked line the way each of its
+/// runners does: PowerShell in the Copilot extension's HookExecutor, and
+/// `cmd.exe /c` with escaped arguments in the agent host.
+#[cfg(windows)]
+#[test]
+fn plugin_windows_form_runs_under_vscode_hook_runners() {
+    use std::process::{Command, Stdio};
+
+    fn hook_executor(line: &str) -> Command {
+        let mut c = Command::new("powershell.exe");
+        c.args(["-ExecutionPolicy", "Bypass", "-NoProfile", "-NoLogo", "-Command", line]);
+        c
+    }
+    fn agent_host(line: &str) -> Command {
+        let mut c = Command::new("cmd.exe");
+        c.args(["/c", line]);
+        c
+    }
+    let runners: [(&str, fn(&str) -> Command); 2] = [("HookExecutor", hook_executor), ("agent host", agent_host)];
+
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../plugin/hooks/hooks.json")).unwrap(),
+    )
+    .unwrap();
+    let template = manifest["hooks"]["Stop"][0]["hooks"][0]["windows"].as_str().unwrap();
+    let token = "${CLAUDE_PLUGIN_ROOT}";
+    // Not temp_dir(): a CI runner's is 8.3-shortened, and VS Code quotes a `~`.
+    let base = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    for dir in ["imp-vscode-", "imp vscode "] {
+        let root = base.join(format!("{dir}{}", std::process::id()));
+        let root_str = root.to_str().unwrap();
+        let quoted = !root_str.chars().all(|c| c.is_ascii_alphanumeric() || "_./\\:-".contains(c));
+        if dir == "imp-vscode-" && quoted {
+            eprintln!("skipping the bare-path case: {root_str} is not space-free");
+            continue;
+        }
+        let line = if !quoted {
+            template.replace(token, root_str)
+        } else {
+            template
+                .split(' ')
+                .map(|word| if word.starts_with(token) { format!("'{}'", word.replace(token, root_str)) } else { word.to_string() })
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let scripts = root.join("skills").join("impeccable").join("scripts");
+        let seen = scripts.join("seen-hook.txt");
+        std::fs::create_dir_all(&root).unwrap();
+        for present in [false, true] {
+            if present {
+                std::fs::create_dir_all(&scripts).unwrap();
+                std::fs::write(scripts.join("impeccable.cmd"), "@echo off\r\nfindstr \"^\" > \"%~dp0seen-%1.txt\"\r\nexit /b 0\r\n").unwrap();
+            }
+            for (runner, spawn) in &runners {
+                let _ = std::fs::remove_file(&seen);
+                let at = format!("{runner} present={present}: {line}");
+                let child = spawn(&line)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap_or_else(|e| panic!("{at}: {e}"));
+                let code = probe_and_wait(child, &at);
+                // cmd.exe does not read single quotes, so a root VS Code has to quote
+                // stays out of this runner's reach: a known gap, not a hang.
+                if quoted && *runner == "agent host" {
+                    assert!(!seen.exists(), "{at}");
+                    continue;
+                }
+                assert_eq!(code, Some(0), "{at}");
+                if present {
+                    assert_eq!(std::fs::read_to_string(&seen).unwrap_or_default().trim(), "{\"probe\":1}", "{at}");
+                } else {
+                    assert!(!seen.exists(), "{at}");
+                }
+            }
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[test]
@@ -641,5 +801,85 @@ fn user_scope_keeps_project_hook_when_bundle_has_no_replacement() {
     assert!(written.is_empty());
     assert!(std::path::Path::new(&project_manifest).exists());
     assert!(!std::path::Path::new(&jsp::join(&[&home, ".claude", "settings.json"])).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn user_scope_install_reports_each_manifest_path_it_wrote() {
+    // #1190: the success line named provider dirs, hiding that Codex and Grok
+    // manifests land in the project while the Claude hook lands in home.
+    let dir = tmp_dir("user-scope-hook-paths");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let home = jsp::join(&[&root, "home"]);
+    let project = jsp::join(&[&root, "project"]);
+    write(&jsp::join(&[&bundle, ".claude", "settings.json"]), &claude_bundle_manifest().to_string());
+    write(&jsp::join(&[&bundle, ".codex", "hooks.json"]), &claude_bundle_manifest().to_string());
+    write(&jsp::join(&[&bundle, ".grok", "hooks", "impeccable.json"]), &claude_bundle_manifest().to_string());
+    std::fs::create_dir_all(&project).unwrap();
+    // Windows reads home from USERPROFILE, so set both for the scope check.
+    let mut env = HashMap::new();
+    env.insert("HOME".to_string(), home.clone());
+    env.insert("USERPROFILE".to_string(), home.clone());
+    let sys = Sys::new(env, home.clone());
+
+    let written = copy_provider_hooks(&sys, &bundle, &project, &[".claude", ".agents", ".grok"], false, Some(&home), Some(&project)).unwrap();
+
+    assert_eq!(
+        written,
+        [
+            jsp::join(&[&home, ".claude", "settings.json"]),
+            jsp::join(&[&project, ".codex", "hooks.json"]),
+            jsp::join(&[&project, ".grok", "hooks", "impeccable.json"]),
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
+    // #1098: a global install wrote the portable project form into the
+    // project's manifest, naming `.github/skills/...` in a project that has
+    // no Copilot skill, so the hook never fired.
+    let dir = tmp_dir("github-user-hook");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let home = jsp::join(&[&root, "home"]);
+    let project = jsp::join(&[&root, "project"]);
+    write(&jsp::join(&[&bundle, ".github", "hooks", "impeccable.json"]), &github_bundle_manifest().to_string());
+    write(&skill_launcher(&home, ".github"), "#!/bin/sh\n");
+    std::fs::create_dir_all(&project).unwrap();
+    let sys = sys_with_home(&home);
+    let manifest = jsp::join(&[&project, ".github", "hooks", "impeccable.json"]);
+
+    // An older global install left the portable form behind: not installed.
+    write(&manifest, &github_bundle_manifest().to_string());
+    assert!(hook_installed_for_provider(&sys, &project, ".github"));
+    assert!(!hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", false));
+
+    let written = copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
+    assert_eq!(written, [manifest.clone()]);
+    let after: Value = serde_json::from_str(&read(&manifest)).unwrap();
+    let gp = skill_launcher(&home, ".github");
+    let expected = if cfg!(windows) {
+        let w = gp.replace('\\', "/");
+        format!("[ ! -f '{w}' ] || '{w}' hook")
+    } else {
+        "[ ! -f \"$HOME/.github/skills/impeccable/scripts/impeccable\" ] || \"$HOME/.github/skills/impeccable/scripts/impeccable\" hook".to_string()
+    };
+    assert_eq!(after["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
+    assert_eq!(after["hooks"]["postToolUse"][0]["bash"], Value::String(expected));
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
+
+    // A project that ships its own Copilot skill keeps the committed,
+    // portable manifest even when the user installs globally.
+    write(&skill_launcher(&project, ".github"), "#!/bin/sh\n");
+    write(&manifest, &github_bundle_manifest().to_string());
+    assert!(hook_installed_for_provider_at_scope(&sys, &project, ".github", true));
+    copy_provider_hooks(&sys, &bundle, &project, &[".github"], false, Some(&home), Some(&project)).unwrap();
+    let kept: Value = serde_json::from_str(&read(&manifest)).unwrap();
+    assert_eq!(kept["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
+    assert_eq!(kept["hooks"]["postToolUse"][0]["bash"], GITHUB_PORTABLE);
     let _ = std::fs::remove_dir_all(&dir);
 }

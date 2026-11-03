@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>undersized-ui-text button-class fixture</title>
+<!--
+  observations-1004 row 14 (smartbi.ca): a span whose class names a button
+  is drawn as one, so its 10px label is functional text at any length and
+  reports here, not as 10px body text under tiny-text. The class is read as a
+  token (btn, or a name ending -btn / _btn) on the text's box or a box no
+  bigger than one control: a wrapper of buttons and copy (hero-btns) names no
+  button, so its prose stays tiny-text, and fine print (here a terms note;
+  a legal block reports no tiny-text at all) stays tiny-text's
+  advisory (r5-p27).
+  Explicit pixel sizes: the static engine does no layout.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; }
+  .col { display: inline-block; width: 480px; vertical-align: top; }
+  .demo__btn { display: inline-block; font-size: 10px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: #ffe3d3; color: #5a2200; }
+  .note { font-size: 11.5px; width: 360px; }
+  .offer-terms { font-size: 9px; width: 360px; }
+  .demo__btn--big { display: inline-block; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: #ffe3d3; color: #5a2200; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <h3>A 10px label on a box drawn as a button</h3>
+  <span class="demo__btn">View the full analysis</span>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <h3>The same label at 12px</h3>
+  <span class="demo__btn--big">View the full analysis</span>
+  <h3>Copy in a wrapper of buttons (tiny-text reports these)</h3>
+  <div class="hero-btns btn-group">
+    <a class="btn" href="#start">Start free</a>
+    <p class="note">Free for individual developers working on open source projects, with fair use limits.</p>
+    <p class="offer-terms">*Offer valid for new customers only. Terms and conditions apply to every plan.</p>
+  </div>
+</div>
+</body>
+</html>

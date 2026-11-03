@@ -22,7 +22,8 @@ ENGINE_VERSION          which engine release the launcher / npm shim download
 browser-bundle/         the page JS the in-page bundle is built from
 crates/
   cli          the `impeccable` binary: verb router, exit codes
-  common       Io handle (stdout/stderr/stdin/env/cwd), path + process helpers
+  common       Io handle (stdout/stderr/stdin/env/cwd), path + process helpers,
+               the HTTP/1.1 server core (`http`) behind every local server
   context      context, doctor, staleness, signals, concept-seed, pin, ...
   hook         the design hook (hook, hook-before-edit, hook-admin)
   live         live mode: server, wrap, accept, manual edits, Svelte/Vue
@@ -65,6 +66,16 @@ release there; `IMPECCABLE_BIN=target/release/impeccable bun run fetch:engine`
 copies a local build), then `target/release/impeccable`, so a plain
 `cargo build --release -p impeccable` is enough.
 
+Every local server the engine runs (`live-server`, the `serve-question`
+decision page, `component-review serve`) is built on `impeccable_common::http`:
+a `TcpListener`, one thread per connection, request parsing with a body cap,
+and responses that close their connection. The live server drives connections
+itself (turnstile ordering, SSE, parked polls); the other two take requests one
+at a time from `SerialServer`, so their handlers stay single-threaded while no
+connection waits on another to be read. That replaced tiny_http, whose 0.12
+pool could leave part of a browser's connection burst unanswered (#1071). Add
+new servers on the same core rather than another HTTP crate.
+
 The frozen function-level vectors in `tests/oracle/vectors/calls/` replay
 through `impeccable_core::vectors::call` (`cargo test -p impeccable-core`),
 which is the union of foundation's dispatch arms and the core's.
@@ -85,7 +96,8 @@ The same rules that run natively run in a page, compiled to WebAssembly.
    generated files. `crates/live/src/browser_assets.rs` embeds the bundle with
    `include_str!` and the live server hands it to the browser as `/detect.js`,
    so the binary has to carry it. `antipatterns.json` is the registry
-   (`[{ id, name, category, description }]`) that a consumer working from a
+   (`[{ id, name, category, description }]`, plus `severity` on a row that
+   declares one, such as `"advisory"`) that a consumer working from a
    source checkout or a repo tarball reads without a Rust toolchain, since
    `extension/detector/` is gitignored; impeccable.style counts and renders
    the rules from it.
@@ -243,7 +255,10 @@ Two release kinds touch the runtime, in this order:
    pushes; `.github/workflows/release-engine.yml` builds the five targets and
    publishes the binaries with `.sha256` sidecars. The launcher, the npm shim
    and `impeccable install` download from
-   `github.com/pbakaus/impeccable/releases/download/engine-v<X>/`.
+   `github.com/pbakaus/impeccable/releases/download/engine-v<X>/` and verify
+   each binary against `skill/scripts/engine-checksums.txt`, never the
+   sidecar. After the release, `node scripts/check-engine-release.mjs --record`
+   rewrites that file; commit it with the `ENGINE_VERSION` bump.
 2. **npm platform packages**, then the **skill** and **CLI** releases, which
    `scripts/check-engine-release.mjs` gates on the engine release.
 

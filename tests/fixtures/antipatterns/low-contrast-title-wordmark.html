@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta property="og:site_name" content="Northwind" />
+  <title>Pricing | Northwind</title>
+  <!--
+    The site's name set huge and faint is a decorative wordmark and reports
+    as advisory (browser-only). The page's own part of the title, "Pricing",
+    set the same way is a faint heading a visitor is meant to read, and
+    reports as a warning: only the part that names the site (its
+    og:site_name, its host name) makes a wordmark.
+  -->
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; background: #ffffff; }
+    main { width: 1200px; margin: 0 auto; display: flex; gap: 48px; padding: 32px 0; }
+    .col { width: 560px; }
+    h1 { font-size: 28px; line-height: 36px; margin: 0 0 16px; }
+    .case { margin: 0 0 32px; }
+    .ghost { display: block; font: 700 100px/1 system-ui; color: rgba(0, 0, 0, 0.12); white-space: nowrap; }
+    .ghost.name { color: rgba(0, 0, 0, 0.08); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="col">
+      <h1>Should flag</h1>
+      <div class="case"><span class="ghost" id="flag-faint-page-name">Pricing</span></div>
+    </div>
+    <div class="col">
+      <h1>Should pass</h1>
+      <div class="case"><span class="ghost name" id="advisory-faint-site-name">Northwind</span></div>
+    </div>
+  </main>
+</body>
+</html>

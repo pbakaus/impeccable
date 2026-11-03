@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: a stuck preloader that mentions entering</title>
+  <style>
+    /* A stuck preloader whose short message mentions entering ("Preparing
+       to enter the site") but offers no way through: no pointer cursor, no
+       onclick and no control. It is a loader, not a splash gate, so the URL
+       engine waits for it and then hides it. Pinned by
+       crates/browser/tests/overlay_hiding.rs. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    #preloader { width: 100%; height: 100%; position: fixed; top: 0; left: 0; z-index: 9999999; background: #fff; }
+    .sk-circle { width: 80px; height: 80px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      border: 6px solid #0b5c63; border-right-color: transparent; border-radius: 50%; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+  </style>
+</head>
+<body>
+  <div id="preloader"><div class="sk-circle"></div><p style="position:absolute;top:60%;width:100%;text-align:center">Preparing to enter the site</p></div>
+  <h1>A page under a stuck preloader</h1>
+  <p class="faint" id="covered-copy">Faint copy the preloader covers.</p>
+</body>
+</html>

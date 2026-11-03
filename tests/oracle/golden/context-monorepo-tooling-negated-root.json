@@ -1,0 +1,9 @@
+{
+  "stdout": "TARGET_SELECTION_REQUIRED:\n{\n  \"targetPath\": null,\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"targetCandidates\": [\n    {\n      \"name\": \"mobile\",\n      \"path\": \"apps/mobile\",\n      \"targetExample\": \"apps/mobile\",\n      \"productStatus\": \"missing\",\n      \"productPath\": null,\n      \"designStatus\": \"missing\",\n      \"designPath\": null\n    },\n    {\n      \"name\": \"web\",\n      \"path\": \"apps/web\",\n      \"targetExample\": \"apps/web/src/App.tsx\",\n      \"productStatus\": \"missing\",\n      \"productPath\": null,\n      \"designStatus\": \"missing\",\n      \"designPath\": null\n    }\n  ],\n  \"skippedNonUiWorkspaces\": 5\n}\n\nShow each app with its productStatus/productPath and designStatus/designPath so the user can see child overrides, inherited root files, fallback files, or missing files before choosing. Ask the user which app Impeccable should use, then rerun Impeccable helper commands from that child app cwd using this same scripts directory. Use `--target <path>` only as a fallback when changing cwd is not possible, or when the user explicitly named a file/path. 5 workspaces without a UI signal (no UI framework dependency, HTML entry, native app marker, or UI source file) are not listed; reach one with `--target <path>` only when the user names it.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/config.json": "{\n  \"projectRoots\": [\n    \"!packages/ui\"\n  ]\n}\n"
+  }
+}

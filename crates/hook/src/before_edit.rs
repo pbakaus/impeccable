@@ -1,6 +1,11 @@
 //! JS: skill/scripts/hook-before-edit.mjs (`impeccable hook-before-edit`),
 //! the Cursor preToolUse write gate. Always exits 0 and prints exactly one
 //! JSON document: `{"permission":"allow"...}` or the deny payload.
+//!
+//! Retired as the Cursor design hook: new manifests run the post-edit `hook`
+//! verb on `postToolUse`, and install/update, `hooks on`, and `doctor --fix`
+//! migrate a `preToolUse` gate entry. The verb keeps working unchanged so a
+//! project that has not migrated yet still gets checked.
 
 use impeccable_core::findings::Finding;
 use impeccable_core::js;

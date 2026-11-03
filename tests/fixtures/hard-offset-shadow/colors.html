@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Shadow color regression</title>
+<style>
+body { margin:32px; color:#222; background:#fff; font:16px/1.5 Georgia,serif; }
+main { display:grid; grid-template-columns:280px 280px; gap:40px; }
+.card { width:220px; height:96px; padding:12px; margin:24px 0; background:#fff; }
+h1 { font-size:28px; } h2 { font-size:22px; } h3 { font-size:18px; margin:0; }
+#flag-0 { box-shadow:4px 4px red; }
+#flag-1 { box-shadow:gray -4px 4px; }
+#flag-2 { box-shadow:4px 4px hwb(0 0% 0% / 50%); }
+#flag-3 { box-shadow:4px 4px color-mix(in srgb, rgb(255, 0, 0) 50%, blue); }
+#flag-4 { box-shadow:4px 4px 0 black; }
+#flag-5 { box-shadow:4px 4px 0em black; }
+#pass-0 { box-shadow:4px 4px 12px red; }
+#pass-1 { box-shadow:inset 4px 4px gray; }
+#pass-2 { box-shadow:4px 4px hwb(0 0% 0% / 10%); }
+#pass-3 { box-shadow:4px 4px transparent; }
+#pass-4 { box-shadow:2px 2px rebeccapurple; }
+#pass-5 { box-shadow:4px 4px 0 rgba(0,0,0,0); }
+#pass-6 { box-shadow:4px 4px 0 hsla(0,0%,0%,0); }
+#pass-7 { box-shadow:4px 4px 1em black; }
+</style></head><body><h1>Shadow color spellings</h1><main><section><h2>Should flag</h2>
+<div class="card" id="flag-0"><h3>red at end</h3></div>
+<div class="card" id="flag-1"><h3>gray at start</h3></div>
+<div class="card" id="flag-2"><h3>HWB with alpha</h3></div>
+<div class="card" id="flag-3"><h3>Nested color mix</h3></div>
+<div class="card" id="flag-4"><h3>Named black</h3></div>
+<div class="card" id="flag-5"><h3>Zero blur in em</h3></div>
+</section><section><h2>Should pass</h2>
+<div class="card" id="pass-0"><h3>Soft named shadow</h3></div>
+<div class="card" id="pass-1"><h3>Inset named shadow</h3></div>
+<div class="card" id="pass-2"><h3>Faint HWB</h3></div>
+<div class="card" id="pass-3"><h3>Transparent paint</h3></div>
+<div class="card" id="pass-4"><h3>Small named offset</h3></div>
+<div class="card" id="pass-5"><h3>Clear RGBA paint</h3></div>
+<div class="card" id="pass-6"><h3>Clear HSLA paint</h3></div>
+<div class="card" id="pass-7"><h3>Blur in em</h3></div>
+</section></main></body></html>

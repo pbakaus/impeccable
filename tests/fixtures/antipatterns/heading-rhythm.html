@@ -55,6 +55,9 @@
   .white-module { background: #fff; }
   .shadow-carousel { display: block; }
 
+  /* PASS: a run-in heading set inline beside its paragraph (stripe.com) */
+  .run-in { display: inline; font-size: 16px; line-height: 24px; }
+
   /* PASS: a title band that draws its own rules */
   .banded { border-top: 1px solid #84263f; border-bottom: 1px solid #84263f; padding: 15px 0; }
 
@@ -69,6 +72,15 @@
   /* PASS: heading first inside a banded section; the band edge separates */
   .pass-band { background: #ececec; padding: 8px 0 32px; }
   .pass-band h2 { margin: 0 0 24px; }
+  /* observations-1006 row 10: a one-line subtitle touching its heading, and
+     an eyebrow that opens its group closer to the heading than the heading
+     is to its content, belong to the heading. */
+  .subtitle { font-size: 20px; line-height: 28px; }
+  .subtitle-narrow { font-size: 20px; line-height: 28px; width: 240px; }
+  .eyebrow-plain { font-size: 12px; line-height: 16px; text-transform: uppercase; }
+  .above-60 { margin-top: 60px; }
+  .above-160 { margin-top: 160px; }
+  .below-100 { margin-bottom: 100px; }
 </style>
 </head>
 <body>
@@ -125,6 +137,19 @@
       </div>
       <div class="above-10"><div><h2 class="below-40">Flag Wrapped Section Title</h2></div></div>
       <div class="tiles"></div>
+    </section>
+
+    <section class="case">
+      <p class="blk">A paragraph before a subtitle that wraps onto two lines and rests on the heading below it.</p>
+      <div class="above-72"><p class="subtitle-narrow">Pick a plan in one click and fly with peace of mind</p><h2 class="below-24">Flag Two Line Subtitle</h2></div>
+      <p class="blk">A subtitle on two lines is a block of its own, and the heading sits on it with no room.</p>
+    </section>
+
+    <section class="case">
+      <p class="blk">A paragraph that closes with a short line of its own, set flat in the same box as the heading.</p>
+      <p>Read the full report on our site.</p>
+      <h2 class="below-24">Flag Tail Line Touching</h2>
+      <p class="blk">The short line closes the block above; it does not open the heading's group.</p>
     </section>
   </section>
 
@@ -246,6 +271,15 @@
       .stack { display: flex; flex-direction: column; }
       .spacer-16 { height: 16px; }
       .spacer-48 { height: 48px; }
+      /* PASS: an empty spacer row painted the colour of its band (citigroup.com's
+         navy GridRow on the navy footer) is space; FLAG: one in a colour of its own
+         is a divider, and the title sits 0px under it */
+      .navy-band { background: #0f1632; color: #f4f4f4; padding: 16px; }
+      .navy-fill { background: #0f1632; }
+      .divider-fill { height: 16px; background: #c9bfe0; }
+      /* FLAG: a white strip across a band painted only with a gradient is a divider */
+      .grad-band { background-image: linear-gradient(#0f1632, #0f1632); color: #f4f4f4; padding: 16px; }
+      .white-fill { background: #ffffff; }
       /* FLAG: a code block framed on every side is content, not a rule */
       .code { border: 1px solid #d0d7de; background: #f6f8fa; padding: 16px; font: 14px/20px monospace; }
       /* FLAG: a title alone in a layout row, then a row of feature columns with the same class */
@@ -324,6 +358,33 @@
         <div><h2>Flag Stack Heading</h2></div>
         <div class="spacer-48"></div>
         <div><p class="blk">Sixteen pixels of spacer above the title, forty-eight below it before this content.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack navy-band">
+        <div><p class="blk">A navy band closes a paragraph, then holds forty-eight pixels open with an empty row painted navy.</p></div>
+        <div class="spacer-48 navy-fill"></div>
+        <div><h2 class="below-24">Pass Filled Spacer Row</h2></div>
+        <div><p class="blk">The row is the band's own colour, so the title has forty-eight pixels above and twenty-four below.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack">
+        <div><p class="blk">A paragraph, then a sixteen pixel row painted a colour of its own.</p></div>
+        <div class="divider-fill"></div>
+        <div><h2 class="below-24">Flag Divider Row</h2></div>
+        <div><p class="blk">The row is a divider the title sits right under, with twenty-four pixels below it.</p></div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="stack grad-band">
+        <div><p class="blk">A band painted with a gradient, then a forty-eight pixel white strip across it.</p></div>
+        <div class="spacer-48 white-fill"></div>
+        <div><h2 class="below-24">Flag Strip Over Gradient Band</h2></div>
+        <div><p class="blk">The strip is a divider the title sits right under, with twenty-four pixels below it.</p></div>
       </div>
     </section>
 
@@ -417,6 +478,24 @@ npx impeccable detect src/</pre>
     <section class="case">
       <p class="blk">A closing paragraph directly above a band painted with a small tiled texture instead of a colour.</p>
       <div class="tile-band"><h2 class="below-40">Pass Tiled Band Heading</h2><p class="blk">The tiled texture covers the band, and its edge separates the title from the paragraph above.</p></div>
+    </section>
+
+    <section class="case">
+      <p class="blk">A paragraph before a subtitle set like body copy that rests on the heading it introduces.</p>
+      <div class="above-72"><p class="subtitle">Pick a plan in one click</p><h2 class="below-24">Pass Touching Subtitle</h2></div>
+      <p class="blk">The subtitle touches the heading on one line, so it is the heading's own and the gap above is the cluster's.</p>
+    </section>
+
+    <section class="case">
+      <p class="blk">A paragraph before a group that opens with an eyebrow set well apart from its heading.</p>
+      <div class="above-160"><p class="eyebrow-plain">01 / Language and tools</p><h2 class="above-60 below-100">Pass Distant Eyebrow</h2></div>
+      <p class="blk">The eyebrow opens its group and sits closer to the heading than the heading sits to this paragraph.</p>
+  
+
+    <section class="case">
+      <p class="blk">A paragraph before a run-in heading set inline at the start of the paragraph it leads.</p>
+      <div class="above-10 below-48"><h3 class="run-in">Pass Run In Heading</h3> <p class="run-in">The heading starts this line of prose, so the gap below it is not a gap at all.</p></div>
+      <p class="blk">The next block sits forty-eight pixels below the paragraph the heading opened.</p>
     </section>
   </section>
 </main>

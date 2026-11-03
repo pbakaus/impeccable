@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { PROVIDERS } from './transformers/providers.js';
 
 // Per-project artifacts live inside `scripts/` of an installed skill but
 // belong to the consuming project, not the distributable skill. The build
@@ -45,6 +46,47 @@ export function restorePerProjectArtifacts(rootDir, stashed) {
   }
 }
 
+/**
+ * cmd.exe seeks by byte offset when it runs `call :label` or `goto`, so a
+ * batch file with LF-only line endings fails with "The system cannot find the
+ * batch label specified" (#1098). Every emitted `.cmd` is written with CRLF.
+ */
+export function isBatchFile(name) {
+  return /\.(cmd|bat)$/i.test(name);
+}
+
+export function toCrlf(text) {
+  return text.replace(/\r?\n/g, '\r\n');
+}
+
+/**
+ * Paths of every batch file under `dirs` that still holds a bare LF. Missing
+ * directories are skipped.
+ */
+export function findBatchFilesWithBareLf(dirs) {
+  const bad = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
+        walk(entryPath);
+      } else if (entry.isFile() && isBatchFile(entry.name)) {
+        const text = fs.readFileSync(entryPath, 'latin1');
+        if (/(^|[^\r])\n/.test(text)) bad.push(entryPath);
+      }
+    }
+  };
+  for (const dir of dirs) walk(dir);
+  return bad;
+}
+
 function readSkillScripts(scriptsDir) {
   const scripts = [];
 
@@ -63,11 +105,13 @@ function readSkillScripts(scriptsDir) {
       if (PER_PROJECT_SCRIPT_ARTIFACTS.has(entry.name)) continue;
 
       const relPath = path.relative(scriptsDir, entryPath).split(path.sep).join('/');
+      const raw = fs.readFileSync(entryPath, 'utf-8');
       // `mode` travels with the entry so the launcher keeps its executable
       // bit in every provider copy (see writeScriptFile in the transformer).
+      // A batch file ships with CRLF whatever this checkout holds (#1098).
       scripts.push({
         name: relPath,
-        content: fs.readFileSync(entryPath, 'utf-8'),
+        content: isBatchFile(relPath) ? toCrlf(raw) : raw,
         filePath: entryPath,
         mode: fs.statSync(entryPath).mode & 0o777,
       });
@@ -238,6 +282,18 @@ export function readSourceFiles(rootDir) {
     scripts.push(...readSkillScripts(scriptsDir));
   }
 
+  // Provider payloads beside the skill: the dirs provider configs declare
+  // as pluginPayload.source (skill/hermes-plugin/), emitted verbatim.
+  const payloads = {};
+  for (const source of new Set(Object.values(PROVIDERS).map(c => c.pluginPayload?.source).filter(Boolean))) {
+    const dir = path.join(skillDir, source);
+    if (!fs.existsSync(dir)) continue;
+    payloads[source] = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(f => f.isFile())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(f => ({ name: f.name, content: fs.readFileSync(path.join(dir, f.name), 'utf-8') }));
+  }
+
   const agents = [];
   const agentsDir = path.join(skillDir, 'agents');
   if (fs.existsSync(agentsDir)) {
@@ -285,7 +341,8 @@ export function readSourceFiles(rootDir) {
     filePath: skillMdPath,
     references,
     scripts,
-    agents
+    agents,
+    payloads,
   });
 
   return { skills };
@@ -415,7 +472,7 @@ export const PROVIDER_PLACEHOLDERS = {
   'claude-code': {
     model: 'Claude',
     config_file: 'CLAUDE.md',
-    ask_instruction: 'STOP and call the AskUserQuestion tool to clarify.',
+    ask_instruction: 'Ask with the AskUserQuestion tool and wait for the answer before continuing.',
     command_prefix: '/'
   },
   'cursor': {
@@ -427,7 +484,7 @@ export const PROVIDER_PLACEHOLDERS = {
   'dsh': {
     model: 'DeepSeek',
     config_file: 'AGENTS.md',
-    ask_instruction: 'STOP and call the ask_user_question tool to clarify.',
+    ask_instruction: 'Ask with the ask_user_question tool and wait for the answer before continuing.',
     command_prefix: '/'
   },
   'gemini': {
@@ -443,7 +500,7 @@ export const PROVIDER_PLACEHOLDERS = {
     // {{ask_instruction}} call site is sentence-initial. That is enforced by
     // validateAskInstructionSites() in scripts/build.js, not left to authors:
     // four reference files had already spliced the placeholder mid-sentence.
-    ask_instruction: "STOP and use Codex's structured user-input/question tool when available; if unavailable, ask directly in chat to clarify what you cannot infer.",
+    ask_instruction: "Ask with Codex's structured user-input/question tool when available, or directly in chat if it is not, and wait for the answer before continuing.",
     command_prefix: '$'
   },
   'agents': {
@@ -461,7 +518,7 @@ export const PROVIDER_PLACEHOLDERS = {
   opencode: {
     model: 'Claude',
     config_file: 'AGENTS.md',
-    ask_instruction: 'STOP and call the `question` tool to clarify.',
+    ask_instruction: 'Ask with the `question` tool and wait for the answer before continuing.',
     command_prefix: '/'
   },
   'pi': {
@@ -509,7 +566,7 @@ export const PROVIDER_PLACEHOLDERS = {
   'grok': {
     model: 'Grok',
     config_file: 'AGENTS.md',
-    ask_instruction: 'STOP and call the AskUserQuestion tool to clarify.',
+    ask_instruction: 'Ask with the AskUserQuestion tool and wait for the answer before continuing.',
     command_prefix: '/'
   },
   'antigravity': {
@@ -526,6 +583,12 @@ export const PROVIDER_PLACEHOLDERS = {
     config_file: 'AGENTS.md',
     ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
+  },
+  'devin': {
+    model: 'Devin',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'Ask with the ask_user_question tool when available, or directly in chat if it is not, and wait for the answer before continuing.',
+    command_prefix: '/'
   }
 };
 
@@ -536,6 +599,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'claude-code',
   'codex',
   'cursor',
+  'devin',
   'dsh',
   'gemini',
   'github',

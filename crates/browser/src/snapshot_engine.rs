@@ -544,7 +544,7 @@ fn sample_css_background(
                         source.0,
                         source.1,
                     )?;
-                    Ok(visual::css_url_finish(pixel))
+                    Ok(visual::css_url_finish(dom, node, pixel))
                 }
             }
         }

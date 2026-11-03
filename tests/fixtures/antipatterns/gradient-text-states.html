@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Gradient text, a loading shimmer and a one-colour sheen</title>
+  <!--
+    Browser-only reads. A loading shimmer (cursor.com's "Working" label) is
+    a highlight sweeping over plain type: its end stops are the text colour,
+    its layer is wider than the box and an endless animation moves it. It is
+    a state, not gradient text. A sheen of one colour fading in alpha
+    (resend.com's headings) reports as advisory (taste call r13-t6), and a
+    ramp between two colours reports as before. So does a rainbow headline
+    that sweeps like a shimmer but fills its glyphs with nothing, keeping
+    its end stop only as a fallback colour: the gradient is all it paints.
+    A shimmer whose animation is paused stands still, and reports.
+  -->
+  <style>
+    body { margin: 0; padding: 32px; font-family: system-ui, sans-serif; font-size: 16px; line-height: 1.6; color: #1a1a1a; background: #ffffff; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; width: 1000px; }
+    h2 { font-size: 18px; margin: 0 0 16px; }
+    .dark { background: #000000; padding: 16px; width: 400px; }
+    @keyframes shimmer { 0% { background-position-x: 200%; } 100% { background-position-x: -200%; } }
+    .shimmer {
+      display: inline-block; font-size: 14px; color: rgba(0, 0, 0, 0.38);
+      background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.38) 0%, rgba(0, 0, 0, 0.38) 30%, rgba(36, 35, 28, 0.92) 55%, rgba(0, 0, 0, 0.38) 70%, rgba(0, 0, 0, 0.38) 100%);
+      background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
+      animation: shimmer 2s linear infinite;
+    }
+    .paused { animation-play-state: paused; }
+    .sheen {
+      font-size: 32px; margin: 0; color: transparent;
+      background-image: linear-gradient(to right bottom, rgb(255, 255, 255) 30%, rgba(255, 255, 255, 0.5));
+      -webkit-background-clip: text; background-clip: text;
+    }
+    @keyframes shine { to { background-position: 200% center; } }
+    .rainbow {
+      font-size: 32px; margin: 0 0 24px; color: #ff0080;
+      background: linear-gradient(90deg, #ff0080, #7928ca, #2563eb, #ff0080);
+      background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; animation: shine 3s linear infinite;
+    }
+    .ramp {
+      font-size: 32px; margin: 0 0 24px; color: transparent;
+      background-image: linear-gradient(90deg, #db2777, #7c3aed);
+      -webkit-background-clip: text; background-clip: text;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Should flag</h2>
+    <p id="flag-ramp" class="ramp">A ramp between two colours</p>
+    <p id="flag-rainbow-fallback" class="rainbow">A sweeping rainbow</p>
+    <p><span id="flag-paused-shimmer" class="shimmer paused">Working on your request</span></p>
+    <div class="dark"><p id="flag-sheen-advisory" class="sheen">A sheen of one colour</p></div>
+  </section>
+  <section>
+    <h2>Should pass</h2>
+    <p><span id="pass-shimmer" class="shimmer">Working on your request</span></p>
+  </section>
+</main>
+</body>
+</html>

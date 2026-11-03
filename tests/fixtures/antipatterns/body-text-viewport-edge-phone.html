@@ -31,6 +31,11 @@
     <h2>Should flag</h2>
     <p class="gutter-8 flag-phone-8">This paragraph keeps only 8px between its words and each side of a phone's window, under the 12px a phone gutter needs.</p>
     <p class="gutter-11 flag-phone-11">This paragraph keeps 11px between its words and each side of the window, a pixel short of the phone gutter floor.</p>
+    <!-- A header that wraps a whole first screen, taller than the 844px
+         window (a Framer hero), is not a site header: its copy is measured. -->
+    <header style="min-height: 900px">
+      <p class="gutter-8 flag-header-first-screen">A testimonial inside a header that holds the whole first screen keeps only 8px from each side of the phone.</p>
+    </header>
   </section>
 
   <section data-col="pass">
@@ -38,6 +43,10 @@
     <p class="gutter-12 pass-phone-12">This paragraph keeps a consistent 12px gutter on both sides of a 390px window, the common mobile setting the phone floor allows.</p>
     <p class="gutter-14 pass-phone-14">This paragraph keeps 14px on both sides of the window, over the 12px floor that applies at 480px and narrower.</p>
     <p class="gutter-24 pass-phone-24">This paragraph keeps a roomy 24px gutter on both sides of the window, well inside the edges of the phone.</p>
+    <!-- The same copy in a site header, a bar across the top of the page. -->
+    <header>
+      <p class="gutter-8 pass-site-header">A line of copy inside a short site header keeps only 8px from each side of the phone.</p>
+    </header>
   </section>
 
   <section data-col="overflow">

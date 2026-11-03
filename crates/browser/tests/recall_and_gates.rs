@@ -17,6 +17,8 @@
 //!   for contrast.
 //! - `paint-that-shows.html`: ai-color-palette, gradient-text,
 //!   gpt-thin-border-wide-shadow and dark-glow measure what paints.
+//! - `script-error-benign-races.html`: Vector's pixel and an interrupted
+//!   `play()` report as advisory; an aborted fetch stays an error.
 //! - `third-party-widgets-carousels.html`, `script-error-ad-tech-hosts.html`:
 //!   run 28's vendors are named.
 //! - `validity/press-and-hold.html`: a bot manager's challenge sheet over a
@@ -247,6 +249,34 @@ fn run_28_ad_tech_hosts_are_advisory() {
     let own = vendor("offer is undefined").expect("the site's own error");
     assert_eq!(own.severity, "error");
     assert_eq!(third_party(own), None);
+}
+
+/// Round 13 row 19: Vector's visitor-identity pixel on mercury.com, and a
+/// hover preview's `play()` interrupted by `pause()` on rauno.me.
+#[test]
+fn round_13_benign_races_are_advisory() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let f = scan(&engine, port, "script-error-benign-races.html");
+    let errors = of(&f, "script-error");
+    let find = |needle: &str| {
+        errors
+            .iter()
+            .find(|e| e.snippet.contains(needle))
+            .copied()
+            .unwrap_or_else(|| panic!("{needle}: {errors:#?}"))
+    };
+    let vector = find("No visitor ID available");
+    assert_eq!(vector.severity, "advisory");
+    assert_eq!(third_party(vector), Some("Vector"));
+    let play = find("The play() request was interrupted");
+    assert_eq!(play.severity, "advisory");
+    assert_eq!(third_party(play), None);
+    for needle in ["The user aborted a request", "cart is undefined"] {
+        let e = find(needle);
+        assert_eq!(e.severity, "error", "{needle}");
+        assert_eq!(third_party(e), None, "{needle}");
+    }
 }
 
 #[test]

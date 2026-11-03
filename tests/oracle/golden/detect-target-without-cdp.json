@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --target picks a page of the app --cdp attaches to; pass --cdp <port> with it\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"gradient-text\",\n    \"name\": \"Gradient text\",\n    \"description\": \"Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<WS>/index.html\",\n    \"line\": 0,\n    \"snippet\": \"background-clip: text + gradient\"\n  },\n  {\n    \"antipattern\": \"repeating-stripes-gradient\",\n    \"name\": \"Repeating-gradient stripes\",\n    \"description\": \"Repeating-gradient stripes used as surface decoration are a recurring generated-UI signature. Reach for a deliberate texture or leave the surface plain.\",\n    \"severity\": \"advisory\",\n    \"category\": \"slop\",\n    \"file\": \"<WS>/index.html\",\n    \"line\": 0,\n    \"snippet\": \"repeating-gradient decorative stripes\",\n    \"advisory\": true\n  },\n  {\n    \"antipattern\": \"gradient-text\",\n    \"name\": \"Gradient text\",\n    \"description\": \"Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<WS>/vendor/lib.css\",\n    \"line\": 1,\n    \"snippet\": \"background-clip: text + gradient\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"bounce-easing\",\n    \"name\": \"Bounce or elastic easing\",\n    \"description\": \"Bounce and elastic easing feel dated and tacky. Real objects decelerate smoothly — use exponential easing (ease-out-quart/quint/expo) instead.\",\n    \"severity\": \"advisory\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/bounce-easing-unread-property.html\",\n    \"line\": 0,\n    \"snippet\": \"cubic-bezier(.2, 1.4, .4, 1)\",\n    \"advisory\": true\n  }\n]\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

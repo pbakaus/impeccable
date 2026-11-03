@@ -142,11 +142,30 @@ fn micro_labels_are_advisory() {
 #[test]
 fn fine_print_is_advisory_under_three_rules() {
     let Some(f) = scan("fine-print.html") else { return };
-    // The id row is named by its id in the selector.
-    for class in ["adv-class", "#disclaimer-2", "adv-small", "adv-star", "adv-sup", "adv-list"] {
+    // Weaker evidence: advisory under tiny-text and tight-leading.
+    for class in ["adv-small", "adv-star", "adv-sup"] {
         assert_eq!(on(&f, "tiny-text", class), ["advisory"], "{class}: {f:#?}");
         assert_eq!(on(&f, "tight-leading", class), ["advisory"], "{class}: {f:#?}");
     }
+    assert_eq!(on(&f, "tiny-text", "adv-hint"), ["advisory"], "{f:#?}");
+    // A singular `disclosure` widget panel, a footnote-marked accordion and a
+    // type-scale `text-footnote` class stay advisory (decision 3 review).
+    for class in ["adv-disclosure-panel", "adv-accordion", "adv-inner-footnote", "adv-type-footnote"] {
+        assert_eq!(on(&f, "tiny-text", class), ["advisory"], "{class}: {f:#?}");
+    }
+    assert_eq!(on(&f, "line-length", "adv-faq-wide"), ["advisory"], "{f:#?}");
+    assert_eq!(on(&f, "tiny-text", "adv-terms"), ["advisory"], "{f:#?}");
+    // A legal or footnote block (decision 3, round 13): exempt from
+    // tiny-text, advisory under tight-leading. The id row is named by its id.
+    for class in ["adv-class", "#disclaimer-2", "adv-list", "adv-banner"] {
+        assert!(on(&f, "tiny-text", class).is_empty(), "{class}: {f:#?}");
+        assert_eq!(on(&f, "tight-leading", class), ["advisory"], "{class}: {f:#?}");
+    }
+    assert!(on(&f, "tiny-text", "#footnote-4").is_empty(), "{f:#?}");
+    assert_eq!(on(&f, "tight-leading", "#footnote-4"), ["advisory"], "{f:#?}");
+    // Links inside a footnote or a terms row keep undersized-ui-text.
+    assert_eq!(on(&f, "undersized-ui-text", "fail-footnote-link"), ["warning"], "{f:#?}");
+    assert_eq!(on(&f, "undersized-ui-text", "fail-terms-link"), ["warning"], "{f:#?}");
     for class in ["fail-plain", "fail-deep"] {
         assert_eq!(on(&f, "tiny-text", class), ["warning"], "{class}: {f:#?}");
         assert_eq!(on(&f, "tight-leading", class), ["warning"], "{class}: {f:#?}");
@@ -155,10 +174,42 @@ fn fine_print_is_advisory_under_three_rules() {
     // The consent label is not fine print under any rule.
     assert_eq!(on(&f, "tight-leading", "fail-consent"), ["warning"], "{f:#?}");
     assert_eq!(on(&f, "undersized-ui-text", "fail-consent"), ["warning"], "{f:#?}");
-    // line-length needs layout: the marked terms are advisory, the copy fails.
+    // line-length needs layout: the terms row is advisory, the disclaimer
+    // row is exempt, and copy fails, a disclaimer at body size included.
     assert_eq!(on(&f, "line-length", "adv-wide"), ["advisory"], "{f:#?}");
+    assert!(on(&f, "line-length", "ex-wide").is_empty(), "{f:#?}");
     assert_eq!(on(&f, "line-length", "fail-wide"), ["warning"], "{f:#?}");
     assert_eq!(on(&f, "line-length", "fail-document"), ["warning"], "{f:#?}");
+    assert_eq!(on(&f, "line-length", "fail-disclaimer-intro"), ["warning"], "{f:#?}");
+}
+
+#[test]
+fn a_policy_pages_body_stays_advisory() {
+    let Some(f) = scan("fine-print-policy.html") else { return };
+    // The legal wrapper holds the page's text outside a footer: advisory.
+    let policy = on(&f, "line-length", "adv-policy");
+    assert!(!policy.is_empty() && policy.iter().all(|s| *s == "advisory"), "{f:#?}");
+    // The legal block in the footer is exempt.
+    assert!(on(&f, "line-length", "ex-footer-legal").is_empty(), "{f:#?}");
+}
+
+#[test]
+fn a_policy_body_with_inner_markers_stays_advisory() {
+    let Some(f) = scan("fine-print-policy-nested.html") else { return };
+    // Each paragraph carries its own legal marker; the wrapper around them
+    // is the page's body, and it settles them.
+    let policy = on(&f, "line-length", "adv-policy-nested");
+    assert!(!policy.is_empty() && policy.iter().all(|s| *s == "advisory"), "{f:#?}");
+    // Should-flag twin: the same marker inside the footer's legal block is exempt.
+    assert!(on(&f, "line-length", "ex-footer-legal").is_empty(), "{f:#?}");
+}
+
+#[test]
+fn a_hidden_copy_does_not_shrink_a_policy_page() {
+    let Some(f) = scan("fine-print-policy-hidden.html") else { return };
+    let policy = on(&f, "line-length", "adv-policy-visible");
+    assert!(!policy.is_empty() && policy.iter().all(|s| *s == "advisory"), "{f:#?}");
+    assert!(on(&f, "line-length", "hidden-copy").is_empty(), "{f:#?}");
 }
 
 #[test]
@@ -176,6 +227,14 @@ fn text_in_a_framed_demo_is_advisory() {
         "adv-pill",
         "adv-footnote",
         "adv-beside",
+        // Round 14 (row 1, decision r14-t1): a bar after a glow layer or at
+        // the padding edge, a caption labelled up to a comma or called
+        // fictional, a phone with a status bar.
+        "adv-glow",
+        "adv-padded",
+        "adv-comma",
+        "adv-fictional",
+        "adv-phone",
     ] {
         let hits: Vec<&str> = f
             .iter()
@@ -204,6 +263,15 @@ fn text_in_a_framed_demo_is_advisory() {
         "fail-sample-unframed",
         "fail-sample-button",
         "fail-sample-says",
+        "fail-phone-no-clock",
+        "fail-phone-shell",
+        "fail-comma-prose",
+        "fail-reel",
+        "fail-talk",
+        "fail-app-header",
+        "fail-caption-sample",
+        "fail-caption-fictional",
+        "fail-config-small",
     ] {
         assert_eq!(on(&f, rule, class), ["warning"], "{class}: {f:#?}");
     }
@@ -214,6 +282,8 @@ fn text_in_a_framed_demo_is_advisory() {
     assert_eq!(on(&f, "tiny-text", "adv-dots-run"), ["advisory"], "{f:#?}");
     assert_eq!(on(&f, "tiny-text", "fail-sentence"), ["warning"], "{f:#?}");
     assert_eq!(on(&f, "low-contrast", "adv-dots-dim"), ["advisory"], "{f:#?}");
+    // r14-t7: faint code in a dotted window reports in full.
+    assert_eq!(on(&f, "low-contrast", "fail-config-dim"), ["warning"], "{f:#?}");
 }
 
 #[test]
@@ -227,18 +297,54 @@ fn nested_cards_in_a_mockup_are_advisory() {
         "#adv-scaled-window",
         "#adv-captioned-panel",
         "#adv-picture-inner",
+        "#adv-glow-inner",
+        "#adv-phone-inner",
     ] {
         assert_eq!(on(&f, rule, id), ["advisory"], "{id}: {f:#?}");
     }
+    // One panel, one finding (r14-t5): the first of paseo.sh's three
+    // bordered cards reports and counts the other two.
+    assert!(
+        f.iter().any(|(r, s, sel, sev)| r == rule
+            && s == "Card inside card (and 2 more)"
+            && sel == "#fail-panel-a"
+            && sev == "warning"),
+        "{f:#?}"
+    );
+    for id in ["#fail-panel-b", "#fail-panel-c"] {
+        assert!(on(&f, rule, id).is_empty(), "{id}: {f:#?}");
+    }
     for id in [
         "#fail-panel-a",
-        "#fail-panel-b",
-        "#fail-panel-c",
         "#fail-two-dots-inner",
         "#fail-fanned-inner",
         "#fail-prose-panel",
         "#fail-marked-inner",
+        "#fail-shell-inner",
+        "#fail-code-inner",
     ] {
         assert_eq!(on(&f, rule, id), ["warning"], "{id}: {f:#?}");
     }
+}
+
+/// Row 16 of observations-1010: tiny-text tests SVG text at the size the
+/// viewBox scale and an even scale on the text draw it; the snippet keeps the
+/// computed size, so corpus clusters do not split.
+#[test]
+fn svg_text_is_read_at_its_drawn_size() {
+    let Some(f) = scan("tiny-text-svg.html") else { return };
+    let snippets = |class: &str| -> Vec<&str> {
+        f.iter().filter(|r| r.0 == "tiny-text" && r.2.contains(class)).map(|r| r.1.as_str()).collect()
+    };
+    assert_eq!(snippets("fail-shrunk"), ["14px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-near"), ["10.5px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-no-viewbox"), ["10px body text"], "{f:#?}");
+    assert!(snippets("pass-enlarged").is_empty(), "{f:#?}");
+    assert!(snippets("pass-scaled").is_empty(), "{f:#?}");
+    assert_eq!(snippets("fail-text-scaled"), ["14px body text"], "{f:#?}");
+    assert!(snippets("pass-text-scaled").is_empty(), "{f:#?}");
+    assert_eq!(snippets("fail-skewed"), ["10px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-padded"), ["10px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-inset-shrunk"), ["12px body text"], "{f:#?}");
+    assert!(snippets("pass-inset-transformed").is_empty(), "{f:#?}");
 }

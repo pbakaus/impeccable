@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consent hiding: a sign-in modal stays</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0 0 12px; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .body-copy { max-width: 640px; }
+    .modal { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); z-index: 10000; }
+    .card { width: 480px; padding: 32px; background: #ffffff; border-radius: 12px; }
+    .card p { margin: 0 0 12px; font-size: 14px; color: #b0b0b0; }
+    /* A sign-in modal that mentions the cookie it sets: it holds a password
+       field, so it is not a cookie notice and stays. Pinned by
+       crates/browser/tests/consent_hiding.rs. */
+  </style>
+</head>
+<body>
+  <h1>A page under a sign-in modal</h1>
+  <p class="body-copy">This page has enough copy of its own to be a page and not a consent wall. It describes a product, its pricing and its support hours, and a visitor reads it once the notice below is out of the way. The notice is the site's own, written without any consent manager's markup.</p>
+  <p class="faint" id="covered-copy" style="position: absolute; top: 700px; left: 80px; width: 520px;">Faint copy the notice covers.</p>
+  <a href="#" id="covered-cta" style="position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px; background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none;">Start free trial</a>
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="card">
+      <p id="modal-text">Sign in. Staying signed in keeps a cookie on this device.</p>
+      <input type="text" placeholder="Name">
+      <input type="password" placeholder="Password">
+      <button type="button">OK</button>
+    </div>
+  </div>
+</body>
+</html>

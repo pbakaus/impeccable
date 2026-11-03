@@ -107,17 +107,31 @@ fn text_rules_score_only_copies_a_reader_can_see() {
         &contrast,
         &[
             "#flag-slide-date",
-            "#flag-cut-date",
-            "#flag-edge-half",
             "#flag-whole-copy",
             "#flag-truncated-copy",
             "#flag-shell-cut",
             "#flag-shell-desktop",
         ],
-        &["#pass-parked-date", "#pass-edge-sliver", "#pass-cut-copy", "#pass-sliver-copy", "#pass-shell-track-sliver"],
+        &[
+            "#pass-parked-date",
+            "#pass-edge-sliver",
+            "#pass-cut-copy",
+            "#pass-sliver-copy",
+            "#pass-shell-track-sliver",
+            // One colour pair, one report (r14-t2): the cut and half-off
+            // dates wear the first slide date's pair and are counted there.
+            "#flag-cut-date",
+            "#flag-edge-half",
+        ],
         "low-contrast",
     );
-    assert_eq!(contrast.len(), 7, "only the flag cases: {contrast:?}");
+    assert_eq!(contrast.len(), 5, "only the flag cases: {contrast:?}");
+    let snippet_on = |case: &str| contrast.iter().find(|(_, sel)| sel.contains(case)).map(|(s, _)| s.as_str()).unwrap_or("");
+    // The slide date counts the cut date and the half-off date, and not the
+    // parked slide or the sliver, which a reader does not see as text.
+    assert!(snippet_on("#flag-slide-date").ends_with("(and 2 more)"), "{contrast:?}");
+    // The whole word counts the cut copy it took the pair from.
+    assert!(snippet_on("#flag-whole-copy").ends_with("(and 1 more)"), "{contrast:?}");
 
     let tiny = findings(&engine, port, "on-screen.html", "tiny-text");
     assert_cases(&tiny, &["#flag-zero-anchor"], &["#pass-zero-box"], "tiny-text");

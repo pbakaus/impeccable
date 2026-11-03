@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { parseFrontmatter } from '../scripts/lib/utils.js';
 import {
   rewritePluginMarkdown,
+  quoteLauncher,
   rewritePluginAgentMarkdown,
   rewritePluginMarkdownTree,
   verifyPluginSkillRewrite,
@@ -53,8 +54,23 @@ describe('rewritePluginMarkdown', () => {
       'already quoted: `"<skill-base-dir>/scripts/impeccable" hooks on`.',
     );
     expect(output).toContain('`"${CLAUDE_SKILL_DIR}/scripts/impeccable" context`');
-    expect(output).toContain('`"${CLAUDE_SKILL_DIR}/scripts/impeccable.cmd" doctor --json`');
+    expect(output).toContain('`& "${CLAUDE_SKILL_DIR}/scripts/impeccable.cmd" doctor --json`');
     expect(output).not.toContain('""${CLAUDE_SKILL_DIR}');
+  });
+
+  test('gives only the .cmd launcher PowerShell\'s call operator (issue #744)', () => {
+    // PowerShell parses `"<path>" context` as a string expression and fails
+    // with `Unexpected token 'context'`; `& "<path>" context` runs. The sh
+    // launcher must never get the `&`: a leading `&` is a syntax error in sh.
+    const input = 'Run `<skill-base-dir>/scripts/impeccable context`; without sh, `<skill-base-dir>/scripts/impeccable.cmd context`.';
+    const output = rewritePluginMarkdown(input);
+    expect(output).toBe(
+      'Run `"${CLAUDE_SKILL_DIR}/scripts/impeccable" context`; without sh, `& "${CLAUDE_SKILL_DIR}/scripts/impeccable.cmd" context`.',
+    );
+    expect(output).not.toMatch(/& "[^"]*\/impeccable"/);
+    expect(rewritePluginMarkdown(output)).toBe(output);
+    expect(quoteLauncher('<dir>')).toBe('"<dir>/scripts/impeccable"');
+    expect(quoteLauncher('<dir>', true)).toBe('& "<dir>/scripts/impeccable.cmd"');
   });
 
   test('quotes commands already in the skill-base-dir form without double-quoting', () => {
@@ -228,7 +244,7 @@ describe('rewritePluginMarkdownTree', () => {
   test('raw references retain an explicit base-directory placeholder, including Windows commands', () => {
     const input = 'Run `.claude/skills/impeccable/scripts/impeccable context` or `<skill-base-dir>/scripts/impeccable.cmd context`.';
     const output = rewritePluginMarkdown(input, { isSkillEntrypoint: false });
-    expect(output).toBe('Run `"<skill-base-dir>/scripts/impeccable" context` or `"<skill-base-dir>/scripts/impeccable.cmd" context`.');
+    expect(output).toBe('Run `"<skill-base-dir>/scripts/impeccable" context` or `& "<skill-base-dir>/scripts/impeccable.cmd" context`.');
     expect(output).not.toContain('${CLAUDE_SKILL_DIR}');
     expect(rewritePluginMarkdown(output, { isSkillEntrypoint: false })).toBe(output);
   });
@@ -303,6 +319,17 @@ describe('verifyPluginSkillRewrite', () => {
     const reworded = goodSkill.replace('is the fallback only when', 'is used only when');
     const p = writeSkill(rewritePluginMarkdown(reworded));
     expect(() => verifyPluginSkillRewrite(p)).toThrow(/Setup step 1 fallback sentence/);
+  });
+
+  test('fails the build when a quoted .cmd launcher lacks the call operator', () => {
+    const p = writeSkill(
+      rewritePluginMarkdown(goodSkill) + '\nOn a Windows shell without `sh`, call `"${CLAUDE_SKILL_DIR}/scripts/impeccable.cmd"` instead.\n',
+    );
+    expect(() => verifyPluginSkillRewrite(p)).toThrow(/call operator/);
+    const fixed = writeSkill(
+      rewritePluginMarkdown(goodSkill + '\nOn a Windows shell without `sh`, call `.claude/skills/impeccable/scripts/impeccable.cmd` instead.\n'),
+    );
+    expect(() => verifyPluginSkillRewrite(fixed)).not.toThrow();
   });
 
   test('fails the build when a launcher pre-approval survives the removal', () => {

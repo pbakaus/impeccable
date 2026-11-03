@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: a click-to-enter splash</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    /* A noteforge.co-shaped splash (corpus run 1006): a fixed black layer
+       over the whole screen, cursor: pointer, its only text "Enter NoteForge",
+       no link or button, which stays until clicked. The URL engine hides it
+       (nothing is clicked) and scores the page under it. Pinned by
+       crates/browser/tests/overlay_hiding.rs. */
+    .splash { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; background: #000; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="splash" onclick="this.remove()"><span>Enter NoteForge &rarr;</span></div>
+  <h1>A page under a splash</h1>
+  <p class="body-copy" style="max-width: 640px;">This page has copy of its own under the layer: a product, its pricing, its support hours and a note on shipping. A visitor reads it once the layer in front of it is gone, and the scan should read it too. It runs long enough to be more than a title.</p>
+  <p class="faint" id="covered-copy">Faint copy the splash covers.</p>
+</body>
+</html>

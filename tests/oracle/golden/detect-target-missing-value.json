@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --target requires a substring of the page's URL or title, e.g. --target localhost:5173\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

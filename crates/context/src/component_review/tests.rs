@@ -915,6 +915,33 @@ fn serve_exits_after_submission_or_idle_and_removes_its_service_record() {
     assert!(!dir.join("service.json").exists());
 }
 
+// A browser loading the review opens a burst of sockets (fonts, script,
+// packet, snapshot files) and keeps some idle. tiny_http 0.12 left part of
+// such a burst unanswered (#1071); every request must get its answer.
+#[test]
+fn serve_answers_a_burst_of_connections() {
+    let f = Fixture::new();
+    let dir = f.prepare();
+    let rx = serve_in_thread(&dir, 60_000);
+    let started = std::time::Instant::now();
+    let url = loop {
+        if let Ok(s) = store::read(&dir.join("service.json")) {
+            break s["url"].as_str().unwrap().to_string();
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "no service record");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let host = url.trim_start_matches("http://").trim_end_matches('/').to_string();
+    let addr: std::net::SocketAddr = host.parse().unwrap();
+    let request = format!("GET /review.css HTTP/1.1\r\nHost: {host}\r\n\r\n");
+    for _ in 0..3 {
+        assert_eq!(impeccable_common::http::burst_answered(addr, request.as_bytes(), 4, 8), 8, "connections stranded");
+    }
+    let state = store::read(&dir.join("current.json")).unwrap();
+    store::submit(&dir, &approve(&state)).unwrap();
+    assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), Ok(0));
+}
+
 #[test]
 fn status_hides_dead_servers_and_serve_refuses_sessions_without_a_browser() {
     let f = Fixture::new();

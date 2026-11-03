@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consent hiding: a bar that only links a cookie policy stays</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0 0 12px; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .body-copy { max-width: 640px; }
+    /* A fixed promo bar that links a cookie policy and has a Close button:
+       cookies are named only inside a link, so it is not a cookie notice and
+       stays. Pinned by crates/browser/tests/consent_hiding.rs. */
+    .bar { position: fixed; left: 0; right: 0; bottom: 0; height: 170px; padding: 24px 40px; background: #ffffff; border-top: 1px solid #d0d7de; z-index: 9999; }
+    .bar p { margin: 0 0 12px; font-size: 14px; color: #b0b0b0; }
+  </style>
+</head>
+<body>
+  <h1>A page under a promo bar</h1>
+  <p class="body-copy">This page has enough copy of its own to be a page and not a consent wall. It describes a product, its pricing and its support hours, and a visitor reads it once the notice below is out of the way. The notice is the site's own, written without any consent manager's markup.</p>
+  <p class="faint" id="covered-copy" style="position: absolute; top: 700px; left: 80px; width: 520px;">Faint copy the notice covers.</p>
+  <a href="#" id="covered-cta" style="position: absolute; top: 740px; left: 80px; display: inline-block; padding: 8px 16px; border-radius: 6px; background: #ff7145; color: #ffffff; font-size: 15px; font-weight: 500; text-decoration: none;">Start free trial</a>
+  <div class="bar">
+    <p id="modal-text">Summer sale: 20% off every plan this week. Read our <a href="#">cookie policy</a>.</p>
+    <button type="button">Close</button>
+  </div>
+</body>
+</html>

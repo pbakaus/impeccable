@@ -43,6 +43,7 @@ jobs:
       framework: ${{ steps.plan.outputs.framework }}
       cli_remote_e2e: ${{ steps.plan.outputs.cli_remote_e2e }}
       live_e2e: ${{ steps.plan.outputs.live_e2e }}
+      new_work_e2e: ${{ steps.plan.outputs.new_work_e2e }}
       live_e2e_accept_cleanup: ${{ steps.plan.outputs.live_e2e_accept_cleanup }}
       skill_behavior: ${{ steps.plan.outputs.skill_behavior }}
       live_svelte_adapter_deepseek: ${{ steps.plan.outputs.live_svelte_adapter_deepseek }}
@@ -121,7 +122,7 @@ jobs:
         if: needs.changes.outputs.detector == 'true'
         run: rustup show && rustup target add wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: needs.changes.outputs.detector == 'true'
 
       - name: Install wasm-pack
@@ -183,7 +184,7 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build
         run: cargo build --workspace --all-targets
@@ -203,7 +204,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned toolchain
         run: rustup show
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo build --workspace --all-targets
       # The default TEMP is on the image's C: drive. Every browser test starts
       # Chrome on a new profile there, and with several starting at once that
@@ -284,7 +285,7 @@ jobs:
   oracle:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.new_work_e2e == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -305,7 +306,7 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build the engine from source
         run: cargo build --release -p impeccable
@@ -314,6 +315,14 @@ jobs:
         env:
           IMPECCABLE_BIN: ${{ github.workspace }}/target/release/impeccable
         run: node tests/oracle/run.mjs
+
+      - name: Install review test browser
+        run: bunx playwright install --with-deps chromium
+
+      - name: Verify review workflows and system themes
+        env:
+          IMPECCABLE_BIN: ${{ github.workspace }}/target/release/impeccable
+        run: node --test --test-timeout=180000 tests/new-work-e2e.test.mjs tests/review-theme.test.mjs
 
   # Release-order guard (triage decision D4). Verifies that the engine release for
   # the pinned ENGINE_VERSION is fully published — the five dist binaries + .sha256
@@ -356,7 +365,7 @@ jobs:
         # Only when the check itself failed, so a checkout or setup failure keeps its own error.
         if: failure() && steps.check.outcome == 'failure'
         run: |
-          echo "::error title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release assets and/or the @impeccable/cli-<os>-<arch> npm platform packages). Publish the engine (bun run release:engine) and the platform packages (bun run release:platform-packages) before bumping ENGINE_VERSION on main or releasing the skill/CLI."
+          echo "::error title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release assets and/or the @impeccable/cli-<os>-<arch> npm platform packages). Publish the engine (bun run release:engine) and the platform packages (bun run release:platform-packages) before bumping ENGINE_VERSION on main or releasing the skill/CLI. If only engine-checksums.txt is named, run node scripts/check-engine-release.mjs --record and commit it."
 
   test:
     runs-on: ubuntu-latest
@@ -397,7 +406,7 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -462,7 +471,7 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -548,7 +557,7 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -631,7 +640,7 @@ jobs:
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
 
       - name: Build the engine
@@ -708,7 +717,7 @@ jobs:
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
 
       - name: Build the engine

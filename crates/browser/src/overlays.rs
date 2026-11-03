@@ -32,6 +32,40 @@
 //!   `z-index: 9999999`, a spinner and no text) never cleared on its home
 //!   page, so three of six captures were a white first screen.
 //!
+//! - **Intros** as preloaders are, named `intro` or `splash` instead of a
+//!   loader word ([`INTRO_WORDS`]), with up to [`INTRO_MAX_TEXT`] characters
+//!   and [`INTRO_WAIT_MS`] to go on their own, when they stand in front of a
+//!   page: no `h1` of their own, at least [`SPLASH_MIN_OUTSIDE_TEXT`]
+//!   characters outside, and something of the page under them at a probe
+//!   point (a fixed `section.intro` hero the content scrolls over is the page). A fill counts as opaque when it
+//!   is a colour at alpha 0.9 or more or a gradient whose every stop is (for
+//!   preloaders too). Corpus run 1006: tirionai.com's `div.cine-intro`.
+//!   An intro can also go unnamed: a layer that passes the same tests,
+//!   carries `aria-hidden="true"` itself, and is playing a finite animation
+//!   (a CSS animation or transition with an end; an infinite one does not
+//!   count) and has no way through of its own (`cursor: pointer`, an
+//!   `onclick`) is one too. It must stand in front of a page as a named
+//!   intro does, except that while its animation runs and for
+//!   [`INTRO_GRACE_MS`] after, the wait drops the outside-text minimum (a
+//!   sparse page under it still counts; a fixed hero the page scrolls over
+//!   does not), and
+//!   once seen it stays one after its animations end, so a page script
+//!   that removes it a moment later is still waited for. Hidden, once the
+//!   wait runs out, only in front of a page with the full test. Corpus run
+//!   1010: articulation-hub.vercel.app's `div.spl` brand intro (fixed,
+//!   `inset-0`, an opaque gradient, "MOTOR SPEECH LAB", a 5.6s animation and
+//!   a 500ms fade) covered every capture.
+//! - **Splash gates** by structure (`splashes()` in [`preloader_js`]): a
+//!   fixed layer covering the first screen and on top of it, with an opaque
+//!   fill, at most 60 characters of text that ask the visitor to enter
+//!   ([`ENTER_WORDS`]), no age, cookie, accept or agree words, no field,
+//!   frame or dialog, at most one link or button, and a way through (the
+//!   layer is `cursor: pointer` or has an `onclick`, or its one control says
+//!   enter), standing in front of a page as an intro must. Hidden at once,
+//!   never clicked. Corpus run 1006: noteforge.co's
+//!   "Enter NoteForge" layer, which stays until clicked, covered all six
+//!   captures.
+//!
 //! - **Builder badges** by the builder's own markup ([`BUILDER_BADGES`]): the
 //!   "Edit with" badge a site builder pins over pages it hosts. Corpus run 42:
 //!   Lovable's `aside#lovable-badge` (`aria-label="Edit with Lovable"`, a
@@ -40,7 +74,8 @@
 //!   The badge is the builder's, not the site's design.
 //!
 //! Left alone on purpose: a gate the visitor has to answer (a state or
-//! region picker, an age gate, a sign-in wall) and a site's own interstitial
+//! region picker, an age gate, a sign-in wall; a splash whose one answer is
+//! to enter is not one) and a site's own interstitial
 //! (a welcome dialog, a newsletter modal) carry text and controls, so no
 //! structural test here matches them, and the Pristine rule that reports an
 //! interstitial at load still sees them.
@@ -92,6 +127,9 @@ pub const HIDE_STYLE_ID: &str = "impeccable-overlay-hide";
 /// The attribute the preloader hide step puts on a layer it hid, naming it,
 /// so a later pass reports it again without hiding twice.
 pub const PRELOADER_MARK: &str = "data-impeccable-hidden";
+/// Beside [`PRELOADER_MARK`], the kind of a layer that is not a preloader
+/// (`intro`, `splash`).
+pub const KIND_MARK: &str = "data-impeccable-hidden-kind";
 
 /// How long the engine waits for a preloader to go on its own before hiding
 /// it, and how often it looks.
@@ -112,6 +150,44 @@ pub const WRAPPER_WORDS: &[&str] = &[
 /// Most visible characters a preloader may carry ("Loading...", "75%", a
 /// brand word).
 pub const PRELOADER_MAX_TEXT: usize = 60;
+
+/// Id and class words that name an intro: a layer named this way passes the
+/// preloader tests with up to [`INTRO_MAX_TEXT`] characters (a brand line
+/// beside a progress count) and gets [`INTRO_WAIT_MS`] to go on its own.
+/// Corpus run 1006: tirionai.com's `div.cine-intro` (fixed, `z-index: 300`,
+/// a radial-gradient fill, "TIRIONAI For the places you can't always watch.
+/// RENDERING 47%", 61 characters) counted to 100% for 6 to 17 seconds after
+/// load, and covered the mobile capture.
+pub const INTRO_WORDS: &[&str] = &["intro", "splash", "splashscreen"];
+pub const INTRO_MAX_TEXT: usize = 120;
+/// How long the engine waits for an intro to go on its own.
+pub const INTRO_WAIT_MS: u64 = 12000;
+/// How long after an unnamed intro's last finite animation the wait still
+/// counts it where too little of a page shows outside it to hide it: the
+/// page's script fades or removes it once its animation ends, and a probe
+/// can fall between the two.
+pub const INTRO_GRACE_MS: u64 = 1000;
+
+/// Words a splash gate's text uses to let the visitor in. A splash is
+/// hidden, not clicked: a full-screen layer whose one action is to go away
+/// paints the page beneath once it has.
+pub const ENTER_WORDS: &[&str] = &[
+    "enter",
+    "entrer",
+    "entrez",
+    "entrar",
+    "entra",
+    "eintreten",
+    "betreten",
+    "进入",
+    "進入",
+    "입장",
+];
+/// Most visible characters a splash gate may carry ("Enter NoteForge →").
+pub const SPLASH_MAX_TEXT: usize = 60;
+/// Least visible text the page shows outside a splash or an intro for it to
+/// be hidden: under that, the layer is the page.
+pub const SPLASH_MIN_OUTSIDE_TEXT: usize = 200;
 /// Least share of the first screen a preloader covers.
 pub const PRELOADER_MIN_COVER: f64 = 0.9;
 
@@ -120,22 +196,90 @@ pub const PRELOADER_MIN_COVER: f64 = 0.9;
 pub fn preloader_js() -> String {
     format!(
         r#"const loaderWords = {words};
+  const introWords = {intro_words};
+  const enterWords = {enter_words};
   const wrapperWords = {wrappers};
   // A token names a loader when, after any trailing wrapper words
   // (`-wrapper`, `_bg`), its last word is a loader word: `preloader`,
   // `pre-loader`, `page_loader_bg`, `loader-wrapper`, `is-loading`.
-  const namesLoader = token => {{
+  const namesIn = words => token => {{
     const parts = String(token).toLowerCase().split(/[-_]+/).filter(Boolean);
     while (parts.length > 1 && wrapperWords.includes(parts[parts.length - 1])) parts.pop();
-    return parts.length > 0 && loaderWords.includes(parts[parts.length - 1]);
+    return parts.length > 0 && words.includes(parts[parts.length - 1]);
   }};
+  const namesLoader = namesIn(loaderWords);
+  const namesIntro = namesIn(introWords);
   const alpha = c => {{
     const m = /rgba?\(([^)]*)\)/.exec(c || '');
     if (!m) return 0;
     const p = m[1].split(/[\s,/]+/).filter(Boolean);
     return p.length >= 4 ? parseFloat(p[3]) : 1;
   }};
-  const preloaders = () => {{
+  // A fill that hides what is under it: an opaque colour, or a gradient
+  // whose every stop is opaque.
+  const opaqueFill = cs => {{
+    if (alpha(cs.backgroundColor) >= 0.9) return true;
+    const img = cs.backgroundImage || '';
+    if (!/gradient\(/.test(img) || /url\(/.test(img)) return false;
+    const stops = img.match(/rgba?\([^)]*\)/g) || [];
+    return stops.length > 0 && stops.every(c => alpha(c) >= 0.9);
+  }};
+  // Whether a full-screen layer stands in front of a page rather than being
+  // it: no h1 of its own, at least {min_outside} characters of text outside
+  // it, and, with the layer out of the hit test, something of the page
+  // under it at one of the probe points (text of its own, a replaced
+  // element, or a box smaller than the screen). A hero the content scrolls
+  // over from 100vh, or a one-screen site, has nothing under it.
+  // `relaxText`: skip only the outside-text minimum (an unnamed intro still
+  // animating over a sparse page); the h1 and hit tests still apply.
+  const frontsPage = (el, points, relaxText) => {{
+    const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+    if (el.querySelector('h1')) return false;
+    const chars = n => (n.innerText || '').replace(/\s+/g, ' ').trim().length;
+    if (!document.body || (!relaxText && chars(document.body) - chars(el) < {min_outside})) return false;
+    const big = r => {{
+      const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+      const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+      return (w * h) / (vw * vh) >= 0.9;
+    }};
+    const prev = [el.style.getPropertyValue('visibility'), el.style.getPropertyPriority('visibility')];
+    el.style.setProperty('visibility', 'hidden', 'important');
+    try {{
+      return points.some(([x, y]) => {{
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || hit === document.body || hit === document.documentElement || el.contains(hit)) return false;
+        const own = Array.from(hit.childNodes).some(n => n.nodeType === 3 && n.data.trim());
+        return own || hit.matches('img, svg, video, canvas, picture, input, button, textarea, select') || !big(hit.getBoundingClientRect());
+      }});
+    }} finally {{
+      if (prev[0]) el.style.setProperty('visibility', prev[0], prev[1]);
+      else el.style.removeProperty('visibility');
+    }}
+  }};
+  const enterText = t => {{
+    const words = t.toLowerCase().split(/[^\p{{L}}\p{{N}}]+/u).filter(Boolean);
+    return words.some(w => enterWords.includes(w)) || enterWords.some(w => /[^\x00-\x7f]/.test(w) && t.includes(w));
+  }};
+  // An unnamed intro: a layer that hides itself from assistive technology
+  // and plays a finite animation (a CSS animation or transition that ends)
+  // while it covers the page. Seen once, it stays one after its animations
+  // end, so the page's own script removing it a beat later is still waited
+  // for and a layer that never leaves can still be hidden.
+  // Each seen layer maps to the last time it was seen animating.
+  const introsSeen = window.__impeccableIntrosSeen || (window.__impeccableIntrosSeen = new WeakMap());
+  const playsFinite = el => {{
+    try {{
+      return el.getAnimations({{ subtree: true }}).some(a => {{
+        if (a.playState !== 'running' || !a.effect) return false;
+        const end = a.effect.getComputedTiming().endTime;
+        return typeof end === 'number' && Number.isFinite(end);
+      }});
+    }} catch (e) {{ return false; }}
+  }};
+  // `waiting`: the wait probe asks, not the hide step. An unnamed intro
+  // still animating counts while the probe waits even where nothing of a
+  // page shows outside it yet; it is hidden only in front of a page.
+  const preloaders = waiting => {{
     const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
     if (!vw || !vh) return [];
     const covers = r => {{
@@ -149,18 +293,26 @@ pub fn preloader_js() -> String {
     for (let i = 0; i < all.length && i < 20000; i++) {{
       const el = all[i];
       const tokens = [el.id].concat(Array.from(el.classList || [])).filter(Boolean);
-      if (!tokens.some(namesLoader)) continue;
+      const loader = tokens.some(namesLoader);
+      const named = loader || tokens.some(namesIntro);
+      const seen = !named && introsSeen.has(el);
+      if (!named && !seen && el.getAttribute('aria-hidden') !== 'true') continue;
+      // Many icons are aria-hidden: the cheap cover test goes first for them.
+      if (!named && !covers(el.getBoundingClientRect())) continue;
       let cs;
       try {{ cs = getComputedStyle(el); }} catch (e) {{ continue; }}
+      // An unnamed layer with a way through of its own (`cursor: pointer`,
+      // an `onclick`) is a gate, whatever its text says.
+      if (!named && (cs.cursor === 'pointer' || el.hasAttribute('onclick'))) continue;
       if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility !== 'visible' || parseFloat(cs.opacity) <= 0.05) continue;
       try {{ if (el.checkVisibility && !el.checkVisibility({{ opacityProperty: true, visibilityProperty: true }})) continue; }} catch (e) {{}}
       if (!covers(el.getBoundingClientRect())) continue;
       // Opaque on itself, or on a descendant that covers the screen too.
-      let opaque = alpha(cs.backgroundColor) >= 0.9;
+      let opaque = opaqueFill(cs);
       if (!opaque) {{
         const kids = el.querySelectorAll('*');
         for (let k = 0; k < kids.length && k < 200 && !opaque; k++) {{
-          try {{ opaque = alpha(getComputedStyle(kids[k]).backgroundColor) >= 0.9 && covers(kids[k].getBoundingClientRect()); }} catch (e) {{}}
+          try {{ opaque = opaqueFill(getComputedStyle(kids[k])) && covers(kids[k].getBoundingClientRect()); }} catch (e) {{}}
         }}
       }}
       if (!opaque) continue;
@@ -184,25 +336,112 @@ pub fn preloader_js() -> String {
       // Not a gate or a dialog: no control, link, frame or dialog inside.
       if (el.matches('[role=dialog], [role=alertdialog], [aria-modal=true], dialog')) continue;
       if (el.querySelector('a[href], button, input:not([type=hidden]), select, textarea, iframe, [role=button], [role=dialog], [role=alertdialog], [aria-modal=true], dialog, [contenteditable=""], [contenteditable=true]')) continue;
-      if ((el.innerText || '').replace(/\s+/g, ' ').trim().length > {max_text}) continue;
+      const shown = (el.innerText || '').replace(/\s+/g, ' ').trim();
+      if (shown.length > (loader ? {max_text} : {intro_max_text})) continue;
+      // A layer that asks to be entered and has a way through is a splash
+      // gate: it never goes on its own, so it is not waited for
+      // (`splashes`). A loader that only mentions entering ("Preparing to
+      // enter the site") has none and is still a loader.
+      if (enterText(shown) && shown.length <= {splash_max_text} && (cs.cursor === 'pointer' || el.hasAttribute('onclick'))) continue;
+      // A long enter-worded layer is still an intro, unless it is an answer
+      // (an age gate or a consent choice), which stays.
+      if (!loader && enterText(shown) && /\b(18|21)\b|\+18|\bage\b|\bâge\b|\balter\b|\bedad\b|\bidade\b|cookie|accept|agree/i.test(shown)) continue;
+      // An intro fronts a page that is already there; a fixed hero is the page.
+      if (!named) {{
+        const running = playsFinite(el);
+        if (running) introsSeen.set(el, performance.now());
+        else if (!seen) continue;
+        // It must stand in front of a page, as a named intro. While it
+        // animates, and for {grace}ms after (the page's script starting its
+        // fade), the wait drops only the outside-text minimum: a sparse page
+        // still under it counts, a fixed hero the page scrolls over does not.
+        const lately = performance.now() - introsSeen.get(el) < {grace};
+        if (!frontsPage(el, points, waiting && lately)) continue;
+      }} else if (!loader && !frontsPage(el, points)) continue;
       // The outermost match stands for the ones inside it.
       if (found.some(f => f.el.contains(el))) continue;
-      const cls = Array.from(el.classList || []).find(namesLoader);
-      const name = el.tagName.toLowerCase() + (el.id && namesLoader(el.id) ? '#' + el.id : cls ? '.' + cls : el.id ? '#' + el.id : '');
-      found.push({{ el, name }});
+      const names = loader ? namesLoader : named ? namesIntro : (c => /^[A-Za-z_][\w-]*$/.test(c));
+      const cls = Array.from(el.classList || []).find(names);
+      const name = el.tagName.toLowerCase() + (el.id && (!named || names(el.id)) ? '#' + el.id : cls ? '.' + cls : el.id ? '#' + el.id : '');
+      found.push({{ el, name, kind: loader ? 'preloader' : 'intro' }});
+    }}
+    return found;
+  }};
+  // Splash gates: a fixed layer over the whole first screen whose short
+  // text lets the visitor in ("Enter NoteForge"), with one way through (the
+  // layer itself, or its one link or button) and nothing else to answer.
+  const splashes = () => {{
+    const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+    if (!vw || !vh) return [];
+    const covers = r => {{
+      const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+      const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+      return (w * h) / (vw * vh) >= {cover};
+    }};
+    const points = [[0.5, 0.5], [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]].map(([x, y]) => [Math.floor(vw * x), Math.floor(vh * y)]);
+    const found = [];
+    const all = document.body ? document.body.querySelectorAll('*') : [];
+    for (let i = 0; i < all.length && i < 20000; i++) {{
+      const el = all[i];
+      if (found.some(f => f.el.contains(el))) continue;
+      let cs;
+      try {{ cs = getComputedStyle(el); }} catch (e) {{ continue; }}
+      if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility !== 'visible' || parseFloat(cs.opacity) <= 0.05) continue;
+      if (!covers(el.getBoundingClientRect())) continue;
+      const text = (el.innerText || '').replace(/\s+/g, ' ').trim();
+      if (!text || text.length > {splash_max_text} || !enterText(text)) continue;
+      // Not an age gate or a consent choice: those are answers, not a door.
+      if (/\b(18|21)\b|\+18|\bage\b|\bâge\b|\balter\b|\bedad\b|\bidade\b|cookie|accept|agree/i.test(text)) continue;
+      if (el.matches('[role=dialog], [role=alertdialog], [aria-modal=true], dialog')) continue;
+      if (el.querySelector('input:not([type=hidden]), select, textarea, iframe, form, [role=dialog], [role=alertdialog], [aria-modal=true], dialog, [contenteditable=""], [contenteditable=true]')) continue;
+      const controls = el.querySelectorAll('a[href], button, [role=button]');
+      if (controls.length > 1) continue;
+      if (!(cs.cursor === 'pointer' || el.hasAttribute('onclick') || (controls.length === 1 && enterText((controls[0].innerText || controls[0].getAttribute('aria-label') || '').trim())))) continue;
+      let opaque = opaqueFill(cs);
+      if (!opaque) {{
+        const kids = el.querySelectorAll('*');
+        for (let k = 0; k < kids.length && k < 200 && !opaque; k++) {{
+          try {{ opaque = opaqueFill(getComputedStyle(kids[k])) && covers(kids[k].getBoundingClientRect()); }} catch (e) {{}}
+        }}
+      }}
+      if (!opaque) continue;
+      const passThrough = cs.pointerEvents === 'none';
+      const pe = [el.style.getPropertyValue('pointer-events'), el.style.getPropertyPriority('pointer-events')];
+      if (passThrough) el.style.setProperty('pointer-events', 'auto', 'important');
+      let onTop;
+      try {{
+        onTop = points.every(([x, y]) => {{ const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit)); }});
+      }} finally {{
+        if (passThrough) {{
+          if (pe[0]) el.style.setProperty('pointer-events', pe[0], pe[1]);
+          else el.style.removeProperty('pointer-events');
+        }}
+      }}
+      if (!onTop) continue;
+      if (!frontsPage(el, points)) continue;
+      const cls = Array.from(el.classList || []).find(c => /^[A-Za-z_][\w-]*$/.test(c));
+      const name = el.tagName.toLowerCase() + (el.id ? '#' + el.id : cls ? '.' + cls : '') + ' ("' + text.slice(0, 40).replace(/"/g, "'") + '")';
+      found.push({{ el, name, kind: 'splash' }});
     }}
     return found;
   }};"#,
         words = json!(LOADER_WORDS),
+        intro_words = json!(INTRO_WORDS),
+        enter_words = json!(ENTER_WORDS),
         wrappers = json!(WRAPPER_WORDS),
         cover = PRELOADER_MIN_COVER,
         max_text = PRELOADER_MAX_TEXT,
+        intro_max_text = INTRO_MAX_TEXT,
+        splash_max_text = SPLASH_MAX_TEXT,
+        min_outside = SPLASH_MIN_OUTSIDE_TEXT,
+        grace = INTRO_GRACE_MS,
     )
 }
 
-/// The wait probe: the names of the preloaders covering the page now.
+/// The wait probe: the preloaders and intros covering the page now, each as
+/// `<kind> <name>` (`preloader div#preloader`, `intro div.cine-intro`).
 pub fn preloader_probe_js() -> String {
-    format!("(() => {{\n  {}\n  return preloaders().map(p => p.name);\n}})()", preloader_js())
+    format!("(() => {{\n  {}\n  return preloaders(true).map(p => p.kind + ' ' + p.name);\n}})()", preloader_js())
 }
 
 fn tours_json() -> Value {
@@ -246,6 +485,7 @@ pub fn hide_js() -> String {
   const tours = {tours};
   const STYLE_ID = {style_id};
   const MARK = {mark};
+  const KIND_MARK = {kind_mark};
   const q = s => {{ try {{ return Array.from(document.querySelectorAll(s)); }} catch (e) {{ return []; }} }};
   const boxShows = el => {{
     try {{
@@ -295,15 +535,17 @@ pub fn hide_js() -> String {
   // Preloaders: hidden ones (marked) are reported again; new ones hidden.
   for (const el of q('[' + MARK + ']')) {{
     const name = el.getAttribute(MARK);
-    if (name && !out.hidden.some(h => h.kind === 'preloader' && h.name === name)) out.hidden.push({{ kind: 'preloader', name }});
+    const kind = el.getAttribute(KIND_MARK) || 'preloader';
+    if (name && !out.hidden.some(h => h.kind === kind && h.name === name)) out.hidden.push({{ kind, name }});
   }}
   let hidLoader = false;
-  for (const {{ el, name }} of preloaders()) {{
+  for (const {{ el, name, kind }} of preloaders(false).concat(splashes())) {{
     el.setAttribute(MARK, name);
+    if (kind !== 'preloader') el.setAttribute(KIND_MARK, kind);
     el.style.setProperty('display', 'none', 'important');
     out.changed = true;
     hidLoader = true;
-    if (!out.hidden.some(h => h.kind === 'preloader' && h.name === name)) out.hidden.push({{ kind: 'preloader', name }});
+    if (!out.hidden.some(h => h.kind === kind && h.name === name)) out.hidden.push({{ kind, name }});
   }}
   // The page's own script would clear the loader and the scroll lock it
   // keeps with it; hiding the loader does not run that script. Undo the
@@ -345,6 +587,7 @@ pub fn hide_js() -> String {
         tours = tours_json(),
         style_id = json!(HIDE_STYLE_ID),
         mark = json!(PRELOADER_MARK),
+        kind_mark = json!(KIND_MARK),
         preloader = preloader_js(),
     )
 }
@@ -399,7 +642,7 @@ impl OverlayReport {
             if !self.hidden.contains(&item) {
                 self.hidden.push(item);
             }
-            if kind != "preloader" {
+            if kind == "tour" || kind == "badge" {
                 let sels = strs(v.get("matched").and_then(|m| m.get(name)));
                 match self.matched.iter_mut().find(|(n, _)| n == name) {
                     Some((_, have)) => {

@@ -29,8 +29,11 @@ pub struct Provider {
     /// `<prefix>impeccable`
     pub command: String,
     pub skill_dir: Option<String>,
-    /// How to spell this binary in printed commands.
+    /// How to spell this binary in printed commands
+    /// (`impeccable_common::launcher::spell_self` of `self_raw`).
     pub self_cmd: String,
+    /// The unquoted self path, for callers that quote it themselves.
+    pub self_raw: String,
 }
 
 fn exe_path() -> Option<String> {
@@ -62,6 +65,7 @@ fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
     Some(match harness.as_str() {
         ".claude" => "claude-code",
         ".cursor" => "cursor",
+        ".devin" => "devin",
         ".dsh" => "dsh",
         ".gemini" => "gemini",
         ".codex" => "codex",
@@ -98,11 +102,12 @@ pub fn detect(env: &Env, cwd: &str) -> Provider {
     };
     let command_prefix = if id == "codex" { "$" } else { "/" }.to_string();
     let command = format!("{}impeccable", command_prefix);
-    let self_cmd = match env.get("IMPECCABLE_SELF").filter(|v| !v.trim().is_empty()) {
+    let self_raw = match env.get("IMPECCABLE_SELF").filter(|v| !v.trim().is_empty()) {
         Some(v) => v.trim().to_string(),
         None => exe_path().unwrap_or_else(|| "impeccable".to_string()),
     };
-    Provider { id, command_prefix, command, skill_dir, self_cmd }
+    let self_cmd = impeccable_common::launcher::spell_self(&self_raw);
+    Provider { id, command_prefix, command, skill_dir, self_cmd, self_raw }
 }
 
 impl Provider {
@@ -118,5 +123,34 @@ impl Provider {
     /// `node <scripts>/<verb>.mjs`.
     pub fn verb_cmd(&self, verb: &str) -> String {
         format!("{} {}", self.self_cmd, verb)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_self(value: &str) -> Provider {
+        let env: Env = [("IMPECCABLE_SELF".to_string(), value.to_string())].into_iter().collect();
+        detect(&env, "/project")
+    }
+
+    #[test]
+    fn spaced_cmd_launcher_prints_with_the_call_operator() {
+        // PowerShell rejects `"<path>" <verb>` and splits an unquoted spaced
+        // path; `& "<path>" <verb>` runs (#744). The raw path stays available
+        // for callers that quote it themselves.
+        let p = with_self(r"C:\Users\A B\skill\scripts\impeccable.cmd");
+        assert_eq!(p.verb_cmd("context"), r"& 'C:\Users\A B\skill\scripts\impeccable.cmd' context");
+        assert_eq!(p.self_raw, r"C:\Users\A B\skill\scripts\impeccable.cmd");
+    }
+
+    #[test]
+    fn other_spellings_are_unchanged() {
+        for value in [r"C:\skill\scripts\impeccable.cmd", "/Users/a b/skill/scripts/impeccable", "npx impeccable"] {
+            let p = with_self(value);
+            assert_eq!(p.self_cmd, value);
+            assert_eq!(p.self_raw, value);
+        }
     }
 }

@@ -90,6 +90,100 @@
     <circle cx="12" cy="12" r="10"/>
     <path d="M8 12l3 3 5-6"/>
   </svg>
+  <!-- PASS: an inline wordmark sized in ems: its viewBox is large, but it
+       renders at the text's scale (about 69x16px at 16px) -->
+  <svg width="4.33em" height="1em" viewBox="0 0 3242 750" role="img" aria-label="Acme">
+    <rect x="40" y="40" width="40" height="40" fill="#0b5"/>
+    <rect x="100" y="90" width="40" height="40" fill="#d33"/>
+    <rect x="160" y="140" width="40" height="40" fill="#fc0"/>
+    <rect x="220" y="40" width="40" height="40" fill="#36c"/>
+    <rect x="280" y="90" width="40" height="40" fill="#0b5"/>
+    <rect x="340" y="140" width="40" height="40" fill="#d33"/>
+    <rect x="400" y="40" width="40" height="40" fill="#fc0"/>
+    <rect x="460" y="90" width="40" height="40" fill="#36c"/>
+  </svg>
+
+  <!-- PASS: a traced drawing of paths with a few primitives among them:
+       8 of 44 drawn shapes -->
+  <svg viewBox="0 0 600 400" width="600" height="400" role="img" aria-label="Logo artwork">
+    <rect x="40" y="40" width="40" height="40" fill="#0b5"/>
+    <rect x="100" y="90" width="40" height="40" fill="#d33"/>
+    <rect x="160" y="140" width="40" height="40" fill="#fc0"/>
+    <rect x="220" y="40" width="40" height="40" fill="#36c"/>
+    <rect x="280" y="90" width="40" height="40" fill="#0b5"/>
+    <rect x="340" y="140" width="40" height="40" fill="#d33"/>
+    <rect x="400" y="40" width="40" height="40" fill="#fc0"/>
+    <rect x="460" y="90" width="40" height="40" fill="#36c"/>
+    <path d="M10 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M19 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M28 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M37 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M46 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M55 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M64 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M73 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M82 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M91 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M100 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M109 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M118 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M127 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M136 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M145 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M154 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M163 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M172 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M181 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M190 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M199 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M208 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M217 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M226 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M235 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M244 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M253 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M262 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M271 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M280 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M289 20 l6 30 l-12 0 z" fill="#36c"/>
+    <path d="M298 20 l6 30 l-12 0 z" fill="#0b5"/>
+    <path d="M307 20 l6 30 l-12 0 z" fill="#d33"/>
+    <path d="M316 20 l6 30 l-12 0 z" fill="#fc0"/>
+    <path d="M325 20 l6 30 l-12 0 z" fill="#36c"/>
+  </svg>
+
+  <!-- FLAG: a scene assembled from primitives, sized in ems at hero scale
+       (20em by 15em, 320x240px at 16px) -->
+  <svg width="20em" height="15em" viewBox="0 0 64 48" role="img" aria-label="A stack of blocks">
+    <rect x="40" y="40" width="40" height="40" fill="#0b5"/>
+    <rect x="100" y="90" width="40" height="40" fill="#d33"/>
+    <rect x="160" y="140" width="40" height="40" fill="#fc0"/>
+    <rect x="220" y="40" width="40" height="40" fill="#36c"/>
+    <rect x="280" y="90" width="40" height="40" fill="#0b5"/>
+    <rect x="340" y="140" width="40" height="40" fill="#d33"/>
+    <rect x="400" y="40" width="40" height="40" fill="#fc0"/>
+    <rect x="460" y="90" width="40" height="40" fill="#36c"/>
+  </svg>
+  <!-- PASS: a series of equal-width bars with no labels (stripe.com's uptime
+       chart): a chart drawn in rects, not a scene -->
+  <svg width="382" height="210" viewBox="0 0 382 210" fill="none">
+    <rect x="1" y="1" width="380" height="208" fill="#fff"/>
+    <rect x="1" y="1" width="380" height="28" fill="#f6f9fc"/>
+    <rect x="8" y="40" width="44" height="160" fill="#635bff"/>
+    <rect x="34" y="43" width="44" height="157" fill="#635bff"/>
+    <rect x="60" y="46" width="44" height="154" fill="#635bff"/>
+    <rect x="86" y="49" width="44" height="151" fill="#635bff"/>
+    <rect x="112" y="52" width="44" height="148" fill="#635bff"/>
+    <rect x="138" y="55" width="44" height="145" fill="#635bff"/>
+    <rect x="164" y="58" width="44" height="142" fill="#635bff"/>
+    <rect x="190" y="61" width="44" height="139" fill="#635bff"/>
+    <rect x="216" y="64" width="44" height="136" fill="#635bff"/>
+    <rect x="242" y="67" width="44" height="133" fill="#635bff"/>
+    <rect x="268" y="70" width="44" height="130" fill="#635bff"/>
+    <rect x="294" y="73" width="44" height="127" fill="#635bff"/>
+    <rect x="320" y="76" width="44" height="124" fill="#635bff"/>
+    <rect x="346" y="79" width="44" height="121" fill="#635bff"/>
+  </svg>
 </main>
 </body>
 </html>

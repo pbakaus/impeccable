@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"buried-raster\",\n    \"name\": \"Raster buried under a wash or opacity\",\n    \"description\": \"A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/buried-raster-tracking-pixel.html\",\n    \"line\": 0,\n    \"snippet\": \"<img> at opacity 0\"\n  },\n  {\n    \"antipattern\": \"buried-raster\",\n    \"name\": \"Raster buried under a wash or opacity\",\n    \"description\": \"A background image under a near-opaque gradient wash, or a raster on an element at near-zero opacity, never reaches the screen: the page shows the wash, and the produced texture or photo ships as a compliance token. Let the material show (a tint under 0.9 alpha, a blend mode, an opacity you can see) or remove the file.\",\n    \"severity\": \"warning\",\n    \"category\": \"quality\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/buried-raster-tracking-pixel.html\",\n    \"line\": 0,\n    \"snippet\": \"<img> at opacity 0.05 \\\"Workshop\\\"\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

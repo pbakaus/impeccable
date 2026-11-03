@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nested cards composer fixture</title>
+<!--
+  observations-1006 row 19 (resineda.com): a bordered composer around a
+  textarea, holding a screen-reader label in a clipped 1px box and one row
+  of buttons, is a field, not a card. The same box with a line of copy of
+  its own is a card inside the panel, and so are a plan card carried by a
+  hidden input and one big button, and a selectable tile around a checkbox.
+-->
+<style>
+  body { margin: 0; font-family: Arial, sans-serif; background: #ffffff; color: #111111; }
+  .col { display: inline-block; vertical-align: top; width: 420px; padding: 24px; }
+  .panel { border: 1px solid #d4d4d8; border-radius: 16px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  .composer { border: 1px solid #d4d4d8; border-radius: 12px; padding: 8px; margin-top: 12px; }
+  .composer textarea { display: block; width: 100%; height: 36px; border: 0; resize: none; font: inherit; }
+  .composer .bottom { display: flex; justify-content: flex-end; }
+  .composer button { width: 26px; height: 26px; border: 0; border-radius: 13px; background: #111111; color: #ffffff; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  h2 { font-size: 24px; }
+  h3 { font-size: 18px; margin: 0; }
+  .note { margin: 6px 0 0; font-size: 13px; color: #52525b; }
+  .composer .plan-button { display: block; width: 100%; height: auto; border-radius: 0; text-align: left; background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+</style>
+</head>
+<body>
+<div class="col" id="should-flag">
+  <h2>Should flag</h2>
+  <section class="panel">
+    <p>Choose the plan that fits</p>
+    <form class="composer" id="flag-plan"><input type="hidden" name="plan" value="team"><button type="submit" class="plan-button"><h3>Team plan</h3><p class="note">Everything in Pro plus single sign-on and audit logs for compliance.</p></button></form>
+  </section>
+  <section class="panel">
+    <p>Workspaces</p>
+    <div class="composer" id="flag-tile">
+      <input type="checkbox" id="c">
+      <div role="button" class="plan-button"><h3>Archive</h3><p class="note">Keep every project you close for a year.</p></div>
+    </div>
+  </section>
+  <aside class="panel">
+    <p>Ask anything about resin floors</p>
+    <form class="composer" id="flag-composer">
+      <label class="sr-only" for="a">Message the assistant</label>
+      <textarea id="a"></textarea>
+      <p class="note">Answers can be wrong, check the datasheet</p>
+      <div class="bottom"><button type="submit">↑</button></div>
+    </form>
+  </aside>
+</div>
+<div class="col" id="should-pass">
+  <h2>Should pass</h2>
+  <aside class="panel">
+    <p>Ask anything about resin floors</p>
+    <form class="composer" id="pass-composer">
+      <label class="sr-only" for="b">Message the assistant</label>
+      <textarea id="b"></textarea>
+      <div class="bottom"><button type="submit">↑</button></div>
+    </form>
+  </aside>
+</div>
+</body>
+</html>

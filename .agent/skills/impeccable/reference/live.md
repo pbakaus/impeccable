@@ -158,14 +158,14 @@ Sources in priority order: DESIGN.md's visual system fields; CSS custom properti
 
 **Default:** compare each variant against the Phase A lock; palette, type voice, or rhetoric drift means it crossed into departure by accident: rework. Then confirm three different primary axes; three "tighter density" variants is failure. **Departure:** two passes, family before sentence. Family pass (non-negotiable): label each variant with a concrete family of your own choosing; shared or interchangeable labels mean rework. Sentence pass: three one-line descriptions side by side; two that rhyme mean rework. When the primary axis is color or theme, the trio must not share theme + dominant hue: three color worlds, not three shades.
 
-**Action-specific invocations** must vary along the action's dimension:
+**Action-specific invocations** must vary along the action's dimension; in default mode every variation stays within the available faces and existing tokens:
 
 - `bolder`: amplify a different dimension per variant (scale / saturation / structural change).
 - `quieter`: pull back a different dimension (color / ornament / spacing).
 - `distill`: remove a different class of excess (visual noise / redundant content / nested structure).
 - `polish`: a different refinement axis (rhythm / hierarchy / micro-details).
-- `typeset`: different pairing AND different scale ratio each.
-- `colorize`: different hue family each; vary chroma and contrast strategy.
+- `typeset`: departure varies the pairing AND the scale ratio each; default keeps the faces and varies scale ratio, case, and weight each.
+- `colorize`: departure gives each a different hue family and varies chroma and contrast strategy; default gives each a different existing palette role carrying the surface (Restrained / Committed / Full palette / Drenched) and a different contrast strategy.
 - `layout`: different structural arrangement, not spacing tweaks.
 - `adapt`: different target context per variant (mobile-first / tablet / desktop / print or low-data).
 - `animate`: different motion vocabulary (cascade stagger / clip wipe / scale-and-focus / morph / parallax).
@@ -256,7 +256,7 @@ If wrap or generation fails after the browser flipped to GENERATING, tell the **
 When wrap returns `fallback: "agent-driven"`, you pick the source file yourself; the goal is unchanged: three preview variants now, and the accepted one persisted where the next build cannot wipe it.
 
 1. **Find where the element really lives** from the error payload: `element_not_in_source` + `generatedMatch` means the served HTML is generated, so find the generator's template or partial; `element_not_found` means runtime-injected, so find the rendering component or data source; `file_is_generated` resolves the same way. A purely visual change may belong in a shared stylesheet rather than a template.
-2. **Preview in the served file**: manually write the same wrapper scaffold `impeccable live-wrap` produces (`<!-- impeccable-variants-start ID --><div data-impeccable-variants="ID" data-impeccable-variant-count="3" style="display: contents">…</div><!-- end -->`) into the file the browser actually loaded, insert your variant divs, `--reply EVENT_ID done --file <served file>`. This edit is temporary; a regen wiping it is fine.
+2. **Preview in the served file**: manually write the same wrapper scaffold `impeccable live-wrap` produces into the file the browser actually loaded, moving the element itself into the original slot: `<!-- impeccable-variants-start ID --><div data-impeccable-variants="ID" data-impeccable-variant-count="3" style="display: contents"><div data-impeccable-variant="original">THE ELEMENT, UNCHANGED</div><!-- Variants: insert below this line --></div><!-- impeccable-variants-end ID -->`. Insert your variant divs after the marker, then `--reply EVENT_ID done --file <served file>`. Never drop the original slot: discard restores the element from it and refuses a wrapper without one. This edit is temporary; a regen wiping it is fine.
 3. **On accept, write to true source** (accept refuses generated files, so `_acceptResult.handled` is usually `false` here): structural change → template/component source; visual-only → the right stylesheet; content rendered from data → the data source or render logic. Then remove the temporary wrapper from the served file.
 4. **On discard**, just remove the temporary wrapper.
 
@@ -303,6 +303,8 @@ Event: `{id, pageUrl, batch: {entries}, evidencePath?, chunk?, repair?, deadline
 The user already clicked Apply. Do not ask what to do, discard, or redirect to Go. The parent live thread keeps the foreground poll loop and sends the final `/poll --reply --data`.
 
 When native subagents are available, delegate source edits to `impeccable_manual_edit_applier` / `impeccable-manual-edit-applier`. Pass cwd, scripts path, event id, page URL, chunk/deadline, `batch`, `evidencePath`, and the canonical JSON result schema. The subagent must not poll or reply. If unavailable, apply inline with the same contract.
+
+An op with `deleted: true` and `removeElement: true` is the browser's Remove badge: delete that whole element from source, children included, not just its text. Locate it by `sourceHint`, then by `leaf.outerHTML` and `originalText`, and remove exactly that element's source range; leave no empty wrapper, orphaned children, or dangling markup behind.
 
 If `repair` is present, the previous Apply changed source but final validation failed. Fix the current source and return the same canonical JSON result; do not roll files back yourself. The browser will ask the user before any rollback.
 

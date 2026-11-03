@@ -148,6 +148,8 @@ fn nested_cards_read_the_computed_box() {
             "#flag-illustration-inner",
             "#flag-dialog-nested-inner",
             "#flag-mono-button-inner",
+            // observations-1006 row 19: two links are not a strip.
+            "#flag-two-links-inner",
         ],
         &[
             "#pass-band-inner",
@@ -168,8 +170,22 @@ fn nested_cards_read_the_computed_box() {
             "#pass-player-inner",
             "#pass-dialog-inner",
             "#flag-dialog-group",
+            // observations-1006 row 19: a row of three links, and a tab
+            // spanning a clipped column in the card's corner.
+            "#pass-link-strip-inner",
+            "#pass-corner-tab-inner",
         ],
     );
+}
+
+/// observations-1010 row 7 (swapno.in): the page wrapper is the page, not
+/// an outer card; a centred panel narrower than the viewport is one.
+#[test]
+fn nested_cards_skip_the_page_frame() {
+    let Some(findings) = scan("nested-cards-page-frame.html") else {
+        return;
+    };
+    assert_marks(&findings, "nested-cards", &["#flag-panel-card"], &["#pass-frame-card"]);
 }
 
 #[test]
@@ -241,6 +257,9 @@ fn page_level_misreads_stay_silent() {
         ("first-viewport-column-overflow-tabs.html", "first-viewport-column-overflow"),
         ("first-viewport-column-overflow-clipped.html", "first-viewport-column-overflow"),
         ("em-dash-pricing-matrix.html", "em-dash-overuse"),
+        ("em-dash-list-separators.html", "em-dash-overuse"),
+        ("em-dash-paired-dash.html", "em-dash-overuse"),
+        ("skipped-heading-hidden-panel.html", "skipped-heading"),
     ] {
         let Some(findings) = scan(fixture) else {
             return;
@@ -255,6 +274,9 @@ fn page_level_misreads_stay_silent() {
         ("oversized-h1-browser.html", "oversized-h1"),
         ("first-viewport-column-overflow.html", "first-viewport-column-overflow"),
         ("em-dash-prose-with-matrix.html", "em-dash-overuse"),
+        ("em-dash-prose-list.html", "em-dash-overuse"),
+        ("em-dash-prose-bullets.html", "em-dash-overuse"),
+        ("skipped-heading-sr-only.html", "skipped-heading"),
     ] {
         let Some(findings) = scan(fixture) else {
             return;
@@ -299,8 +321,9 @@ fn label_collectors_climb_and_scale() {
             "Ring Tile",
             "Framer Card Heading",
             "Contents Wrapped Tile",
+            "Emoji In A Span",
         ],
-        &["Far From The Tile", "Sarah Chen", "Inline Side By Side"],
+        &["Far From The Tile", "Sarah Chen", "Inline Side By Side", "Word In A Span", "Hidden Emoji In A Span"],
     );
 
     let Some(findings) = scan("kicker-above-heading.html") else {
@@ -315,8 +338,16 @@ fn label_collectors_climb_and_scale() {
             "Eyebrow In A Framer Wrapper",
             "Section Title In A Panel",
             "Display Title In A Band",
+            "Plain Label Over A Large Card Title",
+            "Pill In Flow Over A Large Card Title",
+            "Absolute Eyebrow In A Card",
         ],
-        &["Label Too Large For Its Heading", "Untracked Caps Label", "Press Card Source"],
+        &[
+            "Label Too Large For Its Heading",
+            "Untracked Caps Label",
+            "Press Card Source",
+            "Badge On A Pricing Card",
+        ],
     );
 
     let Some(findings) = scan("numbered-section-labels.html") else {
@@ -325,7 +356,7 @@ fn label_collectors_climb_and_scale() {
     assert_marks(
         &findings,
         "numbered-section-labels",
-        &["Alpha ships first", "Instant deployment", "Omega grows larger"],
-        &["Nu sits too close in size", "Epsilon reads large"],
+        &["Alpha ships first", "Instant deployment", "Omega grows larger", "Xi connects", "Omicron remembers"],
+        &["Nu sits too close in size", "Epsilon reads large", "Lambda sits in a card", "Pi keeps its card", "Rho sits in a linked card", "Sigma sits in a drawn wrapper", "Tau ranks first", "Upsilon ranks second"],
     );
 }

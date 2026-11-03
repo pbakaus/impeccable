@@ -15,3 +15,6 @@ serde_json = { workspace = true }
 regex = { workspace = true }
 once_cell = { workspace = true }
 sha2 = "0.10"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

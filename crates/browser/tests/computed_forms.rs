@@ -8,6 +8,10 @@
 //! heading (lance.com.br), and a count beside an icon over a card photo
 //! (gig-connect-six.vercel.app). None of the assertions depends on a font's
 //! metrics: the tracked caption passes on one line or on two.
+//!
+//! `side-tab-status-rows.html` holds the side borders on a status row and
+//! cell, which the stylesheet scans read and the browser reads off the
+//! computed sides.
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -115,4 +119,22 @@ fn rendered_answers_drop_the_should_pass_cases() {
         ],
         "the capacity badges are not section numbers"
     );
+}
+
+#[test]
+fn a_side_border_on_a_status_row_or_cell_is_a_side_tab() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let found = findings(&engine, port, "side-tab-status-rows.html", "side-tab");
+    let snippets: Vec<&str> = found.iter().map(|(snippet, _)| snippet.as_str()).collect();
+    for expected in [
+        "border-left 3px stripe on a row or cell (left edge)",
+        "border-left 2px stripe on a row or cell (left edge)",
+    ] {
+        assert!(snippets.iter().any(|s| s.contains(expected)), "missing {expected} in {snippets:#?}");
+    }
+    for silent in ["td.bounded", "is-void"] {
+        assert!(!snippets.iter().any(|s| s.contains(silent)), "unexpected {silent} in {snippets:#?}");
+    }
+    assert_eq!(found.len(), 8, "{snippets:#?}");
 }

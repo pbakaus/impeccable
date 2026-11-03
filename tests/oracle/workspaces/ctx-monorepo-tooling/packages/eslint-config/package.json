@@ -1,0 +1,5 @@
+{
+  "name": "@acme/eslint-config",
+  "private": true,
+  "dependencies": { "eslint-plugin-react": "7.0.0" }
+}

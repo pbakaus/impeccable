@@ -13,7 +13,8 @@
  *   ctx-adaptive       PRODUCT.md `## Platform` "ios, android"
  *   ctx-bad-platform   PRODUCT.md `## Platform` flutter + pubspec.yaml
  *   ctx-monorepo       pnpm-workspace + apps/a (own PRODUCT/DESIGN) + apps/b (inherits) + projectRoots
- *   ctx-legacy         unstamped PRODUCT.md with ## Register, DESIGN.json sidecar v1, bad config, orphan brief
+ *   ctx-monorepo-tooling  turbo + workspaces: apps/web (react), apps/mobile (Flutter), apps/api, packages/ui (react peer) + three tooling packages
+ *   ctx-legacy        unstamped PRODUCT.md with ## Register, DESIGN.json sidecar v1, bad config, orphan brief
  *   ctx-csp-*          one per detect-csp shape (append-arrays, append-string, middleware, meta, none)
  *   ctx-signals        git-initialised in setup() with fixed author/committer dates
  *   ctx-pin            .claude/.agents/.cursor skills dirs with impeccable installed
@@ -43,6 +44,7 @@ const REPO = '<REPO>';
 // Env the recording machine may carry that would leak into output.
 const BASE_ENV = {
   OPENAI_API_KEY: null,
+  CODEX_HOME: null,
   IMPECCABLE_CONTEXT_DIR: null,
   IMPECCABLE_CATALOG_DIR: null,
   IMPECCABLE_API_URL: null,
@@ -92,6 +94,16 @@ const claudeStopHook = (ws, rel) => write(
   }) + '\n',
 );
 
+// A user-scope Codex Stop hook as `update --user` writes it into
+// `<dir>/hooks.json` (the absolute launcher, guarded).
+const codexUserHook = (ws, dir) => write(
+  ws,
+  path.join(dir, 'hooks.json'),
+  JSON.stringify({
+    hooks: { Stop: [{ hooks: [{ type: 'command', command: `[ ! -f '/u/.agents/skills/impeccable/scripts/impeccable' ] || '/u/.agents/skills/impeccable/scripts/impeccable' hook` }] }] },
+  }, null, 2) + '\n',
+);
+
 // Fixed mtimes so DESIGN.md-vs-sidecar age comparisons never depend on copy
 // order or filesystem timestamp granularity.
 const T_OLD = new Date('2026-01-01T00:00:00Z');
@@ -102,6 +114,11 @@ const sidecarOlder = (ws) => { touch(path.join(ws, 'DESIGN.md'), T_NEW); touch(p
 
 // ctx-legacy carries `.impeccable-live.json` (gitignored in this repo, so it
 // is written at stage time) and a DESIGN.md newer than its legacy sidecar.
+const cursorGateSetup = (ws) => {
+  write(ws, '.cursor/skills/impeccable/scripts/impeccable', '#!/bin/sh\n');
+  write(ws, '.cursor/hooks.json', JSON.stringify({ version: 1, hooks: { preToolUse: [{ command: '[ ! -f ".cursor/skills/impeccable/scripts/impeccable" ] || ".cursor/skills/impeccable/scripts/impeccable" hook-before-edit', timeout: 5 }] } }, null, 2) + '\n');
+};
+
 const legacySetup = (ws) => {
   write(ws, '.impeccable-live.json', JSON.stringify({ port: 4310, sessions: [] }, null, 2) + '\n');
   sidecarOlder(ws);
@@ -218,6 +235,9 @@ const cases = [
   // context
   // ======================================================================
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
+  // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
+  // with spaces is printed with PowerShell's call operator (#744).
+  { id: 'context-cmd-launcher-spaced-path', verb: 'context', workspace: 'ctx-empty', env: env({ IMPECCABLE_SELF: 'C:\\Users\\Oracle User\\skill\\scripts\\impeccable.cmd' }) },
   { id: 'context-visual-only', verb: 'context', workspace: 'ctx-visual-only', env: env(), files: IMPECCABLE_FILES },
   { id: 'context-product-only', verb: 'context', workspace: 'ctx-product-only', env: env(), files: IMPECCABLE_FILES },
   { id: 'context-full', verb: 'context', workspace: 'ctx-full', setup: sidecarNewer, env: env(), files: IMPECCABLE_FILES },
@@ -309,6 +329,23 @@ const cases = [
     },
     env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }),
   },
+  // #1062: a user-scope Codex install writes `~/.codex/hooks.json`, which
+  // counts as coverage; a non-empty CODEX_HOME replaces that location.
+  {
+    id: 'context-codex-user-hook', verb: 'context', workspace: 'ctx-product-only',
+    setup: (ws) => codexUserHook(ws, '.oracle-home/.codex'),
+    env: env({ IMPECCABLE_PROVIDER_ID: 'codex', IMPECCABLE_NO_STALENESS_CHECK: '1' }),
+  },
+  {
+    id: 'context-codex-home-hook', verb: 'context', workspace: 'ctx-product-only',
+    setup: (ws) => codexUserHook(ws, 'codex-home'),
+    env: env({ IMPECCABLE_PROVIDER_ID: 'agents', CODEX_HOME: `${WS}/codex-home`, IMPECCABLE_NO_STALENESS_CHECK: '1' }),
+  },
+  {
+    id: 'context-codex-home-exclusive', verb: 'context', workspace: 'ctx-product-only',
+    setup: (ws) => codexUserHook(ws, '.oracle-home/.codex'),
+    env: env({ IMPECCABLE_PROVIDER_ID: 'codex', CODEX_HOME: `${WS}/codex-home`, IMPECCABLE_NO_STALENESS_CHECK: '1' }),
+  },
   { id: 'context-legacy', verb: 'context', workspace: 'ctx-legacy', setup: legacySetup, env: env(), files: IMPECCABLE_FILES },
   { id: 'context-hook-disabled-env', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_HOOK_DISABLED: 'yes' }), files: IMPECCABLE_FILES },
   {
@@ -367,6 +404,14 @@ const cases = [
   { id: 'context-native-evidence-web', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, 'ios/Podfile', "platform :ios, '15.0'\n"), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-build-path-unset-with-surfaces', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/surfaces/src-app-tsx.md', '---\nversion: 1\nslug: "src-app-tsx"\nprimary_target: "src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: App\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-project-roots-match-nothing', verb: 'context', workspace: 'ctx-monorepo', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['services/*'] }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
+  // #1014: target selection offers only workspaces with a UI signal and counts
+  // the rest; explicit projectRoots are never filtered; a `!` projectRoots
+  // entry still hides a workspace; no UI workspace at all keeps the full list.
+  { id: 'context-monorepo-tooling-root', verb: 'context', workspace: 'ctx-monorepo-tooling', env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-tooling-explicit-roots', verb: 'context', workspace: 'ctx-monorepo-tooling', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['apps/*', 'packages/scripts'] }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-tooling-negated-root', verb: 'context', workspace: 'ctx-monorepo-tooling', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['!packages/ui'] }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-tooling-no-ui', verb: 'context', workspace: 'ctx-monorepo-tooling', setup: (ws) => { fs.rmSync(path.join(ws, 'apps/web'), { recursive: true }); fs.rmSync(path.join(ws, 'packages/ui'), { recursive: true }); fs.rmSync(path.join(ws, 'apps/mobile'), { recursive: true }); }, env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-monorepo-tooling-bare-name', verb: 'context', workspace: 'ctx-monorepo-tooling', args: ['--target', 'tsconfig'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-hook-manifest-source-provider', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ hooks: [{ type: 'command', command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] } }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
   // Upgrade path (triage E8): a v3 install left a `.claude/settings.local.json`
   // naming the retired `node .../hook.mjs` script. Under the real provider the
@@ -417,6 +462,10 @@ const cases = [
   { id: 'doctor-monorepo-roots-match-nothing', verb: 'doctor', workspace: 'ctx-monorepo', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['services/*'] }, null, 2) + '\n'), env: env() },
   { id: 'doctor-legacy-text', verb: 'doctor', workspace: 'ctx-legacy', setup: legacySetup, env: env(), files: IMPECCABLE_FILES },
   { id: 'doctor-legacy-json', verb: 'doctor', workspace: 'ctx-legacy', setup: legacySetup, args: ['--json'], env: env(), files: IMPECCABLE_FILES },
+  // A Cursor manifest still on the retired preToolUse gate is an `auto`
+  // finding; --fix moves the entry to postToolUse in place.
+  { id: 'doctor-cursor-gate-json', verb: 'doctor', workspace: 'ctx-product-only', setup: cursorGateSetup, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }), files: ['.cursor/hooks.json'] },
+  { id: 'doctor-cursor-gate-fix', verb: 'doctor', workspace: 'ctx-product-only', setup: cursorGateSetup, args: ['--fix'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }), files: ['.cursor/hooks.json'] },
   { id: 'doctor-legacy-fix', verb: 'doctor', workspace: 'ctx-legacy', setup: legacySetup, args: ['--fix'], env: env(), files: IMPECCABLE_FILES },
   { id: 'doctor-legacy-fix-json', verb: 'doctor', workspace: 'ctx-legacy', setup: legacySetup, args: ['--fix', '--json'], env: env(), files: IMPECCABLE_FILES },
   { id: 'doctor-legacy-fix-twice', verb: 'doctor', workspace: 'ctx-legacy', setup: legacySetup, args: ['--fix'], env: env(), files: IMPECCABLE_FILES, steps: [{}, {}, { args: ['--json'] }] },
@@ -444,6 +493,8 @@ const cases = [
   { id: 'doctor-config-malformed', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/config.json', '{not json'), env: env() },
   { id: 'doctor-config-array', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/config.json', '[1,2]\n'), env: env() },
   { id: 'doctor-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"' }] }] } }, null, 2) + '\n'), args: ['--json'], env: env() },
+  { id: 'doctor-codex-user-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, '.oracle-home/.codex'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
+  { id: 'doctor-codex-home-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, 'codex-home'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex', CODEX_HOME: `${WS}/codex-home` }) },
   { id: 'doctor-hook-script-present', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] } }, null, 2) + '\n'); write(ws, '.claude/skills/impeccable/scripts/hook.mjs', '// present\n'); }, args: ['--json'], env: env() },
   {
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
@@ -536,6 +587,8 @@ const cases = [
   { id: 'surface-brief-read-none', verb: 'surface-brief', workspace: 'ctx-empty', args: ['read', 'src/x.tsx'], env: env() },
   { id: 'surface-brief-read-invalid-target', verb: 'surface-brief', workspace: 'ctx-full', args: ['read', 'route:../etc'], env: env() },
   { id: 'surface-brief-read-monorepo-child', verb: 'surface-brief', workspace: 'ctx-monorepo', setup: (ws) => write(ws, 'apps/a/.impeccable/surfaces/src-app-tsx.md', '---\nversion: 1\nslug: "src-app-tsx"\nprimary_target: "src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: A\n'), args: ['read', 'apps/a/src/App.tsx'], env: env() },
+  { id: 'surface-brief-read-monorepo-legacy', verb: 'surface-brief', workspace: 'ctx-monorepo', cwd: 'apps/a', setup: (ws) => write(ws, 'apps/a/.impeccable/surfaces/apps-a-src-app-tsx.md', '---\nversion: 1\nslug: "apps-a-src-app-tsx"\nprimary_target: "apps/a/src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: A, written from the repo root\n'), args: ['read', 'src/App.tsx'], env: env() },
+  { id: 'surface-brief-read-monorepo-prefix-dir', verb: 'surface-brief', workspace: 'ctx-monorepo', cwd: 'apps/a', setup: (ws) => { write(ws, 'apps/a/a/src/App.tsx', 'export default 1\n'); write(ws, 'apps/a/.impeccable/surfaces/a-src-app-tsx.md', '---\nversion: 1\nslug: "a-src-app-tsx"\nprimary_target: "a/src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: nested a\n'); }, args: ['read', 'src/App.tsx'], env: env() },
   { id: 'surface-brief-write-usage', verb: 'surface-brief', workspace: 'ctx-full', args: ['write', 'src/pages/about.astro'], env: env() },
   {
     id: 'surface-brief-write-read-list', verb: 'surface-brief', workspace: 'ctx-full',
@@ -551,7 +604,7 @@ const cases = [
   },
   { id: 'surface-brief-write-route', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'Root route brief.'), args: ['write', '/', `${WS}/body.md`, 'route:/home/'], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-url', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'URL brief.'), args: ['write', 'https://example.com/pricing/#plans', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
-  { id: 'surface-brief-write-invalid-target', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'x'), args: ['write', '../outside.astro', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
+  { id: 'surface-brief-write-invalid-target', verb: 'surface-brief', workspace: 'ctx-empty', setup: (ws) => write(ws, 'body.md', 'x'), args: ['write', '.', `${WS}/body.md`], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-missing-body', verb: 'surface-brief', workspace: 'ctx-empty', args: ['write', 'src/x.tsx', `${WS}/nope.md`], env: env(), files: ['.impeccable/surfaces/**'] },
   { id: 'surface-brief-write-monorepo-child', verb: 'surface-brief', workspace: 'ctx-monorepo', setup: (ws) => write(ws, 'body.md', 'Child brief.'), args: ['write', 'apps/b/src/App.tsx', `${WS}/body.md`], env: env(), files: ['**/.impeccable/surfaces/**'] },
 
@@ -772,6 +825,16 @@ const cases = [
   { id: 'question-wait-answer-raw', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.impeccable/questions/k1.answer.json', 'not-json'); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
   { id: 'question-wait-flip', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.impeccable/questions/k1.flip.json', JSON.stringify({ buildPath: 'comp' })); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
   { id: 'question-wait-page-closed', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: 1000 })), args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
+  { id: 'question-wait-hidden-tab-beat', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now() - 30000 })), args: ['--wait', '--key', 'k1', '--poll', '2'], env: env() },
+  // --start ran in proj/ and recorded that root under the (isolated) home, so --wait from the workspace root still reaches the live round.
+  { id: 'question-wait-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env() },
+  { id: 'question-stop-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 2147483000, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--stop', '--key', 'k1'], env: env(), files: ['proj/.impeccable/questions/**', '.oracle-home/.impeccable/questions/**'] },
+  // The payload is read from the calling directory, the next round lands under the recorded root.
+  { id: 'question-update-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); write(ws, 'payload.json', JSON.stringify(QUESTION_PAYLOAD)); }, args: ['--update', '--key', 'k1', '--payload', 'payload.json'], env: env(), files: ['proj/.impeccable/questions/k1.next.json'] },
+  // A comp-round pick collected from another directory still reads the recorded root's build state: APPROVED COMP, not CHOSEN COMP.
+  { id: 'question-wait-answer-decision-comp-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/build/state.json', JSON.stringify({ phase: 'comps', decisionComp: '.impeccable/mocks/decision/a.png' })); write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', comps: ['.impeccable/mocks/decision/a.png', '.impeccable/mocks/comp-2.png'] })); write(ws, 'proj/.impeccable/mocks/decision/a.png', 'png'); write(ws, 'proj/.impeccable/mocks/decision/a.png.json', JSON.stringify({ prompt: 'a' })); write(ws, 'proj/.impeccable/mocks/comp-2.png', 'png'); write(ws, 'proj/.impeccable/mocks/comp-2.png.json', JSON.stringify({ prompt: 'b' })); write(ws, 'proj/.impeccable/questions/k1.answer.json', JSON.stringify({ optionId: 'one', steer: '', comp: '.impeccable/mocks/decision/a.png' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env() },
+  // --stop of a round in cwd leaves a pointer that names another project's round of the same key.
+  { id: 'question-stop-keeps-other-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 2147483000, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--stop', '--key', 'k1'], env: env(), files: ['.oracle-home/.impeccable/questions/**'] },
   { id: 'question-wait-dead-pid', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 2147483000, port: 1, url: 'http://127.0.0.1:1/', lastBeat: 1000 })), args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
   // The decision-comp backstop: comps the live round declared (state.comps) that landed without a <comp>.json sidecar are named on every --wait return; b has its sidecar and c has not landed, so only a is named.
   { id: 'question-wait-comp-sidecar-missing', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', comps: ['.impeccable/mocks/decision/a.png', '.impeccable/mocks/decision/b.png', '.impeccable/mocks/decision/c.png'] })); write(ws, '.impeccable/mocks/decision/a.png', 'png'); write(ws, '.impeccable/mocks/decision/b.png', 'png'); write(ws, '.impeccable/mocks/decision/b.png.json', JSON.stringify({ prompt: 'b' })); }, args: ['--wait', '--key', 'k1', '--poll', '0'], env: env(), files: ['.impeccable/questions/**'] },

@@ -5,15 +5,24 @@
 //! or scored against the banner, and the crops show the banner instead of the
 //! page. Before the reveal sweep the URL engine hides the banners and
 //! backdrops of the consent managers listed here with an injected style
-//! (`display: none`), and undoes the scroll lock the manager applied. It never
-//! clicks, sets a cookie, or records a consent choice: the page's own state is
-//! unchanged, only painted without the manager's layer.
+//! (`display: none`), and a site's own cookie notice with an inline one, and
+//! undoes the scroll lock or blur they applied. It never clicks, sets a
+//! cookie, or records a consent choice: the page's own state is unchanged,
+//! only painted without the notice's layer.
 //!
 //! The list holds selectors specific to one vendor (its ids, or class names
-//! carrying its name), never a generic word such as "cookie" or "banner", so
-//! a notice a site wrote for itself stays on the page and is scanned like the
-//! rest of it. The validity gate ([`crate::validity`]) reads the same list to
-//! recognize a page that is nothing but a consent wall.
+//! carrying its name), never a generic word such as "cookie" or "banner".
+//! The validity gate ([`crate::validity`]) reads the same list to recognize
+//! a page that is nothing but a consent wall.
+//!
+//! A cookie notice a site wrote for itself is recognized by what it does
+//! rather than by its names ([`cookie_notice_js`]): a fixed or page-covering
+//! layer whose own text names cookies and which offers a consent choice, with
+//! no field to fill in. Corpus run 1006 found three (blueeyes.com.tw,
+//! searchvoro.com, ktk.de) covering about 40 findings and blurring one whole
+//! site. This reverses the decision recorded below for moe.gov.sa's
+//! `div.cookie-consent` (runs 42 and 43), which stayed because nothing in its
+//! markup told it apart from any other dialog: its text and its choice do.
 //!
 //! Corpus evidence (runs 20 and 25, 848 captures of 126 sites, desktop and
 //! 390px): OneTrust on 7 sites (adm.com, cisco.com, cvs.com, exxonmobil.com,
@@ -52,6 +61,17 @@
 //! screen). A site's own banner with generic classes (moe.gov.sa's
 //! `div.cookie-consent`, an Alpine.js dialog) stays: nothing in its markup
 //! tells it apart from any other dialog the site wrote.
+//!
+//! Run 1006 added Tarteaucitron on bordeaux-metropole.fr:
+//! `#tarteaucitronAlertBig` (fixed, `role=dialog`, `aria-modal`, `z-index`
+//! 2147483645, a yellow card in the middle of the first screen) inside the
+//! zero-height `#tarteaucitronRoot`.
+//!
+//! Run 1004 added Enzuzo on smartbi.ca: `div#ez-cookie-notification`
+//! (`enzuzo-cookiebanner-container`, `z-index` 2147483647) over the hero on
+//! both widths, its preference modal `div#enzuzo-modal-wrap`, and
+//! `ez-body-lock` on `<body>`, served by `app.enzuzo.com`'s
+//! `__enzuzo-cookiebar.js`.
 
 use serde_json::{json, Value};
 
@@ -246,6 +266,35 @@ pub const CONSENT_MANAGERS: &[ConsentManager] = &[
         // The banner renders in the open shadow root of this zero-size host.
         roots: &["#transcend-consent-manager"],
         backdrops: &[],
+        html_lock_classes: &[],
+        body_lock_classes: &[],
+        aria_hidden_marks: &[],
+    },
+    ConsentManager {
+        name: "Enzuzo",
+        // The banner and the preference modal, by the ids Enzuzo's cookie
+        // bar script gives them; it locks scrolling with a class on `<body>`.
+        roots: &["#ez-cookie-notification", "#enzuzo-modal-wrap"],
+        backdrops: &[],
+        html_lock_classes: &[],
+        body_lock_classes: &["ez-body-lock"],
+        aria_hidden_marks: &[],
+    },
+    ConsentManager {
+        name: "Tarteaucitron",
+        // `#tarteaucitronRoot` is a zero-height host; inside it the fixed
+        // banner (`#tarteaucitronAlertBig`, `role=dialog`, `aria-modal`), its
+        // small variant, the 5px progress bar, the preference panel and its
+        // backdrop, and the floating reopen icon.
+        roots: &[
+            "#tarteaucitronRoot",
+            "#tarteaucitronAlertBig",
+            "#tarteaucitronAlertSmall",
+            "#tarteaucitronPercentage",
+            "#tarteaucitron",
+            "#tarteaucitronIcon",
+        ],
+        backdrops: &["#tarteaucitronBack"],
         html_lock_classes: &[],
         body_lock_classes: &[],
         aria_hidden_marks: &[],
@@ -523,6 +572,278 @@ pub const OUTSIDE_CONTROLS: &str = "input:not([type='hidden']), select, textarea
 pub const OUTSIDE_MEDIA: &str = "img, svg, video, canvas, iframe, object, embed";
 pub const OUTSIDE_MEDIA_MIN_AREA: u32 = 10_000;
 
+/// The name a site's own cookie notice is reported under, in `hidden` and
+/// `consentHidden`, after the listed managers.
+pub const COOKIE_NOTICE: &str = "cookie notice";
+/// The attribute the hide step puts on a site's own cookie notice it hid
+/// (and on the empty full-screen layer beside it), naming the element, so a
+/// later pass reports it again without looking for it twice.
+pub const COOKIE_NOTICE_MARK: &str = "data-impeccable-cookie-notice";
+/// Most visible characters a cookie notice may carry, its preference text
+/// included.
+pub const COOKIE_NOTICE_MAX_TEXT: usize = 1500;
+/// Least visible text the page shows outside a cookie notice for the notice
+/// to be hidden: a page that is little more than its notice is a consent
+/// wall, and is read as before.
+pub const COOKIE_NOTICE_MIN_OUTSIDE_TEXT: usize = 200;
+/// Longest control label read as a consent choice.
+pub const COOKIE_NOTICE_MAX_LABEL: usize = 40;
+/// Largest inline `blur()` radius a cookie lock is taken to have put on the
+/// page (ktk.de: 4px); a larger one is a decoration's.
+pub const COOKIE_NOTICE_MAX_BLUR_PX: f64 = 12.0;
+
+/// Page JS that defines `cookieNotices(out)`: a cookie notice a site wrote
+/// for itself, with none of a listed manager's markup, hidden the way a
+/// manager's banner is. Corpus run 1006: blueeyes.com.tw's `div#cookieBanner`
+/// (fixed, `z-index: 9999`, `rgba(0,0,0,0.8)`, no dialog role) over the first
+/// row of buttons; searchvoro.com's `role=dialog` card (`aria-modal=false`,
+/// `z-index: 95`); ktk.de's `role=dialog` box inside an absolutely positioned
+/// layer the height of the document, beside an empty transparent fixed layer
+/// that takes every hit test, with `filter: blur(4px)` set inline on the page
+/// wrapper. The `z-index` and dialog role a notice carries vary too much to
+/// read; what they share is below.
+///
+/// A notice is found from its choice, inward out:
+/// - a **choice control**: a `button`, `[role=button]`, button input, an `a`
+///   with no `href` or one that only names a fragment or `javascript:`, or an
+///   element with an `onclick` or `cursor: pointer`, whose whole label (at
+///   most 40 characters, case and end punctuation aside) is an accept or
+///   refuse phrase (`Accept`, `Accept all`, `Reject non-essential`, `Allow
+///   all cookies`, `Alle Cookies akzeptieren`, `Tout accepter`, `接受`, ... in
+///   [`cookie_notice_js`]'s list). A softer label (`OK`, `Got it`, `Close`,
+///   `Dismiss`, `Understood`, `Schließen`, `Fermer`, ...) counts only when the
+///   notice's text is a consent sentence: a use verb before `cookie`
+///   ("we use cookies", "verwendet Cookies", "utilise des cookies") or a
+///   policy, settings or preferences word after it. A plain link
+///   (`a[href]`) is never a choice;
+/// - its **box**: the nearest ancestor of the control whose own text
+///   (outside links and controls) names `cookie`, then up through every
+///   ancestor that adds no text, control or media of its own, so a strip
+///   inside a site header, or a bar stacked with a buy bar, is the notice
+///   alone and its container stays;
+/// - that box, an ancestor of it, or a box the widening passed through is
+///   `position: fixed`, or `position: absolute` covering at least 90% of the
+///   viewport (a layer, not the page);
+/// - the control is what the page hit-tests at its centre, and is in the
+///   viewport;
+/// - the box holds no text field, `select`, `textarea`, password or email
+///   input (checkboxes and radios are a preference pane's), no `h1` and no
+///   `main`, so a sign-in or newsletter modal is never one;
+/// - the box carries at most 1,500 visible characters, while the page shows
+///   at least 200 outside it (a page that is only its notice is a wall, and
+///   is read as before).
+///
+/// The box is hidden with an inline `display: none !important` and marked
+/// with [`COOKIE_NOTICE_MARK`]; nothing is clicked. A lock layer beside it is
+/// hidden too: a sibling `div` or `span` with no element children and no
+/// text, `position: fixed`, covering at least 90% of the viewport, with no
+/// background image and a fill under alpha 0.9, a positive `z-index`, and
+/// what the page hit-tests at one of five points while the notice still
+/// shows. When the notice covered at least half the viewport, or a lock
+/// layer went with it, an inline `filter` of one `blur()` of 12px or less on
+/// `html`, `body` or an element up to two levels below `body` outside the
+/// notice, covering at least half the viewport, is removed (`unlocked`:
+/// `filter <name>`), and so is an inline `overflow` / `overflow-y: hidden`
+/// on `html` or `body` when no other dialog is showing.
+fn cookie_notice_js() -> String {
+    format!(
+        r#"const COOKIE_MARK = {mark};
+  const cookieNotices = out => {{
+    const name = {name};
+    const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
+    const body = document.body;
+    if (!body || !vw || !vh) return;
+    const names = [];
+    const report = n => {{ if (!names.includes(n)) names.push(n); }};
+    for (const el of q('[' + COOKIE_MARK + ']')) {{
+      const n = el.getAttribute(COOKIE_MARK);
+      if (n && !n.startsWith('lock ')) report(n);
+      // A late script may rewrite the inline style of a notice or lock this
+      // pass hid; hide it again.
+      try {{
+        if (getComputedStyle(el).display !== 'none') {{ el.style.setProperty('display', 'none', 'important'); out.changed = true; }}
+      }} catch (e) {{}}
+    }}
+    // A whole label that accepts or refuses, in the languages the corpus
+    // reads; and the softer labels that only dismiss.
+    const strict = /^(?:(?:i )?(?:accept|agree|allow|reject|refuse|decline|deny)(?: (?:all|everything))?(?: (?:cookies|all cookies|non-essential|non-essential cookies|optional cookies|necessary|necessary cookies|essential|only necessary|necessary only|essential only|and close|and continue))?|alle(?: cookies)? (?:akzeptieren|ablehnen|zulassen|erlauben)|(?:akzeptieren|ablehnen|zustimmen|zulassen|einverstanden)|(?:tout |tous )?(?:accepter|refuser)(?: tout| et fermer| les cookies| tous les cookies)?|j.accepte|(?:aceptar|rechazar)(?: todo| todas| todas las cookies| cookies)?|(?:aceitar|rejeitar|recusar)(?: todos| tudo| cookies)?|(?:accetta|accetto|rifiuta)(?: tutti| tutto| i cookie)?|(?:alles )?(?:accepteren|weigeren)|接受|全部接受|接受全部|同意|全部同意|拒絕|拒绝|全部拒绝|允許|允许|동의|모두 동의|거부|허용|すべて同意|同意する|拒否|принять|принять все|отклонить|kabul et|tümünü kabul et|reddet)$/;
+    const soft = /^(?:ok|okay|ok,? got it|got it|close|dismiss|understood|i understand|continue|schlie(?:ss|ß)en|verstanden|fermer|compris|d.accord|cerrar|entendido|fechar|entendi|chiudi|ho capito|確定|确定|知道了|닫기|확인|閉じる|закрыть|понятно|tamam|kapat)$/;
+    const consentSentence = t => /\b(?:we|this (?:web)?site|site|our site|uses?|using|used|use of|wir|verwende[nt]?|nutzen|nous|utilise[sz]?|utilisons|usamos|utilizamos|utilizziamo|usiamo|gebruik(?:en|t)?)\b[^.!?]{{0,80}}cookie|cookie[^.!?]{{0,80}}\b(?:polic|setting|preference|richtlinie|einstellung|politique|param|pol[ií]tica|impostazion)|使用[^。]{{0,20}}cookie|cookie[^。]{{0,20}}(?:使用|政策|偏好)|쿠키/i.test(t);
+    const labelOf = c => (c.innerText || c.value || c.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/[.!…→›»>]+$/u, '').trim();
+    const shownText = el => (el.innerText || '').replace(/\s+/g, ' ').trim();
+    const range = document.createRange();
+    const ownText = root => {{
+      let t = '';
+      const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(), i = 0; n && i < 4000; n = w.nextNode(), i++) {{
+        const p = n.parentElement;
+        if (!p || p.closest('a, button, [role=button], script, style, noscript, template')) continue;
+        // Rendered text only: a hidden cookie-policy panel inside a welcome
+        // wrapper does not make the wrapper a notice. The text's own boxes
+        // decide, not its parent's: a `display: contents` parent has none.
+        range.selectNodeContents(n);
+        if (!range.getClientRects().length) continue;
+        let vis = 'visible';
+        try {{ vis = getComputedStyle(p).visibility; }} catch (e) {{}}
+        if (vis !== 'visible') continue;
+        t += ' ' + n.data;
+      }}
+      return t;
+    }};
+    const covers = (r, share) => {{
+      const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+      const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+      return (w * h) / (vw * vh) >= share;
+    }};
+    const meets = r => r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+    // What a box shows of its own: visible text, controls and media.
+    const content = el => {{
+      let n = 0;
+      for (const c of el.querySelectorAll('a[href], button, [role=button], input:not([type=hidden]), select, textarea, img, svg, video, canvas, iframe')) if (boxShows(c)) n++;
+      return shownText(el).length * 1000 + n;
+    }};
+    const layered = el => {{
+      for (let a = el; a && a !== body && a !== document.documentElement; a = a.parentElement) {{
+        let cs;
+        try {{ cs = getComputedStyle(a); }} catch (e) {{ return false; }}
+        if (cs.position === 'fixed') return true;
+        if (cs.position === 'absolute' && covers(a.getBoundingClientRect(), 0.9)) return true;
+      }}
+      return false;
+    }};
+    const isChoice = c => {{
+      if (c.matches('a[href]')) {{
+        const h = c.getAttribute('href') || '';
+        if (!(h === '' || h.startsWith('#') || /^javascript:/i.test(h))) return false;
+      }}
+      return true;
+    }};
+    const pageChars = shownText(body).length;
+    const found = [];
+    const pick = 'button, [role=button], input[type=button], input[type=submit], a, [onclick], span, div, li';
+    const all = body.querySelectorAll(pick);
+    for (let i = 0; i < all.length && i < 20000; i++) {{
+      const c = all[i];
+      if (found.some(f => f.el.contains(c)) || c.closest('[' + COOKIE_MARK + ']')) continue;
+      // Only an element that acts as a control: a button of some kind, or a
+      // box with a click handler or a pointer cursor whose label is a choice.
+      const kind = c.matches('button, [role=button], input[type=button], input[type=submit], a, [onclick]');
+      let label = '';
+      if (!kind) {{
+        if (c.children.length > 2 || (c.textContent || '').length > 60) continue;
+        label = labelOf(c);
+        if (!label || label.length > {max_label} || !(strict.test(label) || soft.test(label))) continue;
+        try {{ if (getComputedStyle(c).cursor !== 'pointer') continue; }} catch (e) {{ continue; }}
+        if (c.parentElement && c.parentElement.closest('button, [role=button], a, [onclick]')) continue;
+      }} else {{
+        if (!isChoice(c)) continue;
+        label = labelOf(c);
+      }}
+      if (!label || label.length > {max_label}) continue;
+      const isStrict = strict.test(label);
+      if (!isStrict && !soft.test(label)) continue;
+      if (!boxShows(c)) continue;
+      const cr = c.getBoundingClientRect();
+      if (!meets(cr)) continue;
+      // The nearest ancestor whose own text names cookies.
+      let box = c.parentElement;
+      for (let k = 0; box && box !== body && k < 10 && !/cookie/i.test(ownText(box)); k++) box = box.parentElement;
+      if (!box || box === body || box === document.documentElement) continue;
+      if (!/cookie/i.test(ownText(box))) continue;
+      if (!isStrict && !consentSentence(ownText(box))) continue;
+      // Up through every ancestor that adds nothing of its own.
+      const chain = [box];
+      let have = content(box);
+      for (let a = box.parentElement; a && a !== body && a !== document.documentElement; a = a.parentElement) {{
+        const more = content(a);
+        if (more !== have) break;
+        chain.push(a);
+        box = a;
+      }}
+      // On a layer: the box, an ancestor, or a box the widening passed
+      // through (ktk.de's dialog sits in a layer inside a static wrapper).
+      if (!chain.some(layered)) continue;
+      if (!showing(box)) continue;
+      const text = shownText(box);
+      if (!text || text.length > {max_text}) continue;
+      if (box.querySelector('h1, main, textarea, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset])')) continue;
+      if (pageChars - text.length < {min_outside}) continue;
+      const x = Math.min(vw - 1, Math.max(0, cr.left + cr.width / 2)), y = Math.min(vh - 1, Math.max(0, cr.top + cr.height / 2));
+      const hit = document.elementFromPoint(x, y);
+      if (!hit || !box.contains(hit)) continue;
+      const wide = chain.some(el => covers(el.getBoundingClientRect(), 0.5)) || Array.from(box.querySelectorAll('*')).slice(0, 400).some(el => {{
+        try {{ const p = getComputedStyle(el).position; return (p === 'fixed' || p === 'absolute') && covers(el.getBoundingClientRect(), 0.5); }} catch (e) {{ return false; }}
+      }});
+      const cls = Array.from(box.classList || []).find(k => /^[A-Za-z_][\w-]*$/.test(k));
+      const n = box.tagName.toLowerCase() + (box.id ? '#' + box.id : box.getAttribute('role') ? '[role=' + box.getAttribute('role') + ']' : cls ? '.' + cls : '');
+      // A lock layer beside it: empty, see-through or dimming, above the page,
+      // and taking hit tests while the notice shows.
+      const locks = [];
+      const parent = box.parentElement;
+      if (parent && parent !== document.documentElement) {{
+        const points = [[0.5, 0.5], [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]].map(([px, py]) => [Math.floor(vw * px), Math.floor(vh * py)]);
+        for (const sib of Array.from(parent.children)) {{
+          if (sib === box || !sib.matches('div, span') || sib.children.length || shownText(sib) || sib.hasAttribute(COOKIE_MARK)) continue;
+          let scs;
+          try {{ scs = getComputedStyle(sib); }} catch (e) {{ continue; }}
+          if (scs.position !== 'fixed' || scs.display === 'none' || !covers(sib.getBoundingClientRect(), 0.9)) continue;
+          if (scs.backgroundImage !== 'none') continue;
+          const m = /rgba?\(([^)]*)\)/.exec(scs.backgroundColor || '');
+          const parts = m ? m[1].split(/[\s,/]+/).filter(Boolean) : [];
+          const a = parts.length >= 4 ? parseFloat(parts[3]) : (m ? 1 : 0);
+          if (!(a < 0.9)) continue;
+          if (!(parseInt(scs.zIndex, 10) > 0)) continue;
+          if (!points.some(([px, py]) => document.elementFromPoint(px, py) === sib)) continue;
+          locks.push(sib);
+        }}
+      }}
+      found.push({{ el: box, name: n, wide, locks }});
+    }}
+    let unblur = false;
+    for (const f of found) {{
+      f.el.setAttribute(COOKIE_MARK, f.name);
+      f.el.style.setProperty('display', 'none', 'important');
+      report(f.name);
+      out.changed = true;
+      for (const sib of f.locks) {{
+        sib.setAttribute(COOKIE_MARK, 'lock ' + f.name);
+        sib.style.setProperty('display', 'none', 'important');
+      }}
+      unblur = unblur || f.wide || f.locks.length > 0;
+    }}
+    if (!names.length) return;
+    if (unblur) {{
+      const notice = el => !!el.closest('[' + COOKIE_MARK + ']');
+      const describe = el => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+      const near = [document.documentElement, body];
+      for (const c of Array.from(body.children)) {{ near.push(c); for (const g of Array.from(c.children)) near.push(g); }}
+      for (const el of near) {{
+        // Only a box the size of the page, and only a light blur: a blurred
+        // decoration or a paywalled teaser keeps its own.
+        if (notice(el) || !covers(el.getBoundingClientRect(), 0.5)) continue;
+        const f = el.style.getPropertyValue('filter');
+        const m = /^\s*blur\(\s*([\d.]+)px\s*\)\s*$/.exec(f || '');
+        if (m && parseFloat(m[1]) <= {max_blur}) {{ el.style.removeProperty('filter'); out.unlocked.push('filter ' + describe(el)); out.changed = true; }}
+      }}
+      const otherDialog = q('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]').some(el => !notice(el) && showing(el));
+      if (!otherDialog) for (const [el, tag] of [[document.documentElement, 'html'], [body, 'body']]) {{
+        for (const p of ['overflow', 'overflow-y']) {{
+          if (el.style.getPropertyValue(p) === 'hidden') {{ el.style.removeProperty(p); out.unlocked.push(tag + ' style ' + p); out.changed = true; }}
+        }}
+      }}
+    }}
+    if (!out.hidden.includes(name)) out.hidden.push(name);
+    out.matched[name] = (out.matched[name] || []).concat(names.filter(n => !(out.matched[name] || []).includes(n)));
+  }};"#,
+        mark = json!(COOKIE_NOTICE_MARK),
+        name = json!(COOKIE_NOTICE),
+        max_text = COOKIE_NOTICE_MAX_TEXT,
+        min_outside = COOKIE_NOTICE_MIN_OUTSIDE_TEXT,
+        max_label = COOKIE_NOTICE_MAX_LABEL,
+        max_blur = COOKIE_NOTICE_MAX_BLUR_PX,
+    )
+}
+
 /// The hide step. Idempotent: run it once before the reveal sweep and again
 /// right before the capture, to catch a manager that injects its banner late.
 /// Returns `{ hidden: [name], matched: { name: [selector] }, unlocked: [what],
@@ -541,7 +862,8 @@ pub fn hide_js() -> String {
     const sels = m.roots.concat(m.backdrops).filter(s => q(s).length > 0);
     if (sels.length) present.push({{ m, sels }});
   }}
-  if (!present.length) return out;
+  {cookie_notices}
+  if (!present.length) {{ cookieNotices(out); return out; }}
   let style = document.getElementById(STYLE_ID);
   // Measure with the hide rule off, so a banner the rule already hides (one
   // injected after the first pass) is still reported. Nothing paints between
@@ -639,6 +961,7 @@ pub fn hide_js() -> String {
     }}
   }}
   if (out.unlocked.length) out.changed = true;
+  cookieNotices(out);
   return out;
 }})()"#,
         managers = managers_json(),
@@ -646,6 +969,7 @@ pub fn hide_js() -> String {
         inline_mark = json!(INLINE_HIDE_MARK),
         showing = SHOWING_JS,
         stamp_is_ours = STAMP_IS_OURS_JS,
+        cookie_notices = cookie_notice_js(),
     )
 }
 
@@ -728,7 +1052,7 @@ mod tests {
         for name in [
             "OneTrust", "Cookiebot", "Usercentrics", "TrustArc", "Didomi", "Quantcast Choice", "Sourcepoint",
             "Osano", "CookieYes", "Complianz", "iubenda", "Termly", "Axeptio", "Borlabs Cookie", "Klaro",
-            "Cookie Notice", "Shopify", "consentmanager", "Tealium", "Transcend",
+            "Cookie Notice", "Shopify", "consentmanager", "Tealium", "Transcend", "Enzuzo", "Tarteaucitron",
         ] {
             assert!(CONSENT_MANAGERS.iter().any(|m| m.name == name), "{name}");
         }

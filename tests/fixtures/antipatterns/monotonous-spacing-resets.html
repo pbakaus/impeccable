@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Monotonous spacing, Tailwind resets</title>
+  <!--
+    Should pass, in both engines. A page whose most common spacing value is
+    zero is resetting spacing (mercury.com's p-0, md:p-0 and pr-0, 953 of
+    962 samples), not repeating one gap. monotonous-spacing stands down when
+    zero is the dominant value; a page that repeats one real gap still
+    reports (unit tests in crates/core/src/checks/html_patterns.rs).
+  -->
+</head>
+<body>
+  <main class="p-4 gap-6">
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <div class="p-0 md:p-0 pr-0"><span class="p-0">Row</span></div>
+    <p class="mt-8">Pricing for every stage of a business.</p>
+  </main>
+</body>
+</html>

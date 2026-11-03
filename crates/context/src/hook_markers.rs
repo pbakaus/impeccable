@@ -5,7 +5,8 @@
 //!   `hook-before-edit` / `hook-probe` / `hook-after-edit` / `hook-stop`
 //!   siblings), and
 //! * the binary era, `"<...>/skills/impeccable/scripts/impeccable" hook`
-//!   (`impeccable.cmd` on Windows, `hook-before-edit` for Cursor).
+//!   (`impeccable.cmd` on Windows; Cursor manifests written before the
+//!   post-edit hook ran `hook-before-edit` on `preToolUse`).
 //!
 //! `impeccable hooks on` repairs the old form to the new one, so pruning and
 //! merging must recognize both; `doctor` and `context`'s automatic-hook scan
@@ -149,6 +150,117 @@ pub fn hook_program_token(command: &str) -> Option<String> {
     BARE.captures(&command).map(|m| m[1].to_string())
 }
 
+/// Cursor's design hook runs after the edit lands, like every other harness:
+/// `postToolUse` filtered to Cursor's file-write tool. Cursor tests `matcher`
+/// as an unanchored regex against `tool_name`, and every agent file edit
+/// (whole-file write or search-replace) reports `tool_name: "Write"` with
+/// `tool_input: { file_path, content }`; the anchors keep `WriteShellStdin`
+/// out. `postToolUse` is the event whose response feeds `additional_context`
+/// back to the agent; `afterFileEdit` has no response the agent sees.
+pub const CURSOR_HOOK_EVENT: &str = "postToolUse";
+pub const CURSOR_HOOK_MATCHER: &str = "^Write$";
+/// The event the retired before-edit gate (`hook-before-edit`) ran on.
+pub const CURSOR_RETIRED_HOOK_EVENT: &str = "preToolUse";
+
+/// The Impeccable part of a Cursor `.cursor/hooks.json`, for a given hook
+/// command. `hooks on` and install/update both build the manifest here so
+/// the two writers cannot drift (`transformers/hooks.js`
+/// `buildCursorHooksManifest` is the build's twin).
+pub fn cursor_hook_manifest(command: &str, timeout_seconds: i64) -> serde_json::Value {
+    let mut hooks = serde_json::Map::new();
+    hooks.insert(
+        CURSOR_HOOK_EVENT.to_string(),
+        serde_json::json!([{
+            "command": command,
+            "matcher": CURSOR_HOOK_MATCHER,
+            "timeout": timeout_seconds,
+        }]),
+    );
+    serde_json::json!({ "version": 1, "hooks": hooks })
+}
+
+/// True when a Cursor manifest still runs an Impeccable hook on
+/// `preToolUse`: the before-edit write gate, retired in favor of the
+/// post-edit hook. The gate verb keeps working, so this is a migration, not
+/// a broken hook.
+pub fn cursor_manifest_has_retired_gate(manifest: &serde_json::Value) -> bool {
+    fn any_marker(v: &serde_json::Value) -> bool {
+        match v {
+            serde_json::Value::String(s) => is_impeccable_hook_command(s),
+            serde_json::Value::Array(a) => a.iter().any(any_marker),
+            serde_json::Value::Object(o) => o.values().any(any_marker),
+            _ => false,
+        }
+    }
+    manifest
+        .get("hooks")
+        .and_then(|h| h.get(CURSOR_RETIRED_HOOK_EVENT))
+        .is_some_and(any_marker)
+}
+
+/// Moves a Cursor manifest's launcher-form `preToolUse` gate entry to the
+/// post-edit hook in place: the same launcher command with `hook-before-edit`
+/// swapped for `hook`, under `postToolUse` with the `^Write$` matcher. Other
+/// tools' entries are kept, an emptied `preToolUse` is dropped, and an
+/// existing Impeccable `postToolUse` entry is not duplicated. `None` when
+/// there is no gate, or when a gate entry is in the JS-era `.mjs` spelling
+/// (its script is gone; `impeccable hooks on` rewrites those). `doctor --fix`
+/// uses this; install/update and `hooks on` rebuild the manifest instead.
+pub fn migrate_cursor_gate_in_place(manifest: &serde_json::Value) -> Option<serde_json::Value> {
+    use serde_json::Value;
+    static GATE_VERB: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r#"(skills[/\\]+impeccable[/\\]+scripts[/\\]+impeccable(?:\.cmd|\.exe)?["']?\s+)hook-before-edit"#).unwrap()
+    });
+    if !cursor_manifest_has_retired_gate(manifest) {
+        return None;
+    }
+    let mut root = manifest.as_object()?.clone();
+    let mut hooks = root.get("hooks")?.as_object()?.clone();
+    let pre = hooks.get(CURSOR_RETIRED_HOOK_EVENT)?.as_array()?.clone();
+    let mut kept = Vec::new();
+    let mut moved: Option<(String, Value)> = None;
+    for entry in pre {
+        let command = entry.get("command").and_then(Value::as_str);
+        match command {
+            Some(c) if is_impeccable_hook_command(c) => {
+                if !is_launcher_hook_command(c) {
+                    return None;
+                }
+                if moved.is_none() {
+                    let timeout = entry.get("timeout").cloned().unwrap_or(Value::from(5));
+                    moved = Some((GATE_VERB.replace(c, "${1}hook").into_owned(), timeout));
+                }
+            }
+            _ => kept.push(entry),
+        }
+    }
+    // A gate nested somewhere other than a top-level `command` is not a
+    // shape any Impeccable writer produced; leave it to `hooks on`.
+    let (command, timeout) = moved?;
+    if kept.is_empty() {
+        hooks.remove(CURSOR_RETIRED_HOOK_EVENT);
+    } else {
+        hooks.insert(CURSOR_RETIRED_HOOK_EVENT.to_string(), Value::Array(kept));
+    }
+    let mut post = match hooks.get(CURSOR_HOOK_EVENT) {
+        Some(Value::Array(a)) => a.clone(),
+        _ => Vec::new(),
+    };
+    let has_post = post.iter().any(|e| {
+        e.get("command").and_then(Value::as_str).is_some_and(is_impeccable_hook_command)
+    });
+    if !has_post {
+        post.push(serde_json::json!({
+            "command": command,
+            "matcher": CURSOR_HOOK_MATCHER,
+            "timeout": timeout,
+        }));
+    }
+    hooks.insert(CURSOR_HOOK_EVENT.to_string(), Value::Array(post));
+    root.insert("hooks".to_string(), Value::Object(hooks));
+    Some(Value::Object(root))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +350,40 @@ mod tests {
         );
         assert_eq!(hook_program_token("'/x/it'\\''s/.claude/skills/impeccable/scripts/impeccable' hook"), None);
         assert_eq!(hook_program_token("echo hi"), None);
+    }
+
+    #[test]
+    fn migrates_the_cursor_gate_in_place() {
+        let gate = serde_json::json!({"version": 1, "hooks": {
+            "preToolUse": [
+                {"command": "./audit.sh", "matcher": "Shell"},
+                {"command": "[ ! -f '/x/.cursor/skills/impeccable/scripts/impeccable' ] || '/x/.cursor/skills/impeccable/scripts/impeccable' hook-before-edit", "timeout": 7},
+            ],
+        }});
+        assert!(cursor_manifest_has_retired_gate(&gate));
+        let next = migrate_cursor_gate_in_place(&gate).unwrap();
+        assert_eq!(next, serde_json::json!({"version": 1, "hooks": {
+            "preToolUse": [{"command": "./audit.sh", "matcher": "Shell"}],
+            "postToolUse": [{
+                "command": "[ ! -f '/x/.cursor/skills/impeccable/scripts/impeccable' ] || '/x/.cursor/skills/impeccable/scripts/impeccable' hook",
+                "matcher": "^Write$",
+                "timeout": 7,
+            }],
+        }}));
+        assert!(!cursor_manifest_has_retired_gate(&next));
+        assert_eq!(migrate_cursor_gate_in_place(&next), None);
+        // The JS-era spelling has no launcher to keep; `hooks on` rewrites it.
+        let mjs = serde_json::json!({"hooks": {"preToolUse": [{"command": "node \".cursor/skills/impeccable/scripts/hook-before-edit.mjs\""}]}});
+        assert!(cursor_manifest_has_retired_gate(&mjs));
+        assert_eq!(migrate_cursor_gate_in_place(&mjs), None);
+        // An existing post-edit entry is not duplicated.
+        let both = serde_json::json!({"hooks": {
+            "preToolUse": [{"command": "\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit"}],
+            "postToolUse": [{"command": "\".cursor/skills/impeccable/scripts/impeccable\" hook", "matcher": "^Write$"}],
+        }});
+        let next = migrate_cursor_gate_in_place(&both).unwrap();
+        assert_eq!(next["hooks"].as_object().unwrap().len(), 1);
+        assert_eq!(next["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
     }
 
     #[test]

@@ -15,6 +15,7 @@ vectors = ["impeccable-foundation/vectors"]
 fake-dom = ["impeccable-foundation/fake-dom"]
 
 [dependencies]
+cssparser = "0.37"
 impeccable-foundation = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["float_roundtrip"] }

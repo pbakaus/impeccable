@@ -10,15 +10,19 @@
 //! [`engines::Engines`]. crates/html depends on this crate for the design
 //! system types and helpers ([`design_system`]).
 
+pub mod cdp_endpoint;
 pub mod cli;
 pub mod config;
 pub mod design_system;
 pub mod detect_text;
 pub mod engines;
 pub mod file_system;
+pub mod github_annotations;
 pub mod ignores;
 pub mod jsp;
+pub mod list_rules;
 pub mod profiler;
+pub mod project_tokens;
 pub mod regex_matchers;
 pub mod skills;
 pub mod util;

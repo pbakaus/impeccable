@@ -221,6 +221,18 @@
     .press-card h3 { font-size: 20px; line-height: 25px; font-weight: 500; }
     .side-panel { min-height: 300px; padding: 24px; background: #ffffff; border-radius: 16px; }
     .side-panel h3 { font-size: 40px; line-height: 44px; }
+    /* Round 14: a badge pinned to a painted card is the card's own at any title size;
+       a pill in the card's flow over a large title still flags */
+    .plan-card { position: relative; margin-top: 16px; padding: 32px 24px 24px; background: #1d1830; color: #f4f1fb; border-radius: 24px; }
+    .plan-card h3 { font-size: 24px; line-height: 30px; }
+    .plan-badge { position: absolute; top: -12px; left: 32px; padding: 4px 16px; background: #6d28d9; color: #ffffff; border-radius: 9999px; font-size: 12px; line-height: 16px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .offer-panel { padding: 32px; background: #1b2a4a; color: #ffffff; border-radius: 6px 6px 0 0; }
+    .offer-panel h3 { font-size: 26px; line-height: 32px; }
+    .offer-pill { display: inline-flex; height: 18px; align-items: center; padding: 0 10px; margin: 0 0 8px; background: #ffffff; color: #1b2a4a; border-radius: 9999px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+    .offer-panel .kicker { color: #c9d3e6; }
+    .feature-card { position: relative; padding: 72px 40px 40px; background: #ffffff; border-radius: 16px; }
+    .feature-card h3 { font-size: 40px; line-height: 44px; }
+    .feature-card .kicker { position: absolute; top: 40px; left: 40px; margin: 0; }
   </style>
 </head>
 <body>
@@ -295,6 +307,30 @@
           <span class="kicker">Beyond plans</span>
           <h3>"Display Title In A Band"</h3>
           <p>An h3 set at display size across a feature band is a section title too, and its eyebrow still flags.</p>
+        </div>
+      </section>
+
+      <section class="case">
+        <div class="offer-panel">
+          <span class="kicker">Early adopter rate</span>
+          <h3>"Plain Label Over A Large Card Title"</h3>
+          <p>A tracked label set as plain text over a 26px title in a painted panel is the panel's eyebrow and still flags.</p>
+        </div>
+      </section>
+
+      <section class="case">
+        <div class="offer-panel">
+          <span class="offer-pill">What we offer</span>
+          <h3>"Pill In Flow Over A Large Card Title"</h3>
+          <p>A filled pill in the panel's flow over a 26px title reads as the panel's eyebrow too, and still flags.</p>
+        </div>
+      </section>
+
+      <section class="case">
+        <div class="feature-card">
+          <span class="kicker">Analytics</span>
+          <h3>"Absolute Eyebrow In A Card"</h3>
+          <p>An eyebrow placed absolutely inside the card's padding, in the card's colour, is no badge, and it still flags over a 40px title.</p>
         </div>
       </section>
     </section>
@@ -433,6 +469,15 @@
             <h3>"Press Card Source"</h3>
             <p>A white press card names its source over the headline; the label is the card's metadata, as it is in an article card.</p>
           </div>
+        </div>
+      </section>
+
+      <section class="case">
+        <!-- Browser engine only, like the press card above. -->
+        <div class="plan-card">
+          <span class="plan-badge">Most popular</span>
+          <h3>"Badge On A Pricing Card"</h3>
+          <p>A badge straddling the top edge of a pricing card names the card, not the section, at a 24px title.</p>
         </div>
       </section>
 

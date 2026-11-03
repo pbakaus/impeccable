@@ -176,7 +176,8 @@ h1 {
   box-shadow: var(--ks-led);
 }
 
-.category-dot-quality {
+.category-dot-quality,
+.category-dot-advisory {
   background: var(--ks-patina);
 }
 

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/skipped-heading-hidden-panel.html\n  [skipped-heading] <h1> \"Cards and services\" followed by <h4> \"Card accounts\" (missing h2)\n    → Heading levels should not skip (e.g. h1 then h3 with no h2). Screen readers use heading hierarchy for navigation. Skipping levels breaks the document outline.\n  [skipped-heading] <h3> \"Travel rewards\" followed by <h5> \"Search this site\" (missing h4)\n    → Heading levels should not skip (e.g. h1 then h3 with no h2). Screen readers use heading hierarchy for navigation. Skipping levels breaks the document outline.\n\n2 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

@@ -11,7 +11,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 1. Accessibility (A11y)
 
 **Check for**:
-- **Contrast issues**: Text contrast ratios < 4.5:1 (or 7:1 for AAA)
+- **Contrast issues**: Text contrast ratios < 4.5:1, or < 3:1 for large text (or 7:1 for AAA)
 - **Motion sensitivity**: `prefers-reduced-motion` needs an intentional alternative that preserves state change and hierarchy; flag a global `0.01ms` kill that destroys useful feedback, flashing above threshold, and motion that blocks focus, reading, or task completion
 - **Missing ARIA**: Interactive elements without proper roles, labels, or states
 - **Keyboard navigation**: Missing focus indicators, illogical tab order, keyboard traps
@@ -47,7 +47,7 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 
 **Check for**:
 - **Fixed widths**: Hard-coded widths that break on mobile
-- **Touch targets**: Interactive elements < 44x44px
+- **Touch targets**: Interactive elements < 44x44px. WCAG AA (SC 2.5.8) requires at least 24x24 CSS px unless an exception applies: spacing, an equivalent control, inline text, user-agent styling, or an essential size. Spacing passes when a 24 CSS px circle centered on the target's bounding box overlaps no other target and no other undersized target's circle
 - **Broken touch interaction**: Custom sliders, drag surfaces, and scrollable control strips whose primary gesture fails under touch, that swallow page scroll or lose the drag to it, or that stay stuck after an interrupted gesture. Code tells: mouse-only handlers, no `touch-action` on a pointer-event drag surface, drag state that nothing clears on cancel, lost capture, or blur. Exercise the gesture when a browser tool can synthesize touch (a rendered viewport proves layout, not the gesture), then say what produced the evidence (emulated viewport, synthesized touch, which engine, physical device) and what stayed untested
 - **Horizontal scroll**: Content overflow on narrow viewports
 - **Text scaling**: Layouts that break when text size increases
@@ -58,6 +58,8 @@ Run comprehensive checks across 5 dimensions. Score each dimension 0-4 using the
 ### 5. Implementation Integrity (CRITICAL)
 
 Run the bundled detector and verify each finding in context. Look for repeated implementation shortcuts, design-system drift, misleading or decorative content, and structure that is interchangeable with an unrelated product. Keep deterministic findings separate from visual judgment and call out false positives.
+
+**Desktop apps** (Electron, NW.js, CEF, WebView2): launch the app with a local DevTools port (`--remote-debugging-port=9222`, or `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` for WebView2; keep it on 127.0.0.1, never exposed), seed the state to audit, keep the window on screen (a hidden one skips the pixel contrast reads), then run `"<skill-base-dir>/scripts/impeccable" detect --cdp 9222 --target <part of the page URL or title> --json`. It returns the same JSON as a URL scan and leaves the window as found. Take screenshots through the harness's CDP tooling, and leave the window as you found it too. Tauri on macOS (WKWebView) and on Linux (WebKitGTK) expose no CDP: scan the source and say the rendered check did not run.
 
 **Score 0-4**: 0=systemic drift, 1=major repeated failures, 2=several verified issues, 3=minor isolated issues, 4=coherent and intentional
 
@@ -127,9 +129,9 @@ After presenting the summary, tell the user:
 >
 > Re-run `/impeccable audit` after fixes to see your score improve.
 
-**IMPORTANT**: Be thorough but actionable. Too many P3 issues creates noise. Focus on what actually matters.
+Keep P3s few: a long tail of minor issues buries the ones that matter.
 
-**NEVER**:
+**Avoid**:
 - Report issues without explaining impact (why does this matter?)
 - Provide generic recommendations (be specific and actionable)
 - Skip positive findings (celebrate what works)

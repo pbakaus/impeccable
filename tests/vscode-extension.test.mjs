@@ -57,7 +57,7 @@ describe('VS Code skill extension', () => {
 
   it('keeps POSIX and Windows paths quoted, with arguments outside the quotes', () => {
     const output = rewriteVSCodeMarkdown('Run `.github/skills/impeccable/scripts/impeccable context` or `<skill-base-dir>/scripts/impeccable.cmd context`.');
-    assert.equal(output, 'Run `"<skill-base-dir>/scripts/impeccable" context` or `"<skill-base-dir>/scripts/impeccable.cmd" context`.');
+    assert.equal(output, 'Run `"<skill-base-dir>/scripts/impeccable" context` or `& "<skill-base-dir>/scripts/impeccable.cmd" context`.');
     assert.equal(rewriteVSCodeMarkdown(output), output);
     assert.throws(() => rewriteVSCodeMarkdown('changed Setup', { isSkillEntrypoint: true }), /rewrite drift/);
   });

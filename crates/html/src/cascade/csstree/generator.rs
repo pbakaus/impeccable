@@ -397,3 +397,39 @@ pub fn generate(node: &Node) -> String {
     g.node(node);
     g.buffer
 }
+
+/// `csstree.generate(value)` for a declaration value, with one deliberate
+/// divergence from css-tree: at the top level, a number, percentage or
+/// dimension that follows another one or a function keeps the space before
+/// it. css-tree drops that space where re-tokenizing gives the same tokens
+/// (`0 -8px` -> `0-8px`, `-1px +2px` -> `-1px+2px`, `10% 0` -> `10%0`,
+/// `var(--x) 0` -> `var(--x)0`), but the static cascade splits shorthand
+/// values on whitespace, so `margin: 0 0 0 -8px` would reach it as three
+/// values ending in a merged `0-8px`. Inside a function the text stays as
+/// css-tree writes it.
+pub fn generate_declaration_value(node: &Node) -> String {
+    let Node::Value { children } = node else {
+        return generate(node);
+    };
+    let mut g = Generator {
+        buffer: String::new(),
+        prev_code: 0,
+    };
+    let mut prev_numeric = false;
+    let mut prev_function = false;
+    for child in children {
+        let numeric = matches!(
+            child,
+            Node::Number { .. } | Node::Dimension { .. } | Node::Percentage { .. }
+        );
+        let separate = (prev_numeric || prev_function) && numeric;
+        let start = g.buffer.len();
+        g.node(child);
+        if separate && !g.buffer[start..].starts_with(' ') {
+            g.buffer.insert(start, ' ');
+        }
+        prev_numeric = numeric;
+        prev_function = matches!(child, Node::Function { .. });
+    }
+    g.buffer
+}

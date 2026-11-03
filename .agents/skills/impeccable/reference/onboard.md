@@ -23,7 +23,7 @@ Understand what users need to learn and why:
    - What's the key action we want them to take? (First project? First invite?)
    - How do we know onboarding worked? (Completion rate? Time to value?)
 
-**CRITICAL**: Onboarding should get users to value as quickly as possible, not teach everything possible.
+Onboarding should get users to value as quickly as possible, not teach everything possible.
 
 ## Onboarding Principles
 
@@ -208,9 +208,9 @@ localStorage.setItem('onboarding-completed', 'true');
 localStorage.setItem('feature-tooltip-seen-reports', 'true');
 ```
 
-**IMPORTANT**: Don't show same onboarding twice (annoying). Track completion and respect dismissals.
+Show onboarding once: track completion and respect dismissals.
 
-**NEVER**:
+**Avoid**:
 - Force users through long onboarding before they can use product
 - Patronize users with obvious explanations
 - Show same tooltip repeatedly (respect dismissals)

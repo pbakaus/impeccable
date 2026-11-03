@@ -2,13 +2,18 @@
 // `impeccable` npm shim: finds the platform binary and execs it with argv.
 // Order: $IMPECCABLE_BIN, the @impeccable/cli-<os>-<arch> optional dependency,
 // the version-pinned user cache (~/.impeccable/bin/<version>/), then a
-// download into that cache from the public release channel.
+// download into that cache from the public release channel. The cache and the
+// download are verified against skill/scripts/engine-checksums.txt (shipped in
+// the package); a <binary>.verified stamp holding the manifest digest and the
+// binary's size records that a cached binary passed, until either changes or
+// the binary is newer than the stamp.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json');
@@ -22,29 +27,46 @@ const VERSION = String(pkg.optionalDependencies?.[PLATFORM_PKG] || Object.values
 const CACHE_ROOT = process.env.IMPECCABLE_HOME || path.join(os.homedir(), '.impeccable');
 const CACHED = path.join(CACHE_ROOT, 'bin', VERSION, EXE);
 const BASE = (process.env.IMPECCABLE_DOWNLOAD_BASE || 'https://github.com/pbakaus/impeccable/releases/download').replace(/\/$/, '');
-const URL = `${BASE}/engine-v${VERSION}/impeccable-${TARGET}${OS === 'windows' ? '.exe' : ''}`;
+const ASSET = `impeccable-${TARGET}${OS === 'windows' ? '.exe' : ''}`;
+const URL = `${BASE}/engine-v${VERSION}/${ASSET}`;
+const MANIFEST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'skill', 'scripts', 'engine-checksums.txt');
+const STAMP = `${CACHED}.verified`;
 
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
+// A stamp counts only while it holds an accepted digest and the binary's size,
+// and the binary has not changed since it was written.
+function stampValid(accepted) {
+  try {
+    const [digest, size] = fs.readFileSync(STAMP, 'utf8').trim().split(/\s+/);
+    const bin = fs.statSync(CACHED);
+    return accepted.includes(digest) && size === String(bin.size) && bin.mtimeMs <= fs.statSync(STAMP).mtimeMs;
+  } catch { return false; }
+}
+// The digest MANIFEST records for this version and asset, or '' when none.
+function expectedDigest(wanted = ASSET) {
+  try {
+    for (const line of fs.readFileSync(MANIFEST, 'utf8').split(/\r?\n/)) {
+      const [version, asset, sum] = line.trim().split(/\s+/);
+      if (version === VERSION && asset === wanted) return (sum || '').toLowerCase();
+    }
+  } catch { /* no manifest: nothing verifies */ }
+  return '';
+}
 function fromPackage() {
   try { return path.join(path.dirname(require.resolve(`${PLATFORM_PKG}/package.json`)), 'bin', EXE); } catch { return null; }
 }
 async function download() {
   if (!VERSION) return null;
+  // Fail closed, like the skill launcher and `impeccable install`: no digest
+  // on record refuses the download before any request, and nothing is written
+  // until the hash matches, so a refusal leaves the cache dir untouched.
+  const expected = expectedDigest();
+  if (!expected) {
+    throw new Error(`no checksum for engine ${VERSION} (${ASSET}) in ${MANIFEST}; refusing the unverified download`);
+  }
   const res = await fetch(URL, { redirect: 'follow' });
   if (!res.ok) return null;
   const buf = Buffer.from(await res.arrayBuffer());
-  // Fail closed, like the skill launcher and `impeccable install`: a sidecar
-  // that cannot be fetched, or that carries no hash, refuses the download
-  // instead of caching an unverified binary. Nothing is written until the
-  // hash matches, so a refusal leaves the cache dir untouched.
-  const sum = await fetch(`${URL}.sha256`, { redirect: 'follow' }).then(r => (r.ok ? r.text() : ''), () => '');
-  const expected = sum.trim().split(/\s+/)[0].toLowerCase();
-  if (!expected) {
-    throw new Error(
-      `cannot verify ${URL} against ${URL}.sha256 (sidecar unavailable or empty); `
-      + 'refusing the unverified download',
-    );
-  }
   if (createHash('sha256').update(buf).digest('hex') !== expected) {
     throw new Error(`checksum mismatch downloading ${URL}`);
   }
@@ -57,6 +79,7 @@ async function download() {
     try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
     throw err;
   }
+  try { fs.writeFileSync(STAMP, `${expected} ${buf.length}\n`); } catch { /* next run hashes again */ }
   return CACHED;
 }
 async function locate() {
@@ -64,7 +87,18 @@ async function locate() {
   if (exists(envBin)) return envBin;
   const fromPkg = fromPackage();
   if (exists(fromPkg)) return fromPkg;
-  if (exists(CACHED)) return CACHED;
+  if (exists(CACHED)) {
+    // Windows on ARM runs x64 binaries, and the launchers fall back to that asset.
+    const accepted = [expectedDigest(), TARGET === 'windows-arm64' && expectedDigest('impeccable-windows-x64.exe')].filter(Boolean);
+    if (stampValid(accepted)) return CACHED;
+    let digest = '';
+    try { digest = createHash('sha256').update(fs.readFileSync(CACHED)).digest('hex'); } catch { /* unreadable: unverified */ }
+    if (digest && accepted.includes(digest)) {
+      try { fs.writeFileSync(STAMP, `${digest} ${fs.statSync(CACHED).size}\n`); } catch { /* read-only cache: verified this run */ }
+      return CACHED;
+    }
+    process.stderr.write(`impeccable: cannot verify the cached engine ${CACHED} against ${MANIFEST}; downloading engine ${VERSION} again\n`);
+  }
   return download().catch((err) => { process.stderr.write(`impeccable: ${err.message}\n`); return null; });
 }
 

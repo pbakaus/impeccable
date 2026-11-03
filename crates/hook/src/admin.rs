@@ -96,7 +96,7 @@ fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
 /// resolves on every teammate's checkout.
 const CLAUDE_HOOK_COMMAND: &str = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
 const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
-const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit";
+const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook";
 const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
 
 struct ManifestTarget {
@@ -172,23 +172,12 @@ fn agents_manifest() -> Value {
     )])
 }
 
+/// Cursor runs the post-edit design hook like the other harnesses (the
+/// before-edit gate is retired). `merge_hook_manifests` strips Impeccable
+/// entries from every event, so `on` also drops a leftover `preToolUse`
+/// gate entry while writing this one.
 fn cursor_manifest() -> Value {
-    obj(vec![
-        ("version", Value::from(1)),
-        (
-            "hooks",
-            obj(vec![(
-                "preToolUse",
-                Value::Array(vec![obj(vec![
-                    (
-                        "command",
-                        Value::from(CURSOR_HOOK_COMMAND),
-                    ),
-                    ("timeout", Value::from(TIMEOUT_SECONDS)),
-                ])]),
-            )]),
-        ),
-    ])
+    impeccable_context::hook_markers::cursor_hook_manifest(CURSOR_HOOK_COMMAND, TIMEOUT_SECONDS)
 }
 
 fn github_manifest() -> Value {

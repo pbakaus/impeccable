@@ -33,13 +33,23 @@
 //!   and re-emitted with a space only where two tokens would otherwise merge
 //!   (css-tree's "safe" `token-before` table): `rgb( 1 , 2 , 3 )` ->
 //!   `rgb(1,2,3)`, `a , b` -> `a,b`, `x  y` -> `x y`, `1 / 2` -> `1/2`,
-//!   `-1px +2px` -> `-1px+2px`, `1 -2` -> `1-2` but `1 - 2` stays (an
-//!   operator keeps the spaces around it), `url(foo.png) no-repeat` ->
+//!   `1 - 2` stays (an operator keeps the spaces around it),
+//!   `url(foo.png) no-repeat` ->
 //!   `url(foo.png)no-repeat`, `1.2.3` -> `1.2 .3`. Strings are decoded and
 //!   re-encoded with double quotes and CSSOM escaping (`'}'` -> `"}"`,
 //!   `"\201C"` -> `"\u{201C}"`); `url("x y.png")` -> `url(x\ y.png)`,
 //!   `URL(x.png)` -> `url(x.png)`; `var( --x , red )` -> `var(--x, red )`
 //!   (the fallback is a raw span). Comments inside values vanish.
+//! - **Adjacent numbers keep their space (a deliberate divergence).**
+//!   css-tree writes `-1px +2px` as `-1px+2px`, `1 -2` as `1-2` and `10% 0`
+//!   as `10%0`, which re-tokenize the same, but the shorthand expansion
+//!   splits on whitespace and would read `margin: 0 0 0 -8px` as three
+//!   values. At the top level of a value, a number, percentage or dimension
+//!   after another one or after a function (`var(--x) 0`, which css-tree
+//!   writes `var(--x)0`) keeps a space (`generate_declaration_value`);
+//!   inside a function the css-tree text stands (`lab(50%40-30)`). The
+//!   fixture's expectations for those top-level cases were edited by hand
+//!   to match.
 //! - **Custom properties** (`parseCustomProperty: false`) keep their raw text
 //!   including surrounding whitespace, which the JS then trims.
 //! - **`!important`** parses as `true`; another ident (`!ie`) is kept as a
@@ -303,6 +313,11 @@ fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
         "align-self" => vec![("alignSelf".into(), v.to_string())],
         "justify-content" => vec![("justifyContent".into(), v.to_string())],
         "justify-items" => vec![("justifyItems".into(), v.to_string())],
+        // cramped-padding's walk through a transparent shell (#963) stops at
+        // a shell a transform moves, and reads a float as a box that holds
+        // its children's margins. Unset, both read as "".
+        "transform" => vec![("transform".into(), v.to_string())],
+        "float" => vec![("float".into(), v.to_string())],
         // `var()` and CSS-wide keywords resolve later, per longhand; the
         // stripe adapter picks the keyword out of the resolved list.
         "flex-flow" | "place-items" | "place-self"
@@ -594,7 +609,7 @@ fn walk_list(list: &[Node], at_rule_stack: &[String], rules: &mut Vec<CssRule>, 
                             value,
                         } = child
                         {
-                            let generated = csstree::generate(value);
+                            let generated = csstree::generate_declaration_value(value);
                             declarations.push(RuleDecl {
                                 prop: property.clone(),
                                 value: js::trim(&generated).to_string(),

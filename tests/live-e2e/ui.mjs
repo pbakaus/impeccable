@@ -909,6 +909,22 @@ export async function openTunePanel(page, { timeout = 5_000 } = {}) {
   );
 }
 
+/** Close Tune without changing variants or accepting the current choice. */
+export async function closeTunePanel(page) {
+  await installLiveQueryHelpers(page);
+  const alreadyClosed = await page.evaluate(
+    (sel) => window.__impeccableLiveQuery(sel)?.style.pointerEvents === 'none',
+    PARAMS_PANEL_ID,
+  );
+  if (alreadyClosed) return;
+  await clickLiveControl(page, TUNE_BUTTON);
+  await page.waitForFunction(
+    (sel) => window.__impeccableLiveQuery(sel)?.style.pointerEvents === 'none',
+    PARAMS_PANEL_ID,
+    { timeout: 5_000 },
+  );
+}
+
 /**
  * Drag a `range` knob to `value`. Setting `.value` + dispatching `input` is
  * what a real drag produces; the panel's listener reads the input, not the

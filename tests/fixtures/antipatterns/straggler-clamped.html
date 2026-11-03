@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Straggler, clamped lines</title>
+  <!--
+    Browser-only reads. Columns are 40ch of a monospace face, so the text
+    breaks the same on any host font: three full lines and "copy." alone on
+    a fourth. A line clamp of three hides that line (vercel.com's
+    line-clamp-2 cards). The same paragraph unclamped reports, and so does
+    a lone last word carrying a footnote marker (apple.com's "audio.4").
+    So does a caption set in the padding of an overflow-hidden ratio card:
+    overflow clips at the padding edge, and the padding is in view.
+  -->
+  <style>
+    body { margin: 0; padding: 32px; font-family: monospace; font-size: 16px; line-height: 24px; color: #1a1a1a; background: #ffffff; }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; width: 1000px; }
+    h2 { font-size: 18px; margin: 0 0 16px; }
+    p { width: 40ch; margin: 0 0 32px; }
+    .clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+    sup { font-size: inherit; vertical-align: super; line-height: 0; }
+    .ratio { position: relative; width: 44ch; height: 0; padding-bottom: 56.25%; overflow: hidden; margin: 0 0 32px; }
+    .ratio p { position: absolute; left: 8px; bottom: 8px; margin: 0; }
+  </style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Should flag</h2>
+    <p id="flag-marker-last">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the copy.<sup>22</sup></p>
+    <p id="flag-unclamped">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the copy.</p>
+    <div class="ratio"><p id="flag-in-ratio-padding">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the copy.</p></div>
+  </section>
+  <section>
+    <h2>Should pass</h2>
+    <p id="pass-clamped" class="clamp">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the copy.</p>
+  </section>
+</main>
+</body>
+</html>

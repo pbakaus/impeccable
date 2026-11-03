@@ -70,7 +70,7 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider_id: &str) -> R
     let abs_design_path = ctx.design_path.as_deref().map(|p| jsp::resolve(cwd, &[p]));
     let sidecar_candidates = design_sidecar_candidates_for(&project_root, Some(&ctx.context_dir));
     let known = load_known_rule_ids();
-    let selection = resolve_target_selection(cwd, target, env);
+    let selection = resolve_workspace_selection(cwd, target, env);
     let workspace_candidates: Vec<TargetCandidate> = selection.map(|s| s.target_candidates).unwrap_or_default();
     let (ws_findings, workspaces) = check_workspaces(&ctx.repo_root, &workspace_candidates);
 
@@ -97,8 +97,8 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider_id: &str) -> R
     findings.extend(boot.build_path);
     findings.extend(check_detector_ignores(&project_root, known.as_deref()));
     findings.extend(boot.surface_briefs);
-    let home = crate::util::homedir(env);
-    findings.extend(check_hook_installation(&project_root, Some(&ctx.repo_root), provider_id, Some(&home)));
+    let user_manifest = crate::context_cli::user_hook_manifest(provider_id, cwd, env);
+    findings.extend(check_hook_installation(&project_root, Some(&ctx.repo_root), provider_id, user_manifest.as_deref()));
     findings.extend(check_legacy_live_state(&project_root));
     findings.extend(boot.project_roots);
     findings.extend(ws_findings);
@@ -150,6 +150,26 @@ fn apply_fixes(report: &Report) -> Fixes {
             let _ = std::fs::create_dir_all(jsp::dirname(canonical));
             let _ = std::fs::rename(present, canonical);
             applied.push(format!("Moved {} to {}.", rel(present, &report.project_root), rel(canonical, &report.project_root)));
+            continue;
+        }
+        if entry.id == "cursor-hook-pre-edit-gate" {
+            let Some(path) = entry.path.as_deref() else { continue };
+            let abs = if jsp::is_absolute(path) { path.to_string() } else { jsp::join(&[&report.project_root, path]) };
+            let migrated = std::fs::read_to_string(&abs)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|v| crate::hook_markers::migrate_cursor_gate_in_place(&v));
+            match migrated {
+                Some(next) => {
+                    let body = format!("{}\n", json_pretty(&next));
+                    if std::fs::write(&abs, body).is_ok() {
+                        applied.push(format!("Moved the design hook in {} from preToolUse to postToolUse.", rel(&abs, &report.project_root)));
+                    } else {
+                        skipped.push((entry.id.clone(), format!("could not write {}", rel(&abs, &report.project_root))));
+                    }
+                }
+                None => skipped.push((entry.id.clone(), "the gate entry is not in the launcher form; run `impeccable hooks on`".to_string())),
+            }
             continue;
         }
         if entry.id == "legacy-live-state" {
@@ -244,6 +264,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         .get("IMPECCABLE_SELF")
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
+        .map(|v| impeccable_common::launcher::spell_self(&v))
         .unwrap_or_else(|| "impeccable".to_string());
     let (flags, target) = match parse_args(args) {
         Ok(v) => v,
