@@ -1,6 +1,6 @@
 {
-  "version": "0.1.15",
-  "tagCommit": "8384d86473513bfd5fbfd79bd1cf5b4b24204d63",
+  "version": "0.1.18",
+  "tagCommit": "f29cd24fdecfa5612e35e34c1c868d4a3fca930c",
   "coverage": "Reviewed documented names and option forms only. New capabilities require an audit of the exact release tag. Values describe token consumption, not runtime validity.",
   "router": { "file": "crates/cli/src/main.rs", "symbol": "run" },
   "aliases": { "context-signals": "signals", "hook-admin": "hooks", "ignore": "ignores" },
@@ -17,11 +17,13 @@
       }
     },
     "detect": {
-      "evidence": [{ "file": "crates/detect/src/cli.rs", "symbol": "detect_cli" }],
+      "evidence": [{ "file": "crates/detect/src/cli.rs", "symbol": "detect_cli" }, { "file": "crates/detect/src/cli.rs", "symbol": "take_value_flag" }],
       "options": {
+        "--cdp": { "values": 1, "form": "both", "value": "non-long-option" },
         "--json": { "values": 0, "form": "separate" },
         "--no-config": { "values": 0, "form": "separate" },
-        "--scope": { "values": 1, "form": "both", "value": "non-long-option" }
+        "--scope": { "values": 1, "form": "both", "value": "non-long-option" },
+        "--target": { "values": 1, "form": "both", "value": "non-long-option" }
       }
     },
     "concept-seed": {
@@ -181,6 +183,7 @@
         "ignore-file": { "evidence": [{ "file": "crates/hook/src/admin.rs", "symbol": "parse_ignore_file_args" }] }
       }
     },
+    "install": { "evidence": [{ "file": "crates/cli/src/main.rs", "symbol": "run, install route" }, { "file": "crates/skills/src/commands.rs", "symbol": "install" }] },
     "ignores": { "evidence": [{ "file": "crates/detect/src/ignores.rs", "symbol": "run, default list action" }], "subcommands": {} },
     "live": {
       "evidence": [{ "file": "crates/live/src/lib.rs", "symbol": "run" }, { "file": "crates/live/src/live_boot.rs", "symbol": "run" }, { "file": "crates/context/src/target_args.rs", "symbol": "parse_target_path" }],
@@ -237,7 +240,12 @@
     "live-server": {
       "evidence": [{ "file": "crates/live/src/live_server.rs", "symbol": "run" }],
       "options": { "--background": { "values": 0, "form": "separate" } },
-      "subcommands": { "stop": { "evidence": [{ "file": "crates/live/src/live_server.rs", "symbol": "run, stop branch" }] } }
+      "subcommands": {
+        "stop": {
+          "evidence": [{ "file": "crates/live/src/live_server.rs", "symbol": "run, stop branch" }],
+          "options": { "--keep-inject": { "values": 0, "form": "separate" } }
+        }
+      }
     },
     "live-generate": {
       "evidence": [{ "file": "crates/live/src/live_generate.rs", "symbol": "parse_flags, run, flag" }],
@@ -264,7 +272,6 @@
     { "file": "skill/SKILL.src.md", "text": "{{scripts_path}}/impeccable <verb>", "kind": "verb-template" },
     { "file": "skill/reference/new-work.md", "text": "{{scripts_path}}/impeccable <verb>", "kind": "verb-template" },
     { "file": "skill/reference/hooks.md", "text": "{{scripts_path}}/impeccable hooks <action> [args...]", "kind": "action-template", "paths": [["hooks", "on"], ["hooks", "off"], ["hooks", "status"], ["hooks", "ignore-rule"], ["hooks", "ignore-file"], ["hooks", "ignore-value"], ["hooks", "reset"]] },
-    { "file": "skill/reference/hooks.md", "text": "npx impeccable ignores ...", "kind": "argument-template", "paths": [["ignores"]] },
     { "file": "skill/reference/critique.md", "text": "tab.dev.logs({ filter: \"impeccable\" })", "kind": "code-mention" }
   ]
 }

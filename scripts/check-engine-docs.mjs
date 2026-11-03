@@ -43,7 +43,7 @@ function validateContract(contract) {
     }
   }
   for (const template of contract.templates ?? []) {
-    if (!template.file || !template.text || !['verb-template', 'action-template', 'argument-template', 'code-mention'].includes(template.kind)) {
+    if (!template.file || !template.text || !['verb-template', 'action-template', 'code-mention'].includes(template.kind)) {
       throw new Error('Invalid documented command template.');
     }
     if (!['verb-template', 'code-mention'].includes(template.kind) && !template.paths?.length) throw new Error('A command template needs reviewed paths.');
@@ -220,6 +220,8 @@ export function checkDocuments(documents, contract) {
         if (!scopes[0]) { fail(`Unsupported or unreviewed engine command ${args[0].value}`); continue; }
         let cursor = 1;
         while (scopes.every((scope) => scope.subcommands) && cursor < args.length && !args[cursor].value.startsWith('-')) {
+          // A bare ... stands for arguments the prose leaves out, so it names no subcommand.
+          if (args[cursor].value === '...') break;
           const name = args[cursor++].value;
           reference.path.push(name);
           const alternatives = /^<[a-z-]+(?:\|[a-z-]+)+>$/.test(name) ? name.slice(1, -1).split('|') : [name];
@@ -280,12 +282,12 @@ function main() {
   if (!VERSION.test(version)) throw new Error('ENGINE_VERSION must be an exact x.y.z version.');
   const contract = JSON.parse(fs.readFileSync(path.join(root, 'scripts/engine-capabilities.json'), 'utf8'));
   validateContract(contract);
-  if (version !== contract.version) throw new Error(`ENGINE_VERSION ${version} has no reviewed capability contract. Review scripts/engine-capabilities.json.`);
+  if (version !== contract.version) throw new Error(`ENGINE_VERSION ${version} has no reviewed capability contract. Audit engine-v${version}, then update \`version\` and \`tagCommit\` in scripts/engine-capabilities.json.`);
   const tag = `refs/tags/engine-v${version}`;
   let commit;
   try { commit = execFileSync('git', ['rev-parse', '--verify', `${tag}^{commit}`], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
   catch { throw new Error(`Missing ${tag}. Fetch the pinned tag from https://github.com/pbakaus/impeccable.git before running this check.`); }
-  if (commit !== contract.tagCommit) throw new Error(`${tag} resolves to ${commit}, but the reviewed contract requires ${contract.tagCommit}.`);
+  if (commit !== contract.tagCommit) throw new Error(`${tag} resolves to ${commit}, but the reviewed contract requires ${contract.tagCommit}. Audit the tag, then update \`version\` and \`tagCommit\` in scripts/engine-capabilities.json.`);
   const walk = (directory) => fs.readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
     const file = `${directory}/${entry.name}`;
     return entry.isDirectory() ? walk(file) : file.endsWith('.md') ? [file] : [];

@@ -43,7 +43,7 @@ function repository(t) {
   fs.mkdirSync(path.join(directory, 'skill/reference'), { recursive: true });
   fs.mkdirSync(path.join(directory, 'skill/agents'));
   fs.copyFileSync(path.join(root, 'scripts/check-engine-docs.mjs'), path.join(directory, 'scripts/check-engine-docs.mjs'));
-  fs.writeFileSync(path.join(directory, 'ENGINE_VERSION'), '0.1.15\n');
+  fs.writeFileSync(path.join(directory, 'ENGINE_VERSION'), `${contract.version}\n`);
   fs.writeFileSync(path.join(directory, 'skill/SKILL.src.md'), '`impeccable concept-seed --check-seed <reference>`\n');
   const git = (...args) => execFileSync('git', ['-C', directory, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -52,7 +52,7 @@ function repository(t) {
   git('commit', '--quiet', '-m', 'Fixture release');
   const release = { ...contract, tagCommit: git('rev-parse', 'HEAD') };
   fs.writeFileSync(path.join(directory, 'scripts/engine-capabilities.json'), JSON.stringify(release));
-  git('tag', 'engine-v0.1.15');
+  git('tag', `engine-v${contract.version}`);
   const run = () => spawnSync(process.execPath, [path.join(directory, 'scripts/check-engine-docs.mjs')], {
     cwd: directory,
     encoding: 'utf8',
@@ -61,7 +61,7 @@ function repository(t) {
   return { directory, git, run };
 }
 
-test('the actual #1030 reviewer invocation fails against audited 0.1.14 and passes against 0.1.15', () => {
+test('the actual #1030 reviewer invocation fails against audited 0.1.14 and passes against the current contract', () => {
   const file = 'skill/agents/impeccable-finish-reviewer.md';
   const text = fs.readFileSync(path.join(root, file), 'utf8');
   const invocation = '`impeccable concept-seed --check-seed <reference>`';
@@ -289,6 +289,14 @@ test('tokens after multiline quotes and placeholders retain source lines', () =>
   }
 });
 
+test('a bare ... is a prose placeholder, not a subcommand', () => {
+  const result = inline('impeccable ignores ...');
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.references[0].path, ['ignores']);
+  assert.match(inline('impeccable ignores unknown').diagnostics[0]?.message ?? '', /subcommand ignores unknown/);
+  assert.match(inline('impeccable ignores ... --unknown').diagnostics[0]?.message ?? '', /option --unknown/);
+});
+
 test('the authored corpus passes and includes the historic invocation and explicit template classifications', () => {
   const walk = (directory) => fs.readdirSync(path.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
     const file = `${directory}/${entry.name}`;
@@ -309,19 +317,20 @@ test('CLI checks the pin and exact tag identity offline, regardless of IMPECCABL
   assert.match(initial.stdout, /checked 1 references/);
   fixture.git('commit', '--quiet', '--allow-empty', '-m', 'Unreleased source');
   assert.equal(fixture.run().status, 0);
-  fixture.git('tag', '-f', 'engine-v0.1.15');
+  fixture.git('tag', '-f', `engine-v${contract.version}`);
   const moved = fixture.run();
   assert.equal(moved.status, 1);
   assert.match(moved.stderr, /reviewed contract requires/);
-  fixture.git('tag', '-d', 'engine-v0.1.15');
+  assert.match(moved.stderr, /`version` and `tagCommit` in scripts\/engine-capabilities\.json/);
+  fixture.git('tag', '-d', `engine-v${contract.version}`);
   const missing = fixture.run();
   assert.equal(missing.status, 1);
-  assert.match(missing.stderr, /Missing refs\/tags\/engine-v0\.1\.15/);
+  assert.ok(missing.stderr.includes(`Missing refs/tags/engine-v${contract.version}`));
 });
 
 test('CLI fails malformed or unaudited pins before checking documents', (t) => {
   const fixture = repository(t);
-  for (const [version, expected] of [['0.1.14', /no reviewed capability contract/], ['0.1.15;touch injected', /exact x\.y\.z/], ['../0.1.15', /exact x\.y\.z/]]) {
+  for (const [version, expected] of [['0.1.14', /no reviewed capability contract.*`version` and `tagCommit` in scripts\/engine-capabilities\.json/], ['0.1.15;touch injected', /exact x\.y\.z/], ['../0.1.15', /exact x\.y\.z/]]) {
     fs.writeFileSync(path.join(fixture.directory, 'ENGINE_VERSION'), version);
     const result = fixture.run();
     assert.equal(result.status, 1);
