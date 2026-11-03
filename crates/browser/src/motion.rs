@@ -429,10 +429,17 @@ fn shadow_changed(a: &str, b: &str) -> bool {
             .filter_map(|n| n.parse::<f64>().ok())
             .collect::<Vec<_>>()
     };
+    // Preserve layer separators, color-function names, units, and the position
+    // of inset. Equal numbers cannot make different shadow structures equal.
+    let structure = |s: &str| {
+        s.chars()
+            .filter(|c| !(c.is_ascii_digit() || c.is_whitespace() || matches!(c, '.' | '-' | '+')))
+            .collect::<String>()
+    };
     let (x, y) = (numbers(a), numbers(b));
     x.is_empty()
         || x.len() != y.len()
-        || a.matches("inset").count() != b.matches("inset").count()
+        || structure(a) != structure(b)
         || x.iter().zip(&y).any(|(a, b)| (a - b).abs() > 0.05)
 }
 /// Cross-layer evidence is separate from underlying DOM geometry during a View Transition.
@@ -906,6 +913,15 @@ mod tests {
             document_region(&json!([20, 30, 400, 200]), &json!([10, 500])),
             (30., 530., 400., 200.)
         );
+    }
+    #[test]
+    fn motion_shadow_tolerance_preserves_each_layer_structure() {
+        let old =
+            "rgba(0, 0, 0, 0.4) 0px 12px 24px 0px inset, rgba(0, 0, 0, 0.4) 0px 12px 24px 0px";
+        let new =
+            "rgba(0, 0, 0, 0.4) 0px 12px 24px 0px, rgba(0, 0, 0, 0.4) 0px 12px 24px 0px inset";
+        assert!(shadow_changed(old, new));
+        assert!(!shadow_changed(old, &old.replace("24px", "23.9996px")));
     }
     #[test]
     fn motion_layer_failures_and_complementary_control() {
