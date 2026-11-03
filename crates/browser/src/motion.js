@@ -43,8 +43,11 @@
           easing: timing.easing, iterations: timing.iterations,
           selector: a.effect.target instanceof Element ? selector(a.effect.target) : 'document',
           pseudo: a.effect.pseudoElement || null});
+        const current = a.currentTime;
         a.pause();
-        if (a.currentTime === null) a.currentTime = 0;
+        // Setting the same position completes a pending pause even when CDP
+        // has frozen the document timeline. Do not rewind an existing position.
+        a.currentTime = current ?? 0;
       }
     }
   };
@@ -203,8 +206,7 @@
   globalThis.__impeccableMotion = {
     snapshot,
     async ready() {
-      await Promise.race([Promise.all(transitions).then(flush), new Promise((_,reject)=>setTimeout(()=>reject(Error('Animation readiness timed out')),5000))]);
-      await Promise.all(Array.from(animations.keys(), a => a.ready));
+      await Promise.race([Promise.all(transitions).then(flush).then(() => Promise.all(Array.from(animations.keys(), a => a.ready))), new Promise((_,reject)=>setTimeout(()=>reject(Error('Animation readiness timed out')),5000))]);
       for (const [a, meta] of animations) {
         meta.origin = Number(a.currentTime) || 0;
         meta.playbackRate = a.playbackRate;

@@ -85,7 +85,11 @@ fn motion_fixture(name: &str, expected: Option<&str>) {
         }
     }
     print_findings(name, &report);
-    if name == "swap-while-growing" || name == "smooth" || name == "playback-rate" {
+    if name == "swap-while-growing"
+        || name == "smooth"
+        || name == "playback-rate"
+        || name == "grid-gap"
+    {
         let reduced = output.join(format!("{name}-reduced"));
         let result = Command::new(env!("CARGO_BIN_EXE_impeccable"))
             .args([
@@ -124,7 +128,21 @@ fn motion_fixture(name: &str, expected: Option<&str>) {
             .unwrap()
             .iter()
             .any(|f| f["kind"] == "reduced-motion-ignored");
-        assert_eq!(ignored, name == "swap-while-growing", "{report}");
+        assert_eq!(
+            ignored,
+            name == "swap-while-growing" || name == "grid-gap",
+            "{report}"
+        );
+        if name == "grid-gap" {
+            assert!(
+                report["findings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|f| f["kind"] == "reduced-motion-ignored" && f["element"] == "#second"),
+                "{report}"
+            );
+        }
         if name == "smooth" || name == "playback-rate" {
             assert!(
                 report["findings"].as_array().unwrap().is_empty(),
@@ -171,3 +189,5 @@ fixture!(motion_playback_rate, "playback-rate", None);
 fixture!(motion_playback_reverse, "playback-reverse", None);
 
 fixture!(motion_pseudo_twins, "pseudo-twins", None);
+
+fixture!(motion_grid_gap, "grid-gap", None);

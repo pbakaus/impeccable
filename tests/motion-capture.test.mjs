@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const source = readFileSync(new URL('../crates/browser/src/motion.js', import.meta.url), 'utf8');
-function harness(setup = () => {}) {
+function harness(setup = () => {}, pendingPause = false) {
   const animations = [];
   class Element {
     constructor() { this.id = 'card'; }
@@ -15,6 +15,11 @@ function harness(setup = () => {}) {
         pause() { this.playState = 'paused'; },
         finish() { this.currentTime = this.playbackRate < 0 ? 0 : 600; this.playState = 'finished'; }
       };
+      if (pendingPause) {
+        let current = a.currentTime, completePause;
+        Object.defineProperty(a, 'currentTime', { get: () => current, set: value => { current = value; completePause?.(); } });
+        a.pause = () => { a.playState = 'paused'; a.ready = new Promise(resolve => { completePause = resolve; }); };
+      }
       animations.push(a);
       return a;
     }
@@ -53,4 +58,13 @@ test('finished filled entrances remain at rest while a new interaction is captur
   assert.equal(entrance.currentTime, 600);
   assert.equal(entrance.playState, 'finished');
   assert.equal(interaction.currentTime, 300);
+});
+
+test('pausing preserves position and resolves a pending pause on a frozen timeline', async () => {
+  const { motion, create } = harness(() => {}, true);
+  const animation = create();
+  animation.playbackRate = 5;
+  const result = await Promise.race([motion.ready(), new Promise(resolve => setTimeout(() => resolve('pending'), 30))]);
+  assert.notEqual(result, 'pending');
+  assert.equal(result.duration, 120);
 });

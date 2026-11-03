@@ -418,6 +418,23 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
     findings.extend(analyze_layers(frames));
     findings
 }
+fn shadow_changed(a: &str, b: &str) -> bool {
+    if a == b {
+        return false;
+    }
+    // Computed shadows are canonical numeric CSS. Near-terminal samples differ
+    // by tiny interpolation residuals, not an abrupt style toggle.
+    let numbers = |s: &str| {
+        s.split(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E')))
+            .filter_map(|n| n.parse::<f64>().ok())
+            .collect::<Vec<_>>()
+    };
+    let (x, y) = (numbers(a), numbers(b));
+    x.is_empty()
+        || x.len() != y.len()
+        || a.matches("inset").count() != b.matches("inset").count()
+        || x.iter().zip(&y).any(|(a, b)| (a - b).abs() > 0.05)
+}
 /// Cross-layer evidence is separate from underlying DOM geometry during a View Transition.
 fn analyze_layers(frames: &[Value]) -> Vec<Value> {
     let mut findings = vec![];
@@ -433,7 +450,10 @@ fn analyze_layers(frames: &[Value]) -> Vec<Value> {
             if let Some(a) = a {
                 if a["boxShadow"].is_string()
                     && b["boxShadow"].is_string()
-                    && a["boxShadow"] != b["boxShadow"]
+                    && shadow_changed(
+                        a["boxShadow"].as_str().unwrap(),
+                        b["boxShadow"].as_str().unwrap(),
+                    )
                     && number(&a["opacity"]) > 0.02
                     && number(&b["opacity"]) > 0.02
                 {
@@ -574,9 +594,20 @@ fn spatial_duration(capture: &Capture, el: &Value) -> f64 {
                                 | "bottom"
                                 | "marginLeft"
                                 | "marginTop"
+                                | "marginRight"
+                                | "marginBottom"
+                                | "gap"
+                                | "rowGap"
+                                | "columnGap"
+                                | "fontSize"
+                                | "lineHeight"
+                                | "letterSpacing"
+                                | "wordSpacing"
                                 | "padding"
                                 | "paddingLeft"
                                 | "paddingTop"
+                                | "paddingRight"
+                                | "paddingBottom"
                                 | "flexBasis"
                                 | "gridTemplateColumns"
                                 | "gridTemplateRows"
@@ -841,6 +872,35 @@ mod tests {
         );
     }
     #[test]
+    fn motion_reduced_checks_gap_movement_inside_a_fixed_grid() {
+        let mut frames: Vec<_> = [0., 0., 30., 60., 60.]
+            .into_iter()
+            .enumerate()
+            .map(|(i, x)| frame(i, x, 1., "card", 0.))
+            .collect();
+        for f in &mut frames {
+            f["elements"][0]["ancestors"] = json!([2]);
+            f["elements"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"id":2,"selector":"#grid","box":[0,0,400,100],"opacity":1}));
+        }
+        for property in ["gap", "rowGap", "columnGap"] {
+            let capture = Capture {
+                frames: frames.clone(),
+                images: vec![],
+                region: json!([0, 0, 400, 100]),
+                meta: json!({"duration":600,"animations":[{"selector":"#grid","properties":[property],"wallDuration":600}]}),
+            };
+            assert!(
+                reduced_findings(&capture, &capture)
+                    .iter()
+                    .any(|f| f["kind"] == "reduced-motion-ignored" && f["element"] == "#card"),
+                "{property}"
+            );
+        }
+    }
+    #[test]
     fn motion_capture_region_follows_scrolled_viewport_coordinates() {
         assert_eq!(
             document_region(&json!([20, 30, 400, 200]), &json!([10, 500])),
@@ -864,6 +924,16 @@ mod tests {
                 "{kind}"
             );
         }
+        let mut animated_shadow = frames.clone();
+        for f in &mut animated_shadow {
+            f["elements"][0]["boxShadow"] = json!("rgba(0, 0, 0, 0.4) 0px 12px 24px 0px");
+        }
+        animated_shadow[4]["elements"][0]["boxShadow"] =
+            json!("rgba(0, 0, 0, 0.39999) 0px 11.9998px 23.9996px 0px");
+        assert!(
+            analyze(&animated_shadow).is_empty(),
+            "near-terminal interpolation is not a shadow jump"
+        );
         let mut replay = frames.clone();
         replay[1]["elements"][0]["entranceReplay"] = json!(true);
         assert!(
