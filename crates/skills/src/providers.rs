@@ -8,7 +8,7 @@ use crate::util::{self, jsp, Env};
 pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
-    ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
+    ".claude", ".commandcode", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
     ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
 ];
 
@@ -18,6 +18,9 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("antigravity", ".agent"),
     ("claude", ".claude"),
     ("claude-code", ".claude"),
+    ("cmd", ".commandcode"),
+    ("command-code", ".commandcode"),
+    ("commandcode", ".commandcode"),
     ("codex", ".agents"),
     ("copilot", ".github"),
     ("cursor", ".cursor"),
@@ -50,6 +53,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".agent", "Antigravity", "antigravity"),
     (".agents", "Codex CLI", "codex"),
     (".claude", "Claude Code", "claude"),
+    (".commandcode", "Command Code", "command-code"),
     (".cursor", "Cursor", "cursor"),
     (".devin", "Devin", "devin"),
     (".dsh", "DeepSeek Harness", "dsh"),
@@ -74,7 +78,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
 const SHARED_DIR_HARNESSES: &[(&str, &str, &str)] = &[("replit", "Replit Agent", ".agents")];
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
-    "antigravity", "claude", "codex", "replit", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
+    "antigravity", "claude", "command-code", "codex", "replit", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
     "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
 ];
 
@@ -503,6 +507,7 @@ const HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".gemini/antigravity-cli", "antigravity"),
     Hint::Home(".gemini/antigravity-ide", "antigravity"),
     Hint::Home(".claude", "claude"),
+    Hint::Home(".commandcode", "command-code"),
     Hint::Home(".codex", "codex"),
     Hint::Home(".cursor", "cursor"),
     Hint::Home(".codeium/windsurf", "devin"),
@@ -1034,5 +1039,50 @@ mod tests {
         assert_eq!(get_flag_value(&flags, "--providers"), Some("claude"));
         assert_eq!(get_flag_value(&flags, "--scope"), Some("user"));
         assert_eq!(get_flag_value(&flags, "--x"), None);
+    }
+
+    #[test]
+    fn command_code_provider_resolves() {
+        assert_eq!(normalize_provider_name("command-code"), Some(".commandcode"));
+        assert_eq!(normalize_provider_name("commandcode"), Some(".commandcode"));
+        assert_eq!(normalize_provider_name("cmd"), Some(".commandcode"));
+        assert_eq!(normalize_provider_name(".commandcode"), Some(".commandcode"));
+        assert_eq!(provider_display_name(".commandcode"), "Command Code");
+        assert_eq!(provider_input_name(".commandcode"), "command-code");
+        assert_eq!(harness_display_name("command-code"), Some((".commandcode", "Command Code")));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
+        assert_eq!(
+            sys.user_provider_skills_dir(home, ".commandcode"),
+            jsp::join(&[home, ".commandcode", "skills"])
+        );
+        assert_eq!(
+            sys.provider_skills_dir_candidates("/project", ".commandcode", Some(Scope::Project)),
+            vec![jsp::join(&["/project", ".commandcode", "skills"])]
+        );
+    }
+
+    #[test]
+    fn command_code_detects_as_a_user_harness() {
+        let base = std::env::temp_dir().join(format!("impeccable-command-code-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.canonicalize().unwrap().to_string_lossy().into_owned();
+        let real = real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real);
+        let home = jsp::join(&[&real, "home"]);
+        let project = jsp::join(&[&real, "project"]);
+        std::fs::create_dir_all(jsp::join(&[&home, ".commandcode"])).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+
+        let sys = Sys { env: Env::new(), cwd: project.clone(), home: home.clone() };
+        let detections = sys.collect_install_detections(&project);
+
+        assert!(
+            detections.iter().any(|d| d.provider == ".commandcode"
+                && d.scope == Scope::User
+                && d.harness == "command-code"),
+            "expected a user-scope Command Code detection"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

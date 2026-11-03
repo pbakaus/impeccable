@@ -112,9 +112,23 @@ scripts/
    }
    ```
 
-3. Run `bun run build` -- the provider is automatically picked up by the build loop.
+3. If the provider ships subagents, add a builder and `agentFormat` branch in
+   `scripts/lib/transformers/factory.js`. Command Code uses `commandcode-md` and
+   maps Claude tool names to Command Code ids.
 
-4. Update `HARNESSES.md` with the provider's capabilities.
+4. Register the provider in the Rust CLI:
+   - `crates/skills/src/providers.rs`: `PROVIDER_DIRS`, `PROVIDER_ALIASES`,
+     `PROVIDER_DISPLAY`, `PROVIDER_INPUT_ORDER`, `HARNESS_HINTS`.
+   - `crates/skills/src/bundle.rs`: `agent_artifact`, when the provider ships
+     subagents.
+   - `crates/context/src/pin.rs`: `HARNESS_DIRS`, when `pin` should write
+     standalone shortcuts.
+
+5. Run `bun run build`; the provider is automatically picked up by the build
+   loop.
+
+6. Update `docs/HARNESSES.md` with the provider's capabilities, directories,
+   hook surface, and subagent support.
 
 ### Provider Config Options
 

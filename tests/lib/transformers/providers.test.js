@@ -246,3 +246,71 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
     }
   });
 }
+
+describe('Command Code provider', () => {
+  const config = PROVIDERS['command-code'];
+
+  beforeEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true, force: true });
+    }
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true, force: true });
+    }
+  });
+
+  test('writes skills under .commandcode with the supported frontmatter', () => {
+    const transform = createTransformer(config);
+
+    transform([{
+      name: 'impeccable',
+      description: 'Design skill',
+      userInvocable: true,
+      argumentHint: '[target]',
+      allowedTools: ['Bash(npx impeccable *)'],
+      license: 'Apache 2.0',
+      body: 'Clarify: {{ask_instruction}}',
+    }], TEST_DIR);
+
+    const skillPath = path.join(TEST_DIR, 'command-code/.commandcode/skills/impeccable/SKILL.md');
+    const content = fs.readFileSync(skillPath, 'utf8');
+    const parsed = parseFrontmatter(content);
+
+    expect(parsed.frontmatter['user-invocable']).toBe(true);
+    expect(parsed.frontmatter['argument-hint']).toBe('[target]');
+    expect(parsed.frontmatter.license).toBe('Apache 2.0');
+    expect(parsed.frontmatter['allowed-tools']).toBeUndefined();
+    expect(content).toContain('Clarify: Ask with the ask_user_question tool and wait for the answer before continuing.');
+  });
+
+  test('maps agent tools and emits Command Code agent frontmatter', () => {
+    const transform = createTransformer(config);
+
+    transform([{
+      name: 'impeccable',
+      description: 'Design skill',
+      body: 'Skill body.',
+      agents: [{
+        name: 'impeccable-asset-producer',
+        description: 'Produces clean reusable raster assets.',
+        tools: 'Read, Write, Edit, Bash, Glob, Grep, CustomTool',
+        model: 'inherit',
+        effort: 'medium',
+        maxTurns: 24,
+        body: 'Agent body.',
+      }],
+    }], TEST_DIR);
+
+    const agentPath = path.join(TEST_DIR, 'command-code/.commandcode/agents/impeccable-asset-producer.md');
+    const content = fs.readFileSync(agentPath, 'utf8');
+
+    expect(content).toContain('tools: read_file, write_file, edit_file, shell_command, glob, grep, CustomTool');
+    expect(content).toContain('reasoningEffort: medium');
+    expect(content).toContain('maxTurns: 24');
+    expect(content).not.toContain('effort:');
+    expect(content).toContain('Agent body.');
+  });
+});

@@ -475,6 +475,12 @@ export const PROVIDER_PLACEHOLDERS = {
     ask_instruction: 'Ask with the AskUserQuestion tool and wait for the answer before continuing.',
     command_prefix: '/'
   },
+  'command-code': {
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'Ask with the ask_user_question tool and wait for the answer before continuing.',
+    command_prefix: '/'
+  },
   'cursor': {
     model: 'the model',
     config_file: '.cursorrules',
@@ -598,6 +604,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'claude',
   'claude-code',
   'codex',
+  'command-code',
   'cursor',
   'devin',
   'dsh',

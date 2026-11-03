@@ -127,3 +127,39 @@ fn detected_only_leaves_a_detected_provider_without_an_install_alone() {
     assert!(!exists(&format!("{}/.cursor/skills/impeccable", fx.project)), "{stdout}");
     std::fs::remove_dir_all(&fx.root).ok();
 }
+
+#[test]
+fn customize_installs_command_code() {
+    let fx = fixture("command-code-picker");
+    let bundle = fx.env.get("IMPECCABLE_BUNDLE_PATH").unwrap().clone();
+    seed_install(&bundle, ".commandcode");
+    seed_install(&fx.project, ".claude");
+
+    let (code, stdout) = run_install(&fx, "customize\ncommand-code\nproject\n");
+    assert_eq!(code, 0, "{stdout}");
+    assert!(
+        exists(&format!("{}/.commandcode/skills/impeccable/SKILL.md", fx.project)),
+        "{stdout}"
+    );
+    std::fs::remove_dir_all(&fx.root).ok();
+}
+
+#[test]
+fn command_code_global_install_uses_the_home_directory() {
+    let fx = fixture("command-code-global");
+    let bundle = fx.env.get("IMPECCABLE_BUNDLE_PATH").unwrap().clone();
+    seed_install(&bundle, ".commandcode");
+    seed_install(&fx.project, ".claude");
+
+    let (code, stdout) = run_install(&fx, "customize\ncommand-code\nglobal\n");
+    assert_eq!(code, 0, "{stdout}");
+    assert!(
+        exists(&format!("{}/.commandcode/skills/impeccable/SKILL.md", fx.home)),
+        "{stdout}"
+    );
+    assert!(
+        !exists(&format!("{}/.commandcode", fx.project)),
+        "global install must not write into the project: {stdout}"
+    );
+    std::fs::remove_dir_all(&fx.root).ok();
+}

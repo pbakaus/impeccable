@@ -14,6 +14,7 @@ Last verified: 2026-04-28 (subagent landscape spot-checked 2026-06-28; Mistral V
 | Harness | Docs URL |
 |---------|----------|
 | Claude Code | https://code.claude.com/docs/en/skills |
+| Command Code | https://commandcode.ai/docs/skills |
 | Cursor | https://cursor.com/docs/context/skills |
 | DeepSeek Harness | https://github.com/deepseek-ai/deepseek-harness |
 | Gemini CLI | https://geminicli.com/docs/cli/skills/ |
@@ -42,22 +43,22 @@ Provider-specific extensions beyond the spec: `user-invocable`, `argument-hint`,
 
 Fields marked with * are spec-standard. Others are provider extensions.
 
-| Field | Claude Code | Cursor | Gemini | Codex | Copilot | Grok | Hermes | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity | DSH |
-|-------|:-----------:|:------:|:------:|:-----:|:-------:|:----:|:------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|:------:|
-| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `license`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
-| `compatibility`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
-| `metadata`* | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| `allowed-tools`* | Yes | No | Ignored | No | No | Yes | No | No | No | Yes | Yes | Yes | Yes | Yes | No |
-| `user-invocable` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | Yes | No | Yes |
-| `argument-hint` | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | No | No | No |
-| `disable-model-invocation` | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No | Yes |
-| `model` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
-| `effort` | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
-| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
-| `hooks` | Yes | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No | No |
+| Field | Claude Code | Command Code | Cursor | Gemini | Codex | Copilot | Grok | Hermes | Kiro | OpenCode | Pi | Qoder | Rovo Dev | Mistral Vibe | Antigravity | DSH |
+|-------|:-----------:|:------------:|:------:|:------:|:-----:|:-------:|:----:|:------:|:----:|:--------:|:--:|:-----:|:--------:|:------------:|:-----------:|:------:|
+| `name`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `description`* | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `license`* | Yes | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
+| `compatibility`* | Yes | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Ignored |
+| `metadata`* | Yes | Yes | Yes | Ignored | No | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `allowed-tools`* | Yes | Yes | No | Ignored | No | No | Yes | No | No | No | Yes | Yes | Yes | Yes | Yes | No |
+| `user-invocable` | Yes | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | Yes | No | Yes |
+| `argument-hint` | Yes | Yes | No | No | No | Yes | Yes | No | No | No | No | Yes | Yes | No | No | No |
+| `disable-model-invocation` | Yes | Yes | Yes | No | No | Yes | Yes | No | No | Yes | Yes | TBD | TBD | No | No | Yes |
+| `model` | Yes | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
+| `effort` | Yes | Yes | No | No | No | No | Yes | No | No | No | No | No | No | No | No | No |
+| `context` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| `agent` | Yes | No | No | No | No | No | No | No | No | No | No | No | No | No | No | No |
+| `hooks` | Yes | No | No | No | Yes | No | Yes | No | No | No | No | No | No | No | No | No |
 
 Notes:
 - Gemini CLI validates only `name` and `description`; other spec fields are parsed but ignored.
@@ -71,6 +72,7 @@ Notes:
 - DeepSeek Harness parses the Agent Skills frontmatter and requires `name` and `description`; it reads `metadata`, `user-invocable`, and `disable-model-invocation`. Spec fields it does not consume (`license`, `compatibility`, `allowed-tools`) and Claude-style extensions (`argument-hint`, `model`, `effort`, `context`, `agent`, `hooks`) are silently ignored. Hooks are in-process plugins configured via cordis.yml, not on-disk manifests, so there is no hook surface to install. Subagents exist but are composed from preset config, not an on-disk skill-adjacent format. Verified against the [filesystem skill provider](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/skill/skill-filesystem/README.md).
 - Oh My Pi supports standard Agent Skills frontmatter fields and `disable-model-invocation`; other harness-specific extensions are ignored.
 - Devin's skill frontmatter carries `name`, `description`, `argument-hint`, `allowed-tools`, `triggers`, `model`, `subagent`, `agent`, and `permissions` (the last four are documented for the CLI). It has no `user-invocable`; `triggers` defaults to user and model, so Impeccable omits it. The CLI docs describe `allowed-tools` as an auto-approve list and the web docs as a restriction, and Impeccable's Claude-syntax entries match no Devin tool (`read`, `grep`, `glob`, `exec`), so Impeccable omits it too. The CLI has lifecycle hooks (`.devin/hooks.v1.json`, plus Claude-format hooks read from `.claude/settings.json`) and subagent profiles (`.devin/agents/`, `.agents/agents/`, `~/.config/devin/agents/`, same frontmatter as skills with Devin tool names); Impeccable targets neither yet, so Devin gets the skill without an edit hook and runs the agent roles inline from `reference/degraded/`. Verified 2026-10-26 against the bundled docs of Devin CLI 3000.11.205 and [docs.devin.ai](https://docs.devin.ai/cli/extensibility/skills/overview).
+- Command Code reads skills from `.commandcode/skills/` (project) and `~/.commandcode/skills/` (global), with a `.agents/skills/` fallback. It supports `user-invocable`, `argument-hint`, `disable-model-invocation`, `allowed-tools` (experimental), `model`, and `effort`; its `allowed-tools` syntax is tool id based, so Impeccable omits the field for this provider. Command Code extends skills through mods, not on-disk hook manifests, so no design hook is installed. Subagents live in `.commandcode/agents/` (project) and `~/.commandcode/agents/` (global).
 - Unknown fields are silently ignored by all harnesses.
 
 ## Hook surface used by Impeccable
@@ -78,6 +80,7 @@ Notes:
 | Harness | Edit hook | Startup hook | Manifest location | Notes |
 |---------|:---------:|:------------:|-------------------|-------|
 | Claude Code | Yes (`PostToolUse`) | No | `.claude/settings.json` | Project-local settings entry installed by `npx impeccable skills install/update`. Runs `.claude/skills/impeccable/scripts/hook.mjs`. |
+| Command Code | No | No | n/a | Skill extensions use mods; no skill hook manifest is installed. |
 | Codex CLI | Yes (`PostToolUse`) | No | `.codex/hooks.json` | Project-local manifest installed with the `.agents/skills/impeccable` payload. Runs `.agents/skills/impeccable/scripts/hook.mjs` from the git root. Requires normal `/hooks` trust approval. |
 | Cursor | Yes (`preToolUse`) | No | `.cursor/hooks.json` | Project-level manifest installed with `.cursor/skills/impeccable`. Runs `hook-before-edit.mjs` to block bad proposed writes before they land. Reloads on save; restart Cursor if hooks do not pick up. |
 | Grok Build | Yes (`PostToolUse`) | No | `.grok/hooks/impeccable.json` | Project-local manifest installed with `.grok/skills/impeccable`. Claude-compatible matchers (`Edit\|Write\|MultiEdit`) alias to Grok `search_replace`. PostToolUse runs the scan and warms the session cache; Grok ignores that stdout. Stop `additionalContext` is the user-visible pass. Ignore Grok's observe-only Stop with `reason: "shutdown"`. Requires `/hooks-trust` or `--trust`. Plugin installs use `plugin/hooks/hooks.json` with `${CLAUDE_PLUGIN_ROOT}` (aliased to `GROK_PLUGIN_ROOT`). |
@@ -91,6 +94,7 @@ Notes:
 | Harness | Native directory | Also reads |
 |---------|-----------------|------------|
 | Claude Code | `.claude/skills/` | - |
+| Command Code | `.commandcode/skills/` (project), `~/.commandcode/skills/` (global) | `.agents/skills/` and `~/.agents/skills/` (fallback) |
 | Cursor | `.cursor/skills/` | `.agents/skills/`, `.claude/skills/` |
 | DeepSeek Harness | `.dsh/skills/` (project), `~/.dsh/skills/` (global; `$DSH_HOME/skills` when set) | `.agents/skills/` (project), `~/.agents/skills/` (global) |
 | Gemini CLI | `.gemini/skills/` | `.agents/skills/` |
@@ -124,6 +128,7 @@ All harnesses support the `{skill-name}/SKILL.md` directory structure with optio
 | Harness | Native directory | File format |
 |---------|------------------|-------------|
 | Claude Code | `.claude/agents/` (installed plugin) | Markdown with YAML frontmatter |
+| Command Code | `.commandcode/agents/` (project), `~/.commandcode/agents/` (global) | Markdown with YAML frontmatter |
 | Grok Build | `.grok/agents/` (project) and plugin `agents/` | Markdown with YAML frontmatter (Claude-compatible) |
 | Codex CLI | `<skill>/agents/` (nested, auto-discovered) | TOML |
 
@@ -134,6 +139,7 @@ Impeccable keeps canonical agent prompts under `skill/agents/` and emits provide
 | Harness | Who can spawn a subagent |
 |---------|--------------------------|
 | Claude Code | Programmatically, from within the skill/agent flow. |
+| Command Code | Agent-chosen via the `agent` tool; subagents cannot spawn subagents. |
 | Grok Build | Programmatically via `spawn_subagent` (built-in types plus project/user agents under `.grok/agents/`). |
 | Codex CLI | Only if the user has allowed sub-agents / parallel work; otherwise the skill must ask once, then stop (see `skill/reference/critique.md` `<codex>` gate). |
 | Cursor | Agent-chosen: auto-delegated by the Agent, or user-invoked via `/name`. Not reliably skill-spawnable. |
@@ -141,7 +147,7 @@ Impeccable keeps canonical agent prompts under `skill/agents/` and emits provide
 
 ## Placeholder / Variable Substitution
 
-Claude Code supports runtime variable substitution directly in SKILL.md bodies: `$ARGUMENTS`, `$0`-`$N`, `${CLAUDE_SKILL_DIR}`, `${CLAUDE_SESSION_ID}`. No other harness supports substitution in skills.
+Claude Code and Command Code support runtime variable substitution directly in SKILL.md bodies. Claude Code supports `$ARGUMENTS`, `$0`-`$N`, `${CLAUDE_SKILL_DIR}`, and `${CLAUDE_SESSION_ID}`. Command Code supports `$ARGUMENTS`, `$ARGUMENTS[N]` / `${N}`, `${COMMANDCODE_SKILL_DIR}`, `${COMMANDCODE_PROJECT_DIR}`, `${COMMANDCODE_SESSION_ID}`, and `${COMMANDCODE_EFFORT}`. No other harness supports substitution in skills.
 
 Some harnesses have separate "custom commands" systems (distinct from skills) with their own substitution:
 

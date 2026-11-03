@@ -826,6 +826,11 @@ fn agent_artifact(provider: &str) -> Option<AgentArtifact> {
             user_dir: |home| jsp::join(&[home, ".claude", "agents"]),
             user_shadows_project: false,
         }),
+        ".commandcode" => Some(AgentArtifact {
+            ext: ".md",
+            user_dir: |home| jsp::join(&[home, ".commandcode", "agents"]),
+            user_shadows_project: true,
+        }),
         ".github" => Some(AgentArtifact {
             ext: ".agent.md",
             user_dir: |home| jsp::join(&[home, ".copilot", "agents"]),
@@ -1319,5 +1324,17 @@ mod tests {
             assert_eq!(requested[1], format!("{release}.sig.json"));
             util::rm_rf(&root);
         }
+    }
+
+    #[test]
+    fn command_code_agents_use_the_commandcode_dirs() {
+        let artifact = agent_artifact(".commandcode").expect("command-code agent artifact");
+        assert_eq!(artifact.ext, ".md");
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        assert_eq!(
+            (artifact.user_dir)(home),
+            jsp::join(&[home, ".commandcode", "agents"])
+        );
+        assert!(artifact.user_shadows_project);
     }
 }

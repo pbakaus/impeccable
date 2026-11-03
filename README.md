@@ -10,7 +10,7 @@ npx impeccable install
 
 Reload your coding tool, then run `/impeccable init` in your agent (`$impeccable init` on Codex).
 
-Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
+Works with Claude Code, Command Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
 
 | Without Impeccable | With Impeccable |
 |---|---|
@@ -134,6 +134,7 @@ Download the ZIP for your tool from [impeccable.style](https://impeccable.style)
 | Tool | Repo folder | Global skills folder |
 |---|---|---|
 | Claude Code | `.claude/` | `~/.claude/skills/` |
+| Command Code | `.commandcode/` | `~/.commandcode/skills/` |
 | Cursor | `.cursor/` | |
 | Codex CLI, Replit Agent | `.agents/` | `~/.agents/skills/` |
 | Devin | `.devin/` | `${XDG_CONFIG_HOME:-$HOME/.config}/devin/skills/` |

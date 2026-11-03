@@ -378,6 +378,10 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     // Verify the harness directory is created at the correct path
     expect(fs.existsSync(path.join(DIST_DIR, 'antigravity/.agent/skills'))).toBe(true);
   });
+
+  test('exposes transformCommandCode', () => {
+    expect(typeof transformers.transformCommandCode).toBe('function');
+  });
 });
 
 // The skill's scripts dir ships the launcher, its Windows twin, the pinned

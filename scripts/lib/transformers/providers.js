@@ -37,6 +37,16 @@ export const PROVIDERS = {
     // Project-local Claude Code hooks live in `.claude/settings.json`.
     hooksManifestRel: 'settings.json',
   },
+  'command-code': {
+    provider: 'command-code',
+    providerTags: ['command-code'],
+    configDir: '.commandcode',
+    displayName: 'Command Code',
+    frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
+    // Command Code subagents live at `.commandcode/agents/<name>.md`; the
+    // builder maps Claude tool names to Command Code tool ids.
+    agentFormat: 'commandcode-md',
+  },
   gemini: {
     provider: 'gemini',
     providerTags: ['gemini'],

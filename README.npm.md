@@ -7,7 +7,7 @@ The npm package is a small launcher. It runs the `impeccable` engine binary for 
 ## Quick Start
 
 ```bash
-# Install skills into your AI harness (Claude, Cursor, Gemini, etc.)
+# Install skills into your AI harness (Claude, Cursor, Gemini, Command Code, etc.)
 npx impeccable install
 
 # Non-interactive install for a specific scope
@@ -94,7 +94,7 @@ Binary lookup order: `IMPECCABLE_BIN`, the platform package, `~/.impeccable/bin/
 
 ## Part of Impeccable
 
-This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 24 commands for Claude, Cursor, GitHub Copilot, Gemini, Codex, Hermes Agent, Veto, and more.
+This CLI is part of [Impeccable](https://impeccable.style), a cross-provider design skill pack for AI-powered development tools. The full suite includes 24 commands for Claude, Cursor, GitHub Copilot, Gemini, Command Code, Codex, Hermes Agent, Veto, and more.
 
 ## License
 

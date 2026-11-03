@@ -6,6 +6,7 @@ import { PROVIDERS } from './providers.js';
 // itself uses createTransformer + PROVIDERS directly, not these.
 export const transformCursor = createTransformer(PROVIDERS.cursor);
 export const transformClaudeCode = createTransformer(PROVIDERS['claude-code']);
+export const transformCommandCode = createTransformer(PROVIDERS['command-code']);
 export const transformGemini = createTransformer(PROVIDERS.gemini);
 export const transformCodex = createTransformer(PROVIDERS.codex);
 export const transformAgents = createTransformer(PROVIDERS.agents);

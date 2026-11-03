@@ -177,6 +177,42 @@ function buildCursorAgent(agent, body) {
   return `${generateYamlFrontmatter(frontmatter)}\n${body.trim()}\n`;
 }
 
+const COMMANDCODE_TOOL_IDS = {
+  Read: 'read_file',
+  Write: 'write_file',
+  Edit: 'edit_file',
+  MultiEdit: 'edit_file',
+  Bash: 'shell_command',
+  Glob: 'glob',
+  Grep: 'grep',
+  WebFetch: 'web_fetch',
+  WebSearch: 'web_search',
+  TodoWrite: 'todo_write',
+};
+
+function mapCommandCodeTools(tools) {
+  return String(tools)
+    .split(',')
+    .map((tool) => tool.trim())
+    .filter(Boolean)
+    .map((tool) => COMMANDCODE_TOOL_IDS[tool] || tool)
+    .join(', ');
+}
+
+function buildCommandCodeAgent(agent, body) {
+  const frontmatter = {
+    name: agent.name,
+    description: agent.description,
+  };
+
+  if (agent.tools) frontmatter.tools = mapCommandCodeTools(agent.tools);
+  if (agent.model) frontmatter.model = agent.model;
+  if (agent.effort) frontmatter.reasoningEffort = agent.effort;
+  if (agent.maxTurns) frontmatter.maxTurns = agent.maxTurns;
+
+  return `${generateYamlFrontmatter(frontmatter)}\n${body.trim()}\n`;
+}
+
 /**
  * Render an agent's markdown body for one provider.
  *
@@ -222,6 +258,13 @@ function buildAgentFile(config, agent, body) {
     return {
       filename: `${agent.name}.md`,
       content: buildCursorAgent(agent, body),
+    };
+  }
+
+  if (config.agentFormat === 'commandcode-md') {
+    return {
+      filename: `${agent.name}.md`,
+      content: buildCommandCodeAgent(agent, body),
     };
   }
 

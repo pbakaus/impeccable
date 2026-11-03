@@ -8,8 +8,8 @@ use impeccable_common::Io;
 /// keep in sync with the public repo).
 pub const COMMAND_METADATA_JSON: &str = include_str!("command-metadata.json");
 
-const HARNESS_DIRS: [&str; 20] = [
-    ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".codex", ".agents", ".agent", ".github", ".grok", ".hermes", ".trae", ".trae-cn",
+const HARNESS_DIRS: [&str; 21] = [
+    ".claude", ".commandcode", ".cursor", ".devin", ".dsh", ".gemini", ".codex", ".agents", ".agent", ".github", ".grok", ".hermes", ".trae", ".trae-cn",
     ".pi", ".omp", ".opencode", ".kiro", ".rovodev", ".vibe", ".qoder",
 ];
 const CODEX_HARNESSES: [&str; 2] = [".codex", ".agents"];
@@ -319,4 +319,78 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use impeccable_common::Io;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    fn project_with_skill(name: &str) -> String {
+        let base = std::env::temp_dir().join(format!("impeccable-pin-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let real = base.canonicalize().unwrap().to_string_lossy().into_owned();
+        let real = real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real);
+        let skill = jsp::join(&[&real, ".commandcode", "skills", "impeccable"]);
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(jsp::join(&[&skill, "SKILL.md"]), "---\nname: impeccable\n---\n").unwrap();
+        real
+    }
+
+    #[test]
+    fn command_code_pin_uses_the_slash_prefix_and_marker() {
+        assert!(HARNESS_DIRS.contains(&".commandcode"));
+        assert_eq!(command_prefix_for("/p/.commandcode/skills"), "/");
+
+        let metadata = serde_json::json!({
+            "audit": { "description": "Audit UI", "argumentHint": "[area]" }
+        });
+        let content = generate_pinned_skill("audit", &metadata, "/", false);
+
+        assert!(content.contains("argument-hint: \"[area]\""));
+        assert!(content.contains("user-invocable: true"));
+        assert!(content.contains(PIN_MARKER));
+    }
+
+    #[test]
+    fn pin_and_unpin_round_trip_in_command_code() {
+        let project = project_with_skill("roundtrip");
+        let (mut io, _captured) = Io::captured("", PathBuf::from(&project), HashMap::new());
+        assert_eq!(run(&["pin".into(), "audit".into()], &mut io), 0);
+
+        let md = jsp::join(&[&project, ".commandcode", "skills", "audit", "SKILL.md"]);
+        let content = std::fs::read_to_string(&md).unwrap();
+        assert!(content.contains(PIN_MARKER));
+        assert!(content.contains("argument-hint"));
+
+        let (mut io, _captured) = Io::captured("", PathBuf::from(&project), HashMap::new());
+        assert_eq!(run(&["unpin".into(), "audit".into()], &mut io), 0);
+        assert!(!std::path::Path::new(&md).exists());
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn unpin_keeps_a_non_pinned_skill() {
+        let project = project_with_skill("guard");
+        let audit_dir = jsp::join(&[&project, ".commandcode", "skills", "audit"]);
+        std::fs::create_dir_all(&audit_dir).unwrap();
+        std::fs::write(
+            jsp::join(&[&audit_dir, "SKILL.md"]),
+            "---\nname: audit\n---\nuser content\n",
+        )
+        .unwrap();
+
+        let (mut io, captured) = Io::captured("", PathBuf::from(&project), HashMap::new());
+        assert_eq!(run(&["unpin".into(), "audit".into()], &mut io), 0);
+        let stdout = String::from_utf8_lossy(&captured.stdout.borrow()).into_owned();
+        assert!(stdout.contains("SKIP:"), "{stdout}");
+        assert!(stdout.contains("not a pinned skill"), "{stdout}");
+        assert!(
+            std::path::Path::new(&jsp::join(&[&audit_dir, "SKILL.md"])).exists(),
+            "unpin must not delete a non-pinned skill"
+        );
+        let _ = std::fs::remove_dir_all(&project);
+    }
 }
