@@ -85,6 +85,7 @@ export const SUITES = {
           'tests/hermes-plugin.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/cursor-plugin.test.mjs',
+          'tests/motion-capture.test.mjs',
           'tests/vscode-extension.test.mjs',
           'tests/process-group.test.mjs',
           'tests/release.test.mjs',

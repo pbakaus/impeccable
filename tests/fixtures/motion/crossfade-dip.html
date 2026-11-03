@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>crossfade-dip</title>
+<style>
+body { font: 18px system-ui; margin: 40px; }
+button { margin-bottom: 20px; }
+#region { position: relative; width: 500px; height: 400px; }
+#card { position: relative; width: 180px; height: 100px; padding: 20px; box-sizing: border-box; background: #eedcc5; view-transition-name: card; }
+::view-transition-group(card) { animation-duration: 600ms; animation-timing-function: linear; }
+::view-transition-old(card) { animation: out 600ms linear both; } ::view-transition-new(card) { animation: into 600ms linear both; } @keyframes out { 0% { opacity: 1; } 40%, 100% { opacity: 0; } } @keyframes into { 0%, 60% { opacity: 0; } 100% { opacity: 1; } }
+</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Old content</div></div>
+<script>
+go.onclick = () => document.startViewTransition(() => { card.textContent = 'New content'; card.style.width = '280px'; });
+</script>

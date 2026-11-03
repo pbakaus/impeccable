@@ -2190,12 +2190,31 @@ The manifest is invalidated before a recapture and written last. Frames include
 before, first, evenly spaced middles, last animated (just before completion),
 and settled (250 ms after finishing). Reports include per-frame transformed
 boxes, cumulative opacity, ancestor overflow clips, clip-path style, direct
-content/child identities, pairwise overlap paint order, and animation timing.
-The seven finding kinds are `start-jump`, `end-jump`, `mid-step`,
-`paint-order-flip`, `clipped-midway`, `content-swap`, and
-`reduced-motion-ignored`. Each carries `element`, `frameIndex`, `timeMs`, and
-`magnitude` (maximum box/opacity step in pixels/percentage points, clipped area
-fraction, categorical 1, or duration ratio respectively).
+content/child identities, box shadows, pairwise overlap paint order, and animation
+timing. Animation playback rates and initial positions are preserved: duration
+and sample times use wall-clock milliseconds, including reverse playback; a
+zero-rate animation stays fixed. Resting animations present before the interaction
+are not rewound.
+
+Finding kinds: `start-jump`, `end-jump`, `mid-step`, `paint-order-flip`,
+`clipped-midway`, `content-swap`, `reduced-motion-ignored`, `entrance-replay`,
+`crossfade-dip`, `orphan-linger`, and `end-paint-swap`. Each carries `element`,
+`frameIndex`, `timeMs`, and `magnitude` (box/opacity step in pixels/percentage
+points, clipped area fraction, categorical 1, duration ratio, opacity-sum
+deviation from 1, or milliseconds past surrounding motion). Shadow boundary
+findings also carry `property: "box-shadow"`.
+
+A new CSS animation on a selector with a visible box before the interaction is
+an `entrance-replay`, including replacement DOM nodes. View Transition reports
+include group boxes, old/new opacity, blend mode, isolation, background, and
+per-group completion times. For paired groups, an old+new opacity sum outside
+[0.95, 1.05] in more than one sampled frame produces `crossfade-dip` findings
+with `opacitySum`; this covers both washout and over-exposure. Old-only or
+new-only animated groups still visible more than 20 ms after paired spatial
+motion ends produce `orphan-linger`. Transition group stacking uses computed
+z-index and pseudo-tree order; the final animated order is compared with
+settled DOM hit-test order for `end-paint-swap`. Nested transition groups and
+other complex compositing still require visual review.
 
 Reduced capture runs a fresh normal baseline, then reloads with reduced motion
 emulated before navigation. Unchanged spatial movement (at least 90% of the

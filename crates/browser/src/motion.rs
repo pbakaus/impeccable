@@ -415,6 +415,97 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
             }
         }
     }
+    findings.extend(analyze_layers(frames));
+    findings
+}
+/// Cross-layer evidence is separate from underlying DOM geometry during a View Transition.
+fn analyze_layers(frames: &[Value]) -> Vec<Value> {
+    let mut findings = vec![];
+    let last = frames.len() - 1;
+    for (i, kind) in [(1, "start-jump"), (last, "end-jump")] {
+        for b in frames[i]["elements"].as_array().into_iter().flatten() {
+            let a = element(&frames[i - 1], &b["id"]).or_else(|| {
+                frames[i - 1]["elements"]
+                    .as_array()?
+                    .iter()
+                    .find(|a| a["selector"] == b["selector"])
+            });
+            if let Some(a) = a {
+                if a["boxShadow"].is_string()
+                    && b["boxShadow"].is_string()
+                    && a["boxShadow"] != b["boxShadow"]
+                    && number(&a["opacity"]) > 0.02
+                    && number(&b["opacity"]) > 0.02
+                {
+                    let mut f = finding(kind, b, &frames[i], 1.);
+                    f["property"] = json!("box-shadow");
+                    findings.push(f);
+                }
+            }
+        }
+    }
+    for el in frames[1]["elements"].as_array().into_iter().flatten() {
+        if el["entranceReplay"] == true {
+            findings.push(finding("entrance-replay", el, &frames[1], 1.));
+        }
+    }
+    let mut fades = std::collections::BTreeMap::<String, Vec<Value>>::new();
+    for frame in &frames[1..last] {
+        let groups: Vec<_> = frame["transitionGroups"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .collect();
+        let surrounding = groups
+            .iter()
+            .filter(|g| g["oldOpacity"].is_number() && g["newOpacity"].is_number())
+            .map(|g| number(&g["geometryEndMs"]))
+            .fold(0., f64::max);
+        for group in &groups {
+            let old = group["oldOpacity"].as_f64();
+            let new = group["newOpacity"].as_f64();
+            if let (Some(old), Some(new)) = (old, new) {
+                let sum = old + new;
+                if !(0.95..=1.05).contains(&sum) {
+                    let mut f = finding("crossfade-dip", group, frame, (sum - 1.).abs());
+                    f["opacitySum"] = json!(sum);
+                    fades
+                        .entry(group["name"].as_str().unwrap_or("").to_owned())
+                        .or_default()
+                        .push(f);
+                }
+            } else if old.is_some() != new.is_some() {
+                let time = number(&frame["timeMs"]);
+                if surrounding > 0.
+                    && time > surrounding + 20.
+                    && number(&group["endMs"]) > time
+                    && old.or(new).unwrap_or(0.) > 0.05
+                {
+                    findings.push(finding("orphan-linger", group, frame, time - surrounding));
+                }
+            }
+        }
+    }
+    for failures in fades.into_values().filter(|v| v.len() > 1) {
+        findings.extend(failures);
+    }
+    if let (Some(animated), Some(settled)) = (
+        frames[last - 1]["transitionPaint"].as_object(),
+        frames[last]["transitionPaint"].as_object(),
+    ) {
+        for (pair, top) in settled {
+            if animated.get(pair).is_some_and(|prior| prior != top) {
+                if let Some(el) = frames[last]["elements"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|e| e["viewTransitionName"] == *top)
+                {
+                    findings.push(finding("end-paint-swap", el, &frames[last], 1.));
+                }
+            }
+        }
+    }
     findings
 }
 fn spatial_span(frames: &[Value], selector: &Value) -> f64 {
@@ -441,11 +532,62 @@ fn spatial_span(frames: &[Value], selector: &Value) -> f64 {
         })
         .fold(0., f64::max)
 }
+fn spatial_duration(capture: &Capture, el: &Value) -> f64 {
+    let Some(animations) = capture.meta["animations"].as_array() else {
+        return number(&capture.meta["duration"]);
+    };
+    let frame = &capture.frames[1];
+    let mut selectors = vec![el["selector"].clone()];
+    selectors.extend(
+        el["ancestors"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|id| element(frame, id).map(|e| e["selector"].clone())),
+    );
+    animations
+        .iter()
+        .filter(|a| {
+            let target = if let Some(pseudo) = a["pseudo"].as_str() {
+                if pseudo.starts_with("::view-transition-") {
+                    json!(pseudo)
+                } else {
+                    json!(format!("{}{pseudo}", a["selector"].as_str().unwrap_or("")))
+                }
+            } else {
+                a["selector"].clone()
+            };
+            selectors.contains(&target)
+                && a["properties"].as_array().into_iter().flatten().any(|p| {
+                    p.as_str().is_some_and(|p| {
+                        matches!(
+                            p,
+                            "transform"
+                                | "translate"
+                                | "rotate"
+                                | "scale"
+                                | "width"
+                                | "height"
+                                | "left"
+                                | "top"
+                                | "right"
+                                | "bottom"
+                                | "marginLeft"
+                                | "marginTop"
+                                | "padding"
+                                | "paddingLeft"
+                                | "paddingTop"
+                                | "flexBasis"
+                                | "gridTemplateColumns"
+                                | "gridTemplateRows"
+                        )
+                    })
+                })
+        })
+        .map(|a| number(&a["wallDuration"]))
+        .fold(0., f64::max)
+}
 fn reduced_findings(capture: &Capture, baseline: &Capture) -> Vec<Value> {
-    let duration = number(&baseline.meta["duration"]);
-    if duration < 100. || number(&capture.meta["duration"]) < duration * 0.9 {
-        return vec![];
-    }
     capture.frames[1]["elements"]
         .as_array()
         .into_iter()
@@ -453,14 +595,24 @@ fn reduced_findings(capture: &Capture, baseline: &Capture) -> Vec<Value> {
         .filter_map(|el| {
             let normal = spatial_span(&baseline.frames, &el["selector"]);
             let reduced = spatial_span(&capture.frames, &el["selector"]);
-            (normal > 2. && reduced >= normal * 0.9).then(|| {
-                finding(
-                    "reduced-motion-ignored",
-                    el,
-                    &capture.frames[1],
-                    number(&capture.meta["duration"]) / duration,
-                )
-            })
+            let baseline_el = baseline.frames[1]["elements"]
+                .as_array()?
+                .iter()
+                .find(|e| e["selector"] == el["selector"])?;
+            let duration = spatial_duration(baseline, baseline_el);
+            let reduced_duration = spatial_duration(capture, el);
+            (normal > 2.
+                && reduced >= normal * 0.9
+                && duration >= 100.
+                && reduced_duration >= duration * 0.9)
+                .then(|| {
+                    finding(
+                        "reduced-motion-ignored",
+                        el,
+                        &capture.frames[1],
+                        reduced_duration / duration,
+                    )
+                })
         })
         .collect()
 }
@@ -667,10 +819,105 @@ mod tests {
         assert!(reduced_findings(&capture(0., 600.), &baseline).is_empty());
     }
     #[test]
+    fn motion_reduced_duration_belongs_to_the_moving_element() {
+        let capture = |total: f64| Capture {
+            frames: [0., 0., 50., 100., 100.]
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| frame(i, x, 1., "card", 0.))
+                .collect(),
+            images: vec![],
+            region: json!([0, 0, 100, 100]),
+            meta: json!({"duration":total,"animations":[
+                {"selector":"#card","properties":["transform"],"wallDuration":1500},
+                {"selector":"#other","properties":["opacity"],"wallDuration":total}
+            ]}),
+        };
+        let findings = reduced_findings(&capture(1500.), &capture(3000.));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f["kind"] == "reduced-motion-ignored" && f["magnitude"] == 1.)
+        );
+    }
+    #[test]
     fn motion_capture_region_follows_scrolled_viewport_coordinates() {
         assert_eq!(
             document_region(&json!([20, 30, 400, 200]), &json!([10, 500])),
             (30., 530., 400., 200.)
+        );
+    }
+    #[test]
+    fn motion_layer_failures_and_complementary_control() {
+        let frames: Vec<_> = (0..6).map(|i| frame(i, 0., 1., "card", 0.)).collect();
+        let mut shadow = frames.clone();
+        shadow[0]["elements"][0]["boxShadow"] = json!("0px 12px 24px rgba(0, 0, 0, 0.4)");
+        for f in shadow.iter_mut().skip(1) {
+            f["elements"][0]["boxShadow"] = json!("none");
+        }
+        shadow[5]["elements"][0]["boxShadow"] = shadow[0]["elements"][0]["boxShadow"].clone();
+        for kind in ["start-jump", "end-jump"] {
+            assert!(
+                analyze(&shadow)
+                    .iter()
+                    .any(|f| f["kind"] == kind && f["property"] == "box-shadow"),
+                "{kind}"
+            );
+        }
+        let mut replay = frames.clone();
+        replay[1]["elements"][0]["entranceReplay"] = json!(true);
+        assert!(
+            analyze(&replay)
+                .iter()
+                .any(|f| f["kind"] == "entrance-replay")
+        );
+        let mut fade = frames.clone();
+        for (i, f) in fade.iter_mut().enumerate().take(5).skip(1) {
+            f["transitionGroups"] = json!([{"name":"card","selector":"#card","oldOpacity":1.-(i-1) as f64/3.,"newOpacity":(i-1) as f64/3.,"endMs":400,"geometryEndMs":400}]);
+        }
+        assert!(
+            analyze(&fade).is_empty(),
+            "complementary fades must stay clean"
+        );
+        for sum in [0.4, 1.6] {
+            let mut broken = fade.clone();
+            for f in &mut broken[2..4] {
+                f["transitionGroups"][0]["oldOpacity"] = json!(sum / 2.);
+                f["transitionGroups"][0]["newOpacity"] = json!(sum / 2.);
+            }
+            assert_eq!(
+                analyze(&broken)
+                    .iter()
+                    .filter(|f| f["kind"] == "crossfade-dip")
+                    .count(),
+                2
+            );
+            broken[3] = fade[3].clone();
+            assert!(
+                !analyze(&broken)
+                    .iter()
+                    .any(|f| f["kind"] == "crossfade-dip"),
+                "one sample alone is insufficient"
+            );
+        }
+        let mut orphan = fade.clone();
+        for f in &mut orphan[1..5] {
+            f["transitionGroups"][0]["geometryEndMs"] = json!(150);
+            f["transitionGroups"].as_array_mut().unwrap().push(json!({"name":"badge","selector":"#badge","oldOpacity":1,"newOpacity":null,"endMs":600,"geometryEndMs":0}));
+        }
+        assert!(
+            analyze(&orphan)
+                .iter()
+                .any(|f| f["kind"] == "orphan-linger")
+        );
+        let mut paint = frames;
+        paint[4]["transitionPaint"] = json!({"card:sibling":"sibling"});
+        paint[5]["transitionPaint"] = json!({"card:sibling":"card"});
+        paint[5]["elements"][0]["viewTransitionName"] = json!("card");
+        assert!(
+            analyze(&paint)
+                .iter()
+                .any(|f| f["kind"] == "end-paint-swap")
         );
     }
     #[test]
