@@ -112,7 +112,7 @@
       const ai=stack.indexOf(ea), bi=stack.indexOf(eb);
       if (ai>=0 && bi>=0) paint[a.id+':'+b.id]=ai<bi ? a.id : b.id;
     }
-    return {elements, paint, viewTransition, outsideIds};
+    return {elements, paint, viewTransition, outsideIds, scroll:[scrollX,scrollY]};
   };
   globalThis.__impeccableMotion = {
     snapshot,

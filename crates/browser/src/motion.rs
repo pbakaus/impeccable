@@ -244,6 +244,14 @@ fn record(
     browser.close();
     Ok(capture)
 }
+fn document_region(region: &Value, scroll: &Value) -> (f64, f64, f64, f64) {
+    (
+        number(&region[0]) + number(&scroll[0]),
+        number(&region[1]) + number(&scroll[1]),
+        number(&region[2]),
+        number(&region[3]),
+    )
+}
 fn sample(
     page: &mut Page<'_>,
     capture: &mut Capture,
@@ -256,15 +264,12 @@ fn sample(
     frame["timeMs"] = json!(time);
     frame["phase"] = json!(label);
     frame["image"] = json!(format!("frame-{:02}.png", capture.frames.len()));
+    let clip = document_region(&capture.region, &frame["scroll"]);
     capture.frames.push(frame);
     if screenshots {
-        let r = &capture.region;
-        capture.images.push(page.screenshot_clip(
-            number(&r[0]),
-            number(&r[1]),
-            number(&r[2]),
-            number(&r[3]),
-        )?);
+        capture
+            .images
+            .push(page.screenshot_clip(clip.0, clip.1, clip.2, clip.3)?);
     }
     Ok(())
 }
@@ -660,6 +665,13 @@ mod tests {
         assert!(reduced_findings(&capture(10., 600.), &baseline).is_empty());
         assert!(reduced_findings(&capture(100., 100.), &baseline).is_empty());
         assert!(reduced_findings(&capture(0., 600.), &baseline).is_empty());
+    }
+    #[test]
+    fn motion_capture_region_follows_scrolled_viewport_coordinates() {
+        assert_eq!(
+            document_region(&json!([20, 30, 400, 200]), &json!([10, 500])),
+            (30., 530., 400., 200.)
+        );
     }
     #[test]
     fn motion_rejects_invalid_options_before_launch() {
