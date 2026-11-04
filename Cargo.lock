@@ -534,6 +534,7 @@ name = "impeccable"
 version = "0.1.18"
 dependencies = [
  "base64",
+ "impeccable-account",
  "impeccable-browser",
  "impeccable-common",
  "impeccable-comp",
@@ -547,6 +548,25 @@ dependencies = [
  "impeccable-skills",
  "serde_json",
  "sha2",
+ "ureq",
+ "url",
+]
+
+[[package]]
+name = "impeccable-account"
+version = "0.1.18"
+dependencies = [
+ "base64",
+ "impeccable-common",
+ "impeccable-context",
+ "libc",
+ "ring",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "url",
 ]
 
 [[package]]

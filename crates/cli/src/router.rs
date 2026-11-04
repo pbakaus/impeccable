@@ -50,6 +50,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             impeccable_detect::cli::run_detect_with_pack(rest, io, &engines, pack.rule_pack)
         }
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
+        // Account sign-in. These never dispatch to the Pro engine.
+        "login" => impeccable_account::run_login(rest, io),
+        "logout" => impeccable_account::run_logout(rest, io),
+        "whoami" => impeccable_account::run_whoami(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
