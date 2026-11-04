@@ -203,6 +203,17 @@
     finish(session, out);
   }
 
+  function cancelSession(session) {
+    if (!session) return;
+    session.superseded = true;
+    if (session.resume) session.resume.reject(new Error('superseded'));
+    if (session.respond) {
+      try { session.respond({ superseded: true }); } catch { /* channel gone */ }
+    }
+    session.respond = null;
+    if (sessions.get(session.id) === session) sessions.delete(session.id);
+  }
+
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (!msg || msg.target !== TARGET) return false;
     if (msg.action === 'ping') {
@@ -213,18 +224,19 @@
       coreReady().then((wasm) => sendResponse({ antipatterns: JSON.parse(wasm.antipatterns_json()) }), (err) => sendResponse({ error: err?.message || String(err) }));
       return true;
     }
-    if (msg.action === 'scan-start' || msg.action === 'analyze-candidate') {
-      const prior = sessions.get(msg.session);
-      if (prior) {
-        // A restarted session (the content script re-scanned): drop the old
-        // coroutine so it never answers a stale request.
-        prior.superseded = true;
-        if (prior.resume) prior.resume.reject(new Error('superseded'));
-        if (prior.respond) { try { prior.respond({ superseded: true }); } catch { /* channel gone */ } }
-        prior.respond = null;
-        sessions.delete(msg.session);
+    if (msg.action === 'scan-cancel' || msg.action === 'scan-cancel-tab') {
+      if (msg.action === 'scan-cancel') cancelSession(sessions.get(msg.session));
+      else if (Number.isInteger(msg.tabId)) {
+        for (const session of sessions.values()) {
+          if (session.tabId === msg.tabId) cancelSession(session);
+        }
       }
-      const session = { id: msg.session, respond: sendResponse, resume: null, superseded: false };
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg.action === 'scan-start' || msg.action === 'analyze-candidate') {
+      cancelSession(sessions.get(msg.session));
+      const session = { id: msg.session, tabId: sender.tab?.id, respond: sendResponse, resume: null, superseded: false };
       sessions.set(msg.session, session);
       const run = msg.action === 'scan-start' ? runScan : runCandidate;
       serialized(() => {
