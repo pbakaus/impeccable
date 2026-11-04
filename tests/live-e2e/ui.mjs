@@ -1222,8 +1222,7 @@ export async function assertApplyDockLoading(page, { timeout = 5_000 } = {}) {
       const pill = dock.querySelector(pillSel);
       if (!pill) return false;
       const spinner = dock.querySelector('[aria-hidden="true"]');
-      return pill.disabled === true
-        || pill.getAttribute('aria-busy') === 'true'
+      return pill.getAttribute('aria-busy') === 'true'
         || /Applying|Verifying|Fixing apply issue/.test(pill.textContent || '')
         || spinner?.style?.display === 'inline-block';
     },
