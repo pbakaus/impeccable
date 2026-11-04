@@ -108,16 +108,54 @@ fn load_state(io: &Io) -> Option<Value> {
     serde_json::from_str(&raw).ok()
 }
 
+/// The files under `.impeccable/mocks/` and `.impeccable/review/` a ship no
+/// longer needs: rejected comps, gate diffs, and captures. A re-ship still
+/// reads the approved and decision comps with their sidecars, every recorded
+/// capture input, the human review manifests, and the native capture
+/// evidence, so those stay out. `finish` records the list and `doctor`
+/// reports what is left of it.
+fn spent_runtime_output(io: &Io, state: &Value) -> Vec<String> {
+    let mut kept: Vec<String> = vec![".impeccable/review/hero.json".into(), ".impeccable/review/components.json".into()];
+    for comp in ["comp", "decisionComp"].iter().filter_map(|k| state.get(*k).and_then(Value::as_str)) {
+        let comp = comp.trim_start_matches("./");
+        kept.push(comp.to_string());
+        kept.push(format!("{comp}.json"));
+    }
+    if let Some(inputs) = state.pointer("/finish/captureInputs").and_then(Value::as_array) {
+        kept.extend(inputs.iter().filter_map(|i| i.get("path").and_then(Value::as_str)).map(String::from));
+    }
+    fn walk(io: &Io, rel: &str, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(abs(io, rel)) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let child = format!("{rel}/{name}");
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(io, &child, out);
+            } else if name != ".gitignore" {
+                out.push(child);
+            }
+        }
+    }
+    let mut spent = Vec::new();
+    walk(io, MOCKS_DIR, &mut spent);
+    walk(io, ".impeccable/review", &mut spent);
+    spent.retain(|f| !f.starts_with(".impeccable/review/native/") && !kept.contains(f));
+    spent.sort();
+    spent
+}
+
 /// The build state records the direction's seed key, the key the roll API
 /// saw, and timestamps, so it is runtime state: its directory keeps a
 /// `.gitignore` naming `state.json` (and only that, the rest of
-/// `.impeccable/build/` being left to the project).
+/// `.impeccable/build/` being left to the project). The build's comps and
+/// captures are runtime output too: see `ignore_runtime_output`.
 fn save_state(io: &Io, state: &Value) {
     let p = abs(io, &state_path());
     if let Some(parent) = p.parent() {
         let _ = std::fs::create_dir_all(parent);
         impeccable_common::git::ensure_dir_ignored(&parent.to_string_lossy(), &["state.json"]);
     }
+    impeccable_common::git::ignore_runtime_output(&io.cwd.to_string_lossy());
     let _ = std::fs::write(p, util::json_pretty(state));
 }
 
@@ -3010,6 +3048,27 @@ mod transparency_guidance_tests {
         assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected);
         save_state(&io, &new_state(None, None, None, Some("seed-1")));
         assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected);
+        assert!(dir.join(".impeccable/mocks/.gitignore").is_file() && dir.join(".impeccable/review/.gitignore").is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn spent_runtime_output_skips_what_a_reship_reads() {
+        let dir = std::env::temp_dir().join(format!("build-spent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for rel in [
+            ".impeccable/mocks/.gitignore", ".impeccable/mocks/comp-1.png", ".impeccable/mocks/comp-1.png.json",
+            ".impeccable/mocks/decision/a.png", ".impeccable/review/hero.json", ".impeccable/review/native/hero/hero.png",
+            ".impeccable/review/shot.png", ".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png",
+        ] {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        let (io, _) = Io::captured("", dir.clone(), Default::default());
+        let state = json!({"comp": "./.impeccable/mocks/comp-1.png", "decisionComp": ".impeccable/mocks/decision/a.png",
+            "finish": {"captureInputs": [{"path": ".impeccable/review/shot.png"}]}});
+        assert_eq!(spent_runtime_output(&io, &state), [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -3723,6 +3782,9 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                         return 2;
                     }
                 }
+            }
+            if disposition == "ship" {
+                state["finish"]["spent"] = json!(spent_runtime_output(io, &state));
             }
             if phase == "review" {
                 if let Some(rev) = state.pointer_mut("/phases/review").and_then(|v| v.as_object_mut()) {
