@@ -494,10 +494,11 @@ pub enum Resolution {
     Ambiguous(SourceFile, Vec<ElementMatch>),
     /// The file's candidates carry the text nowhere.
     TextNotInFile(SourceFile, Vec<ElementMatch>),
-    /// The locator hits several files; the text is in none of their candidates.
-    TextInNoFile(Vec<(SourceFile, Vec<ElementMatch>)>),
-    /// The file holds no element for the locator.
-    NotLocated(SourceFile),
+    /// The locator hits several files (path, candidates); the text is in none
+    /// of their candidates.
+    TextInNoFile(Vec<(String, Vec<ElementMatch>)>),
+    /// The file (its path as spelled) holds no element for the locator.
+    NotLocated(String),
     /// No source file contains the locator.
     NotFound,
 }
@@ -525,11 +526,11 @@ fn resolve_lines(
                 return Resolution::Match(file, m);
             }
         }
-        return Resolution::NotLocated(file);
+        return Resolution::NotLocated(file.path);
     };
     let candidates = collect_candidates(&file.lines, queries, tag);
     if candidates.is_empty() {
-        return Resolution::NotLocated(file);
+        return Resolution::NotLocated(file.path);
     }
     let filtered = filter_by_text(&candidates, &file.lines, text);
     match filtered.len() {
@@ -556,8 +557,11 @@ pub fn resolve_in_project(
     let filter = |p: &str| !is_generated_file(p, cwd);
     for q in queries {
         let mut chosen: Option<Resolution> = None;
-        let mut misses: Vec<(SourceFile, Vec<ElementMatch>)> = Vec::new();
-        let mut unlocated: Option<SourceFile> = None;
+        // A miss keeps its path and ranges; only the first keeps its lines,
+        // for the single-miss fallback.
+        let mut misses: Vec<(String, Vec<ElementMatch>)> = Vec::new();
+        let mut first_miss: Option<SourceFile> = None;
+        let mut unlocated: Option<String> = None;
         visit_source_files(
             q,
             cwd,
@@ -572,9 +576,12 @@ pub fn resolve_in_project(
                     return true;
                 }
                 match resolved {
-                    Resolution::TextNotInFile(file, candidates) => misses.push((file, candidates)),
-                    Resolution::NotLocated(file) => {
-                        unlocated.get_or_insert(file);
+                    Resolution::TextNotInFile(file, candidates) => {
+                        misses.push((file.path.clone(), candidates));
+                        first_miss.get_or_insert(file);
+                    }
+                    Resolution::NotLocated(path) => {
+                        unlocated.get_or_insert(path);
                     }
                     found => {
                         chosen = Some(found);
@@ -587,16 +594,15 @@ pub fn resolve_in_project(
         if let Some(resolved) = chosen {
             return resolved;
         }
-        match misses.len() {
-            0 => match unlocated {
-                Some(file) => return Resolution::NotLocated(file),
-                None => continue,
-            },
-            1 => {
-                let (file, candidates) = misses.remove(0);
-                return Resolution::TextNotInFile(file, candidates);
-            }
-            _ => return Resolution::TextInNoFile(misses),
+        if misses.len() > 1 {
+            return Resolution::TextInNoFile(misses);
+        }
+        if let Some(file) = first_miss {
+            return Resolution::TextNotInFile(file, misses.remove(0).1);
+        }
+        match unlocated {
+            Some(path) => return Resolution::NotLocated(path),
+            None => continue,
         }
     }
     Resolution::NotFound
@@ -610,10 +616,10 @@ pub fn candidates_json(list: &[ElementMatch]) -> Vec<Value> {
 }
 
 /// The same ranges across files, each naming its project-relative `file` first.
-pub fn file_candidates_json(cwd: &str, hits: &[(SourceFile, Vec<ElementMatch>)]) -> Vec<Value> {
+pub fn file_candidates_json(cwd: &str, hits: &[(String, Vec<ElementMatch>)]) -> Vec<Value> {
     hits.iter()
-        .flat_map(|(source, list)| {
-            let file = jsp::relative("/", cwd, &jsp::resolve(cwd, &[&source.path]));
+        .flat_map(|(path, list)| {
+            let file = jsp::relative("/", cwd, &jsp::resolve(cwd, &[path]));
             list.iter().map(move |c| {
                 json!({ "file": file, "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) })
             })

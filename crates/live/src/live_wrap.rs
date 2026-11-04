@@ -152,12 +152,12 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
-        Resolution::NotLocated(file) => {
+        Resolution::NotLocated(path) => {
             // JS interpolates `targetFile` as given (explicit --file stays relative).
             eprintln(
                 io,
                 &json_compact(&json!({
-                    "error": format!("Found file but could not locate element in {}. Searched for: {}", file.path, queries.join(", ")),
+                    "error": format!("Found file but could not locate element in {}. Searched for: {}", path, queries.join(", ")),
                 })),
             );
             return 1;
