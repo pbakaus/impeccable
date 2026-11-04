@@ -1101,15 +1101,27 @@ fn strip_style_and_join(lines: &[String], block: &MarkerBlock) -> String {
     out.join("\n")
 }
 
+static PLAIN_STYLE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?-u:\b)[^>]*>.*?</style{WS}*>")).unwrap());
+
 /// JS: extractInnerByAttr(text, attrMatch) with `attrMatch` a literal.
+///
+/// The user's own `<style>` elements are blanked (same byte length) before
+/// tags are counted, so CSS text such as `content: "</div>"` cannot close a
+/// slot early; the returned slice still comes from `text`.
 fn extract_inner_by_attr(text: &str, attr: &str) -> Option<String> {
+    let mut masked = text.as_bytes().to_vec();
+    for m in PLAIN_STYLE_RE.find_iter(text) {
+        masked[m.start()..m.end()].fill(b' ');
+    }
+    let masked = String::from_utf8(masked).ok()?;
     // /<([A-Za-z][A-Za-z0-9]*)\b[^>]*ATTR[^>]*>/
     let opener_re = Regex::new(&format!(
         r"<([A-Za-z][A-Za-z0-9]*)(?-u:\b)[^>]*{}[^>]*>",
         regex::escape(attr)
     ))
     .ok()?;
-    let m = opener_re.captures(text)?;
+    let m = opener_re.captures(&masked)?;
     let tag_name = m[1].to_string();
     let whole = m.get(0).unwrap();
     let inner_start = whole.end();
@@ -1120,7 +1132,7 @@ fn extract_inner_by_attr(text: &str, attr: &str) -> Option<String> {
     .ok()?;
     let self_close_re = Regex::new(&format!(r"/{}*>$", WS)).unwrap();
     let mut depth = 1i64;
-    for t in tag_re.find_iter(&text[inner_start..]) {
+    for t in tag_re.find_iter(&masked[inner_start..]) {
         let s = t.as_str();
         let is_close = s.starts_with("</");
         let is_self_close = !is_close && self_close_re.is_match(s);
@@ -1715,6 +1727,31 @@ mod carbonize_tests {
         let html = strip("<style data-impeccable-css=\"ab12cd34\">", "</style>");
         assert!(!html.contains(".secret"), "{html}");
         assert!(html.contains("<p>after</p>"), "{html}");
+    }
+
+    /// A user's own `<style>` inside a slot is kept, and its CSS text is not
+    /// read as markup when the slot's closing tag is found.
+    #[test]
+    fn a_users_own_style_in_a_slot_is_kept_and_not_counted_as_tags() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <div data-impeccable-variant=\"original\">",
+            "    <style>.x::after { content: \"</div>\"; }</style>",
+            "    <p>kept</p>",
+            "  </div>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+        assert_eq!(
+            extract_original(&lines, &block).expect("original slot"),
+            vec![
+                "    <style>.x::after { content: \"</div>\"; }</style>".to_string(),
+                "    <p>kept</p>".to_string(),
+            ]
+        );
     }
 
     /// `<component>` is also Vue's dynamic component. Only the preview element
