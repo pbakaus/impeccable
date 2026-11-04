@@ -436,7 +436,7 @@ for (const { name, fixture } of fixtures) {
           );
           assert.doesNotMatch(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'Astro live CSS does not use raw @scope');
         } else {
-          assert.match(after, /<style data-impeccable-css="/, 'colocated <style> block present');
+          assert.match(after, /<(?:style|component is="style") data-impeccable-css="/, 'colocated <style> block present');
           assert.match(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'scoped CSS for variant 1');
           assert.match(after, /@scope \(\[data-impeccable-variant="2"\]\)/, 'scoped CSS for variant 2');
           assert.match(after, /@scope \(\[data-impeccable-variant="3"\]\)/, 'scoped CSS for variant 3');

@@ -1504,6 +1504,8 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         }
         let _ = std::fs::create_dir_all(&qdir);
         ignore_questions_dir(&qdir);
+        // Every round starts here, and its decision comps land in `.impeccable/mocks/decision/` after the page serves.
+        impeccable_common::git::ignore_runtime_output(&cwd);
         let key = a.arg("key").unwrap_or_else(random_key);
         let hand = match start_hand(&qdir, &key, &cwd, &start_payload, &dealt_worlds(roll.as_deref(), &start_payload), seed_with_key(roll_seed(roll.as_deref(), &start_payload), &env, &cwd)) {
             Ok(h) => h,
@@ -4181,6 +4183,19 @@ mod tests {
         assert_eq!(roll_seed(Some(&api), &json!({ "options": [{ "id": "a" }] })), None, "a page that takes no roll");
         let stale = json!({ "scope": "direction", "key": "k", "reroll": 0, "at": (now_ms() - ROLL_WINDOW_MS - 1000.0) as u64, "source": "api" }).to_string();
         assert_eq!(roll_seed(Some(&stale), &page), None);
+    }
+
+    #[test]
+    fn start_keeps_decision_comps_out_of_git_before_they_exist() {
+        let dir = temp_project("mocks-ignored");
+        let mut round = direction_round(false);
+        round["buildPath"] = json!({ "value": "code", "toggle": true });
+        std::fs::write(dir.join("p.json"), round.to_string()).unwrap();
+        // A directory where the hand file goes fails the hand write, so --start stops before it spawns a server.
+        std::fs::create_dir_all(dir.join(".impeccable/questions/k1.hand.json/keep")).unwrap();
+        assert_eq!(run_captured(&dir, &["--start", "--payload", "p.json", "--no-open", "--key", "k1"]).0, 1);
+        assert!(dir.join(".impeccable/mocks/.gitignore").is_file() && dir.join(".impeccable/review/.gitignore").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

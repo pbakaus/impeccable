@@ -17,6 +17,28 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('picks the nearest pickable ancestor of a too-small hover but never leaves the live chrome (#1297)', () => {
+    const body = SOURCE.match(/function handleMouseMove\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const hover = (hit) => {
+      const highlighted = [];
+      const ctx = {
+        pendingApplyInFlight: false, state: 'PICKING', insertActive: false, pickActive: true, hoveredElement: null,
+        document: { elementFromPoint: () => hit },
+        own: (el) => !!el?.chrome,
+        pickable: (el) => !!el?.big && !el.chrome,
+        showHighlight: (el) => highlighted.push(el),
+      };
+      runInNewContext(`${body}; handleMouseMove({ clientX: 1, clientY: 1 });`, ctx);
+      return { hovered: ctx.hoveredElement, highlighted };
+    };
+    const form = { big: true, parentElement: null };
+    const label = { parentElement: form };
+    assert.deepEqual(hover(label), { hovered: form, highlighted: [form] }, 'a small label resolves to its form');
+    const chrome = { chrome: true, parentElement: form };
+    assert.deepEqual(hover(chrome), { hovered: null, highlighted: [] }, 'chrome inside a page element is not walked out of');
+  });
+
   it('describes the picked element with the anchor a bake would use and its match count', () => {
     const body = SOURCE.match(/function extractContext\(el\) \{[\s\S]*?\n  \}/)?.[0];
     assert.ok(body);
