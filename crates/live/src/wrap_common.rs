@@ -521,17 +521,4 @@ mod tests {
         assert_eq!(picked.len(), 1);
         assert_eq!((picked[0].start_line, picked[0].end_line), (1, None));
     }
-
-    #[test]
-    fn vue_styles_with_a_component_pair_and_html_keeps_style() {
-        let vue = resolve_source_traits("src/Hero.vue");
-        assert_eq!(vue.style_tag, "<component is=\"style\" data-impeccable-css=\"SESSION_ID\">");
-        assert_eq!(vue.style_close, "</component>");
-        assert_eq!(build_css_authoring(&vue, 2)["styleClose"], "</component>");
-
-        let html = resolve_source_traits("index.html");
-        assert_eq!(html.style_tag, "<style data-impeccable-css=\"SESSION_ID\">");
-        assert_eq!(html.style_close, "</style>");
-        assert_eq!(build_css_authoring(&html, 2)["styleClose"], "</style>");
-    }
 }

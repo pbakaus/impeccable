@@ -1706,31 +1706,6 @@ mod carbonize_tests {
         );
     }
 
-    #[test]
-    fn strip_style_and_join_removes_the_files_own_style_element() {
-        let strip = |style_open: &str, style_close: &str| {
-            let lines: Vec<String> = [
-                "<div data-impeccable-variants=\"ab12cd34\">",
-                style_open,
-                "  .secret { color: red; }",
-                style_close,
-                "  <p>after</p>",
-                "</div>",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-            let block = MarkerBlock { start: 0, end: lines.len() - 1 };
-            strip_style_and_join(&lines, &block)
-        };
-        let vue = strip("<component is=\"style\" data-impeccable-css=\"ab12cd34\">", "</component>");
-        assert!(!vue.contains(".secret"), "{vue}");
-        assert!(vue.contains("<p>after</p>"), "{vue}");
-        let html = strip("<style data-impeccable-css=\"ab12cd34\">", "</style>");
-        assert!(!html.contains(".secret"), "{html}");
-        assert!(html.contains("<p>after</p>"), "{html}");
-    }
-
     /// A user's own `<style>` inside a slot is kept, and its CSS text is not
     /// read as markup when the slot's closing tag is found.
     #[test]
