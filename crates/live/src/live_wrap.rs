@@ -216,7 +216,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         return 1;
     };
     let comment_syntax = detect_comment_syntax(&target_file);
-    let style_mode = detect_style_mode(&target_file);
+    let traits = resolve_source_traits(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
     let indent = leading_ws(&lines[start_line]);
 
@@ -449,7 +449,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         Value::String(if component_active {
             "svelte-component".into()
         } else {
-            style_mode.0.into()
+            traits.style_mode.into()
         }),
     );
     out.insert(
@@ -457,7 +457,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         if component_active {
             Value::Null
         } else {
-            Value::String(style_mode.1.into())
+            Value::String(traits.style_tag.into())
         },
     );
     out.insert(
@@ -466,7 +466,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             json!([])
         } else {
             json!(build_css_selector_prefix_examples(
-                style_mode.0,
+                traits.style_mode,
                 count_len(count)
             ))
         },
@@ -476,7 +476,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         if component_active {
             build_svelte_component_css_authoring(count)
         } else {
-            build_css_authoring(style_mode, count_len(count))
+            build_css_authoring(&traits, count_len(count))
         },
     );
     out.insert("originalLineCount".into(), json!(original_lines.len()));
