@@ -1921,3 +1921,43 @@ fn a_paint_function_the_engine_does_not_know_still_counts_as_paint() {
         assert!(found.is_empty(), "{paint}: {found:?}");
     }
 }
+
+#[test]
+fn a_parent_color_clipped_away_from_its_padding_leaves_the_ground_unknown() {
+    let site = Site::new("clipped-parent");
+    // A translucent image on a child composites over its parent's color.
+    // Clipped to the content box with padding, that color leaves the padding
+    // to the white page, and without layout the walk cannot say whether the
+    // child sits in the padding or the content box: what lies under a
+    // translucent pixel is unknown, so dark copy over the light cutout is
+    // not scored against the darkened color. The analytic reader composites
+    // the color whatever its clip, which is why the sampled walk must not
+    // fall back to it here.
+    let page = |card: &str| {
+        site.contrast(
+            &format!(
+                ".card {{ {card} }} .hero {{ background: url(cutout.png); }} p {{ color: #1a1816; }}"
+            ),
+            "<div class=card><div class=hero><p>Dark copy on a cutout over a card</p></div></div>",
+        )
+    };
+    for clipped in [
+        "background: rgba(0, 0, 0, 0.7); padding: 24px; background-clip: content-box;",
+        "background: #222; padding: 24px; background-clip: content-box;",
+    ] {
+        let found = page(clipped);
+        assert!(found.is_empty(), "{clipped}: {found:?}");
+    }
+    // Without padding the clip leaves nothing uncovered, and from the padding
+    // box or unclipped the color lies under the whole child: the darkened
+    // ground is read, and the copy fails against it.
+    for covering in [
+        "background: rgba(0, 0, 0, 0.7); padding: 0; background-clip: content-box;",
+        "background: rgba(0, 0, 0, 0.7); padding: 24px; background-clip: padding-box;",
+        "background: rgba(0, 0, 0, 0.7); padding: 24px;",
+        "background: #222; padding: 24px;",
+    ] {
+        let found = page(covering);
+        assert!(sampled_on("cutout.png", &found), "{covering}: {found:?}");
+    }
+}

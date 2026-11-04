@@ -843,10 +843,16 @@ pub enum LevelPaint {
     /// Translucent paint only (uniform washes, then the element's own
     /// color), top to bottom. The walk goes on to the parent.
     Through(Vec<Rgba>),
-    /// The analytic walk owns this level: an opaque color with no image over
-    /// it, an opaque gradient, a scrim that varies or has a stop the engine
-    /// cannot read, an unparseable color, or an image function it cannot
-    /// read.
+    /// An opaque color with no image over it, covering the box: the
+    /// analytic walk owns this level, and it is the ground of everything
+    /// painted above it.
+    Opaque,
+    /// A level the walk gives up on, which the analytic walk owns without
+    /// saying what lies beneath: an opaque gradient, a scrim that varies or
+    /// has a stop the engine cannot read, an unparseable color, a color
+    /// clipped away from part of the box, a blend or a filter, a
+    /// pseudo-element painted over the box, a layer list a `var()`
+    /// reshaped, or an image function it cannot read.
     Stop,
     /// A `url()` layer, with what the element paints over and under it.
     Image(ImageLayer),
@@ -1183,8 +1189,10 @@ pub fn analyze_level(cur: &StaticElement<'_>) -> LevelPaint {
             });
         }
     }
+    // An opaque color covers the box here: the clip gate above let it
+    // through, and no image lies over it.
     if color.as_ref().is_some_and(|c| a_ge(c, 0.99)) {
-        return LevelPaint::Stop;
+        return LevelPaint::Opaque;
     }
     washes.extend(color);
     LevelPaint::Through(washes)
@@ -1227,8 +1235,12 @@ pub struct ImageGround {
 }
 
 /// What shows through a translucent image: the parent chain's ground as the
-/// analytic walk composites it, white at the root, unless an image on the
-/// way to the first opaque level hides that ground, which makes it unknown.
+/// analytic walk composites it, white at the root, unless a level on the
+/// way to the first opaque color is one the sampled walk gives up on, an
+/// image or paint it cannot read or place (a color clipped away from the
+/// padding, a blend), which makes it unknown. The analytic reader
+/// composites a color whatever its clip, so it is asked only once the walk
+/// has seen every level up to that color.
 fn parent_ground(cur: &StaticElement<'_>, levels: &LevelCache) -> Option<Rgba> {
     let Some(parent) = cur.parent_element() else {
         return Some(Rgba::new(255.0, 255.0, 255.0, 1.0));
@@ -1236,8 +1248,8 @@ fn parent_ground(cur: &StaticElement<'_>, levels: &LevelCache) -> Option<Rgba> {
     let mut probe = Some(parent);
     while let Some(p) = probe {
         match &*levels.get(&p) {
-            LevelPaint::Image(_) => return None,
-            LevelPaint::Stop => break,
+            LevelPaint::Image(_) | LevelPaint::Stop => return None,
+            LevelPaint::Opaque => break,
             LevelPaint::Through(_) => probe = p.parent_element(),
         }
     }
@@ -1246,14 +1258,14 @@ fn parent_ground(cur: &StaticElement<'_>, levels: &LevelCache) -> Option<Rgba> {
 
 /// The walk the sampled path takes in place of [`resolve_background_info`]:
 /// up from the text to the first `url()` layer. `None` when an element on
-/// the way is one the analytic walk owns (see [`LevelPaint::Stop`]) or when
-/// no image is reached.
+/// the way is one the analytic walk owns (see [`LevelPaint::Opaque`] and
+/// [`LevelPaint::Stop`]) or when no image is reached.
 pub fn find_image_ground(el: &StaticElement<'_>, levels: &LevelCache) -> Option<ImageGround> {
     let mut current = Some(*el);
     let mut overlays: Vec<(NodeId, Rgba)> = Vec::new();
     while let Some(cur) = current {
         match &*levels.get(&cur) {
-            LevelPaint::Stop => return None,
+            LevelPaint::Opaque | LevelPaint::Stop => return None,
             LevelPaint::Through(paint) => overlays.extend(paint.iter().map(|c| (cur.id(), *c))),
             LevelPaint::Image(layer) => {
                 overlays.extend(layer.washes.iter().map(|c| (cur.id(), *c)));
@@ -1462,6 +1474,58 @@ mod tests {
                 );
             }
             other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_level_the_walk_gives_up_on_leaves_the_parent_ground_unknown() {
+        // What a translucent pixel of the image composites over: the parent
+        // chain's ground as the analytic walk composites it, up to the first
+        // opaque color. A level the sampled walk gives up on, a color
+        // clipped away from the padding or paint it cannot reproduce, is not
+        // a ground the analytic reader may fill in: that reader composites
+        // the color whatever its clip, which would darken the ground under
+        // a child that may sit in the untinted padding.
+        let under = |wrap: &str| -> Option<(f64, f64, f64)> {
+            let doc = document(&format!(
+                "<style>.wrap {{ {wrap} }} .x {{ background: url(a.png); }}</style>\
+                 <div class=wrap><p class=x>Text</p></div>"
+            ));
+            let el = doc.query_selector(".x").expect("element");
+            let ground = find_image_ground(&el, &LevelCache::default()).expect("image ground");
+            ground.under.map(|c| (c.r, c.g, c.b))
+        };
+        let over_white = |c: Rgba| {
+            let w = Rgba::new(255.0, 255.0, 255.0, 1.0);
+            let r = composite_color_over(&c, &w);
+            Some((r.r, r.g, r.b))
+        };
+        let level = |rule: &str| -> LevelPaint {
+            let doc =
+                document(&format!("<style>.x {{ {rule} }}</style><p class=x>Text</p>"));
+            let el = doc.query_selector(".x").expect("element");
+            analyze_level(&el)
+        };
+        assert!(matches!(level("background: #17150f;"), LevelPaint::Opaque));
+        assert!(matches!(
+            level("background: #17150f; padding: 24px; background-clip: content-box;"),
+            LevelPaint::Stop
+        ));
+        assert_eq!(under("background: #17150f;"), Some((23.0, 21.0, 15.0)));
+        let half = Rgba::new(0.0, 0.0, 0.0, 0.5);
+        assert_eq!(under("background: rgba(0, 0, 0, 0.5);"), over_white(half));
+        // Clipped to the content box without padding, the color still
+        // covers the box.
+        assert_eq!(
+            under("background: rgba(0, 0, 0, 0.5); padding: 0; background-clip: content-box;"),
+            over_white(half)
+        );
+        for stopped in [
+            "background: rgba(0, 0, 0, 0.7); padding: 24px; background-clip: content-box;",
+            "background: #17150f; padding: 24px; background-clip: content-box;",
+            "background: rgba(0, 0, 0, 0.7); background-blend-mode: multiply;",
+        ] {
+            assert_eq!(under(stopped), None, "{stopped}");
         }
     }
 
