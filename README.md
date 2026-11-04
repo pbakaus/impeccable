@@ -69,6 +69,8 @@ On Codex, open `/skills` or type `$impeccable` instead of the slash command.
 
 Live mode edits a local checkout only; don't inject it into a deployed site or weaken a production CSP to make it work. Applying copy edits runs your `package.json`'s optional `impeccable:manual-edit-validate` script with your permissions, so review it before using live mode in an unfamiliar repo.
 
+Apply sends staged copy edits to your chat agent while a live session is polling. If none has polled in the last minute, it runs the `codex` CLI from your PATH instead (or `claude` when codex is missing), with approvals, permission checks, and sandboxing off (`--dangerously-bypass-approvals-and-sandbox` or `--permission-mode bypassPermissions`) and your environment inherited. Its prompt carries the staged edits, the edited elements' HTML and nearby text, the page URL, and candidate source paths. Set `IMPECCABLE_LIVE_COPY_AGENT=chat` in the environment that starts live mode to keep Apply in your chat session, or `off` to disable Apply. The server reads it once at startup.
+
 ## Three ways to run the detector
 
 **In your agent.** The design hook scans every UI file your agent edits and hands the findings back before the agent calls the work done. This is where most slop gets caught: without the hook, the detector only runs when someone remembers to run it. It's available on Claude Code, Cursor, Codex, GitHub Copilot, Grok Build, and Hermes Agent, and the installer sets it up. Say yes. [Automatic design checks](https://impeccable.style/docs/hooks).

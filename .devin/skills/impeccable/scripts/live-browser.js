@@ -6514,8 +6514,8 @@
     showToast('The previous live session no longer matches the source file, so it was discarded. Pick an element to start fresh.', 6000);
   }
 
-  function isJsxSourceFile(filePath) {
-    return /\.[cm]?[jt]sx$/i.test(String(filePath || ''));
+  function isCompiledTemplateSourceFile(filePath) {
+    return /\.([cm]?[jt]sx|vue)$/i.test(String(filePath || ''));
   }
 
   function sourceHasSessionWrapper(text, sessionId) {
@@ -6662,15 +6662,15 @@
       return;
     }
     rememberSessionFileMeta({ file: filePath });
-    if (isJsxSourceFile(filePath)) {
+    if (isCompiledTemplateSourceFile(filePath)) {
       const liveWrapper = findVariantsWrapper(sessionId);
       if (liveWrapper && liveWrapper.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
       }
-      // #454: never fetch/parse JSX. Missing wrap waits for mount (closed
-      // modal / other route). Insert scaffolds stay for late HMR. A replace
-      // scaffold with no variants after retries is a failed generation.
+      // #454, #1279: never fetch/parse JSX or Vue SFCs. Missing wrap waits for
+      // mount (closed modal / other route). Insert scaffolds stay for late HMR.
+      // A replace scaffold with no variants after retries is a failed generation.
       if (opts.generationCompleted && sessionId === currentSessionId) {
         const attempt = opts.attempt || 0;
         if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {

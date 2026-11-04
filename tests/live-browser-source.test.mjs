@@ -1103,22 +1103,23 @@ describe('live-browser source contracts', () => {
     assert.equal(pending.size, 0, 'stop cancels the only loop');
   });
 
-  it('never DOMParser-injects JSX source (#454)', () => {
-    const isJsxStart = SOURCE.indexOf('function isJsxSourceFile(');
+  it('never DOMParser-injects JSX or Vue SFC source (#454, #1279)', () => {
+    const isJsxStart = SOURCE.indexOf('function isCompiledTemplateSourceFile(');
     const isJsxEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', isJsxStart);
-    const isJsxSourceFile = new Function(
-      SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isJsxSourceFile;',
+    const isCompiledTemplateSourceFile = new Function(
+      SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isCompiledTemplateSourceFile;',
     )();
 
-    assert.equal(isJsxSourceFile('src/App.jsx'), true);
-    assert.equal(isJsxSourceFile('panel/src/Widget.tsx'), true);
-    assert.equal(isJsxSourceFile('index.html'), false);
-    assert.equal(isJsxSourceFile('Card.vue'), false);
+    assert.equal(isCompiledTemplateSourceFile('src/App.jsx'), true);
+    assert.equal(isCompiledTemplateSourceFile('panel/src/Widget.tsx'), true);
+    assert.equal(isCompiledTemplateSourceFile('index.html'), false);
+    assert.equal(isCompiledTemplateSourceFile('src/Page.astro'), false);
+    assert.equal(isCompiledTemplateSourceFile('Card.vue'), true);
 
     const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
     const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
     const injectFn = SOURCE.slice(injectStart, injectEnd);
-    const jsxGateIdx = injectFn.indexOf('if (isJsxSourceFile(filePath))');
+    const jsxGateIdx = injectFn.indexOf('if (isCompiledTemplateSourceFile(filePath))');
     const htmlFetchIdx = injectFn.indexOf("const url = 'http://localhost:'");
     assert.ok(jsxGateIdx !== -1 && htmlFetchIdx > jsxGateIdx, 'JSX must return before /source fetch');
     const jsxGate = injectFn.slice(jsxGateIdx, htmlFetchIdx);
