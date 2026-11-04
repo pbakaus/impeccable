@@ -117,7 +117,6 @@ fn load_state(io: &Io) -> Option<Value> {
 fn spent_runtime_output(io: &Io, state: &Value) -> Vec<String> {
     let mut kept: Vec<String> = vec![".impeccable/review/hero.json".into(), ".impeccable/review/components.json".into()];
     for comp in ["comp", "decisionComp"].iter().filter_map(|k| state.get(*k).and_then(Value::as_str)) {
-        let comp = comp.trim_start_matches("./");
         kept.push(comp.to_string());
         kept.push(format!("{comp}.json"));
     }
@@ -139,7 +138,8 @@ fn spent_runtime_output(io: &Io, state: &Value) -> Vec<String> {
     let mut spent = Vec::new();
     walk(io, MOCKS_DIR, &mut spent);
     walk(io, ".impeccable/review", &mut spent);
-    spent.retain(|f| !f.starts_with(".impeccable/review/native/") && !kept.contains(f));
+    // `start --comp` records the path as given (absolute, `./`), so match files, not spellings.
+    spent.retain(|f| !f.starts_with(".impeccable/review/native/") && !kept.iter().any(|k| crate::approved_comp::same_file(io, k, f)));
     spent.sort();
     spent
 }
@@ -3069,6 +3069,10 @@ mod transparency_guidance_tests {
         let state = json!({"comp": "./.impeccable/mocks/comp-1.png", "decisionComp": ".impeccable/mocks/decision/a.png",
             "finish": {"captureInputs": [{"path": ".impeccable/review/shot.png"}]}});
         assert_eq!(spent_runtime_output(&io, &state), [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png"]);
+        // An absolute `--comp` names the same approved file.
+        let absolute = json!({"comp": dir.join(".impeccable/mocks/comp-1.png").to_string_lossy(), "decisionComp": ".impeccable/mocks/decision/a.png",
+            "finish": {"captureInputs": [{"path": ".impeccable/review/shot.png"}]}});
+        assert_eq!(spent_runtime_output(&io, &absolute), [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
