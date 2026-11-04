@@ -337,3 +337,108 @@ fn token(
         serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
     )
 }
+
+// --- Pro releases and leases -------------------------------------------------
+use ring::rand::SystemRandom;
+use ring::signature::{Ed25519KeyPair, KeyPair};
+
+pub fn keypair() -> Ed25519KeyPair {
+    Ed25519KeyPair::from_pkcs8(
+        Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+            .unwrap()
+            .as_ref(),
+    )
+    .unwrap()
+}
+
+/// `IMPECCABLE_PRO_RELEASE_KEYS` for one release key.
+pub fn release_keys_json(kid: &str, key: &Ed25519KeyPair) -> String {
+    let hex: String = key
+        .public_key()
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    serde_json::json!({ kid: hex }).to_string()
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+impl Fake {
+    /// Serve a signed manifest for this engine and platform, and its artifact.
+    /// `sign_with` lets a test sign with a key other than the pinned one.
+    pub fn publish(
+        &self,
+        kid: &str,
+        sign_with: &Ed25519KeyPair,
+        artifact: &[u8],
+        revision: u64,
+    ) -> String {
+        let sha = sha256_hex(artifact);
+        let manifest = serde_json::json!({
+            "schema": 1, "key_id": kid, "engine": impeccable_account::pro::ENGINE,
+            "target": impeccable_account::pro::target(), "artifact_revision": revision,
+            "artifact_sha256": sha, "size": artifact.len(), "pack_version": "test",
+        })
+        .to_string();
+        let signature = b64(sign_with.sign(manifest.as_bytes()).as_ref());
+        self.route(
+            "GET",
+            "/cli/v1/manifest",
+            200,
+            vec![("x-impeccable-signature", signature)],
+            manifest,
+        );
+        self.route(
+            "GET",
+            &format!("/cli/v1/artifact/{sha}"),
+            200,
+            vec![],
+            artifact.to_vec(),
+        );
+        sha
+    }
+
+    /// Answer `POST /cli/v1/lease` with a lease for `sha`, signed by `key` as `kid`.
+    pub fn lease(&self, kid: &str, key: &Ed25519KeyPair, sha: &str, exp: u64) {
+        let h = b64(
+            serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": kid })
+                .to_string()
+                .as_bytes(),
+        );
+        let p = b64(serde_json::json!({ "sub": "user", "gid": "grant", "artifact_sha256": sha, "iat": unix_now(), "exp": exp }).to_string().as_bytes());
+        let s = b64(key.sign(format!("{h}.{p}").as_bytes()).as_ref());
+        let body = serde_json::json!({ "lease": format!("{h}.{p}.{s}") }).to_string();
+        self.route(
+            "POST",
+            "/cli/v1/lease",
+            200,
+            vec![("content-type", "application/json".into())],
+            body,
+        );
+    }
+
+    /// Publish lease verification keys, current first.
+    pub fn lease_keys(&self, keys: &[(&str, &Ed25519KeyPair)]) {
+        let keys: Vec<_> = keys
+            .iter()
+            .map(|(kid, k)| serde_json::json!({ "kty": "OKP", "crv": "Ed25519", "x": b64(k.public_key().as_ref()), "kid": kid, "use": "sig", "alg": "EdDSA" }))
+            .collect();
+        self.route(
+            "GET",
+            "/.well-known/impeccable-cli-keys.json",
+            200,
+            vec![("content-type", "application/json".into())],
+            serde_json::json!({ "keys": keys }).to_string(),
+        );
+    }
+}

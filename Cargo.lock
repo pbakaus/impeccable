@@ -546,6 +546,7 @@ dependencies = [
  "impeccable-html",
  "impeccable-live",
  "impeccable-skills",
+ "ring",
  "serde_json",
  "sha2",
  "ureq",

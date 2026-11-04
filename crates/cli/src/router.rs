@@ -54,6 +54,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "login" => impeccable_account::run_login(rest, io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        // Background Pro renewal (pro dispatch spawns it). Not in --help.
+        "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
@@ -146,6 +148,64 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         }
     }
 }
+
+/// Whether this invocation is a scan the Pro engine may take over: the
+/// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
+pub fn is_scan(args: &[String], io: &Io) -> bool {
+    match args.first().map(String::as_str) {
+        Some("detect" | "hook" | "hook-before-edit") => true,
+        Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
+            impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy())
+        }
+        _ => false,
+    }
+}
+
+/// The named verbs `run` matches before the detect shorthand (other than the
+/// scan verbs), so a same-named path in the working directory never makes
+/// one of them a scan.
+const KNOWN_VERBS: &[&str] = &[
+    "--help",
+    "-h",
+    "--version",
+    "-v",
+    "engine-probe",
+    "ignores",
+    "ignore",
+    "login",
+    "logout",
+    "whoami",
+    "pro-refresh",
+    "skills",
+    "help",
+    "install",
+    "link",
+    "update",
+    "check",
+    "context",
+    "pin",
+    "detect-csp",
+    "palette",
+    "surface-brief",
+    "critique-storage",
+    "embed-prompt",
+    "signals",
+    "context-signals",
+    "doctor",
+    "concept-seed",
+    "telemetry",
+    "generate-image",
+    "serve-question",
+    "component-review",
+    "comp-spec",
+    "comp-diff",
+    "font-match",
+    "capture-server",
+    "build-phase",
+    "hooks",
+    "hook-admin",
+    "init",
+];
 
 // --- browser engine (crates/browser) -------------------------------------
 /// The URL engine, built once from the process environment (browser
