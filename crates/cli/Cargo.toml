@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+impeccable-account = { workspace = true }
 impeccable-common = { path = "../common" }
 impeccable-context = { path = "../context" }
 impeccable-browser = { path = "../browser" }
@@ -23,3 +24,5 @@ sha2 = "0.10"
 
 [dev-dependencies]
 serde_json = { workspace = true }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+url = "2"

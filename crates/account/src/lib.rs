@@ -1,0 +1,271 @@
+//! `impeccable login | logout | whoami`: sign in to the Impeccable account
+//! service with OAuth (loopback PKCE), and keep the credential lifecycle
+//! (storage, lock, generation, logout tombstone). docs/RUNTIME-ENV.md (Account sign-in) has the
+//! whole contract. Tokens are never printed or logged.
+
+pub mod config;
+pub mod http;
+pub mod oauth;
+pub mod session;
+pub mod store;
+
+use config::Account;
+use impeccable_common::Io;
+use session::{Entitlement, Session, SessionError};
+use std::collections::HashMap;
+use std::io::Write;
+use std::time::Duration;
+use store::{Secret, State, Store};
+
+/// How long `login` waits for the browser to come back.
+const DEFAULT_LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// The outcome of a completed sign-in.
+pub struct LoggedIn {
+    pub account: Account,
+    pub entitlement: Result<Entitlement, SessionError>,
+}
+
+/// Sign in. `open` is handed the authorization URL and returns whether a
+/// browser was started; the caller prints the URL either way.
+pub fn login(
+    env: &HashMap<String, String>,
+    open: &mut dyn FnMut(&str),
+    timeout: Duration,
+) -> Result<LoggedIn, String> {
+    let account = Account::from_env(env)?;
+    let backend = store::chosen_backend(env)?;
+    let client = http::Client::new(&account);
+    let meta = oauth::metadata(&client, &account)?;
+    let pending = oauth::start(&account, &meta)?;
+    open(&pending.url);
+    let code = pending
+        .wait(&account.issuer, timeout)
+        .map_err(|e| e.to_string())?;
+    let tokens = oauth::exchange(&client, &account, &meta.token_endpoint, &pending, &code)
+        .map_err(|e| format!("the account service did not accept the sign-in: {e}"))?;
+    let store = Store::new(&account);
+    {
+        let lock = store.lock()?;
+        let generation = store.state().map(|s| s.generation).unwrap_or(0) + 1;
+        let state = State {
+            schema: 1,
+            issuer: account.issuer.clone(),
+            generation,
+            signed_in: true,
+            backend,
+            token_endpoint: meta.token_endpoint.clone(),
+            revocation_endpoint: meta.revocation_endpoint.clone(),
+        };
+        let secret = Secret {
+            generation,
+            refresh_token: tokens.refresh_token,
+            access_token: tokens.access_token,
+            access_expires_at: session::now() + tokens.expires_in,
+        };
+        store.save(&lock, &state, &secret)?;
+    }
+    let entitlement = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
+    Ok(LoggedIn {
+        account,
+        entitlement,
+    })
+}
+
+/// Sign out: tombstone and delete locally under the lock, then revoke the
+/// grant at the service (best effort). Returns whether anyone was signed in.
+pub fn logout(env: &HashMap<String, String>) -> Result<Option<Account>, String> {
+    let account = Account::from_env(env)?;
+    let store = Store::new(&account);
+    let (was, revoke) = {
+        let lock = store.lock()?;
+        let state = store.state();
+        let secret = state.as_ref().and_then(|s| store.secret(s));
+        let was = state.as_ref().is_some_and(|s| s.signed_in);
+        if state.is_some() {
+            store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
+        }
+        let revoke = state
+            .and_then(|s| s.revocation_endpoint)
+            .zip(secret.map(|s| s.refresh_token));
+        (was, revoke)
+    };
+    if let Some((endpoint, refresh_token)) = revoke {
+        let _ = oauth::revoke(&http::Client::new(&account), &endpoint, &refresh_token);
+    }
+    Ok(was.then_some(account))
+}
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|a| a == flag)
+}
+
+fn unknown_args(args: &[String], allowed: &[&str], io: &mut Io, verb: &str) -> bool {
+    if let Some(bad) = args.iter().find(|a| !allowed.contains(&a.as_str())) {
+        io.err(&format!("Unknown option for {verb}: {bad}\n"));
+        return true;
+    }
+    false
+}
+
+/// `impeccable login [--no-browser]`. With `--no-browser` (or
+/// `IMPECCABLE_NO_BROWSER=1`) the authorization URL is the only line on
+/// stdout, so a script can open it itself.
+pub fn run_login(args: &[String], io: &mut Io) -> i32 {
+    if has_flag(args, "--help") || has_flag(args, "-h") {
+        io.out(LOGIN_USAGE);
+        return 0;
+    }
+    if unknown_args(args, &["--no-browser"], io, "login") {
+        return 1;
+    }
+    let no_browser = has_flag(args, "--no-browser") || io.env_truthy("IMPECCABLE_NO_BROWSER");
+    let timeout = io
+        .env("IMPECCABLE_LOGIN_TIMEOUT")
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_LOGIN_TIMEOUT);
+    let env = io.env.clone();
+    // The link has to reach the terminal before the wait starts.
+    let mut open = |url: &str| {
+        if no_browser {
+            io.out(&format!("{url}\n"));
+        } else if open_browser(url) {
+            io.err(&format!(
+                "Opening your browser to sign in. If it doesn't open, visit:\n  {url}\n"
+            ));
+        } else {
+            io.err(&format!("Open this link to sign in:\n  {url}\n"));
+        }
+        let _ = io.stdout.flush();
+        let _ = io.stderr.flush();
+    };
+    let result = login(&env, &mut open, timeout);
+    match result {
+        Ok(done) => {
+            io.err(&format!("Signed in to {}.\n", done.account.display_host()));
+            report_entitlement(io, &done.entitlement);
+            0
+        }
+        Err(e) => {
+            io.err(&format!("Sign-in failed: {e}.\n"));
+            1
+        }
+    }
+}
+
+fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
+    match e {
+        Ok(Entitlement { pro: true, .. }) => io.err("Pro rules: included.\n"),
+        Ok(_) => io.err("Pro rules: not included with this account.\n"),
+        Err(e) => io.err(&format!("Couldn't check Pro access: {e}.\n")),
+    }
+}
+
+pub fn run_logout(args: &[String], io: &mut Io) -> i32 {
+    if unknown_args(args, &[], io, "logout") {
+        return 1;
+    }
+    match logout(&io.env.clone()) {
+        Ok(Some(account)) => {
+            io.err(&format!("Signed out of {}.\n", account.display_host()));
+            0
+        }
+        Ok(None) => {
+            io.err("Not signed in.\n");
+            0
+        }
+        Err(e) => {
+            io.err(&format!("Sign-out failed: {e}.\n"));
+            1
+        }
+    }
+}
+
+/// `impeccable whoami [--json]`: whether this machine is signed in, to which
+/// service, and whether that account includes Pro rules. Exit 1 when not
+/// signed in or the service cannot be asked.
+pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
+    if unknown_args(args, &["--json"], io, "whoami") {
+        return 1;
+    }
+    let json = has_flag(args, "--json");
+    let account = match Account::from_env(&io.env) {
+        Ok(a) => a,
+        Err(e) => {
+            io.err(&format!("{e}.\n"));
+            return 1;
+        }
+    };
+    let result = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
+    if json {
+        let mut v = serde_json::json!({ "account_url": account.issuer, "signed_in": false });
+        match &result {
+            Ok(e) => {
+                v["signed_in"] = true.into();
+                v["pro"] = e.pro.into();
+                v["reason"] = e.reason.clone().into();
+            }
+            Err(SessionError::NotSignedIn | SessionError::Expired) => {}
+            Err(e) => {
+                v["signed_in"] = true.into();
+                v["error"] = e.to_string().into();
+            }
+        }
+        io.out(&format!("{v}\n"));
+        return if matches!(result, Ok(_)) { 0 } else { 1 };
+    }
+    match result {
+        Ok(e) => {
+            io.out(&format!("Signed in to {}.\n", account.display_host()));
+            if e.pro {
+                io.out("Pro rules: included.\n");
+            } else {
+                io.out("Pro rules: not included with this account.\n");
+            }
+            0
+        }
+        Err(SessionError::NotSignedIn) => {
+            io.err("Not signed in. Run `impeccable login`.\n");
+            1
+        }
+        Err(SessionError::Expired) => {
+            io.err("Your sign-in expired. Run `impeccable login`.\n");
+            1
+        }
+        Err(e) => {
+            io.err(&format!(
+                "Signed in to {}, but couldn't reach it: {e}.\n",
+                account.display_host()
+            ));
+            1
+        }
+    }
+}
+
+const LOGIN_USAGE: &str = "Usage: impeccable login [--no-browser]
+
+Sign in to your Impeccable account in the browser.
+
+Options:
+  --no-browser   Print the sign-in link on stdout instead of opening a browser
+";
+
+/// Start the system browser on `url`. Never through a shell: the URL is an
+/// argument, so `&` and quotes in it are inert.
+fn open_browser(url: &str) -> bool {
+    let mut cmd = if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+    } else if cfg!(windows) {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    } else {
+        std::process::Command::new("xdg-open")
+    };
+    cmd.arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd.status().map(|s| s.success()).unwrap_or(false)
+}

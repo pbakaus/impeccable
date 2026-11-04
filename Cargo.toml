@@ -24,6 +24,7 @@ impeccable-hook = { path = "crates/hook" }
 impeccable-comp = { path = "crates/comp" }
 impeccable-comp-verbs = { path = "crates/comp-verbs" }
 impeccable-bundle = { path = "crates/bundle" }
+impeccable-account = { path = "crates/account" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"

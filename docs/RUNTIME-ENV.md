@@ -26,3 +26,38 @@ Oracle note: run the public repo's `tests/oracle/run.mjs` with
 references inlined) and an `IMPECCABLE_BIN` path outside `$HOME` (the
 harness normalizes `$HOME` before it normalizes the bin path, so a binary
 under the home dir renders as `<HOME>/...` instead of `<IMPECCABLE>`).
+
+## Account sign-in (`login`, `logout`, `whoami`; `crates/account`)
+
+`impeccable login` signs in to the Impeccable account service with OAuth 2.1:
+authorization code, PKCE S256, a loopback redirect on
+`http://127.0.0.1:<port>/callback`, the public client `impeccable-cli`,
+resource `<issuer>/cli`, scopes `account:read rules:read`. The callback's
+`state` and RFC 9207 `iss` must match before the code is exchanged. With
+`--no-browser` the authorization URL is the only line on stdout, so a script
+can open it (or drive the consent page) itself. `whoami` asks
+`GET /cli/v1/entitlement`; `whoami --json` prints
+`{account_url, signed_in, pro, reason}` and exits 1 when not signed in.
+
+Storage lives under `$IMPECCABLE_HOME/account/<hash of the issuer>/`:
+`state.json` (signed in or not, the generation, the backend, the token
+endpoints) and, for the file backend, `credentials.json` (0600 in a 0700
+directory; symlinks and other owners refused). The keychain backend keeps
+the tokens in the macOS Keychain or Windows Credential Manager (service
+`impeccable-cli`, account = issuer). The backend is pinned at sign-in. A
+same-user process can read the file backend.
+
+One OS lock (`lock` in that directory) covers login, logout and refresh.
+Every write re-reads under it and bumps the generation; a refresh that finds
+the generation moved adopts the newer tokens instead of reusing its refresh
+token (the service revokes a grant on reuse). `logout` writes the signed-out
+state first (the tombstone), deletes the secret, then revokes the refresh
+token at the service, best effort.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `IMPECCABLE_ACCOUNT_URL` | The account service origin (the OAuth issuer). `https`, or `http` for a loopback host only. | `https://api.impeccable.style` |
+| `IMPECCABLE_HOME` | Root for account state (and the engine cache). | `~/.impeccable` |
+| `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. | `keychain` on macOS and Windows, `file` elsewhere |
+| `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
+| `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
