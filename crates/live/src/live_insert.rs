@@ -2,6 +2,7 @@
 //! element in source and splice an insert-variant wrapper before or after
 //! it (no original variant), or scaffold a Svelte insert session.
 
+use crate::inject::resolve_source_traits;
 use crate::roots::enter_live_root;
 use crate::source_search::is_generated_file;
 use crate::svelte_component::{
@@ -275,7 +276,7 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
         }
     };
     let comment_syntax = detect_comment_syntax(&target_file);
-    let style_mode = detect_style_mode(&target_file);
+    let traits = resolve_source_traits(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
     let splice_index = if position == "before" {
         start_line
@@ -361,18 +362,18 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     }
     out.insert("insertLine".into(), json!(insert_line + 1));
     out.insert("commentSyntax".into(), comment_syntax_value(comment_syntax));
-    out.insert("styleMode".into(), Value::String(style_mode.0.into()));
-    out.insert("styleTag".into(), Value::String(style_mode.1.into()));
+    out.insert("styleMode".into(), Value::String(traits.style_mode.into()));
+    out.insert("styleTag".into(), Value::String(traits.style_tag.into()));
     out.insert(
         "cssSelectorPrefixExamples".into(),
         json!(build_css_selector_prefix_examples(
-            style_mode.0,
+            traits.style_mode,
             count_len(count)
         )),
     );
     out.insert(
         "cssAuthoring".into(),
-        build_css_authoring(style_mode, count_len(count)),
+        build_css_authoring(&traits, count_len(count)),
     );
     println(io, &json_compact(&Value::Object(out)));
     0

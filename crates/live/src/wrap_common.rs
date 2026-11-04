@@ -3,7 +3,7 @@
 //! comment syntax and style mode from the framework registry, and the
 //! cssAuthoring contracts.
 
-use crate::inject::resolve_source_traits;
+use crate::inject::{resolve_source_traits, SourceTraits};
 use crate::source_search::{
     find_source_file, is_generated_file, resolve_live_template_extensions, NEVER_SOURCE_DIRS,
 };
@@ -373,12 +373,6 @@ pub fn comment_syntax_value(cs: (&str, &str)) -> Value {
     json!({ "open": cs.0, "close": cs.1 })
 }
 
-/// JS: detectStyleMode(filePath) → (mode, styleTag)
-pub fn detect_style_mode(file_path: &str) -> (&'static str, &'static str) {
-    let t = resolve_source_traits(file_path);
-    (t.style_mode, t.style_tag)
-}
-
 /// JS: buildCssSelectorPrefixExamples(styleMode, count)
 pub fn build_css_selector_prefix_examples(style_mode: &str, count: i64) -> Vec<String> {
     if style_mode != "astro-global-prefixed" {
@@ -389,14 +383,15 @@ pub fn build_css_selector_prefix_examples(style_mode: &str, count: i64) -> Vec<S
         .collect()
 }
 
-/// JS: buildCssAuthoring(styleMode, count)
-pub fn build_css_authoring(style_mode: (&str, &str), count: i64) -> Value {
-    let (mode, style_tag) = style_mode;
+/// JS: buildCssAuthoring(styleMode, count), read from the file's source traits.
+pub fn build_css_authoring(traits: &SourceTraits, count: i64) -> Value {
+    let (mode, style_tag, style_close) = (traits.style_mode, traits.style_tag, traits.style_close);
     let numbers: Vec<i64> = (1..=count.max(0)).collect();
     if mode == "astro-global-prefixed" {
         return json!({
             "mode": mode,
             "styleTag": style_tag,
+            "styleClose": style_close,
             "strategy": "global-prefixed",
             "rulePattern": "[data-impeccable-variant=\"N\"] > .variant-class { ... }",
             "selectorExamples": numbers.iter().map(|n| format!("[data-impeccable-variant=\"{}\"] > .variant-class", n)).collect::<Vec<_>>(),
@@ -416,6 +411,7 @@ pub fn build_css_authoring(style_mode: (&str, &str), count: i64) -> Value {
     json!({
         "mode": mode,
         "styleTag": style_tag,
+        "styleClose": style_close,
         "strategy": "scope-rule",
         "rulePattern": "@scope ([data-impeccable-variant=\"N\"]) { :scope > .variant-class { ... } }",
         "selectorExamples": numbers.iter().map(|n| format!("@scope ([data-impeccable-variant=\"{}\"]) {{ :scope > .variant-class {{ ... }} }}", n)).collect::<Vec<_>>(),
@@ -524,5 +520,18 @@ mod tests {
         let picked = filter_by_text(&candidates, &lines, "Parent trailing text");
         assert_eq!(picked.len(), 1);
         assert_eq!((picked[0].start_line, picked[0].end_line), (1, None));
+    }
+
+    #[test]
+    fn vue_styles_with_a_component_pair_and_html_keeps_style() {
+        let vue = resolve_source_traits("src/Hero.vue");
+        assert_eq!(vue.style_tag, "<component is=\"style\" data-impeccable-css=\"SESSION_ID\">");
+        assert_eq!(vue.style_close, "</component>");
+        assert_eq!(build_css_authoring(&vue, 2)["styleClose"], "</component>");
+
+        let html = resolve_source_traits("index.html");
+        assert_eq!(html.style_tag, "<style data-impeccable-css=\"SESSION_ID\">");
+        assert_eq!(html.style_close, "</style>");
+        assert_eq!(build_css_authoring(&html, 2)["styleClose"], "</style>");
     }
 }
