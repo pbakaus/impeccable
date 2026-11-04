@@ -1101,8 +1101,10 @@ fn strip_style_and_join(lines: &[String], block: &MarkerBlock) -> String {
     out.join("\n")
 }
 
+// The opener must not end in `/`: a self-closing JSX `<style ... />` has no
+// text to blank, and pairing it with a later `</style>` would hide a slot.
 static PLAIN_STYLE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?-u:\b)[^>]*>.*?</style{WS}*>")).unwrap());
+    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?:(?-u:\b)[^>]*[^/>])?>.*?</style{WS}*>")).unwrap());
 
 /// JS: extractInnerByAttr(text, attrMatch) with `attrMatch` a literal.
 ///
@@ -1751,6 +1753,34 @@ mod carbonize_tests {
                 "    <style>.x::after { content: \"</div>\"; }</style>".to_string(),
                 "    <p>kept</p>".to_string(),
             ]
+        );
+    }
+
+    /// A self-closing JSX `<style />` has no text to blank and must not pair
+    /// with the next slot's `</style>`.
+    #[test]
+    fn a_self_closing_style_does_not_mask_the_next_slot() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <div data-impeccable-variant=\"original\">",
+            "    <style dangerouslySetInnerHTML={{ __html: css }} />",
+            "  </div>",
+            "  <div data-impeccable-variant=\"1\">",
+            "    <style>{`.x { color: red; }`}</style>",
+            "  </div>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+        assert_eq!(
+            extract_original(&lines, &block).expect("original slot"),
+            vec!["    <style dangerouslySetInnerHTML={{ __html: css }} />".to_string()]
+        );
+        assert_eq!(
+            extract_variant(&lines, &block, "1").expect("variant 1"),
+            vec!["    <style>{`.x { color: red; }`}</style>".to_string()]
         );
     }
 
