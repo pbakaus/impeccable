@@ -8,7 +8,7 @@
 use crate::config::Account;
 use crate::http::{ApiError, Client};
 use crate::oauth;
-use crate::store::{Backend, Secret, State, Store};
+use crate::store::{Backend, Lock, Secret, State, Store};
 
 /// Refresh this long before the access token's stated expiry.
 const SKEW_SECS: u64 = 60;
@@ -80,6 +80,11 @@ impl Session {
     /// Rotate the tokens under the lock (see the module note).
     pub fn refresh(&mut self) -> Result<(), SessionError> {
         let lock = self.store.lock().map_err(SessionError::Local)?;
+        self.refresh_holding(&lock)
+    }
+
+    /// [`Session::refresh`] for a caller that already holds the lock.
+    pub fn refresh_holding(&mut self, lock: &Lock) -> Result<(), SessionError> {
         let state = self
             .store
             .state()
@@ -111,7 +116,7 @@ impl Session {
                     access_expires_at: now() + tokens.expires_in,
                 };
                 self.store
-                    .save(&lock, &next_state, &next_secret)
+                    .save(lock, &next_state, &next_secret)
                     .map_err(SessionError::Local)?;
                 self.state = next_state;
                 self.secret = next_secret;
@@ -121,7 +126,7 @@ impl Session {
                 if code.as_deref() == Some("invalid_grant") =>
             {
                 self.store
-                    .sign_out(&lock, Some(&state), Backend::File)
+                    .sign_out(lock, Some(&state), Backend::File)
                     .map_err(SessionError::Local)?;
                 Err(SessionError::Expired)
             }
@@ -139,6 +144,24 @@ impl Session {
         match f(&self.client, &token) {
             Err(ApiError::Status { status: 401, .. }) => {
                 self.refresh()?;
+                f(&self.client, &self.secret.access_token).map_err(SessionError::Api)
+            }
+            other => other.map_err(SessionError::Api),
+        }
+    }
+
+    /// [`Session::call`] for a caller that already holds the lock.
+    pub fn call_locked<T>(
+        &mut self,
+        lock: &Lock,
+        mut f: impl FnMut(&Client, &str) -> Result<T, ApiError>,
+    ) -> Result<T, SessionError> {
+        if self.secret.access_expires_at <= now() + SKEW_SECS {
+            self.refresh_holding(lock)?;
+        }
+        match f(&self.client, &self.secret.access_token) {
+            Err(ApiError::Status { status: 401, .. }) => {
+                self.refresh_holding(lock)?;
                 f(&self.client, &self.secret.access_token).map_err(SessionError::Api)
             }
             other => other.map_err(SessionError::Api),

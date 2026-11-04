@@ -6,6 +6,7 @@
 pub mod config;
 pub mod http;
 pub mod oauth;
+pub mod pro;
 pub mod session;
 pub mod store;
 
@@ -144,7 +145,17 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     match result {
         Ok(done) => {
             io.err(&format!("Signed in to {}.\n", done.account.display_host()));
-            report_entitlement(io, &done.entitlement);
+            match &done.entitlement {
+                Ok(Entitlement { pro: true, .. }) => {
+                    let outcome = pro::refresh(&done.account, &pro::verify::pinned_keys(&env));
+                    pro::report(io, &outcome);
+                }
+                Ok(_) => {
+                    pro::forget(&done.account, true);
+                    report_entitlement(io, &done.entitlement);
+                }
+                Err(_) => report_entitlement(io, &done.entitlement),
+            }
             0
         }
         Err(e) => {
@@ -198,6 +209,12 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
         }
     };
     let result = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
+    // An explicit "not entitled" ends the offline grace at once.
+    if let Ok(e) = &result {
+        if !e.pro {
+            pro::forget(&account, true);
+        }
+    }
     if json {
         let mut v = serde_json::json!({ "account_url": account.issuer, "signed_in": false });
         match &result {

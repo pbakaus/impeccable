@@ -61,3 +61,69 @@ token at the service, best effort.
 | `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. | `keychain` on macOS and Windows, `file` elsewhere |
 | `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
 | `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
+
+## Pro dispatch (`crates/account/src/pro`)
+
+A signed-in, entitled machine runs scans (`detect`, its path shorthand,
+`hook`, `hook-before-edit`) on the **Pro engine**: a separate build of this
+CLI with the Pro rule pack linked in through `impeccable::run`. The open
+binary decides in `main` (a Pro build calls `run` and never dispatches) and
+re-runs the same argv on the Pro build with `IMPECCABLE_PRO_CHILD=1`. No
+dispatch for a Pro child, an explicit `IMPECCABLE_BIN`, `IMPECCABLE_PRO=off`,
+or any other verb. A machine that never signed in sees nothing new.
+
+**Refresh** (at `login`, and in a detached hidden `pro-refresh` when a lease
+has under two days left or is missing; at most every ten minutes, hourly
+after "not entitled"), under the sign-in lock:
+
+1. `GET /cli/v1/manifest?engine=<this version>&target=<os-arch>`
+   (`darwin-arm64`, `linux-x64`, `windows-x64`, ...). The body's exact bytes
+   must verify against `X-Impeccable-Signature` (base64url Ed25519) under a
+   **pinned release key**, then parse as the manifest below with this
+   engine and target. A lower `artifact_revision` than the installed one is
+   refused (no replay of an old build).
+2. The artifact is cached by digest at
+   `$IMPECCABLE_HOME/pro/artifacts/<sha256>[.exe]`. When the cached file's
+   digest matches, it isn't downloaded again; otherwise
+   `GET /cli/v1/artifact/<sha256>`, checked for size and digest before an
+   atomic rename.
+3. `POST /cli/v1/lease {artifact_sha256}`: a compact EdDSA JWS, verified
+   against the cached lease keys; on an unknown `kid` (or no cache)
+   `GET /.well-known/impeccable-cli-keys.json` once and verify again.
+4. Install `pro/current.json` (manifest bytes and signature as served) and
+   `pro/lease` under the account directory.
+
+`403 not_entitled` deletes the lease and the installed manifest at once;
+`whoami` does the same when it reads `pro: false`. `503` answers
+(`CLI_ARTIFACTS`, `CLI_LEASE_*`, `malformed_release`) and network failures
+keep an existing lease: it runs to its own `exp` (offline grace), then the
+open rules.
+
+**Dispatch** (every scan, offline): re-verify the installed manifest, the
+artifact's digest and the lease (key, digest, `exp`). Any failure runs the
+open engine with one line on stderr saying why.
+
+Manifest schema 1 (the release job signs these bytes):
+
+```json
+{ "schema": 1, "key_id": "<release key id>", "engine": "0.1.18",
+  "target": "darwin-arm64", "artifact_revision": 3,
+  "artifact_sha256": "<64 lowercase hex>", "size": 12345678,
+  "pack_version": "<optional>" }
+```
+
+The release keys are compiled in from `scripts/cli-pro-release-keys.json`
+(`{ "<key id>": "<64 hex public key>" }`). It is empty until the first Pro
+release key exists, so every build falls back to the open rules until then.
+A build with the cargo feature `test-release-keys`
+(`cargo build -p impeccable --features test-release-keys`) trusts
+`IMPECCABLE_PRO_RELEASE_KEYS` (same JSON) instead, for tests and local
+rehearsals. It is a build feature rather than a runtime switch so that no
+environment variable can change what a shipped binary trusts; the release
+workflow builds without it.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `IMPECCABLE_PRO` | `off` (or `0`, `false`, `no`): never dispatch. | unset |
+| `IMPECCABLE_PRO_CHILD` | Set by the dispatcher on the Pro child; stops recursion. | unset |
+| `IMPECCABLE_PRO_RELEASE_KEYS` | Release keys JSON, honoured only by `test-release-keys` builds. | unset |

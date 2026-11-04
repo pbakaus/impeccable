@@ -137,7 +137,10 @@ mod tests {
                 Some("https://api.impeccable.style"),
             ),
             ("http://127.0.0.1:8787", Some("http://127.0.0.1:8787")),
-            ("http://api.localhost:8787", Some("http://api.localhost:8787")),
+            (
+                "http://api.localhost:8787",
+                Some("http://api.localhost:8787"),
+            ),
             ("http://api.localhost.example", None),
             ("http://api.impeccable.style", None),
             ("https://api.impeccable.style/v1", None),
