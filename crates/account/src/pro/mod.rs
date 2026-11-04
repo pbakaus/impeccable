@@ -198,10 +198,12 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
     // This process holds the lock, so token refreshes below use it rather
     // than taking it again.
     let target = target();
-    let url = format!(
-        "{}/cli/v1/manifest?engine={ENGINE}&target={target}",
-        account.issuer
-    );
+    // `+` is legal in semver build metadata and would decode as a space.
+    let query: String = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("engine", ENGINE)
+        .append_pair("target", &target)
+        .finish();
+    let url = format!("{}/cli/v1/manifest?{query}", account.issuer);
     let fetched = session.call_locked(&lock, |c, t| {
         c.get_bytes(&url, t, Some("x-impeccable-signature"), 64 * 1024)
     });
