@@ -23,7 +23,8 @@
  *
  * Knobs (environment):
  *   ACTIVATION_MODELS=claude-sonnet-5,gemini-3.7-flash  model lineup (default shown)
- *   ACTIVATION_VARIANTS=current,previous                descriptions to compare (see VARIANTS)
+ *   ACTIVATION_VARIANTS=current,previous                descriptions to compare (see VARIANTS;
+ *                                                       claude-code and bare model Claude Code's listing)
  *   ACTIVATION_DESCRIPTION_FILE=path.txt                add a draft description as variant "file"
  *   ACTIVATION_SAMPLES=2                                samples per case (default 2)
  *   ACTIVATION_STEPS=1                                  >1 lets Read/Bash return stubs so the
@@ -54,6 +55,13 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 // Description variants
 // ---------------------------------------------------------------------------
 
+export function claudeCodeDescription() {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'skill', 'SKILL.src.md'), 'utf8');
+  const m = src.match(/^claude-code-description:\s*"(.*)"\s*$/m);
+  if (!m) throw new Error('could not read claude-code-description from skill/SKILL.src.md');
+  return m[1];
+}
+
 export function currentDescription() {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'skill', 'SKILL.src.md'), 'utf8');
   const m = src.match(/^description:\s*"(.*)"\s*$/m);
@@ -65,9 +73,9 @@ export const VARIANTS = {
   current: currentDescription(),
   // The 118-word description shipped through v4.5 (issue #375 baseline).
   previous: 'Use when the user wants to design, redesign, shape, critique, audit, polish, clarify, distill, harden, optimize, adapt, animate, colorize, extract, or otherwise improve a frontend interface. Covers websites, landing pages, dashboards, product UI, app shells, components, forms, settings, onboarding, and empty states. Handles UX review, visual hierarchy, information architecture, cognitive load, accessibility, performance, responsive behavior, theming, anti-patterns, typography, fonts, spacing, layout, alignment, color, motion, micro-interactions, UX copy, error states, edge cases, i18n, and reusable design systems or tokens. Also use for bland designs that need to become bolder or more delightful, loud designs that should become quieter, live browser iteration on UI elements, or ambitious visual effects that should feel technically extraordinary. Not for backend-only or non-UI tasks.',
-  // The 81-word description shipped through v4.8 (#1048). Claude Code drops it from its skill
-  // listing when the listing is over budget (see README, "Claude Code's listing budget").
-  v48: 'Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend interface: websites, landing pages, dashboards, product UI, components, forms, settings, onboarding, empty states, and native iOS or Android screens. Handles UX review, hierarchy, layout, typography, color, motion, UX copy, accessibility, responsive behavior, edge cases, and capturing or documenting design systems (DESIGN.md, tokens). Also for making bland UI bolder, loud UI quieter, or ambitious visual effects. Not for backend-only or non-UI tasks.',
+  // The Claude Code build's own description (SKILL.src.md `claude-code-description`), short
+  // enough for Claude Code's skill-listing budget (README, "Claude Code's listing budget").
+  'claude-code': claudeCodeDescription(),
   // What the model sees when Claude Code cuts the description for budget: the name alone.
   bare: '',
   // The ~50-word rewrite measured for #375. Kept as the cautionary short form:

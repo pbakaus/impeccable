@@ -113,32 +113,43 @@ What the measurement found:
 ### Claude Code's listing budget (2026-11-05, Claude Code 2.1.281)
 
 Claude Code caps the skill listing at 1% of the model's context window in
-characters (`skillListingBudgetFraction`; 6,000 for a 200k model at 3 bytes per
-token). Over budget, bundled skills keep their descriptions and every other
-skill keeps its description only if it fits in what is left; one that doesn't
-is listed as its bare name. A fresh interactive session already lists 14
-bundled skills, so the 81-word description (`v48`) went over: the listing came
-to 6,502 against 6,000, and the model saw `- impeccable` alone. That held in a
-clean container and on macOS, and in a real user's setup as much as a harness's
-(the evals repo's capture diff).
+characters (`skillListingBudgetFraction`): 6,000 on a 200k model at 3 bytes per
+token, 30,000 on a 1M model. When the listing is over budget:
+- bundled skills keep their descriptions;
+- other skills are ranked by the user's own usage of them, and each keeps its
+  full description only if it fits in the space left. Otherwise it is listed by
+  name alone.
 
-Measured by shortening the description in the same session: up to about 220
-characters survives, 225 does not. The current description is 188 characters,
-so it leaves about 30 characters of headroom. That headroom is thin: a bundled
-skill that grows, or another installed skill or plugin competing for the same
-room, cuts it again. `-p` (print mode) lists fewer bundled skills and stayed
-under budget at either length.
+A fresh interactive session already lists 14 bundled skills. With the shared
+description the listing came to 6,502 characters against 6,000, so the model
+saw `- impeccable` alone. That happened in a clean container and on macOS, for a
+hand-configured user and for the evals harness alike (the evals repo's capture
+diff). `-p` (print mode) lists fewer bundled skills and stays under budget.
 
-To compare against what Claude Code sends when it cuts, run the `bare` variant:
+Measured by shortening the description in that session: up to about 220
+characters survives, and 225 does not. Only the Claude Code build (the `.claude`
+dist, and the plugin copied from it) gets its own description, from
+`claude-code-description` in SKILL.src.md. It is 188 characters. The build fails
+above 200 (`validateClaudeCodeDescription`). Every other provider keeps the
+shared description, because none of them has this budget.
+
+Why not shorten the shared one? On 2026-11-05 we compared the shared description
+(`current`), the 188-character text (`claude-code`), and the bare name Claude Code
+falls back to (`bare`). Three samples:
+
+| Model | current | claude-code | bare |
+|---|---|---|---|
+| Sonnet | 58/102 (57%), document 13/15 | 51/102 (50%), document 10/15 | 0/102, document 0/15 |
+| Gemini | 88/102 (86%), document 15/15 | 66/102 (65%), document 9/15 | 34/102 (33%), document 0/15 |
+
+False positives were 0/60 in every row. Shortening the shared text would cost
+Gemini 22 runs for nothing. On Claude Code the alternative was the bare name,
+which scores 0/102 on Sonnet.
 
 ```bash
-ACTIVATION_VARIANTS=current,v48,bare ACTIVATION_SAMPLES=3 \
+ACTIVATION_VARIANTS=current,claude-code,bare ACTIVATION_SAMPLES=3 \
   node tests/skill-behavior/activation.eval.mjs
 ```
-
-The simulated listing always includes the description, so `v48` here measures
-the text, not what Claude Code showed: in those interactive sessions, `bare`
-is the honest baseline for it.
 
 This is a simulated harness, not Claude Code itself, and neither model is the
 Haiku that #744 measured. Treat it as a regression gate and a way to compare
