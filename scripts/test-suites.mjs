@@ -232,6 +232,7 @@ export const SUITES = {
       /^crates\/(common\/src\/http|live\/src\/live_http)\.rs$/,
       /^tests\/framework-fixtures/,
       /^tests\/live-e2e(\.test\.mjs|\/)/,
+      /^tests\/live-static-accept\.test\.mjs$/,
       /^browser-bundle\/40-overlay\.js$/,
     ],
     commands: [
@@ -239,7 +240,7 @@ export const SUITES = {
         runner: 'node',
         timeoutMs: 600000,
         forceExit: true,
-        files: ['tests/live-e2e.test.mjs', 'tests/live-top-layer.test.mjs'],
+        files: ['tests/live-e2e.test.mjs', 'tests/live-top-layer.test.mjs', 'tests/live-static-accept.test.mjs'],
       },
     ],
   },
