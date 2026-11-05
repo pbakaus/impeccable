@@ -1535,7 +1535,7 @@ fn render_template_clamps_inside_budget_and_keeps_policy() {
         },
     );
     assert!(text.chars().count() <= 500, "{}", text.chars().count());
-    assert!(text.ends_with("unsure, ask in one line."));
+    assert!(text.ends_with("unsure, leave it with a reason."));
     let huge: Vec<Finding> = (0..5)
         .map(|i| f("side-tab", (i + 1) as f64, "X", &"y".repeat(2000), "s"))
         .collect();

@@ -1305,13 +1305,13 @@ fn format_deduped_finding_line(rt: &Runtime, f: &Finding, seen_rules: &mut Vec<S
 /// JS: directiveFooter({ mode })
 pub fn directive_footer(rt: &Runtime, short: bool) -> String {
     if short {
-        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, ask in one line.".to_string();
+        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, leave it with a reason.".to_string();
     }
     [
         "Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:".to_string(),
         "- Real design problem: fix it. Keep intentional design as designed.".to_string(),
         format!("- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `{} ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"` with the pair shown on the finding line, or value \"*\" plus `--file <path>` when the line shows none. Write \"user confirmed\" in a reason only when the user did.", rt.hook_admin_command),
-        "- Unsure: leave it as is and ask the user in one line.".to_string(),
+        "- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.".to_string(),
         format!("Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: {} hooks.", rt.impeccable_command),
     ]
     .join("\n")

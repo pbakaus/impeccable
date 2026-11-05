@@ -1146,13 +1146,13 @@ line = `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.rep
 Within one emission the first occurrence of a rule gets the description; later lines for the same rule are `compact` (`formatDedupedFindingLine` with a shared `seenRules` set).
 
 `directiveFooter({mode})`:
-- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, ask in one line.`
+- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, leave it with a reason.`
 - full (default), 5 lines joined by `\n`:
 ```
 Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:
 - Real design problem: fix it. Keep intentional design as designed.
 - Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `<HOOK_ADMIN_COMMAND> ignore-value <rule> "<value>" --reason "<who decided: evidence>"` with the pair shown on the finding line, or value "*" plus `--file <path>` when the line shows none. Write "user confirmed" in a reason only when the user did.
-- Unsure: leave it as is and ask the user in one line.
+- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.
 Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: <IMPECCABLE_COMMAND> hooks.
 ```
 where `HOOK_ADMIN_COMMAND = 'node ' + quoteCommandArg(path.join(__dirname, 'hook-admin.mjs'))` (absolute path of the installed hook-admin.mjs, single-quoted on POSIX if it contains spaces etc.).
@@ -1314,7 +1314,7 @@ A Stop event names no file, so the walk up from the session cwd cannot see a pro
 
 #### Stop finding attribution (#522)
 
-The Rust Stop pass still scans whole touched files; it does not infer causation from changed line ranges. It suppresses confirmed pre-existing text findings and marks remaining findings `[new]` or `[attribution unknown]`. Unknown findings remain visible, with a reminder not to treat them as regressions or broaden the task without asking. Explicit `detect` scans and per-edit/pre-edit output are unchanged.
+The Rust Stop pass still scans whole touched files; it does not infer causation from changed line ranges. It suppresses confirmed pre-existing text findings and marks remaining findings `[new]` or `[attribution unknown]`. Unknown findings remain visible, with a reminder not to treat them as regressions or broaden the task to chase them. Explicit `detect` scans and per-edit/pre-edit output are unchanged.
 
 A baseline currently requires the first observed edit of that file in a named Claude session to carry a complete `Edit`/`Write` result (`tool_response.originalFile`, `filePath`, and the replacement/content fields). Replaying that result must exactly match the current file. `Write` with `type: "create"` and a null original is an empty baseline; a null original on an update is unknown. No Git/HEAD comparison is used, so existing uncommitted work is part of the baseline. Missing, ambiguous, oversized, mismatched, or user-modified results remain unknown; a later edit cannot establish a missing initial baseline.
 
