@@ -383,7 +383,11 @@ fn local_config_rel() -> String {
     jsp::join(&[".impeccable", "config.local.json"])
 }
 
-fn rt_with(cwd: &str, env: HashMap<String, String>) -> Runtime<'static> {
+fn rt_with(cwd: &str, mut env: HashMap<String, String>) -> Runtime<'static> {
+    // A test never reads the developer's real home: an install of the skill there would make every "not wired" case read as wired.
+    let home = format!("{cwd}/.test-home");
+    env.entry("HOME".into()).or_insert_with(|| home.clone());
+    env.entry("USERPROFILE".into()).or_insert(home);
     Runtime::new(
         cwd.to_string(),
         env,
