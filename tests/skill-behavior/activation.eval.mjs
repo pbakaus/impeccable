@@ -65,6 +65,11 @@ export const VARIANTS = {
   current: currentDescription(),
   // The 118-word description shipped through v4.5 (issue #375 baseline).
   previous: 'Use when the user wants to design, redesign, shape, critique, audit, polish, clarify, distill, harden, optimize, adapt, animate, colorize, extract, or otherwise improve a frontend interface. Covers websites, landing pages, dashboards, product UI, app shells, components, forms, settings, onboarding, and empty states. Handles UX review, visual hierarchy, information architecture, cognitive load, accessibility, performance, responsive behavior, theming, anti-patterns, typography, fonts, spacing, layout, alignment, color, motion, micro-interactions, UX copy, error states, edge cases, i18n, and reusable design systems or tokens. Also use for bland designs that need to become bolder or more delightful, loud designs that should become quieter, live browser iteration on UI elements, or ambitious visual effects that should feel technically extraordinary. Not for backend-only or non-UI tasks.',
+  // The 81-word description shipped through v4.8 (#1048). Claude Code drops it from its skill
+  // listing when the listing is over budget (see README, "Claude Code's listing budget").
+  v48: 'Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend interface: websites, landing pages, dashboards, product UI, components, forms, settings, onboarding, empty states, and native iOS or Android screens. Handles UX review, hierarchy, layout, typography, color, motion, UX copy, accessibility, responsive behavior, edge cases, and capturing or documenting design systems (DESIGN.md, tokens). Also for making bland UI bolder, loud UI quieter, or ambitious visual effects. Not for backend-only or non-UI tasks.',
+  // What the model sees when Claude Code cuts the description for budget: the name alone.
+  bare: '',
   // The ~50-word rewrite measured for #375. Kept as the cautionary short form:
   // it gained the document and native cases but lost core UI asks.
   short: 'Design, redesign, critique, audit, or polish frontend UI: websites, landing pages, dashboards, app screens, components, and native iOS or Android views. Covers layout, typography, color, motion, UX copy, accessibility, responsive behavior, onboarding, empty states, and documenting design systems (DESIGN.md, tokens). Use when visual or UX quality matters. Not for backend or non-UI work.',
@@ -88,7 +93,8 @@ const GATES = {
 
 export function systemPrompt(impeccableDescription) {
   const skills = [...COMPETITORS.slice(0, 5), ['impeccable', impeccableDescription], ...COMPETITORS.slice(5)];
-  const listing = skills.map(([n, d]) => `- ${n}: ${d}`).join('\n');
+  // An empty description renders as the bare name, as Claude Code lists a skill it cut for budget.
+  const listing = skills.map(([n, d]) => (d ? `- ${n}: ${d}` : `- ${n}`)).join('\n');
   return [
     'You are a coding agent working in the user\'s repository at /work (a React + Vite web app with src/, a package.json and an api/ folder, unless the request says otherwise).',
     'Use the tools available to you to complete the user\'s request.',
@@ -185,7 +191,7 @@ export function resolveOptions(env = process.env) {
 }
 
 export async function runEval({ models, variants, samples, steps, concurrency, cases }) {
-  for (const v of variants) if (!VARIANTS[v]) throw new Error(`unknown variant "${v}" (have: ${Object.keys(VARIANTS).join(', ')})`);
+  for (const v of variants) if (!(v in VARIANTS)) throw new Error(`unknown variant "${v}" (have: ${Object.keys(VARIANTS).join(', ')})`);
   const jobs = [];
   for (const m of models) for (const v of variants) for (const c of cases) for (let s = 0; s < samples; s++) jobs.push({ m, v, c, s });
   return pool(jobs, concurrency, async (j) => ({

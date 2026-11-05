@@ -110,6 +110,36 @@ What the measurement found:
 - Gemini's misses mostly go to the frontend-dev neighbour, so results depend
   on the roster. The roster is a guess at a typical install, not a measurement.
 
+### Claude Code's listing budget (2026-11-05, Claude Code 2.1.281)
+
+Claude Code caps the skill listing at 1% of the model's context window in
+characters (`skillListingBudgetFraction`; 6,000 for a 200k model at 3 bytes per
+token). Over budget, bundled skills keep their descriptions and every other
+skill keeps its description only if it fits in what is left; one that doesn't
+is listed as its bare name. A fresh interactive session already lists 14
+bundled skills, so the 81-word description (`v48`) went over: the listing came
+to 6,502 against 6,000, and the model saw `- impeccable` alone. That held in a
+clean container and on macOS, and in a real user's setup as much as a harness's
+(the evals repo's capture diff).
+
+Measured by shortening the description in the same session: up to about 220
+characters survives, 225 does not. The current description is 188 characters,
+so it leaves about 30 characters of headroom. That headroom is thin: a bundled
+skill that grows, or another installed skill or plugin competing for the same
+room, cuts it again. `-p` (print mode) lists fewer bundled skills and stayed
+under budget at either length.
+
+To compare against what Claude Code sends when it cuts, run the `bare` variant:
+
+```bash
+ACTIVATION_VARIANTS=current,v48,bare ACTIVATION_SAMPLES=3 \
+  node tests/skill-behavior/activation.eval.mjs
+```
+
+The simulated listing always includes the description, so `v48` here measures
+the text, not what Claude Code showed: in those interactive sessions, `bare`
+is the honest baseline for it.
+
 This is a simulated harness, not Claude Code itself, and neither model is the
 Haiku that #744 measured. Treat it as a regression gate and a way to compare
 drafts, not as a prediction of production activation rates.
