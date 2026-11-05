@@ -1146,7 +1146,7 @@ line = `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.rep
 Within one emission the first occurrence of a rule gets the description; later lines for the same rule are `compact` (`formatDedupedFindingLine` with a shared `seenRules` set).
 
 `directiveFooter({mode})`:
-- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, ask in one line.`
+- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, leave it with a reason.`
 - full (default), 5 lines joined by `\n`:
 ```
 Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:
