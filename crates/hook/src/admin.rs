@@ -11,6 +11,7 @@
 //! `on` repairs them to the new form and `off` prunes either.
 
 use impeccable_core::js;
+use impeccable_context::hook_wiring::{HOOK_MANIFEST_TARGETS, claude_manifest_for_command, manifest_is_wired};
 use serde_json::{Map, Value};
 
 use crate::hook_lib::*;
@@ -25,10 +26,6 @@ const ACTIONS: &[&str] = &[
     "ignore-value",
     "reset",
 ];
-const TIMEOUT_SECONDS: i64 = 5;
-const STATUS_MESSAGE: &str = "Checking UI changes";
-const STOP_TIMEOUT_SECONDS: i64 = 30;
-const STOP_STATUS_MESSAGE: &str = "Design deep pass";
 const DETECTOR_CONFIG_KEYS: &[&str] = &[
     "ignoreRules",
     "ignoreFiles",
@@ -36,103 +33,6 @@ const DETECTOR_CONFIG_KEYS: &[&str] = &[
     "designSystem",
     "advisoryRules",
 ];
-
-fn obj(pairs: Vec<(&str, Value)>) -> Value {
-    let mut m = Map::new();
-    for (k, v) in pairs {
-        m.insert(k.to_string(), v);
-    }
-    Value::Object(m)
-}
-
-fn command_hook(command: &str, timeout: i64, status: &str) -> Value {
-    obj(vec![
-        ("type", Value::from("command")),
-        ("command", Value::from(command)),
-        ("timeout", Value::from(timeout)),
-        ("statusMessage", Value::from(status)),
-    ])
-}
-
-/// A command hook with the `commandWindows` sibling Codex 0.146.0+ selects
-/// on Windows (`command_windows.unwrap_or(command)`), pointing at the
-/// launcher's `.cmd` shim so the same `.codex/hooks.json` runs on every OS.
-fn command_hook_with_windows(command: &str, windows: &str, timeout: i64, status: &str) -> Value {
-    obj(vec![
-        ("type", Value::from("command")),
-        ("command", Value::from(command)),
-        ("commandWindows", Value::from(windows)),
-        ("timeout", Value::from(timeout)),
-        ("statusMessage", Value::from(status)),
-    ])
-}
-
-/// JS: stopManifestEntry(command)
-fn stop_manifest_entry(command: &str) -> Value {
-    obj(vec![(
-        "hooks",
-        Value::Array(vec![command_hook(
-            command,
-            STOP_TIMEOUT_SECONDS,
-            STOP_STATUS_MESSAGE,
-        )]),
-    )])
-}
-
-fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
-    obj(vec![(
-        "hooks",
-        Value::Array(vec![command_hook_with_windows(
-            command,
-            windows,
-            STOP_TIMEOUT_SECONDS,
-            STOP_STATUS_MESSAGE,
-        )]),
-    )])
-}
-
-/// The launcher paths the manifests invoke, per harness. Project-relative
-/// (or `${CLAUDE_PROJECT_DIR}` / repo-root anchored) so a committed manifest
-/// resolves on every teammate's checkout.
-const CLAUDE_HOOK_COMMAND: &str = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
-const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
-const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook";
-const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
-
-struct ManifestTarget {
-    provider: &'static str,
-    skill_rel: &'static str,
-    dest_rel: &'static str,
-    shared_dest_rel: Option<&'static str>,
-    manifest: fn() -> Value,
-    /// The manifest is the user's whole settings file (model, auth, MCP), so
-    /// an unreadable one is skipped instead of backed up and replaced.
-    user_settings: bool,
-}
-
-fn claude_manifest_for_command(cmd: &str) -> Value {
-    obj(vec![
-        (
-            "description",
-            // JS: Claude Code folded multi-edit behavior into Edit; the manifest
-            // tracks the current Edit and Write tools (upstream 7d5c60d2).
-            Value::from("Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop."),
-        ),
-        (
-            "hooks",
-            obj(vec![
-                (
-                    "PostToolUse",
-                    Value::Array(vec![obj(vec![
-                        ("matcher", Value::from("Edit|Write")),
-                        ("hooks", Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, STATUS_MESSAGE)])),
-                    ])]),
-                ),
-                ("Stop", Value::Array(vec![stop_manifest_entry(cmd)])),
-            ]),
-        ),
-    ])
-}
 
 /// The guarded absolute-launcher command a user-scope install writes into
 /// `~/.claude/settings.json` (the `update --user` form): POSIX single quotes,
@@ -146,133 +46,6 @@ fn user_claude_hook_command(skill_root: &str, win32: bool) -> String {
     };
     format!("[ ! -f {q} ] || {q} hook")
 }
-
-fn claude_manifest() -> Value {
-    claude_manifest_for_command(CLAUDE_HOOK_COMMAND)
-}
-
-fn agents_manifest() -> Value {
-    let cmd = AGENTS_HOOK_COMMAND;
-    let win = &impeccable_context::hook_markers::windows_launcher_hook_command(".agents/skills/impeccable/scripts/impeccable", "hook");
-    obj(vec![(
-        "hooks",
-        obj(vec![
-            (
-                "PostToolUse",
-                Value::Array(vec![obj(vec![
-                    ("matcher", Value::from("Edit|Write|apply_patch")),
-                    (
-                        "hooks",
-                        Value::Array(vec![command_hook_with_windows(cmd, win, TIMEOUT_SECONDS, STATUS_MESSAGE)]),
-                    ),
-                ])]),
-            ),
-            ("Stop", Value::Array(vec![stop_manifest_entry_with_windows(cmd, win)])),
-        ]),
-    )])
-}
-
-/// Cursor runs the post-edit design hook like the other harnesses (the
-/// before-edit gate is retired). `merge_hook_manifests` strips Impeccable
-/// entries from every event, so `on` also drops a leftover `preToolUse`
-/// gate entry while writing this one.
-fn cursor_manifest() -> Value {
-    impeccable_context::hook_markers::cursor_hook_manifest(CURSOR_HOOK_COMMAND, TIMEOUT_SECONDS)
-}
-
-fn github_manifest() -> Value {
-    obj(vec![
-        ("version", Value::from(1)),
-        (
-            "hooks",
-            obj(vec![(
-                "postToolUse",
-                Value::Array(vec![obj(vec![
-                    ("type", Value::from("command")),
-                    ("matcher", Value::from("edit|create|apply_patch")),
-                    (
-                        "bash",
-                        Value::from(GITHUB_HOOK_COMMAND),
-                    ),
-                    ("timeoutSec", Value::from(TIMEOUT_SECONDS)),
-                ])]),
-            )]),
-        ),
-    ])
-}
-
-/// Gemini runs hooks through `bash -c` (PowerShell on Windows) after
-/// substituting `$GEMINI_PROJECT_DIR` with a shell-escaped path, so the POSIX
-/// token stays bare; PowerShell reads the env var. Timeouts are milliseconds.
-/// No per-edit detector: BeforeTool carries the session id into
-/// `build-phase` shell calls, AfterAgent runs the build-completion check.
-const GEMINI_HOOK_COMMAND: &str = "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable hook";
-const GEMINI_HOOK_COMMAND_WINDOWS: &str = "& \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\" hook";
-
-fn gemini_manifest() -> Value {
-    let cmd = if cfg!(windows) { GEMINI_HOOK_COMMAND_WINDOWS } else { GEMINI_HOOK_COMMAND };
-    let hook = |name: &str, timeout: i64| obj(vec![
-        ("name", Value::from(name)),
-        ("type", Value::from("command")),
-        ("command", Value::from(cmd)),
-        ("timeout", Value::from(timeout)),
-    ]);
-    obj(vec![(
-        "hooks",
-        obj(vec![
-            ("BeforeTool", Value::Array(vec![obj(vec![
-                ("matcher", Value::from("^run_shell_command$")),
-                ("hooks", Value::Array(vec![hook("impeccable-session", 5000)])),
-            ])])),
-            ("AfterAgent", Value::Array(vec![obj(vec![
-                ("hooks", Value::Array(vec![hook("impeccable-completion", 30000)])),
-            ])])),
-        ]),
-    )])
-}
-
-const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
-    ManifestTarget {
-        provider: ".claude",
-        skill_rel: ".claude/skills/impeccable",
-        dest_rel: ".claude/settings.local.json",
-        shared_dest_rel: Some(".claude/settings.json"),
-        manifest: claude_manifest,
-        user_settings: false,
-    },
-    ManifestTarget {
-        provider: ".agents",
-        skill_rel: ".agents/skills/impeccable",
-        dest_rel: ".codex/hooks.json",
-        shared_dest_rel: None,
-        manifest: agents_manifest,
-        user_settings: false,
-    },
-    ManifestTarget {
-        provider: ".cursor",
-        skill_rel: ".cursor/skills/impeccable",
-        dest_rel: ".cursor/hooks.json",
-        shared_dest_rel: None,
-        manifest: cursor_manifest,
-        user_settings: false,
-    },
-    ManifestTarget {
-        provider: ".github",
-        skill_rel: ".github/skills/impeccable",
-        dest_rel: ".github/hooks/impeccable.json",
-        shared_dest_rel: None,
-        manifest: github_manifest,
-        user_settings: false,
-    },
-    ManifestTarget {
-        provider: ".gemini",
-        skill_rel: ".gemini/skills/impeccable",
-        dest_rel: ".gemini/settings.json",
-        shared_dest_rel: None,
-        manifest: gemini_manifest,
-        user_settings: true,
-    },
-];
 
 struct RawFile {
     exists: bool,
@@ -582,6 +355,17 @@ fn ignore_value_entry_key_json(entry: &Map<String, Value>) -> String {
     )
 }
 
+fn target_is_wired(rt: &Runtime, cwd: &str, target: &impeccable_context::hook_wiring::ManifestTarget) -> bool {
+    let fresh = (target.manifest)();
+    let provider_id = match target.provider {
+        ".claude" => "claude-code", ".agents" => "codex", _ => "",
+    };
+    manifest_is_wired(&jsp::join(&[cwd, target.dest_rel]), &fresh)
+        || target.shared_dest_rel.is_some_and(|rel| manifest_is_wired(&jsp::join(&[cwd, rel]), &fresh))
+        || impeccable_context::context_cli::user_hook_manifest(provider_id, cwd, &rt.env)
+            .is_some_and(|path| manifest_is_wired(&path, &fresh))
+}
+
 /// JS: statusReport(cwd)
 fn status_report(rt: &Runtime, cwd: &str) -> String {
     let shared = read_raw_config_file(&get_config_path(cwd));
@@ -629,7 +413,7 @@ fn status_report(rt: &Runtime, cwd: &str) -> String {
             v.join(", ")
         }
     };
-    [
+    let mut lines = vec![
         "Impeccable design hook".to_string(),
         format!(
             "  state:        {}",
@@ -663,8 +447,32 @@ fn status_report(rt: &Runtime, cwd: &str) -> String {
                 format!("{cache_path} (not present)")
             }
         ),
-    ]
-    .join("\n")
+    ];
+    let mut any = false;
+    for target in HOOK_MANIFEST_TARGETS {
+        let wired = target_is_wired(rt, cwd, target);
+        if target.provider != ".gemini" { any |= wired; }
+        lines.push(format!("  wiring {}: {}", target.provider, if wired { "wired" } else { "not wired (missing or stale entries)" }));
+    }
+    if cfg.enabled && !any {
+        lines.push("enabled in config, not wired in any harness; repair with: impeccable hooks on".to_string());
+    }
+    lines.join("\n")
+}
+
+/// Context may restore previously consented hooks, never grant consent itself.
+pub fn repair_for_context(rt: &Runtime, cwd: &str) -> Result<Option<String>, String> {
+    if !read_config(cwd).enabled || rt.env("IMPECCABLE_HOOK_DISABLED").is_some_and(|v| !v.is_empty() && v != "0" && v != "false") {
+        return Ok(None);
+    }
+    let local = read_raw_config_file(&get_local_config_path(cwd));
+    if local.raw.as_ref().and_then(|v| v.pointer("/hook/consent")).and_then(Value::as_str) != Some("accepted") {
+        return Ok(None);
+    }
+    let result = repair_hook_manifests(rt, cwd, true)?;
+    Ok(if result.written.is_empty() { None } else {
+        Some(format!("Repaired Impeccable hook wiring for: {}.", result.written.join(", ")))
+    })
 }
 
 fn rel_or(rt: &Runtime, cwd: &str, target: &str) -> String {
@@ -690,7 +498,7 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
     let mut consent = Map::new();
     consent.insert("consent".into(), Value::from("accepted"));
     let local_target = write_hook_config(rt, cwd, &consent, true)?;
-    let repaired = repair_hook_manifests(rt, cwd)?;
+    let repaired = repair_hook_manifests(rt, cwd, false)?;
     let mut parts = vec![
         format!(
             "Design hook enabled for this project (wrote {}).",
@@ -742,7 +550,7 @@ struct Repaired {
 }
 
 /// JS: repairHookManifests(cwd)
-fn repair_hook_manifests(rt: &Runtime, cwd: &str) -> Result<Repaired, String> {
+fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Repaired, String> {
     let mut result = Repaired {
         written: vec![],
         already: vec![],
@@ -750,7 +558,14 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str) -> Result<Repaired, String> {
         skipped: vec![],
     };
     for target in HOOK_MANIFEST_TARGETS {
+        if safe_only && target_is_wired(rt, cwd, target) {
+            continue;
+        }
         let mut dest = jsp::join(&[cwd, target.dest_rel]);
+        if safe_only && exists(&dest) && read_manifest(&dest).is_none() {
+            result.skipped.push(target.dest_rel.to_string());
+            continue;
+        }
         let shared_dest = target.shared_dest_rel.map(|s| jsp::join(&[cwd, s]));
         let project_skill = jsp::join(&[cwd, target.skill_rel]);
         let user_skill = jsp::join(&[&rt.homedir(), target.skill_rel]);
@@ -784,7 +599,7 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str) -> Result<Repaired, String> {
             dest = jsp::join(&[&rt.homedir(), ".claude", "settings.json"]);
             user_settings = true;
         } else if let Some(sd) = &shared_dest {
-            if file_has_impeccable_hook_marker(sd) {
+            if manifest_is_wired(sd, &(target.manifest)()) {
                 prune_impeccable_hook_from_manifest(&dest)?;
                 result.already.push(target.provider.to_string());
                 continue;

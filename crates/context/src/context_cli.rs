@@ -243,15 +243,31 @@ fn append_subagent_authorization_directive(parts: &mut Parts) {
     ].join(" "));
 }
 
+fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
+    let provider_dir = match provider.id.as_str() {
+        "claude-code" => ".claude", "codex" | "agents" => ".agents",
+        "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
+    };
+    let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
+    let expected = (target.manifest)();
+    automatic_hook_mode(ctx, cwd, env, provider) != "none" &&
+        (hook_manifest_search_roots(ctx, cwd, env).iter().any(|root|
+            hook_enabled_at(root, env) && hook_manifests_for(&provider.id).iter().any(|rel|
+                crate::hook_wiring::manifest_is_wired(&jsp::join(&[root, rel]), &expected)))
+        || user_hook_manifest(&provider.id, cwd, env).is_some_and(|path|
+            crate::hook_wiring::manifest_is_wired(&path, &expected)))
+}
+
 fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) {
-    if automatic_hook_mode(ctx, cwd, env, provider) != "none" {
+    if current_hook_wiring(ctx, cwd, env, provider) {
         return;
     }
     if is_native(ctx.platform.as_deref()) {
         return;
     }
     parts.push([
-        "MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.".to_string(),
+        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session. Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", hook_manifests_for(&provider.id).join(" or ")) ,
         format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
@@ -666,6 +682,14 @@ fn load_native_platform_references(platform: Option<&str>, provider: &Provider) 
 // ─── cli ───────────────────────────────────────────────────────────────────
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_hook_repair(args, io, &mut |_| Ok(None))
+}
+
+/// The CLI supplies hook maintenance to avoid a context -> hook dependency cycle.
+pub fn run_with_hook_repair(
+    args: &[String], io: &mut Io,
+    repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
+) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -701,6 +725,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
+    if !is_native(ctx.platform.as_deref()) {
+        match repair(&ctx.project_root) {
+            Ok(Some(message)) => io.out(&format!("{message}\n")),
+            Err(error) => io.out(&format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.\n")),
+            _ => {}
+        }
+    }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
     let cmd = &provider.command;
 

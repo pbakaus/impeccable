@@ -20,13 +20,17 @@ On **Cursor**, the hook runs on `postToolUse` for the `Write` tool (every agent 
 
 Gemini installs session and completion hooks in `.gemini/settings.json`, merged into the settings already there (comments are tolerated; a commented file is backed up to `settings.json.bak` before the rewrite, and a file that is not valid JSON is left alone). It does not install a per-edit detector hook. The `BeforeTool` hook only rewrites shell commands that run `build-phase`, and only on macOS and Linux; on Windows (where Gemini runs hooks through PowerShell) no session id reaches the shell, so a comp build is not tied to the session and the completion reminder stays silent.
 
+Status checks the current event entries and matchers in each manifest, including the Stop pass where supported. Claude Code counts as wired when either project settings file (or its user settings file) contains the current entries. A legacy command, partial manifest, or missing file is reported as not wired. If enabled in config but no design harness is wired, status says so and gives `impeccable hooks on` as the repair command. Wiring confirms the manifest entries; harness trust requirements and session reloads still apply.
+
+When `hook.consent` is `"accepted"` in the project's `config.local.json` and the hook is enabled, `impeccable context` restores missing or stale entries for installed harness skills and reports repairs in one line. Shared config consent does not authorize this write. Automatic repair preserves unrelated settings and hooks and leaves malformed manifests alone. Without local consent, context writes no manifests and keeps `MANUAL_DETECTOR_REQUIRED`, naming the missing or stale harness wiring. Explicitly disabled hooks stay disabled.
+
 ## Routing
 
 The first argument is the action. Defaults to `status`.
 
 | Action | What it does |
 |---|---|
-| `status` | Print current state, shared/local config paths, ignored rules / files / values, env override. |
+| `status` | Print current state, shared/local config paths, ignored rules / files / values, env override, and actual manifest wiring for each harness. |
 | `on` | Set `enabled: true` in `.impeccable/config.json`, record local hook consent as accepted, and install/repair provider hook manifests when the skill is installed. |
 | `off` | Set `enabled: false` in `.impeccable/config.json`. |
 | `ignore-rule <id>` | Append `<id>` to `detector.ignoreRules`; for `overused-font`, requires `--all-values`. Suppresses the rule across the whole project. |
@@ -46,7 +50,7 @@ The first argument is the action. Defaults to `status`.
    ```
 
 3. If `<action>` is `off`, follow up with a one-line note: "Done. New edits will not trigger the design hook in this project until you run `{{command_prefix}}impeccable hooks on`."
-4. If `<action>` is `on`, follow up with: "Done. The design hook will fire after the next Edit/Write on a UI file." On Hermes Agent, `on` cannot install or enable the plugin: if `impeccable context` reported `MANUAL_DETECTOR_REQUIRED`, tell the user to run `npx impeccable install` and then `hermes plugins enable impeccable-design-hook` instead.
+4. If `<action>` is `on`, report what the command installed or repaired. If no installed skill folders were found or settings were skipped, surface that result and do not claim the hook will run. Otherwise note that the harness must load the updated settings (and satisfy any trust requirements) before it runs. On Hermes Agent, `on` cannot install or enable the plugin: if `impeccable context` reported `MANUAL_DETECTOR_REQUIRED`, tell the user to run `npx impeccable install` and then `hermes plugins enable impeccable-design-hook` instead.
 5. If `<action>` is `ignore-value`, `ignore-file`, or `ignore-rule`, just print the script output. The default scope is shared `.impeccable/config.json`; add `--local` only when the user explicitly asks for a private exception.
 6. If `<action>` is `status`, just print the script output. Do not add commentary unless the user asked a follow-up question.
 

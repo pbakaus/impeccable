@@ -2405,10 +2405,8 @@ fn admin_on_prunes_local_manifest_when_shared_settings_carry_the_hook() {
     let cwd = t.path();
     let r = rt(&cwd);
     std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs\""}]}]}}"#,
-    );
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     t.write(
         ".claude/settings.local.json",
         "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls)\"\n    ]\n  },\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Edit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"node old/skills/impeccable/scripts/hook.mjs\"\n          }\n        ]\n      }\n    ]\n  }\n}\n",
@@ -2765,12 +2763,8 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
         json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#)
     );
 
-    // A launcher-form manifest written by another checkout is recognized as
-    // ours too: shared settings carrying it make `on` prune the local file.
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
-    );
+    // A complete launcher manifest in shared settings supersedes local hooks.
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     let (out, _, _) = admin_run(&r, &["on"]);
     assert!(out.contains("already installed for: .claude"), "{out}");
     let local = t.read(".claude/settings.local.json");
@@ -3671,4 +3665,112 @@ fn expiry_removes_only_old_session_dirs_of_ours() {
     assert_eq!(names_in(&jsp::join(&[&root, &fresh])), vec![OLD_CLAIM.to_string()]);
     assert!(t.exists(&format!("outside/{OLD_CLAIM}")));
     assert!(t.exists("home/.impeccable/hook-sessions/keep-me/x"));
+}
+
+#[test]
+fn enabled_config_reports_missing_wiring() {
+    let t = Tmp::new();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true}}"#);
+    let (out, _, code) = admin_run(&rt(&t.path()), &["status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("enabled in config, not wired in any harness"), "{out}");
+    assert!(out.contains("impeccable hooks on"), "{out}");
+}
+
+#[test]
+fn context_repairs_only_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".claude/settings.local.json", r#"{"permissions":{"allow":["Bash(ls)"]}}"#);
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true,"consent":"accepted"}}"#);
+    let r = rt(&cwd);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.read(".claude/settings.local.json").contains("hooks"));
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().unwrap().contains("Repaired"));
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+}
+
+#[test]
+fn stale_shared_claude_hook_does_not_remove_working_local_entries() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    let r = rt(&cwd);
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node x/skills/impeccable/scripts/hook.mjs"}]}]}}"#);
+    admin_run(&r, &["on"]);
+    assert!(t.read(".claude/settings.local.json").contains("impeccable"));
+}
+
+#[test]
+fn context_command_repairs_with_consent_and_keeps_manual_fallback_without_it() {
+    for consent in [None, Some("declined"), Some("accepted")] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+        t.write(".impeccable/config.json", r#"{"hook":{"enabled":true},"updateCheck":false}"#);
+        if let Some(consent) = consent {
+            t.write(".impeccable/config.local.json", &json!({"hook":{"consent":consent}}).to_string());
+        }
+        let r = rt(&cwd);
+        let mut env = r.env.clone();
+        env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+        assert_eq!(impeccable_hook::run_context(&[], &mut io), 0);
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        if consent == Some("accepted") {
+            assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+            assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(t.exists(".claude/settings.local.json"));
+        } else {
+            assert!(out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(out.contains(".claude/settings.local.json"), "{out}");
+            assert!(!t.exists(".claude/settings.local.json"));
+        }
+    }
+}
+
+#[test]
+fn status_requires_complete_current_entries_for_each_harness() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        std::fs::create_dir_all(t.0.join(target.skill_rel)).unwrap();
+    }
+    admin_run(&r, &["on"]);
+    let (out, _, _) = admin_run(&r, &["status"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        assert!(out.contains(&format!("wiring {}: wired", target.provider)), "{out}");
+    }
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    t.write(".claude/settings.json", &manifest.to_string());
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: wired"), "{out}");
+    let mut partial = manifest;
+    partial["hooks"].as_object_mut().unwrap().remove("Stop");
+    t.write(".claude/settings.json", &partial.to_string());
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: not wired"), "{out}");
+}
+
+#[test]
+fn context_does_not_replace_malformed_settings_or_reenable_disabled_hooks() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    t.write(".claude/settings.local.json", "{broken");
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert_eq!(t.read(".claude/settings.local.json"), "{broken");
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.exists(".claude/settings.local.json"));
 }
