@@ -106,7 +106,12 @@ fn claude_manifest() -> Value {
 }
 
 fn grok_manifest() -> Value {
-    let mut manifest = claude_manifest_for_command("\".grok/skills/impeccable/scripts/impeccable\" hook");
+    let command = if cfg!(windows) {
+        crate::hook_markers::windows_launcher_hook_command(".grok/skills/impeccable/scripts/impeccable", "hook")
+    } else {
+        "\".grok/skills/impeccable/scripts/impeccable\" hook".to_string()
+    };
+    let mut manifest = claude_manifest_for_command(&command);
     manifest["hooks"]["PostToolUse"][0]["matcher"] = Value::from("Edit|Write|MultiEdit");
     manifest
 }

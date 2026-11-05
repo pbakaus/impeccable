@@ -576,8 +576,6 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
             // naming a missing launcher is a no-op, and switching to it would
             // prune a project hook that may still run another installation.
             && exists(&jsp::join(&[&user_skill, "scripts", "impeccable"]))
-            && (file_has_impeccable_hook_marker(&dest)
-                || shared_dest.as_ref().is_some_and(|path| file_has_impeccable_hook_marker(path)))
         {
             (user_skill, true)
         } else {

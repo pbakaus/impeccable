@@ -3774,3 +3774,36 @@ fn context_does_not_replace_malformed_settings_or_reenable_disabled_hooks() {
     assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
     assert!(!t.exists(".claude/settings.local.json"));
 }
+
+#[test]
+fn context_restores_a_missing_user_claude_manifest_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let home_text = home.to_string_lossy().to_string();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text)]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!home.join(".claude/settings.json").exists());
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_some());
+    assert!(home.join(".claude/settings.json").exists());
+}
+
+#[test]
+fn context_repairs_consented_manifest_at_the_enclosing_repository_root() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".git")).unwrap();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"},"updateCheck":false}"#);
+    t.write("app/PRODUCT.md", "# Product\n\n## Platform\nweb\n");
+    let mut env = rt(&cwd).env.clone();
+    env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+    let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+    assert_eq!(impeccable_hook::run_context(&["--target".into(), "app".into()], &mut io), 0);
+    let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+    assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+    assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+}

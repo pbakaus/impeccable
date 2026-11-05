@@ -266,8 +266,15 @@ fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, 
     if is_native(ctx.platform.as_deref()) {
         return;
     }
+    let manifests = match provider.id.as_str() {
+        "claude-code" | "codex" | "agents" | "cursor" | "grok" | "github" => hook_manifests_for(&provider.id),
+        _ => &[],
+    };
+    let wiring = if manifests.is_empty() { String::new() } else {
+        format!(" Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", manifests.join(" or "))
+    };
     parts.push([
-        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session. Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", hook_manifests_for(&provider.id).join(" or ")) ,
+        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
         format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
@@ -725,11 +732,17 @@ pub fn run_with_hook_repair(
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
-    if !is_native(ctx.platform.as_deref()) {
-        match repair(&ctx.project_root) {
-            Ok(Some(message)) => io.out(&format!("{message}\n")),
-            Err(error) => io.out(&format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.\n")),
-            _ => {}
+    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+        let mut notices = Vec::new();
+        for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
+            match repair(&root) {
+                Ok(Some(message)) => notices.push(message),
+                Err(error) => notices.push(format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.")),
+                _ => {}
+            }
+        }
+        if !notices.is_empty() {
+            io.out(&format!("{}\n", notices.join(" ")));
         }
     }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
@@ -1330,5 +1343,22 @@ mod worktree_hook_tests {
         std::fs::write(&manifest, r#"{"version":1,"hooks":{"preToolUse":[{"command":"\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit","timeout":5}]}}"#).unwrap();
         assert_eq!(mode(), "per-edit");
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod wiring_fallback_tests {
+    #[test]
+    fn gemini_does_not_offer_to_repair_unsupported_detector_hooks() {
+        let mut parts = super::Parts::default();
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_PROVIDER_ID".to_string(), "gemini".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/missing-project");
+        let ctx = crate::context::load_context("/missing-project", &crate::target_args::TargetOptions::default(), &env);
+        super::append_detector_fallback(&mut parts, &ctx, "/missing-project", &env, &provider);
+        let output = parts.render();
+        assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
+        assert!(!output.contains("repair with impeccable hooks on"));
     }
 }
