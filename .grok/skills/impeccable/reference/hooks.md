@@ -56,7 +56,7 @@ The hook itself never writes ignore config; every exception goes through `impecc
 
 - **Real design problem**: fix it. Never add an ignore to skip a fix or to push a blocked write through.
 - **Confident false positive or sanctioned exception**: persist the narrowest ignore yourself and disclose it in your reply. The bar is evidence you can name: an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion (a ball that bounces), or a choice the user already confirmed. Put that evidence in `--reason` as `"<who decided: evidence>"`; write "user confirmed" only when the user actually did.
-- **Unsure**: leave the finding standing and ask the user in one line. Ask once; a one-line question costs less than the hook re-firing on every later edit.
+- **Unsure**: leave the finding standing and give the reason in one line. Ask the user only when you genuinely cannot decide.
 
 Self-serve stops at `ignore-value`. `ignore-file` and `ignore-rule` silence too much to add on your own judgment; ask the user first.
 

@@ -17,6 +17,28 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('picks the nearest pickable ancestor of a too-small hover but never leaves the live chrome (#1297)', () => {
+    const body = SOURCE.match(/function handleMouseMove\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const hover = (hit) => {
+      const highlighted = [];
+      const ctx = {
+        pendingApplyInFlight: false, state: 'PICKING', insertActive: false, pickActive: true, hoveredElement: null,
+        document: { elementFromPoint: () => hit },
+        own: (el) => !!el?.chrome,
+        pickable: (el) => !!el?.big && !el.chrome,
+        showHighlight: (el) => highlighted.push(el),
+      };
+      runInNewContext(`${body}; handleMouseMove({ clientX: 1, clientY: 1 });`, ctx);
+      return { hovered: ctx.hoveredElement, highlighted };
+    };
+    const form = { big: true, parentElement: null };
+    const label = { parentElement: form };
+    assert.deepEqual(hover(label), { hovered: form, highlighted: [form] }, 'a small label resolves to its form');
+    const chrome = { chrome: true, parentElement: form };
+    assert.deepEqual(hover(chrome), { hovered: null, highlighted: [] }, 'chrome inside a page element is not walked out of');
+  });
+
   it('describes the picked element with the anchor a bake would use and its match count', () => {
     const body = SOURCE.match(/function extractContext\(el\) \{[\s\S]*?\n  \}/)?.[0];
     assert.ok(body);
@@ -1160,6 +1182,40 @@ describe('live-browser source contracts', () => {
       /querySelectorAll\(tag \+ '\\.' \+ cls\.split/,
       'source fallback should not construct unsafe selectors from JSX-ish class strings',
     );
+  });
+
+  it('waits for compiled Svelte wrappers instead of fetching raw source (#1282)', () => {
+    const guardStart = SOURCE.indexOf('function isCompiledTemplateSourceFile(');
+    const guardEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', guardStart);
+    const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
+    const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
+    let sourceFetches = 0;
+    let adoptedWrapper = null;
+    let mountedWrapper = null;
+    const context = {
+      isSvelteComponentManifestPath: () => false,
+      rememberSessionFileMeta: () => {},
+      findVariantsWrapper: () => mountedWrapper,
+      completeSourceInjection: (wrapper) => { adoptedWrapper = wrapper; },
+      PORT: 7331,
+      TOKEN: 'test-token',
+      fetch: () => {
+        sourceFetches++;
+        return { then() { return this; }, catch() { return this; } };
+      },
+    };
+    const functions = SOURCE.slice(guardStart, guardEnd) + SOURCE.slice(injectStart, injectEnd);
+    runInNewContext(functions + "\ninjectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(sourceFetches, 0, 'an unmounted Svelte wrapper must wait for HMR');
+    assert.equal(adoptedWrapper, null);
+
+    mountedWrapper = { querySelector: () => ({}) };
+    runInNewContext("injectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(adoptedWrapper, mountedWrapper, 'adopt the framework-rendered wrapper once mounted');
+    assert.equal(sourceFetches, 0);
+
+    runInNewContext("injectVariantsFromSource('index.html', 'session');", context);
+    assert.equal(sourceFetches, 1, 'plain HTML keeps its source fallback');
   });
 
   it('self-discards a JSX session whose wrapper left the source file (#439)', () => {

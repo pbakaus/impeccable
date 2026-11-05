@@ -74,6 +74,15 @@ pub fn ensure_dir_ignored(dir: &str, patterns: &[&str]) {
     let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(&file, next));
 }
 
+/// The comps (`.impeccable/mocks/`) and captures (`.impeccable/review/`) of
+/// a design round are runtime output the agent writes with its own tools, so
+/// every engine verb that precedes those writes makes both ignore themselves.
+pub fn ignore_runtime_output(root: &str) {
+    for dir in [".impeccable/mocks", ".impeccable/review"] {
+        ensure_dir_ignored(&jsp::join(&[root, dir]), &["*"]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +167,18 @@ mod tests {
         std::fs::write(&file, "mine.txt").unwrap();
         ensure_dir_ignored(&d, &["state.json"]);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine.txt\nstate.json\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ignore_runtime_output_covers_mocks_and_review() {
+        let dir = std::env::temp_dir().join(format!("impeccable-runtime-ignore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        ignore_runtime_output(&dir.to_string_lossy());
+        for runtime in ["mocks", "review"] {
+            let file = dir.join(".impeccable").join(runtime).join(".gitignore");
+            assert_eq!(std::fs::read_to_string(file).unwrap(), format!("{}\n*\n", RUNTIME_IGNORE_HEADER));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

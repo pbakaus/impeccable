@@ -1148,13 +1148,13 @@ line = `${prefix} [${f.antipattern}] ${nameSegment} ${desc}${ignoreSegment}`.rep
 Within one emission the first occurrence of a rule gets the description; later lines for the same rule are `compact` (`formatDedupedFindingLine` with a shared `seenRules` set).
 
 `directiveFooter({mode})`:
-- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, ask in one line.`
+- `'short'`: `Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via \`hook-admin.mjs ignore-value\` and disclose them in your reply; unsure, leave it with a reason.`
 - full (default), 5 lines joined by `\n`:
 ```
 Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:
 - Real design problem: fix it. Keep intentional design as designed.
 - Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `<HOOK_ADMIN_COMMAND> ignore-value <rule> "<value>" --reason "<who decided: evidence>"` with the pair shown on the finding line, or value "*" plus `--file <path>` when the line shows none. Write "user confirmed" in a reason only when the user did.
-- Unsure: leave it as is and ask the user in one line.
+- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.
 Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: <IMPECCABLE_COMMAND> hooks.
 ```
 where `HOOK_ADMIN_COMMAND = 'node ' + quoteCommandArg(path.join(__dirname, 'hook-admin.mjs'))` (absolute path of the installed hook-admin.mjs, single-quoted on POSIX if it contains spaces etc.).
@@ -1316,7 +1316,7 @@ A Stop event names no file, so the walk up from the session cwd cannot see a pro
 
 #### Stop finding attribution (#522)
 
-The Rust Stop pass still scans whole touched files; it does not infer causation from changed line ranges. It suppresses confirmed pre-existing text findings and marks remaining findings `[new]` or `[attribution unknown]`. Unknown findings remain visible, with a reminder not to treat them as regressions or broaden the task without asking. Explicit `detect` scans and per-edit/pre-edit output are unchanged.
+The Rust Stop pass still scans whole touched files; it does not infer causation from changed line ranges. It suppresses confirmed pre-existing text findings and marks remaining findings `[new]` or `[attribution unknown]`. Unknown findings remain visible, with a reminder not to treat them as regressions or broaden the task to chase them. Explicit `detect` scans and per-edit/pre-edit output are unchanged.
 
 A baseline currently requires the first observed edit of that file in a named Claude session to carry a complete `Edit`/`Write` result (`tool_response.originalFile`, `filePath`, and the replacement/content fields). Replaying that result must exactly match the current file. `Write` with `type: "create"` and a null original is an empty baseline; a null original on an update is unknown. No Git/HEAD comparison is used, so existing uncommitted work is part of the baseline. Missing, ambiguous, oversized, mismatched, or user-modified results remain unknown; a later edit cannot establish a missing initial baseline.
 
@@ -1615,9 +1615,9 @@ Detection:
 - **nextjs**: `next.config.*`; or dep `next`; or one of `app/layout.{tsx,jsx,ts,js}`, `src/app/layout.*`, `pages/_app.{tsx,jsx,ts,js}`, `pages/_document.{tsx,jsx}`, `src/pages/_app.{tsx,jsx}` exists.
 - **vite-generic**: `vite.config.{js,mjs,cjs,ts,mts,cts}`; or dep `vite`; or `index.html`+`package.json`.
 
-Source traits by target file extension (first registry entry claiming the ext; defaults `preview:'source', styleMode:'scoped', styleTag:'<style data-impeccable-css="SESSION_ID">', commentSyntax:'html', injectScriptAttrs:''`):
+Source traits by target file extension (first registry entry claiming the ext; defaults `preview:'source', styleMode:'scoped', styleTag:'<style data-impeccable-css="SESSION_ID">', styleClose:'</style>', commentSyntax:'html', injectScriptAttrs:''`):
 - `.svelte` → sveltekit: `preview:'component'`, html comments.
-- `.vue` → nuxt: scoped/html.
+- `.vue` → nuxt: scoped/html, `styleTag:'<component is="style" data-impeccable-css="SESSION_ID">'`, `styleClose:'</component>'` (Vue rejects `<style>` inside `<template>`). Accept's carbonize block uses the same pair. CSS extraction and the original/variant scan, in every file type, take a `<style>` or `<component>` opener that carries `data-impeccable-css` and end it at the next `</style>` or `</component>`; a `<style>` without that attribute inside the wrapper is the user's own and is kept. The CSS is template text, so `{{` or `<` followed by a letter breaks the compile; under SSR (Nuxt) the text is HTML-escaped in the server HTML and only correct after hydration, which logs a text mismatch.
 - `.tsx/.jsx` → tanstack-start/nextjs/vite-generic (all agree): scoped, `commentSyntax:'jsx'`.
 - `.astro` → `styleMode:'astro-global-prefixed'`, `styleTag:'<style is:inline data-impeccable-css="SESSION_ID">'`, `injectScriptAttrs:'is:inline '`.
 - `.html/.htm` → static-html.
@@ -1820,8 +1820,8 @@ Agent-authored variant block (what the fake agent and live.md prescribe), insert
 Param kinds: `range` `{id,kind:'range',min,max,step,default,label}` → CSS var `--p-<id>`; `steps` `{id,kind:'steps',default,label,options:[{value,label}]}` → attribute `data-p-<id>="<value>"`; `toggle` `{id,kind:'toggle',default:boolean,label}` → `--p-<id>: 1|0` and attribute `data-p-<id>="on"` present only when on. Browser drives range/toggle vars through an injected stylesheet (`#impeccable-live-variant-state`), and hides non-visible variants there; values reset to declared defaults on variant switch. Budget/authoring rules (0-4 per variant, hard cap 4) are prose in live.md section 7. Optional readiness sentinel `--impeccable-variant-ready` (stripped on accept).
 
 `cssAuthoring` object returned by wrap/insert:
-- scoped: `{mode:'scoped', styleTag:'<style data-impeccable-css="SESSION_ID">', strategy:'scope-rule', rulePattern:'@scope ([data-impeccable-variant="N"]) { :scope > .variant-class { ... } }', selectorExamples:[…per N], requirements:[3 strings], forbidden:[2 strings]}`
-- astro-global-prefixed: `{mode, styleTag:'<style is:inline data-impeccable-css="SESSION_ID">', strategy:'global-prefixed', rulePattern:'[data-impeccable-variant="N"] > .variant-class { ... }', selectorExamples, requirements:[4], forbidden:[3]}`, plus `cssSelectorPrefixExamples:['[data-impeccable-variant="1"]',…]` (empty for scoped).
+- scoped: `{mode:'scoped', styleTag:'<style data-impeccable-css="SESSION_ID">', styleClose:'</style>', strategy:'scope-rule', rulePattern:'@scope ([data-impeccable-variant="N"]) { :scope > .variant-class { ... } }', selectorExamples:[…per N], requirements:[3 strings], forbidden:[2 strings]}` (`styleClose` is `'</component>'` on `.vue`)
+- astro-global-prefixed: `{mode, styleTag:'<style is:inline data-impeccable-css="SESSION_ID">', styleClose:'</style>', strategy:'global-prefixed', rulePattern:'[data-impeccable-variant="N"] > .variant-class { ... }', selectorExamples, requirements:[4], forbidden:[3]}`, plus `cssSelectorPrefixExamples:['[data-impeccable-variant="1"]',…]` (empty for scoped).
 - svelte-component: `{mode:'svelte-component', styleTag:null, strategy:'component-style-block', rulePattern:'.semantic-class { ... }', selectorExamples:['.expense-row { padding: 22px; }' ×N], requirements:[7], forbidden:[3], paramsFile:'params.json'}`.
 
 Source search (`live/source-search.mjs`): dirs in order `src, app, pages, components, public, views, templates, lib, .`; skip `node_modules, .git, .impeccable` (accept also skips `dist, build`); depth ≤5; realpath cycle guard; files before dirs; extensions = `LIVE_TEMPLATE_EXTENSIONS` (`.html,.jsx,.tsx,.vue,.svelte,.astro,.ex,.heex,.eex`) + `.impeccable/config.json`/`config.local.json` `detector.extensions`; suffix match. Wrap additionally rejects generated files (`isGeneratedFile`: `git check-ignore --quiet` exit 0 **[spawns git]** or first 300 bytes match `/@generated\b/i`, `/\bGENERATED\s+FILE\b/`, `/\bAUTO-?GENERATED\b/i`, `/\bDO\s+NOT\s+EDIT\b/i`).
