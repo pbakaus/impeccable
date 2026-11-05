@@ -1316,7 +1316,7 @@ describe('live-browser source contracts', () => {
         baseURI: 'http://h/app/page',
         styleSheets: [
           { href: null, cssRules: [rule('@font-face { font-family: Root; src: url("/fonts/y.woff2") format("woff2"); }')] },
-          { href: 'http://h/css/a.css', cssRules: [rule('@font-face { font-family: A; src: url(../fonts/x.woff2); }')] },
+          { href: 'http://h/css/a.css', cssRules: [rule('@font-face { font-family: A; src: url(../fonts/x.woff2), url("../fonts/My Font.woff2"); }')] },
           { href: 'http://cdn/css/b.css', get cssRules() { throw new Error('cross-origin'); } },
         ],
       },
@@ -1328,9 +1328,9 @@ describe('live-browser source contracts', () => {
     };
     const css = await runInNewContext(`${fonts}\ncollectFontCssText();`, context);
     assert.deepEqual(fetched.filter((u) => u.endsWith('.woff2')).sort(), [
-      'http://cdn/css/fonts/z.woff2', 'http://h/fonts/x.woff2', 'http://h/fonts/y.woff2',
+      'http://cdn/css/fonts/z.woff2', 'http://h/fonts/My%20Font.woff2', 'http://h/fonts/x.woff2', 'http://h/fonts/y.woff2',
     ]);
-    assert.equal(css.split('data:font/woff2;base64,').length - 1, 3);
+    assert.equal(css.split('data:font/woff2;base64,').length - 1, 4);
   });
 
   it('never submits on the Enter that commits an IME candidate (#856)', () => {

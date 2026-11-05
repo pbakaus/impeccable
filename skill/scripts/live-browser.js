@@ -8730,8 +8730,8 @@
   }
   // CSSOM keeps url() as written, and a relative source can't load inside the rasterized SVG.
   function absolutizeUrls(cssText, base) {
-    return cssText.replace(/url\((['"]?)([^'")\s]+)\1\)/g, (orig, q, raw) => {
-      try { return 'url(' + q + new URL(raw, base).href + q + ')'; } catch { return orig; }
+    return cssText.replace(/url\((?:(['"])([^'"]*)\1|([^'")\s]+))\)/g, (orig, q = '', quoted, bare) => {
+      try { return 'url(' + q + new URL(quoted ?? bare, base).href + q + ')'; } catch { return orig; }
     });
   }
   async function inlineFontUrls(cssText) {
