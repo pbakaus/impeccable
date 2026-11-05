@@ -421,6 +421,20 @@ const cases = [
   // Control: the launcher-era manifest still counts as an active hook, so
   // MANUAL_DETECTOR_REQUIRED is suppressed exactly as before.
   { id: 'context-launcher-hook-active', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: '[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" ] || "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" hook' }] }] } }, null, 2) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  // A harness with a hook surface and no manifest in reach: CONTEXT_STALE
+  // carries `hook-not-installed` and the fixed doctor sentence, spelled with
+  // the provider's command prefix. The fix names `hooks on` because a project
+  // skill folder is there for it to install beside; without one it names
+  // `update` (doctor-hook-not-installed-json).
+  { id: 'context-hook-not-installed', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  { id: 'context-hook-not-installed-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.agents/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }), files: IMPECCABLE_FILES },
+  // A declined install prompt keeps it quiet (`hooks off` writes
+  // `hook.enabled: false`, covered by context-hook-at-enclosing-git-root-disabled).
+  { id: 'context-hook-not-installed-declined', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/config.local.json', JSON.stringify({ hook: { consent: 'declined' } }) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  // A plugin install resolves to the `source` provider, which has no hook
+  // surface: the plugin ships its own hooks, so there is nothing to install
+  // and no finding.
+  { id: 'context-hook-not-installed-plugin', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }), files: IMPECCABLE_FILES },
 
   // ======================================================================
   // doctor
@@ -497,6 +511,8 @@ const cases = [
   { id: 'doctor-codex-user-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, '.oracle-home/.codex'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
   { id: 'doctor-codex-home-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, 'codex-home'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex', CODEX_HOME: `${WS}/codex-home` }) },
   { id: 'doctor-hook-script-present', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] } }, null, 2) + '\n'); write(ws, '.claude/skills/impeccable/scripts/hook.mjs', '// present\n'); }, args: ['--json'], env: env() },
+  { id: 'doctor-hook-not-installed-text', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
+  { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
     setup: (ws) => {
