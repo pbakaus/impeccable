@@ -31,26 +31,36 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
 }
 
 /// The project skill folder `impeccable hooks on` needs before it writes this
-/// provider's manifest (`HOOK_MANIFEST_TARGETS` in `crates/hook/src/admin.rs`).
-/// `None`: that verb has no target for the provider.
+/// provider's manifest. `None`: that verb has no target for the provider.
 fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
-    match provider_id {
-        "claude-code" => Some(".claude/skills/impeccable"),
-        "codex" | "agents" => Some(".agents/skills/impeccable"),
-        "cursor" => Some(".cursor/skills/impeccable"),
-        "github" => Some(".github/skills/impeccable"),
-        "gemini" => Some(".gemini/skills/impeccable"),
-        _ => None,
+    let dir = match provider_id {
+        "claude-code" => ".claude",
+        "codex" | "agents" => ".agents",
+        "cursor" => ".cursor",
+        "github" => ".github",
+        "grok" => ".grok",
+        "gemini" => ".gemini",
+        _ => return None,
+    };
+    crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|target| target.provider == dir).map(|target| target.skill_rel)
+}
+
+/// Claude Code's active user configuration directory. An explicit account is
+/// exclusive; a relative CLAUDE_CONFIG_DIR is resolved against the caller.
+pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
+    match env_nonempty(env, "CLAUDE_CONFIG_DIR") {
+        Some(dir) => jsp::resolve(cwd, &[dir]),
+        None => jsp::join(&[&crate::util::homedir(env), ".claude"]),
     }
 }
 
 /// The user-level hook manifest this provider's harness loads:
-/// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
+/// Claude's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`); Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
-        "claude-code" => Some(jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"])),
+        "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
             None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),
@@ -257,15 +267,38 @@ fn append_subagent_authorization_directive(parts: &mut Parts) {
     ].join(" "));
 }
 
+fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
+    let provider_dir = match provider.id.as_str() {
+        "claude-code" => ".claude", "codex" | "agents" => ".agents",
+        "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
+    };
+    let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
+    let expected = (target.manifest)();
+    automatic_hook_mode(ctx, cwd, env, provider) != "none" &&
+        (hook_manifest_search_roots(ctx, cwd, env).iter().any(|root|
+            hook_enabled_at(root, env) && hook_manifests_for(&provider.id).iter().any(|rel|
+                crate::hook_wiring::manifest_is_wired(&jsp::join(&[root, rel]), &expected)))
+        || user_hook_manifest(&provider.id, cwd, env).is_some_and(|path|
+            crate::hook_wiring::manifest_is_wired(&path, &expected)))
+}
+
 fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) {
-    if automatic_hook_mode(ctx, cwd, env, provider) != "none" {
+    if current_hook_wiring(ctx, cwd, env, provider) {
         return;
     }
     if is_native(ctx.platform.as_deref()) {
         return;
     }
+    let manifests = match provider.id.as_str() {
+        "claude-code" | "codex" | "agents" | "cursor" | "grok" | "github" => hook_manifests_for(&provider.id),
+        _ => &[],
+    };
+    let wiring = if manifests.is_empty() { String::new() } else {
+        format!(" Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", manifests.join(" or "))
+    };
     parts.push([
-        "MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.".to_string(),
+        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
         format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
@@ -362,14 +395,19 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
         return vec![];
     }
     // `hooks on` writes a manifest only beside a skill folder in the directory
-    // it runs in, so a skill folder further up names that directory; a
-    // user-level skill gets its hook back from `update`.
+    // it runs in, so a skill folder further up the selected project's roots
+    // names that directory. With none, it wires a user-level Claude launcher
+    // from any directory; any other user-level skill gets its hook back from
+    // `update`.
     let abs_cwd = jsp::resolve(cwd, &[]);
     let skill_root = hooks_on_skill_folder(&provider.id)
-        .and_then(|rel| std::iter::once(&abs_cwd).chain(roots.iter()).find(|root| exists(&jsp::join(&[root, rel]))));
+        .and_then(|rel| roots.iter().find(|root| exists(&jsp::join(&[root, rel]))));
+    let user_launcher = provider.id == "claude-code"
+        && exists(&jsp::join(&[&claude_config_dir(cwd, env), "skills", "impeccable", "scripts", "impeccable"]));
     let install = match skill_root {
         Some(root) if *root == abs_cwd => "`impeccable hooks on` to install it".to_string(),
         Some(root) => format!("`impeccable hooks on` from `{}`, where the skill is installed, to install it", jsp::relative(&abs_cwd, &abs_cwd, root)),
+        None if user_launcher => "`impeccable hooks on` to install it".to_string(),
         None => "`impeccable update` to reinstall it".to_string(),
     };
     vec![finding(
@@ -748,6 +786,14 @@ fn load_native_platform_references(platform: Option<&str>, provider: &Provider) 
 // ─── cli ───────────────────────────────────────────────────────────────────
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_hook_repair(args, io, &mut |_| Ok(None))
+}
+
+/// The CLI supplies hook maintenance to avoid a context -> hook dependency cycle.
+pub fn run_with_hook_repair(
+    args: &[String], io: &mut Io,
+    repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
+) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -783,6 +829,19 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
+    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+        let mut notices = Vec::new();
+        for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
+            match repair(&root) {
+                Ok(Some(message)) => notices.push(message),
+                Err(error) => notices.push(format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.")),
+                _ => {}
+            }
+        }
+        if !notices.is_empty() {
+            io.out(&format!("{}\n", notices.join(" ")));
+        }
+    }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
     let cmd = &provider.command;
 
@@ -1457,12 +1516,14 @@ mod hook_not_installed_tests {
     }
 
     #[test]
-    fn names_hooks_on_only_beside_a_project_skill_folder() {
+    fn names_hooks_on_only_where_that_verb_installs() {
         for (provider, skill, hooks_on) in [
             ("claude-code", "project/.claude/skills/impeccable/SKILL.md", true),
             ("codex", "project/.agents/skills/impeccable/SKILL.md", true),
+            ("grok", "project/.grok/skills/impeccable/SKILL.md", true),
+            ("claude-code", "home/.claude/skills/impeccable/scripts/impeccable", true),
             ("claude-code", "home/.claude/skills/impeccable/SKILL.md", false),
-            ("grok", "project/.grok/skills/impeccable/SKILL.md", false),
+            ("codex", "home/.agents/skills/impeccable/scripts/impeccable", false),
         ] {
             let fixture = Fixture::new(provider);
             fixture.put(skill, "");
@@ -1483,6 +1544,22 @@ mod hook_not_installed_tests {
         let provider = crate::provider::detect(&fixture.env, &cwd);
         let fix = check_hook_not_installed(&ctx, &cwd, &fixture.env, &provider).remove(0).fix;
         assert!(fix.contains("`impeccable hooks on` from `..`, where the skill is installed"), "{fix}");
+    }
+
+    #[test]
+    fn a_skill_beside_the_caller_is_not_offered_for_another_target() {
+        let fixture = Fixture::new("claude-code");
+        fixture.put("project/.claude/skills/impeccable/SKILL.md", "");
+        fixture.put("other/.git/HEAD", "");
+        let options = TargetOptions { target_path: Some(fixture.root.join("other").to_string_lossy().into_owned()), ..Default::default() };
+        let fix = || {
+            let ctx = load_context(&fixture.project, &options, &fixture.env);
+            let provider = crate::provider::detect(&fixture.env, &fixture.project);
+            check_hook_not_installed(&ctx, &fixture.project, &fixture.env, &provider).remove(0).fix
+        };
+        assert!(fix().contains("`impeccable update`"), "{}", fix());
+        fixture.put("other/.claude/skills/impeccable/SKILL.md", "");
+        assert!(fix().contains("`impeccable hooks on` from `../other`, where the skill is installed"), "{}", fix());
     }
 
     #[test]
@@ -1542,5 +1619,22 @@ mod hook_not_installed_tests {
         let fixture = Fixture::new("claude-code");
         fixture.put("project/PRODUCT.md", "# App\n\n## Platform\n\nios\n");
         assert!(fixture.findings().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod wiring_fallback_tests {
+    #[test]
+    fn gemini_does_not_offer_to_repair_unsupported_detector_hooks() {
+        let mut parts = super::Parts::default();
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_PROVIDER_ID".to_string(), "gemini".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/missing-project");
+        let ctx = crate::context::load_context("/missing-project", &crate::target_args::TargetOptions::default(), &env);
+        super::append_detector_fallback(&mut parts, &ctx, "/missing-project", &env, &provider);
+        let output = parts.render();
+        assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
+        assert!(!output.contains("repair with impeccable hooks on"));
     }
 }

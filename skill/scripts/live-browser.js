@@ -3138,11 +3138,12 @@
   let paramsPanelBody = null;   // grid holding the knob cells
   let paramsCurrentValues = {}; // {paramId: value} - mirror of the visible variant's live values
   let tuneOpen = false;         // whether the Tune popover is open right now
-  // Tune values a saved session carried across a reload: {sessionId, variant,
-  // values}. Cycling refreshes of that session and variant restore them (a
-  // resume refreshes more than once); a refresh for any other variant, or a
-  // knob edit, drops them.
-  let restoredParamValues = null;
+  // Tune values to keep for one session and variant: {sessionId, variant,
+  // values}. A reload restores them from the saved session and every knob
+  // edit replaces them. Cycling refreshes of that session and variant keep
+  // them (a resume, or the last progressive variant landing, refreshes more
+  // than once); a refresh for any other variant drops them.
+  let keptParamValues = null;
 
   // Theme-aware Tune popover. Appears as a drawer that slides out from the
   // contextual bar's bar-facing edge (below if the bar sits below the
@@ -3284,21 +3285,21 @@
     if (!values || typeof values !== 'object' || Array.isArray(values)) return;
     if (Object.keys(values).length === 0) return;
     const variant = Number(saved.visible != null ? saved.visible : saved.visibleVariant) || 0;
-    restoredParamValues = { sessionId: saved.id || null, variant, values: { ...values } };
+    keptParamValues = { sessionId: saved.id || null, variant, values: { ...values } };
   }
 
-  function restoredParamValuesForVisibleVariant() {
-    const restored = restoredParamValues;
-    if (!restored) return null;
-    if (restored.sessionId === currentSessionId && restored.variant === visibleVariant) return restored.values;
-    restoredParamValues = null;
+  function keptParamValuesForVisibleVariant() {
+    const kept = keptParamValues;
+    if (!kept) return null;
+    if (kept.sessionId === currentSessionId && kept.variant === visibleVariant) return kept.values;
+    keptParamValues = null;
     return null;
   }
 
   // The local save is what a reload resumes from, so an edit is saved there
   // as well as checkpointed to the server.
   function noteParamEdited() {
-    restoredParamValues = null;
+    keptParamValues = { sessionId: currentSessionId, variant: visibleVariant, values: { ...paramsCurrentValues } };
     saveSession();
     queueCheckpoint('param_changed');
   }
@@ -4359,7 +4360,8 @@
     pendingTrashBtn.style.display = 'inline-flex';
     pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
-    if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
+    if (readStoredManualApplyState()?.phase === 'repair-decision') showManualApplyDecision();
+    else if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
     schedulePendingDockPosition();
     if (previousCount <= 0) playPendingIntroAnimation();
   }
@@ -5158,7 +5160,7 @@
   }
 
   // Build/rebuild the panel's contents for the current variant AND apply
-  // its defaults to the variant wrapper (so scoped CSS responds even before
+  // its values to the variant wrapper (so scoped CSS responds even before
   // the user opens the popover). Visibility is governed by tuneOpen.
   function refreshParamsPanel() {
     if (state !== 'CYCLING') {
@@ -5169,9 +5171,9 @@
     }
     const variantEl = getVisibleVariantEl();
     const params = parseVariantParams(variantEl);
-    // Values saved before a reload come back for the variant they were saved
-    // on; a switch to any other variant starts from its defaults.
-    const restored = restoredParamValuesForVisibleVariant();
+    // Values kept for this session and variant (restored by a reload, or the
+    // last knob edit) come back; any other variant starts from its defaults.
+    const kept = keptParamValuesForVisibleVariant();
     if (!variantEl || params.length === 0) {
       paramsCurrentValues = {};
       tuneOpen = false;
@@ -5180,7 +5182,7 @@
       return;
     }
     applyParamDefaults(variantEl, params);
-    if (restored) applySavedParamValues(variantEl, params, restored);
+    if (kept) applySavedParamValues(variantEl, params, kept);
     buildParamsPanel(variantEl, params);
     if (tuneOpen) {
       // If already visible (variant cycled while open), refresh in place
@@ -8728,6 +8730,12 @@
     }
     return btoa(binary);
   }
+  // CSSOM keeps url() as written, and a relative source can't load inside the rasterized SVG.
+  function absolutizeUrls(cssText, base) {
+    return cssText.replace(/url\((?:(['"])([^'"]*)\1|([^'")\s]+))\)/g, (orig, q = '', quoted, bare) => {
+      try { return 'url(' + q + new URL(quoted ?? bare, base).href + q + ')'; } catch { return orig; }
+    });
+  }
   async function inlineFontUrls(cssText) {
     const urlRe = /url\((['"]?)(https?:\/\/[^'")\s]+)\1\)/g;
     const urls = new Set();
@@ -8759,7 +8767,7 @@
         const rules = sheet.cssRules;
         for (const rule of rules) {
           if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
-            chunks.push(rule.cssText);
+            chunks.push(absolutizeUrls(rule.cssText, sheet.href || document.baseURI));
           }
         }
       } catch {
@@ -8769,7 +8777,7 @@
           if (!res.ok) continue;
           const text = await res.text();
           let m2;
-          while ((m2 = fontFaceRe.exec(text))) chunks.push(m2[0]);
+          while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], sheet.href));
         } catch { /* ignore; capture is best-effort */ }
       }
     }
