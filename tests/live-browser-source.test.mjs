@@ -1434,7 +1434,7 @@ function tuneHarness(params) {
   const body = node('div');
   const context = {
     state: 'CYCLING', paramsCurrentValues: {}, tuneOpen: false, currentSessionId: null,
-    visibleVariant: 1, restoredParamValues: null, rememberSessionFileMeta() {},
+    visibleVariant: 1, keptParamValues: null, rememberSessionFileMeta() {},
     paramsPanelBody: body, paramsPanelEl: node('div'), paramsPanelPalette: {},
     barEl: null, C: { brand: 'gold', ink: 'black' }, FONT: 'sans-serif', EASE: 'ease',
     document: { createElement: node }, el: (tag, style) => Object.assign(node(tag), { style }),
@@ -1444,7 +1444,7 @@ function tuneHarness(params) {
     saveSession() { context.savedParamValues = { ...context.paramsCurrentValues }; },
   };
   const names = [
-    'applyParamDefaults', 'rememberSavedParamValues', 'restoredParamValuesForVisibleVariant', 'noteParamEdited',
+    'applyParamDefaults', 'rememberSavedParamValues', 'keptParamValuesForVisibleVariant', 'noteParamEdited',
     'isValidSavedParamValue', 'applySavedParamValues', 'applySavedSessionMeta',
     'formatRangeValue', 'buildParamsPanel', 'openTunePopover', 'closeTunePopover', 'refreshParamsPanel',
   ];
@@ -1501,12 +1501,33 @@ describe('Tune reopening', () => {
     assert.equal(h.body.children[0].children[1].children[1].style.background, 'gold');
     const nextVariant = { values: {} };
     h.context.getVisibleVariantEl = () => nextVariant;
+    h.context.visibleVariant = 2;
     h.api.refreshParamsPanel();
     assert.equal(h.context.paramsCurrentValues.face, 'sans');
     assert.equal(nextVariant.values.face, 'sans');
   });
 });
 
+describe('Tune values across progressive arrival', () => {
+  it('keeps a knob edit when the remaining variants land (#1312)', () => {
+    const h = tuneHarness([{ id: 'size', kind: 'range', min: 0, max: 1, default: 0.4 }]);
+    h.context.currentSessionId = 's1';
+    // The first variant refreshes before the bar starts cycling.
+    h.context.state = 'GENERATING';
+    h.api.refreshParamsPanel();
+    h.context.state = 'CYCLING';
+    h.api.openTunePopover();
+    const input = h.body.children[0].children[1];
+    input.value = '0.8';
+    h.fire(input, 'input');
+    // The last variant landing refreshes twice.
+    h.api.refreshParamsPanel();
+    h.api.refreshParamsPanel();
+    assert.equal(h.context.paramsCurrentValues.size, 0.8);
+    assert.equal(h.variant.values.size, 0.8);
+    assert.equal(h.body.children[0].children[1].value, '0.8', 'slider agrees');
+  });
+});
 
 describe('Tune session boundaries', () => {
   it('clears old values when leaving the cycling state', () => {
@@ -1603,20 +1624,20 @@ describe('Tune values across a reload', () => {
     const defaults = { size: 0.4, italic: false, face: 'sans' };
     assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
     assert.deepEqual({ ...nextVariant.values }, defaults);
-    assert.equal(h.context.restoredParamValues, null);
+    assert.equal(h.context.keptParamValues, null);
     h.context.getVisibleVariantEl = () => h.variant;
     h.context.visibleVariant = 2;
     h.api.refreshParamsPanel();
     assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
   });
 
-  it('drops the stash once a knob is edited, so a later refresh does not revive it', () => {
+  it('replaces the stash with a knob edit, so a later refresh keeps the edit', () => {
     const h = resumed({ paramValues: { size: 0.8 } });
     h.api.refreshParamsPanel();
     h.api.openTunePopover();
     h.fire(h.body.children[1].children[1], 'click');
-    assert.equal(h.context.restoredParamValues, null);
-    assert.equal(h.context.paramsCurrentValues.italic, true);
+    h.api.refreshParamsPanel();
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, { size: 0.8, italic: true, face: 'sans' });
   });
 
   it('saves a knob edit locally, so the next reload restores it', () => {
@@ -1657,12 +1678,12 @@ describe('Tune values across a reload', () => {
   it('reads the variant from both the local and the server session shapes', () => {
     const h = tuneHarness(PARAMS);
     h.api.rememberSavedParamValues({ id: 's1', visibleVariant: 2, paramValues: { size: 0.2 } });
-    assert.deepEqual({ ...h.context.restoredParamValues, values: { ...h.context.restoredParamValues.values } },
+    assert.deepEqual({ ...h.context.keptParamValues, values: { ...h.context.keptParamValues.values } },
       { sessionId: 's1', variant: 2, values: { size: 0.2 } });
     h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: {} });
-    assert.equal(h.context.restoredParamValues.variant, 2, 'an empty save keeps the server values');
+    assert.equal(h.context.keptParamValues.variant, 2, 'an empty save keeps the server values');
     h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: { size: 0.3 } });
-    assert.equal(h.context.restoredParamValues.variant, 3);
+    assert.equal(h.context.keptParamValues.variant, 3);
   });
 });
 
