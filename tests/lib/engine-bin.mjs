@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { withoutProviderKeys } from './dev-keys.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -38,7 +39,8 @@ export const ENGINE_MISSING_MESSAGE =
 /** Environment the launcher would export for the binary when run from this repo's skill dir. */
 export function engineEnv(bin, extra = {}) {
   return {
-    ...process.env,
+    // Provider keys stay with the harness; a test that needs one passes it in extra.
+    ...withoutProviderKeys(process.env),
     IMPECCABLE_SKILL_DIR: path.join(REPO_ROOT, 'skill'),
     IMPECCABLE_SELF: bin,
     ...extra,

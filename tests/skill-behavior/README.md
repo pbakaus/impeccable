@@ -18,7 +18,7 @@ IMPECCABLE_SKILL_BEHAVIOR_MODELS=claude-sonnet-5 bun run test:skill-behavior   #
 IMPECCABLE_SKILL_BEHAVIOR_EFFORT=xhigh bun run test:skill-behavior             # OpenAI reasoning effort (default: high)
 ```
 
-Requires `.env` at repo root with at least one of `ANTHROPIC_API_KEY`,
+Requires `~/.config/impeccable/dev.env` (mode 0600) or the environment to hold at least one of `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `GOOGLE_CLOUD_API_KEY`, `DEEPSEEK_API_KEY`. Providers without a key are
 skipped, not failed.
 
