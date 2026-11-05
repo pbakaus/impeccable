@@ -4359,7 +4359,8 @@
     pendingTrashBtn.style.display = 'inline-flex';
     pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
-    if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
+    if (readStoredManualApplyState()?.phase === 'repair-decision') showManualApplyDecision();
+    else if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
     schedulePendingDockPosition();
     if (previousCount <= 0) playPendingIntroAnimation();
   }
