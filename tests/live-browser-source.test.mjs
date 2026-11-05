@@ -1184,6 +1184,40 @@ describe('live-browser source contracts', () => {
     );
   });
 
+  it('waits for compiled Svelte wrappers instead of fetching raw source (#1282)', () => {
+    const guardStart = SOURCE.indexOf('function isCompiledTemplateSourceFile(');
+    const guardEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', guardStart);
+    const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
+    const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
+    let sourceFetches = 0;
+    let adoptedWrapper = null;
+    let mountedWrapper = null;
+    const context = {
+      isSvelteComponentManifestPath: () => false,
+      rememberSessionFileMeta: () => {},
+      findVariantsWrapper: () => mountedWrapper,
+      completeSourceInjection: (wrapper) => { adoptedWrapper = wrapper; },
+      PORT: 7331,
+      TOKEN: 'test-token',
+      fetch: () => {
+        sourceFetches++;
+        return { then() { return this; }, catch() { return this; } };
+      },
+    };
+    const functions = SOURCE.slice(guardStart, guardEnd) + SOURCE.slice(injectStart, injectEnd);
+    runInNewContext(functions + "\ninjectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(sourceFetches, 0, 'an unmounted Svelte wrapper must wait for HMR');
+    assert.equal(adoptedWrapper, null);
+
+    mountedWrapper = { querySelector: () => ({}) };
+    runInNewContext("injectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(adoptedWrapper, mountedWrapper, 'adopt the framework-rendered wrapper once mounted');
+    assert.equal(sourceFetches, 0);
+
+    runInNewContext("injectVariantsFromSource('index.html', 'session');", context);
+    assert.equal(sourceFetches, 1, 'plain HTML keeps its source fallback');
+  });
+
   it('self-discards a JSX session whose wrapper left the source file (#439)', () => {
     const probeStart = SOURCE.indexOf('function probeJsxWrapperForOrphan(');
     assert.ok(probeStart !== -1, 'the JSX orphan probe must exist');
