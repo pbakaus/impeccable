@@ -362,7 +362,7 @@ fn target_is_wired(rt: &Runtime, cwd: &str, target: &impeccable_context::hook_wi
     };
     manifest_is_wired(&jsp::join(&[cwd, target.dest_rel]), &fresh)
         || target.shared_dest_rel.is_some_and(|rel| manifest_is_wired(&jsp::join(&[cwd, rel]), &fresh))
-        || impeccable_context::context_cli::user_hook_manifest(provider_id, cwd, &rt.env)
+        || impeccable_context::context_cli::user_hook_manifest(provider_id, &rt.proc_cwd, &rt.env)
             .is_some_and(|path| manifest_is_wired(&path, &fresh))
 }
 
@@ -519,7 +519,7 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
             "Hook manifests already installed for: {}.",
             repaired.already.join(", ")
         ));
-    } else {
+    } else if repaired.skipped.is_empty() {
         parts.push("No installed provider skill folders found to repair.".to_string());
     }
     if !repaired.skipped.is_empty() {
@@ -537,6 +537,14 @@ fn set_enabled(rt: &Runtime, cwd: &str, value: bool) -> Result<String, String> {
         parts.push(format!(
             "Backed up malformed manifest(s): {}.",
             names.join(", ")
+        ));
+    }
+    if !HOOK_MANIFEST_TARGETS.iter().any(|target| target.provider != ".gemini" && target_is_wired(rt, cwd, target)) {
+        let user_dir = impeccable_context::context_cli::claude_config_dir(&rt.proc_cwd, &rt.env);
+        parts.push(format!(
+            "No design harness is wired. Checked Claude Code project skill {} and user launcher {}. Install the skill for your harness or fix the skipped settings, then run impeccable hooks on.",
+            jsp::join(&[cwd, ".claude/skills/impeccable"]),
+            jsp::join(&[&user_dir, "skills/impeccable/scripts/impeccable"]),
         ));
     }
     Ok(parts.join(" "))
@@ -568,7 +576,12 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
         }
         let shared_dest = target.shared_dest_rel.map(|s| jsp::join(&[cwd, s]));
         let project_skill = jsp::join(&[cwd, target.skill_rel]);
-        let user_skill = jsp::join(&[&rt.homedir(), target.skill_rel]);
+        let user_claude_dir = impeccable_context::context_cli::claude_config_dir(&rt.proc_cwd, &rt.env);
+        let user_skill = if target.provider == ".claude" {
+            jsp::join(&[&user_claude_dir, "skills", "impeccable"])
+        } else {
+            jsp::join(&[&rt.homedir(), target.skill_rel])
+        };
         let (skill_root, user_scoped) = if exists(&project_skill) {
             (project_skill, false)
         } else if target.provider == ".claude"
@@ -586,7 +599,7 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
         let mut prune_after: Option<String> = None;
         if user_scoped {
             // A user-scope skill gets its hook where a user-scope install
-            // writes it: `~/.claude/settings.json`, with the absolute launcher.
+            // writes it: the active Claude config dir, with the absolute launcher.
             // In the project only the gitignored `settings.local.json` loses
             // its Impeccable entries, and only after the user hook is written
             // or already present: an unreadable user file is skipped, and the
@@ -594,7 +607,7 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
             // `settings.json` belongs to the team and is never rewritten with
             // a home path.
             prune_after = Some(dest.clone());
-            dest = jsp::join(&[&rt.homedir(), ".claude", "settings.json"]);
+            dest = jsp::join(&[&user_claude_dir, "settings.json"]);
             user_settings = true;
         } else if let Some(sd) = &shared_dest {
             if manifest_is_wired(sd, &(target.manifest)()) {

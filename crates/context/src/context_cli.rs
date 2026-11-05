@@ -30,13 +30,22 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     }
 }
 
+/// Claude Code's active user configuration directory. An explicit account is
+/// exclusive; a relative CLAUDE_CONFIG_DIR is resolved against the caller.
+pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
+    match env_nonempty(env, "CLAUDE_CONFIG_DIR") {
+        Some(dir) => jsp::resolve(cwd, &[dir]),
+        None => jsp::join(&[&crate::util::homedir(env), ".claude"]),
+    }
+}
+
 /// The user-level hook manifest this provider's harness loads:
-/// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
+/// Claude's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`); Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
-        "claude-code" => Some(jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"])),
+        "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
             None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),

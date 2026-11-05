@@ -3807,3 +3807,79 @@ fn context_repairs_consented_manifest_at_the_enclosing_repository_root() {
     assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
     assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
 }
+
+#[test]
+fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
+    for relative in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write(".impeccable/config.json", r#"{"updateCheck":false}"#);
+        let home = t.0.join("home");
+        let account = t.0.join("alternate account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+        std::fs::write(account.join("settings.json"), r#"{"permissions":{"allow":["Bash(ls)"]}}"#).unwrap();
+        let home_text = home.to_string_lossy().into_owned();
+        let account_text = if relative { "alternate account".to_string() } else { account.to_string_lossy().into_owned() };
+        let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, err, code) = admin_run(&r, &["on"]);
+        assert_eq!(code, 0, "{err}");
+        assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
+        let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
+        let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+        assert!(!home.join(".claude/settings.json").exists());
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("wiring .claude: wired"), "{status}");
+        let mut context_env = r.env.clone();
+        context_env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), context_env);
+        impeccable_hook::run_context(&[], &mut io);
+        let output = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        assert!(!output.contains("MANUAL_DETECTOR_REQUIRED"), "{output}");
+    }
+}
+
+#[test]
+fn hooks_on_explains_unwired_account_and_never_uses_another_accounts_skill() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let account = t.0.join("other-account");
+    let home_text = home.to_string_lossy().into_owned();
+    let account_text = account.to_string_lossy().into_owned();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+    let (out, _, _) = admin_run(&r, &["on"]);
+    assert!(out.contains("No design harness is wired"), "{out}");
+    assert!(out.contains(&account_text), "{out}");
+    assert!(!home.join(".claude/settings.json").exists());
+    assert!(!account.join("settings.json").exists());
+}
+
+#[test]
+fn hooks_on_explains_missing_launcher_and_unwritable_account_settings() {
+    for malformed in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let account = t.0.join("claude-account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        if malformed {
+            std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+            std::fs::write(account.join("settings.json"), "{broken").unwrap();
+        }
+        let account_text = account.to_string_lossy().into_owned();
+        let r = rt_with(&cwd, env(&[("HOME", &cwd), ("USERPROFILE", &cwd), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        if malformed {
+            assert!(out.contains("not valid JSON"), "{out}");
+            assert!(!out.contains("No installed provider skill folders found"), "{out}");
+            assert_eq!(std::fs::read_to_string(account.join("settings.json")).unwrap(), "{broken");
+        } else {
+            assert!(out.contains(account.join("skills/impeccable/scripts/impeccable").to_str().unwrap()), "{out}");
+        }
+    }
+}
