@@ -30,6 +30,20 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     }
 }
 
+/// The project skill folder `impeccable hooks on` needs before it writes this
+/// provider's manifest (`HOOK_MANIFEST_TARGETS` in `crates/hook/src/admin.rs`).
+/// `None`: that verb has no target for the provider.
+fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
+    match provider_id {
+        "claude-code" => Some(".claude/skills/impeccable"),
+        "codex" | "agents" => Some(".agents/skills/impeccable"),
+        "cursor" => Some(".cursor/skills/impeccable"),
+        "github" => Some(".github/skills/impeccable"),
+        "gemini" => Some(".gemini/skills/impeccable"),
+        _ => None,
+    }
+}
+
 /// The user-level hook manifest this provider's harness loads:
 /// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
@@ -333,27 +347,31 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
     if !hook_enabled_at(&active_root, env) || hook_consent_declined_at(&active_root) {
         return vec![];
     }
-    let mut paths: Vec<String> = hook_manifest_search_roots(ctx, cwd, env)
-        .iter()
-        .flat_map(|root| manifests.iter().map(move |rel| jsp::join(&[root, rel])))
-        .collect();
+    let roots = hook_manifest_search_roots(ctx, cwd, env);
+    let mut paths: Vec<String> = roots.iter().flat_map(|root| manifests.iter().map(move |rel| jsp::join(&[root, rel]))).collect();
     paths.extend(user_hook_manifest(&provider.id, cwd, env));
     let installed = paths.iter().any(|p| {
-        read_json(p)
-            .and_then(|raw| raw.get("hooks").cloned())
+        // Gemini's settings file may carry comments, and `hooks on` reads it the same way.
+        safe_read(p)
+            .and_then(|text| crate::hook_markers::parse_manifest_jsonc(&text))
+            .and_then(|(raw, _)| raw.get("hooks").cloned())
             .map(|hooks| crate::staleness::js_truthy(&hooks) && crate::hook_markers::value_has_impeccable_hook_marker(&hooks))
             .unwrap_or(false)
     });
     if installed {
         return vec![];
     }
+    // `hooks on` writes a manifest only beside a project skill folder; a
+    // user-level skill gets its hook back from `update`.
+    let hooks_on_installs = hooks_on_skill_folder(&provider.id).is_some_and(|rel| roots.iter().any(|root| exists(&jsp::join(&[root, rel]))));
+    let install = if hooks_on_installs { "`impeccable hooks on` to install it" } else { "`impeccable update` to reinstall it" };
     vec![finding(
         "hook-not-installed",
         "hook manifest",
         Some(manifests[0].to_string()),
         "route",
         "No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.".to_string(),
-        "Run `impeccable hooks on` to install it, or `impeccable hooks off` to keep it off and stop this finding.".to_string(),
+        format!("Run {install}, or `impeccable hooks off` to keep it off and stop this finding."),
     )]
 }
 
@@ -1424,7 +1442,30 @@ mod hook_not_installed_tests {
         assert_eq!(found[0].id, "hook-not-installed");
         assert_eq!(found[0].severity, "route");
         assert_eq!(found[0].path.as_deref(), Some(".claude/settings.local.json"));
-        assert!(found[0].fix.contains("`impeccable hooks on`"));
+        assert!(found[0].fix.contains("`impeccable update`"), "{}", found[0].fix);
+    }
+
+    #[test]
+    fn names_hooks_on_only_beside_a_project_skill_folder() {
+        for (provider, skill, hooks_on) in [
+            ("claude-code", "project/.claude/skills/impeccable/SKILL.md", true),
+            ("codex", "project/.agents/skills/impeccable/SKILL.md", true),
+            ("claude-code", "home/.claude/skills/impeccable/SKILL.md", false),
+            ("grok", "project/.grok/skills/impeccable/SKILL.md", false),
+        ] {
+            let fixture = Fixture::new(provider);
+            fixture.put(skill, "");
+            let fix = fixture.findings().remove(0).fix;
+            assert_eq!(fix.contains("`impeccable hooks on`"), hooks_on, "{provider} {skill}: {fix}");
+            assert_eq!(fix.contains("`impeccable update`"), !hooks_on, "{provider} {skill}: {fix}");
+        }
+    }
+
+    #[test]
+    fn a_commented_manifest_still_counts_as_installed() {
+        let fixture = Fixture::new("gemini");
+        fixture.put("project/.gemini/settings.json", &format!("// my settings\n{LAUNCHER_HOOK}"));
+        assert!(fixture.findings().is_empty());
     }
 
     #[test]
