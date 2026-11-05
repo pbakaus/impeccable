@@ -180,7 +180,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function setPendingApplyLoading\(loading, count\)[\s\S]*?pendingPillSpinnerEl\.style\.display = pendingApplyInFlight \? 'inline-block' : 'none';[\s\S]*?pendingPillEl\.disabled = pendingApplyInFlight;[\s\S]*?pendingTrashBtn\.disabled = pendingApplyInFlight;[\s\S]*?schedulePendingDockPosition\(\);[\s\S]*?\n  \}/,
+      /function renderPendingDockControls\(mode, count\)[\s\S]*?pendingPillSpinnerEl\.style\.display = applying \? 'inline-block' : 'none';[\s\S]*?pendingPillEl\.disabled = !normal;[\s\S]*?pendingTrashBtn\.disabled = !normal;[\s\S]*?function setPendingApplyLoading\(loading, count\)[\s\S]*?renderPendingDockControls\(pendingApplyInFlight \? 'applying' : 'normal', currentCount\);[\s\S]*?schedulePendingDockPosition\(\);/,
       'Apply copy edits should show a loading state and prevent double apply/discard while the AI batch runs',
     );
     assert.match(
@@ -1732,15 +1732,17 @@ function pendingDockHarness(storage) {
     pendingDockEl: node(), pendingPillEl: node(), pendingPillLabelEl: node(), pendingPillCountEl: node(),
     pendingPillSpinnerEl: node(), pendingTrashBtn: node(), pendingKeepFixingBtn: node(), pendingRollbackBtn: node(),
     pendingApplyLabel: count => (count === 1 ? 'Apply edit' : 'Apply edits'),
-    schedulePendingDockPosition() {}, refreshLiveControlsForManualApply() {}, playPendingIntroAnimation() {},
+    retryDeclinedAgentTargets() {}, schedulePendingDockPosition() {}, refreshLiveControlsForManualApply() {}, playPendingIntroAnimation() {},
+    fetchPendingCount() {},
   };
   const names = [
-    'manualApplyStateKey', 'readStoredManualApplyState', 'writeManualApplyState', 'storeManualApplyState',
+    'manualApplyStateKey', 'readStoredManualApplyState', 'writeManualApplyState', 'storeManualApplyState', 'clearStoredManualApplyState',
     'shouldResumeManualApplyLoading', 'manualApplyLoadingText',
-    'setPendingApplyLoading', 'showManualApplyDecision', 'updatePendingCounter', 'numberOrNull',
+    'renderPendingDockControls', 'setPendingApplyLoading', 'showManualApplyDecision', 'updatePendingCounter', 'numberOrNull',
+    'manualEditEventForCurrentPage', 'handleManualEditActivity',
   ];
   const functions = overlayFunctions(names);
-  const api = runInNewContext(`${functions}\n({showManualApplyDecision, storeManualApplyState, updatePendingCounter})`, context);
+  const api = runInNewContext(`${functions}\n({showManualApplyDecision, storeManualApplyState, updatePendingCounter, handleManualEditActivity})`, context);
   return { api, context };
 }
 
@@ -1765,5 +1767,41 @@ describe('Pending dock after a reload', () => {
     assert.equal(context.pendingPillSpinnerEl.style.display, 'inline-block');
     assert.equal(context.pendingKeepFixingBtn.style.display, 'none');
     assert.equal(context.pendingRollbackBtn.style.display, 'none');
+  });
+});
+
+describe('Pending dock after Rollback', () => {
+  const decisionThenRollback = () => {
+    const { api, context } = pendingDockHarness(new Map());
+    api.updatePendingCounter(1);
+    api.showManualApplyDecision({ remainingCount: 1, repair: { attempts: 3, maxAttempts: 3 } });
+    return { api, context };
+  };
+  const assertNormalDock = context => {
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'none');
+    assert.equal(context.pendingRollbackBtn.style.display, 'none');
+    assert.equal(context.pendingPillEl.disabled, false);
+    assert.equal(context.pendingPillCountEl.style.display, 'inline-flex');
+    assert.equal(context.pendingTrashBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingTrashBtn.disabled, false);
+  };
+
+  it('returns to the normal enabled Apply and Discard when the rollback event arrives (#1322)', () => {
+    const { api, context } = decisionThenRollback();
+    api.handleManualEditActivity({ type: 'manual_edit_repair_rollback_done', pageUrl: '/' });
+    api.updatePendingCounter(1);
+    assertNormalDock(context);
+  });
+
+  it('returns to the normal enabled Apply and Discard from the Rollback click (#1322)', async () => {
+    const { context } = decisionThenRollback();
+    Object.assign(context, {
+      confirm: () => true,
+      fetch: async () => ({ ok: true, json: async () => ({ remainingCount: 1 }) }),
+      showToast() {},
+    });
+    const click = runInNewContext(`${SOURCE.match(/async function onPendingRollbackClick\(\) \{[\s\S]*?\n  \}/)[0]}\nonPendingRollbackClick`, context);
+    await click();
+    assertNormalDock(context);
   });
 });
