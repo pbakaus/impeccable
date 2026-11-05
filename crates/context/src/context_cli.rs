@@ -361,10 +361,17 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
     if installed {
         return vec![];
     }
-    // `hooks on` writes a manifest only beside a project skill folder; a
+    // `hooks on` writes a manifest only beside a skill folder in the directory
+    // it runs in, so a skill folder further up names that directory; a
     // user-level skill gets its hook back from `update`.
-    let hooks_on_installs = hooks_on_skill_folder(&provider.id).is_some_and(|rel| roots.iter().any(|root| exists(&jsp::join(&[root, rel]))));
-    let install = if hooks_on_installs { "`impeccable hooks on` to install it" } else { "`impeccable update` to reinstall it" };
+    let abs_cwd = jsp::resolve(cwd, &[]);
+    let skill_root = hooks_on_skill_folder(&provider.id)
+        .and_then(|rel| std::iter::once(&abs_cwd).chain(roots.iter()).find(|root| exists(&jsp::join(&[root, rel]))));
+    let install = match skill_root {
+        Some(root) if *root == abs_cwd => "`impeccable hooks on` to install it".to_string(),
+        Some(root) => format!("`impeccable hooks on` from `{}`, where the skill is installed, to install it", jsp::relative(&abs_cwd, &abs_cwd, root)),
+        None => "`impeccable update` to reinstall it".to_string(),
+    };
     vec![finding(
         "hook-not-installed",
         "hook manifest",
@@ -1398,11 +1405,15 @@ mod hook_not_installed_tests {
 
     impl Fixture {
         fn new(provider: &str) -> Self {
+            // A counter, not the clock: tests run in parallel and two that
+            // start in the same tick would share a root.
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
             let root = std::env::temp_dir().join(format!(
                 "impeccable-hook-not-installed-{}-{}",
                 std::process::id(),
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));
+            let _ = std::fs::remove_dir_all(&root);
             let project = root.join("project");
             let home = root.join("home");
             std::fs::create_dir_all(project.join(".git")).unwrap();
@@ -1459,6 +1470,19 @@ mod hook_not_installed_tests {
             assert_eq!(fix.contains("`impeccable hooks on`"), hooks_on, "{provider} {skill}: {fix}");
             assert_eq!(fix.contains("`impeccable update`"), !hooks_on, "{provider} {skill}: {fix}");
         }
+    }
+
+    #[test]
+    fn names_the_folder_to_run_hooks_on_from_when_the_skill_sits_above_cwd() {
+        let fixture = Fixture::new("claude-code");
+        fixture.put("project/.claude/skills/impeccable/SKILL.md", "");
+        let nested = fixture.root.join("project").join("web");
+        std::fs::create_dir_all(&nested).unwrap();
+        let cwd = nested.to_string_lossy().into_owned();
+        let ctx = load_context(&cwd, &TargetOptions::default(), &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, &cwd);
+        let fix = check_hook_not_installed(&ctx, &cwd, &fixture.env, &provider).remove(0).fix;
+        assert!(fix.contains("`impeccable hooks on` from `..`, where the skill is installed"), "{fix}");
     }
 
     #[test]
