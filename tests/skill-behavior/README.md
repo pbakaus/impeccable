@@ -110,6 +110,47 @@ What the measurement found:
 - Gemini's misses mostly go to the frontend-dev neighbour, so results depend
   on the roster. The roster is a guess at a typical install, not a measurement.
 
+### Claude Code's listing budget (2026-11-05, Claude Code 2.1.281)
+
+Claude Code caps the skill listing at 1% of the model's context window in
+characters (`skillListingBudgetFraction`): 6,000 on a 200k model at 3 bytes per
+token, 30,000 on a 1M model. When the listing is over budget:
+- bundled skills keep their descriptions;
+- other skills are ranked by the user's own usage of them, and each keeps its
+  full description only if it fits in the space left. Otherwise it is listed by
+  name alone.
+
+A fresh interactive session already lists 14 bundled skills. With the shared
+description the listing came to 6,502 characters against 6,000, so the model
+saw `- impeccable` alone. That happened in a clean container and on macOS, for a
+hand-configured user and for the evals harness alike (the evals repo's capture
+diff). `-p` (print mode) lists fewer bundled skills and stays under budget.
+
+Measured by shortening the description in that session: up to about 220
+characters survives, and 225 does not. Only the Claude Code build (the `.claude`
+dist, and the plugin copied from it) gets its own description, from
+`claude-code-description` in SKILL.src.md. It is 188 characters. The build fails
+above 200 (`validateClaudeCodeDescription`). Every other provider keeps the
+shared description, because none of them has this budget.
+
+Why not shorten the shared one? On 2026-11-05 we compared the shared description
+(`current`), the 188-character text (`claude-code`), and the bare name Claude Code
+falls back to (`bare`). Three samples:
+
+| Model | current | claude-code | bare |
+|---|---|---|---|
+| Sonnet | 58/102 (57%), document 13/15 | 51/102 (50%), document 10/15 | 0/102, document 0/15 |
+| Gemini | 88/102 (86%), document 15/15 | 66/102 (65%), document 9/15 | 34/102 (33%), document 0/15 |
+
+False positives were 0/60 in every row. Shortening the shared text would cost
+Gemini 22 runs for nothing. On Claude Code the alternative was the bare name,
+which scores 0/102 on Sonnet.
+
+```bash
+ACTIVATION_VARIANTS=current,claude-code,bare ACTIVATION_SAMPLES=3 \
+  node tests/skill-behavior/activation.eval.mjs
+```
+
 This is a simulated harness, not Claude Code itself, and neither model is the
 Haiku that #744 measured. Treat it as a regression gate and a way to compare
 drafts, not as a prediction of production activation rates.
