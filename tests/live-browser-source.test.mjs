@@ -1411,6 +1411,15 @@ describe('live-browser source contracts', () => {
   });
 });
 
+// The named top-level overlay functions, verbatim, for a vm harness to run.
+function overlayFunctions(names) {
+  return names.map(name => {
+    const source = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+    assert.ok(source, name);
+    return source;
+  }).join('\n');
+}
+
 // Exercise Tune's real control listeners and open/close lifecycle without a server.
 function tuneHarness(params) {
   function node(tag) {
@@ -1439,11 +1448,7 @@ function tuneHarness(params) {
     'isValidSavedParamValue', 'applySavedParamValues', 'applySavedSessionMeta',
     'formatRangeValue', 'buildParamsPanel', 'openTunePopover', 'closeTunePopover', 'refreshParamsPanel',
   ];
-  const functions = names.map(name => {
-    const source = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
-    assert.ok(source, name);
-    return source;
-  }).join('\n');
+  const functions = overlayFunctions(names);
   const api = runInNewContext(`${functions}\n({refreshParamsPanel, openTunePopover, closeTunePopover, applySavedSessionMeta, rememberSavedParamValues})`, context);
   const fire = (control, event) => control.listeners[event]({ stopPropagation() {} });
   return { api, context, variant, body, fire };
@@ -1658,5 +1663,56 @@ describe('Tune values across a reload', () => {
     assert.equal(h.context.restoredParamValues.variant, 2, 'an empty save keeps the server values');
     h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: { size: 0.3 } });
     assert.equal(h.context.restoredParamValues.variant, 3);
+  });
+});
+
+// One page load of the overlay's pending dock; the shared Map stands in for sessionStorage across reloads.
+function pendingDockHarness(storage) {
+  const node = () => ({ style: {}, dataset: {}, setAttribute() {}, textContent: '' });
+  const context = {
+    PREFIX: 'impeccable-live', PORT: 8400, TOKEN: 'tok', MANUAL_APPLY_STATE_TTL_MS: 15 * 60 * 1000,
+    location: { pathname: '/' },
+    sessionStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key),
+    },
+    pendingApplyInFlight: false,
+    pendingDockEl: node(), pendingPillEl: node(), pendingPillLabelEl: node(), pendingPillCountEl: node(),
+    pendingPillSpinnerEl: node(), pendingTrashBtn: node(), pendingKeepFixingBtn: node(), pendingRollbackBtn: node(),
+    pendingApplyLabel: count => (count === 1 ? 'Apply edit' : 'Apply edits'),
+    schedulePendingDockPosition() {}, refreshLiveControlsForManualApply() {}, playPendingIntroAnimation() {},
+  };
+  const names = [
+    'manualApplyStateKey', 'readStoredManualApplyState', 'writeManualApplyState', 'storeManualApplyState',
+    'shouldResumeManualApplyLoading', 'manualApplyLoadingText',
+    'setPendingApplyLoading', 'showManualApplyDecision', 'updatePendingCounter', 'numberOrNull',
+  ];
+  const functions = overlayFunctions(names);
+  const api = runInNewContext(`${functions}\n({showManualApplyDecision, storeManualApplyState, updatePendingCounter})`, context);
+  return { api, context };
+}
+
+describe('Pending dock after a reload', () => {
+  it('shows the repair decision again instead of an endless spinner (#1311)', () => {
+    const storage = new Map();
+    pendingDockHarness(storage).api.showManualApplyDecision({ remainingCount: 2, repair: { attempts: 3, maxAttempts: 3 } });
+    const { api, context } = pendingDockHarness(storage);
+    api.updatePendingCounter(2);
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingRollbackBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingPillSpinnerEl.style.display, 'none');
+    assert.equal(context.pendingApplyInFlight, false);
+  });
+
+  it('still resumes the loading state for a repair that is running (#1311)', () => {
+    const storage = new Map();
+    pendingDockHarness(storage).api.storeManualApplyState(2, { phase: 'repairing', repairAttempt: 1, repairMaxAttempts: 3 });
+    const { api, context } = pendingDockHarness(storage);
+    api.updatePendingCounter(2);
+    assert.equal(context.pendingApplyInFlight, true);
+    assert.equal(context.pendingPillSpinnerEl.style.display, 'inline-block');
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'none');
+    assert.equal(context.pendingRollbackBtn.style.display, 'none');
   });
 });
