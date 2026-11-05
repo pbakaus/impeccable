@@ -3883,3 +3883,35 @@ fn hooks_on_explains_missing_launcher_and_unwritable_account_settings() {
         }
     }
 }
+
+#[test]
+fn status_and_on_recognize_enabled_hermes_plugins() {
+    for name in [".hermes", "custom-hermes"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let home = t.0.join("home").to_string_lossy().into_owned();
+        let hermes_home = t.0.join("home").join(name).to_string_lossy().into_owned();
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/plugin.yaml"), "name: impeccable-design-hook\n");
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/__init__.py"), "");
+        let config = format!("home/{name}/config.yaml");
+        t.write(&config, "plugins:\n  enabled: [impeccable-design-hook]\n  disabled: []\n");
+        let mut environment = env(&[("HOME", &home), ("USERPROFILE", &home)]);
+        if name != ".hermes" {
+            environment.insert("HERMES_HOME".into(), hermes_home);
+        }
+        let r = rt_with(&cwd, environment);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(!status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(!out.contains("No design harness is wired"), "{out}");
+        assert!(out.contains("Hermes design hook plugin is already enabled"), "{out}");
+        assert!(!out.contains("No installed provider skill folders"), "{out}");
+        let disabled = "plugins:\n  enabled: []\n  disabled: [impeccable-design-hook]\n";
+        t.write(&config, disabled);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        assert_eq!(t.read(&config), disabled);
+    }
+}
