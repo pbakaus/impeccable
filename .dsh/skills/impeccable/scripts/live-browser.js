@@ -4289,32 +4289,46 @@
     retryDeclinedAgentTargets();
     clearStoredManualApplyState();
     if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
+    renderPendingDockControls('normal', 0);
     if (pendingDockEl) pendingDockEl.style.display = 'none';
     if (pendingPillEl) {
       pendingPillEl.dataset.count = '0';
       pendingPillEl.style.display = 'none';
-      pendingPillEl.disabled = false;
-      pendingPillEl.setAttribute('aria-busy', 'false');
       pendingPillEl.setAttribute('aria-label', 'Apply edits to source');
-      pendingPillEl.style.cursor = 'pointer';
-      pendingPillEl.style.filter = 'none';
+    }
+    if (pendingPillCountEl) pendingPillCountEl.textContent = '0';
+    if (pendingTrashBtn) pendingTrashBtn.style.display = 'none';
+    refreshLiveControlsForManualApply();
+  }
+
+  // Sets every control the dock's modes differ in, so leaving a mode can never
+  // leave its controls behind. 'normal': Apply and Discard enabled.
+  // 'applying': a spinner, both disabled. 'decision': Keep fixing and Rollback.
+  function renderPendingDockControls(mode, count) {
+    const applying = mode === 'applying';
+    const decision = mode === 'decision';
+    const normal = !applying && !decision;
+    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = applying ? 'inline-block' : 'none';
+    if (pendingPillLabelEl) {
+      pendingPillLabelEl.textContent = decision ? 'Apply needs attention'
+        : applying ? manualApplyLoadingText(count) : pendingApplyLabel(count);
+    }
+    if (pendingPillCountEl) pendingPillCountEl.style.display = normal ? 'inline-flex' : 'none';
+    if (pendingPillEl) {
+      pendingPillEl.disabled = !normal;
+      pendingPillEl.setAttribute('aria-busy', applying ? 'true' : 'false');
+      pendingPillEl.style.cursor = applying ? 'wait' : decision ? 'default' : 'pointer';
+      pendingPillEl.style.filter = applying ? 'brightness(0.98)' : 'none';
       pendingPillEl.style.transform = 'scale(1)';
     }
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
-    if (pendingPillLabelEl) pendingPillLabelEl.textContent = pendingApplyLabel(0);
-    if (pendingPillCountEl) {
-      pendingPillCountEl.textContent = '0';
-      pendingPillCountEl.style.display = 'inline-flex';
-    }
     if (pendingTrashBtn) {
-      pendingTrashBtn.style.display = 'none';
-      pendingTrashBtn.disabled = false;
-      pendingTrashBtn.style.cursor = 'pointer';
-      pendingTrashBtn.style.opacity = '1';
+      pendingTrashBtn.style.display = decision ? 'none' : 'inline-flex';
+      pendingTrashBtn.disabled = !normal;
+      pendingTrashBtn.style.cursor = normal ? 'pointer' : 'not-allowed';
+      pendingTrashBtn.style.opacity = normal ? '1' : '0.58';
     }
-    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-    refreshLiveControlsForManualApply();
+    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = decision ? 'inline-flex' : 'none';
+    if (pendingRollbackBtn) pendingRollbackBtn.style.display = decision ? 'inline-flex' : 'none';
   }
 
   function setPendingApplyLoading(loading, count) {
@@ -4324,24 +4338,7 @@
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingApplyInFlight) storeManualApplyState(currentCount);
     else clearStoredManualApplyState();
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
-    pendingPillLabelEl.textContent = pendingApplyInFlight
-      ? manualApplyLoadingText(currentCount)
-      : pendingApplyLabel(currentCount);
-    pendingPillCountEl.style.display = pendingApplyInFlight ? 'none' : 'inline-flex';
-    pendingPillEl.disabled = pendingApplyInFlight;
-    pendingPillEl.setAttribute('aria-busy', pendingApplyInFlight ? 'true' : 'false');
-    pendingPillEl.style.cursor = pendingApplyInFlight ? 'wait' : 'pointer';
-    pendingPillEl.style.filter = pendingApplyInFlight ? 'brightness(0.98)' : 'none';
-    pendingPillEl.style.transform = 'scale(1)';
-    pendingTrashBtn.disabled = pendingApplyInFlight;
-    pendingTrashBtn.style.cursor = pendingApplyInFlight ? 'not-allowed' : 'pointer';
-    pendingTrashBtn.style.opacity = pendingApplyInFlight ? '0.58' : '1';
-    if (pendingApplyInFlight) {
-      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-      pendingTrashBtn.style.display = 'inline-flex';
-    }
+    renderPendingDockControls(pendingApplyInFlight ? 'applying' : 'normal', currentCount);
     schedulePendingDockPosition();
     refreshLiveControlsForManualApply();
   }
@@ -4465,18 +4462,8 @@
       repairAttempt: numberOrNull(msg?.repair?.attempts) || numberOrNull(msg?.repair?.attempt) || 3,
       repairMaxAttempts: numberOrNull(msg?.repair?.maxAttempts) || 3,
     });
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
-    if (pendingPillLabelEl) pendingPillLabelEl.textContent = 'Apply needs attention';
-    if (pendingPillCountEl) pendingPillCountEl.style.display = 'none';
-    if (pendingPillEl) {
-      pendingPillEl.disabled = true;
-      pendingPillEl.setAttribute('aria-busy', 'false');
-      pendingPillEl.style.cursor = 'default';
-      pendingPillEl.style.display = 'inline-flex';
-    }
-    if (pendingTrashBtn) pendingTrashBtn.style.display = 'none';
-    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'inline-flex';
-    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'inline-flex';
+    renderPendingDockControls('decision', count);
+    if (pendingPillEl) pendingPillEl.style.display = 'inline-flex';
     if (pendingDockEl) pendingDockEl.style.display = 'inline-flex';
     schedulePendingDockPosition();
     refreshLiveControlsForManualApply();
@@ -4492,9 +4479,6 @@
         { method: 'POST', keepalive: true },
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-      if (pendingTrashBtn) pendingTrashBtn.style.display = 'inline-flex';
     } catch (err) {
       console.error('[impeccable] repair retry failed:', err);
       showToast('Repair retry failed - see console', 4000);
@@ -4516,7 +4500,7 @@
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const result = await res.json().catch(() => ({}));
-      clearStoredManualApplyState();
+      setPendingApplyLoading(false);
       updatePendingCounter(numberOrNull(result.remainingCount) || 0);
       showToast('Rolled back source; edits are still staged.', 3500);
     } catch (err) {
@@ -4579,7 +4563,7 @@
     }
 
     if (msg.type === 'manual_edit_repair_rollback_done') {
-      clearStoredManualApplyState();
+      setPendingApplyLoading(false);
       fetchPendingCount();
       return;
     }
