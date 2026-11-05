@@ -8728,6 +8728,12 @@
     }
     return btoa(binary);
   }
+  // CSSOM keeps url() as written, and a relative source can't load inside the rasterized SVG.
+  function absolutizeUrls(cssText, base) {
+    return cssText.replace(/url\((['"]?)([^'")\s]+)\1\)/g, (orig, q, raw) => {
+      try { return 'url(' + q + new URL(raw, base).href + q + ')'; } catch { return orig; }
+    });
+  }
   async function inlineFontUrls(cssText) {
     const urlRe = /url\((['"]?)(https?:\/\/[^'")\s]+)\1\)/g;
     const urls = new Set();
@@ -8759,7 +8765,7 @@
         const rules = sheet.cssRules;
         for (const rule of rules) {
           if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
-            chunks.push(rule.cssText);
+            chunks.push(absolutizeUrls(rule.cssText, sheet.href || document.baseURI));
           }
         }
       } catch {
@@ -8769,7 +8775,7 @@
           if (!res.ok) continue;
           const text = await res.text();
           let m2;
-          while ((m2 = fontFaceRe.exec(text))) chunks.push(m2[0]);
+          while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], sheet.href));
         } catch { /* ignore; capture is best-effort */ }
       }
     }
