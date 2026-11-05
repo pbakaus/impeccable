@@ -1303,6 +1303,36 @@ describe('live-browser source contracts', () => {
     );
   });
 
+  it('resolves relative font sources against their stylesheet before inlining them (#1313)', async () => {
+    const start = SOURCE.indexOf('const FONT_EXT_RE');
+    const end = SOURCE.indexOf('// True if `s` is a computed color string', start);
+    const fonts = SOURCE.slice(start, end);
+    assert.ok(start > 0 && end > start);
+    const fetched = [];
+    const rule = (cssText) => ({ constructor: { name: 'CSSFontFaceRule' }, cssText });
+    const context = {
+      URL, btoa,
+      document: {
+        baseURI: 'http://h/app/page',
+        styleSheets: [
+          { href: null, cssRules: [rule('@font-face { font-family: Root; src: url("/fonts/y.woff2") format("woff2"); }')] },
+          { href: 'http://h/css/a.css', cssRules: [rule('@font-face { font-family: A; src: url(../fonts/x.woff2), url("../fonts/My Font.woff2"); }')] },
+          { href: 'http://cdn/css/b.css', get cssRules() { throw new Error('cross-origin'); } },
+        ],
+      },
+      fetch: async (url) => {
+        fetched.push(url);
+        if (url.endsWith('b.css')) return { ok: true, text: async () => '@font-face{font-family:Cdn;src:url(fonts/z.woff2)}' };
+        return { ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+      },
+    };
+    const css = await runInNewContext(`${fonts}\ncollectFontCssText();`, context);
+    assert.deepEqual(fetched.filter((u) => u.endsWith('.woff2')).sort(), [
+      'http://cdn/css/fonts/z.woff2', 'http://h/fonts/My%20Font.woff2', 'http://h/fonts/x.woff2', 'http://h/fonts/y.woff2',
+    ]);
+    assert.equal(css.split('data:font/woff2;base64,').length - 1, 4);
+  });
+
   it('never submits on the Enter that commits an IME candidate (#856)', () => {
     const imeSrc = SOURCE.match(/function isImeKeydown\(e\) \{[\s\S]*?\n  \}/)?.[0];
     const annotSrc = SOURCE.match(/function onAnnotInputKey\(e\) \{[\s\S]*?\n  \}/)?.[0];
