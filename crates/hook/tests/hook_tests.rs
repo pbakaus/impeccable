@@ -3879,7 +3879,7 @@ fn hooks_on_explains_missing_launcher_and_unwritable_account_settings() {
             assert!(!out.contains("No installed provider skill folders found"), "{out}");
             assert_eq!(std::fs::read_to_string(account.join("settings.json")).unwrap(), "{broken");
         } else {
-            assert!(out.contains(account.join("skills/impeccable/scripts/impeccable").to_str().unwrap()), "{out}");
+            assert!(out.contains(account.join("skills").join("impeccable").join("scripts").join("impeccable").to_str().unwrap()), "{out}");
         }
     }
 }
