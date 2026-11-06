@@ -1,5 +1,5 @@
 {
-  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": \"DESIGN.md\",\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [],\n  \"workspaces\": []\n}\n",
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": \"DESIGN.md\",\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"design-sidecar-unverified\",\n      \"artifact\": \"design.json\",\n      \"path\": \".impeccable/design.json\",\n      \"severity\": \"mention\",\n      \"summary\": \".impeccable/design.json has no verifiable DESIGN.md content fingerprint; file timestamps cannot establish whether it is current.\",\n      \"fix\": \"Offer `document` to review or regenerate the sidecar against DESIGN.md, then stamp its fingerprint. Do not stamp an unchecked sidecar just to dismiss this notice.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

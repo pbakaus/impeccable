@@ -9,6 +9,7 @@ publish.workspace = true
 # Seed keys and references (`seed` module): CSPRNG keys and a salted,
 # one-way reference. Off by default so the wasm build never pulls getrandom.
 seed = ["dep:sha2", "dep:getrandom"]
+fingerprint = ["dep:sha2"]
 
 [dependencies]
 sha2 = { version = "0.10", optional = true }

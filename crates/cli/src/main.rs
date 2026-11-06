@@ -67,6 +67,7 @@ fn run(args: &[String], io: &mut Io) -> i32 {
         "critique-storage" => impeccable_context::run_critique_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
+        "design-sidecar" => impeccable_context::design_sidecar::run(rest, io),
         "doctor" => impeccable_context::run_doctor(rest, io),
         "concept-seed" => impeccable_context::run_concept_seed(rest, io),
         "telemetry" => impeccable_context::run_telemetry(rest, io),
