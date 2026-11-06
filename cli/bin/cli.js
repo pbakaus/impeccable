@@ -4,7 +4,9 @@
 // the version-pinned user cache (~/.impeccable/bin/<version>/), then a
 // download into that cache from the public release channel. The cache and the
 // download are verified against skill/scripts/engine-checksums.txt (shipped in
-// the package); a <binary>.verified stamp records that a cached binary passed.
+// the package); a <binary>.verified stamp holding the manifest digest and the
+// binary's size records that a cached binary passed, until either changes or
+// the binary is newer than the stamp.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -31,12 +33,21 @@ const MANIFEST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '
 const STAMP = `${CACHED}.verified`;
 
 function exists(p) { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } }
+// A stamp counts only while it holds an accepted digest and the binary's size,
+// and the binary has not changed since it was written.
+function stampValid(accepted) {
+  try {
+    const [digest, size] = fs.readFileSync(STAMP, 'utf8').trim().split(/\s+/);
+    const bin = fs.statSync(CACHED);
+    return accepted.includes(digest) && size === String(bin.size) && bin.mtimeMs <= fs.statSync(STAMP).mtimeMs;
+  } catch { return false; }
+}
 // The digest MANIFEST records for this version and asset, or '' when none.
-function expectedDigest() {
+function expectedDigest(wanted = ASSET) {
   try {
     for (const line of fs.readFileSync(MANIFEST, 'utf8').split(/\r?\n/)) {
       const [version, asset, sum] = line.trim().split(/\s+/);
-      if (version === VERSION && asset === ASSET) return (sum || '').toLowerCase();
+      if (version === VERSION && asset === wanted) return (sum || '').toLowerCase();
     }
   } catch { /* no manifest: nothing verifies */ }
   return '';
@@ -68,7 +79,7 @@ async function download() {
     try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
     throw err;
   }
-  try { fs.writeFileSync(STAMP, `${expected}\n`); } catch { /* next run hashes again */ }
+  try { fs.writeFileSync(STAMP, `${expected} ${buf.length}\n`); } catch { /* next run hashes again */ }
   return CACHED;
 }
 async function locate() {
@@ -77,11 +88,13 @@ async function locate() {
   const fromPkg = fromPackage();
   if (exists(fromPkg)) return fromPkg;
   if (exists(CACHED)) {
-    if (exists(STAMP)) return CACHED;
+    // Windows on ARM runs x64 binaries, and the launchers fall back to that asset.
+    const accepted = [expectedDigest(), TARGET === 'windows-arm64' && expectedDigest('impeccable-windows-x64.exe')].filter(Boolean);
+    if (stampValid(accepted)) return CACHED;
     let digest = '';
     try { digest = createHash('sha256').update(fs.readFileSync(CACHED)).digest('hex'); } catch { /* unreadable: unverified */ }
-    if (digest && digest === expectedDigest()) {
-      try { fs.writeFileSync(STAMP, `${digest}\n`); } catch { /* read-only cache: verified this run */ }
+    if (digest && accepted.includes(digest)) {
+      try { fs.writeFileSync(STAMP, `${digest} ${fs.statSync(CACHED).size}\n`); } catch { /* read-only cache: verified this run */ }
       return CACHED;
     }
     process.stderr.write(`impeccable: cannot verify the cached engine ${CACHED} against ${MANIFEST}; downloading engine ${VERSION} again\n`);

@@ -108,16 +108,54 @@ fn load_state(io: &Io) -> Option<Value> {
     serde_json::from_str(&raw).ok()
 }
 
+/// The files under `.impeccable/mocks/` and `.impeccable/review/` a ship no
+/// longer needs: rejected comps, gate diffs, and captures. A re-ship still
+/// reads the approved and decision comps with their sidecars, every recorded
+/// capture input, the human review manifests, and the native capture
+/// evidence, so those stay out. `finish` records the list and `doctor`
+/// reports what is left of it.
+fn spent_runtime_output(io: &Io, state: &Value) -> Vec<String> {
+    let mut kept: Vec<String> = vec![".impeccable/review/hero.json".into(), ".impeccable/review/components.json".into()];
+    for comp in ["comp", "decisionComp"].iter().filter_map(|k| state.get(*k).and_then(Value::as_str)) {
+        kept.push(comp.to_string());
+        kept.push(format!("{comp}.json"));
+    }
+    if let Some(inputs) = state.pointer("/finish/captureInputs").and_then(Value::as_array) {
+        kept.extend(inputs.iter().filter_map(|i| i.get("path").and_then(Value::as_str)).map(String::from));
+    }
+    fn walk(io: &Io, rel: &str, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(abs(io, rel)) else { return };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let child = format!("{rel}/{name}");
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(io, &child, out);
+            } else if name != ".gitignore" {
+                out.push(child);
+            }
+        }
+    }
+    let mut spent = Vec::new();
+    walk(io, MOCKS_DIR, &mut spent);
+    walk(io, ".impeccable/review", &mut spent);
+    // `start --comp` records the path as given (absolute, `./`), so match files, not spellings.
+    spent.retain(|f| !f.starts_with(".impeccable/review/native/") && !kept.iter().any(|k| crate::approved_comp::same_file(io, k, f)));
+    spent.sort();
+    spent
+}
+
 /// The build state records the direction's seed key, the key the roll API
 /// saw, and timestamps, so it is runtime state: its directory keeps a
 /// `.gitignore` naming `state.json` (and only that, the rest of
-/// `.impeccable/build/` being left to the project).
+/// `.impeccable/build/` being left to the project). The build's comps and
+/// captures are runtime output too: see `ignore_runtime_output`.
 fn save_state(io: &Io, state: &Value) {
     let p = abs(io, &state_path());
     if let Some(parent) = p.parent() {
         let _ = std::fs::create_dir_all(parent);
         impeccable_common::git::ensure_dir_ignored(&parent.to_string_lossy(), &["state.json"]);
     }
+    impeccable_common::git::ignore_runtime_output(&io.cwd.to_string_lossy());
     let _ = std::fs::write(p, util::json_pretty(state));
 }
 
@@ -1259,6 +1297,11 @@ impl NativeCapture {
         format!("{}/{}.png", self.directory, frame)
     }
 }
+/// The engine renders the page itself (native capture) instead of reading saved screenshots.
+fn native_capture(io: &Io, state: &Value) -> bool {
+    state["capturePolicy"] == "native-html-v1" || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1")
+}
+
 fn prepare_native_capture(
     io: &Io,
     state: &mut Value,
@@ -1266,9 +1309,7 @@ fn prepare_native_capture(
     renderer: Option<&dyn EntryRenderer>,
     stage: EntryStage,
 ) -> Result<Option<NativeCapture>, Gate> {
-    if io.env("IMPECCABLE_NATIVE_CAPTURE") != Some("1")
-        && state["capturePolicy"] != "native-html-v1"
-    {
+    if !native_capture(io, state) {
         return Ok(None);
     }
     let renderer = renderer.ok_or_else(|| {
@@ -2429,11 +2470,6 @@ fn gate_responsive(io: &Io, state: &mut Value, min: f64, out_dir: &str, artifact
     }
     let native=match prepare_native_capture(io,state,artifact,renderer,EntryStage::Responsive) {Ok(value)=>value,Err(gate)=>{let _=unavailable_report(io,out_dir,&gate,"responsive");return gate;}};
     let mut gate = gate_responsive_inner(io, state, min, out_dir, native.as_ref());
-    if gate.ok && native.is_none() {
-        let after = crate::completion::input_hash(&io.cwd);
-        if after.is_some() { state["responsiveInputSha256"] = json!(after); }
-        else {gate.ok=false;gate.reasons.push("Frontend inputs could not be fingerprinted during responsive verification".into());}
-    }
     if let Some(native)=&native {finish_native_capture(io,out_dir,&mut gate,native);}
     if gate.report.is_none() {
         if let Err(e) = unavailable_report(io, out_dir, &gate, "responsive") {
@@ -2874,6 +2910,18 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
         }
         return AdvanceResult { ok: false, phase, next: None, reasons: gate.reasons.clone(), worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
     }
+    // Ship compares the frontend inputs against the ones responsive closed on, passed or forced.
+    if phase == "responsive" && !native_capture(io, state) {
+        let Some(inputs) = crate::completion::input_hash(&io.cwd) else {
+            if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
+                p.insert("status".into(), json!("open"));
+            }
+            let mut reasons = gate.reasons.clone();
+            reasons.push("Frontend inputs could not be fingerprinted during responsive verification, so responsive cannot close, not even with --force".into());
+            return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
+        };
+        state["responsiveInputSha256"] = json!(inputs);
+    }
     let mut forced = false;
     if !gate.ok && force {
         forced = true;
@@ -2909,7 +2957,7 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
 
 /// What `finish --disposition ship` does with the current files, per capture policy.
 fn ship_recheck(io: &Io, state: &Value) -> &'static str {
-    if state["capturePolicy"] == "native-html-v1" || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1") {
+    if native_capture(io, state) {
         "ship re-captures the current files natively and must pass the responsive gate again"
     } else {
         "ship refuses while the frontend files differ from the responsive screenshots, so recapture desktop and mobile and advance responsive first"
@@ -2960,7 +3008,7 @@ fn next_instruction(io: &Io, state: &Value) -> String {
             // The desktop frame keeps the comp's aspect at 1440 wide.
             let frame = bp.and_then(|b| b.split_once('x')).and_then(|(w, h)| Some((w.parse::<f64>().ok()?, h.parse::<f64>().ok()?)))
                 .filter(|(w, h)| *w > 0. && *h > 0.).map(|(w, h)| format!("1440x{}", (h * 1440. / w).ceil() as i64)).unwrap_or_else(|| "1440 wide at the comp's aspect".into());
-            let compared = if state["capturePolicy"] == "native-html-v1" || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1") {
+            let compared = if native_capture(io, state) {
                 format!("The gate renders the page itself, a {frame} desktop first viewport and a 390-wide mobile frame, and diffs that desktop first viewport against the comp (scaled to the comp's width); captures you save are for your own inspection.")
             } else {
                 format!("Capture desktop.png (1440 wide, full page) and mobile.png (390 wide, full page) into .impeccable/review/; the gate diffs the first viewport of desktop.png (its top {frame}, scaled to the comp's width) against the comp.")
@@ -3000,6 +3048,31 @@ mod transparency_guidance_tests {
         assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected);
         save_state(&io, &new_state(None, None, None, Some("seed-1")));
         assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected);
+        assert!(dir.join(".impeccable/mocks/.gitignore").is_file() && dir.join(".impeccable/review/.gitignore").is_file());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn spent_runtime_output_skips_what_a_reship_reads() {
+        let dir = std::env::temp_dir().join(format!("build-spent-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for rel in [
+            ".impeccable/mocks/.gitignore", ".impeccable/mocks/comp-1.png", ".impeccable/mocks/comp-1.png.json",
+            ".impeccable/mocks/decision/a.png", ".impeccable/review/hero.json", ".impeccable/review/native/hero/hero.png",
+            ".impeccable/review/shot.png", ".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png",
+        ] {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, "x").unwrap();
+        }
+        let (io, _) = Io::captured("", dir.clone(), Default::default());
+        let state = json!({"comp": "./.impeccable/mocks/comp-1.png", "decisionComp": ".impeccable/mocks/decision/a.png",
+            "finish": {"captureInputs": [{"path": ".impeccable/review/shot.png"}]}});
+        assert_eq!(spent_runtime_output(&io, &state), [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png"]);
+        // An absolute `--comp` names the same approved file.
+        let absolute = json!({"comp": dir.join(".impeccable/mocks/comp-1.png").to_string_lossy(), "decisionComp": ".impeccable/mocks/decision/a.png",
+            "finish": {"captureInputs": [{"path": ".impeccable/review/shot.png"}]}});
+        assert_eq!(spent_runtime_output(&io, &absolute), [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png"]);
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -3650,8 +3723,7 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                 ));
                 return 2;
             }
-            if disposition == "ship" && state["capturePolicy"] != "native-html-v1"
-                && io.env("IMPECCABLE_NATIVE_CAPTURE") != Some("1") {
+            if disposition == "ship" && !native_capture(io, &state) {
                 let current = crate::completion::input_hash(&io.cwd);
                 if current.is_none() || state["responsiveInputSha256"].as_str() != current.as_deref() {
                     state["phase"] = json!("responsive");
@@ -3665,8 +3737,7 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             // Review often changes CSS after responsive passed. A finish signature
             // must cover a fresh native comparison of the final page, not merely
             // a new hash alongside historical gates or model-supplied screenshots.
-            if disposition == "ship" && (state["capturePolicy"] == "native-html-v1"
-                || io.env("IMPECCABLE_NATIVE_CAPTURE") == Some("1")) {
+            if disposition == "ship" && native_capture(io, &state) {
                 let gate = gate_responsive(io, &mut state, RESPONSIVE_MIN,
                     ".impeccable/review/diff/desktop", arg(argv, "artifact"), renderer);
                 let at = now();
@@ -3715,6 +3786,9 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                         return 2;
                     }
                 }
+            }
+            if disposition == "ship" {
+                state["finish"]["spent"] = json!(spent_runtime_output(io, &state));
             }
             if phase == "review" {
                 if let Some(rev) = state.pointer_mut("/phases/review").and_then(|v| v.as_object_mut()) {

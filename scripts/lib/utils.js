@@ -330,6 +330,7 @@ export function readSourceFiles(rootDir) {
   skills.push({
     name: frontmatter.name || 'impeccable',
     description: frontmatter.description || '',
+    claudeCodeDescription: frontmatter['claude-code-description'] || '',
     license: frontmatter.license || '',
     compatibility: frontmatter.compatibility || '',
     metadata: frontmatter.metadata || null,
