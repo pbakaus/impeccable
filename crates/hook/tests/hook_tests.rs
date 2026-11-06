@@ -383,7 +383,11 @@ fn local_config_rel() -> String {
     jsp::join(&[".impeccable", "config.local.json"])
 }
 
-fn rt_with(cwd: &str, env: HashMap<String, String>) -> Runtime<'static> {
+fn rt_with(cwd: &str, mut env: HashMap<String, String>) -> Runtime<'static> {
+    // A test never reads the developer's real home: an install of the skill there would make every "not wired" case read as wired.
+    let home = format!("{cwd}/.test-home");
+    env.entry("HOME".into()).or_insert_with(|| home.clone());
+    env.entry("USERPROFILE".into()).or_insert(home);
     Runtime::new(
         cwd.to_string(),
         env,
@@ -1535,7 +1539,7 @@ fn render_template_clamps_inside_budget_and_keeps_policy() {
         },
     );
     assert!(text.chars().count() <= 500, "{}", text.chars().count());
-    assert!(text.ends_with("unsure, ask in one line."));
+    assert!(text.ends_with("unsure, leave it with a reason."));
     let huge: Vec<Finding> = (0..5)
         .map(|i| f("side-tab", (i + 1) as f64, "X", &"y".repeat(2000), "s"))
         .collect();
@@ -2405,10 +2409,8 @@ fn admin_on_prunes_local_manifest_when_shared_settings_carry_the_hook() {
     let cwd = t.path();
     let r = rt(&cwd);
     std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs\""}]}]}}"#,
-    );
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     t.write(
         ".claude/settings.local.json",
         "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls)\"\n    ]\n  },\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Edit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"node old/skills/impeccable/scripts/hook.mjs\"\n          }\n        ]\n      }\n    ]\n  }\n}\n",
@@ -2765,12 +2767,8 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
         json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#)
     );
 
-    // A launcher-form manifest written by another checkout is recognized as
-    // ours too: shared settings carrying it make `on` prune the local file.
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
-    );
+    // A complete launcher manifest in shared settings supersedes local hooks.
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     let (out, _, _) = admin_run(&r, &["on"]);
     assert!(out.contains("already installed for: .claude"), "{out}");
     let local = t.read(".claude/settings.local.json");
@@ -3671,4 +3669,253 @@ fn expiry_removes_only_old_session_dirs_of_ours() {
     assert_eq!(names_in(&jsp::join(&[&root, &fresh])), vec![OLD_CLAIM.to_string()]);
     assert!(t.exists(&format!("outside/{OLD_CLAIM}")));
     assert!(t.exists("home/.impeccable/hook-sessions/keep-me/x"));
+}
+
+#[test]
+fn enabled_config_reports_missing_wiring() {
+    let t = Tmp::new();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true}}"#);
+    let (out, _, code) = admin_run(&rt(&t.path()), &["status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("enabled in config, not wired in any harness"), "{out}");
+    assert!(out.contains("impeccable hooks on"), "{out}");
+}
+
+#[test]
+fn context_repairs_only_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".claude/settings.local.json", r#"{"permissions":{"allow":["Bash(ls)"]}}"#);
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true,"consent":"accepted"}}"#);
+    let r = rt(&cwd);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.read(".claude/settings.local.json").contains("hooks"));
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().unwrap().contains("Repaired"));
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+}
+
+#[test]
+fn stale_shared_claude_hook_does_not_remove_working_local_entries() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    let r = rt(&cwd);
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node x/skills/impeccable/scripts/hook.mjs"}]}]}}"#);
+    admin_run(&r, &["on"]);
+    assert!(t.read(".claude/settings.local.json").contains("impeccable"));
+}
+
+#[test]
+fn context_command_repairs_with_consent_and_keeps_manual_fallback_without_it() {
+    for consent in [None, Some("declined"), Some("accepted")] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+        t.write(".impeccable/config.json", r#"{"hook":{"enabled":true},"updateCheck":false}"#);
+        if let Some(consent) = consent {
+            t.write(".impeccable/config.local.json", &json!({"hook":{"consent":consent}}).to_string());
+        }
+        let r = rt(&cwd);
+        let mut env = r.env.clone();
+        env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+        assert_eq!(impeccable_hook::run_context(&[], &mut io), 0);
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        if consent == Some("accepted") {
+            assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+            assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(t.exists(".claude/settings.local.json"));
+        } else {
+            assert!(out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(out.contains(".claude/settings.local.json"), "{out}");
+            assert!(!t.exists(".claude/settings.local.json"));
+        }
+    }
+}
+
+#[test]
+fn status_requires_complete_current_entries_for_each_harness() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        std::fs::create_dir_all(t.0.join(target.skill_rel)).unwrap();
+    }
+    admin_run(&r, &["on"]);
+    let (out, _, _) = admin_run(&r, &["status"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        assert!(out.contains(&format!("wiring {}: wired", target.provider)), "{out}");
+    }
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    t.write(".claude/settings.json", &manifest.to_string());
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: wired"), "{out}");
+    let mut partial = manifest;
+    partial["hooks"].as_object_mut().unwrap().remove("Stop");
+    t.write(".claude/settings.json", &partial.to_string());
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: not wired"), "{out}");
+}
+
+#[test]
+fn context_does_not_replace_malformed_settings_or_reenable_disabled_hooks() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    t.write(".claude/settings.local.json", "{broken");
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert_eq!(t.read(".claude/settings.local.json"), "{broken");
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.exists(".claude/settings.local.json"));
+}
+
+#[test]
+fn context_restores_a_missing_user_claude_manifest_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let home_text = home.to_string_lossy().to_string();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text)]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!home.join(".claude/settings.json").exists());
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_some());
+    assert!(home.join(".claude/settings.json").exists());
+}
+
+#[test]
+fn context_repairs_consented_manifest_at_the_enclosing_repository_root() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".git")).unwrap();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"},"updateCheck":false}"#);
+    t.write("app/PRODUCT.md", "# Product\n\n## Platform\nweb\n");
+    let mut env = rt(&cwd).env.clone();
+    env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+    let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+    assert_eq!(impeccable_hook::run_context(&["--target".into(), "app".into()], &mut io), 0);
+    let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+    assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+    assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+}
+
+#[test]
+fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
+    for relative in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write(".impeccable/config.json", r#"{"updateCheck":false}"#);
+        let home = t.0.join("home");
+        let account = t.0.join("alternate account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+        std::fs::write(account.join("settings.json"), r#"{"permissions":{"allow":["Bash(ls)"]}}"#).unwrap();
+        let home_text = home.to_string_lossy().into_owned();
+        let account_text = if relative { "alternate account".to_string() } else { account.to_string_lossy().into_owned() };
+        let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, err, code) = admin_run(&r, &["on"]);
+        assert_eq!(code, 0, "{err}");
+        assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
+        let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
+        let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+        assert!(!home.join(".claude/settings.json").exists());
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("wiring .claude: wired"), "{status}");
+        let mut context_env = r.env.clone();
+        context_env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), context_env);
+        impeccable_hook::run_context(&[], &mut io);
+        let output = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        assert!(!output.contains("MANUAL_DETECTOR_REQUIRED"), "{output}");
+    }
+}
+
+#[test]
+fn hooks_on_explains_unwired_account_and_never_uses_another_accounts_skill() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let account = t.0.join("other-account");
+    let home_text = home.to_string_lossy().into_owned();
+    let account_text = account.to_string_lossy().into_owned();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+    let (out, _, _) = admin_run(&r, &["on"]);
+    assert!(out.contains("No design harness is wired"), "{out}");
+    assert!(out.contains(&account_text), "{out}");
+    assert!(!home.join(".claude/settings.json").exists());
+    assert!(!account.join("settings.json").exists());
+}
+
+#[test]
+fn hooks_on_explains_missing_launcher_and_unwritable_account_settings() {
+    for malformed in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let account = t.0.join("claude-account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        if malformed {
+            std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+            std::fs::write(account.join("settings.json"), "{broken").unwrap();
+        }
+        let account_text = account.to_string_lossy().into_owned();
+        let r = rt_with(&cwd, env(&[("HOME", &cwd), ("USERPROFILE", &cwd), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        if malformed {
+            assert!(out.contains("not valid JSON"), "{out}");
+            assert!(!out.contains("No installed provider skill folders found"), "{out}");
+            assert_eq!(std::fs::read_to_string(account.join("settings.json")).unwrap(), "{broken");
+        } else {
+            assert!(out.contains(account.join("skills").join("impeccable").join("scripts").join("impeccable").to_str().unwrap()), "{out}");
+        }
+    }
+}
+
+#[test]
+fn status_and_on_recognize_enabled_hermes_plugins() {
+    for name in [".hermes", "custom-hermes"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let home = t.0.join("home").to_string_lossy().into_owned();
+        let hermes_home = t.0.join("home").join(name).to_string_lossy().into_owned();
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/plugin.yaml"), "name: impeccable-design-hook\n");
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/__init__.py"), "");
+        let config = format!("home/{name}/config.yaml");
+        t.write(&config, "plugins:\n  enabled: [impeccable-design-hook]\n  disabled: []\n");
+        let mut environment = env(&[("HOME", &home), ("USERPROFILE", &home)]);
+        if name != ".hermes" {
+            environment.insert("HERMES_HOME".into(), hermes_home);
+        }
+        let r = rt_with(&cwd, environment);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(!status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(!out.contains("No design harness is wired"), "{out}");
+        assert!(out.contains("Hermes design hook plugin is already enabled"), "{out}");
+        assert!(!out.contains("No installed provider skill folders"), "{out}");
+        let disabled = "plugins:\n  enabled: []\n  disabled: [impeccable-design-hook]\n";
+        t.write(&config, disabled);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        assert_eq!(t.read(&config), disabled);
+    }
 }

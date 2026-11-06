@@ -242,6 +242,7 @@ export function createTransformer(config) {
     frontmatterFields = [],
     bodyTransform,
     placeholderProvider,
+    descriptionKey,
     providerTags = [provider],
     writeOpenAIMetadata = false,
     includeVersion = true,
@@ -277,7 +278,7 @@ export function createTransformer(config) {
       // Build frontmatter
       const frontmatterObj = {
         name: skillName,
-        description: skill.description,
+        description: (descriptionKey && skill[descriptionKey]) || skill.description,
       };
       if (skillsVersion && includeVersion && !versionInMetadata) {
         frontmatterObj.version = skillsVersion;

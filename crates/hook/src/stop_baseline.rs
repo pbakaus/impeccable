@@ -14,8 +14,8 @@ use crate::hook_lib::{
 const FIELD: &str = "stopBaseline";
 const MAX_BYTES: usize = 512 * 1024;
 const MAX_FINDINGS: usize = 256;
-pub const UNKNOWN_NOTE: &str = "Findings marked attribution unknown may predate this session; do not treat them as regressions or broaden the task without asking.";
-pub const COMPACT_UNKNOWN_NOTE: &str = "Unknown findings may predate this session; ask before expanding scope.";
+pub const UNKNOWN_NOTE: &str = "Findings marked attribution unknown may predate this session; do not treat them as regressions or broaden the task to chase them.";
+pub const COMPACT_UNKNOWN_NOTE: &str = "Unknown findings may predate this session; keep them out of scope.";
 
 fn independent(finding: &Finding) -> bool {
     !finding.antipattern.starts_with("design-system-")

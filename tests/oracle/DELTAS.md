@@ -7376,3 +7376,7 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-01: static media merge with main e89e3ada3 (#1079)
 
 Kept both branches' delta notes. Runtime source merged without conflicts. Direct comparison of all five aggregate reports preserves the findings, their order, stdout, and exit codes. Only stderr in `detect-dir-text-all-fixtures` and `detect-no-advisory-text` changes: main's #1220 now walks the two `next.config.mjs` files, so the regex-only count is 62 rather than 60 and the extension list includes `.mjs`. These two goldens were re-recorded after asserting that this exact stderr replacement is the only difference. Frozen function vectors are unchanged.
+
+## Recorded 2026-11-03: comp-diff regions record the offset they were read at (#1273)
+
+`comp-diff` fitted one whole-page shift and cropped every region from the shifted build, so a header that stayed put while the body moved was read from blank paper and scored `missing`. Each region is now read at the whole-page shift or at its own box, whichever scores higher, and its report entry records that choice as `offset` (`dx`, `dy`) (`docs/CLI-CONTRACT.md`, `comp-diff`). `comp-diff-json` and `comp-diff-no-spec` were re-recorded from the binary and reviewed by hand: no shift fits either fixture, so the only change is `"offset": {"dx": 0, "dy": 0}` after each region's `inkBox`. Scores, verdicts, ink boxes, stderr and exit codes are byte-identical. The goldens enforce these exact results; this is not an open-ended accepted delta.

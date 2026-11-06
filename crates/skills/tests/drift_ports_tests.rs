@@ -65,7 +65,7 @@ fn create_fake_universal_bundle(root: &str, providers: &[&str]) -> String {
             &format!("{bundle_root}/.claude/settings.json"),
             &json!({
                 "description": "fresh claude hook",
-                "hooks": { "PostToolUse": [{ "matcher": "Edit", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
+                "hooks": { "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "Stop": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
             })
             .to_string(),
         );
@@ -1137,7 +1137,7 @@ fn user_hook_with_missing_launcher_is_not_current() {
     let command = impeccable_skills::hook_manifest::user_claude_hook_command(&home, false).unwrap();
     write(
         &settings,
-        &serde_json::json!({"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":command}]}]}}).to_string(),
+        &impeccable_context::hook_wiring::claude_manifest_for_command(&command).to_string(),
     );
     assert!(!impeccable_skills::hook_manifest::user_claude_hook_is_current_for(&home, false));
     write(&format!("{home}/.claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n");
