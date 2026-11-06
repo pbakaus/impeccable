@@ -100,6 +100,7 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider_id: &str) -> R
     let user_manifest = crate::context_cli::user_hook_manifest(provider_id, cwd, env);
     findings.extend(check_hook_installation(&project_root, Some(&ctx.repo_root), provider_id, user_manifest.as_deref()));
     findings.extend(check_legacy_live_state(&project_root));
+    findings.extend(check_spent_build_artifacts(&project_root));
     findings.extend(boot.project_roots);
     findings.extend(ws_findings);
 

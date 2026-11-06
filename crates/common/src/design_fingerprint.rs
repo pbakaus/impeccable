@@ -28,4 +28,3 @@ pub fn matches_source(stamp: Option<&Value>, bytes: &[u8]) -> Option<bool> {
     }
     Some(digest.eq_ignore_ascii_case(fingerprint(bytes)["digest"].as_str().unwrap()))
 }
-
