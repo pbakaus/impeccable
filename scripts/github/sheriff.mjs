@@ -583,13 +583,23 @@ function fetchIssueComments(repo, number) {
 }
 
 function fetchIssueEvents(repo, number) {
-  const pages = runGhJson([
-    'api',
-    '--paginate',
-    '--slurp',
-    `repos/${repo}/issues/${number}/events?per_page=100`,
-  ]);
-  return Array.isArray(pages) ? pages.flat() : [];
+  const events = [];
+  for (let page = 1; ; page += 1) {
+    // Bound subprocess output by one page of small label-event records, not
+    // the size of the entire history (or unrelated event payloads). Count the
+    // raw page so a page without label events does not end pagination early.
+    const result = runGhJson([
+      'api',
+      `repos/${repo}/issues/${number}/events?per_page=100&page=${page}`,
+      '--jq',
+      '{count: length, events: [.[] | select(.event == "labeled" or .event == "unlabeled") | {event, created_at, label: {name: .label.name}, actor: {login: .actor.login}}]}',
+    ]);
+    if (!Number.isInteger(result.count) || result.count < 0 || result.count > 100 || !Array.isArray(result.events)) {
+      throw new Error(`Invalid issue event page for PR #${number}`);
+    }
+    events.push(...result.events);
+    if (result.count < 100) return events;
+  }
 }
 
 function fetchOpenPullRequests(repo) {

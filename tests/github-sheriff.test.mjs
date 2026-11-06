@@ -497,7 +497,7 @@ describe('github sheriff', () => {
     assert.equal(evaluatePullRequest(source, { now: NOW }).contributorActionRequired, false);
   });
 
-  it('hydrates handoff events outside the GraphQL label window in the real CLI', { skip: process.platform === 'win32' }, () => {
+  it('hydrates a multi-megabyte history beyond the GraphQL label window in the real CLI', { skip: process.platform === 'win32' }, () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sheriff-handoff-'));
     try {
       const recentLabels = Array.from({ length: 100 }, (_, i) => ({
@@ -509,10 +509,15 @@ describe('github sheriff', () => {
         // Test both no waiting label and one already present in the seed.
         labelTimelineItems: { nodes: recentLabels },
       });
-      const events = [
-        [issueEvent('labeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-06-02T00:00:00Z')],
-        [issueEvent('unlabeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-07-07T00:00:00Z')],
-      ];
+      const events = Array.from({ length: 4 }, () => Array.from({ length: 100 }, () => ({
+        event: 'referenced', created_at: '2026-07-01T00:00:00Z',
+        irrelevant_payload: 'x'.repeat(16 * 1024),
+      })));
+      events[0][0] = issueEvent('labeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-06-02T00:00:00Z');
+      events.push([issueEvent('unlabeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-07-07T00:00:00Z')]);
+      assert.ok(Buffer.byteLength(JSON.stringify(events)) > 6 * 1024 * 1024);
+      assert.ok(Buffer.byteLength(JSON.stringify(events[1])) > 1024 * 1024);
+
       fs.writeFileSync(path.join(dir, 'gh'), '#!/bin/sh\nexec "' + process.execPath + '" "' + path.join(dir, 'gh.mjs') + '" "$@"\n', { mode: 0o755 });
       fs.writeFileSync(path.join(dir, 'gh.mjs'), `
         import fs from 'node:fs';
@@ -520,9 +525,20 @@ describe('github sheriff', () => {
         const fixture = JSON.parse(fs.readFileSync(new URL('./fixture.json', import.meta.url)));
         if (args[0] !== 'api') process.exit(2);
         if (args[1] === 'graphql') console.log(JSON.stringify({ data: { repository: { pullRequests: { nodes: [fixture.node], pageInfo: { hasNextPage: false } } } } }));
-        else if (!args.includes('--paginate') || !args.includes('--slurp')) process.exit(3);
         else if (args.at(-1).includes('/comments?')) console.log(JSON.stringify([[{ user: { login: 'github-actions[bot]' }, created_at: '2026-06-15T00:00:00Z', body: ${JSON.stringify(WARNING_MARKER)} }]]));
-        else if (args.at(-1).includes('/events?')) console.log(JSON.stringify(fixture.events));
+        else if (args.some(arg => arg.includes('/events?'))) {
+          if (args.includes('--slurp')) console.log(JSON.stringify(fixture.events));
+          else {
+            const url = new URL(args.find(arg => arg.includes('/events?')), 'https://api.github.com/');
+            const page = fixture.events[Number(url.searchParams.get('page')) - 1] || [];
+            // Emulate gh's projection before Node buffers its stdout. A page
+            // containing no label events must not terminate pagination.
+            if (!args.includes('--jq')) console.log(JSON.stringify(page));
+            else console.log(JSON.stringify({ count: page.length, events: page
+              .filter(event => ['labeled', 'unlabeled'].includes(event.event))
+              .map(({ event, label, actor, created_at }) => ({ event, label, actor, created_at })) }));
+          }
+        }
         else process.exit(4);
       `);
       for (const hasWaitingLabel of [false, true]) {
