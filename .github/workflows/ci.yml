@@ -349,6 +349,12 @@ jobs:
         id: check
         run: node scripts/check-engine-release.mjs
 
+      - name: Check documented commands against the pinned engine release
+        run: |
+          tag="refs/tags/engine-v$(cat ENGINE_VERSION)"
+          git fetch --no-tags https://github.com/pbakaus/impeccable.git "$tag:$tag"
+          node scripts/check-engine-docs.mjs
+
       - name: Annotate missing engine release
         # Only when the check itself failed, so a checkout or setup failure keeps its own error.
         if: failure() && steps.check.outcome == 'failure'
