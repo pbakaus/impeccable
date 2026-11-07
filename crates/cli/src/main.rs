@@ -54,6 +54,7 @@ fn run(args: &[String], io: &mut Io) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
+        "motion-capture" => impeccable_browser::motion::run(rest, io),
         "detect" => impeccable_detect::run_detect(rest, io, &engines()),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         "skills" => impeccable_skills::run(rest, io),

@@ -508,6 +508,7 @@ dependencies = [
  "image-webp",
  "moxcms",
  "num-traits",
+ "png",
  "zune-core",
  "zune-jpeg",
 ]
@@ -540,6 +541,7 @@ dependencies = [
  "impeccable-skills",
  "serde_json",
  "sha2",
+ "url",
 ]
 
 [[package]]

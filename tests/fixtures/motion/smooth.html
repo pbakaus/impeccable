@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>smooth</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}#card{width:180px;height:100px;background:#eedcc5;padding:20px;box-sizing:border-box}#card{view-transition-name:card}::view-transition-group(card){animation-duration:600ms} @media(prefers-reduced-motion:reduce){::view-transition-group(card),::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation-duration:0.001ms}}</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Smooth card</div></div>
+<script>document.querySelector('#go').onclick=()=>{document.startViewTransition(()=>{const c=document.querySelector('#card');c.style.width='280px';c.style.height='220px';c.textContent='Expanded card';});};</script>

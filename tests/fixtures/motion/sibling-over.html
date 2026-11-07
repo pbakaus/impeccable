@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>sibling-over</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}#card{width:180px;height:100px;background:#eedcc5;padding:20px;box-sizing:border-box}#sibling{position:absolute;left:80px;top:30px;width:130px;height:100px;background:#b4cbd5;z-index:-1}#card{position:relative;z-index:1}</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Morphing card</div><div id="sibling">Sibling</div></div>
+<script>document.querySelector('#go').onclick=()=>{document.querySelector('#card').animate([{width:'180px'},{width:'280px'},{width:'180px'}],{duration:600,fill:'both'});document.querySelector('#sibling').animate([{zIndex:-1},{zIndex:2},{zIndex:-1}],{duration:600,fill:'both'});};</script>

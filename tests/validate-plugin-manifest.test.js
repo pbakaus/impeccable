@@ -158,6 +158,16 @@ describe('collectPluginManifestFindings', () => {
     expect(reasons).toHaveLength(4);
   });
 
+  test('source-first builds validate emitted agents without requiring tracked output churn', () => {
+    writeFixture(root, { manifest: GOOD_MANIFEST, sourceAgents: ['new-reviewer.md'], shippedAgents: [] });
+    const agentsDir = path.join(root, 'dist', 'claude-code', '.claude', 'agents');
+    fs.mkdirSync(agentsDir, { recursive: true });
+    expect(collectPluginManifestFindings(root, { agentsDir })).toHaveLength(1);
+    fs.writeFileSync(path.join(agentsDir, 'new-reviewer.md'), '# Reviewer');
+    expect(collectPluginManifestFindings(root, { agentsDir })).toEqual([]);
+    expect(collectPluginManifestFindings(root)).toHaveLength(1);
+  });
+
   test('an absent plugin subtree produces no findings', () => {
     expect(collectPluginManifestFindings(root)).toEqual([]);
   });
@@ -189,6 +199,10 @@ describe('committed plugin subtree', () => {
   // committed ./plugin subtree carries a manifest shape Claude Code will not
   // load; regenerate it with `bun run build:release` after fixing build.js.
   test('the shipped manifest honors the verified loader contract', () => {
-    expect(collectPluginManifestFindings(REPO_ROOT)).toEqual([]);
+    // Compare committed distribution artifacts from the same sync. New source
+    // agents are validated against dist by the source-first build below.
+    expect(collectPluginManifestFindings(REPO_ROOT, {
+      sourceAgentsDir: path.join(REPO_ROOT, '.claude', 'agents'),
+    })).toEqual([]);
   });
 });

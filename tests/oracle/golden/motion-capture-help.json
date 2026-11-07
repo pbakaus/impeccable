@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable motion-capture <url> --click <selector> | --steps <json-file> --out-dir <dir> [--region <selector|[x,y,width,height]>] [--frames 7] [--reduced-motion]\nSteps: [{\"click\":\"#toggle\"},{\"hover\":\"#card\"},{\"press\":\"Enter\"},{\"wait\":100}]\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

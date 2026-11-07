@@ -64,8 +64,7 @@ function listMarkdown(dir) {
  * (`${claudeName || name}.md`, providers gate). A drift between this and the
  * build shows up as a false finding, so change them together.
  */
-function expectedClaudeAgentFiles(rootDir) {
-  const agentsDir = path.join(rootDir, 'skill', 'agents');
+function expectedClaudeAgentFiles(agentsDir) {
   const expected = [];
   for (const sourceFile of listMarkdown(agentsDir)) {
     const { frontmatter } = parseFrontmatter(
@@ -92,7 +91,7 @@ function expectedClaudeAgentFiles(rootDir) {
  * @returns {Array<{relPath:string, reason:string}>}
  *   Empty when the subtree is absent (nothing generated yet) or fully valid.
  */
-export function collectPluginManifestFindings(rootDir) {
+export function collectPluginManifestFindings(rootDir, { agentsDir = path.join(rootDir, 'plugin', 'agents'), sourceAgentsDir = path.join(rootDir, 'skill', 'agents') } = {}) {
   const manifestRel = 'plugin/.claude-plugin/plugin.json';
   const manifestPath = path.join(rootDir, manifestRel);
   if (!fs.existsSync(manifestPath)) return [];
@@ -146,13 +145,13 @@ export function collectPluginManifestFindings(rootDir) {
   }
 
   // With no `agents` key, shipped files are the only thing the loader sees.
-  const shippedAgents = listMarkdown(path.join(rootDir, 'plugin', 'agents'));
-  for (const { sourceFile, shippedFile } of expectedClaudeAgentFiles(rootDir)) {
+  const shippedAgents = listMarkdown(agentsDir);
+  for (const { sourceFile, shippedFile } of expectedClaudeAgentFiles(sourceAgentsDir)) {
     if (!shippedAgents.includes(shippedFile)) {
       findings.push({
-        relPath: `plugin/agents/${shippedFile}`,
+        relPath: path.relative(rootDir, path.join(agentsDir, shippedFile)),
         reason:
-          'missing from the plugin subtree; auto-discovery relies on the shipped ' +
+          'missing from the agent output; auto-discovery relies on the shipped ' +
           `file, so skill/agents/${sourceFile} would never load. Run \`bun run build:release\``,
       });
     }
