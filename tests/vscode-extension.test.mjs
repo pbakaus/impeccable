@@ -28,6 +28,11 @@ describe('VS Code skill extension', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'package.json'), 'utf8'));
     assert.equal(manifest.publisher, 'renaissance-geek');
     assert.deepEqual(manifest.contributes, { chatSkills: [{ path: './skills/impeccable/SKILL.md' }] });
+    assert.deepEqual(manifest.capabilities, {
+      untrustedWorkspaces: { supported: false },
+      virtualWorkspaces: false,
+      agentsWindow: { supported: true },
+    });
     for (const key of ['main', 'browser', 'activationEvents', 'scripts']) assert.equal(key in manifest, false);
     assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(repo, '.claude-plugin/plugin.json'))).version);
     assert.deepEqual(fs.readdirSync(extension).sort(), ['.vscodeignore', 'LICENSE', 'README.md', 'icon.png', 'package.json', 'skills']);
