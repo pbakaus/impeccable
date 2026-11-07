@@ -149,6 +149,8 @@ pub fn detect_html_source_json(html: &str, file_path: &str, options_json: &str) 
         html,
         Path::new(file_path),
         &DetectHtmlOptions {
+            image_samples: Default::default(),
+            sample_cache_dir: None,
             inline_ignores_disabled: !options.inline_ignores,
             design_system: hook.as_ref().map(|h| h as &dyn DesignSystemHook),
             text_content_analyzers: Some(&analyzers),

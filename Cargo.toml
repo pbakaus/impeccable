@@ -16,7 +16,12 @@ impeccable-foundation = { path = "crates/foundation" }
 impeccable-common = { path = "crates/common" }
 impeccable-core = { path = "crates/core" }
 impeccable-detect = { path = "crates/detect" }
-impeccable-html = { path = "crates/html" }
+# No default features here: Cargo ignores `default-features = false` on a
+# member's inherited dependency unless the workspace entry sets it, and the
+# wasm `detect` build must leave the html crate's `image-sampling` off (#560).
+# The binary (`crates/cli`) depends on the crate by path and takes the
+# default.
+impeccable-html = { path = "crates/html", default-features = false }
 impeccable-browser = { path = "crates/browser" }
 impeccable-live = { path = "crates/live" }
 impeccable-context = { path = "crates/context" }

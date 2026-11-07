@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n1 file scanned with regex matching only (.css).\nRules that need a parsed page (tiny-text, low-contrast and other element rules) did not run on them; findings are an undercount, not a clean bill of health.\nFor the full check, scan the running dev server (npx impeccable detect http://localhost:PORT) or a static site's built .html.\n",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}
