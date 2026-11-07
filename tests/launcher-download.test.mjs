@@ -396,7 +396,11 @@ for (const [probeStatus, trusted] of [[0, true], [1, false]]) {
 // The sibling engine slot is gitignored, so a skill upgrade that copies files
 // over it leaves the old engine behind. POSIX: a sh stub. Windows: a copy of
 // node.exe that answers `engine-probe` through engine-probe.js in the cwd.
-const SIBLING_DIR = ASSET.slice('impeccable-'.length).replace(/\.exe$/, '');
+// Native cmd.exe restores PROCESSOR_ARCHITECTURE on startup, so its sibling
+// lookup follows the host even though the download fixtures use the x64 asset.
+const SIBLING_DIR = WINDOWS
+  ? `windows-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+  : ASSET.slice('impeccable-'.length).replace(/\.exe$/, '');
 // Args for a run that reaches the cached engine (a copy of cmd.exe on Windows).
 const CACHED_ARGS = WINDOWS ? ['/d', '/c', 'echo verified-engine'] : ['engine-probe'];
 
@@ -446,7 +450,7 @@ async function runWithSibling(t, { version, probeStatus = 0, mode = 0o755, cache
     HOME: home,
     IMPECCABLE_HOME: cache,
     IMPECCABLE_DOWNLOAD_BASE: `http://127.0.0.1:${server.address().port}`,
-    ...(WINDOWS ? { USERPROFILE: home, TEMP: root, TMP: root, SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: 'AMD64' } : {}),
+    ...(WINDOWS ? { USERPROFILE: home, TEMP: root, TMP: root, SystemRoot: process.env.SystemRoot, ComSpec: COMSPEC, PROCESSOR_ARCHITECTURE: process.arch === 'arm64' ? 'ARM64' : 'AMD64' } : {}),
   };
   const result = await new Promise((resolve, reject) => {
     const child = WINDOWS
