@@ -4,7 +4,7 @@ Design guidance and tools for building, critiquing, auditing, and refining inter
 
 ## Use
 
-Requires VS Code 1.109.3 or later, GitHub Copilot Chat access, and a trusted local checkout. Open Copilot Chat in Agent mode and try:
+Requires VS Code 1.109.3 or later, GitHub Copilot Chat access, and a trusted local checkout. Use Copilot Chat in Agent mode or the separate Agents window, on VS Code versions that provide it. Try:
 
 - `/impeccable polish` to refine the current interface.
 - `/impeccable audit` to inspect accessibility and implementation quality.
