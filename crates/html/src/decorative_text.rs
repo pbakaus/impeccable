@@ -7,11 +7,13 @@
 //! the finding keeps its severity.
 
 use crate::background::{read_own_background_color, sv};
+use crate::cascade::StyleValues;
 use crate::dom::StaticElement;
 use impeccable_core::checks::decorative_text::{
     avatar_sized, classify_decorative_text, is_mockup_marker, is_signature_marker,
     DecorativeTextFacts, MOCKUP_MARKER_SKIP_TAGS,
 };
+use impeccable_core::checks::measures::resolve_length_px;
 use impeccable_core::color::{parse_any_color, parse_rgb};
 use impeccable_core::js;
 
@@ -43,6 +45,14 @@ fn px(value: &str) -> Option<f64> {
     let n = v.strip_suffix("px")?;
     let n = js::parse_float(n);
     n.is_finite().then_some(n)
+}
+
+fn line_box_px(style: &StyleValues) -> Option<f64> {
+    let line_height = sv(style, "lineHeight");
+    px(line_height).or_else(|| {
+        let font_size = px(sv(style, "fontSize"))?;
+        resolve_length_px(Some(line_height), font_size)
+    })
 }
 
 fn box_size(el: &StaticElement<'_>) -> Option<(f64, f64)> {
@@ -113,7 +123,7 @@ fn centred(host: &StaticElement<'_>, el: &StaticElement<'_>, height: f64) -> boo
     if sv(el.style(), "textAlign") == "center" || sv(style, "textAlign") == "center" {
         return true;
     }
-    if px(sv(style, "lineHeight")).is_some_and(|lh| (lh - height).abs() <= 1.0) {
+    if line_box_px(style).is_some_and(|lh| (lh - height).abs() <= 1.0) {
         return true;
     }
     host.tag_lower() == "svg"

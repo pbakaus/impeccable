@@ -243,3 +243,27 @@ fn a_family_named_as_a_bold_cut_takes_the_large_text_bar() {
     }
     assert_eq!(findings.len(), 6, "{findings:#?}");
 }
+
+#[test]
+fn a_unitless_line_height_matching_the_avatar_height_centres_its_initials() {
+    let avatar = |css: &str| {
+        format!(
+            r##"<!DOCTYPE html><html><head><style>
+    body {{ background: #ffffff; }}
+    .av {{ display: block; width: 40px; height: 40px; border-radius: 50%; background: #93c5fd; color: #ffffff; {css} }}
+    </style></head><body><div class="av">JD</div></body></html>"##
+        )
+    };
+    let tall = scan(&avatar("font-size: 20px; line-height: 2;"));
+    assert_eq!(tall.len(), 1, "{tall:#?}");
+    assert_advisory(&tall[0]);
+
+    let inherited =
+        scan(&avatar("font-size: 20px;").replace("body {", "body { line-height: 2;"));
+    assert_eq!(inherited.len(), 1, "{inherited:#?}");
+    assert_advisory(&inherited[0]);
+
+    let short = scan(&avatar("font-size: 20px; line-height: 1;"));
+    assert_eq!(short.len(), 1, "{short:#?}");
+    assert_failing(&short[0]);
+}

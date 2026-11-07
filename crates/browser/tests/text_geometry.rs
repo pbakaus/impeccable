@@ -230,8 +230,13 @@ fn the_text_geometry_rules_measure_the_text() {
             "clamped-regular-blurb",
             "bold-clipped-summary",
             "flex-long-run",
+            "inherits-tight",
+            "inherits-px",
+            "declared-unitless-tight",
         ],
         &[
+            "inherits-unitless",
+            "inherits-quote",
             "items-row",
             "teaser-copy",
             "link-run",
@@ -242,7 +247,7 @@ fn the_text_geometry_rules_measure_the_text() {
         ],
         "tight-leading",
     );
-    assert_eq!(leading.len(), 10, "the ten flag cases: {leading:?}");
+    assert_eq!(leading.len(), 13, "the thirteen flag cases: {leading:?}");
     // The same short runs in a row that does not wrap, and in grid cells,
     // wrap inside their items and keep the floor.
     let runs = findings(&engine, port, "tight-leading-runs.html", "tight-leading");

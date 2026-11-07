@@ -267,6 +267,10 @@ fn font_size_base2(current: Option<&StyleValues>, parent: Option<&StyleValues>) 
     }
 }
 
+fn is_unitless_number(value: &str) -> bool {
+    js::trim(value).parse::<f64>().is_ok_and(f64::is_finite)
+}
+
 /// JS: css-cascade.mjs#normalizeStaticCssValue(prop, value, customProps, parentStyle, currentStyle = null)
 pub fn normalize_static_css_value(
     prop: &str,
@@ -310,7 +314,8 @@ pub fn normalize_static_css_value(
             resolved = format!("{}px", js::number_to_string(px));
         }
     }
-    if prop == "lineHeight" && resolved != "normal" {
+    // A child element inherits a unitless line-height as a number.
+    if prop == "lineHeight" && resolved != "normal" && !is_unitless_number(&resolved) {
         let base = font_size_base2(current_style, parent_style);
         if let Some(px) = resolve_length_px(&resolved, base) {
             resolved = format!("{}px", js::number_to_string(px));
