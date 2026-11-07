@@ -67,6 +67,25 @@ describe('skill reference authoring contracts', () => {
     assert.match(critique, /write `not applicable \(native platform\)` instead/);
   });
 
+  it('makes the first critique complete and every rerun ledger-driven', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const rerun = critique.match(/### Rerun\n([\s\S]*?)\n### Generate Combined Critique Report/)?.[1] ?? '';
+
+    assert.doesNotMatch(critique, /3-5 (priority issues|most impactful)/);
+    assert.doesNotMatch(critique, /Most real interfaces score/);
+    assert.match(critique, /#### All Findings/);
+    assert.match(critique, /"base":"<commit>"/);
+    assert.match(rerun, /\*\*Assessment A stays blind to the ledger\.\*\*/);
+    assert.match(rerun, /reports a defect only when a change introduced it/);
+    assert.match(rerun, /skipping `\.impeccable\/`/);
+    assert.match(rerun, /drops a new finding whose named lines are unchanged since `base`/);
+    assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
+    assert.match(rerun, /takes one point from the first heuristic it names/);
+    assert.match(rerun, /numbered on from the ledger's last row/);
+    assert.match(rerun, /`Method: unchanged since <timestamp>`/);
+    assert.match(critique, /leave its rows unread until both assessments are back/);
+  });
+
   it('keeps reduced-motion guidance on the animation build path', () => {
     const animate = readFileSync(join(ROOT, 'skill/reference/animate.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const accessibility = animate.match(/## Accessibility and control\n([\s\S]*?)\n## Verify/)?.[1] ?? '';
