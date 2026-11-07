@@ -7,6 +7,7 @@
           {
             "type": "command",
             "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
+            "shell": "bash",
             "timeout": 5,
             "statusMessage": "Preparing build session"
           }
@@ -20,6 +21,7 @@
           {
             "type": "command",
             "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
+            "shell": "bash",
             "timeout": 5,
             "statusMessage": "Checking UI changes"
           }
@@ -32,6 +34,7 @@
           {
             "type": "command",
             "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
+            "shell": "bash",
             "timeout": 30,
             "statusMessage": "Design deep pass"
           }

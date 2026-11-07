@@ -115,14 +115,27 @@ const GITHUB_PROJECT_SCRIPTS = '$(git rev-parse --show-toplevel)/.github/skills/
 // in the matcher (Edit|Write|MultiEdit) alias to Grok's search_replace family.
 const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 
+// Claude Code picks its hook shell per platform: bash when Git Bash is found,
+// PowerShell on Windows otherwise (`p1()` in the CLI: `Ll() ? "bash" :
+// "powershell"`). The POSIX guard below is not parseable by PowerShell -- it
+// reads `[ ! -f X ]` as a type literal and aborts with "Missing type name after
+// '['" -- which is the same ParserError VS Code hit (#1249), except Claude has
+// no `windows` sibling to fall back on. Declaring `shell: 'bash'` pins the
+// interpreter instead of leaving it to detection, so the guard runs where it
+// was written for (#<issue>). Guarded by the same reasoning as the plugin
+// manifest: Claude, Grok and Codex ignore unknown per-handler keys, and Grok
+// already runs these hooks through bash.
+const CLAUDE_HOOK_SHELL = 'bash';
+
 // `windowsKey` names the per-OS field the consuming harness reads its Windows
 // command from (`commandWindows` for Codex, `windows` for VS Code Copilot
 // Chat) and adds that sibling to every handler. It stays opt-in per manifest,
 // so each one carries only the field its own consumers read.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false, guard = guardedLauncher, env } = {}) {
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false, guard = guardedLauncher, env, shell } = {}) {
   const command = guard(launcherIn(scriptsDir));
   const handlerFields = {
     ...(windowsKey ? { [windowsKey]: WINDOWS_FORMS[windowsKey](launcherCmdIn(scriptsDir)) } : {}),
+    ...(shell ? { shell } : {}),
     ...(env ? { env } : {}),
   };
   return {
@@ -149,7 +162,10 @@ function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionId
 export function buildClaudeSettingsManifest() {
   return {
     description: 'Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.',
-    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PROJECT_SCRIPTS, { sessionIdentity: true }),
+    hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PROJECT_SCRIPTS, {
+      sessionIdentity: true,
+      shell: CLAUDE_HOOK_SHELL,
+    }),
   };
 }
 

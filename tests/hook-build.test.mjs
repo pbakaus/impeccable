@@ -107,6 +107,37 @@ describe('hook manifest builders', () => {
     expectCommand(stop.command, '.claude/skills/impeccable/scripts');
   });
 
+  it('pins the Claude hook shell to bash so the POSIX guard never meets PowerShell', () => {
+    // Claude Code resolves the hook shell per platform: bash when it finds Git
+    // Bash, PowerShell on Windows otherwise. The guard is POSIX syntax that
+    // PowerShell rejects with "Missing type name after '['", which is the same
+    // ParserError VS Code hit (#1249) -- but Claude has no per-OS `windows`
+    // sibling to fall back on. Without an explicit `shell`, every hook on a
+    // Windows box that cannot see Git Bash from the hook subprocess fails.
+    const manifest = buildClaudeSettingsManifest();
+
+    for (const handler of [
+      manifest.hooks.SessionStart[0].hooks[0],
+      manifest.hooks.PostToolUse[0].hooks[0],
+      manifest.hooks.Stop[0].hooks[0],
+    ]) {
+      assert.equal(handler.shell, 'bash', `hook ${handler.statusMessage} must pin shell`);
+      expectCommand(handler.command, '.claude/skills/impeccable/scripts');
+    }
+  });
+
+  it('leaves the plugin manifest without shell, since VS Code selects its own runner', () => {
+    // The plugin manifest serves VS Code Copilot Chat as well, and that harness
+    // picks the `windows` sibling on Windows rather than honoring `shell`.
+    // Emitting `shell` there would be a field it does not read, and pinning
+    // bash for VS Code reintroduces exactly the #1249 failure the sibling fixes.
+    const manifest = buildClaudePluginHooksManifest();
+    const handler = manifest.hooks.PostToolUse[0].hooks[0];
+
+    assert.equal(handler.shell, undefined);
+    assert.ok(handler.windows, 'plugin manifest keeps its windows sibling');
+  });
+
   it('builds Codex project-local hooks for the real detector hook', () => {
     // Default install dir is `.codex`: a `.codex`-directory install keeps the
     // skill payload at `.codex/skills/...`, so the hook must point there (not at
