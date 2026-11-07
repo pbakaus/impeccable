@@ -39,6 +39,7 @@ pub mod svelte_component;
 pub mod svelte_sessions;
 pub mod util;
 pub mod vocabulary;
+pub mod vue_component;
 pub mod wrap_common;
 
 pub mod live_accept;

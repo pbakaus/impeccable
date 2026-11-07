@@ -8,6 +8,45 @@ const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js')
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
+describe('component preview remount parameters', () => {
+  for (const deferred of [false, true]) {
+    for (const sameVariant of [false, true]) {
+      it(`preserves edits only on the same variant (deferred=${deferred}, same=${sameVariant})`, async () => {
+        const source = SOURCE.match(/async function mountSvelteComponentVariant\([^\n]*\) \{[\s\S]*?\n  \}/)?.[0];
+        assert.ok(source);
+        const anchor = { values: {} };
+        let mounted = false;
+        const frames = [];
+        const context = {
+          svelteComponentSession: {
+            sessionId: 'vue1', manifest: {}, mountTargetEl: {},
+            mountedVariant: sameVariant ? 1 : 2, propValues: {},
+          },
+          paramsCurrentValues: { space: 23 }, selectedElement: {}, state: 'CYCLING',
+          componentModuleCandidates: () => ['/v1.vue'],
+          makeFrozenAnchor: value => value,
+          loadSvelteRuntime: async () => ({ mount() { mounted = true; return {}; } }),
+          importFirstReachable: async () => ({ url: '/v1.vue', mod: { default: {} } }),
+          getMountedSvelteComponentAnchor: () => mounted && !deferred ? anchor : null,
+          removeSvelteComponentVariantStyle() {}, syncCyclingControls() {},
+          isSvelteInsertManifest: () => false, applyOriginalAttrsToSvelteAnchor() {},
+          parseVariantParams: () => [{ id: 'space', kind: 'range', min: 4, max: 32 }],
+          applyParamValue(target, param, value) { target.values[param.id] = value; },
+          requestAnimationFrame: fn => frames.push(fn),
+          reportVariantMounted() {}, mountErrorState: null, console,
+        };
+        const helpers = ['isValidSavedParamValue', 'applySavedParamValues'].map(name =>
+          SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0]).join('\n');
+        const mount = runInNewContext(`${helpers}\n${source}\nmountSvelteComponentVariant`, context);
+        assert.equal(await mount(1), true);
+        context.getMountedSvelteComponentAnchor = () => anchor;
+        for (const frame of frames) frame();
+        assert.equal(anchor.values.space, sameVariant ? 23 : undefined);
+      });
+    }
+  }
+});
+
 describe('live-browser source contracts', () => {
   it('does not checkpoint a generation before captureAndEmit creates its session', () => {
     for (const name of ['handleGo', 'handleInsertCreate']) {
