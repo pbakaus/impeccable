@@ -905,5 +905,33 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    // A named world alone leaves the first surface open, so the roll still binds.
+    // The context-only bash tool says everything but `context` is off limits, which
+    // would bias this decision, so the turn gets the real shell and a local catalog.
+    it('scenario 23: a pinned world with an open first surface still rolls', async () => {
+      const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
+      const scopedRolls = (trace) => trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
+      try {
+        const { trace, text } = await runTurn({
+          checkpoint: (trace) => scopedRolls(trace).length > 0,
+          contextOnlyBash: false,
+          env: {
+            IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
+            IMPECCABLE_SEED_SALT: 'skill-behavior',
+          },
+          workspace,
+          model,
+          userPrompt: `${CRAFT_PROMPT}. The world is fixed: a working laboratory notebook, ruled graph paper in blue-black ink with pencil margin annotations.`,
+          maxSteps: 16,
+        });
+        logTrace('S23', 'partial-pin-rolls', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(scopedRolls(trace).length >= 1,
+          `a pin that leaves the first surface open must still run concept-seed.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
   });
 }
