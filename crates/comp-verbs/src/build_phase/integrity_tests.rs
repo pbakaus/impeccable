@@ -428,6 +428,41 @@ fn unrelated_user_mention_cannot_authorize_another_speakers_quote() {
     }
 }
 
+#[test]
+fn force_accepts_the_users_words_downgrading_the_comp_and_its_refusal_shows_the_shape() {
+    for reason in [
+        "The user said: \"Please downgrade the comp. It no longer represents my vision for the site.\"",
+        "The user said: \"The comp should be considered stale as of the writing of this statement.\"",
+        "The user said: \"Please consider the built page the site's design now. The comp was a reference. The status line, the card labels, and the sign do not need to match it.\"",
+        "The user answered: \"Yes, the build overrides the comp\"",
+    ] {
+        assert!(force_allowed(Some(reason)), "{reason}");
+    }
+    for reason in [
+        "The user said: \"Do not downgrade the comp.\"",
+        "The user said: \"The comp is not stale.\"",
+        "The user said: \"The comp should not be considered stale.\"",
+        "The user said: \"The comp was never a reference.\"",
+        "The user said: \"The build does not override the comp.\"",
+        "The user said: \"The page replaces the comp crops with real plates.\"",
+        "The user said: \"Do not\nignore the comp.\"",
+        "The user said: \"The comp was a reference and still is; do not deviate from it.\"",
+        "Please downgrade the comp. It no longer represents my vision for the site.",
+    ] {
+        assert!(!force_allowed(Some(reason)), "{reason}");
+    }
+    let ws = Workspace::new();
+    ws.write("comp.png", &png_io::encode_png(&r::create_image(64, 64, [230, 220, 200, 255]), &[]).unwrap());
+    let io = ws.io();
+    let mut state = json!({"phase":"spec","comp":"comp.png","phases":{"spec":{"attempts":0}}});
+    let opts = GateOpts { build_path: None, min: None, artifact: None };
+    let result = advance(&io, &mut state, true, Some("Please downgrade the comp, it is old."), &opts, &no_organic_scan, None);
+    assert!(!result.ok);
+    let refusal = result.reasons.iter().find(|r| r.starts_with("--force refused: \"")).expect("force is refused");
+    let example = refusal.split("for example: ").nth(1).unwrap().split(')').next().unwrap();
+    assert!(force_allowed(Some(example)), "{example}");
+}
+
 fn simple_hero_workspace() -> (Workspace, Value) {
     let ws = Workspace::new();
     let comp = r::create_image(100, 100, [150, 70, 30, 255]);
