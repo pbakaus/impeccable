@@ -203,9 +203,10 @@ Illustration or icon (not just text on blank page)
 
 **Storage patterns**:
 ```javascript
-// Track which onboarding steps user has seen
-localStorage.setItem('onboarding-completed', 'true');
-localStorage.setItem('feature-tooltip-seen-reports', 'true');
+// Namespace keys by account id + onboarding version, so a shared browser
+// doesn't let one account's progress hide onboarding for another.
+localStorage.setItem('onboarding-completed:' + userId, 'true');
+localStorage.setItem('feature-tooltip-seen-reports:' + userId, 'true');
 ```
 
 Show onboarding once: track completion and respect dismissals.
