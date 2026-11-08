@@ -27,9 +27,23 @@ fn login_round_trip_stores_a_private_sign_in() {
     }
 }
 
+/// The loopback redirect (`http://127.0.0.1:<port>/callback`) in an
+/// authorization URL.
+fn redirect_uri(url: &str) -> String {
+    url::Url::parse(url)
+        .unwrap()
+        .query_pairs()
+        .find(|(k, _)| k == "redirect_uri")
+        .unwrap()
+        .1
+        .into_owned()
+}
+
 #[test]
 fn a_forged_callback_is_refused_before_any_code_exchange() {
     // Catches: accepting an answer from another issuer (mix-up) or another request (CSRF).
+    // A forged `state` is ignored (the attempt then times out); a wrong `iss` on this
+    // attempt's `state` ends it.
     for (name, iss, state) in [
         ("iss", Some("http://127.0.0.1:1"), None),
         ("state", None, Some("forged")),
@@ -42,7 +56,7 @@ fn a_forged_callback_is_refused_before_any_code_exchange() {
         }
         let env = fake.env(&format!("forged-{name}"));
         assert!(
-            login(&env, &mut |url| browser(url), WAIT).is_err(),
+            login(&env, &mut |url| browser(url), Duration::from_secs(2)).is_err(),
             "{name}"
         );
         assert_eq!(fake.hits("/oauth/token"), 0, "{name}");
@@ -93,5 +107,76 @@ fn a_second_process_adopts_rotated_tokens_instead_of_reusing_the_old_refresh_tok
         impeccable_account::session::entitlement(&mut b)
             .unwrap()
             .pro
+    );
+}
+
+#[test]
+fn a_callback_without_this_attempts_state_does_not_end_the_sign_in() {
+    // Catches: any local process that finds the port ending the login with a bare /callback.
+    let fake = Fake::start();
+    let env = fake.env("bare-callback");
+    let done = login(
+        &env,
+        &mut |url| {
+            // Off this thread: `wait` only starts answering once the browser hook returns.
+            let (url, callback) = (url.to_string(), redirect_uri(url));
+            std::thread::spawn(move || {
+                let _ = ureq::get(&callback).call();
+                let _ = ureq::get(&format!("{callback}?state=guess&code=x")).call();
+                browser(&url);
+            });
+        },
+        WAIT,
+    );
+    assert!(done.is_ok(), "{:?}", done.err());
+    assert_eq!(fake.hits("/oauth/token"), 1, "only the real code is exchanged");
+}
+
+#[test]
+fn a_stalled_local_connection_does_not_hold_up_the_browser() {
+    // Catches: a connection that trickles its request head blocking the real callback.
+    use std::io::Write;
+    let fake = Fake::start();
+    let env = fake.env("stalled");
+    let mut held = None;
+    let done = login(
+        &env,
+        &mut |url| {
+            let host = url::Url::parse(&redirect_uri(url)).unwrap();
+            let addr = format!("{}:{}", host.host_str().unwrap(), host.port().unwrap());
+            let mut s = std::net::TcpStream::connect(addr).unwrap();
+            s.write_all(b"GET /callback?st").unwrap();
+            held = Some(s);
+            browser(url)
+        },
+        WAIT,
+    );
+    assert!(done.is_ok(), "{:?}", done.err());
+    drop(held);
+}
+
+#[test]
+fn a_logout_while_the_browser_is_open_is_not_undone_by_the_sign_in() {
+    // Catches: a sign-in that finishes after `logout` signing the machine back in.
+    let fake = Fake::start();
+    let env = fake.env("logout-during-login");
+    let account = Account::from_env(&env).unwrap();
+    let done = login(
+        &env,
+        &mut |url| {
+            assert!(logout(&env).unwrap().is_none());
+            browser(url)
+        },
+        WAIT,
+    );
+    assert!(done.is_err());
+    assert_eq!(
+        Session::load(&account).err(),
+        Some(SessionError::NotSignedIn)
+    );
+    assert_eq!(
+        fake.record.lock().unwrap().revoked.len(),
+        1,
+        "the tokens the late sign-in got are revoked"
     );
 }
