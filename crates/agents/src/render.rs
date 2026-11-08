@@ -464,6 +464,7 @@ pub(super) fn parse_unique_json(bytes: &[u8]) -> Result<Value, serde_json::Error
     deserializer.end()?;
     Ok(value)
 }
+#[allow(clippy::needless_return)]
 pub(super) fn render_codex_config(
     s: &Spec,
     before: Option<&[u8]>,

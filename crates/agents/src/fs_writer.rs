@@ -146,7 +146,7 @@ fn identity_matches(identity: &Option<FileIdentity>) -> Result<bool, (&'static s
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        return Ok(md.dev() == identity.dev && md.ino() == identity.ino);
+        Ok(md.dev() == identity.dev && md.ino() == identity.ino)
     }
     #[cfg(not(unix))]
     {
