@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-account"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "base64",
  "impeccable-common",
