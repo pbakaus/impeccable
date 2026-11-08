@@ -18,6 +18,29 @@ pub(super) fn apply(
             4,
         ));
     }
+    if let Some(old) = old.filter(|o| o.spec.harness == "codex") {
+        // A person who changed the approval since it was written decided otherwise; don't undo that.
+        let text = fs::read_to_string(old.spec.root.join("config.toml")).unwrap_or_default();
+        let changed: Vec<_> = old
+            .spec
+            .mcp_approvals
+            .iter()
+            .filter(|a| {
+                render::approval_value(&text, &a.server).as_deref() != Some(a.mode.as_str())
+            })
+            .map(|a| a.server.clone())
+            .collect();
+        if !changed.is_empty() {
+            return Err((
+                "approval_drift",
+                format!(
+                    "Codex MCP approval changed outside the engine: {}",
+                    changed.join(", ")
+                ),
+                4,
+            ));
+        }
+    }
     let mut snapshots = Vec::new();
     let mut writes = Vec::new();
     let desired_targets = targets(s);

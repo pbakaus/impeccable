@@ -119,6 +119,14 @@ fn remove_rule_block(
     let Some(a) = text.find(&start) else {
         return Ok(current.to_vec());
     };
+    // A block the person edited is theirs now: leave it, and undo reports the conflict.
+    let written = render_rule(s, None)?;
+    let written = String::from_utf8_lossy(&written);
+    if crate::resources::block_body(&text, &start, &end)
+        != crate::resources::block_body(&written, &start, &end)
+    {
+        return Ok(current.to_vec());
+    }
     let Some(e) = text.find(&end) else {
         return Err((
             "ambiguous_markers",
@@ -579,15 +587,12 @@ fn render_codex_features(
     match feature_hooks(Some(&document))? {
         Some(true) => return Ok(before.unwrap_or_default().to_vec()),
         Some(false) => {
-            let feature = document.as_table().get("features").unwrap();
-            let hook = feature
-                .as_table_like()
-                .and_then(|table| table.get("hooks"))
-                .unwrap();
-            let span = hook
-                .span()
-                .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
-            return Ok(splice(text, span, "true").into_bytes());
+            // An explicit off switch also silences the person's other hooks; never flip it for them.
+            return Err((
+                "hooks_disabled",
+                "Codex hooks are turned off (features.hooks = false); turn them on first".into(),
+                4,
+            ));
         }
         None => match document.as_table().get("features") {
             Some(Item::Table(table)) => {

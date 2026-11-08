@@ -137,14 +137,23 @@ fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
         run_async: None,
         async_rewake: None,
     });
+    assert_eq!(
+        render_codex_config(
+            &s,
+            Some(b"model = 'x'\n\n[features]\nhooks = false # user note\n\n[other]\nx = 1\n"),
+        )
+        .unwrap_err()
+        .0,
+        "hooks_disabled"
+    );
     let result = render_codex_config(
         &s,
-        Some(b"model = 'x'\n\n[features]\nhooks = false # user note\n\n[other]\nx = 1\n"),
+        Some(b"model = 'x'\n\n[features]\nother = 1 # user note\n\n[other]\nx = 1\n"),
     )
     .unwrap();
     assert_eq!(
         String::from_utf8(result).unwrap(),
-        "model = 'x'\n\n[features]\nhooks = true # user note\n\n[other]\nx = 1\n"
+        "model = 'x'\n\n[features]\nother = 1 # user note\nhooks = true\n\n[other]\nx = 1\n"
     );
     let commented = render_codex_config(&s, Some(b"# keep this comment\nmodel = 'x'\n")).unwrap();
     assert!(String::from_utf8(commented)
@@ -158,7 +167,7 @@ fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
     );
     let with_mcp = render_codex_config(
         &s,
-        Some(b"[mcp_servers.tools]\ncommand = 'tool'\n\n[features]\nhooks = false\n"),
+        Some(b"[mcp_servers.tools]\ncommand = 'tool'\n\n[features]\nhooks = true\n"),
     )
     .unwrap();
     assert!(String::from_utf8(with_mcp)
@@ -1040,4 +1049,38 @@ fn undo_removes_what_the_journal_recorded_not_the_callers_spec() {
     assert!(!fs::read_to_string(root.join("AGENTS.md"))
         .unwrap_or_default()
         .contains("impeccable:"));
+}
+#[test]
+fn reapply_refuses_an_approval_the_person_changed_and_undo_keeps_an_edited_block() {
+    // Catches: reinstall flipping a person's "prompt" back to "approve", and undo deleting
+    // personal text written inside the managed instruction block.
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(&config, "[mcp_servers.impeccable]\nurl = \"u\"\n").unwrap();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let tightened = fs::read_to_string(&config)
+        .unwrap()
+        .replace("\"approve\"", "\"prompt\"");
+    fs::write(&config, &tightened).unwrap();
+    let err = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap_err();
+    assert_eq!(err.0, "approval_drift");
+    assert_eq!(fs::read_to_string(&config).unwrap(), tightened);
+    let agents = root.join("AGENTS.md");
+    let edited = fs::read_to_string(&agents)
+        .unwrap()
+        .replace("managed text", "managed text\nMy own rule.");
+    fs::write(&agents, &edited).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert_eq!(fs::read_to_string(&agents).unwrap(), edited);
+    assert!(result["conflicts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c.as_str().unwrap().ends_with("AGENTS.md")));
 }
