@@ -1,4 +1,5 @@
 use super::*;
+use crate::cli::list;
 use crate::render::{render_codex_config, render_rule};
 use std::sync::Mutex;
 
@@ -1083,4 +1084,56 @@ fn reapply_refuses_an_approval_the_person_changed_and_undo_keeps_an_edited_block
         .unwrap()
         .iter()
         .any(|c| c.as_str().unwrap().ends_with("AGENTS.md")));
+}
+#[test]
+fn list_reports_every_installation_without_paths_and_marks_edited_entries() {
+    // Catches: a setup report that leaks account roots or hook commands, misses an installation, or calls an
+    // entry the person changed still installed.
+    let root = temp();
+    let home = temp();
+    let s: Spec = serde_json::from_value(json!({
+        "version": 1, "owner": "impeccable-loop", "harness": "claude", "root": root,
+        "hooks": [{"event":"Stop","command":"secret-command /Users/someone","timeout":10},
+                  {"event":"PreToolUse","matcher":"AskUserQuestion","command":"ask"}]
+    }))
+    .unwrap();
+    let j = apply(&s, None, &home, &home.join("loop.json"), None).unwrap();
+    fs::write(home.join("loop.json"), serde_json::to_vec(&j).unwrap()).unwrap();
+    // operate() removes the transaction's pending file on commit; this test commits by hand.
+    for e in fs::read_dir(&home).unwrap().flatten() {
+        if e.file_name().to_string_lossy().ends_with(".pending.json") {
+            fs::remove_file(e.path()).unwrap();
+        }
+    }
+    fs::write(home.join("other.pending.json"), b"{}").unwrap();
+    let report = list(&home).unwrap();
+    let text = report.to_string();
+    assert!(!text.contains(&*root.to_string_lossy()) && !text.contains("secret-command"));
+    assert_eq!(report["pendingTransactions"], 1);
+    let install = &report["installations"][0];
+    assert_eq!(
+        (install["owner"].as_str(), install["harness"].as_str()),
+        (Some("impeccable-loop"), Some("claude"))
+    );
+    assert_eq!(
+        install["hooks"],
+        json!([{"event":"Stop","matcher":null},{"event":"PreToolUse","matcher":"AskUserQuestion"}])
+    );
+    let states = |r: &Value| {
+        r["installations"][0]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["state"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert!(!states(&report).is_empty() && states(&report).iter().all(|s| s == "created"));
+    fs::write(root.join("settings.json"), b"{\"hooks\":{}}").unwrap();
+    assert!(states(&list(&home).unwrap())
+        .iter()
+        .all(|s| s == "conflict"));
+    assert_eq!(
+        list(&temp().join("absent")).unwrap()["installations"],
+        json!([])
+    );
 }

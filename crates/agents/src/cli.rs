@@ -1,17 +1,29 @@
 use super::*;
+use crate::targets::resource_matches;
 
 pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
     let Some(verb) = args.first().map(String::as_str) else {
         return fail(
             io,
             "invalid_request",
-            "Expected capabilities, plan, apply, undo, status, or recover",
+            "Expected capabilities, list, plan, apply, undo, status, or recover",
             2,
         );
     };
     if verb == "capabilities" {
-        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex"],"scopes":["user"],"verbs":["plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
+        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
         return 0;
+    }
+    if verb == "list" {
+        return match agents_home().and_then(|home| list(&home)) {
+            Ok(body) => {
+                io.out(
+                    &json!({"schemaVersion":RESPONSE_VERSION,"ok":true,"result":body}).to_string(),
+                );
+                0
+            }
+            Err((code, msg, exit)) => fail(io, code, &msg, exit),
+        };
     }
     let Some(spec_path) = args
         .windows(2)
@@ -109,10 +121,7 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
     Ok(())
 }
 pub(super) fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
-    let home = std::env::var_os("IMPECCABLE_AGENTS_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".impeccable/agents")))
-        .ok_or_else(|| ("io_error", "No home directory configured".into(), 1))?;
+    let home = agents_home()?;
     ensure_private_home(&home)?;
     let lock = home.join("agents.lock");
     let _lock_guard = acquire_lock(&lock, Duration::from_secs(10))?;
@@ -163,4 +172,60 @@ pub(super) fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, Stri
         }
     })();
     result
+}
+fn agents_home() -> Result<PathBuf, (&'static str, String, i32)> {
+    std::env::var_os("IMPECCABLE_AGENTS_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".impeccable/agents")))
+        .ok_or_else(|| ("io_error", "No home directory configured".into(), 1))
+}
+/// Every committed installation in the journal, as a setup report: who owns it, which harness, which hook events
+/// and other entries it wrote, and whether each is still as written. Read-only, without the lock (journals are
+/// written atomically), and with no path, command or account root, so the report can leave the machine.
+pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
+    let mut installations = Vec::new();
+    let mut pending = 0;
+    let entries = match fs::read_dir(home) {
+        Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
+        Err(e) => return Err(ioerr(e)),
+    };
+    for path in entries {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if name.ends_with(".pending.json") {
+            pending += 1;
+            continue;
+        }
+        if !name.ends_with(".json") {
+            continue;
+        }
+        let Some(j) = read_journal(&path)? else {
+            continue;
+        };
+        let mut resources = Vec::new();
+        for r in &j.resources {
+            let state = if resource_matches(&j.spec, &j, r)? {
+                format!("{:?}", r.state).to_lowercase()
+            } else {
+                "conflict".into()
+            };
+            resources.push(json!({"kind":r.kind,"state":state}));
+        }
+        installations.push(json!({
+            "owner":j.spec.owner,
+            "harness":j.spec.harness,
+            "hooks":j.spec.hooks.iter().map(|h| json!({"event":h.event,"matcher":h.matcher})).collect::<Vec<_>>(),
+            "instruction":j.spec.instruction.is_some(),
+            "mcpServers":j.spec.mcp_servers.iter().map(|m| m.name.clone()).collect::<Vec<_>>(),
+            "mcpApprovals":j.spec.mcp_approvals.iter().map(|a| a.server.clone()).collect::<Vec<_>>(),
+            "resources":resources,
+        }));
+    }
+    installations.sort_by_key(|i| (i["owner"].to_string(), i["harness"].to_string()));
+    Ok(
+        json!({"engineVersion":env!("CARGO_PKG_VERSION"),"installations":installations,"pendingTransactions":pending}),
+    )
 }
