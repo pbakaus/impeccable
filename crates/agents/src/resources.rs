@@ -506,8 +506,9 @@ pub(super) fn undo(
             }
             removed.push(snap.path.clone())
         } else {
+            // What was written, not what the caller asks about now.
             match render::remove_owned(
-                s,
+                &j.spec,
                 &snap.path,
                 current.as_deref().unwrap_or_default(),
                 snap.before.as_deref(),

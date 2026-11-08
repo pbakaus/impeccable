@@ -1008,3 +1008,36 @@ fn codex_mcp_approval_is_set_on_the_existing_server_and_restored_on_undo() {
     claude.mcp_approvals = s.mcp_approvals.clone();
     assert!(validate(&claude).is_err());
 }
+#[test]
+fn undo_removes_what_the_journal_recorded_not_the_callers_spec() {
+    // Catches: an undo spec without approvals leaving the approval behind after unrelated edits.
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    let original = "[mcp_servers.impeccable]\nurl = \"u\"\n";
+    fs::write(&config, original).unwrap();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("model = 'mine'\n{written}")).unwrap();
+    let bare = Spec {
+        mcp_approvals: vec![],
+        instruction: None,
+        ..s.clone()
+    };
+    assert!(undo(&bare, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        format!("model = 'mine'\n{original}")
+    );
+    assert!(!fs::read_to_string(root.join("AGENTS.md"))
+        .unwrap_or_default()
+        .contains("impeccable:"));
+}
