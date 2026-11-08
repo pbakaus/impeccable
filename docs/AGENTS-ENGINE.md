@@ -21,6 +21,15 @@ Commands emit one JSON response with `schemaVersion: 1`. Requests use
 }
 ```
 
+Hooks may also carry `timeout` (seconds), and for Claude Code `async` and
+`asyncRewake`; unset fields are omitted. Both harnesses get the same entry
+shape under `hooks.<event>`: `{"matcher"?, "hooks":[{"type":"command",
+"command", ...}]}`. Codex specs may list `mcpApprovals`
+(`[{"server":"impeccable","mode":"approve"}]`), which set
+`default_tools_approval_mode` on an existing standard `[mcp_servers.<server>]`
+table; a missing server is refused (`server_missing`) and inline or dotted
+server tables need a manual edit. Undo restores the prior mode.
+
 Supported verbs are `capabilities`, `plan`, `apply`, `undo`, `status`, and
 `recover`. `capabilities` does not need a spec. Request and response schemas
 are version 1; the journal schema is version 2 under

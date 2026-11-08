@@ -307,6 +307,18 @@ pub(super) fn build_resource_records(
                     Value::Bool(true),
                 );
             }
+            if path.ends_with("config.toml") && s.harness == "codex" {
+                let before = String::from_utf8_lossy(before);
+                for a in &s.mcp_approvals {
+                    add(
+                        "mcp-approval",
+                        &a.server,
+                        &physical.display().to_string(),
+                        render::approval_value(&before, &a.server).map(Value::String),
+                        Value::String(a.mode.clone()),
+                    );
+                }
+            }
             if path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") {
                 let marker = format!("impeccable:{}", s.owner);
                 let start = format!("<!-- {marker} start -->");

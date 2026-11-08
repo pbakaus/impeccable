@@ -47,7 +47,15 @@ pub struct Spec {
     pub hooks: Vec<Hook>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
+    /// Codex only: `default_tools_approval_mode` on an existing `[mcp_servers.<server>]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_approvals: Vec<McpApproval>,
     pub instruction: Option<String>,
+}
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct McpApproval {
+    pub server: String,
+    pub mode: String,
 }
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Hook {

@@ -34,6 +34,7 @@ fn spec(harness: &str, root: PathBuf) -> Spec {
         root,
         hooks: vec![],
         mcp_servers: vec![],
+        mcp_approvals: vec![],
         instruction: Some("managed text".into()),
     }
 }
@@ -936,4 +937,74 @@ fn hook_options_reach_the_harness_and_undo_removes_them() {
     let left: Value =
         serde_json::from_slice(&fs::read(root.join("settings.json")).unwrap()).unwrap();
     assert_eq!(left, json!({"model":"personal"}));
+}
+#[test]
+fn codex_mcp_approval_is_set_on_the_existing_server_and_restored_on_undo() {
+    // Catches: no way to auto-approve Loop's MCP tools in Codex, or undo that loses the person's prior mode.
+    for (prior, line) in [
+        (None, ""),
+        (Some("prompt"), "default_tools_approval_mode = \"prompt\"\n"),
+    ] {
+        let root = temp();
+        let home = temp();
+        let config = root.join("config.toml");
+        let original = format!("model = 'x'\n\n[mcp_servers.impeccable]\n{line}url = \"https://example.test/mcp\" # keep\n\n[mcp_servers.other]\nurl = \"o\"\n");
+        fs::write(&config, &original).unwrap();
+        let mut s = spec("codex", root.clone());
+        s.instruction = None;
+        s.mcp_approvals = vec![McpApproval {
+            server: "impeccable".into(),
+            mode: "approve".into(),
+        }];
+        s.hooks = vec![Hook {
+            event: "SessionStart".into(),
+            matcher: None,
+            command: "loop lifecycle".into(),
+            timeout: Some(10),
+            run_async: None,
+            async_rewake: None,
+        }];
+        assert!(validate(&s).is_ok());
+        let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+        let written = fs::read_to_string(&config).unwrap();
+        assert_eq!(
+            render::approval_value(&written, "impeccable").as_deref(),
+            Some("approve")
+        );
+        assert_eq!(render::approval_value(&written, "other"), None);
+        assert!(written.contains("# keep") && written.starts_with("model = 'x'\n"));
+        fs::write(&config, written.replace("model = 'x'", "model = 'mine'")).unwrap();
+        assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let left = fs::read_to_string(&config).unwrap();
+        assert_eq!(
+            left,
+            original.replace("model = 'x'", "model = 'mine'"),
+            "prior {prior:?}"
+        );
+    }
+    let root = temp();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    for (text, code) in [
+        ("model = 'x'\n", "server_missing"),
+        (
+            "mcp_servers = { impeccable = { url = 'u' } }\n",
+            "invalid_settings",
+        ),
+    ] {
+        fs::write(root.join("config.toml"), text).unwrap();
+        let home = temp();
+        let err = apply(&s, None, &home, &home.join("journal.json"), None).unwrap_err();
+        assert_eq!(err.0, code);
+        assert_eq!(fs::read_to_string(root.join("config.toml")).unwrap(), text);
+    }
+    let mut claude = spec("claude", root);
+    claude.mcp_approvals = s.mcp_approvals.clone();
+    assert!(validate(&claude).is_err());
 }

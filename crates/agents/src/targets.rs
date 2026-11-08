@@ -10,6 +10,8 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
         } else {
             out.extend([s.root.join("hooks.json"), s.root.join("config.toml")]);
         }
+    } else if s.harness == "codex" && !s.mcp_approvals.is_empty() {
+        out.push(s.root.join("config.toml"));
     }
     if s.instruction.is_some() {
         out.push(s.root.join(if s.harness == "claude" {
@@ -152,6 +154,13 @@ pub(super) fn resource_matches(
                 return Ok(false);
             };
             Ok(body == expected)
+        }
+        "mcp-approval" => {
+            let text = String::from_utf8_lossy(&bytes);
+            Ok(journal.spec.mcp_approvals.iter().any(|a| {
+                resource.last_written_value.as_str() == Some(a.mode.as_str())
+                    && render::approval_value(&text, &a.server).as_deref() == Some(a.mode.as_str())
+            }))
         }
         "setting" => Ok(String::from_utf8_lossy(&bytes)
             .lines()
