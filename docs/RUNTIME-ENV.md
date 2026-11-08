@@ -41,6 +41,14 @@ its request head, and the whole wait ends at `IMPECCABLE_LOGIN_TIMEOUT`. With
 can open it (or drive the consent page) itself. `whoami` asks
 `GET /cli/v1/entitlement`; `whoami --json` prints
 `{account_url, signed_in, pro, reason}` and exits 1 when not signed in.
+When signed in, `whoami` also reads the public plan catalog,
+`GET /v1/plans` without a token and with a 5-second deadline, and prints the
+plan's name and what it adds, marking announced items `(soon)`; `--json` adds
+`plan: {id, name, builds, adds: [{text, soon}]}`. The plan is the one the
+entitlement names in `plan`, else `pro` or `free` from its `pro` flag. If the
+catalog can't be read (off, unreachable, malformed), `whoami` prints its
+`Pro rules:` line instead. Catalog text is cleaned of control characters and
+bidirectional overrides and capped in length before it is printed.
 
 Every request goes to the issuer's own origin. That is checked at the HTTP
 client, so an endpoint read back from `state.json` cannot carry a token

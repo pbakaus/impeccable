@@ -47,3 +47,84 @@ fn a_script_signs_in_checks_and_signs_out() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["signed_in"].as_bool(), Some(false));
 }
+
+#[test]
+fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
+    // Catches: whoami failing or going quiet when the public plan catalog is off (404), and the catalog's items not reaching the person.
+    let fake = Fake::start();
+    let env = fake.env("cli-plans");
+    let mut child = impeccable(&env, &["login", "--no-browser"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut url)
+        .unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+
+    // The catalog is off: today's line.
+    let out = impeccable(&env, &["whoami"]).output().unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("Pro rules: included."), "{text}");
+
+    let catalog = serde_json::json!({
+        "plans": [
+            { "id": "free", "name": "Free", "builds": null, "adds": [{ "text": "The skill" }] },
+            { "id": "pro", "name": "Pro", "builds": "free", "adds": [
+                { "text": "Detector Pro: dozens of extra rules in your CLI" },
+                { "text": "Live++", "soon": true },
+            ] },
+        ],
+        "start": { "signIn": "npx impeccable login", "pricing": "https://impeccable.style/pricing" },
+    });
+    fake.route(
+        "GET",
+        "/v1/plans",
+        200,
+        vec![("content-type", "application/json".into())],
+        catalog.to_string(),
+    );
+    let out = impeccable(&env, &["whoami"]).output().unwrap();
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("Plan: Pro. Everything in Free, plus:\n")
+            && text.contains("  - Detector Pro: dozens of extra rules in your CLI\n")
+            && text.contains("  - Live++ (soon)\n")
+            && !text.contains("Pro rules"),
+        "{text}"
+    );
+    let out = impeccable(&env, &["whoami", "--json"]).output().unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["pro"].as_bool(), Some(true));
+    assert_eq!(v["plan"]["id"], "pro");
+    assert_eq!(
+        v["plan"]["adds"][1],
+        serde_json::json!({ "text": "Live++", "soon": true })
+    );
+
+    // Not entitled reads the Free plan.
+    fake.knobs.lock().unwrap().entitled = false;
+    let out = impeccable(&env, &["whoami"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("Plan: Free. Includes:\n  - The skill\n"),
+        "{text}"
+    );
+
+    // A plan the entitlement names wins over the pro flag (Team, later).
+    fake.route(
+        "GET",
+        "/cli/v1/entitlement",
+        200,
+        vec![("content-type", "application/json".into())],
+        r#"{"pro":true,"reason":"operator","plan":"free"}"#,
+    );
+    let out = impeccable(&env, &["whoami"]).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("Plan: Free."), "{text}");
+}

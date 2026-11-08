@@ -179,6 +179,9 @@ impl Session {
 pub struct Entitlement {
     pub pro: bool,
     pub reason: String,
+    /// The plan id, when the service names one the catalog knows
+    /// (`free`, `pro`, `team`, `enterprise`). Without it, `pro` decides.
+    pub plan: Option<String>,
 }
 
 pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
@@ -193,5 +196,10 @@ pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
         .filter(|r| r.len() <= 64 && r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
         .unwrap_or("unknown")
         .to_string();
-    Ok(Entitlement { pro, reason })
+    let plan = v
+        .get("plan")
+        .and_then(|p| p.as_str())
+        .filter(|p| crate::plans::known(p))
+        .map(str::to_string);
+    Ok(Entitlement { pro, reason, plan })
 }
