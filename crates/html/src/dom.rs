@@ -481,6 +481,11 @@ impl<'a> StaticElement<'a> {
         self.elem().attr(name)
     }
 
+    /// Every attribute as `(name, value)`.
+    pub fn attributes(&self) -> impl Iterator<Item = (&'a str, &'a str)> {
+        self.elem().attrs()
+    }
+
     /// JS `el.className` (`getAttribute('class') || ''`).
     pub fn class_name(&self) -> &'a str {
         self.get_attribute("class").unwrap_or("")
