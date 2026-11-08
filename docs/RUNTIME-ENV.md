@@ -94,6 +94,32 @@ backend, ask the keychain, or replace the CLI itself.
 | `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
 | `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
 
+## Design health (`impeccable health`; `crates/account/src/health.rs`)
+
+A signed-in CLI saves the counts of each full `detect` of a git repo to the account (REN-1559), so the account can show how the repo's design health moves over time. Free plans include it.
+
+**When it uploads.** All of these must hold, and they are checked in this order, cheapest first:
+- `detect` scanned one local directory that is the top of a git work tree: the working directory or a single directory target, with no `--scope`, no `--cdp`, no piped input, no URL, and no file left unscanned. Hook scans never upload.
+- `CI` is unset or empty.
+- Telemetry is on: no `DO_NOT_TRACK` or `IMPECCABLE_NO_TELEMETRY`, and no `"telemetry": false` in the user or project config (the same check the roll API's pings use).
+- Sync is on: `impeccable health off` turns it off, `impeccable health on` back on. It is on by default (`SYNC_BY_DEFAULT`, the decider's question 1 on REN-1559).
+- Someone is signed in.
+
+**What it sends.** `POST {account}/cli/v1/health/scans`, payload v1 as REN-1559 defines it. The body holds counts and opaque hashes only, never a remote, path, snippet or code:
+- `repoKey` is the SHA-256 of the `origin` remote in one spelling: credentials dropped, `git@host:path` and `ssh://` read as `https://host/path`, scheme and host lower-cased, a trailing `/` and `.git` removed. A repo without `origin` gets a random id instead, kept in `.impeccable/health/repo-id` and ignored by git there.
+- `streamKey` hashes `repoKey` with the branch git names (`HEAD` when detached).
+- `fingerprints` count each non-advisory finding by the first 16 bytes of the SHA-256 of its rule id, its path from the repo root with `/`, and its snippet with whitespace collapsed. The line is left out, so code that moves isn't counted as fixed and new. More than 5,000 distinct fingerprints, or a body over 256 KB, sends `fingerprints: null, truncated: true`.
+- `rulesetId` hashes the engine version, `fingerprintVersion`, every enabled rule id, and the settings that decide which findings exist: config on or off, inline ignores, design system, `--no-advisory`, `advisoryRules`, `ignoreFiles`, `ignoreValues` and `extensions`.
+- `label` is the repo folder's name, left out when the service's rule would refuse it.
+
+Every hash is length-prefixed. A change to the fingerprint or `rulesetId` recipe bumps `FINGERPRINT_VERSION`, so the service starts a new baseline. A body the service would refuse (a rule id outside `^[a-z0-9][a-z0-9/-]{0,79}$`, more than 300 rules, an engine version that isn't semver) is not sent.
+
+**How it behaves.**
+- The upload runs after `detect` has printed everything. It has one 5-second deadline, token refresh included, and never changes detect's output or exit code. Any failure is silent, and there is no retry or offline queue.
+- The first successful upload of a sign-in says so once on stderr. A 403 (a sign-in without `health:write`) says once per sign-in how to allow it or turn sync off. `--quiet` keeps both off. That state lives in `$IMPECCABLE_HOME/health.json`.
+- Sign-in asks for `health:write` only when the service's `scopes_supported` lists it, which it does only while design health is on there. Asking for a scope a service doesn't list fails the sign-in.
+- `impeccable health forget` turns sync off first, then asks `POST /cli/v1/health/forget` to delete everything saved for the person. `impeccable health` (or `status`) says whether sync is on, and if not, why.
+
 ## Pro dispatch (`crates/account/src/pro`)
 
 A signed-in, entitled machine runs scans (`detect`, its path shorthand,
