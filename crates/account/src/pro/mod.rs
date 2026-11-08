@@ -1,14 +1,18 @@
 //! Pro dispatch: a signed-in, entitled machine runs scans on the Pro engine,
 //! a separate signed build of this CLI with the Pro rule pack linked in.
 //!
-//! - **Refresh** (network, under the lifecycle lock; at login, and in a
-//!   detached `pro-refresh` child): fetch the signed manifest for this
-//!   engine and target, verify it against the pinned release keys, fetch the
-//!   artifact into a digest-keyed cache unless it is already there, and get
-//!   a lease for that digest, verified against the published lease keys
-//!   (refetched once on an unknown key id).
+//! - **Refresh** (at login, and in a detached `pro-refresh` child; one at a
+//!   time per account, by the `refresh.lock` claim): fetch the signed
+//!   manifest for this engine and target, verify it against the pinned
+//!   release keys, fetch the artifact into a digest-keyed cache unless it is
+//!   already there, and get a lease for that digest, verified against the
+//!   published lease keys (refetched once on an unknown key id). All of that
+//!   runs without the sign-in lock. Installing takes it briefly, and installs
+//!   nothing when the sign-in changed, a "not entitled" answer arrived, or a
+//!   newer revision was accepted since the refresh started.
 //! - **Dispatch** (offline, on every scan): re-verify the manifest, the
-//!   artifact's digest and the lease, then run the artifact with
+//!   revision floor, the lease and its sign-in, then the artifact's digest,
+//!   then run the artifact with
 //!   `IMPECCABLE_PRO_CHILD=1`. Anything missing or failing runs the open
 //!   engine unchanged with one line on stderr saying why. Under two days of
 //!   lease left, a background refresh starts; offline, the lease runs to its
@@ -19,14 +23,17 @@
 pub mod verify;
 
 use crate::config::Account;
-use crate::http::ApiError;
+use crate::http::{ApiError, Client};
 use crate::session::{now, Session, SessionError};
-use crate::store::{private_dir, read_private, write_private, Store};
+use crate::store::{
+    private_dir, read_private, write_private, write_private_mode, Lock, NoFollow, Store,
+};
 use impeccable_common::Io;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use verify::{verify_lease, verify_manifest, Jwks, Keyring, LeaseError};
 
 /// Renew once a lease has less than this left.
@@ -36,6 +43,15 @@ pub const RENEW_WITHIN_SECS: u64 = 2 * 86400;
 const RETRY_SECS: u64 = 600;
 /// After a "not entitled" answer, ask again at most hourly.
 const NOT_ENTITLED_RETRY_SECS: u64 = 3600;
+/// The artifact download's own deadline (every other request has the
+/// client's 60 seconds). Nothing holds the sign-in lock while it runs.
+const ARTIFACT_DEADLINE: Duration = Duration::from_secs(600);
+/// How long installing waits for the sign-in lock.
+const INSTALL_LOCK_WAIT: Duration = Duration::from_secs(10);
+/// How long a refresh waits for another one to finish: an explicit one (at
+/// login) waits it out, a background one gives way.
+const EXPLICIT_CLAIM_WAIT: Duration = Duration::from_secs(60);
+const BACKGROUND_CLAIM_WAIT: Duration = Duration::from_secs(2);
 
 pub const ENGINE: &str = env!("CARGO_PKG_VERSION");
 
@@ -53,12 +69,16 @@ pub fn target() -> String {
     format!("{os}-{arch}")
 }
 
-/// What the last refresh installed (`pro/current.json`): the manifest bytes
-/// and signature exactly as served, so each dispatch re-verifies them.
+/// What the last refresh installed (`pro/current.json`, one file so it is
+/// replaced whole): the manifest bytes and signature exactly as served, so
+/// each dispatch re-verifies them, the lease, and the sign-in it belongs to
+/// (`State::login`). A lease from another sign-in is never used.
 #[derive(Serialize, Deserialize)]
 struct Current {
     manifest: String,
     signature: String,
+    lease: String,
+    login: u64,
 }
 
 struct Paths {
@@ -76,8 +96,18 @@ impl Paths {
     fn current(&self) -> PathBuf {
         self.dir.join("current.json")
     }
-    fn lease(&self) -> PathBuf {
+    /// Where an older build kept the lease; removed when Pro state is.
+    fn legacy_lease(&self) -> PathBuf {
         self.dir.join("lease")
+    }
+    fn claim(&self) -> PathBuf {
+        self.dir.join("refresh.lock")
+    }
+    /// The highest revision accepted for this engine and target. Kept
+    /// outside the account's Pro state, so forgetting a lease never lowers it.
+    fn floor(&self) -> PathBuf {
+        self.artifacts
+            .with_file_name(format!("floor-{ENGINE}-{}", target()))
     }
     fn jwks(&self) -> PathBuf {
         self.dir.join("lease-keys.json")
@@ -101,28 +131,129 @@ fn read_text(path: &Path) -> Option<String> {
         .and_then(|b| String::from_utf8(b).ok())
 }
 
-fn sha256_file(path: &Path) -> Option<String> {
-    let mut f = std::fs::File::open(path).ok()?;
+/// The digest of a cached artifact of the signed `size`: `None` unless it is
+/// a regular file of exactly that size, owned by this user and not writable
+/// by others, checked on the opened handle (no symlink followed, and a FIFO
+/// does not block the open). Reads at most `size` bytes.
+fn sha256_file(path: &Path, size: u64) -> Option<String> {
+    let mut f = std::fs::OpenOptions::new()
+        .read(true)
+        .no_follow()
+        .open(path)
+        .ok()?;
+    let meta = f.metadata().ok()?;
+    if !meta.is_file() || meta.len() != size {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        // SAFETY: getuid has no preconditions.
+        if meta.uid() != unsafe { libc::getuid() } || meta.mode() & 0o022 != 0 {
+            return None;
+        }
+    }
     let mut hash = Sha256::new();
     let mut buf = vec![0u8; 256 * 1024];
+    let mut read = 0u64;
+    let mut bounded = Read::by_ref(&mut f).take(size);
     loop {
-        let n = f.read(&mut buf).ok()?;
+        let n = bounded.read(&mut buf).ok()?;
         if n == 0 {
             break;
         }
+        read += n as u64;
         hash.update(&buf[..n]);
     }
-    Some(format!("{:x}", hash.finalize()))
+    (read == size).then(|| format!("{:x}", hash.finalize()))
 }
 
-/// Forget this account's lease and installed manifest (the artifact cache is
-/// shared and content-addressed, so it stays).
-pub fn forget(account: &Account, not_entitled: bool) {
-    let paths = Paths::new(account);
-    let _ = std::fs::remove_file(paths.lease());
+fn floor(paths: &Paths) -> u64 {
+    read_text(&paths.floor())
+        .and_then(|t| t.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn raise_floor(paths: &Paths, revision: u64) -> Result<(), String> {
+    if revision > floor(paths) {
+        write_private(&paths.floor(), revision.to_string().as_bytes())?;
+    }
+    Ok(())
+}
+
+fn remove_installed(paths: &Paths) {
     let _ = std::fs::remove_file(paths.current());
+    let _ = std::fs::remove_file(paths.legacy_lease());
+}
+
+/// Forget this account's lease and installed manifest, under the sign-in
+/// lock so it orders with an install (the artifact cache is shared and
+/// content-addressed, and the revision floor stays). With `not_entitled`,
+/// the answer is recorded with its time: a refresh that started before it
+/// installs nothing.
+pub fn forget(account: &Account, not_entitled: bool) {
+    forget_if(account, None, not_entitled)
+}
+
+/// [`forget`] for a caller that already holds the sign-in lock.
+pub fn forget_holding(_lock: &Lock, account: &Account, not_entitled: bool) {
+    forget_now(account, not_entitled)
+}
+
+fn forget_now(account: &Account, not_entitled: bool) {
+    let paths = Paths::new(account);
+    remove_installed(&paths);
     if not_entitled && private_dir(&paths.dir).is_ok() {
         let _ = write_private(&paths.not_entitled(), now().to_string().as_bytes());
+    }
+}
+
+/// [`forget`], skipped when the machine has since signed in again
+/// (`login` is the sign-in the answer was about).
+fn forget_if(account: &Account, login: Option<u64>, not_entitled: bool) {
+    let store = Store::new(account);
+    match store.lock() {
+        Ok(lock) => {
+            let same = login.is_none_or(|l| store.state().is_some_and(|s| s.login == l));
+            if same {
+                forget_holding(&lock, account, not_entitled)
+            }
+        }
+        // The lock is stuck: forgetting is the safe side.
+        Err(_) => forget_now(account, not_entitled),
+    }
+}
+
+/// A new sign-in or a sign-out: nothing Pro carries over to it (installed
+/// manifest, lease, the last "not entitled" answer, the retry clock). The
+/// caller holds the sign-in lock.
+pub fn reset_holding(_lock: &Lock, account: &Account) {
+    let paths = Paths::new(account);
+    remove_installed(&paths);
+    let _ = std::fs::remove_file(paths.not_entitled());
+    let _ = std::fs::remove_file(paths.attempt());
+}
+
+/// One refresh at a time per account: an exclusive OS lock on
+/// `pro/refresh.lock`, waiting up to `wait`.
+fn claim(paths: &Paths, wait: Duration) -> Option<std::fs::File> {
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .no_follow()
+        .open(paths.claim())
+        .ok()?;
+    let deadline = Instant::now() + wait;
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Some(f),
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(25))
+            }
+            Err(_) => return None,
+        }
     }
 }
 
@@ -154,21 +285,21 @@ impl std::fmt::Display for Refreshed {
     }
 }
 
-fn from_session(e: SessionError, account: &Account) -> Refreshed {
+fn from_session(e: SessionError, account: &Account, login: Option<u64>) -> Refreshed {
     match e {
         SessionError::NotSignedIn | SessionError::Expired => {
-            forget(account, false);
+            forget_if(account, login, false);
             Refreshed::NotSignedIn
         }
-        SessionError::Api(e) => from_api(e, account),
+        SessionError::Api(e) => from_api(e, account, login),
         SessionError::Local(e) => Refreshed::Failed(e),
     }
 }
 
-fn from_api(e: ApiError, account: &Account) -> Refreshed {
+fn from_api(e: ApiError, account: &Account, login: Option<u64>) -> Refreshed {
     match (e.status(), e.code()) {
         (Some(403), Some("not_entitled")) => {
-            forget(account, true);
+            forget_if(account, login, true);
             Refreshed::NotEntitled
         }
         (Some(503), Some(code)) => Refreshed::Unavailable(code.to_string()),
@@ -177,26 +308,31 @@ fn from_api(e: ApiError, account: &Account) -> Refreshed {
     }
 }
 
-/// Fetch, verify and install the Pro engine and its lease. Holds the
-/// lifecycle lock throughout, so it never races login, logout or another
-/// refresh.
+/// Fetch, verify and install the Pro engine and its lease, waiting for a
+/// refresh already running (the one at login).
 pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
-    let store = Store::new(account);
-    let Ok(lock) = store.lock() else {
-        return Refreshed::Failed("another impeccable sign-in step is still running".into());
-    };
-    let mut session = match Session::load(account) {
-        Ok(s) => s,
-        Err(e) => return from_session(e, account),
-    };
+    refresh_with(account, keys, EXPLICIT_CLAIM_WAIT)
+}
+
+fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed {
     let paths = Paths::new(account);
     if let Err(e) = private_dir(&paths.dir).and_then(|_| private_dir(&paths.artifacts)) {
         return Refreshed::Failed(e);
     }
-    let _ = write_private(&paths.attempt(), now().to_string().as_bytes());
+    let Some(_claim) = claim(&paths, wait) else {
+        return Refreshed::Failed("another Pro refresh is still running".into());
+    };
+    let started = now();
+    let _ = write_private(&paths.attempt(), started.to_string().as_bytes());
+    let mut session = match Session::load(account) {
+        Ok(s) => s,
+        Err(e) => return from_session(e, account, None),
+    };
+    let login = session.state.login;
+    let fail = |e: SessionError| from_session(e, account, Some(login));
 
-    // This process holds the lock, so token refreshes below use it rather
-    // than taking it again.
+    // No sign-in lock from here to the install: a slow or stalled service
+    // never holds up `login` or `logout`. Token rotation takes it briefly.
     let target = target();
     // `+` is legal in semver build metadata and would decode as a space.
     let query: String = url::form_urlencoded::Serializer::new(String::new())
@@ -204,41 +340,39 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
         .append_pair("target", &target)
         .finish();
     let url = format!("{}/cli/v1/manifest?{query}", account.issuer);
-    let fetched = session.call_locked(&lock, |c, t| {
-        c.get_bytes(&url, t, Some("x-impeccable-signature"), 64 * 1024)
-    });
+    let fetched =
+        session.call(|c, t| c.get_bytes(&url, t, Some("x-impeccable-signature"), 64 * 1024));
     let (bytes, signature) = match fetched {
         Ok((b, Some(s))) => (b, s),
         Ok((_, None)) => return Refreshed::Failed("the release has no signature".into()),
-        Err(e) => return from_session(e, account),
+        Err(e) => return fail(e),
     };
     let manifest = match verify_manifest(&bytes, &signature, keys, ENGINE, &target) {
         Ok(m) => m,
         Err(e) => return Refreshed::Failed(e.to_string()),
     };
-    // Anti-replay: never step back to an older revision than the installed one.
-    let installed = installed_manifest(&paths, keys, &target);
-    if let Some(old) = &installed {
-        if manifest.artifact_revision < old.artifact_revision {
-            return Refreshed::Failed(
-                "the service offered an older Pro build than the installed one".into(),
-            );
-        }
+    // Anti-rollback: never step back below a revision already accepted.
+    if manifest.artifact_revision < floor(&paths) {
+        return Refreshed::Failed(
+            "the service offered an older Pro build than one already installed".into(),
+        );
     }
 
     let exe = paths.artifact(&manifest.artifact_sha256);
-    let downloaded = if sha256_file(&exe).as_deref() == Some(manifest.artifact_sha256.as_str()) {
+    let cached =
+        sha256_file(&exe, manifest.size).as_deref() == Some(manifest.artifact_sha256.as_str());
+    let downloaded = if cached {
         false
     } else {
         let url = format!(
             "{}/cli/v1/artifact/{}",
             account.issuer, manifest.artifact_sha256
         );
-        let body =
-            match session.call_locked(&lock, |c, t| c.get_bytes(&url, t, None, manifest.size)) {
-                Ok((b, _)) => b,
-                Err(e) => return from_session(e, account),
-            };
+        let slow = Client::with_deadline(account, ARTIFACT_DEADLINE);
+        let body = match session.call(|_, t| slow.get_bytes(&url, t, None, manifest.size)) {
+            Ok((b, _)) => b,
+            Err(e) => return fail(e),
+        };
         if body.len() as u64 != manifest.size
             || format!("{:x}", Sha256::digest(&body)) != manifest.artifact_sha256
         {
@@ -246,19 +380,18 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
                 "the downloaded Pro build does not match its signed digest".into(),
             );
         }
-        if let Err(e) = install_artifact(&exe, &body) {
-            return Refreshed::Failed(e);
+        if let Err(e) = write_private_mode(&exe, &body, 0o700) {
+            return Refreshed::Failed(format!("could not save the Pro build: {e}"));
         }
         true
     };
 
-    let current_lease = read_text(&paths.lease());
     let jwks = read_text(&paths.jwks()).and_then(|t| serde_json::from_str::<Jwks>(&t).ok());
-    let keep = match (&current_lease, &jwks) {
-        (Some(l), Some(k)) => verify_lease(l, k, &manifest.artifact_sha256, now())
+    let keep = match (installed(&paths, login), &jwks) {
+        (Some(c), Some(k)) => verify_lease(&c.lease, k, &manifest.artifact_sha256, now())
             .ok()
-            .filter(|c| c.exp > now() + RENEW_WITHIN_SECS)
-            .map(|c| (l.clone(), c.exp)),
+            .filter(|claims| claims.exp > now() + RENEW_WITHIN_SECS)
+            .map(|claims| (c.lease, claims.exp)),
         _ => None,
     };
     let (lease, lease_exp) = match keep {
@@ -266,10 +399,9 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
         None => {
             let url = format!("{}/cli/v1/lease", account.issuer);
             let body = serde_json::json!({ "artifact_sha256": manifest.artifact_sha256 });
-            let answer = match session.call_locked(&lock, |c, t| c.post_json(&url, t, body.clone()))
-            {
+            let answer = match session.call(|c, t| c.post_json(&url, t, body.clone())) {
                 Ok(v) => v,
-                Err(e) => return from_session(e, account),
+                Err(e) => return fail(e),
             };
             let Some(lease) = answer
                 .get("lease")
@@ -284,25 +416,56 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
             }
         }
     };
+
+    // Install, under the sign-in lock, only if nothing happened since this
+    // refresh started that it would undo.
+    let store = Store::new(account);
+    let Ok(lock) = store.lock_for(INSTALL_LOCK_WAIT) else {
+        return Refreshed::Failed("another impeccable sign-in step is still running".into());
+    };
+    if !store
+        .state()
+        .is_some_and(|s| s.signed_in && s.login == login)
+    {
+        return Refreshed::NotSignedIn;
+    }
+    let refused_at = read_text(&paths.not_entitled()).and_then(|t| t.trim().parse::<u64>().ok());
+    if refused_at.is_some_and(|t| t >= started) {
+        return Refreshed::NotEntitled;
+    }
+    if manifest.artifact_revision < floor(&paths) {
+        return Refreshed::Failed(
+            "the service offered an older Pro build than one already installed".into(),
+        );
+    }
     let current = Current {
         manifest: String::from_utf8_lossy(&bytes).into_owned(),
         signature,
+        lease,
+        login,
     };
     let written = serde_json::to_vec(&current)
         .map_err(|e| e.to_string())
-        .and_then(|c| {
-            write_private(&paths.lease(), lease.as_bytes())
-                .and_then(|_| write_private(&paths.current(), &c))
-        });
+        .and_then(|c| write_private(&paths.current(), &c))
+        .and_then(|_| raise_floor(&paths, manifest.artifact_revision));
     if let Err(e) = written {
         return Refreshed::Failed(e);
     }
     let _ = std::fs::remove_file(paths.not_entitled());
+    let _ = std::fs::remove_file(paths.legacy_lease());
+    drop(lock);
     Refreshed::Ready {
         revision: manifest.artifact_revision,
         downloaded,
         lease_exp,
     }
+}
+
+/// The installed state, if it belongs to sign-in `login`.
+fn installed(paths: &Paths, login: u64) -> Option<Current> {
+    read_text(&paths.current())
+        .and_then(|t| serde_json::from_str::<Current>(&t).ok())
+        .filter(|c| c.login == login)
 }
 
 /// Verify a new lease with the cached lease keys; on an unknown key id (or
@@ -332,37 +495,6 @@ fn accept_lease(
     Ok(claims.exp)
 }
 
-fn install_artifact(exe: &Path, body: &[u8]) -> Result<(), String> {
-    let temp = exe.with_extension(format!("{}.part", std::process::id()));
-    let result = (|| -> std::io::Result<()> {
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o700);
-        }
-        std::io::Write::write_all(&mut opts.open(&temp)?, body)?;
-        std::fs::rename(&temp, exe)
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    result.map_err(|e| format!("could not save the Pro build: {e}"))
-}
-
-fn installed_manifest(paths: &Paths, keys: &Keyring, target: &str) -> Option<verify::Manifest> {
-    let current: Current = serde_json::from_str(&read_text(&paths.current())?).ok()?;
-    verify_manifest(
-        current.manifest.as_bytes(),
-        &current.signature,
-        keys,
-        ENGINE,
-        target,
-    )
-    .ok()
-}
-
 /// Why a scan runs the open engine, as one terse line (or nothing, for a
 /// machine that was never signed in).
 #[derive(Debug, PartialEq, Eq)]
@@ -383,15 +515,16 @@ pub const WHY_EXPIRED: &str = "Pro rules are off until the Pro lease renews; usi
 pub const WHY_UNVERIFIED: &str =
     "Pro rules are off: the Pro build didn't verify; using the open rules.";
 
-/// The offline decision for one scan. No network.
+/// The offline decision for one scan. No network. The cheap checks come
+/// first; the artifact is hashed only when everything else holds.
 pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
     let store = Store::new(account);
-    if !store.state().is_some_and(|s| s.signed_in) {
+    let Some(state) = store.state().filter(|s| s.signed_in) else {
         return Decision::Open {
             why: None,
             renew: false,
         };
-    }
+    };
     let paths = Paths::new(account);
     if paths.not_entitled().exists() {
         return Decision::Open {
@@ -400,13 +533,13 @@ pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
         };
     }
     let renew = due(&paths, at, RETRY_SECS);
-    let Some(current) =
-        read_text(&paths.current()).and_then(|t| serde_json::from_str::<Current>(&t).ok())
-    else {
-        return Decision::Open {
-            why: Some(WHY_NOT_READY),
-            renew,
-        };
+    let open = |why| Decision::Open {
+        why: Some(why),
+        renew,
+    };
+    // Nothing installed, or installed for an earlier sign-in.
+    let Some(current) = installed(&paths, state.login) else {
+        return open(WHY_NOT_READY);
     };
     let manifest = match verify_manifest(
         current.manifest.as_bytes(),
@@ -417,47 +550,28 @@ pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
     ) {
         Ok(m) => m,
         // An engine update makes the installed build stale: fetch the new one.
-        Err(verify::ManifestError::NotForThisEngine) => {
-            return Decision::Open {
-                why: Some(WHY_NOT_READY),
-                renew,
-            }
-        }
-        Err(_) => {
-            return Decision::Open {
-                why: Some(WHY_UNVERIFIED),
-                renew,
-            }
-        }
+        Err(verify::ManifestError::NotForThisEngine) => return open(WHY_NOT_READY),
+        Err(_) => return open(WHY_UNVERIFIED),
+    };
+    if manifest.artifact_revision < floor(&paths) {
+        return open(WHY_UNVERIFIED);
+    }
+    let Some(jwks) = read_text(&paths.jwks()).and_then(|t| serde_json::from_str::<Jwks>(&t).ok())
+    else {
+        return open(WHY_EXPIRED);
+    };
+    let claims = match verify_lease(&current.lease, &jwks, &manifest.artifact_sha256, at) {
+        Ok(c) => c,
+        Err(LeaseError::Expired) => return open(WHY_EXPIRED),
+        Err(_) => return open(WHY_UNVERIFIED),
     };
     let exe = paths.artifact(&manifest.artifact_sha256);
-    if sha256_file(&exe).as_deref() != Some(manifest.artifact_sha256.as_str()) {
-        return Decision::Open {
-            why: Some(WHY_UNVERIFIED),
-            renew,
-        };
+    if sha256_file(&exe, manifest.size).as_deref() != Some(manifest.artifact_sha256.as_str()) {
+        return open(WHY_UNVERIFIED);
     }
-    let jwks = read_text(&paths.jwks()).and_then(|t| serde_json::from_str::<Jwks>(&t).ok());
-    let lease = read_text(&paths.lease());
-    match (lease, jwks) {
-        (Some(l), Some(k)) => match verify_lease(&l, &k, &manifest.artifact_sha256, at) {
-            Ok(c) => Decision::Pro {
-                exe,
-                renew: c.exp <= at + RENEW_WITHIN_SECS && renew,
-            },
-            Err(LeaseError::Expired) => Decision::Open {
-                why: Some(WHY_EXPIRED),
-                renew,
-            },
-            Err(_) => Decision::Open {
-                why: Some(WHY_UNVERIFIED),
-                renew,
-            },
-        },
-        _ => Decision::Open {
-            why: Some(WHY_EXPIRED),
-            renew,
-        },
+    Decision::Pro {
+        exe,
+        renew: claims.exp <= at + RENEW_WITHIN_SECS && renew,
     }
 }
 
@@ -529,7 +643,9 @@ fn run_child(mut cmd: std::process::Command) -> std::io::Result<i32> {
     cmd.status().map(|s| s.code().unwrap_or(1))
 }
 
-/// Start `impeccable pro-refresh` detached, never waiting on it.
+/// Start `impeccable pro-refresh` detached, never waiting on it. The
+/// attempt is claimed first, under the refresh lock: of many scans that
+/// find a refresh due at once, one starts it.
 fn spawn_refresh(account: &Account) {
     let Ok(me) = std::env::current_exe() else {
         return;
@@ -538,8 +654,20 @@ fn spawn_refresh(account: &Account) {
     if private_dir(&paths.dir).is_err() {
         return;
     }
-    // Claim the attempt now so parallel scans don't all start one.
-    let _ = write_private(&paths.attempt(), now().to_string().as_bytes());
+    let Some(claim) = claim(&paths, Duration::ZERO) else {
+        return;
+    };
+    let every = if paths.not_entitled().exists() {
+        NOT_ENTITLED_RETRY_SECS
+    } else {
+        RETRY_SECS
+    };
+    if !due(&paths, now(), every)
+        || write_private(&paths.attempt(), now().to_string().as_bytes()).is_err()
+    {
+        return;
+    }
+    drop(claim);
     let mut cmd = std::process::Command::new(me);
     cmd.arg("pro-refresh")
         .env_remove("IMPECCABLE_PRO_CHILD")
@@ -559,7 +687,11 @@ pub fn run_refresh(_args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
-    let outcome = refresh(&account, &verify::pinned_keys(&io.env));
+    let outcome = refresh_with(
+        &account,
+        &verify::pinned_keys(&io.env),
+        BACKGROUND_CLAIM_WAIT,
+    );
     report(io, &outcome);
     i32::from(!matches!(outcome, Refreshed::Ready { .. }))
 }

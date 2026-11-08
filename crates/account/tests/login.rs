@@ -129,7 +129,11 @@ fn a_callback_without_this_attempts_state_does_not_end_the_sign_in() {
         WAIT,
     );
     assert!(done.is_ok(), "{:?}", done.err());
-    assert_eq!(fake.hits("/oauth/token"), 1, "only the real code is exchanged");
+    assert_eq!(
+        fake.hits("/oauth/token"),
+        1,
+        "only the real code is exchanged"
+    );
 }
 
 #[test]

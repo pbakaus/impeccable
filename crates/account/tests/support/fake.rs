@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Default)]
 pub struct Knobs {
@@ -21,6 +21,25 @@ pub struct Knobs {
     /// Extra routes, answered before the built-in ones:
     /// `(method, path) -> (status, headers, body)`.
     pub routes: HashMap<(String, String), (u16, Vec<(String, String)>, Vec<u8>)>,
+    /// Paths whose answers wait until their gate opens (see [`Fake::hold`]).
+    pub gates: HashMap<String, Arc<Gate>>,
+}
+
+/// Holds a response until [`Gate::open`].
+#[derive(Default)]
+pub struct Gate(Mutex<bool>, Condvar);
+
+impl Gate {
+    pub fn open(&self) {
+        *self.0.lock().unwrap() = true;
+        self.1.notify_all();
+    }
+    fn pass(&self) {
+        let mut open = self.0.lock().unwrap();
+        while !*open {
+            open = self.1.wait(open).unwrap();
+        }
+    }
 }
 
 #[derive(Default)]
@@ -83,6 +102,27 @@ impl Fake {
                 body.into(),
             ),
         );
+    }
+
+    /// Hold every answer on `path` until the returned gate opens (the
+    /// request is counted in `hits` as it arrives).
+    pub fn hold(&self, path: &str) -> Arc<Gate> {
+        let gate = Arc::new(Gate::default());
+        self.knobs
+            .lock()
+            .unwrap()
+            .gates
+            .insert(path.to_string(), gate.clone());
+        gate
+    }
+
+    /// Wait (up to ten seconds) until `path` has been asked `n` times.
+    pub fn wait_for_hits(&self, path: &str, n: usize) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while self.hits(path) < n {
+            assert!(std::time::Instant::now() < until, "{path} never reached {n} hits");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     /// An env for one test: a fresh IMPECCABLE_HOME, this service, the file backend.
@@ -269,6 +309,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         head.push_str(&format!("{k}: {v}\r\n"));
     }
     head.push_str("\r\n");
+    let gate = knobs.lock().unwrap().gates.get(path).cloned();
+    if let Some(gate) = gate {
+        gate.pass();
+    }
     let _ = stream.write_all(head.as_bytes());
     let _ = stream.write_all(&out);
 }

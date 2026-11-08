@@ -1,18 +1,21 @@
 //! Pro refresh and the offline dispatch decision, against the fake service.
 mod support;
 use impeccable_account::config::Account;
-use impeccable_account::login;
+use impeccable_account::{login, logout};
 use impeccable_account::pro::verify::{parse_keyring, Keyring};
 use impeccable_account::pro::{
-    decide, refresh, Decision, Refreshed, WHY_EXPIRED, WHY_NOT_ENTITLED, WHY_NOT_READY,
+    decide, forget, refresh, Decision, Refreshed, WHY_EXPIRED, WHY_NOT_ENTITLED, WHY_NOT_READY,
+    WHY_UNVERIFIED,
 };
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use support::fake::*;
 
 const DAY: u64 = 86400;
 
 struct Setup {
     fake: Fake,
+    env: HashMap<String, String>,
     account: Account,
     keys: Keyring,
     release: ring::signature::Ed25519KeyPair,
@@ -30,6 +33,7 @@ fn setup(name: &str) -> Setup {
     fake.lease_keys(&[("l1", &lease_key)]);
     Setup {
         account: Account::from_env(&env).unwrap(),
+        env,
         fake,
         keys,
         release,
@@ -96,7 +100,7 @@ fn not_entitled_deletes_the_lease_at_once() {
         r#"{"error":"not_entitled"}"#,
     );
     assert_eq!(refresh(&s.account, &s.keys), Refreshed::NotEntitled);
-    assert!(!s.account.dir().join("pro/lease").exists());
+    assert!(!s.account.dir().join("pro/current.json").exists());
     assert!(matches!(
         decide(&s.account, &s.keys, unix_now()),
         Decision::Open {
@@ -145,4 +149,135 @@ fn an_unknown_lease_key_is_refetched_once() {
     s.fake.lease("l3", &unpublished, &sha, unix_now() + DAY);
     assert!(matches!(refresh(&s.account, &s.keys), Refreshed::Failed(_)));
     assert_eq!(s.fake.hits("/.well-known/impeccable-cli-keys.json"), 3);
+}
+
+fn artifact_path(s: &Setup, sha: &str) -> std::path::PathBuf {
+    s.account
+        .home
+        .join("pro/artifacts")
+        .join(format!("{sha}{}", std::env::consts::EXE_SUFFIX))
+}
+
+#[test]
+fn a_revocation_seen_during_a_refresh_is_not_undone_by_it() {
+    // Catches: a refresh that read "entitled" before a revocation installing its lease after it.
+    let s = setup("revoke-mid-refresh");
+    let sha = s.fake.publish("r1", &s.release, b"pro build", 1);
+    s.fake.lease("l1", &s.lease_key, &sha, unix_now() + 6 * DAY);
+    let gate = s.fake.hold("/cli/v1/lease");
+    let (account, keys) = (s.account.clone(), s.keys.clone());
+    let running = std::thread::spawn(move || refresh(&account, &keys));
+    s.fake.wait_for_hits("/cli/v1/lease", 1);
+    // What `whoami` does on `pro: false`.
+    forget(&s.account, true);
+    gate.open();
+    assert_eq!(running.join().unwrap(), Refreshed::NotEntitled);
+    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(matches!(
+        decide(&s.account, &s.keys, unix_now()),
+        Decision::Open {
+            why: Some(WHY_NOT_ENTITLED),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn a_stalled_download_does_not_hold_up_logout() {
+    // Catches: a refresh holding the sign-in lock through a slow or attacker-paced download.
+    let s = setup("stalled-download");
+    let sha = s.fake.publish("r1", &s.release, b"pro build", 1);
+    s.fake.lease("l1", &s.lease_key, &sha, unix_now() + 6 * DAY);
+    let gate = s.fake.hold(&format!("/cli/v1/artifact/{sha}"));
+    let (account, keys) = (s.account.clone(), s.keys.clone());
+    let running = std::thread::spawn(move || refresh(&account, &keys));
+    s.fake.wait_for_hits(&format!("/cli/v1/artifact/{sha}"), 1);
+    let t = Instant::now();
+    assert!(logout(&s.env).unwrap().is_some());
+    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    gate.open();
+    assert_eq!(running.join().unwrap(), Refreshed::NotSignedIn);
+    assert!(!s.account.dir().join("pro/current.json").exists());
+}
+
+#[test]
+fn a_lease_from_an_earlier_sign_in_is_not_used() {
+    // Catches: account A's offline lease running Pro for account B after A logs out and B signs in.
+    let s = setup("earlier-sign-in");
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    logout(&s.env).unwrap();
+    login(&s.env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+    // The new sign-in's own refresh fails for now; the old lease must not stand in.
+    s.fake
+        .route("GET", "/cli/v1/manifest", 503, vec![], r#"{"error":"busy"}"#);
+    assert!(matches!(
+        refresh(&s.account, &s.keys),
+        Refreshed::Failed(_) | Refreshed::Unavailable(_)
+    ));
+    assert!(matches!(
+        decide(&s.account, &s.keys, unix_now()),
+        Decision::Open {
+            why: Some(WHY_NOT_READY),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn a_revocation_does_not_lower_the_revision_floor() {
+    // Catches: forgetting the lease also forgetting which revision was installed, opening a downgrade.
+    let s = setup("floor");
+    let new = s.fake.publish("r1", &s.release, b"pro build 2", 2);
+    s.fake.lease("l1", &s.lease_key, &new, unix_now() + 6 * DAY);
+    assert!(matches!(
+        refresh(&s.account, &s.keys),
+        Refreshed::Ready { revision: 2, .. }
+    ));
+    forget(&s.account, true);
+    let old = s.fake.publish("r1", &s.release, b"pro build 1", 1);
+    s.fake.lease("l1", &s.lease_key, &old, unix_now() + 6 * DAY);
+    assert!(matches!(refresh(&s.account, &s.keys), Refreshed::Failed(_)));
+    assert_eq!(s.fake.hits(&format!("/cli/v1/artifact/{old}")), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fifo_in_place_of_the_artifact_falls_back_instead_of_hanging() {
+    // Catches: a scan blocking on a FIFO (or an endless file) where the cached Pro build should be.
+    let s = setup("fifo");
+    let exp = unix_now() + DAY;
+    let sha = ready(&s, b"pro build", exp);
+    let exe = artifact_path(&s, &sha);
+    std::fs::remove_file(&exe).unwrap();
+    assert!(std::process::Command::new("mkfifo")
+        .arg(&exe)
+        .status()
+        .unwrap()
+        .success());
+    let (account, keys) = (s.account.clone(), s.keys.clone());
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send((
+            decide(&account, &keys, unix_now()),
+            decide(&account, &keys, exp + 1),
+        ));
+    });
+    let (now, later) = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("decide hung on the FIFO");
+    assert!(matches!(
+        now,
+        Decision::Open {
+            why: Some(WHY_UNVERIFIED),
+            ..
+        }
+    ));
+    // An expired lease is decided before the artifact is touched.
+    assert!(matches!(
+        later,
+        Decision::Open {
+            why: Some(WHY_EXPIRED),
+            ..
+        }
+    ));
 }

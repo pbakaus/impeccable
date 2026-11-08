@@ -79,6 +79,7 @@ pub fn login(
             backend,
             token_endpoint: meta.token_endpoint.clone(),
             revocation_endpoint: meta.revocation_endpoint.clone(),
+            login: generation,
         };
         let secret = Secret {
             generation,
@@ -86,6 +87,8 @@ pub fn login(
             access_token: tokens.access_token,
             access_expires_at: session::now() + tokens.expires_in,
         };
+        // Nothing Pro from an earlier sign-in carries over to this one.
+        pro::reset_holding(&lock, &account);
         store.save(&lock, &state, &secret)?;
         replaced
     };
@@ -113,6 +116,7 @@ pub fn logout(env: &HashMap<String, String>) -> Result<Option<Account>, String> 
         // Always a tombstone, even with nothing stored: a sign-in still
         // waiting in the browser sees the generation move and stops.
         store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
+        pro::reset_holding(&lock, &account);
         let revoke = state
             .and_then(|s| s.revocation_endpoint)
             .zip(secret.map(|s| s.refresh_token));
