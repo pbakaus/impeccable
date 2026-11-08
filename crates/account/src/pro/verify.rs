@@ -222,11 +222,25 @@ pub fn verify_lease(
     if claims.artifact_sha256 != sha {
         return Err(LeaseError::WrongArtifact);
     }
+    // The service issues at most seven days (docs/CLI-RULE-PACK.md); a lease
+    // claiming more, or issued in the future, is not one it made.
+    if claims.iat > now + CLOCK_SKEW_SECS
+        || claims.exp <= claims.iat
+        || claims.exp - claims.iat > MAX_LEASE_SECS
+        || claims.exp > now + MAX_LEASE_SECS + CLOCK_SKEW_SECS
+    {
+        return Err(LeaseError::Invalid);
+    }
     if claims.exp <= now {
         return Err(LeaseError::Expired);
     }
     Ok(claims)
 }
+
+/// The longest lease the service issues.
+pub const MAX_LEASE_SECS: u64 = 7 * 86400;
+/// How far this machine's clock may run behind the service's.
+const CLOCK_SKEW_SECS: u64 = 300;
 
 #[cfg(test)]
 pub mod tests {
@@ -244,9 +258,13 @@ pub mod tests {
     }
 
     fn lease(key: &Ed25519KeyPair, kid: &str, sha: &str, exp: u64) -> String {
+        lease_at(key, kid, sha, 1, exp)
+    }
+
+    fn lease_at(key: &Ed25519KeyPair, kid: &str, sha: &str, iat: u64, exp: u64) -> String {
         let h =
             B64.encode(serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": kid }).to_string());
-        let p = B64.encode(serde_json::json!({ "sub": "u", "gid": "g", "artifact_sha256": sha, "iat": 1, "exp": exp }).to_string());
+        let p = B64.encode(serde_json::json!({ "sub": "u", "gid": "g", "artifact_sha256": sha, "iat": iat, "exp": exp }).to_string());
         let s = B64.encode(key.sign(format!("{h}.{p}").as_bytes()));
         format!("{h}.{p}.{s}")
     }
@@ -280,6 +298,35 @@ pub mod tests {
             ),
         ] {
             assert_eq!(verify_lease(&token, &set, &sha, 100), Err(want));
+        }
+    }
+
+    #[test]
+    fn a_lease_longer_than_the_service_issues_is_refused() {
+        // Catches: a lease minted with decades of offline life, or dated in the future.
+        let key = keypair();
+        let sha = "a".repeat(64);
+        let set = jwks(&key, "k1");
+        let now = 1_000_000_000;
+        let week = MAX_LEASE_SECS;
+        assert!(verify_lease(
+            &lease_at(&key, "k1", &sha, now, now + week),
+            &set,
+            &sha,
+            now
+        )
+        .is_ok());
+        for (iat, exp) in [
+            (now, now + week + 1),
+            (now - 10 * week, now + 40 * 365 * 86400),
+            (now + 3600, now + 7200),
+            (now, now),
+        ] {
+            assert_eq!(
+                verify_lease(&lease_at(&key, "k1", &sha, iat, exp), &set, &sha, now),
+                Err(LeaseError::Invalid),
+                "iat {iat} exp {exp}"
+            );
         }
     }
 
