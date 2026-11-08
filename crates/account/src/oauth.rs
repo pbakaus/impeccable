@@ -10,7 +10,15 @@ use ring::rand::{SecureRandom, SystemRandom};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
+
+/// How long one connection to the callback listener may take to send its
+/// request head, and how many may be read at once. A slow or idle local
+/// connection cannot hold up the browser's.
+const REQUEST_HEAD_DEADLINE: Duration = Duration::from_secs(5);
+const MAX_PENDING_CONNECTIONS: usize = 16;
 
 pub struct Metadata {
     pub authorization_endpoint: String,
@@ -139,70 +147,97 @@ const PAGE_OK: &str = "<!doctype html><meta charset=utf-8><title>Impeccable</tit
 const PAGE_FAIL: &str = "<!doctype html><meta charset=utf-8><title>Impeccable</title><p>Sign-in didn't finish. Check your terminal.";
 
 impl Pending {
-    /// Wait for the browser to come back with a code. Requests for other
-    /// paths are answered 404 and ignored; the first `/callback` decides.
-    /// Nothing about a request is logged: its query carries the code.
+    /// Wait for the browser to come back with a code, until `timeout` has
+    /// passed in all. Each connection is read on its own thread under its own
+    /// short deadline. Requests for other paths, and callbacks that don't
+    /// carry this attempt's `state`, are answered and ignored: only an answer
+    /// bound to this attempt can end it. Nothing about a request is logged:
+    /// its query carries the code.
     pub fn wait(&self, issuer: &str, timeout: Duration) -> Result<String, CallbackError> {
         self.listener
             .set_nonblocking(true)
             .map_err(|_| CallbackError::Malformed)?;
         let deadline = Instant::now() + timeout;
+        let (tx, rx) = mpsc::channel::<(TcpStream, Option<String>)>();
+        let reading = Arc::new(AtomicUsize::new(0));
         loop {
+            if Instant::now() >= deadline {
+                return Err(CallbackError::TimedOut);
+            }
             match self.listener.accept() {
-                Ok((stream, _)) => {
-                    if let Some(result) = self.handle(stream, issuer) {
-                        return result;
+                Ok((mut stream, _)) => {
+                    if reading.load(Ordering::SeqCst) < MAX_PENDING_CONNECTIONS {
+                        reading.fetch_add(1, Ordering::SeqCst);
+                        let (tx, reading) = (tx.clone(), reading.clone());
+                        let until = deadline.min(Instant::now() + REQUEST_HEAD_DEADLINE);
+                        std::thread::spawn(move || {
+                            let target = read_request_target(&mut stream, until);
+                            let _ = tx.send((stream, target));
+                            reading.fetch_sub(1, Ordering::SeqCst);
+                        });
                     }
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    if Instant::now() >= deadline {
-                        return Err(CallbackError::TimedOut);
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => return Err(CallbackError::Malformed),
             }
+            while let Ok((stream, target)) = rx.try_recv() {
+                if let Some(result) = self.handle(stream, target, issuer) {
+                    return result;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
         }
     }
 
-    fn handle(&self, mut stream: TcpStream, issuer: &str) -> Option<Result<String, CallbackError>> {
+    fn handle(
+        &self,
+        mut stream: TcpStream,
+        target: Option<String>,
+        issuer: &str,
+    ) -> Option<Result<String, CallbackError>> {
         let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-        let target = read_request_target(&mut stream)?;
-        let Some(query) = target
-            .strip_prefix("/callback?")
-            .or_else(|| (target == "/callback").then_some(""))
-        else {
+        let _ = stream.set_write_timeout(Some(REQUEST_HEAD_DEADLINE));
+        let query = target.as_deref().and_then(|t| {
+            t.strip_prefix("/callback?")
+                .or_else(|| (t == "/callback").then_some(""))
+        });
+        let Some(query) = query else {
             let _ = stream.write_all(
                 b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
             );
             return None;
         };
         let result = self.judge(query, issuer);
-        let page = if result.is_ok() { PAGE_OK } else { PAGE_FAIL };
+        let page = if matches!(result, Some(Ok(_))) {
+            PAGE_OK
+        } else {
+            PAGE_FAIL
+        };
         let _ = write!(
             stream,
             "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
             page.len()
         );
-        Some(result)
+        result
     }
 
-    /// `state` first (a forged answer is refused before anything else is
-    /// read), then `iss`, then the outcome.
-    fn judge(&self, query: &str, issuer: &str) -> Result<String, CallbackError> {
+    /// `None` for a callback that is not bound to this attempt (no `state`,
+    /// a different one, or repeated keys): it is answered and ignored, so a
+    /// local process that finds the port cannot end the sign-in. A bound
+    /// answer is then held to `iss`, then read for its outcome.
+    fn judge(&self, query: &str, issuer: &str) -> Option<Result<String, CallbackError>> {
         let mut seen: std::collections::HashMap<String, String> = Default::default();
         for (k, v) in url::form_urlencoded::parse(query.as_bytes()) {
             if seen.insert(k.into_owned(), v.into_owned()).is_some() {
-                return Err(CallbackError::Malformed);
+                return None;
             }
         }
-        let state = seen.get("state").ok_or(CallbackError::StateMismatch)?;
+        let state = seen.get("state")?;
         if !constant_time_eq(state.as_bytes(), self.state.as_bytes()) {
-            return Err(CallbackError::StateMismatch);
+            return None;
         }
         if seen.get("iss").map(String::as_str) != Some(issuer) {
-            return Err(CallbackError::WrongIssuer);
+            return Some(Err(CallbackError::WrongIssuer));
         }
         if let Some(error) = seen.get("error") {
             let code = if error.len() <= 64
@@ -214,12 +249,14 @@ impl Pending {
             } else {
                 "error".into()
             };
-            return Err(CallbackError::Denied(code));
+            return Some(Err(CallbackError::Denied(code)));
         }
-        seen.get("code")
-            .filter(|c| !c.is_empty())
-            .cloned()
-            .ok_or(CallbackError::Malformed)
+        Some(
+            seen.get("code")
+                .filter(|c| !c.is_empty())
+                .cloned()
+                .ok_or(CallbackError::Malformed),
+        )
     }
 
     pub fn verifier(&self) -> &str {
@@ -227,11 +264,18 @@ impl Pending {
     }
 }
 
-/// `GET <target> HTTP/1.1`'s target, from at most 8 KiB of request head.
-fn read_request_target(stream: &mut TcpStream) -> Option<String> {
+/// `GET <target> HTTP/1.1`'s target, from at most 8 KiB of request head
+/// that must all arrive before `until`.
+fn read_request_target(stream: &mut TcpStream, until: Instant) -> Option<String> {
+    let _ = stream.set_nonblocking(false);
     let mut head = Vec::new();
     let mut buf = [0u8; 1024];
     while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+        let left = until.checked_duration_since(Instant::now())?;
+        if left.is_zero() {
+            return None;
+        }
+        stream.set_read_timeout(Some(left)).ok()?;
         let n = stream.read(&mut buf).ok()?;
         if n == 0 || head.len() + n > 8192 {
             return None;
@@ -256,10 +300,12 @@ pub struct Tokens {
 }
 
 fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
+    // Both tokens are held to RFC 6750 token syntax here, so a token the
+    // HTTP layer would reject (and quote in its error) is never stored.
     let s = |k: &str| {
         v.get(k)
             .and_then(|x| x.as_str())
-            .filter(|x| !x.is_empty())
+            .filter(|x| crate::http::valid_token(x))
             .map(str::to_string)
     };
     let bearer = v

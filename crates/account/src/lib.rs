@@ -37,6 +37,15 @@ pub fn login(
     let account = Account::from_env(env)?;
     let backend = store::chosen_backend(env)?;
     let client = http::Client::new(&account);
+    let store = Store::new(&account);
+    // The generation this attempt started from. A logout while the browser
+    // is open writes a newer tombstone, and this attempt then must not sign
+    // the machine back in. (A token refresh also moves the generation, but
+    // leaves the machine signed in; replacing that sign-in is fine.)
+    let started = {
+        let _lock = store.lock()?;
+        store.state().map(|s| s.generation).unwrap_or(0)
+    };
     let meta = oauth::metadata(&client, &account)?;
     let pending = oauth::start(&account, &meta)?;
     open(&pending.url);
@@ -45,10 +54,23 @@ pub fn login(
         .map_err(|e| e.to_string())?;
     let tokens = oauth::exchange(&client, &account, &meta.token_endpoint, &pending, &code)
         .map_err(|e| format!("the account service did not accept the sign-in: {e}"))?;
-    let store = Store::new(&account);
-    {
+    let replaced = {
         let lock = store.lock()?;
-        let generation = store.state().map(|s| s.generation).unwrap_or(0) + 1;
+        let previous = store.state();
+        let signed_out_since = previous
+            .as_ref()
+            .is_some_and(|s| s.generation != started && !s.signed_in);
+        if signed_out_since {
+            drop(lock);
+            if let Some(endpoint) = &meta.revocation_endpoint {
+                let _ = oauth::revoke(&client, endpoint, &tokens.refresh_token);
+            }
+            return Err("you signed out while this sign-in was waiting".into());
+        }
+        let replaced = previous
+            .as_ref()
+            .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
+        let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
             schema: 1,
             issuer: account.issuer.clone(),
@@ -65,6 +87,11 @@ pub fn login(
             access_expires_at: session::now() + tokens.expires_in,
         };
         store.save(&lock, &state, &secret)?;
+        replaced
+    };
+    // The grant this sign-in replaced is ended at the service too.
+    if let Some((endpoint, old)) = replaced {
+        let _ = oauth::revoke(&client, &endpoint, &old.refresh_token);
     }
     let entitlement = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
     Ok(LoggedIn {
@@ -83,9 +110,9 @@ pub fn logout(env: &HashMap<String, String>) -> Result<Option<Account>, String> 
         let state = store.state();
         let secret = state.as_ref().and_then(|s| store.secret(s));
         let was = state.as_ref().is_some_and(|s| s.signed_in);
-        if state.is_some() {
-            store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
-        }
+        // Always a tombstone, even with nothing stored: a sign-in still
+        // waiting in the browser sees the generation move and stops.
+        store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
         let revoke = state
             .and_then(|s| s.revocation_endpoint)
             .zip(secret.map(|s| s.refresh_token));
@@ -284,5 +311,7 @@ fn open_browser(url: &str) -> bool {
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-    cmd.status().map(|s| s.success()).unwrap_or(false)
+    // Started, not waited on: an opener that hangs must not hold the
+    // sign-in before its own deadline starts.
+    cmd.spawn().is_ok()
 }
