@@ -14,6 +14,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
+import { devEnvView, devKey } from './lib/dev-keys.mjs';
 import { bootFixtureSession, FIXTURES_DIR, REPO_ROOT } from './live-e2e/session.mjs';
 import { runSteerSmoke } from './live-e2e/steer.mjs';
 import { runPreActions } from './live-e2e/preactions.mjs';
@@ -54,8 +55,8 @@ const artifactRoot = createArtifactRoot();
 let playwright;
 let browser;
 
-if (!process.env.DEEPSEEK_API_KEY) {
-  throw new Error('DEEPSEEK_API_KEY is required. This Svelte adapter sweep must never fall back to fake/mock AI.');
+if (!devKey('DEEPSEEK_API_KEY')) {
+  throw new Error('DEEPSEEK_API_KEY is required (environment or ~/.config/impeccable/dev.env). This Svelte adapter sweep must never fall back to fake/mock AI.');
 }
 
 describe('Svelte live adapter DeepSeek browser sweep', () => {
@@ -70,7 +71,7 @@ describe('Svelte live adapter DeepSeek browser sweep', () => {
 
   it('covers live chrome, replace, edit, annotations, insert, refresh recovery, accept/discard, and exit', async (t) => {
     const fixture = loadConsolidatedFixture();
-    const llmConfig = resolveLlmAgentConfig({ provider: 'deepseek' });
+    const llmConfig = resolveLlmAgentConfig({ provider: 'deepseek' }, devEnvView());
     assert.equal(llmConfig.provider, 'deepseek');
     const agent = await createLlmAgent({
       config: llmConfig,

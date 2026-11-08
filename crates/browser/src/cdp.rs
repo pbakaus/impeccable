@@ -12,10 +12,10 @@
 //! auditable against puppeteer's source.
 //!
 //! Everything here is synchronous: one websocket, one thread; events that
-//! arrive while a command is in flight are queued and drained by the page
-//! state machine after every call.
+//! arrive while a command is in flight are handled by the page state machine
+//! as they come, and the rest are swept up after every call.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -32,6 +32,10 @@ use tungstenite::{Message, WebSocket};
 const LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// puppeteer's per-command `protocolTimeout` (180 s).
 const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(180);
+/// How many distinct uncaught errors a page keeps: the scan reports a few
+/// per kind (`SCRIPT_ERROR_CAP` in lib.rs), and a page that throws a new
+/// message every tick must not grow the list without bound (issue #1253).
+const PAGE_ERROR_CAP: usize = 50;
 /// How long a screenshot of an attached page may take. A window that paints
 /// no frames (hidden on some systems) never answers one, and the scan of
 /// someone else's app should not sit on it for the protocol timeout.
@@ -471,12 +475,18 @@ struct OriginAuth {
     header: String,
 }
 
-/// One websocket to the browser; JSON-RPC ids and an event queue.
+/// One websocket to the browser, and its JSON-RPC ids.
 struct Connection {
     ws: WebSocket<TcpStream>,
     next_id: u64,
-    events: VecDeque<Value>,
     auth: Option<OriginAuth>,
+}
+
+/// What [`Connection::next`] read: the awaited reply's result, or an event
+/// that arrived ahead of it.
+enum Reply {
+    Result(Value),
+    Event(Value),
 }
 
 impl Connection {
@@ -503,7 +513,6 @@ impl Connection {
         Ok(Connection {
             ws,
             next_id: 0,
-            events: VecDeque::new(),
             auth: None,
         })
     }
@@ -585,26 +594,16 @@ impl Connection {
         Ok(id)
     }
 
-    /// Send a command and wait for its result. Events that arrive meanwhile
-    /// are queued. A `{ error }` reply becomes `Protocol error (method): message`
-    /// (puppeteer's wording).
-    fn send(
-        &mut self,
-        session_id: Option<&str>,
-        method: &str,
-        params: Value,
-        timeout: Duration,
-    ) -> CdpResult<Value> {
-        let id = self.post(session_id, method, params)?;
-        let deadline = Instant::now() + timeout;
+    /// Read until the reply to `id` or an event, whichever comes first.
+    /// Replies to other commands (fire-and-forget posts) are dropped. A
+    /// `{ error }` reply becomes `Protocol error (method): message`
+    /// (puppeteer's wording); `deadline` passing is the command's timeout.
+    fn next(&mut self, id: u64, method: &str, deadline: Instant) -> CdpResult<Reply> {
         loop {
-            let msg = match self.read_one(deadline)? {
-                Some(m) => m,
-                None => {
-                    return Err(CdpError::new(format!(
-                        "{method} timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
-                    )));
-                }
+            let Some(msg) = self.read_one(deadline)? else {
+                return Err(CdpError::new(format!(
+                    "{method} timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed."
+                )));
             };
             if msg.get("id").and_then(Value::as_u64) == Some(id) {
                 if let Some(err) = msg.get("error") {
@@ -616,12 +615,32 @@ impl Connection {
                     };
                     return Err(CdpError::new(format!("Protocol error ({method}): {full}")));
                 }
-                return Ok(msg.get("result").cloned().unwrap_or(Value::Null));
+                return Ok(Reply::Result(msg.get("result").cloned().unwrap_or(Value::Null)));
             }
             if msg.get("method").is_some() {
-                self.events.push_back(msg);
+                return Ok(Reply::Event(msg));
             }
-            // Replies to fire-and-forget posts are dropped.
+        }
+    }
+
+    /// Send a browser-level command and wait for its result. These run
+    /// outside any page (the target list, a new target, a page's close), so
+    /// an event that arrives meanwhile has no listener and is dropped. A
+    /// page's commands go through [`Page::send_with_timeout`], which handles
+    /// its events as they come.
+    fn send(
+        &mut self,
+        session_id: Option<&str>,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> CdpResult<Value> {
+        let id = self.post(session_id, method, params)?;
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Reply::Result(value) = self.next(id, method, deadline)? {
+                return Ok(value);
+            }
         }
     }
 
@@ -670,10 +689,9 @@ impl Connection {
         }
     }
 
-    /// Pull queued events, then any events already readable without waiting.
+    /// Events already readable without waiting.
     fn take_events(&mut self) -> Vec<Value> {
-        let mut out: Vec<Value> = self.events.drain(..).collect();
-        // Non-blocking sweep of what's already on the wire.
+        let mut out = Vec::new();
         let deadline = Instant::now() + Duration::from_millis(1);
         while let Ok(Some(msg)) = self.read_one(deadline) {
             if msg.get("method").is_some() {
@@ -773,9 +791,23 @@ impl<'a> Page<'a> {
         self.send_with_timeout(method, params, PROTOCOL_TIMEOUT)
     }
 
+    /// Send a command on this page's session and wait for its result. An
+    /// event that arrives while the reply is pending is handled as it comes,
+    /// never queued: the page decides how many it sends (a console or
+    /// exception flood) and how long the command takes (a sweep of a tall
+    /// page, a busy main thread), so a queue held until the reply grew by
+    /// hundreds of MB a second on such a page (issue #1253).
     fn send_with_timeout(&mut self, method: &str, params: Value, timeout: Duration) -> CdpResult<Value> {
         let sid = self.session_id.clone();
-        let out = self.browser.conn.send(Some(&sid), method, params, timeout);
+        let id = self.browser.conn.post(Some(&sid), method, params)?;
+        let deadline = Instant::now() + timeout;
+        let out = loop {
+            match self.browser.conn.next(id, method, deadline) {
+                Ok(Reply::Result(value)) => break Ok(value),
+                Ok(Reply::Event(ev)) => self.on_event(&ev),
+                Err(e) => break Err(e),
+            }
+        };
         self.pump_events();
         out
     }
@@ -944,7 +976,8 @@ impl<'a> Page<'a> {
         }
     }
 
-    /// Drain queued CDP events into page state (frames, errors, auto-attach).
+    /// Sweep the CDP events already readable into page state (frames, errors,
+    /// auto-attach).
     fn pump_events(&mut self) {
         let events = self.browser.conn.take_events();
         for ev in events {
@@ -1056,7 +1089,7 @@ impl<'a> Page<'a> {
                         .get(session)
                         .map(|owner| *owner == self.session_id)
                         .unwrap_or(false);
-                if counts {
+                if counts && self.page_errors.len() < PAGE_ERROR_CAP {
                     if let Some(details) = params.get("exceptionDetails") {
                         // First line, trimmed, 160 characters, deduped. One
                         // throw that surfaces both synchronously and as an
@@ -1826,8 +1859,6 @@ impl<'a> Page<'a> {
                 Duration::from_secs(10),
             );
         }
-        // Detached sessions may keep queued events; drop anything stale.
-        self.browser.conn.events.clear();
         // Interception (origin-scoped auth) dies with the page; a shared
         // browser's next page must not inherit it.
         if self
@@ -2467,6 +2498,64 @@ mod tests {
         assert_eq!(lists.len(), 1);
         let features = lists[0].trim_start_matches("--disable-features=");
         assert!(features.split(',').any(|f| f == "DeviceBoundSessions"));
+    }
+
+    /// The installed browser for a page-level test, or `None` when there is
+    /// none (the test then passes without running).
+    fn test_browser() -> Option<Browser> {
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        let exe = crate::discovery::find_browser(&env).ok()?;
+        Browser::launch(&exe, &[], false).ok()
+    }
+
+    /// A worker the page spawns while a command is in flight is held by
+    /// auto-attach until its attach event is answered. Handled as it arrives,
+    /// the worker runs and the command's promise settles; queued until the
+    /// reply, the two waited on each other for the protocol timeout.
+    #[test]
+    fn an_event_during_a_command_is_handled_before_the_reply() {
+        let Some(mut browser) = test_browser() else { return };
+        let mut page = browser.new_page().unwrap();
+        page.goto("about:blank", "load", Duration::from_secs(15)).unwrap();
+        let outcome = page
+            .evaluate_value(
+                r#"new Promise((resolve) => {
+  const worker = new Worker(URL.createObjectURL(new Blob(['postMessage(1)'], { type: 'text/javascript' })));
+  worker.onmessage = () => resolve('ran');
+  worker.onerror = (e) => resolve('error: ' + e.message);
+  setTimeout(() => resolve('held'), 5000);
+})"#,
+            )
+            .unwrap();
+        assert_eq!(outcome.as_str(), Some("ran"));
+        page.close();
+        browser.close();
+    }
+
+    /// A page that throws a new error every tick keeps its first
+    /// [`PAGE_ERROR_CAP`] and the scan keeps up with the rest.
+    #[test]
+    fn a_page_that_throws_without_end_keeps_its_first_errors() {
+        let Some(mut browser) = test_browser() else { return };
+        let mut page = browser.new_page().unwrap();
+        page.goto("about:blank", "load", Duration::from_secs(15)).unwrap();
+        page.evaluate_value(
+            r#"(() => {
+  let n = 0;
+  const tick = () => { for (let i = 0; i < 20; i++) Promise.reject(new Error('tick ' + (n++))); setTimeout(tick, 0); };
+  tick();
+  return true;
+})()"#,
+        )
+        .unwrap();
+        let started = Instant::now();
+        page.evaluate_value("new Promise((resolve) => setTimeout(() => resolve(true), 1000))").unwrap();
+        assert!(started.elapsed() < Duration::from_secs(20), "the flood starved the command: {:?}", started.elapsed());
+        let errors = page.page_errors();
+        assert!(!errors.is_empty());
+        assert!(errors.len() <= PAGE_ERROR_CAP, "{} errors kept", errors.len());
+        page.close();
+        browser.close();
     }
 }
 

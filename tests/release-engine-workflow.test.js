@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const workflow = Bun.YAML.parse(readFileSync(new URL('../.github/workflows/release-engine.yml', import.meta.url), 'utf8'));
 const action = (job, name) => job.steps.find(step => step.uses?.startsWith(`${name}@`));
@@ -75,5 +79,92 @@ describe('engine release signing boundary', () => {
         if (step.uses) expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
       }
     }
+  });
+});
+
+// Runs each step's own script, the way `shell: bash` does, so a broken sed fails
+// here instead of on the next release.
+describe.skipIf(process.platform === 'win32')('engine release version agreement', () => {
+  const step = name => workflow.jobs.build.steps.find(s => s.name === name);
+  const bash = (script, cwd, env = {}) => spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+  });
+  const inTree = (files, script, env) => {
+    const dir = mkdtempSync(join(tmpdir(), 'release-engine-'));
+    try {
+      for (const [path, content] of Object.entries(files)) {
+        mkdirSync(dirname(join(dir, path)), { recursive: true });
+        writeFileSync(join(dir, path), content, { mode: 0o755 });
+      }
+      return bash(script, dir, env);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  describe('tag check', () => {
+    const { run: script, if: condition } = step('Check the tag and Cargo.toml match ENGINE_VERSION');
+    const check = ({ engine = '1.2.3', cargo = '1.2.3', tag = 'engine-v1.2.3', eol = '\n' } = {}) => inTree({
+      ENGINE_VERSION: `${engine}${eol}`,
+      'Cargo.toml': ['[workspace]', '', '[workspace.package]', `version = "${cargo}"`, '', '[workspace.dependencies]', 'version = "9.9.9"', ''].join(eol),
+    }, script, { GITHUB_REF_NAME: tag });
+
+    test('runs on every target, the cross build included', () => {
+      expect(condition).toBeUndefined();
+    });
+
+    test('passes when all three agree, on a CRLF checkout too', () => {
+      expect(check().status).toBe(0);
+      expect(check({ eol: '\r\n' }).status).toBe(0);
+    });
+
+    test('fails on a workspace version or a tag that disagrees', () => {
+      const drifted = check({ cargo: '1.2.4' });
+      expect(drifted.status).toBe(1);
+      expect(drifted.stdout).toContain("'1.2.4' != ENGINE_VERSION 1.2.3");
+      expect(check({ tag: 'engine-v1.2.4' }).status).toBe(1);
+    });
+
+    test('fails when it cannot find the workspace version', () => {
+      const missing = inTree({ ENGINE_VERSION: '1.2.3\n', 'Cargo.toml': '[workspace]\n' }, script, { GITHUB_REF_NAME: 'engine-v1.2.3' });
+      expect(missing.status).toBe(1);
+    });
+
+    test('passes on this checkout', () => {
+      const root = fileURLToPath(new URL('..', import.meta.url));
+      const version = readFileSync(join(root, 'ENGINE_VERSION'), 'utf8').trim();
+      expect(bash(script, root, { GITHUB_REF_NAME: `engine-v${version}` }).status).toBe(0);
+    });
+  });
+
+  describe('smoke step', () => {
+    const { run, if: condition } = step('Smoke the binary');
+    const script = run
+      .replace('${{ matrix.target }}', 'host')
+      .replace("${{ runner.os == 'Windows' && '.exe' || '' }}", '');
+    const probe = body => inTree({
+      ENGINE_VERSION: '1.2.3\n',
+      'target/host/release/impeccable': `#!/bin/sh\n[ "$1" = engine-probe ] || exit 9\n${body}\n`,
+    }, script);
+
+    test('skips only the cross target', () => {
+      expect(condition).toBe('${{ !matrix.cross }}');
+      expect(script).not.toContain('${{');
+    });
+
+    test('passes only on the exact handshake', () => {
+      expect(probe('echo impeccable-engine 1.2.3').status).toBe(0);
+      for (const printed of ['impeccable-engine 1.2.4', 'impeccable-engine 1.2.3-dirty', 'impeccable-engine', '']) {
+        const mismatch = probe(`echo ${printed}`);
+        expect(mismatch.status).toBe(1);
+        expect(mismatch.stdout).toContain("want 'impeccable-engine 1.2.3'");
+      }
+    });
+
+    test('fails when the probe exits non-zero', () => {
+      expect(probe('echo impeccable-engine 1.2.3; exit 3').status).not.toBe(0);
+    });
   });
 });
