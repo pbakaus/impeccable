@@ -57,6 +57,7 @@ fn run(args: &[String], io: &mut Io) -> i32 {
         "detect" => impeccable_detect::run_detect(rest, io, &engines()),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         "skills" => impeccable_skills::run(rest, io),
+        "agents" => impeccable_agents::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => impeccable_hook::run_context(rest, io),

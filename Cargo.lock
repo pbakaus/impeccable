@@ -527,6 +527,7 @@ name = "impeccable"
 version = "0.1.18"
 dependencies = [
  "base64",
+ "impeccable-agents",
  "impeccable-browser",
  "impeccable-common",
  "impeccable-comp",
@@ -538,6 +539,16 @@ dependencies = [
  "impeccable-html",
  "impeccable-live",
  "impeccable-skills",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "impeccable-agents"
+version = "0.1.18"
+dependencies = [
+ "impeccable-common",
+ "serde",
  "serde_json",
  "sha2",
 ]
