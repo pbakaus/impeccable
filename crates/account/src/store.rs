@@ -61,6 +61,60 @@ impl std::fmt::Debug for Secret {
 /// Which backend a new sign-in uses: `IMPECCABLE_CREDENTIAL_STORE=file` or
 /// `keychain`, else the platform's keychain where it has one.
 pub fn chosen_backend(env: &HashMap<String, String>) -> Result<Backend, String> {
+    let backend = requested_backend(env)?;
+    if backend == Backend::File {
+        windows_file_backend_allowed(env)?;
+    }
+    Ok(backend)
+}
+
+/// Windows has no mode bits: a file is as private as the ACL it inherits.
+/// The user's profile is private to that user by default, anywhere else (a
+/// CI workspace, a shared drive) may not be, so the file backend is refused
+/// outside it rather than written with an unknown ACL.
+fn windows_file_backend_allowed(env: &HashMap<String, String>) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+    let refuse = || {
+        "On Windows, IMPECCABLE_CREDENTIAL_STORE=file needs IMPECCABLE_HOME inside your user profile"
+            .to_string()
+    };
+    let home = crate::config::impeccable_home(env).ok_or_else(refuse)?;
+    let profile = env
+        .get("USERPROFILE")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(refuse)?;
+    let profile = fs::canonicalize(&profile).map_err(|_| refuse())?;
+    if existing_ancestor(&home).is_some_and(|h| h.starts_with(&profile)) {
+        Ok(())
+    } else {
+        Err(refuse())
+    }
+}
+
+/// The canonical form of `path`'s nearest existing ancestor, with the rest
+/// appended; `None` when a component is `..` (it could climb out).
+fn existing_ancestor(path: &Path) -> Option<PathBuf> {
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return None;
+    }
+    let mut rest = Vec::new();
+    let mut cur = path;
+    loop {
+        if let Ok(real) = fs::canonicalize(cur) {
+            return Some(rest.iter().rev().fold(real, |p, c| p.join(c)));
+        }
+        rest.push(cur.file_name()?.to_owned());
+        cur = cur.parent()?;
+    }
+}
+
+fn requested_backend(env: &HashMap<String, String>) -> Result<Backend, String> {
     match env
         .get("IMPECCABLE_CREDENTIAL_STORE")
         .map(|s| s.trim().to_ascii_lowercase())
@@ -97,6 +151,13 @@ impl Store {
         }
     }
 
+    /// The keychain item belongs to this store (issuer and
+    /// `$IMPECCABLE_HOME`), like the lock and the generation: two homes never
+    /// share one secret under two locks.
+    fn keychain_account(&self) -> String {
+        format!("{} {}", self.account.issuer, self.dir.display())
+    }
+
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -118,6 +179,7 @@ impl Store {
             .write(true)
             .create(true)
             .truncate(false)
+            .no_follow()
             .open(self.dir.join("lock"))
             .map_err(|e| format!("could not open the sign-in lock: {e}"))?;
         let deadline = std::time::Instant::now() + wait;
@@ -152,7 +214,7 @@ impl Store {
         }
         let bytes = match state.backend {
             Backend::File => read_private(&self.dir.join("credentials.json")).ok()??,
-            Backend::Keychain => keychain::get(SERVICE, &self.account.issuer).ok()??,
+            Backend::Keychain => keychain::get(SERVICE, &self.keychain_account()).ok()??,
         };
         serde_json::from_slice(&bytes).ok()
     }
@@ -165,9 +227,28 @@ impl Store {
         let bytes = serde_json::to_vec(secret).map_err(|e| e.to_string())?;
         match state.backend {
             Backend::File => write_private(&self.dir.join("credentials.json"), &bytes)?,
-            Backend::Keychain => keychain::set(SERVICE, &self.account.issuer, &bytes)?,
+            Backend::Keychain => keychain::set(SERVICE, &self.keychain_account(), &bytes)?,
         }
-        self.write_state(state)
+        self.write_state(state)?;
+        // A sign-in that moved to the other backend leaves nothing behind.
+        let _ = self.remove_secret(Some(state.backend));
+        Ok(())
+    }
+
+    /// Delete the secret from every backend except `keep`.
+    fn remove_secret(&self, keep: Option<Backend>) -> Result<(), String> {
+        if keep != Some(Backend::File) {
+            match fs::remove_file(self.dir.join("credentials.json")) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    return Err(format!("could not delete the stored sign-in: {e}"))
+                }
+                _ => {}
+            }
+        }
+        if keychain::AVAILABLE && keep != Some(Backend::Keychain) {
+            keychain::delete(SERVICE, &self.keychain_account())?;
+        }
+        Ok(())
     }
 
     pub fn write_state(&self, state: &State) -> Result<(), String> {
@@ -196,11 +277,7 @@ impl Store {
             revocation_endpoint: previous.and_then(|s| s.revocation_endpoint.clone()),
         };
         self.write_state(&tomb)?;
-        let _ = fs::remove_file(self.dir.join("credentials.json"));
-        if keychain::AVAILABLE && tomb.backend == Backend::Keychain {
-            keychain::delete(SERVICE, &self.account.issuer)?;
-        }
-        Ok(())
+        self.remove_secret(None)
     }
 }
 
@@ -226,14 +303,34 @@ pub fn private_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Opening never follows a final symlink (Unix), so the checks below are
+/// made on the file that is read, not on a path that can be swapped.
+trait NoFollow {
+    fn no_follow(&mut self) -> &mut Self;
+}
+
+impl NoFollow for fs::OpenOptions {
+    fn no_follow(&mut self) -> &mut Self {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            self.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+        }
+        self
+    }
+}
+
 /// Read a private file: `None` when absent; refused when it is a symlink,
-/// someone else's, or readable by others.
+/// not a regular file, someone else's, or readable by others. The checks
+/// are made on the opened handle.
 pub fn read_private(path: &Path) -> Result<Option<Vec<u8>>, String> {
-    let meta = match fs::symlink_metadata(path) {
-        Ok(m) => m,
+    use std::io::Read;
+    let mut f = match fs::OpenOptions::new().read(true).no_follow().open(path) {
+        Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.to_string()),
+        Err(_) => return Err(format!("{} is not a plain file", path.display())),
     };
+    let meta = f.metadata().map_err(|e| e.to_string())?;
     if !meta.is_file() {
         return Err(format!("{} is not a plain file", path.display()));
     }
@@ -245,7 +342,12 @@ pub fn read_private(path: &Path) -> Result<Option<Vec<u8>>, String> {
             return Err(format!("{} is not private to this user", path.display()));
         }
     }
-    fs::read(path).map(Some).map_err(|e| e.to_string())
+    let mut buf = Vec::new();
+    Read::by_ref(&mut f)
+        .take(1024 * 1024)
+        .read_to_end(&mut buf)
+        .map_err(|e| e.to_string())?;
+    Ok(Some(buf))
 }
 
 /// Replace a file with a 0600 one by rename, never following a link.
@@ -271,7 +373,11 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
         f.write_all(bytes)?;
         f.sync_all()?;
         drop(f);
-        fs::rename(&temp, path)
+        fs::rename(&temp, path)?;
+        // The rename itself survives a power loss only once the directory is synced.
+        #[cfg(unix)]
+        fs::File::open(parent)?.sync_all()?;
+        Ok(())
     })();
     if result.is_err() {
         let _ = fs::remove_file(&temp);
