@@ -77,6 +77,14 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Instruction body contains reserved marker syntax".into());
         }
     }
+    for h in &s.hooks {
+        if s.harness == "codex" && (h.run_async.is_some() || h.async_rewake.is_some()) {
+            return Err("async and asyncRewake hooks are Claude Code only".into());
+        }
+        if h.timeout == Some(0) {
+            return Err("Hook timeout must be at least one second".into());
+        }
+    }
     for m in &s.mcp_servers {
         if m.name.is_empty() || m.name.contains(['/', '\\']) {
             return Err("Invalid MCP server name".into());

@@ -114,6 +114,9 @@ fn journal_records_each_hook_resource_and_claim() {
         event: "PreToolUse".into(),
         matcher: Some("Edit".into()),
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let j = apply(&s, None, &home, &home.join("journal"), None).unwrap();
     let hook = j.resources.iter().find(|r| r.kind == "hook").unwrap();
@@ -129,6 +132,9 @@ fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let result = render_codex_config(
         &s,
@@ -165,6 +171,9 @@ fn codex_toml_edit_accepts_inline_tables_and_quoted_dotted_server_names() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let input = "[mcp_servers.\"local.tools\"]\ncommand = 'tool'\nenv = { MODE = 'test', ENABLED = true }\n";
     let output = render_codex_config(&s, Some(input.as_bytes())).unwrap();
@@ -180,6 +189,9 @@ fn codex_toml_edit_preserves_crlf_and_existing_feature_keys() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let input = b"model = 'x'\r\n\r\n[features]\r\nother = true\r\n\r\n[mcp_servers.\"a.b\"]\r\ncommand = 'tool'\r\n";
     let output = render_codex_config(&s, Some(input)).unwrap();
@@ -324,6 +336,9 @@ fn two_owners_can_undo_in_either_order_and_keep_the_other_hook() {
             event: "PreToolUse".into(),
             matcher: None,
             command: "design".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         });
         let mut b = spec("claude", root.clone());
         b.owner = "impeccable-loop".into();
@@ -331,6 +346,9 @@ fn two_owners_can_undo_in_either_order_and_keep_the_other_hook() {
             event: "PreToolUse".into(),
             matcher: None,
             command: "loop".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         });
         let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
         let pa = home.join(format!("{}.json", installation_id(&a)));
@@ -373,6 +391,9 @@ fn preexisting_identical_hook_is_never_removed() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "already-here".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let path = root.join("settings.json");
     let expected = serde_json::to_vec_pretty(
@@ -399,6 +420,9 @@ fn undo_surgically_removes_managed_hook_after_user_edit() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "managed".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let journal = home.join("journal");
     let j = apply(&s, None, &home, &journal, None).unwrap();
@@ -422,6 +446,9 @@ fn apply_converges_when_a_hook_is_removed_from_the_spec() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "remove-me".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let p = home.join("journal");
     let first = apply(&s, None, &home, &p, None).unwrap();
@@ -449,6 +476,9 @@ fn shared_codex_features_claim_is_restored_after_last_installation() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "a".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let mut b = spec("codex", root_b.clone());
     b.owner = "impeccable-design".into();
@@ -517,6 +547,9 @@ fn two_accounts_sharing_symlinked_settings_hold_separate_claims() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "same-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let mut b = a.clone();
     b.root = account_b.clone();
@@ -566,6 +599,9 @@ fn conflicting_values_for_a_shared_account_resource_are_refused() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "one".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
     write_journal(&home.join(format!("{}.json", installation_id(&a))), &ja).unwrap();
@@ -574,6 +610,9 @@ fn conflicting_values_for_a_shared_account_resource_are_refused() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "two".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     assert_eq!(
         apply(&b, None, &home, &home.join("b"), None).unwrap_err().0,
@@ -587,6 +626,9 @@ fn identical_hook_is_not_duplicated() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "echo".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let p = s.root.join("settings.json");
     let first = render(&s, &p, None).unwrap();
@@ -601,6 +643,9 @@ fn preexisting_identical_hook_keeps_original_json_bytes() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "already-here".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let path = s.root.join("settings.json");
     let bytes =
@@ -619,6 +664,9 @@ fn plan_reports_actual_changes_and_json_reformatting_without_writing() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let result = plan(&s, None, &temp()).unwrap();
     assert_eq!(result["resources"][0]["change"], "update");
@@ -634,6 +682,9 @@ fn status_checks_owned_resources_without_marking_unrelated_edits_as_drift() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let journal = apply(&s, None, &home, &home.join("journal"), None).unwrap();
     let settings = root.join("settings.json");
@@ -695,6 +746,9 @@ fn no_op_reapply_keeps_compact_settings_byte_exact_undo_eligibility() {
         event: "PreToolUse".into(),
         matcher: Some("Write".into()),
         command: "impeccable-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let home = temp();
     let journal_path = home.join(format!("{}.json", installation_id(&desired)));
@@ -730,6 +784,9 @@ fn changed_spec_reapply_uses_surgical_undo_and_keeps_personal_hook() {
         event: "PreToolUse".into(),
         matcher: Some("Write".into()),
         command: "impeccable-hook-v1".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let home = temp();
     let journal_path = home.join(format!("{}.json", installation_id(&initial)));
@@ -799,11 +856,17 @@ fn codex_hooks_use_the_nested_shape_codex_reads_and_undo_keeps_personal_hooks() 
             event: "PostToolUse".into(),
             matcher: Some("Edit".into()),
             command: "loop register".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         },
         Hook {
             event: "SessionStart".into(),
             matcher: None,
             command: "loop lifecycle".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         },
     ];
     let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
@@ -834,4 +897,43 @@ fn codex_hooks_use_the_nested_shape_codex_reads_and_undo_keeps_personal_hooks() 
     );
     let left: Value = serde_json::from_slice(&fs::read(root.join("hooks.json")).unwrap()).unwrap();
     assert_eq!(left, json!({"hooks":{"SessionStart":[personal]}}));
+}
+#[test]
+fn hook_options_reach_the_harness_and_undo_removes_them() {
+    // Catches: wake hooks written without asyncRewake/timeout, so Claude never wakes the session.
+    let root = temp();
+    let home = temp();
+    let parse = |harness: &str| -> Spec {
+        serde_json::from_value(json!({
+            "version": 1, "owner": "impeccable-loop", "harness": harness, "root": root,
+            "hooks": [{"event":"Stop","command":"loop wake","async":true,"asyncRewake":true,"timeout":86400}]
+        }))
+        .unwrap()
+    };
+    let s = parse("claude");
+    assert!(validate(&s).is_ok());
+    assert!(validate(&parse("codex"))
+        .unwrap_err()
+        .contains("Claude Code only"));
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written: Value =
+        serde_json::from_slice(&fs::read(root.join("settings.json")).unwrap()).unwrap();
+    assert_eq!(
+        written["hooks"]["Stop"],
+        json!([{"hooks":[{"type":"command","command":"loop wake","timeout":86400,"async":true,"asyncRewake":true}]}])
+    );
+    let mut edited = written.clone();
+    edited["model"] = json!("personal");
+    fs::write(
+        root.join("settings.json"),
+        serde_json::to_vec_pretty(&edited).unwrap(),
+    )
+    .unwrap();
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let left: Value =
+        serde_json::from_slice(&fs::read(root.join("settings.json")).unwrap()).unwrap();
+    assert_eq!(left, json!({"model":"personal"}));
 }
