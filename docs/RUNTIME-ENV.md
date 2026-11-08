@@ -98,34 +98,78 @@ or any other verb. A machine that never signed in sees nothing new.
 
 **Refresh** (at `login`, and in a detached hidden `pro-refresh` when a lease
 has under two days left or is missing; at most every ten minutes, hourly
-after "not entitled"), under the sign-in lock:
+after "not entitled"). One refresh runs at a time per account: it holds an
+exclusive OS lock on `pro/refresh.lock`, and a scan claims the attempt under
+that lock before it starts one, so of many scans that find a refresh due at
+once, one starts it (a scan that cannot record the attempt starts none). The
+refresh at `login` waits up to a minute for one already running; a
+background one gives way after two seconds.
+
+The network steps run **without the sign-in lock**, so a slow or stalled
+service never holds up `login` or `logout` (token rotation still takes it
+for its one request). Every request has the client's 60 second deadline,
+except the artifact download, which has ten minutes.
 
 1. `GET /cli/v1/manifest?engine=<this version>&target=<os-arch>`
    (`darwin-arm64`, `linux-x64`, `windows-x64`, ...). The body's exact bytes
    must verify against `X-Impeccable-Signature` (base64url Ed25519) under a
    **pinned release key**, then parse as the manifest below with this
-   engine and target. A lower `artifact_revision` than the installed one is
-   refused (no replay of an old build).
+   engine and target. A revision below the **revision floor** is refused.
 2. The artifact is cached by digest at
-   `$IMPECCABLE_HOME/pro/artifacts/<sha256>[.exe]`. When the cached file's
-   digest matches, it isn't downloaded again; otherwise
-   `GET /cli/v1/artifact/<sha256>`, checked for size and digest before an
-   atomic rename.
+   `$IMPECCABLE_HOME/pro/artifacts/<sha256>[.exe]`. A cached file is used
+   only if it is a regular file (no symlink, FIFO or device) of the signed
+   size, owned by this user, not writable by others, and has the signed
+   digest; at most the signed size is read. Otherwise
+   `GET /cli/v1/artifact/<sha256>`, checked for size and digest, written to
+   a freshly created staging file (never through anything planted at its
+   name), then renamed into place.
 3. `POST /cli/v1/lease {artifact_sha256}`: a compact EdDSA JWS, verified
    against the cached lease keys; on an unknown `kid` (or no cache)
-   `GET /.well-known/impeccable-cli-keys.json` once and verify again.
-4. Install `pro/current.json` (manifest bytes and signature as served) and
-   `pro/lease` under the account directory.
+   `GET /.well-known/impeccable-cli-keys.json` once and verify again. A
+   lease must have `iat` no later than five minutes from now, and `exp`
+   after `iat` by at most seven days (the service's maximum).
+4. **Install**, under the sign-in lock, only if nothing happened since the
+   refresh started that it would undo: the machine is still signed in with
+   the **same sign-in**, no "not entitled" answer was recorded after the
+   refresh started, and no newer revision was accepted. Then
+   `pro/current.json` (manifest bytes and signature as served, the lease,
+   and the sign-in it belongs to) is replaced in one write, and the
+   revision floor raised.
 
-`403 not_entitled` deletes the lease and the installed manifest at once;
-`whoami` does the same when it reads `pro: false`. `503` answers
-(`CLI_ARTIFACTS`, `CLI_LEASE_*`, `malformed_release`) and network failures
-keep an existing lease: it runs to its own `exp` (offline grace), then the
-open rules.
+A sign-in is `login` in `state.json`: the generation it was made at, kept
+through token refreshes, changed by a new sign-in or a sign-out. Both of
+those clear the Pro state under the sign-in lock (installed manifest, lease,
+"not entitled", the retry clock), and dispatch uses a lease only when it was
+installed for the current sign-in. One account's lease never runs Pro for
+the next one.
 
-**Dispatch** (every scan, offline): re-verify the installed manifest, the
-artifact's digest and the lease (key, digest, `exp`). Any failure runs the
-open engine with one line on stderr saying why.
+`403 not_entitled` forgets the lease and the installed manifest at once;
+`whoami` does the same when it reads `pro: false`. Both take the sign-in
+lock, and record the answer's time, so a refresh already in flight installs
+nothing. `503` answers (`CLI_ARTIFACTS`, `CLI_LEASE_*`, `malformed_release`)
+and network failures keep an existing lease: it runs to its own `exp`
+(offline grace), then the open rules.
+
+The **revision floor** (`$IMPECCABLE_HOME/pro/floor-<engine>-<target>`) is
+the highest `artifact_revision` accepted for this engine and target. It is
+outside the account's Pro state, so forgetting a lease or signing out never
+lowers it, and both refresh and dispatch refuse a revision below it.
+
+**Dispatch** (every scan, offline), cheapest checks first: signed in; no
+"not entitled"; an installed manifest for this sign-in that verifies for
+this engine and target, at or above the floor; a lease that verifies (key,
+digest, `iat`, `exp`); and only then the artifact's digest. Any failure runs
+the open engine with one line on stderr saying why.
+
+**What this protects, and what it does not.** Dispatch runs a Pro build only
+when the release key signed it, the service leased it to this sign-in, and
+the lease is live. That holds against a compromised or misbehaving service
+or network short of the release key. It does not hold against a process
+running as the same user: such a process can write `$IMPECCABLE_HOME`, can
+swap the cached artifact between its check and its execution, can replace
+the cached lease keys (which are trusted on first fetch from the service),
+and can run the cached Pro build directly. Offline licensing is not
+enforced against the machine's owner.
 
 Manifest schema 1 (the release job signs these bytes):
 
