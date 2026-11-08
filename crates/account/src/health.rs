@@ -31,6 +31,11 @@ const DEADLINE: Duration = Duration::from_secs(5);
 /// service starts a new baseline instead of reporting false new and fixed.
 pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
+/// Each git question (top level, remote, branch).
+const GIT_DEADLINE: Duration = Duration::from_secs(2);
+/// Send the repo folder's name as `label`. Off until the decider answers
+/// REN-1559 question 3: a folder name can say more than meant.
+const SEND_FOLDER_LABEL: bool = false;
 const MAX_RULES: usize = 300;
 const MAX_FINGERPRINTS: usize = 5000;
 const MAX_LABEL: usize = 100;
@@ -57,17 +62,36 @@ pub struct Scan {
     pub started: SystemTime,
 }
 
-/// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
-/// and hint off stderr.
-pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+/// Whether a full scan could be uploaded at all: the cheap checks, run
+/// before detect is asked for a report. Reads only the environment, the
+/// telemetry config, `health.json` and the sign-in's `state.json` (never the
+/// keychain, git or the network). `CI`, a telemetry opt-out in the working
+/// directory, sync off (or an unreadable `health.json`) or no sign-in: no.
+pub fn wanted(io: &Io) -> bool {
     if !io.env.get("CI").is_none_or(|v| v.is_empty()) {
-        return;
+        return false;
     }
+    if !Local::read(&io.env).is_some_and(|l| l.sync()) {
+        return false;
+    }
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    if !crate::store::Store::new(&account)
+        .state()
+        .is_some_and(|s| s.signed_in)
+    {
+        return false;
+    }
+    let cwd = io.cwd.to_string_lossy();
+    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+}
+
+/// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
+/// and hint off stderr. The caller has checked [`wanted`].
+pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+    // The scanned root's own config may opt out too (an off anywhere wins).
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
-        return;
-    }
-    let local = Local::read(&io.env);
-    if !local.sync() {
         return;
     }
     let Ok(account) = Account::from_env(&io.env) else {
@@ -76,44 +100,70 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let Ok(mut session) = Session::load(&account) else {
         return;
     };
-    let Some(repo) = Repo::of(&scan.root) else {
+    let Some(repo) = Repo::of(&scan.root, &io.env) else {
         return;
     };
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
         return;
     };
+    // A token refresh, when one is due, goes through the ordinary sign-in
+    // path and client, exactly as `whoami` does: a short timeout there could
+    // drop a rotated refresh token the service already spent.
+    let Ok(token) = session.access_token() else {
+        return;
+    };
     let login = session.state.login;
-    session.client = Client::with_deadline(&account, DEADLINE);
+    // `off` or `forget` may have run while the scan did.
+    if !Local::read(&io.env).is_some_and(|l| l.sync()) {
+        return;
+    }
+    // One request, one deadline, no retry: a 401 waits for the next scan.
     let url = format!("{}{SCANS}", account.issuer);
-    match session.call(|c, token| c.post_json(&url, token, body.clone())) {
-        Ok(_) if local.noticed != Some(login) => {
-            if !quiet {
-                io.err(&format!(
-                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                    account.display_host()
-                ));
+    match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
+        Ok(_) => {
+            let fresh = Local::read(&io.env).unwrap_or_default();
+            if fresh.noticed != Some(login) {
+                if !quiet {
+                    io.err(&format!(
+                        "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
+                        account.display_host()
+                    ));
+                }
+                let _ = Local::update(&io.env, |l| l.noticed = Some(login));
             }
-            Local { noticed: Some(login), ..local }.write(&io.env);
         }
-        Err(SessionError::Api(ApiError::Status { status: 403, .. }))
-            if local.hinted != Some(login) =>
-        {
-            if !quiet {
-                io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
+        Err(ApiError::Status { status: 403, .. }) => {
+            let fresh = Local::read(&io.env).unwrap_or_default();
+            if fresh.hinted != Some(login) {
+                if !quiet {
+                    io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
+                }
+                let _ = Local::update(&io.env, |l| l.hinted = Some(login));
             }
-            Local { hinted: Some(login), ..local }.write(&io.env);
         }
-        _ => {}
+        Err(_) => {}
     }
 }
 
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let env = io.env.clone();
-    let mut local = Local::read(&env);
+    // An unreadable health.json reads as off.
+    let local = Local::read(&env).unwrap_or(Local {
+        sync: Some(false),
+        ..Local::default()
+    });
+    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| l.sync = Some(on)) {
+        Ok(()) => true,
+        Err(e) => {
+            io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
+            false
+        }
+    };
     match args.first().map(String::as_str) {
         None | Some("status") if args.len() <= 1 => {
             let cwd = io.cwd.to_string_lossy().into_owned();
+
             let account = Account::from_env(&env).ok();
             let signed_in = account.as_ref().is_some_and(|a| Session::load(a).is_ok());
             let why_not = if !local.sync() {
@@ -138,21 +188,24 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Some("on") if args.len() == 1 => {
-            local.sync = Some(true);
-            local.write(&env);
+            if !set(io, true) {
+                return 1;
+            }
             io.out("Design health: on.\n");
             0
         }
         Some("off") if args.len() == 1 => {
-            local.sync = Some(false);
-            local.write(&env);
+            if !set(io, false) {
+                return 1;
+            }
             io.out("Design health: off. Nothing more is sent; `impeccable health forget` also deletes what was saved.\n");
             0
         }
         Some("forget") if args.len() == 1 => {
             // Off first, so a scan that runs meanwhile can't start a new trend.
-            local.sync = Some(false);
-            local.write(&env);
+            if !set(io, false) {
+                return 1;
+            }
             let account = match Account::from_env(&env) {
                 Ok(a) => a,
                 Err(e) => {
@@ -172,11 +225,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     0
                 }
                 Err(SessionError::Api(ApiError::Status { status: 404, .. })) => {
-                    io.out(&format!(
-                        "Design health isn't offered by {}, so nothing was saved there. Sync is off.\n",
+                    io.err(&format!(
+                        "Sync is off, but {} doesn't offer design health right now, so deleting what was saved couldn't be confirmed. Run `impeccable health forget` again later.\n",
                         account.display_host()
                     ));
-                    0
+                    1
                 }
                 Err(SessionError::NotSignedIn | SessionError::Expired) => {
                     io.err("Sync is off. To delete what was saved, run `impeccable login` and then `impeccable health forget`.\n");
@@ -210,36 +263,53 @@ impl Local {
     fn path(env: &std::collections::HashMap<String, String>) -> Option<PathBuf> {
         impeccable_home(env).map(|h| h.join("health.json"))
     }
-    fn read(env: &std::collections::HashMap<String, String>) -> Local {
-        let v: Value = Local::path(env)
-            .and_then(|p| std::fs::read(p).ok())
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or(Value::Null);
-        Local {
+    /// The saved state; the default when there is none yet. `None` when a
+    /// file is there but can't be read, which callers treat as off.
+    fn read(env: &std::collections::HashMap<String, String>) -> Option<Local> {
+        let path = Local::path(env)?;
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Local::default()),
+            Err(_) => return None,
+        };
+        let v: Value = serde_json::from_slice(&bytes).ok()?;
+        let v = v.as_object()?;
+        Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
             noticed: v.get("noticed").and_then(Value::as_u64),
             hinted: v.get("hinted").and_then(Value::as_u64),
-        }
+        })
     }
     fn sync(&self) -> bool {
         self.sync.unwrap_or(SYNC_BY_DEFAULT)
     }
-    fn write(&self, env: &std::collections::HashMap<String, String>) {
-        let Some(path) = Local::path(env) else { return };
+    /// Re-read, change one thing, save. Starting from what is on disk now
+    /// keeps a notice from undoing an `off` written meanwhile. An unreadable
+    /// file is replaced only by a choice of sync, never by a notice.
+    fn update(
+        env: &std::collections::HashMap<String, String>,
+        change: impl FnOnce(&mut Local),
+    ) -> Result<(), String> {
+        let path = Local::path(env).ok_or("no home directory; set IMPECCABLE_HOME")?;
+        let mut local = Local::read(env).unwrap_or(Local {
+            sync: Some(false),
+            ..Local::default()
+        });
+        change(&mut local);
         let mut m = Map::new();
-        if let Some(s) = self.sync {
+        if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
         }
-        if let Some(n) = self.noticed {
+        if let Some(n) = local.noticed {
             m.insert("noticed".into(), n.into());
         }
-        if let Some(h) = self.hinted {
+        if let Some(h) = local.hinted {
             m.insert("hinted".into(), h.into());
         }
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
-        let _ = crate::store::write_private(&path, Value::Object(m).to_string().as_bytes());
+        crate::store::write_private(&path, Value::Object(m).to_string().as_bytes())
     }
 }
 
@@ -252,7 +322,7 @@ struct Repo {
 
 impl Repo {
     /// `None` unless `root` is the top of a git work tree.
-    fn of(root: &str) -> Option<Repo> {
+    fn of(root: &str, env: &std::collections::HashMap<String, String>) -> Option<Repo> {
         let top = git(root, &["rev-parse", "--show-toplevel"])?;
         let same = |a: &str, b: &str| match (Path::new(a).canonicalize(), Path::new(b).canonicalize()) {
             (Ok(a), Ok(b)) => a == b,
@@ -265,35 +335,57 @@ impl Repo {
             .and_then(|r| normalize_remote(&r))
         {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
-            None => hex(&Sha256::digest(local_repo_id(root)?.as_bytes())),
+            None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
         };
         let branch = git(root, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
         let stream = hex(&hash(&[&key, &branch]));
-        let label = Path::new(root)
-            .file_name()
-            .and_then(|n| label(&n.to_string_lossy()));
+        // The folder name can say more than the person meant to share, so it
+        // waits for the decider's answer (REN-1559 question 3).
+        let label = SEND_FOLDER_LABEL
+            .then(|| Path::new(root).file_name().and_then(|n| label(&n.to_string_lossy())))
+            .flatten();
         Some(Repo { key, stream, label })
     }
 }
 
+/// One short git question, given at most [`GIT_DEADLINE`] and never
+/// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
-        .arg("-C")
-        .arg(dir)
+    let mut child = Command::new("git")
+        .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
+        .spawn()
         .ok()?;
-    let s = String::from_utf8(out.stdout).ok()?.trim().to_string();
-    (out.status.success() && !s.is_empty()).then_some(s)
+    let until = std::time::Instant::now() + GIT_DEADLINE;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if std::time::Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(5))
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    let mut out = String::new();
+    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    let s = out.trim().to_string();
+    (status.success() && !s.is_empty()).then_some(s)
 }
 
-/// A repo with no `origin` gets a random id, kept in `.impeccable/health/`
-/// and ignored by git there, so it is never committed.
-fn local_repo_id(root: &str) -> Option<String> {
-    let dir = Path::new(root).join(".impeccable").join("health");
-    let file = dir.join("repo-id");
+/// A repo with no `origin` gets a random id, kept under `IMPECCABLE_HOME`
+/// by the repo's path, never in the work tree (whose files the repo
+/// controls). A moved repo starts a new trend.
+fn local_repo_id(top: &str, env: &std::collections::HashMap<String, String>) -> Option<String> {
+    let canonical = Path::new(top).canonicalize().ok()?;
+    let name = hex(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
+    let file = impeccable_home(env)?.join("health").join("repos").join(name);
     if let Ok(id) = std::fs::read_to_string(&file) {
         let id = id.trim();
         if id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -303,9 +395,8 @@ fn local_repo_id(root: &str) -> Option<String> {
     let mut bytes = [0u8; 16];
     SystemRandom::new().fill(&mut bytes).ok()?;
     let id = hex(&bytes);
-    std::fs::create_dir_all(&dir).ok()?;
-    impeccable_common::git::ensure_dir_ignored(&dir.to_string_lossy(), &["*"]);
-    std::fs::write(&file, format!("{id}\n")).ok()?;
+    std::fs::create_dir_all(file.parent()?).ok()?;
+    crate::store::write_private(&file, format!("{id}\n").as_bytes()).ok()?;
     Some(id)
 }
 
@@ -604,6 +695,24 @@ mod tests {
         assert_eq!(a, fingerprint("/w/repo/", &hit("/w/repo/src/a.css")));
         assert_eq!(a, fingerprint("C:\\w\\repo", &hit("C:\\w\\repo\\src\\a.css")));
         assert_ne!(a, fingerprint("/w/repo", &hit("/w/repo/src/b.css")));
+    }
+
+    #[test]
+    fn recording_the_notice_never_undoes_an_off_saved_meanwhile() {
+        // Catches (review F3): a scan that read "on" writing its notice over an `off` (or `forget`) saved during the scan.
+        let home = std::env::temp_dir().join(format!("impeccable-health-local-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let env = std::collections::HashMap::from([(
+            "IMPECCABLE_HOME".to_string(),
+            home.to_string_lossy().into_owned(),
+        )]);
+        let seen_by_scan = Local::read(&env).unwrap();
+        assert!(seen_by_scan.sync());
+        Local::update(&env, |l| l.sync = Some(false)).unwrap(); // `health off` meanwhile
+        Local::update(&env, |l| l.noticed = Some(7)).unwrap(); // the scan's notice
+        let now = Local::read(&env).unwrap();
+        assert_eq!((now.sync, now.noticed), (Some(false), Some(7)));
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

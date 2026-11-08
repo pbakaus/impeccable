@@ -111,7 +111,8 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     let first = run(&env, &root, &["detect", "--json", "."]);
     let body = scans(&fake).pop().expect("one upload");
     assert_eq!(body["coverage"], "full");
-    assert_eq!(body["label"], "my-site");
+    // The folder name waits for the decider (REN-1559 question 3).
+    assert!(body.get("label").is_none(), "{body}");
     assert_eq!(body["filesScanned"], 4);
     assert!(body["findings"].as_u64().unwrap() >= 2, "{body}");
     assert!(body["advisory"].as_u64().unwrap() >= 1, "{body}");
@@ -208,17 +209,11 @@ fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
     let hint = "can't save scan results";
     assert!(String::from_utf8_lossy(&first.stderr).contains(hint));
     assert!(!String::from_utf8_lossy(&second.stderr).contains(hint));
-    // A repo without a remote keeps a random id, ignored by git.
-    let id = root.join(".impeccable/health/repo-id");
-    assert!(id.exists());
-    let ignored = Command::new("git")
-        .arg("-C")
-        .arg(&root)
-        .args(["check-ignore", "-q", ".impeccable/health/repo-id"])
-        .status()
-        .unwrap()
-        .success();
-    assert!(ignored);
+    // A repo without a remote keeps a random id outside the work tree:
+    // nothing is written into the repo, whose files it controls (review F4).
+    assert!(!root.join(".impeccable").exists());
+    let ids = Path::new(&env["IMPECCABLE_HOME"]).join("health/repos");
+    assert_eq!(std::fs::read_dir(&ids).unwrap().count(), 1);
 
     fake.knobs.lock().unwrap().health_denied = false;
     let out = run(&env, &root, &["health", "forget"]);
@@ -229,4 +224,64 @@ fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
     assert_eq!(fake.hits("/cli/v1/health/scans"), before, "sync stays off after forget");
     let status = run(&env, &root, &["health"]);
     assert!(String::from_utf8_lossy(&status.stdout).contains("turned off"));
+}
+
+#[test]
+fn forget_without_the_service_confirming_fails_and_stays_off() {
+    // Catches (review F8): a 404 from a switched-off service reported as "nothing was saved".
+    let (fake, env) = signed_in("health-forget-404");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    fake.knobs.lock().unwrap().health = false;
+    let out = run(&env, &root, &["health", "forget"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("couldn't be confirmed"));
+    fake.knobs.lock().unwrap().health = true;
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "sync stays off");
+}
+
+#[test]
+fn an_opt_out_where_detect_runs_holds_for_a_scan_of_the_root() {
+    // Catches (review F7): `detect ..` from a directory with "telemetry": false uploading the repo root's scan.
+    let (fake, env) = signed_in("health-cwd-optout");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    std::fs::create_dir_all(root.join("sub/.impeccable")).unwrap();
+    std::fs::write(root.join("sub/.impeccable/config.json"), r#"{"telemetry": false}"#).unwrap();
+    run(&env, &root.join("sub"), &["detect", ".."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn an_unsaved_or_unreadable_choice_never_reads_as_on() {
+    // Catches (review F5): `health off` claiming success when it couldn't save, and a corrupt health.json reading as on.
+    let (fake, env) = signed_in("health-persist");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let state = Path::new(&env["IMPECCABLE_HOME"]).join("health.json");
+    std::fs::write(&state, "{not json").unwrap();
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0, "corrupt reads as off");
+    std::fs::remove_file(&state).unwrap();
+    std::fs::create_dir(&state).unwrap();
+    let out = run(&env, &root, &["health", "off"]);
+    assert!(!out.status.success(), "off must fail when it can't be saved");
+}
+
+#[test]
+fn an_upload_that_needs_a_fresh_token_keeps_the_sign_in() {
+    // Catches (review F2): an upload rotating the refresh token on a short timeout and leaving the sign-in broken.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.access_ttl = 0;
+    }
+    let env = fake.env("health-refresh");
+    login(&env);
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(scans(&fake).len(), 1);
+    let out = run(&env, &root, &["whoami", "--json"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }

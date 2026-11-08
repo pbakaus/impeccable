@@ -158,6 +158,11 @@ fn detect(
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) -> i32 {
     use std::io::Write;
+    // Most runs can't upload (not signed in, CI, opted out): those don't
+    // pay for a report.
+    if !impeccable_account::health::wanted(io) {
+        return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
+    }
     let started = std::time::SystemTime::now();
     let mut report = None;
     let code =
