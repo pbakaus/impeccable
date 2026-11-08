@@ -4,7 +4,7 @@
 //! one (owner, harness, account root) installation.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -21,9 +21,9 @@ const JOURNAL_VERSION: u32 = 2;
 
 mod fs_writer;
 mod render;
-#[cfg(test)]
-use fs_writer::{TEST_FAILPOINT, validate_file};
 use fs_writer::{canonical_target, failpoint, safe_delete, safe_write};
+#[cfg(test)]
+use fs_writer::{validate_file, TEST_FAILPOINT};
 use render::render;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -161,7 +161,7 @@ fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
     let result = (|| {
         let prior = read_journal(&journal)?;
         match verb {
-            "plan" => plan(s, prior.as_ref()),
+            "plan" => plan(s, prior.as_ref(), &home),
             "status" => status(s, prior.as_ref()),
             "apply" => {
                 let prior_bytes = fs::read(&journal).ok();
@@ -447,7 +447,10 @@ fn recover(home: &Path, id: &str) -> Result<Value, (&'static str, String, i32)> 
         mcp_servers: vec![],
         ..tx.desired_spec.clone()
     });
-    sync_mcp(&rollback, Some(&tx.desired_spec))?;
+    let mcp_conflicts = sync_mcp(&rollback, Some(&tx.desired_spec), home)?;
+    if !mcp_conflicts.is_empty() {
+        return Ok(json!({"installation":id,"state":"conflict","conflicts":mcp_conflicts}));
+    }
     if let Some(before) = tx.prior_journal {
         atomic_bytes(&tx.journal_path, &before)?
     } else {
@@ -593,7 +596,7 @@ fn targets(s: &Spec) -> Vec<PathBuf> {
     }
     out
 }
-fn plan(s: &Spec, j: Option<&Journal>) -> Result<Value, (&'static str, String, i32)> {
+fn plan(s: &Spec, j: Option<&Journal>, home: &Path) -> Result<Value, (&'static str, String, i32)> {
     let mut resources = Vec::new();
     for path in targets(s) {
         let before = fs::read(&path).ok();
@@ -622,18 +625,32 @@ fn plan(s: &Spec, j: Option<&Journal>) -> Result<Value, (&'static str, String, i
     }
     let mut mcp_servers = Vec::new();
     for server in &s.mcp_servers {
-        let already_claimed = j.is_some_and(|journal| {
-            journal.resources.iter().any(|resource| {
-                resource.kind == "mcp-server"
-                    && resource
-                        .last_written_value
-                        .get("name")
-                        .and_then(Value::as_str)
-                        == Some(server.name.as_str())
-            })
+        let own = j.and_then(|journal| {
+            journal
+                .resources
+                .iter()
+                .find(|resource| resource.resource_id == mcp_resource_id(s, &server.name))
         });
-        let occupied = !already_claimed && mcp_exists(s, &server.name)?;
-        mcp_servers.push(json!({"name":server.name,"change":if occupied{"conflict"}else if already_claimed{"unchanged"}else{"create"}}));
+        let peer = find_peer_mcp_record_from_journal(j, s, &server.name)
+            .or_else(|| find_peer_mcp_record(home, s, &server.name));
+        let observed = mcp_get(s, &server.name)?;
+        let desired = mcp_config(server);
+        let change = if own.is_some_and(|resource| resource.last_written_value == desired)
+            || peer
+                .as_ref()
+                .is_some_and(|resource| resource.last_written_value == desired)
+        {
+            if observed.as_ref() == Some(&desired) {
+                "unchanged"
+            } else {
+                "conflict"
+            }
+        } else if observed.is_some() {
+            "conflict"
+        } else {
+            "create"
+        };
+        mcp_servers.push(json!({"name":server.name,"change":change}));
     }
     Ok(
         json!({"installation":s.root,"resources":resources,"mcpServers":mcp_servers,"previouslyApplied":j.is_some()}),
@@ -667,7 +684,7 @@ fn resource_matches(
             .get("name")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        return mcp_exists(s, name);
+        return Ok(mcp_get(s, name)?.as_ref() == Some(&resource.last_written_value));
     }
     let Some(bytes) = fs::read(&resource.path).ok() else {
         return Ok(false);
@@ -741,6 +758,17 @@ fn apply(
     journal_path: &Path,
     prior_journal: Option<Vec<u8>>,
 ) -> Result<Journal, (&'static str, String, i32)> {
+    let mcp_conflicts = preflight_mcp(s, old.map(|journal| &journal.spec), home)?;
+    if !mcp_conflicts.is_empty() {
+        return Err((
+            "mcp_drift",
+            format!(
+                "MCP server configuration changed outside the engine: {}",
+                mcp_conflicts.join(", ")
+            ),
+            4,
+        ));
+    }
     let mut snapshots = Vec::new();
     let mut writes = Vec::new();
     let desired_targets = targets(s);
@@ -888,7 +916,17 @@ fn apply(
             });
         }
     }
-    sync_mcp(s, old.map(|j| &j.spec))?;
+    let mcp_conflicts = sync_mcp(s, old.map(|j| &j.spec), home)?;
+    if !mcp_conflicts.is_empty() {
+        return Err((
+            "mcp_drift",
+            format!(
+                "MCP server configuration changed outside the engine: {}",
+                mcp_conflicts.join(", ")
+            ),
+            4,
+        ));
+    }
     failpoint("mcp_synced")?;
     let _ = home;
     let mut all = old.map(|j| j.snapshots.clone()).unwrap_or_default();
@@ -1042,15 +1080,33 @@ fn build_resource_records(
             );
         }
     }
+    drop(add);
     for m in &s.mcp_servers {
-        let path = format!("{}:{}", s.harness, s.root.display());
-        add(
-            "mcp-server",
-            &m.name,
-            &path,
-            None,
-            json!({"name":m.name,"command":m.command,"args":m.args,"env":m.env}),
-        );
+        let resource_id = mcp_resource_id(s, &m.name);
+        let path = PathBuf::from(format!("{}:{}", s.harness, s.root.display()));
+        let desired = mcp_config(m);
+        let mut record = known
+            .iter()
+            .find(|r| r.resource_id == resource_id)
+            .cloned()
+            .unwrap_or(ResourceRecord {
+                resource_id: resource_id.clone(),
+                kind: "mcp-server".into(),
+                path,
+                state: ResourceState::Created,
+                original_value: None,
+                last_written_value: desired.clone(),
+                claims: Vec::new(),
+            });
+        if record.last_written_value != desired {
+            record.state = ResourceState::Conflict;
+        }
+        if !record.claims.contains(&claim) {
+            record.claims.push(claim.clone());
+        }
+        if !out.iter().any(|r| r.resource_id == resource_id) {
+            out.push(record);
+        }
     }
     out
 }
@@ -1193,53 +1249,246 @@ fn undo(s: &Spec, j: Option<&Journal>, _home: &Path) -> Result<Value, (&'static 
                     safe_write(&snap.path, current.as_deref(), &updated)?;
                     removed.push(snap.path.clone());
                 }
-                _ => conflicts.push(snap.path.clone()),
+                _ => conflicts.push(json!(snap.path.display().to_string())),
             }
         }
     }
-    sync_mcp(
+    let mcp_conflicts = sync_mcp(
         &Spec {
             mcp_servers: vec![],
             ..j.spec.clone()
         },
         Some(&j.spec),
+        _home,
     )?;
+    conflicts.extend(
+        mcp_conflicts
+            .into_iter()
+            .map(|name| json!(format!("mcp:{name}"))),
+    );
     let _ = s;
     Ok(json!({"removed":true,"resourcesRemoved":removed,"conflicts":conflicts}))
 }
-fn sync_mcp(spec: &Spec, previous: Option<&Spec>) -> Result<(), (&'static str, String, i32)> {
+fn sync_mcp(
+    spec: &Spec,
+    previous: Option<&Spec>,
+    home: &Path,
+) -> Result<Vec<String>, (&'static str, String, i32)> {
     let old = previous.map(|p| p.mcp_servers.as_slice()).unwrap_or(&[]);
+    let conflicts = preflight_mcp(spec, previous, home)?;
+    if !conflicts.is_empty() {
+        return Ok(conflicts);
+    }
+
+    for prior in old {
+        let desired = spec.mcp_servers.iter().find(|m| m.name == prior.name);
+        if desired.is_some_and(|m| m == prior) {
+            continue;
+        }
+        if other_mcp_claim(home, spec, &prior.name) {
+            continue;
+        }
+        run_mcp(spec, "remove", &prior.name, None)?;
+    }
+
     for server in &spec.mcp_servers {
-        let same = old.iter().any(|m| {
-            m.name == server.name
-                && m.command == server.command
-                && m.args == server.args
-                && m.env == server.env
-        });
-        if same {
+        if old.iter().any(|m| m == server) {
             continue;
         }
         if old.iter().any(|m| m.name == server.name) {
-            run_mcp(spec, "remove", &server.name, None)?
-        } else {
-            if mcp_exists(spec, &server.name)? {
+            if conflicts.contains(&server.name) {
+                continue;
+            }
+            run_mcp(spec, "add", &server.name, Some(server))?;
+            continue;
+        }
+
+        let peer = find_peer_mcp_record(home, spec, &server.name);
+        if peer.is_none() {
+            run_mcp(spec, "add", &server.name, Some(server))?;
+            if mcp_get(spec, &server.name)?.as_ref() != Some(&mcp_config(server)) {
                 return Err((
-                    "mcp_name_collision",
-                    format!("MCP server name is already in use: {}", server.name),
+                    "mcp_verification_failed",
+                    format!("Could not verify installed MCP server {}", server.name),
                     4,
                 ));
             }
         }
-        run_mcp(spec, "add", &server.name, Some(server))?;
     }
-    for server in old {
-        if !spec.mcp_servers.iter().any(|m| m.name == server.name) {
-            run_mcp(spec, "remove", &server.name, None)?
+    Ok(Vec::new())
+}
+fn preflight_mcp(
+    spec: &Spec,
+    previous: Option<&Spec>,
+    home: &Path,
+) -> Result<Vec<String>, (&'static str, String, i32)> {
+    let old = previous.map(|p| p.mcp_servers.as_slice()).unwrap_or(&[]);
+    let mut conflicts = Vec::new();
+    for prior in old {
+        let desired = spec
+            .mcp_servers
+            .iter()
+            .find(|server| server.name == prior.name);
+        let unchanged = desired.is_some_and(|server| server == prior);
+        let observed = mcp_get(spec, &prior.name)?;
+        if unchanged {
+            if observed.as_ref() != Some(&mcp_config(prior)) {
+                conflicts.push(prior.name.clone());
+            }
+            continue;
+        }
+        let has_peer = other_mcp_claim(home, spec, &prior.name);
+        if desired.is_some() && has_peer {
+            return Err((
+                "shared_resource_conflict",
+                format!(
+                    "MCP server is still claimed by another installation: {}",
+                    prior.name
+                ),
+                4,
+            ));
+        }
+        if observed.as_ref() != Some(&mcp_config(prior)) {
+            conflicts.push(prior.name.clone());
+            continue;
+        }
+        if has_peer {
+            continue;
         }
     }
-    Ok(())
+    for desired in &spec.mcp_servers {
+        if old.iter().any(|prior| prior.name == desired.name) {
+            continue;
+        }
+        let observed = mcp_get(spec, &desired.name)?;
+        if let Some(peer) = find_peer_mcp_record(home, spec, &desired.name) {
+            if peer.last_written_value != mcp_config(desired) {
+                return Err((
+                    "shared_resource_conflict",
+                    format!(
+                        "MCP server name is claimed with a different configuration: {}",
+                        desired.name
+                    ),
+                    4,
+                ));
+            }
+            if observed.as_ref() != Some(&peer.last_written_value) {
+                conflicts.push(desired.name.clone());
+            }
+        } else if observed.is_some() {
+            return Err((
+                "mcp_name_collision",
+                format!("MCP server name is already in use: {}", desired.name),
+                4,
+            ));
+        }
+    }
+    Ok(conflicts)
 }
-fn mcp_exists(spec: &Spec, name: &str) -> Result<bool, (&'static str, String, i32)> {
+fn mcp_resource_id(spec: &Spec, name: &str) -> String {
+    let identity = format!("{}:{}:{}", spec.harness, spec.root.display(), name);
+    format!("mcp:{}", hex(&Sha256::digest(identity.as_bytes())))
+}
+fn mcp_config(server: &McpServer) -> Value {
+    json!({"name":server.name,"command":server.command,"args":server.args,"env":server.env})
+}
+fn find_peer_mcp_record(home: &Path, spec: &Spec, name: &str) -> Option<ResourceRecord> {
+    let id = mcp_resource_id(spec, name);
+    fs::read_dir(home).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        if path.extension().is_none_or(|ext| ext != "json")
+            || path
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with("pending.json"))
+            || path.file_stem().and_then(|n| n.to_str()) == Some(installation_id(spec).as_str())
+        {
+            return None;
+        }
+        let journal: Journal = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+        journal.resources.into_iter().find(|r| r.resource_id == id)
+    })
+}
+fn find_peer_mcp_record_from_journal(
+    journal: Option<&Journal>,
+    spec: &Spec,
+    name: &str,
+) -> Option<ResourceRecord> {
+    let id = mcp_resource_id(spec, name);
+    journal?
+        .resources
+        .iter()
+        .find(|record| record.resource_id == id)
+        .cloned()
+}
+fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
+    if let Ok(value) = render::parse_unique_json(bytes) {
+        let candidate = value
+            .get("server")
+            .or_else(|| value.get("config"))
+            .unwrap_or(&value);
+        if value
+            .get("name")
+            .or_else(|| candidate.get("name"))
+            .and_then(Value::as_str)
+            .is_some_and(|actual| actual != name)
+        {
+            return None;
+        }
+        let command = candidate.get("command")?.as_str()?;
+        let args = match candidate.get("args") {
+            None => Vec::new(),
+            Some(Value::Array(values)) => values
+                .iter()
+                .map(|value| value.as_str().map(str::to_owned))
+                .collect::<Option<Vec<_>>>()?,
+            Some(_) => return None,
+        };
+        let env = match candidate
+            .get("env")
+            .or_else(|| candidate.get("environment"))
+        {
+            None => std::collections::BTreeMap::new(),
+            Some(Value::Object(values)) => values
+                .iter()
+                .map(|(key, value)| Some((key.clone(), value.as_str()?.to_owned())))
+                .collect::<Option<std::collections::BTreeMap<_, _>>>()?,
+            Some(_) => return None,
+        };
+        return Some(json!({"name":name,"command":command,"args":args,"env":env}));
+    }
+    let text = std::str::from_utf8(bytes).ok()?;
+    let mut command = None;
+    let mut args: Vec<String> = Vec::new();
+    let mut env = std::collections::BTreeMap::new();
+    for line in text.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim().to_ascii_lowercase().as_str() {
+            "command" => command = Some(value.trim().to_owned()),
+            "args" => {
+                let value = value.trim();
+                if !value.is_empty() {
+                    args = serde_json::from_str(value)
+                        .unwrap_or_else(|_| value.split_whitespace().map(str::to_owned).collect());
+                }
+            }
+            "environment" | "env" => {
+                if let Ok(values) =
+                    serde_json::from_str::<std::collections::BTreeMap<String, String>>(value.trim())
+                {
+                    env = values;
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(json!({"name":name,"command":command?,"args":args,"env":env}))
+}
+fn other_mcp_claim(home: &Path, spec: &Spec, name: &str) -> bool {
+    find_peer_mcp_record(home, spec, name).is_some()
+}
+fn mcp_get(spec: &Spec, name: &str) -> Result<Option<Value>, (&'static str, String, i32)> {
     let binary = mcp_binary(spec);
     let mut cmd = Command::new(binary);
     cmd.env(
@@ -1253,7 +1502,7 @@ fn mcp_exists(spec: &Spec, name: &str) -> Result<bool, (&'static str, String, i3
     if spec.harness == "claude" {
         cmd.args(["mcp", "get", name, "--scope", "user"]);
     } else {
-        cmd.args(["mcp", "get", name]);
+        cmd.args(["mcp", "get", name, "--json"]);
     }
     let output = cmd.output().map_err(|_| {
         (
@@ -1262,7 +1511,12 @@ fn mcp_exists(spec: &Spec, name: &str) -> Result<bool, (&'static str, String, i3
             4,
         )
     })?;
-    Ok(output.status.success())
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let parsed = parse_mcp_observation(&output.stdout, name)
+        .unwrap_or_else(|| json!({"name":name,"unparsed":true}));
+    Ok(Some(parsed))
 }
 fn mcp_binary(spec: &Spec) -> std::ffi::OsString {
     let var = if spec.harness == "claude" {

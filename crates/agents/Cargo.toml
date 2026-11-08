@@ -10,3 +10,4 @@ impeccable-common = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"
+toml_edit = "0.22"

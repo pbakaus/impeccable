@@ -1,7 +1,8 @@
 use super::Spec;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
+use toml_edit::{ImDocument, Item, Value as TomlValue};
 
 pub(super) fn render(
     s: &Spec,
@@ -265,101 +266,138 @@ fn remove_codex_hooks(
     current: &[u8],
     original: Option<&[u8]>,
 ) -> Result<Vec<u8>, (&'static str, String, i32)> {
-    let mut text = String::from_utf8(current.to_vec()).map_err(|_| {
-        (
-            "invalid_settings",
-            "Codex config.toml is not UTF-8".into(),
-            4,
-        )
-    })?;
-    let original_text = original
-        .and_then(|b| String::from_utf8(b.to_vec()).ok())
-        .unwrap_or_default();
-    let original_setting = original_text.lines().find_map(|l| {
-        let t = l.trim();
-        t.strip_prefix("hooks = ").and_then(|v| match v {
-            "true" => Some(true),
-            "false" => Some(false),
-            _ => None,
+    let text = std::str::from_utf8(current).map_err(|_| invalid_toml("Codex TOML is not UTF-8"))?;
+    let doc = parse_codex_document(text)?;
+    let prior = original
+        .map(|bytes| {
+            std::str::from_utf8(bytes)
+                .map_err(|_| invalid_toml("Original Codex TOML is not UTF-8"))
+                .and_then(parse_codex_document)
         })
-    });
-    if original_setting == Some(true) {
-        return Ok(text.into_bytes());
+        .transpose()?;
+    let original_hook = feature_hooks(prior.as_ref())?;
+    if original_hook == Some(true) {
+        return Ok(current.to_vec());
     }
-    let lines: Vec<&str> = text.lines().collect();
-    let mut offsets = Vec::new();
-    let mut cursor = 0usize;
-    for line in &lines {
-        offsets.push(cursor);
-        cursor += line.len();
-        if text[cursor..].starts_with("\r\n") {
-            cursor += 2
-        } else if text[cursor..].starts_with('\n') {
-            cursor += 1
-        }
-    }
-    let mut section = None;
-    let mut feature_table = None;
-    let mut hook_line = None;
-    let mut feature_other = false;
-    for (i, line) in lines.iter().enumerate() {
-        let t = line.trim();
-        if t.starts_with('[') && t.ends_with(']') {
-            section = Some(&t[1..t.len() - 1]);
-            if section == Some("features") {
-                feature_table = Some(i)
-            }
-            continue;
-        }
-        if section == Some("features") && !t.is_empty() {
-            if t == "hooks = true" {
-                hook_line = Some(i)
-            } else {
-                feature_other = true
-            }
-        }
-    }
-    let Some(hook_i) = hook_line else {
-        return Ok(text.into_bytes());
+    let Some(feature) = doc.as_table().get("features") else {
+        return Ok(current.to_vec());
     };
-    let hook = lines[hook_i];
-    let eq = hook.find('=').unwrap();
-    let rest = &hook[eq + 1..];
-    let leading = rest.len() - rest.trim_start().len();
-    let value_start = offsets[hook_i] + eq + 1 + leading;
-    if original_setting == Some(false) {
-        text.replace_range(value_start..value_start + 4, "false");
-        return Ok(text.into_bytes());
+    let Some(hook) = feature.as_table_like().and_then(|table| table.get("hooks")) else {
+        return Ok(current.to_vec());
+    };
+    if hook.as_value().and_then(TomlValue::as_bool) != Some(true) {
+        return Ok(current.to_vec());
     }
-    let mut ranges = vec![(
-        offsets[hook_i],
-        line_end(&text, offsets[hook_i], hook.len()),
-    )];
-    if !feature_other && original_text.lines().all(|l| l.trim() != "[features]") {
-        if let Some(i) = feature_table {
-            let mut start = offsets[i];
-            let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
-            if start >= 2 * nl.len() && text[..start].ends_with(&format!("{nl}{nl}")) {
-                start -= nl.len();
+    if let Some(value) = original_hook {
+        let span = hook
+            .span()
+            .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
+        return Ok(splice(text, span, if value { "true" } else { "false" }).into_bytes());
+    }
+    match feature {
+        Item::Table(table) => {
+            let span = hook
+                .span()
+                .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
+            let line = line_range(text, span.start, span.end);
+            let mut start = line.start;
+            let mut end = line.end;
+            if end < text.len() && text[end..].starts_with("\r\n") {
+                end += 2;
+            } else if end < text.len() && text[end..].starts_with('\n') {
+                end += 1;
             }
-            ranges.push((start, line_end(&text, offsets[i], lines[i].len())));
+            if table.len() == 1 {
+                let table_span = table
+                    .span()
+                    .ok_or_else(|| invalid_toml("Missing features span"))?;
+                start = line_range(text, table_span.start, table_span.start).start;
+                if text[..start].ends_with("\r\n\r\n") {
+                    start -= 2;
+                } else if text[..start].ends_with("\n\n") {
+                    start -= 1;
+                }
+            }
+            Ok(format!("{}{}", &text[..start], &text[end..]).into_bytes())
         }
+        Item::Value(TomlValue::InlineTable(table)) => {
+            let table_span = table
+                .span()
+                .ok_or_else(|| invalid_toml("Missing inline features span"))?;
+            let value_span = hook
+                .span()
+                .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
+            let before = &text[table_span.start..value_span.start];
+            let after = &text[value_span.end..table_span.end];
+            let key_start = before
+                .rfind("hooks")
+                .ok_or_else(|| invalid_toml("Missing hooks key span"))?
+                + table_span.start;
+            let key_end = key_start + "hooks".len();
+            let mut start = key_start;
+            let mut end = value_span.end;
+            let prefix = &text[table_span.start..start];
+            if prefix.contains('=') {
+                start = text[..start].rfind(',').unwrap_or(start);
+            } else if let Some(comma) = after.find(',') {
+                end = value_span.end + comma + 1;
+            }
+            let _ = key_end;
+            Ok(format!("{}{}", &text[..start], &text[end..]).into_bytes())
+        }
+        _ => Err(invalid_toml("features must be a table or inline table")),
     }
-    ranges.sort_by(|a, b| b.0.cmp(&a.0));
-    for (start, end) in ranges {
-        text.replace_range(start..end, "");
-    }
-    Ok(text.into_bytes())
 }
-fn line_end(text: &str, start: usize, len: usize) -> usize {
-    let end = start + len;
-    if text[end..].starts_with("\r\n") {
-        end + 2
-    } else if text[end..].starts_with('\n') {
-        end + 1
-    } else {
-        end
+fn invalid_toml(message: &str) -> (&'static str, String, i32) {
+    ("invalid_settings", message.into(), 4)
+}
+fn parse_codex_document(text: &str) -> Result<ImDocument<String>, (&'static str, String, i32)> {
+    text.parse::<ImDocument<String>>()
+        .map_err(|_| invalid_toml("Refusing invalid Codex TOML"))
+}
+fn feature_hooks(
+    doc: Option<&ImDocument<String>>,
+) -> Result<Option<bool>, (&'static str, String, i32)> {
+    let Some(doc) = doc else {
+        return Ok(None);
+    };
+    let Some(features) = doc.as_table().get("features") else {
+        return Ok(None);
+    };
+    match features {
+        Item::Table(table) => table
+            .get("hooks")
+            .map(|item| {
+                item.as_value()
+                    .and_then(TomlValue::as_bool)
+                    .ok_or_else(|| invalid_toml("features.hooks must be a boolean"))
+            })
+            .transpose(),
+        Item::Value(TomlValue::InlineTable(table)) => table
+            .get("hooks")
+            .map(|value| {
+                value
+                    .as_bool()
+                    .ok_or_else(|| invalid_toml("features.hooks must be a boolean"))
+            })
+            .transpose(),
+        _ => Err(invalid_toml("features must be a table or inline table")),
     }
+}
+fn splice(text: &str, range: std::ops::Range<usize>, replacement: &str) -> String {
+    format!(
+        "{}{}{}",
+        &text[..range.start],
+        replacement,
+        &text[range.end..]
+    )
+}
+fn line_range(text: &str, start: usize, end: usize) -> std::ops::Range<usize> {
+    let line_start = text[..start].rfind('\n').map_or(0, |index| index + 1);
+    let line_end = text[end..]
+        .find('\n')
+        .map_or(text.len(), |index| end + index);
+    line_start..line_end
 }
 
 pub(super) fn parse_unique_json(bytes: &[u8]) -> Result<Value, serde_json::Error> {
@@ -433,130 +471,70 @@ pub(super) fn render_codex_config(
     if s.hooks.is_empty() {
         return Ok(before.unwrap_or_default().to_vec());
     }
-    let mut text = match before {
-        Some(b) => String::from_utf8(b.to_vec()).map_err(|_| {
-            (
-                "invalid_settings",
-                "Codex config.toml is not UTF-8".into(),
-                4,
-            )
-        })?,
-        None => String::new(),
-    };
-    if text.contains('#') {
-        return Err((
-            "invalid_settings",
-            "Refusing commented Codex TOML".into(),
-            4,
-        ));
-    }
-    let lines: Vec<&str> = text.lines().collect();
-    let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let mut section: Option<&str> = None;
-    let mut features = Vec::new();
-    let mut tables = std::collections::HashSet::new();
-    let mut seen = std::collections::HashSet::new();
-    let mut offsets = Vec::new();
-    let mut cursor = 0;
-    for line in &lines {
-        offsets.push(cursor);
-        cursor += line.len();
-        if text[cursor..].starts_with("\r\n") {
-            cursor += 2;
-        } else if text[cursor..].starts_with('\n') {
-            cursor += 1;
+    let bytes = before.unwrap_or_default();
+    let text = std::str::from_utf8(bytes).map_err(|_| invalid_toml("Codex TOML is not UTF-8"))?;
+    let document = parse_codex_document(text)?;
+    match feature_hooks(Some(&document))? {
+        Some(true) => return Ok(before.unwrap_or_default().to_vec()),
+        Some(false) => {
+            let feature = document.as_table().get("features").unwrap();
+            let hook = feature
+                .as_table_like()
+                .and_then(|table| table.get("hooks"))
+                .unwrap();
+            let span = hook
+                .span()
+                .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
+            return Ok(splice(text, span, "true").into_bytes());
         }
-    }
-    let mut hooks_replacement = None;
-    for (i, line) in lines.iter().enumerate() {
-        let t = line.trim();
-        if t.is_empty() {
-            continue;
-        }
-        if t.starts_with('[') {
-            if !t.ends_with(']') || t.starts_with("[[") {
-                return Err(("invalid_settings", "Unexpected TOML table shape".into(), 4));
+        None => match document.as_table().get("features") {
+            Some(Item::Table(table)) => {
+                let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+                let span = table
+                    .span()
+                    .ok_or_else(|| invalid_toml("Missing features span"))?;
+                let line = line_range(text, span.start, span.end);
+                let insertion = if line.end < text.len() {
+                    line.end
+                        + if text[line.end..].starts_with("\r\n") {
+                            2
+                        } else {
+                            1
+                        }
+                } else {
+                    text.len()
+                };
+                let mut output = text.to_owned();
+                output.insert_str(insertion, &format!("hooks = true{newline}"));
+                return Ok(output.into_bytes());
             }
-            let name = &t[1..t.len() - 1];
-            if name.is_empty()
-                || name.split('.').any(|part| {
-                    part.is_empty()
-                        || !part
-                            .bytes()
-                            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-                })
-            {
-                return Err(("invalid_settings", "Unexpected TOML table shape".into(), 4));
+            Some(Item::Value(TomlValue::InlineTable(table))) => {
+                let span = table
+                    .span()
+                    .ok_or_else(|| invalid_toml("Missing inline features span"))?;
+                let at = span.end.saturating_sub(1);
+                let separator = if table.is_empty() {
+                    "hooks = true"
+                } else {
+                    ", hooks = true"
+                };
+                return Ok(splice(text, at..at, separator).into_bytes());
             }
-            if !tables.insert(name) {
-                return Err(("invalid_settings", "Duplicate TOML table".into(), 4));
+            None => {
+                let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+                let separator = if text.is_empty() || text.ends_with('\n') {
+                    newline
+                } else {
+                    &format!("{newline}{newline}")
+                };
+                return Ok(
+                    format!("{text}{separator}[features]{newline}hooks = true{newline}")
+                        .into_bytes(),
+                );
             }
-            if name == "features" {
-                if !features.is_empty() {
-                    return Err(("invalid_settings", "Duplicate [features] table".into(), 4));
-                }
-                features.push(i);
-            }
-            section = Some(name);
-            continue;
-        }
-        let Some((key, value)) = t.split_once('=') else {
-            return Err((
-                "invalid_settings",
-                "Unexpected TOML setting shape".into(),
-                4,
-            ));
-        };
-        let key = key.trim();
-        if key.is_empty() || key.contains(['.', '"', '\'']) {
-            return Err(("invalid_settings", "Unexpected TOML key shape".into(), 4));
-        }
-        if !seen.insert((section.unwrap_or(""), key)) {
-            return Err(("invalid_settings", "Duplicate TOML key".into(), 4));
-        }
-        if section == Some("features") && key == "hooks" {
-            let value = value.trim();
-            if value == "true" {
-                return Ok(text.into_bytes());
-            }
-            if value != "false" {
-                return Err((
-                    "invalid_settings",
-                    "features.hooks must be a boolean".into(),
-                    4,
-                ));
-            }
-            let eq = line.find('=').unwrap();
-            let rest = &line[eq + 1..];
-            let leading = rest.len() - rest.trim_start().len();
-            let start = offsets[i] + eq + 1 + leading;
-            hooks_replacement = Some((start, start + value.len()));
-        }
+            Some(_) => return Err(invalid_toml("features must be a table or inline table")),
+        },
     }
-    if let Some((start, end)) = hooks_replacement {
-        text.replace_range(start..end, "true");
-        return Ok(text.into_bytes());
-    }
-    if let Some(table_line) = features.first().copied() {
-        let insert_line = (table_line + 1..lines.len())
-            .find(|i| lines[*i].trim().starts_with('['))
-            .unwrap_or(lines.len());
-        let offset = if insert_line == lines.len() {
-            text.len()
-        } else {
-            offsets[insert_line]
-        };
-        text.insert_str(offset, &format!("hooks = true{nl}"));
-        return Ok(text.into_bytes());
-    }
-    if !text.is_empty() && !text.ends_with('\n') {
-        text.push_str(nl);
-    }
-    if !text.is_empty() && !text.ends_with(&format!("{nl}{nl}")) {
-        text.push_str(nl);
-    }
-    text.push_str(&format!("[features]{nl}hooks = true{nl}"));
-    Ok(text.into_bytes())
 }
 pub(super) fn render_rule(
     s: &Spec,

@@ -3,6 +3,29 @@ use crate::render::{render_codex_config, render_rule};
 use std::sync::Mutex;
 
 static MCP_ENV_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(unix)]
+fn fake_claude(root: &Path) -> (PathBuf, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let script = root.join("fake-claude");
+    let state = root.join("mcp-state.json");
+    fs::write(
+        &script,
+        "#!/bin/sh\ncase \"$2\" in\nget) [ -f \"$MCP_STATE\" ] || exit 1; cat \"$MCP_STATE\";;\nadd-json) printf '%s' \"$6\" > \"$MCP_STATE\";;\nremove) rm -f \"$MCP_STATE\";;\nesac\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    (script, state)
+}
+#[cfg(unix)]
+fn set_fake_claude(script: &Path, state: &Path) {
+    std::env::set_var("IMPECCABLE_CLAUDE_BIN", script);
+    std::env::set_var("MCP_STATE", state);
+}
+#[cfg(unix)]
+fn clear_fake_claude() {
+    std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
+    std::env::remove_var("MCP_STATE");
+}
 fn spec(harness: &str, root: PathBuf) -> Spec {
     Spec {
         version: 1,
@@ -29,11 +52,9 @@ fn rule_render_preserves_crlf_and_outside_bytes() {
     let s = spec("claude", temp());
     let before = b"Keep\r\n\r\n";
     let out = render_rule(&s, Some(before)).unwrap();
-    assert!(
-        String::from_utf8(out)
-            .unwrap()
-            .starts_with("Keep\r\n\r\n<!-- impeccable:impeccable-loop start -->")
-    );
+    assert!(String::from_utf8(out)
+        .unwrap()
+        .starts_with("Keep\r\n\r\n<!-- impeccable:impeccable-loop start -->"));
 }
 #[test]
 fn marker_body_and_ambiguous_markers_refused() {
@@ -102,7 +123,7 @@ fn journal_records_each_hook_resource_and_claim() {
     assert_eq!(hook.last_written_value["hooks"][0]["command"], "loop-hook");
 }
 #[test]
-fn codex_features_setting_is_enabled_and_comments_refused() {
+fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
     let mut s = spec("codex", temp());
     s.hooks.push(Hook {
         event: "PreToolUse".into(),
@@ -111,17 +132,17 @@ fn codex_features_setting_is_enabled_and_comments_refused() {
     });
     let result = render_codex_config(
         &s,
-        Some(b"model = 'x'\n\n[features]\nhooks = false\n\n[other]\nx = 1\n"),
+        Some(b"model = 'x'\n\n[features]\nhooks = false # user note\n\n[other]\nx = 1\n"),
     )
     .unwrap();
     assert_eq!(
         String::from_utf8(result).unwrap(),
-        "model = 'x'\n\n[features]\nhooks = true\n\n[other]\nx = 1\n"
+        "model = 'x'\n\n[features]\nhooks = true # user note\n\n[other]\nx = 1\n"
     );
-    assert_eq!(
-        render_codex_config(&s, Some(b"# comment\n")).unwrap_err().0,
-        "invalid_settings"
-    );
+    let commented = render_codex_config(&s, Some(b"# keep this comment\nmodel = 'x'\n")).unwrap();
+    assert!(String::from_utf8(commented)
+        .unwrap()
+        .starts_with("# keep this comment\n"));
     assert_eq!(
         render_codex_config(&s, Some(b"[features]\nhooks = false\n[features]\n"))
             .unwrap_err()
@@ -133,11 +154,42 @@ fn codex_features_setting_is_enabled_and_comments_refused() {
         Some(b"[mcp_servers.tools]\ncommand = 'tool'\n\n[features]\nhooks = false\n"),
     )
     .unwrap();
+    assert!(String::from_utf8(with_mcp)
+        .unwrap()
+        .contains("[mcp_servers.tools]"));
+}
+#[test]
+fn codex_toml_edit_accepts_inline_tables_and_quoted_dotted_server_names() {
+    let mut s = spec("codex", temp());
+    s.hooks.push(Hook {
+        event: "PreToolUse".into(),
+        matcher: None,
+        command: "loop-hook".into(),
+    });
+    let input = "[mcp_servers.\"local.tools\"]\ncommand = 'tool'\nenv = { MODE = 'test', ENABLED = true }\n";
+    let output = render_codex_config(&s, Some(input.as_bytes())).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    assert!(output.contains("[mcp_servers.\"local.tools\"]"));
+    assert!(output.contains("env = { MODE = 'test', ENABLED = true }"));
+    assert!(output.contains("[features]\nhooks = true"));
+}
+#[test]
+fn codex_toml_edit_preserves_crlf_and_existing_feature_keys() {
+    let mut s = spec("codex", temp());
+    s.hooks.push(Hook {
+        event: "PreToolUse".into(),
+        matcher: None,
+        command: "loop-hook".into(),
+    });
+    let input = b"model = 'x'\r\n\r\n[features]\r\nother = true\r\n\r\n[mcp_servers.\"a.b\"]\r\ncommand = 'tool'\r\n";
+    let output = render_codex_config(&s, Some(input)).unwrap();
+    let output = String::from_utf8(output).unwrap();
     assert!(
-        String::from_utf8(with_mcp)
-            .unwrap()
-            .contains("[mcp_servers.tools]")
+        output.contains("[features]\r\nother = true\r\nhooks = true\r\n"),
+        "{output:?}"
     );
+    assert!(output.contains("[mcp_servers.\"a.b\"]\r\ncommand = 'tool'\r\n"));
+    assert!(!output.replace("\r\n", "").contains('\n'));
 }
 #[cfg(unix)]
 #[test]
@@ -149,12 +201,10 @@ fn strict_writer_preserves_symlink_and_refuses_dangling_link() {
     fs::write(&real, b"old").unwrap();
     symlink(&real, &link).unwrap();
     safe_write(&link, Some(b"old"), b"new").unwrap();
-    assert!(
-        fs::symlink_metadata(&link)
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
     assert_eq!(fs::read(&real).unwrap(), b"new");
     let dangling = root.join("dangling");
     symlink(root.join("missing"), &dangling).unwrap();
@@ -389,7 +439,7 @@ fn mcp_name_collision_is_detected_through_injected_cli() {
     let script = root.join("fake-claude");
     fs::write(
         &script,
-        "#!/bin/sh\nif [ \"$2\" = \"get\" ]; then exit 0; fi\nexit 0\n",
+        "#!/bin/sh\nif [ \"$2\" = \"get\" ]; then printf '{\"command\":\"foreign\",\"args\":[],\"env\":{}}'; exit 0; fi\nexit 0\n",
     )
     .unwrap();
     fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
@@ -401,7 +451,7 @@ fn mcp_name_collision_is_detected_through_injected_cli() {
         args: vec![],
         env: Default::default(),
     });
-    let err = sync_mcp(&s, None).unwrap_err();
+    let err = sync_mcp(&s, None, &root).unwrap_err();
     std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
     assert_eq!(err.0, "mcp_name_collision");
 }
@@ -415,11 +465,12 @@ fn recover_rolls_back_after_mcp_add_boundary() {
     let script = root.join("fake-claude");
     fs::write(
         &script,
-        "#!/bin/sh\nif [ \"$2\" = \"get\" ]; then exit 1; fi\nexit 0\n",
+        "#!/bin/sh\ncase \"$2\" in\nget) [ -f \"$MCP_STATE\" ] || exit 1; cat \"$MCP_STATE\";;\nadd-json) printf '%s' \"$6\" > \"$MCP_STATE\";;\nremove) rm -f \"$MCP_STATE\";;\nesac\nexit 0\n",
     )
     .unwrap();
     fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
     std::env::set_var("IMPECCABLE_CLAUDE_BIN", &script);
+    std::env::set_var("MCP_STATE", root.join("mcp-state.json"));
     let mut s = spec("claude", root.clone());
     s.instruction = None;
     s.mcp_servers.push(McpServer {
@@ -434,12 +485,215 @@ fn recover_rolls_back_after_mcp_add_boundary() {
     assert_eq!(applied.unwrap_err().0, "injected_failure");
     let result = recover(&home, &installation_id(&s)).unwrap();
     std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
+    std::env::remove_var("MCP_STATE");
     assert_eq!(result["state"], "rolled-back");
-    assert!(
-        !home
-            .join(format!("{}.pending.json", installation_id(&s)))
-            .exists()
+    assert!(!home
+        .join(format!("{}.pending.json", installation_id(&s)))
+        .exists());
+}
+#[cfg(unix)]
+#[test]
+fn mcp_identical_server_claims_are_shared_until_last_undo() {
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let (script, state) = fake_claude(&root);
+    set_fake_claude(&script, &state);
+    let mut a = spec("claude", root.clone());
+    a.instruction = None;
+    a.owner = "impeccable-design".into();
+    a.mcp_servers.push(McpServer {
+        name: "shared".into(),
+        command: "server".into(),
+        args: vec!["--mode".into(), "safe".into()],
+        env: Default::default(),
+    });
+    let pa = home.join(format!("{}.json", installation_id(&a)));
+    let ja = apply(&a, None, &home, &pa, None).unwrap();
+    write_journal(&pa, &ja).unwrap();
+    let mut b = a.clone();
+    b.owner = "impeccable-loop".into();
+    let pb = home.join(format!("{}.json", installation_id(&b)));
+    let jb = apply(&b, None, &home, &pb, None).unwrap();
+    write_journal(&pb, &jb).unwrap();
+    let claim = jb
+        .resources
+        .iter()
+        .find(|r| r.kind == "mcp-server")
+        .unwrap();
+    assert_eq!(claim.claims.len(), 2);
+    assert_eq!(
+        mcp_get(&b, "shared").unwrap(),
+        Some(mcp_config(&b.mcp_servers[0]))
     );
+
+    let first_undo = undo(&a, Some(&ja), &home).unwrap();
+    assert_eq!(first_undo["conflicts"], json!([]));
+    assert!(mcp_get(&a, "shared").unwrap().is_some());
+    fs::remove_file(&pa).unwrap();
+    let last_undo = undo(&b, Some(&jb), &home).unwrap();
+    assert_eq!(last_undo["conflicts"], json!([]));
+    assert_eq!(mcp_get(&b, "shared").unwrap(), None);
+    clear_fake_claude();
+}
+#[cfg(unix)]
+#[test]
+fn shared_mcp_drift_is_reported_even_when_releasing_one_claim() {
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let (script, state) = fake_claude(&root);
+    set_fake_claude(&script, &state);
+    let mut a = spec("claude", root.clone());
+    a.instruction = None;
+    a.owner = "impeccable-design".into();
+    a.mcp_servers.push(McpServer {
+        name: "shared-drift".into(),
+        command: "original".into(),
+        args: vec![],
+        env: Default::default(),
+    });
+    let pa = home.join(format!("{}.json", installation_id(&a)));
+    let ja = apply(&a, None, &home, &pa, None).unwrap();
+    write_journal(&pa, &ja).unwrap();
+    let mut b = a.clone();
+    b.owner = "impeccable-loop".into();
+    let pb = home.join(format!("{}.json", installation_id(&b)));
+    let jb = apply(&b, None, &home, &pb, None).unwrap();
+    write_journal(&pb, &jb).unwrap();
+
+    fs::write(&state, br#"{"command":"changed","args":[],"env":{}}"#).unwrap();
+    let result = undo(&a, Some(&ja), &home).unwrap();
+    assert_eq!(result["conflicts"], json!(["mcp:shared-drift"]));
+    assert_eq!(
+        mcp_get(&a, "shared-drift").unwrap().unwrap()["command"],
+        "changed"
+    );
+    clear_fake_claude();
+}
+#[cfg(unix)]
+#[test]
+fn mcp_same_name_different_owner_configuration_is_refused() {
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let (script, state) = fake_claude(&root);
+    set_fake_claude(&script, &state);
+    let mut a = spec("claude", root.clone());
+    a.instruction = None;
+    a.mcp_servers.push(McpServer {
+        name: "shared".into(),
+        command: "first".into(),
+        args: vec![],
+        env: Default::default(),
+    });
+    let pa = home.join(format!("{}.json", installation_id(&a)));
+    let ja = apply(&a, None, &home, &pa, None).unwrap();
+    write_journal(&pa, &ja).unwrap();
+    let mut b = a.clone();
+    b.owner = "impeccable-design".into();
+    b.mcp_servers[0].command = "different".into();
+    assert_eq!(
+        apply(&b, None, &home, &home.join("b"), None).unwrap_err().0,
+        "shared_resource_conflict"
+    );
+    assert_eq!(
+        mcp_get(&a, "shared").unwrap(),
+        Some(mcp_config(&a.mcp_servers[0]))
+    );
+    clear_fake_claude();
+}
+#[cfg(unix)]
+#[test]
+fn mcp_undo_reports_drift_and_leaves_server_untouched() {
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let (script, state) = fake_claude(&root);
+    set_fake_claude(&script, &state);
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.mcp_servers.push(McpServer {
+        name: "drifted".into(),
+        command: "original".into(),
+        args: vec![],
+        env: Default::default(),
+    });
+    let journal_path = home.join(format!("{}.json", installation_id(&s)));
+    let journal = apply(&s, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &journal).unwrap();
+    fs::write(&state, br#"{"command":"user-edit","args":[],"env":{}}"#).unwrap();
+    let result = undo(&s, Some(&journal), &home).unwrap();
+    assert_eq!(result["conflicts"], json!(["mcp:drifted"]));
+    assert_eq!(
+        mcp_get(&s, "drifted").unwrap().unwrap()["command"],
+        "user-edit"
+    );
+    clear_fake_claude();
+}
+#[cfg(unix)]
+#[test]
+fn codex_mcp_uses_json_get_and_removes_the_verified_configuration() {
+    use std::os::unix::fs::PermissionsExt;
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let script = root.join("fake-codex");
+    let state = root.join("mcp-state.json");
+    fs::write(
+        &script,
+        "#!/bin/sh\ncase \"$2\" in\nget) [ \"$4\" = \"--json\" ] || exit 3; [ -f \"$MCP_STATE\" ] || exit 1; cat \"$MCP_STATE\";;\nadd) printf '{\"command\":\"%s\",\"args\":[],\"env\":{}}' \"$5\" > \"$MCP_STATE\";;\nremove) rm -f \"$MCP_STATE\";;\nesac\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    std::env::set_var("IMPECCABLE_CODEX_BIN", &script);
+    std::env::set_var("MCP_STATE", &state);
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.mcp_servers.push(McpServer {
+        name: "codex-server".into(),
+        command: "codex-command".into(),
+        args: vec![],
+        env: Default::default(),
+    });
+    let journal_path = home.join(format!("{}.json", installation_id(&s)));
+    let journal = apply(&s, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &journal).unwrap();
+    assert_eq!(
+        mcp_get(&s, "codex-server").unwrap(),
+        Some(mcp_config(&s.mcp_servers[0]))
+    );
+    let result = undo(&s, Some(&journal), &home).unwrap();
+    assert_eq!(result["conflicts"], json!([]));
+    assert_eq!(mcp_get(&s, "codex-server").unwrap(), None);
+    std::env::remove_var("IMPECCABLE_CODEX_BIN");
+    std::env::remove_var("MCP_STATE");
+}
+#[cfg(unix)]
+#[test]
+fn codex_mcp_collision_uses_json_get() {
+    use std::os::unix::fs::PermissionsExt;
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let root = temp();
+    let script = root.join("fake-codex");
+    fs::write(
+        &script,
+        "#!/bin/sh\nif [ \"$2\" = \"get\" ]; then [ \"$4\" = \"--json\" ] || exit 3; printf '{\"command\":\"foreign\",\"args\":[],\"env\":{}}'; exit 0; fi\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    std::env::set_var("IMPECCABLE_CODEX_BIN", &script);
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.mcp_servers.push(McpServer {
+        name: "foreign".into(),
+        command: "ours".into(),
+        args: vec![],
+        env: Default::default(),
+    });
+    let error = sync_mcp(&s, None, &root).unwrap_err();
+    std::env::remove_var("IMPECCABLE_CODEX_BIN");
+    assert_eq!(error.0, "mcp_name_collision");
 }
 #[cfg(unix)]
 #[test]
@@ -469,11 +723,9 @@ fn shared_codex_features_claim_is_restored_after_last_installation() {
     write_journal(&pb, &jb).unwrap();
     undo(&a, Some(&ja), &home).unwrap();
     let _ = fs::remove_file(pa);
-    assert!(
-        String::from_utf8(fs::read(&config).unwrap())
-            .unwrap()
-            .contains("hooks = true")
-    );
+    assert!(String::from_utf8(fs::read(&config).unwrap())
+        .unwrap()
+        .contains("hooks = true"));
     undo(&b, Some(&jb), &home).unwrap();
     assert_eq!(fs::read(config).unwrap(), b"model = 'x'\n");
 }
@@ -555,12 +807,10 @@ fn two_accounts_sharing_symlinked_settings_hold_separate_claims() {
     assert_eq!(fs::read(&physical).unwrap(), after_a);
     undo(&b, Some(&jb), &home).unwrap();
     assert_eq!(fs::read(&physical).unwrap(), b"{}\n");
-    assert!(
-        fs::symlink_metadata(account_a.join("settings.json"))
-            .unwrap()
-            .file_type()
-            .is_symlink()
-    );
+    assert!(fs::symlink_metadata(account_a.join("settings.json"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
 }
 #[cfg(unix)]
 #[test]
@@ -631,7 +881,7 @@ fn plan_reports_actual_changes_and_json_reformatting_without_writing() {
         matcher: None,
         command: "loop".into(),
     });
-    let result = plan(&s, None).unwrap();
+    let result = plan(&s, None, &temp()).unwrap();
     assert_eq!(result["resources"][0]["change"], "update");
     assert_eq!(result["resources"][0]["willReformat"], true);
     assert_eq!(fs::read(path).unwrap(), bytes);
@@ -683,11 +933,9 @@ fn apply_then_undo_restores_original_bytes() {
     let home = temp();
     let journal = home.join("journal.json");
     let j = apply(&s, None, &home, &journal, None).unwrap();
-    assert!(
-        String::from_utf8(fs::read(root.join("CLAUDE.md")).unwrap())
-            .unwrap()
-            .contains("impeccable:impeccable-loop")
-    );
+    assert!(String::from_utf8(fs::read(root.join("CLAUDE.md")).unwrap())
+        .unwrap()
+        .contains("impeccable:impeccable-loop"));
     let result = undo(&s, Some(&j), &home).unwrap();
     assert!(result["conflicts"].as_array().unwrap().is_empty());
     assert_eq!(

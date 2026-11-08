@@ -49,13 +49,20 @@ contain reserved marker syntax.
 
 Claude MCP changes use the `claude` CLI with `CLAUDE_CONFIG_DIR`; Codex MCP
 changes use `codex` with `CODEX_HOME`. Tests can inject `IMPECCABLE_CLAUDE_BIN`
-and `IMPECCABLE_CODEX_BIN`. The engine checks names with `mcp get` and refuses
-an unclaimed server name.
+and `IMPECCABLE_CODEX_BIN`. The engine observes servers with `claude mcp get`
+or `codex mcp get --json`, records each server's last-written configuration,
+and refuses a name already owned outside the engine. Matching servers claimed
+by another owner share one resource; the CLI removes it only after the last
+claim is released. If the observed configuration drifts, undo reports the
+server conflict and leaves it untouched.
 
 Claude settings and Codex hook manifests must be plain JSON objects. Invalid
 JSON, duplicate keys, comments, and unexpected shapes are refused. Codex
-`config.toml` hook enablement currently accepts a conservative comment-free
-subset and refuses comments, duplicate keys, or unexpected table shapes.
+Codex `config.toml` is parsed with `toml_edit` 0.22 and literal key lookups.
+The engine preserves source bytes outside the touched `features.hooks` key,
+including comments, inline tables, quoted dotted server names, and CRLF
+line endings. Invalid TOML, duplicate keys, or unexpected `features` shapes
+are refused before writing.
 State directories are mode 0700; journal, backup, and temporary files are
 mode 0600. Writes use exclusive same-directory temporary files, fsync,
 identity and hash rechecks, atomic rename, and post-write verification.
