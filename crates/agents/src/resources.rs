@@ -86,7 +86,6 @@ pub(super) fn apply(
                 if !claim.claims.contains(&id) {
                     claim.claims.push(id)
                 }
-                claim.pure_install = false;
                 snapshots.push(claim);
             } else {
                 let written = before.clone().unwrap_or_default();

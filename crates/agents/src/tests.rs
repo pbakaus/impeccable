@@ -680,6 +680,82 @@ fn apply_then_undo_restores_original_bytes() {
     assert_eq!(fs::read(root.join("CLAUDE.md")).unwrap(), b"Team notes\r\n");
 }
 #[test]
+fn no_op_reapply_keeps_compact_settings_byte_exact_undo_eligibility() {
+    let root = temp();
+    let original = br#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"personal-hook"}]}]},"other":{"compact":true}}"#;
+    let settings = root.join("settings.json");
+    fs::write(&settings, original).unwrap();
+    let mut desired = spec("claude", root.clone());
+    desired.instruction = None;
+    desired.hooks.push(Hook {
+        event: "PreToolUse".into(),
+        matcher: Some("Write".into()),
+        command: "impeccable-hook".into(),
+    });
+    let home = temp();
+    let journal_path = home.join(format!("{}.json", installation_id(&desired)));
+
+    let first = apply(&desired, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &first).unwrap();
+    let second = apply(
+        &desired,
+        Some(&first),
+        &home,
+        &journal_path,
+        fs::read(&journal_path).ok(),
+    )
+    .unwrap();
+    assert!(second
+        .snapshots
+        .iter()
+        .all(|snapshot| snapshot.pure_install));
+    write_journal(&journal_path, &second).unwrap();
+
+    undo(&desired, Some(&second), &home).unwrap();
+    assert_eq!(fs::read(settings).unwrap(), original);
+}
+#[test]
+fn changed_spec_reapply_uses_surgical_undo_and_keeps_personal_hook() {
+    let root = temp();
+    let original = br#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"personal-hook"}]}]},"other":{"compact":true}}"#;
+    let settings = root.join("settings.json");
+    fs::write(&settings, original).unwrap();
+    let mut initial = spec("claude", root.clone());
+    initial.instruction = None;
+    initial.hooks.push(Hook {
+        event: "PreToolUse".into(),
+        matcher: Some("Write".into()),
+        command: "impeccable-hook-v1".into(),
+    });
+    let home = temp();
+    let journal_path = home.join(format!("{}.json", installation_id(&initial)));
+    let first = apply(&initial, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &first).unwrap();
+
+    let mut changed = initial.clone();
+    changed.hooks[0].command = "impeccable-hook-v2".into();
+    let second = apply(
+        &changed,
+        Some(&first),
+        &home,
+        &journal_path,
+        fs::read(&journal_path).ok(),
+    )
+    .unwrap();
+    assert!(second
+        .snapshots
+        .iter()
+        .all(|snapshot| !snapshot.pure_install));
+    write_journal(&journal_path, &second).unwrap();
+
+    undo(&changed, Some(&second), &home).unwrap();
+    let current = render::parse_unique_json(&fs::read(settings).unwrap()).unwrap();
+    let entries = current["hooks"]["PreToolUse"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["hooks"][0]["command"], "personal-hook");
+    assert_eq!(current["other"]["compact"], true);
+}
+#[test]
 fn reapply_uses_user_edited_file_as_new_baseline() {
     let root = temp();
     fs::write(root.join("settings.json"), b"{}\n").unwrap();
