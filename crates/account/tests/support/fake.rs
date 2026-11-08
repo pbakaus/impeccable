@@ -139,6 +139,8 @@ impl Fake {
                 "file".to_string(),
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
+            // Windows allows the file backend only inside the user profile.
+            ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
         ])
     }
 }
