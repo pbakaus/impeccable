@@ -4,19 +4,27 @@
 //! one (owner, harness, account root) installation.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
 };
 
 const REQUEST_VERSION: u32 = 1;
 const RESPONSE_VERSION: u32 = 1;
-const JOURNAL_VERSION: u32 = 1;
+const JOURNAL_VERSION: u32 = 2;
+
+mod fs_writer;
+mod render;
+#[cfg(test)]
+use fs_writer::{TEST_FAILPOINT, validate_file};
+use fs_writer::{canonical_target, failpoint, safe_delete, safe_write};
+use render::render;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +46,7 @@ pub struct Hook {
     pub matcher: Option<String>,
     pub command: String,
 }
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServer {
     pub name: String,
@@ -140,10 +148,9 @@ fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".impeccable/agents")))
         .ok_or_else(|| ("io_error", "No home directory configured".into(), 1))?;
-    fs::create_dir_all(&home).map_err(ioerr)?;
-    set_mode(&home, 0o700);
+    ensure_private_home(&home)?;
     let lock = home.join("agents.lock");
-    acquire_lock(&lock, Duration::from_secs(10))?;
+    let _lock_guard = acquire_lock(&lock, Duration::from_secs(10))?;
     let id = format!(
         "{}-{}-{}",
         s.owner,
@@ -157,8 +164,11 @@ fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
             "plan" => plan(s, prior.as_ref()),
             "status" => status(s, prior.as_ref()),
             "apply" => {
-                let result = apply(s, prior.as_ref(), &home)?;
+                let prior_bytes = fs::read(&journal).ok();
+                let result = apply(s, prior.as_ref(), &home, &journal, prior_bytes)?;
                 write_journal(&journal, &result)?;
+                failpoint("journal_commit")?;
+                let _ = fs::remove_file(home.join(format!("{id}.pending.json")));
                 Ok(json!({"installation":id,"state":"applied"}))
             }
             "undo" => {
@@ -167,330 +177,989 @@ fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
                     .as_array()
                     .is_some_and(|a| !a.is_empty())
                 {
-                    write_journal(&journal, &prior.unwrap())?;
+                    let mut retained = prior.unwrap();
+                    let paths = result["conflicts"].as_array().unwrap();
+                    for resource in &mut retained.resources {
+                        if paths.iter().any(|path| {
+                            path.as_str()
+                                .is_some_and(|path| resource.path == Path::new(path))
+                        }) {
+                            resource.state = ResourceState::Conflict;
+                        }
+                    }
+                    write_journal(&journal, &retained)?;
                 } else {
                     let _ = fs::remove_file(&journal);
                 }
                 Ok(result)
             }
-            "recover" => Ok(json!({"installation":id,"state":"clean","transactions":[]})),
+            "recover" => recover(&home, &id),
             _ => Err(("invalid_request", "Unknown agents verb".into(), 2)),
         }
     })();
-    let _ = fs::remove_file(lock);
     result
 }
 fn ioerr(e: io::Error) -> (&'static str, String, i32) {
     ("io_error", e.to_string(), 1)
 }
-fn acquire_lock(path: &Path, timeout: Duration) -> Result<(), (&'static str, String, i32)> {
+struct LockGuard {
+    file: fs::File,
+    #[cfg(not(unix))]
+    path: PathBuf,
+}
+#[cfg(unix)]
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        use std::os::unix::io::AsRawFd;
+        extern "C" {
+            fn flock(fd: i32, operation: i32) -> i32;
+        }
+        unsafe {
+            let _ = flock(self.file.as_raw_fd(), 8);
+        }
+    }
+}
+#[cfg(not(unix))]
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+fn acquire_lock(path: &Path, timeout: Duration) -> Result<LockGuard, (&'static str, String, i32)> {
     let start = Instant::now();
-    loop {
-        match fs::OpenOptions::new()
+    #[cfg(unix)]
+    {
+        use std::os::unix::{fs::OpenOptionsExt, io::AsRawFd};
+        let file = fs::OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
+            .mode(0o600)
             .open(path)
-        {
-            Ok(f) => {
-                set_mode(path, 0o600);
-                drop(f);
-                return Ok(());
+            .map_err(ioerr)?;
+        secure_lock_file(path, &file)?;
+        loop {
+            extern "C" {
+                fn flock(fd: i32, operation: i32) -> i32;
             }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && start.elapsed() < timeout => {
-                std::thread::sleep(Duration::from_millis(50))
+            let rc = unsafe { flock(file.as_raw_fd(), 2 | 4) };
+            if rc == 0 {
+                return Ok(LockGuard { file });
             }
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            let e = io::Error::last_os_error();
+            if e.kind() != io::ErrorKind::WouldBlock {
+                return Err(ioerr(e));
+            }
+            if start.elapsed() >= timeout {
                 return Err((
                     "lock_timeout",
                     "Timed out waiting for agents lock".into(),
                     3,
-                ))
+                ));
             }
-            Err(e) => return Err(ioerr(e)),
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+            {
+                Ok(file) => {
+                    return Ok(LockGuard {
+                        file,
+                        path: path.to_path_buf(),
+                    });
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists && start.elapsed() < timeout => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    return Err((
+                        "lock_timeout",
+                        "Timed out waiting for agents lock".into(),
+                        3,
+                    ));
+                }
+                Err(e) => return Err(ioerr(e)),
+            }
         }
     }
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Journal {
     version: u32,
     spec: Spec,
     snapshots: Vec<Snapshot>,
+    #[serde(default)]
+    resources: Vec<ResourceRecord>,
 }
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct ResourceRecord {
+    resource_id: String,
+    kind: String,
+    path: PathBuf,
+    state: ResourceState,
+    original_value: Option<Value>,
+    last_written_value: Value,
+    claims: Vec<InstallClaim>,
+}
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct Snapshot {
+    #[serde(default)]
+    resource_id: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    state: ResourceState,
     path: PathBuf,
     before: Option<Vec<u8>>,
+    #[serde(default)]
+    original_value: Option<Vec<u8>>,
+    #[serde(default)]
+    last_written_value: Vec<u8>,
     written_hash: String,
+    #[serde(default)]
+    claims: Vec<InstallClaim>,
+    #[serde(default = "default_true")]
+    pure_install: bool,
+}
+fn default_true() -> bool {
+    true
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+enum ResourceState {
+    #[default]
+    Created,
+    Preexisting,
+    Conflict,
+}
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+struct InstallClaim {
+    owner: String,
+    harness: String,
+    account_root: PathBuf,
+}
+fn installation_claim(s: &Spec) -> InstallClaim {
+    InstallClaim {
+        owner: s.owner.clone(),
+        harness: s.harness.clone(),
+        account_root: s.root.clone(),
+    }
 }
 fn read_journal(path: &Path) -> Result<Option<Journal>, (&'static str, String, i32)> {
     if !path.exists() {
         return Ok(None);
     }
     let bytes = fs::read(path).map_err(ioerr)?;
-    let j: Journal = serde_json::from_slice(&bytes)
+    let header: Value = serde_json::from_slice(&bytes)
         .map_err(|_| ("invalid_journal", "Journal is invalid".into(), 4))?;
-    if j.version > JOURNAL_VERSION {
+    if header
+        .get("version")
+        .and_then(Value::as_u64)
+        .is_some_and(|v| v > JOURNAL_VERSION as u64)
+    {
         return Err((
             "newer_journal",
             "Journal was written by a newer engine".into(),
             4,
         ));
     }
+    let j: Journal = serde_json::from_slice(&bytes)
+        .map_err(|_| ("invalid_journal", "Journal is invalid".into(), 4))?;
     Ok(Some(j))
 }
 fn write_journal(path: &Path, j: &Journal) -> Result<(), (&'static str, String, i32)> {
-    let t = path.with_extension("tmp");
-    fs::write(&t, serde_json::to_vec(j).unwrap()).map_err(ioerr)?;
-    set_mode(&t, 0o600);
-    fs::rename(t, path).map_err(ioerr)
+    private_atomic_write(path, &serde_json::to_vec(j).unwrap())
 }
-fn set_mode(path: &Path, mode: u32) {
+#[derive(Serialize, Deserialize)]
+struct PendingTransaction {
+    version: u32,
+    journal_path: PathBuf,
+    prior_journal: Option<Vec<u8>>,
+    desired_spec: Spec,
+    prior_spec: Option<Spec>,
+    targets: Vec<PendingTarget>,
+}
+#[derive(Serialize, Deserialize)]
+struct PendingTarget {
+    path: PathBuf,
+    before: Option<Vec<u8>>,
+    after: Option<Vec<u8>>,
+}
+fn persist_pending(
+    path: &Path,
+    tx: &PendingTransaction,
+) -> Result<(), (&'static str, String, i32)> {
+    private_atomic_write(path, &serde_json::to_vec(tx).unwrap())
+}
+fn recover(home: &Path, id: &str) -> Result<Value, (&'static str, String, i32)> {
+    let pending = home.join(format!("{id}.pending.json"));
+    if !pending.exists() {
+        return Ok(json!({"installation":id,"state":"clean","transactions":[]}));
+    }
+    let bytes = fs::read(&pending).map_err(ioerr)?;
+    let header: Value = serde_json::from_slice(&bytes).map_err(|_| {
+        (
+            "invalid_journal",
+            "Pending transaction is invalid".into(),
+            4,
+        )
+    })?;
+    if header
+        .get("version")
+        .and_then(Value::as_u64)
+        .is_some_and(|v| v > JOURNAL_VERSION as u64)
+    {
+        return Err((
+            "newer_journal",
+            "Pending transaction uses a newer format".into(),
+            4,
+        ));
+    }
+    let tx: PendingTransaction = serde_json::from_slice(&bytes).map_err(|_| {
+        (
+            "invalid_journal",
+            "Pending transaction is invalid".into(),
+            4,
+        )
+    })?;
+    let mut conflicts = Vec::new();
+    for target in tx.targets.iter().rev() {
+        let current = fs::read(&target.path).ok();
+        if current == target.after {
+            if let Some(before) = &target.before {
+                safe_write(&target.path, current.as_deref(), before)?;
+            } else {
+                safe_delete(&target.path, current.as_deref())?;
+            }
+        } else if current != target.before {
+            conflicts.push(target.path.clone())
+        }
+    }
+    if !conflicts.is_empty() {
+        return Ok(json!({"installation":id,"state":"conflict","conflicts":conflicts}));
+    }
+    let rollback = tx.prior_spec.clone().unwrap_or_else(|| Spec {
+        mcp_servers: vec![],
+        ..tx.desired_spec.clone()
+    });
+    sync_mcp(&rollback, Some(&tx.desired_spec))?;
+    if let Some(before) = tx.prior_journal {
+        atomic_bytes(&tx.journal_path, &before)?
+    } else {
+        let _ = fs::remove_file(tx.journal_path);
+    }
+    fs::remove_file(pending).map_err(ioerr)?;
+    Ok(json!({"installation":id,"state":"rolled-back","transactions":tx.targets.len()}))
+}
+fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<(), (&'static str, String, i32)> {
+    private_atomic_write(path, bytes)
+}
+fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), (&'static str, String, i32)> {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let parent = path
+        .parent()
+        .ok_or_else(|| ("unsafe_target", "File has no parent".into(), 4))?;
+    let tmp = loop {
+        let t = parent.join(format!(
+            ".agents-state-{}-{}.tmp",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let mut o = fs::OpenOptions::new();
+        o.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            o.mode(0o600);
+        }
+        match o.open(&t) {
+            Ok(mut f) => {
+                f.write_all(bytes).map_err(ioerr)?;
+                f.sync_all().map_err(ioerr)?;
+                drop(f);
+                break t;
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(ioerr(e)),
+        }
+    };
+    if let Err(e) = failpoint("state_temp_synced") {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    if let Err(e) = failpoint("state_before_rename") {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    fs::rename(&tmp, path).map_err(ioerr)?;
+    failpoint("state_after_rename")?;
+    fs::File::open(parent)
+        .and_then(|d| d.sync_all())
+        .map_err(ioerr)?;
+    failpoint("state_directory_synced")?;
+    if fs::read(path).map_err(ioerr)? != bytes {
+        return Err((
+            "concurrent_change",
+            "Agent state verification failed after write".into(),
+            4,
+        ));
+    }
+    failpoint("state_verified")
+}
+fn ensure_private_home(path: &Path) -> Result<(), (&'static str, String, i32)> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(path, fs::Permissions::from_mode(mode));
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
-    let _ = (path, mode);
+    builder
+        .create(path)
+        .or_else(|error| {
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(ioerr)?;
+    let link_metadata = fs::symlink_metadata(path).map_err(ioerr)?;
+    if !link_metadata.file_type().is_dir() {
+        return Err((
+            "unsafe_target",
+            "Agent state path must be a real directory".into(),
+            4,
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if link_metadata.uid() != fs_writer::libc_uid() {
+            return Err((
+                "unsafe_target",
+                "Agent state directory is not owned by current user".into(),
+                4,
+            ));
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(ioerr)?;
+    }
+    Ok(())
+}
+fn secure_lock_file(path: &Path, file: &fs::File) -> Result<(), (&'static str, String, i32)> {
+    let link_metadata = fs::symlink_metadata(path).map_err(ioerr)?;
+    if !link_metadata.file_type().is_file() {
+        return Err((
+            "unsafe_target",
+            "Agent lock must be a regular file".into(),
+            4,
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if link_metadata.uid() != fs_writer::libc_uid() {
+            return Err((
+                "unsafe_target",
+                "Agent lock is not owned by current user".into(),
+                4,
+            ));
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(ioerr)?;
+    }
+    let _ = file;
+    Ok(())
 }
 fn targets(s: &Spec) -> Vec<PathBuf> {
-    if s.harness == "claude" {
-        vec![s.root.join("settings.json"), s.root.join("CLAUDE.md")]
-    } else {
-        vec![
-            s.root.join("hooks.json"),
-            s.root.join("config.toml"),
-            s.root.join("AGENTS.md"),
-        ]
+    let mut out = Vec::new();
+    if !s.hooks.is_empty() {
+        if s.harness == "claude" {
+            out.push(s.root.join("settings.json"));
+        } else {
+            out.extend([s.root.join("hooks.json"), s.root.join("config.toml")]);
+        }
     }
+    if s.instruction.is_some() {
+        out.push(s.root.join(if s.harness == "claude" {
+            "CLAUDE.md"
+        } else {
+            "AGENTS.md"
+        }));
+    }
+    out
 }
 fn plan(s: &Spec, j: Option<&Journal>) -> Result<Value, (&'static str, String, i32)> {
-    let paths = targets(s);
+    let mut resources = Vec::new();
+    for path in targets(s) {
+        let before = fs::read(&path).ok();
+        let _physical = canonical_target(&path)?;
+        let after = render(s, &path, before.as_deref())?;
+        let change = match (&before, after.as_slice()) {
+            (None, b) if b.is_empty() => "unchanged",
+            (None, _) => "create",
+            (Some(b), a) if b == a => "unchanged",
+            (Some(_), _) => "update",
+        };
+        let will_reformat = change == "update"
+            && path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            && before.as_deref().is_some_and(|bytes| {
+                render::parse_unique_json(bytes)
+                    .ok()
+                    .and_then(|value| serde_json::to_vec_pretty(&value).ok())
+                    .is_none_or(|mut canonical| {
+                        canonical.push(b'\n');
+                        canonical != bytes
+                    })
+            });
+        resources.push(json!({"path":path,"change":change,"willReformat":will_reformat}));
+    }
+    let mut mcp_servers = Vec::new();
+    for server in &s.mcp_servers {
+        let already_claimed = j.is_some_and(|journal| {
+            journal.resources.iter().any(|resource| {
+                resource.kind == "mcp-server"
+                    && resource
+                        .last_written_value
+                        .get("name")
+                        .and_then(Value::as_str)
+                        == Some(server.name.as_str())
+            })
+        });
+        let occupied = !already_claimed && mcp_exists(s, &server.name)?;
+        mcp_servers.push(json!({"name":server.name,"change":if occupied{"conflict"}else if already_claimed{"unchanged"}else{"create"}}));
+    }
     Ok(
-        json!({"installation":s.root,"resources":paths.iter().map(|p|json!({"path":p,"change":if p.exists(){"update-or-merge"}else{"create"}})).collect::<Vec<_>>(),"mcpServers":s.mcp_servers.iter().map(|m|&m.name).collect::<Vec<_>>(),"previouslyApplied":j.is_some()}),
+        json!({"installation":s.root,"resources":resources,"mcpServers":mcp_servers,"previouslyApplied":j.is_some()}),
     )
 }
 fn status(s: &Spec, j: Option<&Journal>) -> Result<Value, (&'static str, String, i32)> {
     let mut resources = Vec::new();
     if let Some(j) = j {
-        for x in &j.snapshots {
-            let now = fs::read(&x.path).ok();
-            resources.push(json!({"path":x.path,"state":if now.as_ref().is_some_and(|b|hex(&Sha256::digest(b))==x.written_hash){"installed"}else{"drift"}}));
+        for r in &j.resources {
+            let matches = resource_matches(s, j, r)?;
+            let state = if matches {
+                format!("{:?}", r.state).to_lowercase()
+            } else {
+                "conflict".into()
+            };
+            resources.push(json!({"resourceId":r.resource_id,"kind":r.kind,"path":r.path,"state":state,"claims":r.claims}));
         }
     }
     Ok(
         json!({"installation":s.root,"installed":j.is_some(),"effective":if s.harness=="codex"&&s.root.join("AGENTS.override.md").exists(){false}else{true},"manualActions":if s.harness=="codex"&&!s.hooks.is_empty(){vec!["Approve hooks via /hooks","Trust this folder"]}else{vec![]},"resources":resources}),
     )
 }
+fn resource_matches(
+    s: &Spec,
+    journal: &Journal,
+    resource: &ResourceRecord,
+) -> Result<bool, (&'static str, String, i32)> {
+    if resource.kind == "mcp-server" {
+        let name = resource
+            .last_written_value
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        return mcp_exists(s, name);
+    }
+    let Some(bytes) = fs::read(&resource.path).ok() else {
+        return Ok(false);
+    };
+    match resource.kind.as_str() {
+        "hook" => {
+            let Ok(document) = render::parse_unique_json(&bytes) else {
+                return Ok(false);
+            };
+            let Some(root) = document.as_object() else {
+                return Ok(false);
+            };
+            let hooks = if journal.spec.harness == "claude" {
+                let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
+                    return Ok(false);
+                };
+                hooks
+            } else {
+                root
+            };
+            for hook in &journal.spec.hooks {
+                let entry = if journal.spec.harness == "claude" {
+                    json!({"matcher":hook.matcher,"hooks":[{"type":"command","command":hook.command}]})
+                } else {
+                    json!({"command":hook.command})
+                };
+                if entry == resource.last_written_value
+                    && hooks
+                        .get(&hook.event)
+                        .and_then(Value::as_array)
+                        .is_some_and(|entries| entries.contains(&entry))
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        "instruction-block" => {
+            let Some(expected) = resource.last_written_value.as_str() else {
+                return Ok(false);
+            };
+            let text = String::from_utf8_lossy(&bytes);
+            let start = format!("<!-- impeccable:{} start -->", journal.spec.owner);
+            let end = format!("<!-- impeccable:{} end -->", journal.spec.owner);
+            let Some(body) = block_body(&text, &start, &end) else {
+                return Ok(false);
+            };
+            Ok(body == expected)
+        }
+        "setting" => Ok(String::from_utf8_lossy(&bytes)
+            .lines()
+            .scan(false, |in_features, line| {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                    *in_features = trimmed == "[features]";
+                }
+                Some(*in_features && trimmed == "hooks = true")
+            })
+            .any(|is_enabled| is_enabled)),
+        _ => Ok(journal
+            .snapshots
+            .iter()
+            .find(|snapshot| snapshot.path == resource.path)
+            .is_some_and(|snapshot| hex(&Sha256::digest(&bytes)) == snapshot.written_hash)),
+    }
+}
 fn apply(
     s: &Spec,
     old: Option<&Journal>,
     home: &Path,
+    journal_path: &Path,
+    prior_journal: Option<Vec<u8>>,
 ) -> Result<Journal, (&'static str, String, i32)> {
-    sync_mcp(s, old.map(|j| &j.spec))?;
     let mut snapshots = Vec::new();
     let mut writes = Vec::new();
-    for path in targets(s) {
-        let before = fs::read(&path).ok();
-        let next = render(s, &path, before.as_deref())?;
-        if before.as_deref() != Some(next.as_slice()) {
-            writes.push((path.clone(), next));
-        }
-    }
-    for (logical, next) in writes {
-        let before = fs::read(&logical).ok();
-        let identity = validate_file(&logical)?;
-        let path = if fs::symlink_metadata(&logical).is_ok() {
-            fs::canonicalize(&logical).map_err(|_| {
-                (
-                    "unsafe_target",
-                    "Target symlink is dangling or cyclic".into(),
-                    4,
-                )
-            })?
-        } else {
-            logical
-        };
-        let temp = path.with_extension(format!("agents-{}.tmp", std::process::id()));
-        fs::write(&temp, &next).map_err(ioerr)?;
-        set_mode(&temp, 0o600);
-        if let Some(meta) = &identity {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&temp, fs::Permissions::from_mode(*meta));
+    let desired_targets = targets(s);
+    let mut touched = desired_targets.clone();
+    if let Some(old) = old {
+        for p in targets(&old.spec) {
+            if !touched.contains(&p) {
+                touched.push(p)
             }
         }
-        if fs::read(&path).ok() != before {
+    }
+    let mut touched_physical = Vec::new();
+    for path in touched {
+        let before = fs::read(&path).ok();
+        let physical = canonical_target(&path)?;
+        touched_physical.push(physical.clone());
+        let mut base = before.clone();
+        if let Some(old) = old {
+            if targets(&old.spec).contains(&path) {
+                let original = old
+                    .snapshots
+                    .iter()
+                    .find(|x| x.path == physical)
+                    .and_then(|x| x.before.as_deref());
+                if let Some(updated) = render::remove_owned(
+                    &old.spec,
+                    &physical,
+                    base.as_deref().unwrap_or_default(),
+                    original,
+                )? {
+                    base = Some(updated);
+                }
+            }
+        }
+        let managed = desired_targets.contains(&path);
+        let next = if managed {
+            Some(render(s, &path, base.as_deref())?)
+        } else {
+            base
+        };
+        let next = if !managed
+            && next.as_deref() == Some(b"")
+            && old
+                .and_then(|j| j.snapshots.iter().find(|x| x.path == physical))
+                .is_some_and(|x| x.before.is_none())
+        {
+            None
+        } else {
+            next
+        };
+        if managed && before != next && has_peer_installation(home, &physical, s) {
             return Err((
-                "concurrent_change",
-                format!("Target changed during write: {}", path.display()),
+                "shared_resource_conflict",
+                format!(
+                    "Conflicting desired values for shared resource {}",
+                    physical.display()
+                ),
                 4,
             ));
         }
-        fs::rename(&temp, &path).map_err(ioerr)?;
-        let written = fs::read(&path).map_err(ioerr)?;
-        snapshots.push(Snapshot {
-            path,
-            before,
-            written_hash: hex(&Sha256::digest(&written)),
-        });
+        if before != next {
+            writes.push((path.clone(), next, managed));
+        } else if managed {
+            if let Some(mut claim) = find_resource_claim(home, &physical) {
+                let id = installation_claim(s);
+                if !claim.claims.contains(&id) {
+                    claim.claims.push(id)
+                }
+                claim.pure_install = false;
+                snapshots.push(claim);
+            } else {
+                let written = before.clone().unwrap_or_default();
+                snapshots.push(Snapshot {
+                    resource_id: format!("file:{}", physical.display()),
+                    kind: "managed_file".into(),
+                    state: ResourceState::Preexisting,
+                    path: physical,
+                    before: before.clone(),
+                    original_value: before.clone(),
+                    last_written_value: written.clone(),
+                    written_hash: hex(&Sha256::digest(&written)),
+                    claims: vec![installation_claim(s)],
+                    pure_install: true,
+                });
+            }
+        }
     }
+    let pending_path = home.join(format!("{}.pending.json", installation_id(s)));
+    let pending_targets = writes
+        .iter()
+        .map(|(p, after, _)| {
+            Ok(PendingTarget {
+                path: canonical_target(p)?,
+                before: fs::read(p).ok(),
+                after: after.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, (&'static str, String, i32)>>()?;
+    let mcp_change = old.map_or(!s.mcp_servers.is_empty(), |j| {
+        j.spec.mcp_servers != s.mcp_servers
+    });
+    if !pending_targets.is_empty() || mcp_change {
+        persist_pending(
+            &pending_path,
+            &PendingTransaction {
+                version: JOURNAL_VERSION,
+                journal_path: journal_path.to_path_buf(),
+                prior_journal,
+                desired_spec: s.clone(),
+                prior_spec: old.map(|j| j.spec.clone()),
+                targets: pending_targets,
+            },
+        )?;
+        failpoint("journal_intent")?;
+    }
+    for (logical, next, managed) in writes {
+        let before = fs::read(&logical).ok();
+        let path = if let Some(next) = &next {
+            safe_write(&logical, before.as_deref(), next)?
+        } else {
+            safe_delete(&logical, before.as_deref())?
+        };
+        let written = fs::read(&path).unwrap_or_default();
+        if managed {
+            let existing = old.and_then(|j| j.snapshots.iter().find(|x| x.path == path));
+            let baseline = existing
+                .map(|x| x.before.clone())
+                .unwrap_or_else(|| before.clone());
+            let mut claims = existing.map(|x| x.claims.clone()).unwrap_or_default();
+            let claim = installation_claim(s);
+            if !claims.contains(&claim) {
+                claims.push(claim);
+            }
+            snapshots.push(Snapshot {
+                resource_id: format!("file:{}", path.display()),
+                kind: "managed_file".into(),
+                state: ResourceState::Created,
+                path,
+                original_value: baseline.clone(),
+                before: baseline,
+                last_written_value: written.clone(),
+                written_hash: hex(&Sha256::digest(&written)),
+                claims,
+                pure_install: existing.is_none(),
+            });
+        }
+    }
+    sync_mcp(s, old.map(|j| &j.spec))?;
+    failpoint("mcp_synced")?;
     let _ = home;
     let mut all = old.map(|j| j.snapshots.clone()).unwrap_or_default();
+    all.retain(|x| !touched_physical.contains(&x.path));
     for snap in snapshots {
         all.retain(|x| x.path != snap.path);
         all.push(snap)
     }
+    let resources = build_resource_records(s, old, &all, home);
     Ok(Journal {
         version: JOURNAL_VERSION,
         spec: s.clone(),
         snapshots: all,
+        resources,
     })
 }
-fn validate_file(path: &Path) -> Result<Option<u32>, (&'static str, String, i32)> {
-    if fs::symlink_metadata(path).is_ok() {
-        let p = fs::canonicalize(path).map_err(|_| {
-            (
-                "unsafe_target",
-                "Target symlink is dangling or cyclic".into(),
-                4,
-            )
-        })?;
-        let md = fs::metadata(&p).map_err(ioerr)?;
-        if !md.is_file() {
-            return Err(("unsafe_target", "Target is not a regular file".into(), 4));
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::{MetadataExt, PermissionsExt};
-        if md.uid() != libc_uid() {
-                return Err((
-                    "unsafe_target",
-                    "Target is not owned by current user".into(),
-                    4,
-                ));
-            }
-            return Ok(Some(md.permissions().mode() & 0o777));
-        }
-    }
-    Ok(None)
-}
-#[cfg(unix)]
-fn libc_uid() -> u32 {
-    extern "C" {
-        fn geteuid() -> u32;
-    }
-    unsafe { geteuid() }
-}
-#[cfg(not(unix))]
-fn libc_uid() -> u32 {
-    0
-}
-fn render(
+fn build_resource_records(
     s: &Spec,
-    path: &Path,
-    before: Option<&[u8]>,
-) -> Result<Vec<u8>, (&'static str, String, i32)> {
-    let is_rule = path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md");
-    if is_rule {
-        return render_rule(s, before);
+    old: Option<&Journal>,
+    snapshots: &[Snapshot],
+    home: &Path,
+) -> Vec<ResourceRecord> {
+    let mut known = old.map(|j| j.resources.clone()).unwrap_or_default();
+    if let Ok(entries) = fs::read_dir(home) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().is_none_or(|x| x != "json")
+                || p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().ends_with("pending.json"))
+            {
+                continue;
+            }
+            let Ok(bytes) = fs::read(p) else { continue };
+            let Ok(j) = serde_json::from_slice::<Journal>(&bytes) else {
+                continue;
+            };
+            for r in j.resources {
+                if !known.iter().any(|x| x.resource_id == r.resource_id) {
+                    known.push(r)
+                }
+            }
+        }
     }
-    let mut value = if let Some(b) = before {
-        serde_json::from_slice::<Value>(b).map_err(|_| {
-            (
-                "invalid_settings",
-                format!("Refusing non-plain JSON at {}", path.display()),
-                4,
-            )
-        })?
-    } else {
-        json!({})
+    let claim = installation_claim(s);
+    let mut out = Vec::new();
+    let mut add = |kind: &str, key: &str, path: &str, original: Option<Value>, last: Value| {
+        let id = format!(
+            "{}:{}:{}:{}",
+            kind,
+            s.harness,
+            path,
+            hex(&Sha256::digest(format!("{}:{key}", s.owner).as_bytes()))
+        );
+        let mut record = known
+            .iter()
+            .find(|r| r.resource_id == id)
+            .cloned()
+            .unwrap_or(ResourceRecord {
+                resource_id: id,
+                kind: kind.into(),
+                path: PathBuf::from(path),
+                state: if original.as_ref() == Some(&last) {
+                    ResourceState::Preexisting
+                } else {
+                    ResourceState::Created
+                },
+                original_value: original,
+                last_written_value: last,
+                claims: vec![],
+            });
+        if !record.claims.contains(&claim) {
+            record.claims.push(claim.clone())
+        }
+        if !out
+            .iter()
+            .any(|r: &ResourceRecord| r.resource_id == record.resource_id)
+        {
+            out.push(record)
+        }
     };
-    if !value.is_object() {
-        return Err(("invalid_settings", "Expected JSON object".into(), 4));
-    }
-    if s.harness == "claude" && path.ends_with("settings.json") && !s.hooks.is_empty() {
-        let obj = value.as_object_mut().unwrap();
-        let hooks = obj.entry("hooks").or_insert(json!({}));
-        if !hooks.is_object() {
-            return Err(("invalid_settings", "hooks must be an object".into(), 4));
+    for path in targets(s) {
+        let Ok(physical) = canonical_target(&path) else {
+            continue;
+        };
+        let Some(snap) = snapshots.iter().find(|x| x.path == physical) else {
+            continue;
+        };
+        let before = snap.before.as_deref().unwrap_or_default();
+        let after = snap.last_written_value.as_slice();
+        if (path.ends_with("settings.json") || path.ends_with("hooks.json")) && !s.hooks.is_empty()
+        {
+            let claude = s.harness == "claude";
+            let pre = render::parse_unique_json(before).ok();
+            for h in &s.hooks {
+                let entry = if claude {
+                    json!({"matcher":h.matcher,"hooks":[{"type":"command","command":h.command}]})
+                } else {
+                    json!({"command":h.command})
+                };
+                let present = pre
+                    .as_ref()
+                    .and_then(|v| if claude { v.get("hooks") } else { Some(v) })
+                    .and_then(|v| v.get(&h.event))
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| a.contains(&entry));
+                let key = format!(
+                    "{}:{}",
+                    h.event,
+                    hex(&Sha256::digest(serde_json::to_vec(&entry).unwrap()))
+                );
+                add(
+                    "hook",
+                    &key,
+                    &physical.display().to_string(),
+                    present.then_some(entry.clone()),
+                    entry,
+                );
+            }
         }
-        for h in &s.hooks {
-            let ev = hooks
-                .as_object_mut()
-                .unwrap()
-                .entry(&h.event)
-                .or_insert(json!([]));
-            if !ev.is_array() {
-                return Err(("invalid_settings", "hook event must be an array".into(), 4));
-            }
-            let command = json!({"type":"command","command":h.command});
-            let entry = json!({"matcher":h.matcher,"hooks":[command]});
-            let arr = ev.as_array_mut().unwrap();
-            if !arr.contains(&entry) {
-                arr.push(entry)
-            }
+        if path.ends_with("config.toml") && s.harness == "codex" && !s.hooks.is_empty() {
+            let orig = String::from_utf8_lossy(before).lines().find_map(|l| {
+                l.trim().strip_prefix("hooks = ").and_then(|v| match v {
+                    "true" => Some(Value::Bool(true)),
+                    "false" => Some(Value::Bool(false)),
+                    _ => None,
+                })
+            });
+            add(
+                "setting",
+                "features.hooks",
+                &physical.display().to_string(),
+                orig,
+                Value::Bool(true),
+            );
+        }
+        if path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") {
+            let marker = format!("impeccable:{}", s.owner);
+            let start = format!("<!-- {marker} start -->");
+            let end = format!("<!-- {marker} end -->");
+            let extract = |bytes: &[u8]| {
+                let t = String::from_utf8(bytes.to_vec()).ok()?;
+                Some(Value::String(block_body(&t, &start, &end)?.to_owned()))
+            };
+            let last = extract(after).unwrap_or(Value::Null);
+            add(
+                "instruction-block",
+                &s.owner,
+                &physical.display().to_string(),
+                extract(before),
+                last,
+            );
         }
     }
-    if s.harness == "codex" && path.ends_with("hooks.json") && !s.hooks.is_empty() {
-        let obj = value.as_object_mut().unwrap();
-        for h in &s.hooks {
-            let ev = obj.entry(&h.event).or_insert(json!([]));
-            if !ev.is_array() {
-                return Err(("invalid_settings", "hook event must be an array".into(), 4));
-            }
-            let entry = json!({"command":h.command});
-            if !ev.as_array().unwrap().contains(&entry) {
-                ev.as_array_mut().unwrap().push(entry)
-            }
+    for m in &s.mcp_servers {
+        let path = format!("{}:{}", s.harness, s.root.display());
+        add(
+            "mcp-server",
+            &m.name,
+            &path,
+            None,
+            json!({"name":m.name,"command":m.command,"args":m.args,"env":m.env}),
+        );
+    }
+    out
+}
+fn block_body<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    if text.matches(start).count() != 1
+        || text.matches(end).count() != 1
+        || text.lines().filter(|line| *line == start).count() != 1
+        || text.lines().filter(|line| *line == end).count() != 1
+    {
+        return None;
+    }
+    let body_start = text.find(start)? + start.len();
+    let body_end = text[body_start..].find(end)? + body_start;
+    if body_start >= body_end {
+        return None;
+    }
+    let body = &text[body_start..body_end];
+    let body = body
+        .strip_prefix("\r\n")
+        .or_else(|| body.strip_prefix('\n'))?;
+    body.strip_suffix("\r\n")
+        .or_else(|| body.strip_suffix('\n'))
+}
+fn installation_id(s: &Spec) -> String {
+    format!(
+        "{}-{}-{}",
+        s.owner,
+        s.harness,
+        hex(&Sha256::digest(s.root.to_string_lossy().as_bytes())[..8])
+    )
+}
+fn find_resource_claim(home: &Path, path: &Path) -> Option<Snapshot> {
+    let entries = fs::read_dir(home).ok()?;
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.extension().is_none_or(|x| x != "json")
+            || p.file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with("pending.json"))
+        {
+            continue;
+        }
+        let Ok(bytes) = fs::read(p) else { continue };
+        let Ok(j) = serde_json::from_slice::<Journal>(&bytes) else {
+            continue;
+        };
+        if let Some(s) = j.snapshots.into_iter().find(|s| s.path == path) {
+            return Some(s);
         }
     }
-    serde_json::to_vec_pretty(&value)
-        .map(|mut b| {
-            b.push(b'\n');
-            b
+    None
+}
+fn has_peer_installation(home: &Path, path: &Path, s: &Spec) -> bool {
+    fs::read_dir(home)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            let p = e.path();
+            if p.extension().is_none_or(|x| x != "json")
+                || p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().ends_with("pending.json"))
+            {
+                return false;
+            }
+            let Some(id) = p.file_stem().and_then(|n| n.to_str()) else {
+                return false;
+            };
+            if id == installation_id(s) {
+                return false;
+            }
+            fs::read(p)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Journal>(&b).ok())
+                .is_some_and(|j| {
+                    j.spec.owner == s.owner
+                        && j.spec.harness == s.harness
+                        && j.snapshots.iter().any(|x| x.path == path)
+                })
         })
-        .map_err(|_| ("invalid_settings", "Could not serialize settings".into(), 4))
 }
-fn render_rule(s: &Spec, before: Option<&[u8]>) -> Result<Vec<u8>, (&'static str, String, i32)> {
-    let marker = format!("impeccable:{}", s.owner);
-    let start = format!("<!-- {marker} start -->");
-    let end = format!("<!-- {marker} end -->");
-    let mut text = before
-        .map(|b| String::from_utf8_lossy(b).into_owned())
-        .unwrap_or_default();
-    let starts = text.matches(&start).count();
-    let ends = text.matches(&end).count();
-    if starts != ends || starts > 1 {
-        return Err((
-            "ambiguous_markers",
-            "Instruction markers are unbalanced or duplicated".into(),
-            4,
-        ));
-    }
-    let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let body = s.instruction.as_deref().unwrap_or("");
-    let block = if body.is_empty() {
-        String::new()
-    } else {
-        format!("{start}{nl}{body}{nl}{end}")
-    };
-    if starts == 1 {
-        let a = text.find(&start).unwrap();
-        let b = text.find(&end).unwrap() + end.len();
-        text.replace_range(a..b, &block);
-    } else if !block.is_empty() {
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push_str(nl)
-        }
-        if !text.is_empty() && !text.ends_with(&format!("{nl}{nl}")) {
-            text.push_str(nl)
-        }
-        text.push_str(&block);
-        text.push_str(nl)
-    }
-    Ok(text.into_bytes())
+fn has_other_claim(home: &Path, path: &Path, exclude: &str, owner: &str, harness: &str) -> bool {
+    fs::read_dir(home)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            let p = e.path();
+            if p.file_name()
+                .is_some_and(|n| n.to_string_lossy() == format!("{exclude}.json"))
+                || p.extension().is_none_or(|x| x != "json")
+                || p.file_name()
+                    .is_some_and(|n| n.to_string_lossy().ends_with("pending.json"))
+            {
+                return false;
+            }
+            fs::read(p)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Journal>(&b).ok())
+                .is_some_and(|j| {
+                    let codex_shared = path.file_name().is_some_and(|n| n == "config.toml")
+                        && j.spec.harness == "codex";
+                    (codex_shared || (j.spec.owner == owner && j.spec.harness == harness))
+                        && j.snapshots.iter().any(|s| s.path == path)
+                })
+        })
 }
+
 fn undo(s: &Spec, j: Option<&Journal>, _home: &Path) -> Result<Value, (&'static str, String, i32)> {
     let Some(j) = j else {
         return Ok(json!({"removed":false,"conflicts":[]}));
@@ -498,19 +1167,34 @@ fn undo(s: &Spec, j: Option<&Journal>, _home: &Path) -> Result<Value, (&'static 
     let mut conflicts = Vec::new();
     let mut removed = Vec::new();
     for snap in &j.snapshots {
+        if has_other_claim(_home, &snap.path, &installation_id(s), &s.owner, &s.harness) {
+            continue;
+        }
         let current = fs::read(&snap.path).ok();
         if current
             .as_ref()
             .is_some_and(|b| hex(&Sha256::digest(b)) == snap.written_hash)
+            && snap.pure_install
         {
             if let Some(b) = &snap.before {
-                fs::write(&snap.path, b).map_err(ioerr)?
+                safe_write(&snap.path, current.as_deref(), b)?;
             } else {
-                let _ = fs::remove_file(&snap.path);
+                safe_delete(&snap.path, current.as_deref())?;
             }
             removed.push(snap.path.clone())
         } else {
-            conflicts.push(snap.path.clone())
+            match render::remove_owned(
+                s,
+                &snap.path,
+                current.as_deref().unwrap_or_default(),
+                snap.before.as_deref(),
+            )? {
+                Some(updated) if current.as_deref() != Some(updated.as_slice()) => {
+                    safe_write(&snap.path, current.as_deref(), &updated)?;
+                    removed.push(snap.path.clone());
+                }
+                _ => conflicts.push(snap.path.clone()),
+            }
         }
     }
     sync_mcp(
@@ -537,6 +1221,14 @@ fn sync_mcp(spec: &Spec, previous: Option<&Spec>) -> Result<(), (&'static str, S
         }
         if old.iter().any(|m| m.name == server.name) {
             run_mcp(spec, "remove", &server.name, None)?
+        } else {
+            if mcp_exists(spec, &server.name)? {
+                return Err((
+                    "mcp_name_collision",
+                    format!("MCP server name is already in use: {}", server.name),
+                    4,
+                ));
+            }
         }
         run_mcp(spec, "add", &server.name, Some(server))?;
     }
@@ -547,25 +1239,52 @@ fn sync_mcp(spec: &Spec, previous: Option<&Spec>) -> Result<(), (&'static str, S
     }
     Ok(())
 }
+fn mcp_exists(spec: &Spec, name: &str) -> Result<bool, (&'static str, String, i32)> {
+    let binary = mcp_binary(spec);
+    let mut cmd = Command::new(binary);
+    cmd.env(
+        if spec.harness == "claude" {
+            "CLAUDE_CONFIG_DIR"
+        } else {
+            "CODEX_HOME"
+        },
+        &spec.root,
+    );
+    if spec.harness == "claude" {
+        cmd.args(["mcp", "get", name, "--scope", "user"]);
+    } else {
+        cmd.args(["mcp", "get", name]);
+    }
+    let output = cmd.output().map_err(|_| {
+        (
+            "harness_cli_error",
+            format!("Could not run configured {} CLI", spec.harness),
+            4,
+        )
+    })?;
+    Ok(output.status.success())
+}
+fn mcp_binary(spec: &Spec) -> std::ffi::OsString {
+    let var = if spec.harness == "claude" {
+        "IMPECCABLE_CLAUDE_BIN"
+    } else {
+        "IMPECCABLE_CODEX_BIN"
+    };
+    std::env::var_os(var).unwrap_or_else(|| {
+        if spec.harness == "claude" {
+            "claude".into()
+        } else {
+            "codex".into()
+        }
+    })
+}
 fn run_mcp(
     spec: &Spec,
     action: &str,
     name: &str,
     server: Option<&McpServer>,
 ) -> Result<(), (&'static str, String, i32)> {
-    let var = if spec.harness == "claude" {
-        "IMPECCABLE_CLAUDE_BIN"
-    } else {
-        "IMPECCABLE_CODEX_BIN"
-    };
-    let binary = std::env::var_os(var).unwrap_or_else(|| {
-        if spec.harness == "claude" {
-            "claude".into()
-        } else {
-            "codex".into()
-        }
-    });
-    let mut cmd = Command::new(binary);
+    let mut cmd = Command::new(mcp_binary(spec));
     cmd.env(
         if spec.harness == "claude" {
             "CLAUDE_CONFIG_DIR"
@@ -595,6 +1314,9 @@ fn run_mcp(
     } else {
         cmd.args(["mcp", action, name]);
         if let Some(m) = server {
+            for (key, value) in &m.env {
+                cmd.arg("--env").arg(format!("{key}={value}"));
+            }
             cmd.arg("--").arg(&m.command).args(&m.args);
         }
     }
@@ -622,106 +1344,4 @@ fn hex(b: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    fn spec(harness: &str, root: PathBuf) -> Spec {
-        Spec {
-            version: 1,
-            owner: "impeccable-loop".into(),
-            harness: harness.into(),
-            root,
-            hooks: vec![],
-            mcp_servers: vec![],
-            instruction: Some("managed text".into()),
-        }
-    }
-    fn temp() -> PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "impeccable-agents-test-{}-{}",
-            std::process::id(),
-            Instant::now().elapsed().as_nanos()
-        ));
-        fs::create_dir_all(&p).unwrap();
-        p
-    }
-    #[test]
-    fn rule_render_preserves_crlf_and_outside_bytes() {
-        let s = spec("claude", temp());
-        let before = b"Keep\r\n\r\n";
-        let out = render_rule(&s, Some(before)).unwrap();
-        assert!(String::from_utf8(out)
-            .unwrap()
-            .starts_with("Keep\r\n\r\n<!-- impeccable:impeccable-loop start -->"));
-    }
-    #[test]
-    fn marker_body_and_ambiguous_markers_refused() {
-        let mut s = spec("claude", temp());
-        s.instruction = Some("bad <!-- impeccable:x -->".into());
-        assert!(validate(&s).is_err());
-        s.instruction = Some("valid".into());
-        assert_eq!(
-            render_rule(&s, Some(b"<!-- impeccable:impeccable-loop start -->\nx\n"))
-                .unwrap_err()
-                .0,
-            "ambiguous_markers"
-        );
-    }
-    #[test]
-    fn settings_invalid_json_refused() {
-        let s = spec("claude", temp());
-        let p = s.root.join("settings.json");
-        assert_eq!(
-            render(&s, &p, Some(b"{/* comment */}")).unwrap_err().0,
-            "invalid_settings"
-        );
-    }
-    #[test]
-    fn identical_hook_is_not_duplicated() {
-        let mut s = spec("claude", temp());
-        s.hooks.push(Hook {
-            event: "PreToolUse".into(),
-            matcher: None,
-            command: "echo".into(),
-        });
-        let p = s.root.join("settings.json");
-        let first = render(&s, &p, None).unwrap();
-        let second = render(&s, &p, Some(&first)).unwrap();
-        assert_eq!(first, second);
-    }
-    #[test]
-    fn apply_then_undo_restores_original_bytes() {
-        let root = temp();
-        fs::write(root.join("settings.json"), b"{\"other\":1}\n").unwrap();
-        fs::write(root.join("CLAUDE.md"), b"Team notes\r\n").unwrap();
-        let s = spec("claude", root.clone());
-        let home = temp();
-        let j = apply(&s, None, &home).unwrap();
-        assert!(String::from_utf8(fs::read(root.join("CLAUDE.md")).unwrap())
-            .unwrap()
-            .contains("impeccable:impeccable-loop"));
-        let result = undo(&s, Some(&j), &home).unwrap();
-        assert!(result["conflicts"].as_array().unwrap().is_empty());
-        assert_eq!(
-            fs::read(root.join("settings.json")).unwrap(),
-            b"{\"other\":1}\n"
-        );
-        assert_eq!(fs::read(root.join("CLAUDE.md")).unwrap(), b"Team notes\r\n");
-    }
-    #[test]
-    fn reapply_uses_user_edited_file_as_new_baseline() {
-        let root = temp();
-        fs::write(root.join("settings.json"), b"{}\n").unwrap();
-        let s = spec("claude", root.clone());
-        let home = temp();
-        let j = apply(&s, None, &home).unwrap();
-        let path = root.join("CLAUDE.md");
-        let mut edited = fs::read(&path).unwrap();
-        edited.extend_from_slice(b"User addition\n");
-        fs::write(&path, edited).unwrap();
-        let j2 = apply(&s, Some(&j), &home).unwrap();
-        undo(&s, Some(&j2), &home).unwrap();
-        assert!(String::from_utf8(fs::read(&path).unwrap())
-            .unwrap()
-            .contains("User addition"));
-    }
-}
+mod tests;
