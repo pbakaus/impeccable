@@ -377,9 +377,7 @@ fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), (&'static str, 
     }
     fs::rename(&tmp, path).map_err(ioerr)?;
     failpoint("state_after_rename")?;
-    fs::File::open(parent)
-        .and_then(|d| d.sync_all())
-        .map_err(ioerr)?;
+    fs_writer::sync_dir(parent)?;
     failpoint("state_directory_synced")?;
     if fs::read(path).map_err(ioerr)? != bytes {
         return Err((

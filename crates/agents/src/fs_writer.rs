@@ -87,9 +87,7 @@ pub(super) fn safe_write(
     }
     fs::rename(&temp, &path).map_err(ioerr)?;
     failpoint("after_rename")?;
-    fs::File::open(parent)
-        .and_then(|d| d.sync_all())
-        .map_err(ioerr)?;
+    sync_dir(parent)?;
     failpoint("directory_synced")?;
     let final_bytes = fs::read(&path).map_err(ioerr)?;
     if final_bytes != bytes || canonical_target(logical)? != path {
@@ -124,9 +122,7 @@ pub(super) fn safe_delete(
     fs::remove_file(&path).map_err(ioerr)?;
     failpoint("after_delete")?;
     if let Some(parent) = path.parent() {
-        fs::File::open(parent)
-            .and_then(|d| d.sync_all())
-            .map_err(ioerr)?;
+        sync_dir(parent)?;
         failpoint("delete_directory_synced")?;
     }
     if fs::symlink_metadata(&path).is_ok() {
@@ -279,4 +275,16 @@ pub(super) fn libc_uid() -> u32 {
 #[cfg(not(unix))]
 pub(super) fn libc_uid() -> u32 {
     0
+}
+
+/// Makes a rename or delete in `dir` durable. Unix needs the directory itself synced; Windows cannot open a
+/// directory as a file (Access is denied) and journals the rename's metadata on NTFS, so there it does nothing.
+pub(crate) fn sync_dir(dir: &std::path::Path) -> Result<(), (&'static str, String, i32)> {
+    #[cfg(unix)]
+    fs::File::open(dir)
+        .and_then(|d| d.sync_all())
+        .map_err(ioerr)?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
 }
