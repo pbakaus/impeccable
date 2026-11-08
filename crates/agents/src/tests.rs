@@ -375,7 +375,10 @@ fn preexisting_identical_hook_is_never_removed() {
         command: "already-here".into(),
     });
     let path = root.join("settings.json");
-    let expected=serde_json::to_vec_pretty(&json!({"hooks":{"PreToolUse":[{"matcher":null,"hooks":[{"type":"command","command":"already-here"}]}]}})).unwrap();
+    let expected = serde_json::to_vec_pretty(
+        &json!({"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"already-here"}]}]}}),
+    )
+    .unwrap();
     fs::write(&path, &expected).unwrap();
     let j = apply(&s, None, &home, &home.join("journal"), None).unwrap();
     undo(&s, Some(&j), &home).unwrap();
@@ -600,7 +603,8 @@ fn preexisting_identical_hook_keeps_original_json_bytes() {
         command: "already-here".into(),
     });
     let path = s.root.join("settings.json");
-    let bytes = br#"{"hooks":{"PreToolUse":[{"matcher":null,"hooks":[{"type":"command","command":"already-here"}]}]}}"#;
+    let bytes =
+        br#"{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"already-here"}]}]}}"#;
     assert_eq!(render(&s, &path, Some(bytes)).unwrap(), bytes);
 }
 #[test]
@@ -783,3 +787,51 @@ fn reapply_uses_user_edited_file_as_new_baseline() {
 }
 
 mod mcp;
+#[test]
+fn codex_hooks_use_the_nested_shape_codex_reads_and_undo_keeps_personal_hooks() {
+    // Catches: Codex hooks written as top-level {Event:[{command}]}, which Codex ignores.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.hooks = vec![
+        Hook {
+            event: "PostToolUse".into(),
+            matcher: Some("Edit".into()),
+            command: "loop register".into(),
+        },
+        Hook {
+            event: "SessionStart".into(),
+            matcher: None,
+            command: "loop lifecycle".into(),
+        },
+    ];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written: Value =
+        serde_json::from_slice(&fs::read(root.join("hooks.json")).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        json!({"hooks":{
+            "PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"loop register"}]}],
+            "SessionStart":[{"hooks":[{"type":"command","command":"loop lifecycle"}]}]
+        }})
+    );
+    let mut edited = written.clone();
+    let personal = json!({"hooks":[{"type":"command","command":"mine"}]});
+    edited["hooks"]["SessionStart"]
+        .as_array_mut()
+        .unwrap()
+        .push(personal.clone());
+    fs::write(
+        root.join("hooks.json"),
+        serde_json::to_vec_pretty(&edited).unwrap(),
+    )
+    .unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(
+        result["conflicts"].as_array().unwrap().is_empty(),
+        "{result}"
+    );
+    let left: Value = serde_json::from_slice(&fs::read(root.join("hooks.json")).unwrap()).unwrap();
+    assert_eq!(left, json!({"hooks":{"SessionStart":[personal]}}));
+}

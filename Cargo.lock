@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-agents"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "impeccable-common",
  "serde",

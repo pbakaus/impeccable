@@ -56,6 +56,21 @@ pub struct Hook {
     pub matcher: Option<String>,
     pub command: String,
 }
+impl Hook {
+    /// The entry both Claude Code and Codex read under `hooks.<event>`:
+    /// `{"matcher"?, "hooks":[{"type":"command","command"}]}`. No matcher, no key.
+    pub(crate) fn entry(&self) -> Value {
+        let mut entry = serde_json::Map::new();
+        if let Some(matcher) = &self.matcher {
+            entry.insert("matcher".into(), json!(matcher));
+        }
+        entry.insert(
+            "hooks".into(),
+            json!([{"type":"command","command":self.command}]),
+        );
+        Value::Object(entry)
+    }
+}
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct McpServer {

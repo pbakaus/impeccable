@@ -125,20 +125,11 @@ pub(super) fn resource_matches(
             let Some(root) = document.as_object() else {
                 return Ok(false);
             };
-            let hooks = if journal.spec.harness == "claude" {
-                let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
-                    return Ok(false);
-                };
-                hooks
-            } else {
-                root
+            let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
+                return Ok(false);
             };
             for hook in &journal.spec.hooks {
-                let entry = if journal.spec.harness == "claude" {
-                    json!({"matcher":hook.matcher,"hooks":[{"type":"command","command":hook.command}]})
-                } else {
-                    json!({"command":hook.command})
-                };
+                let entry = hook.entry();
                 if entry == resource.last_written_value
                     && hooks
                         .get(&hook.event)

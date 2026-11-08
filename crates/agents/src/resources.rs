@@ -268,17 +268,12 @@ pub(super) fn build_resource_records(
             if (path.ends_with("settings.json") || path.ends_with("hooks.json"))
                 && !s.hooks.is_empty()
             {
-                let claude = s.harness == "claude";
                 let pre = render::parse_unique_json(before).ok();
                 for h in &s.hooks {
-                    let entry = if claude {
-                        json!({"matcher":h.matcher,"hooks":[{"type":"command","command":h.command}]})
-                    } else {
-                        json!({"command":h.command})
-                    };
+                    let entry = h.entry();
                     let present = pre
                         .as_ref()
-                        .and_then(|v| if claude { v.get("hooks") } else { Some(v) })
+                        .and_then(|v| v.get("hooks"))
                         .and_then(|v| v.get(&h.event))
                         .and_then(Value::as_array)
                         .is_some_and(|a| a.contains(&entry));

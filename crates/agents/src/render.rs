@@ -31,7 +31,9 @@ pub(super) fn render(
         return Err(("invalid_settings", "Expected JSON object".into(), 4));
     }
     let mut changed = false;
-    if s.harness == "claude" && path.ends_with("settings.json") && !s.hooks.is_empty() {
+    let hook_file = (s.harness == "claude" && path.ends_with("settings.json"))
+        || (s.harness == "codex" && path.ends_with("hooks.json"));
+    if hook_file && !s.hooks.is_empty() {
         let obj = value.as_object_mut().unwrap();
         if !obj.contains_key("hooks") {
             changed = true;
@@ -52,28 +54,10 @@ pub(super) fn render(
             if !ev.is_array() {
                 return Err(("invalid_settings", "hook event must be an array".into(), 4));
             }
-            let command = json!({"type":"command","command":h.command});
-            let entry = json!({"matcher":h.matcher,"hooks":[command]});
+            let entry = h.entry();
             let arr = ev.as_array_mut().unwrap();
             if !arr.contains(&entry) {
                 arr.push(entry);
-                changed = true;
-            }
-        }
-    }
-    if s.harness == "codex" && path.ends_with("hooks.json") && !s.hooks.is_empty() {
-        let obj = value.as_object_mut().unwrap();
-        for h in &s.hooks {
-            if !obj.contains_key(&h.event) {
-                changed = true;
-            }
-            let ev = obj.entry(&h.event).or_insert(json!([]));
-            if !ev.is_array() {
-                return Err(("invalid_settings", "hook event must be an array".into(), 4));
-            }
-            let entry = json!({"command":h.command});
-            if !ev.as_array().unwrap().contains(&entry) {
-                ev.as_array_mut().unwrap().push(entry);
                 changed = true;
             }
         }
@@ -101,11 +85,11 @@ pub(super) fn remove_owned(
         return remove_rule_block(s, current, original).map(Some);
     }
     if s.harness == "claude" && !s.hooks.is_empty() {
-        return remove_json_hooks(s, current, original, true);
+        return remove_json_hooks(s, current, original);
     }
     if s.harness == "codex" && !s.hooks.is_empty() {
         if current.iter().copied().find(|b| !b.is_ascii_whitespace()) == Some(b'{') {
-            return remove_json_hooks(s, current, original, false);
+            return remove_json_hooks(s, current, original);
         }
         return remove_codex_hooks(current, original).map(Some);
     }
@@ -181,7 +165,6 @@ fn remove_json_hooks(
     s: &Spec,
     current: &[u8],
     original: Option<&[u8]>,
-    claude: bool,
 ) -> Result<Option<Vec<u8>>, (&'static str, String, i32)> {
     let mut cur = parse_unique_json(current).map_err(|_| {
         (
@@ -194,19 +177,13 @@ fn remove_json_hooks(
     let Some(root) = cur.as_object_mut() else {
         return Ok(None);
     };
-    let changed = if claude {
-        let Some(container) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
-            return Ok(None);
-        };
-        let changed = remove_hook_entries(s, container, orig.as_ref(), true);
-        let empty = container.is_empty();
-        if empty {
-            root.remove("hooks");
-        }
-        changed
-    } else {
-        remove_hook_entries(s, root, orig.as_ref(), false)
+    let Some(container) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return Ok(None);
     };
+    let changed = remove_hook_entries(s, container, orig.as_ref());
+    if container.is_empty() {
+        root.remove("hooks");
+    }
     if !changed {
         return Ok(None);
     }
@@ -227,7 +204,6 @@ fn remove_hook_entries(
     s: &Spec,
     container: &mut serde_json::Map<String, Value>,
     original: Option<&Value>,
-    claude: bool,
 ) -> bool {
     let mut changed = false;
     for h in &s.hooks {
@@ -235,13 +211,9 @@ fn remove_hook_entries(
         let Some(entries) = container.get_mut(key).and_then(Value::as_array_mut) else {
             continue;
         };
-        let entry = if claude {
-            json!({"matcher":h.matcher,"hooks":[{"type":"command","command":h.command}]})
-        } else {
-            json!({"command":h.command})
-        };
+        let entry = h.entry();
         let existed = original
-            .and_then(|v| if claude { v.get("hooks") } else { Some(v) })
+            .and_then(|v| v.get("hooks"))
             .and_then(|v| v.get(key))
             .and_then(Value::as_array)
             .is_some_and(|a| a.contains(&entry));
