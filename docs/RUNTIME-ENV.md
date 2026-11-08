@@ -33,26 +33,50 @@ under the home dir renders as `<HOME>/...` instead of `<IMPECCABLE>`).
 authorization code, PKCE S256, a loopback redirect on
 `http://127.0.0.1:<port>/callback`, the public client `impeccable-cli`,
 resource `<issuer>/cli`, scopes `account:read rules:read`. The callback's
-`state` and RFC 9207 `iss` must match before the code is exchanged. With
+`state` and RFC 9207 `iss` must match before the code is exchanged. A
+callback without this attempt's `state` is answered and ignored, so another
+local process cannot end the sign-in; each connection gets 5 seconds to send
+its request head, and the whole wait ends at `IMPECCABLE_LOGIN_TIMEOUT`. With
 `--no-browser` the authorization URL is the only line on stdout, so a script
 can open it (or drive the consent page) itself. `whoami` asks
 `GET /cli/v1/entitlement`; `whoami --json` prints
 `{account_url, signed_in, pro, reason}` and exits 1 when not signed in.
+
+Every request goes to the issuer's own origin. That is checked at the HTTP
+client, so an endpoint read back from `state.json` cannot carry a token
+elsewhere. Each request has a 60-second deadline from connect to last byte,
+and redirects are not followed. Plain `http` is accepted only for a
+loopback service. Its names (`localhost`, `*.localhost`) resolve straight to
+`127.0.0.1` and `::1` without a resolver, and any other name is refused.
+Transport errors are reported by kind, never by the HTTP layer's own text,
+and tokens must have RFC 6750 syntax before they are stored or sent.
 
 Storage lives under `$IMPECCABLE_HOME/account/<hash of the issuer>/`:
 `state.json` (signed in or not, the generation, the backend, the token
 endpoints) and, for the file backend, `credentials.json` (0600 in a 0700
 directory; symlinks and other owners refused). The keychain backend keeps
 the tokens in the macOS Keychain or Windows Credential Manager (service
-`impeccable-cli`, account = issuer). The backend is pinned at sign-in. A
-same-user process can read the file backend.
+`impeccable-cli`, account = issuer plus the account directory, so two
+`IMPECCABLE_HOME`s never share one secret). The backend is pinned at
+sign-in. Signing in again, or signing out, removes the secret from both
+backends and revokes the replaced grant. On Windows the file backend is
+refused unless `IMPECCABLE_HOME` is inside the user's profile: Windows
+files take the ACL of their directory, and only the profile is private by
+default. A same-user process can read the file backend.
 
 One OS lock (`lock` in that directory) covers login, logout and refresh.
 Every write re-reads under it and bumps the generation; a refresh that finds
 the generation moved adopts the newer tokens instead of reusing its refresh
 token (the service revokes a grant on reuse). `logout` writes the signed-out
-state first (the tombstone), deletes the secret, then revokes the refresh
-token at the service, best effort.
+state first (the tombstone), even when nothing was stored, deletes the
+secret, then revokes the refresh token at the service, best effort. A
+`login` still waiting in the browser when a logout lands does not sign the
+machine back in: it revokes the tokens it got and fails.
+
+**Threat model.** These files and the keychain item protect a sign-in from
+other users on the machine and from the network. They do not protect it
+from another process running as the same user, which can read the file
+backend, ask the keychain, or replace the CLI itself.
 
 | Variable | Meaning | Default |
 |---|---|---|
