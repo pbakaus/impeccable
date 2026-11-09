@@ -904,7 +904,9 @@ fn detect_cli(
                     let dir = std::path::Path::new(dir)
                         .strip_prefix(&root)
                         .map(|p| p.to_string_lossy().replace('\\', "/"))
-                        .unwrap_or_else(|_| dir.to_string());
+                        // Discovery stops at the repo's own .git, so a root
+                        // outside it isn't expected; never hash its path.
+                        .unwrap_or_else(|_| "<outside>".to_string());
                     Some(format!("design-system:{dir}={ds:?}"))
                 })
                 .collect();

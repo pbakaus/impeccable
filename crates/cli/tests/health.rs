@@ -416,3 +416,31 @@ fn an_ignored_rule_starts_a_new_ruleset_however_it_is_spelled() {
     assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"]);
     assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"]);
 }
+
+#[test]
+fn a_design_root_above_the_repo_keeps_the_ruleset_the_same_on_every_checkout() {
+    // Catches (review, Cursor): a design root outside the scanned repo putting its absolute path into rulesetId, so two checkouts disagree.
+    let (fake, env) = signed_in("health-outer-design-root");
+    let home = Path::new(&env["IMPECCABLE_HOME"]).to_path_buf();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/antipatterns");
+    let mut roots = Vec::new();
+    for checkout in ["checkout-a", "checkout-b"] {
+        let mono = home.join(checkout).join("mono");
+        let site = mono.join("packages/site");
+        std::fs::create_dir_all(&site).unwrap();
+        std::fs::write(mono.join("package.json"), r#"{"name":"mono","workspaces":["packages/*"]}"#).unwrap();
+        std::fs::write(mono.join("DESIGN.md"), "---\nname: Mono\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n").unwrap();
+        std::fs::write(site.join("package.json"), r#"{"name":"site"}"#).unwrap();
+        std::fs::copy(fixtures.join("cream-palette.html"), site.join("cream-palette.html")).unwrap();
+        git(&site, &["init", "-q", "-b", "main"]);
+        git(&site, &["remote", "add", "origin", "https://github.com/acme/site"]);
+        roots.push(site.canonicalize().unwrap());
+    }
+    for root in &roots {
+        run(&env, root, &["detect", "."]);
+    }
+    let all = scans(&fake);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0]["repoKey"], all[1]["repoKey"]);
+    assert_eq!(all[0]["rulesetId"], all[1]["rulesetId"]);
+}
