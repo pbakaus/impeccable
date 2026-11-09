@@ -7,6 +7,18 @@ fn platform_refuses_non_macos() {
         "Impeccable Loop is only available on macOS."
     );
     assert!(check_platform("macos").is_ok());
+    // Arguments are read before the platform check: usage is the same everywhere, and only real work is macOS-only.
+    let io = Io::stdio();
+    assert!(run_inner(&["bogus".into()], &io, "", "linux")
+        .unwrap_err()
+        .starts_with("Usage: impeccable loop"));
+    assert!(run_inner(&["--help".into()], &io, "", "linux")
+        .unwrap()
+        .starts_with("Usage: impeccable loop"));
+    assert_eq!(
+        run_inner(&["install".into()], &io, "", "linux").unwrap_err(),
+        "Impeccable Loop is only available on macOS."
+    );
 }
 
 #[test]

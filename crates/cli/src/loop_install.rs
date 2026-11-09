@@ -243,7 +243,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
 }
 
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {
-    check_platform(os)?;
+    // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
         return Ok(USAGE.into());
     }
@@ -267,6 +267,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
             _ => return Err(format!("Unknown Loop argument: {arg}\n{USAGE}")),
         }
     }
+    check_platform(os)?;
     if !update
         && io
             .home()
