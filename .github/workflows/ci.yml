@@ -48,6 +48,11 @@ jobs:
       skill_behavior: ${{ steps.plan.outputs.skill_behavior }}
       live_svelte_adapter_deepseek: ${{ steps.plan.outputs.live_svelte_adapter_deepseek }}
     steps:
+      - name: TEMP probe Namespace image
+        run: |
+          gh --version | head -1 || echo "NO_GH"
+          for l in libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libxkbcommon0 libgbm1 libasound2t64 libxcomposite1 libxdamage1 libxrandr2 libpango-1.0-0; do dpkg -s $l >/dev/null 2>&1 && echo "has $l" || echo "MISSING $l"; done
+          cat /etc/os-release | head -2
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
