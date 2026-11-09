@@ -18,6 +18,29 @@ pub(super) fn apply(
             4,
         ));
     }
+    if let Some(old) = old.filter(|o| o.spec.harness == "codex") {
+        // A person who changed the approval since it was written decided otherwise; don't undo that.
+        let text = fs::read_to_string(old.spec.root.join("config.toml")).unwrap_or_default();
+        let changed: Vec<_> = old
+            .spec
+            .mcp_approvals
+            .iter()
+            .filter(|a| {
+                render::approval_value(&text, &a.server).as_deref() != Some(a.mode.as_str())
+            })
+            .map(|a| a.server.clone())
+            .collect();
+        if !changed.is_empty() {
+            return Err((
+                "approval_drift",
+                format!(
+                    "Codex MCP approval changed outside the engine: {}",
+                    changed.join(", ")
+                ),
+                4,
+            ));
+        }
+    }
     let mut snapshots = Vec::new();
     let mut writes = Vec::new();
     let desired_targets = targets(s);
@@ -42,8 +65,23 @@ pub(super) fn apply(
                     .iter()
                     .find(|x| x.path == physical)
                     .and_then(|x| x.before.as_deref());
+                // Hooks stay wanted in this config: leave its features.hooks as the file has it.
+                // An older engine's journal may hold `hooks = false` from before it turned them
+                // on; restoring that here would refuse a reapply the person never blocked.
+                let keep_switch = s.harness == "codex"
+                    && old.spec.harness == "codex"
+                    && !s.hooks.is_empty()
+                    && physical.file_name().is_some_and(|n| n == "config.toml");
+                let old_spec = if keep_switch {
+                    Spec {
+                        hooks: vec![],
+                        ..old.spec.clone()
+                    }
+                } else {
+                    old.spec.clone()
+                };
                 if let Some(updated) = render::remove_owned(
-                    &old.spec,
+                    &old_spec,
                     &physical,
                     base.as_deref().unwrap_or_default(),
                     original,
@@ -222,13 +260,7 @@ pub(super) fn build_resource_records(
     let mut out = Vec::new();
     {
         let mut add = |kind: &str, key: &str, path: &str, original: Option<Value>, last: Value| {
-            let id = format!(
-                "{}:{}:{}:{}",
-                kind,
-                s.harness,
-                path,
-                hex(&Sha256::digest(format!("{}:{key}", s.owner).as_bytes()))
-            );
+            let id = resource_id(s, kind, path, key);
             let mut record = known
                 .iter()
                 .find(|r| r.resource_id == id)
@@ -237,15 +269,19 @@ pub(super) fn build_resource_records(
                     resource_id: id,
                     kind: kind.into(),
                     path: PathBuf::from(path),
-                    state: if original.as_ref() == Some(&last) {
-                        ResourceState::Preexisting
-                    } else {
-                        ResourceState::Created
-                    },
+                    state: ResourceState::Created,
                     original_value: original,
-                    last_written_value: last,
+                    last_written_value: Value::Null,
                     claims: vec![],
                 });
+            // A reapply that writes a new value (another approval mode, edited instruction text)
+            // records it; the original stays what the person had before the first install.
+            record.state = if record.original_value.as_ref() == Some(&last) {
+                ResourceState::Preexisting
+            } else {
+                ResourceState::Created
+            };
+            record.last_written_value = last;
             if !record.claims.contains(&claim) {
                 record.claims.push(claim.clone())
             }
@@ -307,6 +343,18 @@ pub(super) fn build_resource_records(
                     Value::Bool(true),
                 );
             }
+            if path.ends_with("config.toml") && s.harness == "codex" {
+                let before = String::from_utf8_lossy(before);
+                for a in &s.mcp_approvals {
+                    add(
+                        "mcp-approval",
+                        &a.server,
+                        &physical.display().to_string(),
+                        render::approval_value(&before, &a.server).map(Value::String),
+                        Value::String(a.mode.clone()),
+                    );
+                }
+            }
             if path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") {
                 let marker = format!("impeccable:{}", s.owner);
                 let start = format!("<!-- {marker} start -->");
@@ -354,6 +402,17 @@ pub(super) fn build_resource_records(
         }
     }
     out
+}
+/// One file resource's id: its kind, harness and path, and a digest of the owner and key
+/// (an approval's server, a hook's event and entry), so `status` can find the key again.
+pub(super) fn resource_id(s: &Spec, kind: &str, path: &str, key: &str) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        kind,
+        s.harness,
+        path,
+        hex(&Sha256::digest(format!("{}:{key}", s.owner).as_bytes()))
+    )
 }
 pub(super) fn block_body<'a>(text: &'a str, start: &str, end: &str) -> Option<&'a str> {
     if text.matches(start).count() != 1
@@ -467,6 +526,34 @@ pub(super) fn has_other_claim(
         })
 }
 
+/// Another Codex installation's journal sets an approval on `server` in this same file.
+fn has_other_approval(home: &Path, path: &Path, exclude: &str, server: &str) -> bool {
+    fs::read_dir(home)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            let p = e.path();
+            if p.extension().is_none_or(|x| x != "json")
+                || p.file_name().is_some_and(|n| {
+                    let n = n.to_string_lossy();
+                    n.ends_with("pending.json") || n == format!("{exclude}.json")
+                })
+            {
+                return false;
+            }
+            fs::read(p)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Journal>(&b).ok())
+                .is_some_and(|j| {
+                    j.spec.harness == "codex"
+                        && j.snapshots.iter().any(|x| x.path == path)
+                        && j.spec.mcp_approvals.iter().any(|a| a.server == server)
+                })
+        })
+}
+
 pub(super) fn undo(
     s: &Spec,
     j: Option<&Journal>,
@@ -479,6 +566,37 @@ pub(super) fn undo(
     let mut removed = Vec::new();
     for snap in &j.snapshots {
         if has_other_claim(_home, &snap.path, &installation_id(s), &s.owner, &s.harness) {
+            // Codex's features.hooks is shared, so it stays for the other installation, but an
+            // approval belongs to this one: put each back unless another installation set the
+            // same server too (#1342 review).
+            if j.spec.harness == "codex"
+                && snap.path.file_name().is_some_and(|n| n == "config.toml")
+                && !j.spec.mcp_approvals.is_empty()
+            {
+                let own = Spec {
+                    hooks: vec![],
+                    mcp_approvals: j
+                        .spec
+                        .mcp_approvals
+                        .iter()
+                        .filter(|a| {
+                            !has_other_approval(_home, &snap.path, &installation_id(s), &a.server)
+                        })
+                        .cloned()
+                        .collect(),
+                    ..j.spec.clone()
+                };
+                let current = fs::read(&snap.path).ok();
+                let updated = render::restore_approvals(
+                    &own,
+                    current.as_deref().unwrap_or_default(),
+                    snap.before.as_deref(),
+                )?;
+                if current.as_deref() != Some(updated.as_slice()) {
+                    safe_write(&snap.path, current.as_deref(), &updated)?;
+                    removed.push(snap.path.clone());
+                }
+            }
             continue;
         }
         let current = fs::read(&snap.path).ok();
@@ -494,8 +612,9 @@ pub(super) fn undo(
             }
             removed.push(snap.path.clone())
         } else {
+            // What was written, not what the caller asks about now.
             match render::remove_owned(
-                s,
+                &j.spec,
                 &snap.path,
                 current.as_deref().unwrap_or_default(),
                 snap.before.as_deref(),
