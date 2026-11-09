@@ -81,6 +81,17 @@ impl Session {
         Ok(self.secret.access_token.clone())
     }
 
+    /// [`Session::access_token`] for a caller that would rather fail than
+    /// wait more than `wait` for another command's sign-in step.
+    pub fn access_token_within(&mut self, wait: std::time::Duration) -> Result<String, SessionError> {
+        if self.secret.access_expires_at > now() + SKEW_SECS {
+            return Ok(self.secret.access_token.clone());
+        }
+        let lock = self.store.lock_for(wait).map_err(SessionError::Local)?;
+        self.refresh_holding(&lock)?;
+        Ok(self.secret.access_token.clone())
+    }
+
     /// Rotate the tokens under the lock (see the module note).
     pub fn refresh(&mut self) -> Result<(), SessionError> {
         let lock = self.store.lock().map_err(SessionError::Local)?;

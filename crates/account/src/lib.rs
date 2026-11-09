@@ -4,6 +4,7 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod health;
 pub mod http;
 pub mod oauth;
 pub mod plans;

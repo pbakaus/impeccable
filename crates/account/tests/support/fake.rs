@@ -18,6 +18,11 @@ pub struct Knobs {
     pub callback_state: Option<String>,
     pub entitled: bool,
     pub access_ttl: u64,
+    /// Design health switched on: `scopes_supported` lists `health:write`
+    /// and the two `/cli/v1/health` routes answer (404 otherwise).
+    pub health: bool,
+    /// The grant lacks `health:write` (the person unchecked it): uploads 403.
+    pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
     /// `(method, path) -> (status, headers, body)`.
     pub routes: HashMap<(String, String), (u16, Vec<(String, String)>, Vec<u8>)>,
@@ -46,6 +51,13 @@ impl Gate {
 pub struct Record {
     pub hits: HashMap<String, usize>,
     pub revoked: Vec<String>,
+    /// The `scope` of each authorize request.
+    pub scopes: Vec<String>,
+    /// Each health upload that passed the service's checks.
+    pub scans: Vec<serde_json::Value>,
+    /// Each body the service refused, with why.
+    pub refused: Vec<(String, serde_json::Value)>,
+    pub forgets: usize,
     codes: HashMap<String, (String, String)>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
@@ -271,15 +283,26 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
+                    "scopes_supported": if knobs.lock().unwrap().health {
+                        serde_json::json!(["account:read", "rules:read", "health:write"])
+                    } else {
+                        serde_json::json!(["account:read", "rules:read"])
+                    },
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
                 let redirect = q.get("redirect_uri").cloned().unwrap_or_default();
+                let scope = q.get("scope").cloned().unwrap_or_default();
+                record.lock().unwrap().scopes.push(scope.clone());
+                // The real service refuses a scope it doesn't list.
+                let scope_ok = scope == "account:read rules:read"
+                    || (scope == "account:read rules:read health:write"
+                        && knobs.lock().unwrap().health);
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
                     && q.get("code_challenge").is_some_and(|c| c.len() == 43)
-                    && q.get("scope").map(String::as_str) == Some("account:read rules:read")
+                    && scope_ok
                     && redirect.starts_with("http://127.0.0.1:")
                     && redirect.ends_with("/callback");
                 if !ok {
@@ -327,6 +350,42 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         200,
                         serde_json::json!({ "pro": false, "reason": "not_entitled" }),
                     )
+                }
+            }
+            ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
+                let k = knobs.lock().unwrap();
+                let authorized = bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t));
+                if !k.health {
+                    (404, vec![], vec![])
+                } else if !authorized {
+                    (401, vec![], vec![])
+                } else if k.health_denied {
+                    (
+                        403,
+                        vec![(
+                            "www-authenticate".into(),
+                            r#"Bearer error="insufficient_scope", scope="health:write""#.into(),
+                        )],
+                        vec![],
+                    )
+                } else if path.ends_with("/forget") {
+                    record.lock().unwrap().forgets += 1;
+                    json(200, serde_json::json!({ "forgot": 1 }))
+                } else {
+                    let v: serde_json::Value =
+                        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+                    match parse_scan(&v) {
+                        Ok(()) => {
+                            record.lock().unwrap().scans.push(v);
+                            json(200, serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }))
+                        }
+                        Err(field) => {
+                            record.lock().unwrap().refused.push((field.to_string(), v));
+                            json(400, serde_json::json!({ "error": "invalid_request", "field": field }))
+                        }
+                    }
                 }
             }
             _ => (404, vec![], vec![]),
@@ -521,4 +580,74 @@ impl Fake {
             serde_json::json!({ "keys": keys }).to_string(),
         );
     }
+}
+
+/// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),
+/// ported so a body it would refuse fails a test here first. The clock
+/// window is left out: tests don't control the CLI's clock.
+pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
+    use serde_json::Value;
+    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+    let count = |v: &Value| v.as_u64().is_some_and(|n| n <= 1_000_000);
+    let o = b.as_object().ok_or("not an object")?;
+    const KEYS: &[&str] = &["version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage", "rulesetId",
+        "fingerprintVersion", "engineVersion", "filesScanned", "findings", "advisory", "rules", "fingerprints",
+        "truncated", "label"];
+    if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
+        return Err("unknown field");
+    }
+    if b["version"] != 1 { return Err("version"); }
+    if b["coverage"] != "full" { return Err("coverage"); }
+    let id = b["scanId"].as_str().ok_or("scanId")?;
+    let parts: Vec<&str> = id.split('-').collect();
+    if parts.iter().map(|p| p.len()).collect::<Vec<_>>() != [8, 4, 4, 4, 12] || !parts.iter().all(|p| hex(p, p.len())) {
+        return Err("scanId");
+    }
+    for k in ["repoKey", "streamKey", "rulesetId"] {
+        if !b[k].as_str().is_some_and(|s| hex(s, 64)) { return Err("key"); }
+    }
+    let at = b["scannedAt"].as_str().ok_or("scannedAt")?;
+    if at.len() != 24 || !at.ends_with('Z') || &at[10..11] != "T" { return Err("scannedAt"); }
+    if !b["fingerprintVersion"].as_u64().is_some_and(|n| (1..=1000).contains(&n)) { return Err("fingerprintVersion"); }
+    let ev = b["engineVersion"].as_str().ok_or("engineVersion")?;
+    if ev.len() > 64 || ev.split(['-', '+']).next().unwrap().split('.').count() != 3 { return Err("engineVersion"); }
+    for k in ["filesScanned", "findings", "advisory"] {
+        if !count(&b[k]) { return Err("count"); }
+    }
+    let rules = b["rules"].as_object().ok_or("rules")?;
+    if rules.len() > 300 { return Err("rules"); }
+    let (mut f, mut a) = (0, 0);
+    for (id, r) in rules {
+        let ok = !id.is_empty() && id.len() <= 80
+            && id.bytes().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && id.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'/' || c == b'-');
+        let r = r.as_object().ok_or("rules")?;
+        if !ok || r.keys().any(|k| k != "findings" && k != "advisory") || !count(&r["findings"]) || !count(&r["advisory"]) {
+            return Err("rules");
+        }
+        f += r["findings"].as_u64().unwrap();
+        a += r["advisory"].as_u64().unwrap();
+    }
+    if Some(f) != b["findings"].as_u64() || Some(a) != b["advisory"].as_u64() { return Err("rules do not sum"); }
+    if b["fingerprints"].is_null() {
+        if b["truncated"] != true { return Err("fingerprints"); }
+    } else {
+        if !(b.get("truncated").is_none() || b["truncated"] == false) { return Err("truncated"); }
+        let fps = b["fingerprints"].as_object().ok_or("fingerprints")?;
+        if fps.len() > 5000 { return Err("fingerprints"); }
+        let mut total = 0;
+        for (fp, n) in fps {
+            if !hex(fp, 32) || !count(n) || n == 0 { return Err("fingerprints"); }
+            total += n.as_u64().unwrap();
+        }
+        if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
+    }
+    if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
+        let l = l.as_str().ok_or("label")?.trim();
+        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
+            return Err("label");
+        }
+    }
+    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
+    Ok(())
 }
