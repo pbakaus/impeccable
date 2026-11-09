@@ -465,13 +465,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted, recoveryRevision\);[\s\S]*?\}, 1200\);/,
-      'foreground cleanup should be immediate while the no-HMR DOM fallback stays deferred',
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?findVariantsWrapper\(accepted\.id\)[\s\S]*?hasFrameworkHmrOwnership\(wrapper\)[\s\S]*?commitAcceptedVariantToDom\(wrapper, accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted, recoveryRevision\);[\s\S]*?\}, 1200\);/,
+      'foreground cleanup should be immediate and commit a non-HMR wrapper before the variant-state stylesheet goes, while the HMR and late-wrapper fallback stays deferred',
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending, recoveryRevision\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
-      'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
+      /function ensureAcceptedDomClean\(pending, recoveryRevision\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?commitAcceptedVariantToDom\(wrapper, pending\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
+      'post-cleanup fallback should commit the accepted variant instead of preserving live runtime wrappers',
     );
     assert.match(
       SOURCE,
@@ -485,8 +485,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /if \(!accepted\) \{[\s\S]{0,80}?wrapper\.remove\(\);[\s\S]{0,80}?continue;/,
-      'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
+      /function commitAcceptedVariantToDom\(wrapper, pending\)[\s\S]*?style\[data-impeccable-css\][\s\S]*?setAttribute\('data-impeccable-accepted', pending\.id\)[\s\S]*?style\.display = 'contents'[\s\S]*?variantParamDecls\(pending\.paramValues\)[\s\S]*?\n    wrapper\.remove\(\);/,
+      'the commit should keep the scoped style and a display: contents shell with the tuned params, and always remove the wrapper, even when the accepted variant node is missing',
     );
     assert.match(
       SOURCE,
@@ -507,6 +507,27 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function ensureAcceptedDomClean\(pending, recoveryRevision\) \{[\s\S]{0,250}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]{0,180}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]{0,180}?location\.reload\(\);/,
       'accepted-session cleanup and its reload fallback must yield to a newer Live session',
+    );
+  });
+
+  it('moves every spelling of a variant selector to the accepted session scope (#1310)', () => {
+    const body = SOURCE.match(/function scopeAcceptedCss\([\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const scopeAcceptedCss = new Function(`${body}\nreturn scopeAcceptedCss;`)();
+    const pending = { id: 's1', variant: '3' };
+    for (const spelling of [
+      '[data-impeccable-variant="3"]',
+      '[data-impeccable-variant = "3"]',
+      "[ data-impeccable-variant='3' ]",
+      '[data-impeccable-variant=3]',
+      '[data-impeccable-variant="3" i]',
+    ]) {
+      assert.equal(scopeAcceptedCss(`@scope (${spelling}) {}`, pending), '@scope ([data-impeccable-accepted="s1"]) {}', spelling);
+    }
+    assert.equal(
+      scopeAcceptedCss('[data-impeccable-variant = "2"] > h1 {}', pending),
+      '[data-impeccable-accepted="s1:2"] > h1 {}',
+      'rules for the other variants must match nothing',
     );
   });
 
@@ -830,7 +851,7 @@ describe('live-browser source contracts', () => {
       'function mountedParameterCount()',
       'function readVisibleVariantFromDOM(sessionId)',
       'function snapshotAcceptedVariantDom(sessionId, variantId)',
-      'function commitAcceptedVariantToDom(sessionId, variantId)',
+      'function commitAcceptedVariantToDom(wrapper, pending)',
     ]) {
       const at = SOURCE.indexOf(fn);
       assert.ok(at > 0, `${fn} should exist`);
