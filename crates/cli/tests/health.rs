@@ -111,8 +111,8 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     let first = run(&env, &root, &["detect", "--json", "."]);
     let body = scans(&fake).pop().expect("one upload");
     assert_eq!(body["coverage"], "full");
-    // The folder name waits for the decider (REN-1559 question 3).
-    assert!(body.get("label").is_none(), "{body}");
+    // The repo's name from its remote, never the folder's (Paul, REN-1553, 10 Nov).
+    assert_eq!(body["label"], "my-site", "{body}");
     assert_eq!(body["filesScanned"], 4);
     assert!(body["findings"].as_u64().unwrap() >= 2, "{body}");
     assert!(body["advisory"].as_u64().unwrap() >= 1, "{body}");

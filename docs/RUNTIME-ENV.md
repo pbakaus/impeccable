@@ -112,7 +112,7 @@ The checks that read only the environment, `health.json` and the sign-in's `stat
 - `streamKey` hashes `repoKey` with the branch git names (`HEAD` when detached).
 - `fingerprints` count each non-advisory finding by the first 16 bytes of the SHA-256 of its rule id, its path from the repo root with `/`, and its snippet with whitespace collapsed. The line is left out, so code that moves isn't counted as fixed and new. More than 5,000 distinct fingerprints, or a body over 256 KB, sends `fingerprints: null, truncated: true`.
 - `rulesetId` hashes the engine version, `fingerprintVersion`, every enabled rule id, and the settings that decide which findings exist: config on or off, inline ignores, design system on or off and the content of every design system the scan read (a changed DESIGN.md starts a new baseline instead of reading as fixes), `--no-advisory`, `advisoryRules`, `ignoreFiles`, `ignoreValues` and `extensions`.
-- `label` is not sent yet. Sending the repo folder's name waits for the decider (REN-1559 question 3, `SEND_FOLDER_LABEL`), since a folder name can say more than meant.
+- `label` is the repo's name: the last path segment of the normalized `origin` remote (`acme/my-site` sends `my-site`). A repo without a remote sends none. The folder's name is never sent, since it can say more than meant (Paul's choice, REN-1553).
 
 Every hash is length-prefixed. A change to the fingerprint or `rulesetId` recipe bumps `FINGERPRINT_VERSION`, so the service starts a new baseline. A body the service would refuse (a rule id outside `^[a-z0-9][a-z0-9/-]{0,79}$`, more than 300 rules, an engine version that isn't semver) is not sent.
 

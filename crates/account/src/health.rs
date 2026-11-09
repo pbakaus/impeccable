@@ -33,9 +33,6 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
 /// Each git question (top level, remote, branch).
 const GIT_DEADLINE: Duration = Duration::from_secs(2);
-/// Send the repo folder's name as `label`. Off until the decider answers
-/// REN-1559 question 3: a folder name can say more than meant.
-const SEND_FOLDER_LABEL: bool = false;
 const MAX_RULES: usize = 300;
 const MAX_FINGERPRINTS: usize = 5000;
 const MAX_LABEL: usize = 100;
@@ -332,9 +329,9 @@ impl Repo {
         if !same(&top, root) {
             return None;
         }
-        let key = match git(root, &["config", "--get", "remote.origin.url"])
-            .and_then(|r| normalize_remote(&r))
-        {
+        let remote = git(root, &["config", "--get", "remote.origin.url"])
+            .and_then(|r| normalize_remote(&r));
+        let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
         };
@@ -344,11 +341,9 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        // The folder name can say more than the person meant to share, so it
-        // waits for the decider's answer (REN-1559 question 3).
-        let label = SEND_FOLDER_LABEL
-            .then(|| Path::new(root).file_name().and_then(|n| label(&n.to_string_lossy())))
-            .flatten();
+        // The repo's name from its remote, never the folder's: a folder name
+        // can say more than the person meant to share (Paul, REN-1553).
+        let label = remote.as_deref().and_then(repo_label);
         Some(Repo { key, stream, label })
     }
 }
@@ -581,8 +576,16 @@ fn semver(v: &str) -> bool {
             .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-'))
 }
 
-/// The folder name as the repo's label, unless it looks like an address or
-/// carries invisible characters (the service's rule).
+/// The repo's name, the last path segment of its normalized remote, as its
+/// label. No remote, no label.
+fn repo_label(remote: &str) -> Option<String> {
+    let path = remote.split_once("://").map_or(remote, |(_, rest)| rest);
+    let (_, path) = path.split_once('/')?;
+    label(path.rsplit('/').find(|s| !s.is_empty())?)
+}
+
+/// A name as a label, unless it looks like an address or carries invisible
+/// characters (the service's rule).
 fn label(name: &str) -> Option<String> {
     let l = name.trim();
     let format = |c: char| {
@@ -748,6 +751,10 @@ mod tests {
         assert_eq!(label("me@host"), None);
         assert_eq!(label("a\u{200B}b"), None);
         assert_eq!(label(&"x".repeat(101)), None);
+        // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
+        assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
+        assert_eq!(repo_label("https://gitlab.com/group/sub/tool").as_deref(), Some("tool"));
+        assert_eq!(repo_label("https://github.com"), None);
         assert!(semver("0.1.19") && semver("1.0.0-rc.1+b5") && !semver("0.1") && !semver("01.0.0"));
         let id = scan_id();
         assert!(id.len() == 36 && &id[14..15] == "4", "{id}");
