@@ -12,8 +12,10 @@
 //! discovery stays off and Stop scans the cache alone, as before.
 //!
 //! The walk is bounded (depth, entries visited, files kept) because it runs on
-//! every Stop. It skips hidden directories, dependency and build output, and
-//! refuses to walk a home directory or a filesystem root. Discovered files
+//! every Stop. It skips hidden directories, dependency and build output,
+//! non-regular files and files over the size limit, and refuses to walk a
+//! home directory or a filesystem root (compared as real paths). It runs only
+//! in a project root, the rule the per-edit pass keys its cache by. Discovered files
 //! carry no baseline, so their findings keep the attribution-unknown note.
 
 use std::path::Path;
@@ -68,11 +70,17 @@ fn now_ms() -> u64 {
 }
 
 /// UI files under `root` modified at or after `since_ms`, newest first.
-pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[ExtensionEntry]) -> Vec<String> {
-    let root_path = Path::new(root);
-    if root.is_empty() || root == home || root_path.parent().is_none() {
+/// Regular files only (a named pipe would block the read), none over
+/// `max_bytes` when that limit is set.
+pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[ExtensionEntry], max_bytes: f64) -> Vec<String> {
+    // Compare real paths: a cwd that is a symlink to the home dir or a
+    // filesystem root must not get walked under another name.
+    let real = |p: &str| std::fs::canonicalize(p).ok();
+    let Some(real_root) = real(root) else { return Vec::new() };
+    if real_root.parent().is_none() || real(home).is_some_and(|h| h == real_root) {
         return Vec::new();
     }
+    let root_path = Path::new(root);
     let cutoff = UNIX_EPOCH + std::time::Duration::from_millis(since_ms.saturating_sub(SLACK_MS));
     let mut found: Vec<(SystemTime, String)> = Vec::new();
     let mut visited = 0usize;
@@ -95,12 +103,19 @@ pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[Extens
                 }
                 continue;
             }
+            if !kind.is_file() {
+                continue;
+            }
             let path = entry.path().to_string_lossy().into_owned();
             let ext = js::to_lower_case(&jsp::extname(&path));
             if !ALLOWED_EXTS.contains(&ext.as_str()) && match_configured_extension(&path, configured).is_none() {
                 continue;
             }
-            let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else { continue };
+            let Ok(meta) = entry.metadata() else { continue };
+            if max_bytes > 0.0 && meta.len() as f64 > max_bytes {
+                continue;
+            }
+            let Ok(modified) = meta.modified() else { continue };
             if modified >= cutoff {
                 found.push((modified, path));
             }
