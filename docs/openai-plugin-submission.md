@@ -4,16 +4,16 @@ Use this packet for the initial public submission of Impeccable. The release bui
 
 ## Submission type
 
-Choose **Skills only**. Impeccable has no MCP server. The package includes one skill, its referenced scripts and files, a branded icon, and a `PostToolUse` lifecycle hook.
+Choose **Skills only**. Impeccable has no MCP server. The package includes one skill, its referenced scripts and files, and a branded icon. It bundles no lifecycle hook, because OpenAI's review no longer accepts plugins that do.
 
-The hook runs locally after supported file edits, checks changed UI files for known anti-patterns, and returns findings to the active coding-agent session. It does not call an Impeccable service. Codex asks each user to review and trust the hook before it can run.
+Without a hook, `impeccable context` tells the agent to run the bundled detector over the UI files it changed once the work is finished. The detector runs locally and does not call an Impeccable service. Per-edit checks need the hook, which a plugin install cannot wire today (`impeccable hooks on` finds no provider skill folder from the plugin cache). `npx impeccable install` sets it up, and Codex asks each user to review and trust it before it runs.
 
 ## Listing
 
 - Plugin name: Impeccable
 - Publisher: Renaissance Geek Inc
 - Short description: Design and refine interfaces
-- Long description: Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 23 focused design commands, live browser iteration for exploring visual directions, and automatic checks that flag common design anti-patterns as you work.
+- Long description: Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 23 focused design commands, live browser iteration for exploring visual directions, and a bundled detector that flags common design anti-patterns.
 - Category: Creativity
 - Website: https://impeccable.style
 - Support: https://github.com/pbakaus/impeccable/issues
@@ -88,14 +88,14 @@ Use the verified Renaissance Geek Inc business identity. The generated manifest 
 
 ## Initial release notes
 
-Initial submission of Impeccable, a frontend design skill for ChatGPT and Codex. It packages one skill with 23 design workflows, referenced scripts and guidance, a local anti-pattern detector, and an optional `PostToolUse` hook. No MCP server, authentication, demo account, or private network is required. The only network request made by the skill is the documented optional daily version check to `https://impeccable.style/api/version`.
+Initial submission of Impeccable, a frontend design skill for ChatGPT and Codex. It packages one skill with 23 design workflows, referenced scripts and guidance, and a local anti-pattern detector. No MCP server, authentication, demo account, or private network is required. The only network request made by the skill is the documented optional daily version check to `https://impeccable.style/api/version`.
 
 ## Final checks
 
 - Confirm Apps Management write access for the submitting role.
 - Select a verified developer or business identity and align the manifest and listing publisher name.
 - Confirm the website, support, privacy, and terms links are public.
-- Upload `dist/openai-plugin.zip` and confirm the scanner recognizes `skills/impeccable/SKILL.md` and `hooks/hooks.json`.
+- Upload `dist/openai-plugin.zip` and confirm the scanner recognizes `skills/impeccable/SKILL.md` and finds no `hooks/` directory.
 - Enter exactly five positive and three negative tests from this packet.
-- Review the hook description and the optional version check against the privacy policy.
+- Review the optional version check against the privacy policy.
 - Submit for review only after the automated scan is clean.

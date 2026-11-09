@@ -16,3 +16,5 @@ mod font_render;
 mod router;
 pub use router::{run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+mod loop_install;
