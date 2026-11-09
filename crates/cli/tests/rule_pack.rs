@@ -35,11 +35,18 @@ impl RulePack for Pack {
         ROWS
     }
     fn check_text(&self, content: &str, path: &str, _: &str) -> Vec<Finding> {
-        if content.contains("PACK_MARKER") {
-            vec![finding_for(&ROWS[0], path, "PACK_MARKER", 1.)]
-        } else {
-            vec![]
-        }
+        // One finding per marker, on its own line, so a test can tell a
+        // finding the file had before an edit from one the edit added.
+        content
+            .lines()
+            .enumerate()
+            .flat_map(|(i, line)| {
+                ["PACK_MARKER", "PACK_ADDED"]
+                    .into_iter()
+                    .filter(move |m| line.contains(m))
+                    .map(move |m| finding_for(&ROWS[0], path, m, (i + 1) as f64))
+            })
+            .collect()
     }
     fn check_element_dom(&self, dom: &dyn Dom, el: ElId) -> Vec<BrowserFinding> {
         if dom.direct_text_nodes(el).concat().contains("PACK_MARKER") {
@@ -216,6 +223,39 @@ fn cli_hooks_receive_source_and_static_hooks() {
             let output = f.run(&[verb], &event, installed());
             assert!(!baseline.1.contains(id), "{baseline:?}");
             assert!(output.1.contains(id), "{verb} {target}: {output:?}");
+        }
+    }
+}
+
+#[test]
+fn cli_stop_pass_reports_only_pack_findings_the_session_added() {
+    // Catches (review, Greptile): the pack missing from the Stop baseline or the Stop scan while PostToolUse tests still pass.
+    let f = Fixture::new();
+    fs::write(f.0.join("package.json"), "{}").unwrap();
+    let file = f.0.join("app.tsx");
+    let before = "const title = 'PACK_MARKER';\n";
+    let after = format!("{before}const added = 'PACK_ADDED';\n");
+    for (session, pack) in [("none", InstalledPack::NONE), ("pack", installed())] {
+        fs::write(&file, &after).unwrap();
+        let edit = serde_json::json!({
+            "session_id": session, "cwd": f.0, "hook_event_name": "PostToolUse",
+            "tool_name": "Edit",
+            "tool_input": {"file_path": file, "old_string": before, "new_string": after},
+            "tool_response": {"filePath": file, "originalFile": before, "oldString": before,
+                "newString": after, "replaceAll": false, "userModified": false},
+        })
+        .to_string();
+        f.run(&["hook"], &edit, pack);
+        let stop = serde_json::json!({
+            "session_id": session, "cwd": f.0, "hook_event_name": "Stop", "stop_hook_active": false,
+        })
+        .to_string();
+        let output = f.run(&["hook"], &stop, pack).1;
+        if session == "none" {
+            assert!(!output.contains("testcli/"), "{output}");
+        } else {
+            assert!(output.contains("L2 [testcli/source] [new]"), "the added finding is reported: {output}");
+            assert!(!output.contains("L1 [testcli/source]"), "the finding the file already had stays hidden: {output}");
         }
     }
 }
