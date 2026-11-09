@@ -1137,3 +1137,144 @@ fn list_reports_every_installation_without_paths_and_marks_edited_entries() {
         json!([])
     );
 }
+fn approve(servers: &[&str], mode: &str) -> Vec<McpApproval> {
+    servers
+        .iter()
+        .map(|s| McpApproval {
+            server: (*s).into(),
+            mode: mode.into(),
+        })
+        .collect()
+}
+fn approval_states(s: &Spec, j: &Journal) -> Vec<String> {
+    let mut v: Vec<(String, String)> = j
+        .resources
+        .iter()
+        .filter(|r| r.kind == "mcp-approval")
+        .map(|r| {
+            let state = if crate::targets::resource_matches(s, j, r).unwrap() {
+                format!("{:?}", r.state).to_lowercase()
+            } else {
+                "conflict".into()
+            };
+            (r.resource_id.clone(), state)
+        })
+        .collect();
+    v.sort();
+    v.into_iter().map(|(_, s)| s).collect()
+}
+#[test]
+#[cfg(unix)]
+fn undo_of_one_codex_owner_restores_its_approvals_in_a_shared_config() {
+    // Catches: undo skipping a config.toml another Codex installation claims, which left this
+    // installation's approval on with no journal to remove it (#1342 review, render.rs:99).
+    use std::os::unix::fs::symlink;
+    let home = temp();
+    let (root_a, root_b) = (temp(), temp());
+    let config = home.join("config.toml");
+    let original = "[mcp_servers.one]\nurl = \"1\"\n\n[mcp_servers.two]\nurl = \"2\"\n";
+    fs::write(&config, original).unwrap();
+    symlink(&config, root_a.join("config.toml")).unwrap();
+    symlink(&config, root_b.join("config.toml")).unwrap();
+    let mut a = spec("codex", root_a);
+    a.instruction = None;
+    a.mcp_approvals = approve(&["one"], "approve");
+    let mut b = spec("codex", root_b);
+    b.instruction = None;
+    b.owner = "impeccable-design".into();
+    b.mcp_approvals = approve(&["two"], "approve");
+    let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
+    let pa = home.join(format!("{}.json", installation_id(&a)));
+    write_journal(&pa, &ja).unwrap();
+    let jb = apply(&b, None, &home, &home.join("b"), None).unwrap();
+    write_journal(&home.join(format!("{}.json", installation_id(&b))), &jb).unwrap();
+    undo(&a, Some(&ja), &home).unwrap();
+    let _ = fs::remove_file(pa);
+    let left = fs::read_to_string(&config).unwrap();
+    assert_eq!(render::approval_value(&left, "one"), None);
+    assert_eq!(
+        render::approval_value(&left, "two").as_deref(),
+        Some("approve")
+    );
+    undo(&b, Some(&jb), &home).unwrap();
+    assert_eq!(fs::read_to_string(&config).unwrap(), original);
+}
+#[test]
+fn status_checks_each_approval_on_its_own_server() {
+    // Catches: status matching an approval's mode on any server, so a change on one server
+    // hid behind another with the same mode (#1342 review, targets.rs:163).
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(
+        &config,
+        "[mcp_servers.one]\nurl = \"1\"\n\n[mcp_servers.two]\nurl = \"2\"\n",
+    )
+    .unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.mcp_approvals = approve(&["one", "two"], "approve");
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let text = fs::read_to_string(&config).unwrap();
+    let at = text.find("[mcp_servers.two]").unwrap();
+    fs::write(
+        &config,
+        format!(
+            "{}{}",
+            &text[..at],
+            text[at..].replacen("\"approve\"", "\"prompt\"", 1)
+        ),
+    )
+    .unwrap();
+    let mut states = approval_states(&s, &j);
+    states.sort();
+    assert_eq!(states, ["conflict", "created"]);
+}
+#[test]
+fn reapply_with_a_new_approval_mode_records_the_mode_it_wrote() {
+    // Catches: a reused resource record keeping the old mode, so status called a successful
+    // change a conflict (#1342 review, resources.rs:341).
+    let root = temp();
+    let home = temp();
+    fs::write(root.join("config.toml"), "[mcp_servers.one]\nurl = \"1\"\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.mcp_approvals = approve(&["one"], "approve");
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    s.mcp_approvals = approve(&["one"], "prompt");
+    let j = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap();
+    assert_eq!(approval_states(&s, &j), ["created"]);
+}
+#[test]
+fn reapply_keeps_hooks_on_when_an_older_journal_recorded_them_off() {
+    // Catches: reapply restoring an older engine's recorded `hooks = false` before rendering,
+    // then refusing although the person's file has hooks on (#1342 review, render.rs:595).
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(&config, "[features]\nhooks = true\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.hooks.push(Hook {
+        event: "SessionStart".into(),
+        matcher: None,
+        command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
+    });
+    let mut j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let physical = canonical_target(&config).unwrap();
+    for snap in j.snapshots.iter_mut().filter(|x| x.path == physical) {
+        snap.before = Some(b"[features]\nhooks = false\n".to_vec());
+    }
+    write_journal(&home.join(format!("{}.json", installation_id(&s))), &j).unwrap();
+    let j = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap();
+    assert!(fs::read_to_string(&config)
+        .unwrap()
+        .contains("hooks = true"));
+    undo(&s, Some(&j), &home).unwrap();
+    assert!(fs::read_to_string(&config)
+        .unwrap()
+        .contains("hooks = false"));
+}

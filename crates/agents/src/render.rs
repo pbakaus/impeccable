@@ -554,7 +554,7 @@ fn set_approval(
     }
 }
 /// Undo: put back each approval the engine changed, if it still holds the written mode.
-fn restore_approvals(
+pub(super) fn restore_approvals(
     s: &Spec,
     current: &[u8],
     original: Option<&[u8]>,
