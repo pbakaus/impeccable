@@ -138,8 +138,27 @@ impl Paths {
     fn attempt(&self) -> PathBuf {
         self.install.join("attempt")
     }
+    /// "Not entitled" from builds before per-sign-in markers: it applies to
+    /// every sign-in.
     fn not_entitled(&self) -> PathBuf {
         self.dir.join("not-entitled")
+    }
+    /// "Not entitled" for one sign-in (`State::login`), kept apart so an
+    /// answer about one sign-in can never replace or stand in for another's.
+    fn not_entitled_for(&self, login: u64) -> PathBuf {
+        self.dir.join(format!("not-entitled-{login}"))
+    }
+    /// Every "not entitled" marker, any sign-in.
+    fn not_entitled_all(&self) -> Vec<PathBuf> {
+        std::fs::read_dir(&self.dir)
+            .map(|d| {
+                d.flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("not-entitled")))
+                    .filter(|p| !p.to_string_lossy().ends_with("-said"))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
     /// When "this account doesn't include them" was last said.
     fn not_entitled_said(&self) -> PathBuf {
@@ -272,21 +291,26 @@ fn forget_now(account: &Account, not_entitled: bool, login: Option<u64>) {
 /// busy lock, and dispatch honors it only for that sign-in.
 fn record_refusal(paths: &Paths, login: Option<u64>) {
     if private_dir(&paths.dir).is_ok() {
-        let text = match login {
-            Some(l) => format!("{} {l}", now()),
-            None => now().to_string(),
-        };
-        let _ = write_private(&paths.not_entitled(), text.as_bytes());
+        let path = login.map_or_else(|| paths.not_entitled(), |l| paths.not_entitled_for(l));
+        let _ = write_private(&path, now().to_string().as_bytes());
     }
 }
 
-/// The recorded "not entitled": when, and for which sign-in (`None` for
-/// every sign-in, as older builds wrote it).
-fn refusal(paths: &Paths) -> Option<(u64, Option<u64>)> {
-    let text = read_text(&paths.not_entitled())?;
-    let mut parts = text.split_whitespace();
-    let at = parts.next()?.parse().ok()?;
-    Some((at, parts.next().and_then(|l| l.parse().ok())))
+/// When "not entitled" was recorded for sign-in `login` (or, from an older
+/// build, for every sign-in).
+fn refusal(paths: &Paths, login: u64) -> Option<u64> {
+    let read = |p: PathBuf| read_text(&p).and_then(|t| t.trim().parse::<u64>().ok());
+    match (read(paths.not_entitled_for(login)), read(paths.not_entitled())) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Remove every "not entitled" marker (a new sign-in or a sign-out).
+fn clear_refusals(paths: &Paths) {
+    for p in paths.not_entitled_all() {
+        let _ = std::fs::remove_file(p);
+    }
 }
 
 /// Apply an entitlement answer the service gave about sign-in `login`, under
@@ -317,7 +341,9 @@ pub fn settle(account: &Account, login: u64, pro: bool) {
     }
     // Lift an earlier "no" and its retry clocks; without one, leave the
     // clocks alone so a failing install keeps its pace.
-    if std::fs::remove_file(paths.not_entitled()).is_ok() {
+    let lifted = std::fs::remove_file(paths.not_entitled_for(login)).is_ok()
+        | std::fs::remove_file(paths.not_entitled()).is_ok();
+    if lifted {
         remove_attempts(&paths);
     }
 }
@@ -352,7 +378,7 @@ fn forget_if(account: &Account, login: Option<u64>, not_entitled: bool) {
 pub fn reset_holding(_lock: &Lock, account: &Account) {
     let paths = Paths::new(account);
     remove_installed(&paths);
-    let _ = std::fs::remove_file(paths.not_entitled());
+    clear_refusals(&paths);
     remove_attempts(&paths);
 }
 
@@ -551,7 +577,7 @@ fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed 
     {
         return Refreshed::NotSignedIn;
     }
-    let refused_at = refusal(&paths).map(|(at, _)| at);
+    let refused_at = refusal(&paths, login);
     if refused_at.is_some_and(|t| t >= started) {
         return Refreshed::NotEntitled;
     }
@@ -573,6 +599,7 @@ fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed 
     if let Err(e) = written {
         return Refreshed::Failed(e);
     }
+    let _ = std::fs::remove_file(paths.not_entitled_for(login));
     let _ = std::fs::remove_file(paths.not_entitled());
     let _ = std::fs::remove_file(paths.legacy_lease());
     drop(lock);
@@ -675,7 +702,7 @@ pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
         };
     };
     let paths = Paths::new(account);
-    if refusal(&paths).is_some_and(|(_, l)| l.is_none_or(|l| l == state.login)) {
+    if refusal(&paths, state.login).is_some() {
         return Decision::Open {
             why: Some(WHY_NOT_ENTITLED),
             renew: due(&paths, at, NOT_ENTITLED_RETRY_SECS),
@@ -806,7 +833,8 @@ fn spawn_refresh(account: &Account) {
     let Some(claim) = claim(&paths, Duration::ZERO) else {
         return;
     };
-    let every = if paths.not_entitled().exists() {
+    let login = Store::new(account).state().map(|s| s.login).unwrap_or(0);
+    let every = if refusal(&paths, login).is_some() {
         NOT_ENTITLED_RETRY_SECS
     } else {
         RETRY_SECS
