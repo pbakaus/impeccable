@@ -9480,8 +9480,8 @@ void main() {
     // (all other variants are display:none). HMR from the source rewrite will
     // replace the wrapper imminently. Don't eagerly replaceChild here - React
     // reconciliation races with our mutation and throws NotFoundError in Next
-    // 16 / Turbopack. Schedule a fallback that runs the manual swap only if
-    // HMR hasn't cleaned up by then (keeps static-server flows working).
+    // 16 / Turbopack. A page without HMR commits in scheduleAcceptCleanup;
+    // framework pages get a deferred fallback in case HMR misses the update.
     const acceptedSessionId = currentSessionId;
     const acceptedVariant = visibleVariant;
     const acceptedIsSvelteComponent = svelteComponentSession?.sessionId === acceptedSessionId
@@ -9494,6 +9494,7 @@ void main() {
       id: acceptedSessionId,
       variant: String(acceptedVariant),
       isSvelteComponent: acceptedIsSvelteComponent,
+      paramValues: { ...paramsCurrentValues },
       ...acceptedSnapshot,
       finalizing: false,
     };
@@ -9550,6 +9551,12 @@ void main() {
       // Pick → Go loop while carbonize finishes in the background.
       if (accepted?.isSvelteComponent) {
         commitAcceptedSvelteComponentToDom(accepted.id);
+      } else {
+        // A page with no HMR never swaps the wrapper, and the variant-state
+        // stylesheet goes away below, so commit now or the original and the
+        // other variants show.
+        const wrapper = findVariantsWrapper(accepted.id);
+        if (wrapper && !hasFrameworkHmrOwnership(wrapper)) commitAcceptedVariantToDom(wrapper, accepted);
       }
       cleanupAcceptedSession();
     });
@@ -9600,7 +9607,6 @@ void main() {
     if (deferredRecoverySuperseded(pending?.id, recoveryRevision)) return;
     if (acceptedDomAlreadyClean(pending)) return;
     const sessionId = pending?.id;
-    const variantId = pending?.variant;
     const wrappers = findAcceptedRuntimeWrappers(sessionId);
     if (hasFrameworkHmrOwnership(wrappers[0] || pending?.parentElement)) {
       // Vite can coalesce rapid scaffold/carbonize writes and leave the last
@@ -9618,18 +9624,7 @@ void main() {
       return;
     }
     for (const wrapper of wrappers) {
-      if (!wrapper?.isConnected) continue;
-      const accepted = wrapper.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
-      if (!accepted) {
-        wrapper.remove();
-        continue;
-      }
-      const parent = wrapper.parentElement;
-      if (!parent) continue;
-      while (accepted.firstChild) {
-        parent.insertBefore(accepted.firstChild, wrapper);
-      }
-      wrapper.remove();
+      if (wrapper?.isConnected) commitAcceptedVariantToDom(wrapper, pending);
     }
     if (!acceptedDomAlreadyClean(pending)) restoreAcceptedDomFromSnapshot(pending, recoveryRevision);
   }
@@ -9695,26 +9690,33 @@ void main() {
     setLiveState('PICKING');
   }
 
-  function commitAcceptedVariantToDom(sessionId, variantId) {
-    const wrapper = findVariantsWrapper(sessionId);
-    if (!wrapper) return false;
-    const accepted = wrapper.querySelector('[data-impeccable-variant="' + variantId + '"]');
-    if (!accepted || !accepted.firstElementChild) return false;
+  function scopeAcceptedCss(css, pending) {
+    return css.replace(/\[\s*data-impeccable-variant\s*=\s*(["']?)([^"'\]\s]+)\1\s*(?:[is]\s*)?\]/gi, (_, __, variant) => (
+      '[data-impeccable-accepted="' + pending.id + (variant === pending.variant ? '' : ':' + variant) + '"]'
+    ));
+  }
+
+  // Keeps the accepted look until reload: the style, then a display: contents
+  // shell carrying the tuned --p-* values. Variant numbers repeat across
+  // sessions, so the shell and its rules move to a per-session attribute that
+  // a later session's variants and CSS cannot match.
+  function commitAcceptedVariantToDom(wrapper, pending) {
     const parent = wrapper.parentElement;
-    if (!parent) return false;
-
-    const style = wrapper.querySelector('style[data-impeccable-css]');
-    if (style && !document.querySelector('style[data-impeccable-accepted-css="' + sessionId + '"]')) {
-      const promotedStyle = style.cloneNode(true);
-      promotedStyle.setAttribute('data-impeccable-accepted-css', sessionId);
-      parent.insertBefore(promotedStyle, wrapper);
+    if (!parent) return;
+    const accepted = wrapper.querySelector('[data-impeccable-variant="' + pending.variant + '"]');
+    if (accepted) {
+      const style = wrapper.querySelector('style[data-impeccable-css]');
+      if (style) {
+        style.textContent = scopeAcceptedCss(style.textContent, pending);
+        parent.insertBefore(style, wrapper);
+      }
+      accepted.removeAttribute('data-impeccable-variant');
+      accepted.setAttribute('data-impeccable-accepted', pending.id);
+      accepted.style.display = 'contents';
+      accepted.style.cssText += variantParamDecls(pending.paramValues);
+      parent.insertBefore(accepted, wrapper);
     }
-
-    const committed = accepted.cloneNode(true);
-    committed.removeAttribute('hidden');
-    committed.style.display = 'contents';
-    parent.replaceChild(committed, wrapper);
-    return true;
+    wrapper.remove();
   }
 
   function handleDiscard() {
