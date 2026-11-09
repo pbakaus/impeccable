@@ -476,7 +476,10 @@ fn write_report(kind: &str, rest: &[String], io: &mut Io, cwd: &str, env: &Env) 
         return 0;
     }
     let slug_arg = rest.first().map(String::as_str).unwrap_or("");
-    let slug = coerce_slug(rest.first().map(String::as_str), cwd);
+    // An audit may cover the whole project (`.`), which has no slug of its
+    // own; it is stored as `project`. Critique keeps skipping a root target.
+    let slug = coerce_slug(rest.first().map(String::as_str), cwd)
+        .or_else(|| (kind == "audit" && rest.get(1).is_some()).then(|| "project".to_string()));
     let body_file = rest.get(1).filter(|s| !s.is_empty());
     let (Some(slug), Some(body_file)) = (slug, body_file) else {
         io.err("usage: write <slug-or-target> <body-file>\n");
@@ -518,7 +521,11 @@ fn write_report(kind: &str, rest: &[String], io: &mut Io, cwd: &str, env: &Env) 
     let _ = std::fs::create_dir_all(&dir);
     // Reports are local runtime output unless the project commits them;
     // `ignore.md` is the one hand-edited, team-shared file here.
-    if !settings.commit {
+    if settings.commit {
+        // Opting in after a default write: drop only the rules this helper
+        // wrote, so reports become committable and user lines survive.
+        impeccable_common::git::release_dir_ignored(&dir, &["*", "!ignore.md"]);
+    } else {
         impeccable_common::git::ensure_dir_ignored(&dir, &["*", "!ignore.md"]);
     }
     let timestamp = now_filename_stamp();
@@ -1117,6 +1124,38 @@ mod tests_reports {
         let (code, _, _) = call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
         assert_eq!(code, 0);
         assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/audit/.gitignore")).exists());
+    }
+
+    #[test]
+    fn opting_in_to_commit_lifts_the_helper_ignore_rules() {
+        let cwd = tmp();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        let ignore = format!("{cwd}/.impeccable/audit/.gitignore");
+        let mut text = std::fs::read_to_string(&ignore).unwrap();
+        text.push_str("scratch.txt\n");
+        std::fs::write(&ignore, text).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"commit":true}}"#).unwrap();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        let after = std::fs::read_to_string(&ignore).unwrap();
+        assert!(!after.lines().any(|l| l == "*" || l == "!ignore.md"), "{after}");
+        assert!(after.lines().any(|l| l == "scratch.txt"), "user lines stay: {after}");
+    }
+
+    #[test]
+    fn opting_in_removes_an_ignore_file_that_held_only_helper_rules() {
+        let cwd = tmp();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"commit":true}}"#).unwrap();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/audit/.gitignore")).exists());
+    }
+
+    #[test]
+    fn a_project_wide_audit_is_saved_as_project() {
+        let cwd = tmp();
+        let (code, out, err) = call(run_audit, &cwd, &["write", ".", &body(&cwd)]);
+        assert_eq!(code, 0, "{err}");
+        assert!(out.trim().ends_with("__project.md"), "{out}");
     }
 
     #[test]
