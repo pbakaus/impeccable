@@ -160,10 +160,6 @@ impl Paths {
             })
             .unwrap_or_default()
     }
-    /// When "this account doesn't include them" was last said.
-    fn not_entitled_said(&self) -> PathBuf {
-        self.dir.join("not-entitled-said")
-    }
     fn artifact(&self, sha: &str) -> PathBuf {
         self.artifacts
             .join(format!("{sha}{}", std::env::consts::EXE_SUFFIX))
@@ -664,31 +660,21 @@ pub const WHY_EXPIRED: &str = "Pro rules are off until the Pro lease renews; usi
 pub const WHY_UNVERIFIED: &str =
     "Pro rules are off: the Pro build didn't verify; using the open rules.";
 
-/// Paul's choice pending (REN-1553 decision 1, recommendation): an account
-/// without Pro hears "this account doesn't include them" at most once a day,
-/// and only from a scan a person ran (`detect` or its path shorthand), never
-/// from the edit hooks. `false` says it on every scan, hooks included.
-pub const NOT_ENTITLED_QUIETLY: bool = true;
-const SAY_NOT_ENTITLED_EVERY_SECS: u64 = 24 * 60 * 60;
+/// Flags that mean a program reads this scan's output. The not-entitled line
+/// stays out of it, even on stderr.
+const MACHINE_OUTPUT: &[&str] = &["--json", "-json", "--github", "--quiet"];
 
-/// Whether this scan prints `why`. Only the not-entitled line is throttled;
-/// the others say something is wrong or about to change.
-fn say(why: &str, args: &[String], paths: &Paths, at: u64) -> bool {
-    if why != WHY_NOT_ENTITLED || !NOT_ENTITLED_QUIETLY {
+/// Whether this scan prints `why`. Paul's choice (REN-1553 decision 1, 10 Nov):
+/// an account without Pro hears "this account doesn't include them" on every
+/// scan a person runs, but never from the edit hooks and never when the output
+/// is for a program. The other lines say something is wrong or about to change,
+/// so they always print.
+fn say(why: &str, args: &[String]) -> bool {
+    if why != WHY_NOT_ENTITLED {
         return true;
     }
-    if matches!(args.first().map(String::as_str), Some("hook" | "hook-before-edit")) {
-        return false;
-    }
-    let last = read_text(&paths.not_entitled_said())
-        .and_then(|t| t.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    if at.saturating_sub(last) < SAY_NOT_ENTITLED_EVERY_SECS {
-        return false;
-    }
-    let _ = std::fs::create_dir_all(&paths.dir);
-    let _ = crate::store::write_private(&paths.not_entitled_said(), at.to_string().as_bytes());
-    true
+    let hook = matches!(args.first().map(String::as_str), Some("hook" | "hook-before-edit"));
+    !hook && !args.iter().any(|a| MACHINE_OUTPUT.contains(&a.as_str()))
 }
 
 /// The offline decision for one scan. No network. The cheap checks come
@@ -785,7 +771,7 @@ pub fn dispatch(args: &[String], io: &mut Io) -> Option<i32> {
     if renew {
         spawn_refresh(&account);
     }
-    if let Some(why) = why.filter(|w| say(w, args, &Paths::new(&account), now())) {
+    if let Some(why) = why.filter(|w| say(w, args)) {
         io.err(&format!("{why}\n"));
     }
     let Decision::Pro { exe, .. } = decision else {
@@ -886,20 +872,22 @@ mod notice_tests {
     use super::*;
 
     #[test]
-    fn an_account_without_pro_hears_it_once_a_day_and_never_from_hooks() {
-        // Catches (REN-1553 decision 1): "this account doesn't include them" on every scan and every edit hook.
-        let dir = std::env::temp_dir().join(format!("impeccable-pro-notice-{}", std::process::id()));
-        let paths = Paths { dir: dir.join("pro"), install: dir.join("pro").join("engine"), artifacts: dir.join("artifacts") };
+    fn an_account_without_pro_hears_it_on_every_detect_but_never_from_hooks_or_machine_output() {
+        // Catches (REN-1553 decision 1, Paul 10 Nov): the line throttled to once a day, said from
+        // an edit hook, or mixed into output a program reads (--json, --github, --quiet).
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let day = SAY_NOT_ENTITLED_EVERY_SECS;
-        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook"]), &paths, 1_000_000));
-        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook-before-edit"]), &paths, 1_000_000));
-        assert!(say(WHY_NOT_ENTITLED, &args(&["detect", "."]), &paths, 1_000_000));
-        assert!(!say(WHY_NOT_ENTITLED, &args(&["src/"]), &paths, 1_000_000 + day - 1));
-        assert!(say(WHY_NOT_ENTITLED, &args(&["src/"]), &paths, 1_000_000 + day));
+        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook"])));
+        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook-before-edit"])));
+        assert!(say(WHY_NOT_ENTITLED, &args(&["detect", "."])));
+        assert!(say(WHY_NOT_ENTITLED, &args(&["detect", "."])), "every run, not once a day");
+        assert!(say(WHY_NOT_ENTITLED, &args(&["src/"])));
+        for flag in ["--json", "-json", "--github", "--quiet"] {
+            assert!(!say(WHY_NOT_ENTITLED, &args(&["detect", flag, "."])), "{flag}");
+            assert!(!say(WHY_NOT_ENTITLED, &args(&["src/", flag])), "{flag}");
+        }
         // Lines that say something is wrong are never held back.
-        assert!(say(WHY_UNVERIFIED, &args(&["hook"]), &paths, 1_000_000 + day));
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(say(WHY_UNVERIFIED, &args(&["hook"])));
+        assert!(say(WHY_UNVERIFIED, &args(&["detect", "--json", "."])));
     }
 }
 
