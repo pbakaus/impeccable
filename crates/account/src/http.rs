@@ -261,7 +261,10 @@ fn resolve_loopback(netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
             _ => return Err(refuse()),
         }
     };
-    Ok(ips.into_iter().map(|ip| SocketAddr::new(ip, port)).collect())
+    Ok(ips
+        .into_iter()
+        .map(|ip| SocketAddr::new(ip, port))
+        .collect())
 }
 
 #[cfg(test)]
@@ -271,10 +274,14 @@ mod tests {
     #[test]
     fn loopback_names_never_reach_a_resolver() {
         let v4: SocketAddr = "127.0.0.1:8787".parse().unwrap();
-        assert!(resolve_loopback("api.localhost:8787").unwrap().contains(&v4));
+        assert!(resolve_loopback("api.localhost:8787")
+            .unwrap()
+            .contains(&v4));
         assert!(resolve_loopback("localhost:8787").unwrap().contains(&v4));
         assert_eq!(resolve_loopback("127.0.0.1:8787").unwrap(), vec![v4]);
-        assert!(resolve_loopback("[::1]:8787").unwrap()[0].ip().is_loopback());
+        assert!(resolve_loopback("[::1]:8787").unwrap()[0]
+            .ip()
+            .is_loopback());
         assert!(resolve_loopback("10.0.0.1:8787").is_err());
         assert!(resolve_loopback("api.impeccable.style:443").is_err());
     }
@@ -298,6 +305,9 @@ mod tests {
         let err = client
             .post_form_empty("https://attacker.example/revoke", &[("token", "t")])
             .unwrap_err();
-        assert_eq!(err.to_string(), "refused a request outside the account service");
+        assert_eq!(
+            err.to_string(),
+            "refused a request outside the account service"
+        );
     }
 }

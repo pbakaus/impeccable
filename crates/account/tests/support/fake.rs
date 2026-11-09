@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 #[derive(Default)]
 pub struct Knobs {
@@ -18,15 +18,46 @@ pub struct Knobs {
     pub callback_state: Option<String>,
     pub entitled: bool,
     pub access_ttl: u64,
+    /// Design health switched on: `scopes_supported` lists `health:write`
+    /// and the two `/cli/v1/health` routes answer (404 otherwise).
+    pub health: bool,
+    /// The grant lacks `health:write` (the person unchecked it): uploads 403.
+    pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
     /// `(method, path) -> (status, headers, body)`.
     pub routes: HashMap<(String, String), (u16, Vec<(String, String)>, Vec<u8>)>,
+    /// Paths whose answers wait until their gate opens (see [`Fake::hold`]).
+    pub gates: HashMap<String, Arc<Gate>>,
+}
+
+/// Holds a response until [`Gate::open`].
+#[derive(Default)]
+pub struct Gate(Mutex<bool>, Condvar);
+
+impl Gate {
+    pub fn open(&self) {
+        *self.0.lock().unwrap() = true;
+        self.1.notify_all();
+    }
+    fn pass(&self) {
+        let mut open = self.0.lock().unwrap();
+        while !*open {
+            open = self.1.wait(open).unwrap();
+        }
+    }
 }
 
 #[derive(Default)]
 pub struct Record {
     pub hits: HashMap<String, usize>,
     pub revoked: Vec<String>,
+    /// The `scope` of each authorize request.
+    pub scopes: Vec<String>,
+    /// Each health upload that passed the service's checks.
+    pub scans: Vec<serde_json::Value>,
+    /// Each body the service refused, with why.
+    pub refused: Vec<(String, serde_json::Value)>,
+    pub forgets: usize,
     codes: HashMap<String, (String, String)>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
@@ -113,6 +144,27 @@ impl Fake {
                 body.into(),
             ),
         );
+    }
+
+    /// Hold every answer on `path` until the returned gate opens (the
+    /// request is counted in `hits` as it arrives).
+    pub fn hold(&self, path: &str) -> Arc<Gate> {
+        let gate = Arc::new(Gate::default());
+        self.knobs
+            .lock()
+            .unwrap()
+            .gates
+            .insert(path.to_string(), gate.clone());
+        gate
+    }
+
+    /// Wait (up to ten seconds) until `path` has been asked `n` times.
+    pub fn wait_for_hits(&self, path: &str, n: usize) {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while self.hits(path) < n {
+            assert!(std::time::Instant::now() < until, "{path} never reached {n} hits");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 
     /// An env for one test: a fresh IMPECCABLE_HOME, this service, the file backend.
@@ -231,15 +283,26 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
+                    "scopes_supported": if knobs.lock().unwrap().health {
+                        serde_json::json!(["account:read", "rules:read", "health:write"])
+                    } else {
+                        serde_json::json!(["account:read", "rules:read"])
+                    },
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
                 let redirect = q.get("redirect_uri").cloned().unwrap_or_default();
+                let scope = q.get("scope").cloned().unwrap_or_default();
+                record.lock().unwrap().scopes.push(scope.clone());
+                // The real service refuses a scope it doesn't list.
+                let scope_ok = scope == "account:read rules:read"
+                    || (scope == "account:read rules:read health:write"
+                        && knobs.lock().unwrap().health);
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
                     && q.get("code_challenge").is_some_and(|c| c.len() == 43)
-                    && q.get("scope").map(String::as_str) == Some("account:read rules:read")
+                    && scope_ok
                     && redirect.starts_with("http://127.0.0.1:")
                     && redirect.ends_with("/callback");
                 if !ok {
@@ -289,6 +352,42 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     )
                 }
             }
+            ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
+                let k = knobs.lock().unwrap();
+                let authorized = bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t));
+                if !k.health {
+                    (404, vec![], vec![])
+                } else if !authorized {
+                    (401, vec![], vec![])
+                } else if k.health_denied {
+                    (
+                        403,
+                        vec![(
+                            "www-authenticate".into(),
+                            r#"Bearer error="insufficient_scope", scope="health:write""#.into(),
+                        )],
+                        vec![],
+                    )
+                } else if path.ends_with("/forget") {
+                    record.lock().unwrap().forgets += 1;
+                    json(200, serde_json::json!({ "forgot": 1 }))
+                } else {
+                    let v: serde_json::Value =
+                        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+                    match parse_scan(&v) {
+                        Ok(()) => {
+                            record.lock().unwrap().scans.push(v);
+                            json(200, serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }))
+                        }
+                        Err(field) => {
+                            record.lock().unwrap().refused.push((field.to_string(), v));
+                            json(400, serde_json::json!({ "error": "invalid_request", "field": field }))
+                        }
+                    }
+                }
+            }
             _ => (404, vec![], vec![]),
         }
     };
@@ -300,6 +399,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         head.push_str(&format!("{k}: {v}\r\n"));
     }
     head.push_str("\r\n");
+    let gate = knobs.lock().unwrap().gates.get(path).cloned();
+    if let Some(gate) = gate {
+        gate.pass();
+    }
     let _ = stream.write_all(head.as_bytes());
     let _ = stream.write_all(&out);
 }
@@ -372,4 +475,179 @@ fn token(
         200,
         serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
     )
+}
+
+// --- Pro releases and leases -------------------------------------------------
+use ring::rand::SystemRandom;
+use ring::signature::{Ed25519KeyPair, KeyPair};
+
+pub fn keypair() -> Ed25519KeyPair {
+    Ed25519KeyPair::from_pkcs8(
+        Ed25519KeyPair::generate_pkcs8(&SystemRandom::new())
+            .unwrap()
+            .as_ref(),
+    )
+    .unwrap()
+}
+
+/// `IMPECCABLE_PRO_RELEASE_KEYS` for one release key.
+pub fn release_keys_json(kid: &str, key: &Ed25519KeyPair) -> String {
+    let hex: String = key
+        .public_key()
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    serde_json::json!({ kid: hex }).to_string()
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+impl Fake {
+    /// Serve a signed manifest for this engine and platform, and its artifact.
+    /// `sign_with` lets a test sign with a key other than the pinned one.
+    pub fn publish(
+        &self,
+        kid: &str,
+        sign_with: &Ed25519KeyPair,
+        artifact: &[u8],
+        revision: u64,
+    ) -> String {
+        let sha = sha256_hex(artifact);
+        let manifest = serde_json::json!({
+            "schema": 1, "key_id": kid, "engine": impeccable_account::pro::ENGINE,
+            "target": impeccable_account::pro::target(), "artifact_revision": revision,
+            "artifact_sha256": sha, "size": artifact.len(), "pack_version": "test",
+        })
+        .to_string();
+        let signature = b64(sign_with.sign(manifest.as_bytes()).as_ref());
+        self.route(
+            "GET",
+            "/cli/v1/manifest",
+            200,
+            vec![("x-impeccable-signature", signature)],
+            manifest,
+        );
+        self.route(
+            "GET",
+            &format!("/cli/v1/artifact/{sha}"),
+            200,
+            vec![],
+            artifact.to_vec(),
+        );
+        sha
+    }
+
+    /// Answer `POST /cli/v1/lease` with a lease for `sha`, signed by `key` as `kid`.
+    pub fn lease(&self, kid: &str, key: &Ed25519KeyPair, sha: &str, exp: u64) {
+        let h = b64(
+            serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": kid })
+                .to_string()
+                .as_bytes(),
+        );
+        let p = b64(serde_json::json!({ "sub": "user", "gid": "grant", "artifact_sha256": sha, "iat": unix_now(), "exp": exp }).to_string().as_bytes());
+        let s = b64(key.sign(format!("{h}.{p}").as_bytes()).as_ref());
+        let body = serde_json::json!({ "lease": format!("{h}.{p}.{s}") }).to_string();
+        self.route(
+            "POST",
+            "/cli/v1/lease",
+            200,
+            vec![("content-type", "application/json".into())],
+            body,
+        );
+    }
+
+    /// Publish lease verification keys, current first.
+    pub fn lease_keys(&self, keys: &[(&str, &Ed25519KeyPair)]) {
+        let keys: Vec<_> = keys
+            .iter()
+            .map(|(kid, k)| serde_json::json!({ "kty": "OKP", "crv": "Ed25519", "x": b64(k.public_key().as_ref()), "kid": kid, "use": "sig", "alg": "EdDSA" }))
+            .collect();
+        self.route(
+            "GET",
+            "/.well-known/impeccable-cli-keys.json",
+            200,
+            vec![("content-type", "application/json".into())],
+            serde_json::json!({ "keys": keys }).to_string(),
+        );
+    }
+}
+
+/// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),
+/// ported so a body it would refuse fails a test here first. The clock
+/// window is left out: tests don't control the CLI's clock.
+pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
+    use serde_json::Value;
+    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+    let count = |v: &Value| v.as_u64().is_some_and(|n| n <= 1_000_000);
+    let o = b.as_object().ok_or("not an object")?;
+    const KEYS: &[&str] = &["version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage", "rulesetId",
+        "fingerprintVersion", "engineVersion", "filesScanned", "findings", "advisory", "rules", "fingerprints",
+        "truncated", "label"];
+    if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
+        return Err("unknown field");
+    }
+    if b["version"] != 1 { return Err("version"); }
+    if b["coverage"] != "full" { return Err("coverage"); }
+    let id = b["scanId"].as_str().ok_or("scanId")?;
+    let parts: Vec<&str> = id.split('-').collect();
+    if parts.iter().map(|p| p.len()).collect::<Vec<_>>() != [8, 4, 4, 4, 12] || !parts.iter().all(|p| hex(p, p.len())) {
+        return Err("scanId");
+    }
+    for k in ["repoKey", "streamKey", "rulesetId"] {
+        if !b[k].as_str().is_some_and(|s| hex(s, 64)) { return Err("key"); }
+    }
+    let at = b["scannedAt"].as_str().ok_or("scannedAt")?;
+    if at.len() != 24 || !at.ends_with('Z') || &at[10..11] != "T" { return Err("scannedAt"); }
+    if !b["fingerprintVersion"].as_u64().is_some_and(|n| (1..=1000).contains(&n)) { return Err("fingerprintVersion"); }
+    let ev = b["engineVersion"].as_str().ok_or("engineVersion")?;
+    if ev.len() > 64 || ev.split(['-', '+']).next().unwrap().split('.').count() != 3 { return Err("engineVersion"); }
+    for k in ["filesScanned", "findings", "advisory"] {
+        if !count(&b[k]) { return Err("count"); }
+    }
+    let rules = b["rules"].as_object().ok_or("rules")?;
+    if rules.len() > 300 { return Err("rules"); }
+    let (mut f, mut a) = (0, 0);
+    for (id, r) in rules {
+        let ok = !id.is_empty() && id.len() <= 80
+            && id.bytes().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && id.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'/' || c == b'-');
+        let r = r.as_object().ok_or("rules")?;
+        if !ok || r.keys().any(|k| k != "findings" && k != "advisory") || !count(&r["findings"]) || !count(&r["advisory"]) {
+            return Err("rules");
+        }
+        f += r["findings"].as_u64().unwrap();
+        a += r["advisory"].as_u64().unwrap();
+    }
+    if Some(f) != b["findings"].as_u64() || Some(a) != b["advisory"].as_u64() { return Err("rules do not sum"); }
+    if b["fingerprints"].is_null() {
+        if b["truncated"] != true { return Err("fingerprints"); }
+    } else {
+        if !(b.get("truncated").is_none() || b["truncated"] == false) { return Err("truncated"); }
+        let fps = b["fingerprints"].as_object().ok_or("fingerprints")?;
+        if fps.len() > 5000 { return Err("fingerprints"); }
+        let mut total = 0;
+        for (fp, n) in fps {
+            if !hex(fp, 32) || !count(n) || n == 0 { return Err("fingerprints"); }
+            total += n.as_u64().unwrap();
+        }
+        if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
+    }
+    if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
+        let l = l.as_str().ok_or("label")?.trim();
+        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
+            return Err("label");
+        }
+    }
+    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
+    Ok(())
 }

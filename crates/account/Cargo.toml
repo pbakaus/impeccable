@@ -8,6 +8,11 @@ publish.workspace = true
 # `impeccable login | logout | whoami`: OAuth sign-in to the Impeccable
 # account service and the credential lifecycle behind it. See docs/RUNTIME-ENV.md (Account sign-in).
 
+[features]
+# Trust `IMPECCABLE_PRO_RELEASE_KEYS` in place of the compiled release keys.
+# Tests and local rehearsals only; release builds never enable it.
+test-release-keys = []
+
 [dependencies]
 impeccable-common = { path = "../common" }
 impeccable-context = { path = "../context" }

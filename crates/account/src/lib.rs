@@ -4,8 +4,11 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod health;
 pub mod http;
 pub mod oauth;
+pub mod plans;
+pub mod pro;
 pub mod session;
 pub mod store;
 
@@ -23,6 +26,8 @@ const DEFAULT_LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 /// The outcome of a completed sign-in.
 pub struct LoggedIn {
     pub account: Account,
+    /// The sign-in this made (`State::login`).
+    pub login: u64,
     pub entitlement: Result<Entitlement, SessionError>,
 }
 
@@ -53,7 +58,7 @@ pub fn login(
         .map_err(|e| e.to_string())?;
     let tokens = oauth::exchange(&client, &account, &meta.token_endpoint, &pending, &code)
         .map_err(|e| format!("the account service did not accept the sign-in: {e}"))?;
-    let replaced = {
+    let (replaced, login) = {
         let lock = store.lock()?;
         let previous = store.state();
         // A logout since this attempt started, even one a newer sign-in
@@ -80,6 +85,7 @@ pub fn login(
             backend,
             token_endpoint: meta.token_endpoint.clone(),
             revocation_endpoint: meta.revocation_endpoint.clone(),
+            login: generation,
             signed_out_at: previous.as_ref().map(|s| s.signed_out_at).unwrap_or(0),
         };
         let secret = Secret {
@@ -88,8 +94,10 @@ pub fn login(
             access_token: tokens.access_token,
             access_expires_at: session::now() + tokens.expires_in,
         };
+        // Nothing Pro from an earlier sign-in carries over to this one.
+        pro::reset_holding(&lock, &account);
         store.save(&lock, &state, &secret)?;
-        replaced
+        (replaced, generation)
     };
     // The grant this sign-in replaced is ended at the service too.
     if let Some((endpoint, old)) = replaced {
@@ -98,6 +106,7 @@ pub fn login(
     let entitlement = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
     Ok(LoggedIn {
         account,
+        login,
         entitlement,
     })
 }
@@ -115,6 +124,7 @@ pub fn logout(env: &HashMap<String, String>) -> Result<Option<Account>, String> 
         // Always a tombstone, even with nothing stored: a sign-in still
         // waiting in the browser sees the generation move and stops.
         store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
+        pro::reset_holding(&lock, &account);
         let revoke = state
             .and_then(|s| s.revocation_endpoint)
             .zip(secret.map(|s| s.refresh_token));
@@ -174,7 +184,17 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     match result {
         Ok(done) => {
             io.err(&format!("Signed in to {}.\n", done.account.display_host()));
-            report_entitlement(io, &done.entitlement);
+            match &done.entitlement {
+                Ok(Entitlement { pro: true, .. }) => {
+                    let outcome = pro::refresh(&done.account, &pro::verify::pinned_keys(&env));
+                    pro::report(io, &outcome);
+                }
+                Ok(_) => {
+                    pro::settle(&done.account, done.login, false);
+                    report_entitlement(io, &done.entitlement);
+                }
+                Err(_) => report_entitlement(io, &done.entitlement),
+            }
             0
         }
         Err(e) => {
@@ -190,6 +210,20 @@ fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
         Ok(_) => io.err("Pro rules: not included with this account.\n"),
         Err(e) => io.err(&format!("Couldn't check Pro access: {e}.\n")),
     }
+}
+
+/// `Plan: Pro. Everything in Free, plus:` and one line per item, with
+/// announced items marked `(soon)` as the catalog's own markdown does.
+fn plan_lines(p: &plans::Plan) -> String {
+    let mut out = match &p.builds {
+        Some(b) => format!("Plan: {}. Everything in {b}, plus:\n", p.name),
+        None => format!("Plan: {}. Includes:\n", p.name),
+    };
+    for item in &p.adds {
+        let soon = if item.soon { " (soon)" } else { "" };
+        out.push_str(&format!("  - {}{soon}\n", item.text));
+    }
+    out
 }
 
 pub fn run_logout(args: &[String], io: &mut Io) -> i32 {
@@ -227,7 +261,24 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
-    let result = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
+    let mut login = None;
+    let result = Session::load(&account).and_then(|mut s| {
+        login = Some(s.state.login);
+        session::entitlement(&mut s)
+    });
+    // An explicit answer applies at once, to the sign-in it was about: "not
+    // entitled" ends the offline grace, "entitled" lifts an earlier "no".
+    if let (Ok(e), Some(login)) = (&result, login) {
+        pro::settle(&account, login, e.pro);
+    }
+    // What the plan includes, from the public catalog; optional.
+    let plan = result.as_ref().ok().and_then(|e| {
+        let id = e
+            .plan
+            .as_deref()
+            .unwrap_or(if e.pro { "pro" } else { "free" });
+        plans::fetch(&account, id)
+    });
     if json {
         let mut v = serde_json::json!({ "account_url": account.issuer, "signed_in": false });
         match &result {
@@ -235,6 +286,16 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
                 v["signed_in"] = true.into();
                 v["pro"] = e.pro.into();
                 v["reason"] = e.reason.clone().into();
+                if let Some(p) = &plan {
+                    v["plan"] = serde_json::json!({
+                        "id": p.id,
+                        "name": p.name,
+                        "builds": p.builds,
+                        "adds": p.adds.iter()
+                            .map(|i| serde_json::json!({ "text": i.text, "soon": i.soon }))
+                            .collect::<Vec<_>>(),
+                    });
+                }
             }
             Err(SessionError::NotSignedIn | SessionError::Expired) => {}
             Err(e) => {
@@ -248,10 +309,10 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     match result {
         Ok(e) => {
             io.out(&format!("Signed in to {}.\n", account.display_host()));
-            if e.pro {
-                io.out("Pro rules: included.\n");
-            } else {
-                io.out("Pro rules: not included with this account.\n");
+            match &plan {
+                Some(p) => io.out(&plan_lines(p)),
+                None if e.pro => io.out("Pro rules: included.\n"),
+                None => io.out("Pro rules: not included with this account.\n"),
             }
             0
         }

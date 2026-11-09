@@ -41,6 +41,14 @@ its request head, and the whole wait ends at `IMPECCABLE_LOGIN_TIMEOUT`. With
 can open it (or drive the consent page) itself. `whoami` asks
 `GET /cli/v1/entitlement`; `whoami --json` prints
 `{account_url, signed_in, pro, reason}` and exits 1 when not signed in.
+When signed in, `whoami` also reads the public plan catalog,
+`GET /v1/plans` without a token and with a 5-second deadline, and prints the
+plan's name and what it adds, marking announced items `(soon)`; `--json` adds
+`plan: {id, name, builds, adds: [{text, soon}]}`. The plan is the one the
+entitlement names in `plan`, else `pro` or `free` from its `pro` flag. If the
+catalog can't be read (off, unreachable, malformed), `whoami` prints its
+`Pro rules:` line instead. Catalog text is cleaned of control characters and
+bidirectional overrides and capped in length before it is printed.
 
 Every request goes to the issuer's own origin. That is checked at the HTTP
 client, so an endpoint read back from `state.json` cannot carry a token
@@ -85,3 +93,142 @@ backend, ask the keychain, or replace the CLI itself.
 | `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. | `keychain` on macOS and Windows, `file` elsewhere |
 | `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
 | `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
+
+## Design health (`impeccable health`; `crates/account/src/health.rs`)
+
+A signed-in CLI saves the counts of each full `detect` of a git repo to the account (REN-1559), so the account can show how the repo's design health moves over time. Free plans include it.
+
+**When it uploads.** All of these must hold, and they are checked in this order, cheapest first:
+- `detect` scanned one local directory that is the top of a git work tree: the working directory or a single directory target, with no `--scope`, no `--cdp`, no piped input, no URL, and no file left unscanned. Hook scans never upload.
+- `CI` is unset or empty.
+- Telemetry is on: no `DO_NOT_TRACK` or `IMPECCABLE_NO_TELEMETRY`, and no `"telemetry": false` in the user config or in the project config of either the working directory or the scanned root (the same check the roll API's pings use; an off in either wins).
+- Sync is on: `impeccable health off` turns it off, `impeccable health on` back on. It is on by default (`SYNC_BY_DEFAULT`, the decider's question 1 on REN-1559). A `health.json` that exists but can't be read counts as off.
+- Someone is signed in.
+
+The checks that read only the environment, `health.json` and the sign-in's `state.json` run before `detect` is asked for a report, so a run that can't upload pays nothing for it.
+
+**What it sends.** `POST {account}/cli/v1/health/scans`, payload v1 as REN-1559 defines it. The body holds counts and opaque hashes only, never a remote, path, snippet or code:
+- `repoKey` is the SHA-256 of the `origin` remote in one spelling: credentials dropped, `git@host:path` and `ssh://` read as `https://host/path`, scheme and host lower-cased, a trailing `/` and `.git` removed. A repo without `origin` gets a random id instead, kept under `$IMPECCABLE_HOME/health/repos/` by the repo's path. The first scan to save it wins, so two first scans running at once share one trend. Nothing is written into the work tree, whose files the repo controls, so a moved repo starts a new trend.
+- `streamKey` hashes `repoKey` with the branch git names (`HEAD` when detached).
+- `fingerprints` count each non-advisory finding by the first 16 bytes of the SHA-256 of its rule id, its path from the repo root with `/`, and its snippet with whitespace collapsed. The line is left out, so code that moves isn't counted as fixed and new. More than 5,000 distinct fingerprints, or a body over 256 KB, sends `fingerprints: null, truncated: true`.
+- `rulesetId` hashes the engine version, `fingerprintVersion`, every enabled rule id, and the settings that decide which findings exist: config on or off, inline ignores, design system on or off and the content of every design system the scan read (a changed DESIGN.md starts a new baseline instead of reading as fixes), `--no-advisory`, `advisoryRules`, `ignoreFiles`, `ignoreValues` and `extensions`.
+- `label` is the repo's name: the last path segment of the normalized `origin` remote (`acme/my-site` sends `my-site`). A repo without a remote sends none. The folder's name is never sent, since it can say more than meant (Paul's choice, REN-1553).
+
+Every hash is length-prefixed. A change to the fingerprint or `rulesetId` recipe bumps `FINGERPRINT_VERSION`, so the service starts a new baseline. A body the service would refuse (a rule id outside `^[a-z0-9][a-z0-9/-]{0,79}$`, more than 300 rules, an engine version that isn't semver) is not sent.
+
+**How it behaves.**
+- The upload runs after `detect` has printed everything and never changes detect's output or exit code. Each git question gets 2 seconds, with fsmonitor off. A token that is due for refresh is refreshed first through the ordinary sign-in path, exactly as `whoami` does, because a short timeout there could drop a rotated refresh token the service already spent. If another command holds the sign-in lock, the upload is skipped rather than waiting for it. Then there is one POST with a 5-second deadline. Any failure is silent, and there is no retry or offline queue. That includes a 401, and a 409 `forgotten`, which the service answers for a scan that started before a `forget` (its fence against an upload already on the way).
+- The upload re-reads `health.json` just before its POST. Every change to it (the notice, the hint, `on`, `off`, `forget`) re-reads, changes one field and saves under `health.json.lock`, so a scan in one process never writes a stale state over an `off` saved by another.
+- The first successful upload of a sign-in says so once on stderr. A 403 (a sign-in without `health:write`) says once per sign-in how to allow it or turn sync off. Both are remembered per service and sign-in. `--quiet` keeps both off, and a quiet scan leaves them owed to the next scan that can show them. That state lives in `$IMPECCABLE_HOME/health.json`.
+- Sign-in asks for `health:write` only when the service's `scopes_supported` lists it, which it does only while design health is on there. Asking for a scope a service doesn't list fails the sign-in.
+- `impeccable health forget` turns sync off first (and fails if it can't save that), then asks `POST /cli/v1/health/forget` to delete everything saved for the person. A 404 there means the service has design health switched off right now, so deletion is reported as unconfirmed and the command exits 1. `impeccable health` (or `status`) says whether sync is on, and if not, why.
+
+## Pro dispatch (`crates/account/src/pro`)
+
+A signed-in, entitled machine runs scans (`detect`, its path shorthand,
+`hook`, `hook-before-edit`) on the **Pro engine**: a separate build of this
+CLI with the Pro rule pack linked in through `impeccable::run`. The open
+binary decides in `main` (a Pro build calls `run` and never dispatches) and
+re-runs the same argv on the Pro build with `IMPECCABLE_PRO_CHILD=1`. No
+dispatch for a Pro child, an explicit `IMPECCABLE_BIN`, `IMPECCABLE_PRO=off`,
+or any other verb. A machine that never signed in sees nothing new.
+
+**Refresh** (at `login`, and in a detached hidden `pro-refresh` when a lease
+has under two days left or is missing; at most every ten minutes, hourly
+after "not entitled"). One refresh runs at a time per account: it holds an
+exclusive OS lock on `pro/<engine>-<target>/refresh.lock`, and a scan claims the attempt under
+that lock before it starts one, so of many scans that find a refresh due at
+once, one starts it (a scan that cannot record the attempt starts none). The
+refresh at `login` waits up to a minute for one already running; a
+background one gives way after two seconds.
+
+The network steps run **without the sign-in lock**, so a slow or stalled
+service never holds up `login` or `logout` (token rotation still takes it
+for its one request). Every request has the client's 60 second deadline,
+except the artifact download, which has ten minutes.
+
+1. `GET /cli/v1/manifest?engine=<this version>&target=<os-arch>`
+   (`darwin-arm64`, `linux-x64`, `windows-x64`, ...). The body's exact bytes
+   must verify against `X-Impeccable-Signature` (base64url Ed25519) under a
+   **pinned release key**, then parse as the manifest below with this
+   engine and target. A revision below the **revision floor** is refused.
+2. The artifact is cached by digest at
+   `$IMPECCABLE_HOME/pro/artifacts/<sha256>[.exe]`. A cached file is used
+   only if it is a regular file (no symlink, FIFO or device) of the signed
+   size, owned by this user, not writable by others, and has the signed
+   digest; at most the signed size is read. Otherwise
+   `GET /cli/v1/artifact/<sha256>`, checked for size and digest, written to
+   a freshly created staging file (never through anything planted at its
+   name), then renamed into place.
+3. `POST /cli/v1/lease {artifact_sha256}`: a compact EdDSA JWS, verified
+   against the cached lease keys; on an unknown `kid` (or no cache)
+   `GET /.well-known/impeccable-cli-keys.json` once and verify again. A
+   lease must have `iat` no later than five minutes from now, and `exp`
+   after `iat` by at most seven days (the service's maximum).
+4. **Install**, under the sign-in lock, only if nothing happened since the
+   refresh started that it would undo: the machine is still signed in with
+   the **same sign-in**, no "not entitled" answer was recorded after the
+   refresh started, and no newer revision was accepted. Then
+   `pro/<engine>-<target>/current.json`, one per engine version so two skills pinning different engines never overwrite each other (manifest bytes and signature as served, the lease,
+   and the sign-in it belongs to) is replaced in one write, and the
+   revision floor raised.
+
+A sign-in is `login` in `state.json`: the generation it was made at, kept
+through token refreshes, changed by a new sign-in or a sign-out. Both of
+those clear the Pro state under the sign-in lock (installed manifest, lease,
+"not entitled", the retry clock), and dispatch uses a lease only when it was
+installed for the current sign-in. One account's lease never runs Pro for
+the next one.
+
+`403 not_entitled` forgets the lease and the installed manifest at once;
+`whoami` does the same when it reads `pro: false`. Both take the sign-in
+lock, and record the answer's time, so a refresh already in flight installs
+nothing. `503` answers (`CLI_ARTIFACTS`, `CLI_LEASE_*`, `malformed_release`)
+and network failures keep an existing lease: it runs to its own `exp`
+(offline grace), then the open rules.
+
+The **revision floor** (`$IMPECCABLE_HOME/pro/floor-<engine>-<target>`) is
+the highest `artifact_revision` accepted for this engine and target. It is
+outside the account's Pro state, so forgetting a lease or signing out never
+lowers it, and both refresh and dispatch refuse a revision below it. It is raised under its own lock, so refreshes for two accounts under one home can never lower it.
+
+**Dispatch** (every scan, offline), cheapest checks first: signed in; no
+"not entitled"; an installed manifest for this sign-in that verifies for
+this engine and target, at or above the floor; a lease that verifies (key,
+digest, `iat`, `exp`); and only then the artifact's digest. Any failure runs
+the open engine with one line on stderr saying why. The one exception is an account without Pro ("this account doesn't include them"). That line comes on every scan a person runs (`detect` or its path shorthand), but never from the edit hooks and never with `--json`, `--github` or `--quiet`, whose output a program reads (`say` in `crates/account/src/pro/mod.rs`, Paul's choice on REN-1553).
+
+**What this protects, and what it does not.** Dispatch runs a Pro build only
+when the release key signed it, the service leased it to this sign-in, and
+the lease is live. That holds against a compromised or misbehaving service
+or network short of the release key. It does not hold against a process
+running as the same user: such a process can write `$IMPECCABLE_HOME`, can
+swap the cached artifact between its check and its execution, can replace
+the cached lease keys (which are trusted on first fetch from the service),
+and can run the cached Pro build directly. Offline licensing is not
+enforced against the machine's owner.
+
+Manifest schema 1 (the release job signs these bytes):
+
+```json
+{ "schema": 1, "key_id": "<release key id>", "engine": "0.1.18",
+  "target": "darwin-arm64", "artifact_revision": 3,
+  "artifact_sha256": "<64 lowercase hex>", "size": 12345678,
+  "pack_version": "<optional>" }
+```
+
+The release keys are compiled in from `scripts/cli-pro-release-keys.json`
+(`{ "<key id>": "<64 hex public key>" }`). It is empty until the first Pro
+release key exists, so every build falls back to the open rules until then.
+A build with the cargo feature `test-release-keys`
+(`cargo build -p impeccable --features test-release-keys`) trusts
+`IMPECCABLE_PRO_RELEASE_KEYS` (same JSON) instead, for tests and local
+rehearsals. It is a build feature rather than a runtime switch so that no
+environment variable can change what a shipped binary trusts; the release
+workflow builds without it.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `IMPECCABLE_PRO` | `off` (or `0`, `false`, `no`): never dispatch. | unset |
+| `IMPECCABLE_PRO_CHILD` | Set by the dispatcher on the Pro child; stops recursion. | unset |
+| `IMPECCABLE_PRO_RELEASE_KEYS` | Release keys JSON, honoured only by `test-release-keys` builds. | unset |

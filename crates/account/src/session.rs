@@ -8,7 +8,7 @@
 use crate::config::Account;
 use crate::http::{ApiError, Client};
 use crate::oauth;
-use crate::store::{Backend, Secret, State, Store};
+use crate::store::{Backend, Lock, Secret, State, Store};
 
 /// Refresh this long before the access token's stated expiry.
 const SKEW_SECS: u64 = 60;
@@ -81,9 +81,25 @@ impl Session {
         Ok(self.secret.access_token.clone())
     }
 
+    /// [`Session::access_token`] for a caller that would rather fail than
+    /// wait more than `wait` for another command's sign-in step.
+    pub fn access_token_within(&mut self, wait: std::time::Duration) -> Result<String, SessionError> {
+        if self.secret.access_expires_at > now() + SKEW_SECS {
+            return Ok(self.secret.access_token.clone());
+        }
+        let lock = self.store.lock_for(wait).map_err(SessionError::Local)?;
+        self.refresh_holding(&lock)?;
+        Ok(self.secret.access_token.clone())
+    }
+
     /// Rotate the tokens under the lock (see the module note).
     pub fn refresh(&mut self) -> Result<(), SessionError> {
         let lock = self.store.lock().map_err(SessionError::Local)?;
+        self.refresh_holding(&lock)
+    }
+
+    /// [`Session::refresh`] for a caller that already holds the lock.
+    pub fn refresh_holding(&mut self, lock: &Lock) -> Result<(), SessionError> {
         let state = self
             .store
             .state()
@@ -115,7 +131,7 @@ impl Session {
                     access_expires_at: now() + tokens.expires_in,
                 };
                 self.store
-                    .save(&lock, &next_state, &next_secret)
+                    .save(lock, &next_state, &next_secret)
                     .map_err(SessionError::Local)?;
                 self.state = next_state;
                 self.secret = next_secret;
@@ -125,7 +141,7 @@ impl Session {
                 if code.as_deref() == Some("invalid_grant") =>
             {
                 self.store
-                    .sign_out(&lock, Some(&state), Backend::File)
+                    .sign_out(lock, Some(&state), Backend::File)
                     .map_err(SessionError::Local)?;
                 Err(SessionError::Expired)
             }
@@ -149,6 +165,24 @@ impl Session {
         }
     }
 
+    /// [`Session::call`] for a caller that already holds the lock.
+    pub fn call_locked<T>(
+        &mut self,
+        lock: &Lock,
+        mut f: impl FnMut(&Client, &str) -> Result<T, ApiError>,
+    ) -> Result<T, SessionError> {
+        if self.secret.access_expires_at <= now() + SKEW_SECS {
+            self.refresh_holding(lock)?;
+        }
+        match f(&self.client, &self.secret.access_token) {
+            Err(ApiError::Status { status: 401, .. }) => {
+                self.refresh_holding(lock)?;
+                f(&self.client, &self.secret.access_token).map_err(SessionError::Api)
+            }
+            other => other.map_err(SessionError::Api),
+        }
+    }
+
     pub fn get(&mut self, path: &str) -> Result<serde_json::Value, SessionError> {
         let url = format!("{}{path}", self.account().issuer);
         self.call(|client, token| client.get_json(&url, Some(token)))
@@ -160,6 +194,9 @@ impl Session {
 pub struct Entitlement {
     pub pro: bool,
     pub reason: String,
+    /// The plan id, when the service names one the catalog knows
+    /// (`free`, `pro`, `team`, `enterprise`). Without it, `pro` decides.
+    pub plan: Option<String>,
 }
 
 pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
@@ -174,5 +211,10 @@ pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
         .filter(|r| r.len() <= 64 && r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
         .unwrap_or("unknown")
         .to_string();
-    Ok(Entitlement { pro, reason })
+    let plan = v
+        .get("plan")
+        .and_then(|p| p.as_str())
+        .filter(|p| crate::plans::known(p))
+        .map(str::to_string);
+    Ok(Entitlement { pro, reason, plan })
 }

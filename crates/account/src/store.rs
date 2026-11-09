@@ -41,6 +41,11 @@ pub struct State {
     pub token_endpoint: String,
     #[serde(default)]
     pub revocation_endpoint: Option<String>,
+    /// The generation this sign-in was made at. Token refreshes keep it, so
+    /// it names one sign-in (Pro leases are bound to it); a new sign-in or a
+    /// sign-out moves it.
+    #[serde(default)]
+    pub login: u64,
     /// The generation of the latest logout, carried through every later
     /// sign-in and refresh, so a sign-in that started before it can tell.
     #[serde(default)]
@@ -302,6 +307,7 @@ impl Store {
                 .map(|s| s.token_endpoint.clone())
                 .unwrap_or_default(),
             revocation_endpoint: previous.and_then(|s| s.revocation_endpoint.clone()),
+            login: 0,
         };
         self.write_state(&tomb)?;
         self.remove_secret(None)
@@ -332,7 +338,7 @@ pub fn private_dir(dir: &Path) -> Result<(), String> {
 
 /// Opening never follows a final symlink (Unix), so the checks below are
 /// made on the file that is read, not on a path that can be swapped.
-trait NoFollow {
+pub(crate) trait NoFollow {
     fn no_follow(&mut self) -> &mut Self;
 }
 
@@ -379,14 +385,27 @@ pub fn read_private(path: &Path) -> Result<Option<Vec<u8>>, String> {
 
 /// Replace a file with a 0600 one by rename, never following a link.
 pub fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_private_mode(path, bytes, 0o600)
+}
+
+/// [`write_private`] with another mode (0700 for an executable). The staging
+/// file is created fresh (`create_new`, no symlink followed), so nothing
+/// planted at its name is written through.
+pub fn write_private_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<(), String> {
+    #[cfg(not(unix))]
+    let _ = mode;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let parent = path.parent().ok_or("no parent directory")?;
     let name = path.file_name().ok_or("no file name")?.to_string_lossy();
     let temp = parent.join(format!(
-        ".{name}.{}-{}.tmp",
+        ".{name}.{}-{}-{}.tmp",
         std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
+        NEXT.fetch_add(1, Ordering::Relaxed),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0)
     ));
     let result = (|| -> std::io::Result<()> {
         let mut opts = fs::OpenOptions::new();
@@ -394,7 +413,7 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> Result<(), String> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            opts.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+            opts.mode(mode).custom_flags(libc::O_NOFOLLOW);
         }
         let mut f = opts.open(&temp)?;
         f.write_all(bytes)?;

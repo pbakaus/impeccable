@@ -75,6 +75,7 @@ Commands:
   login                            Sign in to your Impeccable account
   logout                           Sign out on this machine
   whoami                           Show the signed-in account and whether it includes Pro rules
+  health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
 
 Options:
   --help       Show this help message

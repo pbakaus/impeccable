@@ -5,6 +5,10 @@ version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# See crates/account: lets a test or rehearsal build trust its own Pro release key.
+test-release-keys = ["impeccable-account/test-release-keys"]
+
 [dependencies]
 impeccable-account = { workspace = true }
 impeccable-common = { path = "../common" }
@@ -24,6 +28,9 @@ base64 = "0.22"
 sha2 = "0.10"
 
 [dev-dependencies]
+impeccable-account = { workspace = true, features = ["test-release-keys"] }
+ring = "0.17.14"
+base64 = "0.22"
 serde_json = { workspace = true }
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 url = "2"
