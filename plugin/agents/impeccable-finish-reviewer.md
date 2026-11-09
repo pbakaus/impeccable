@@ -1,7 +1,7 @@
 ---
 name: impeccable-finish-reviewer
 description: Reviews a finished Impeccable build against its direction contract, the approved comp, and the chosen world's quality bar, returning an ordered list of material fixes.
-tools: Read, Bash, Glob, Grep
+disallowedTools: Write, Edit, NotebookEdit
 model: inherit
 effort: high
 maxTurns: 30

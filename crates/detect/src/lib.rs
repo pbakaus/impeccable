@@ -72,6 +72,10 @@ Commands:
   update                           Update skills to the latest version
   check                            Check if skill updates are available
   telemetry off|on|status          Turn the roll API's anonymous usage data off or on, or show it
+  login                            Sign in to your Impeccable account
+  logout                           Sign out on this machine
+  whoami                           Show the signed-in account and whether it includes Pro rules
+  health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
 
 Options:
   --help       Show this help message
