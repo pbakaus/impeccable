@@ -157,8 +157,13 @@ pub(super) fn resource_matches(
         }
         "mcp-approval" => {
             let text = String::from_utf8_lossy(&bytes);
+            let path = resource.path.display().to_string();
+            // This resource's own server, found by its id: another server with the same mode
+            // must not stand in for it.
             Ok(journal.spec.mcp_approvals.iter().any(|a| {
-                resource.last_written_value.as_str() == Some(a.mode.as_str())
+                crate::resources::resource_id(&journal.spec, "mcp-approval", &path, &a.server)
+                    == resource.resource_id
+                    && resource.last_written_value.as_str() == Some(a.mode.as_str())
                     && render::approval_value(&text, &a.server).as_deref() == Some(a.mode.as_str())
             }))
         }
