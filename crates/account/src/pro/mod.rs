@@ -201,6 +201,15 @@ fn floor(paths: &Paths) -> u64 {
         .unwrap_or(0)
 }
 
+/// The floor's own lock file, beside it. (Not `with_extension`: the
+/// engine version's dots would cut the name.)
+fn floor_lock(paths: &Paths) -> PathBuf {
+    let floor = paths.floor();
+    let mut name = floor.file_name().unwrap_or_default().to_os_string();
+    name.push(".lock");
+    floor.with_file_name(name)
+}
+
 /// Raise the floor, never lower it. The floor is shared by every account
 /// under this home, so the read and the write happen under one lock: two
 /// refreshes for different accounts can't write 3 and then 2.
@@ -211,7 +220,7 @@ fn raise_floor(paths: &Paths, revision: u64) -> Result<(), String> {
         .create(true)
         .truncate(false)
         .no_follow()
-        .open(paths.floor().with_extension("lock"))
+        .open(floor_lock(paths))
         .map_err(|e| format!("could not open the revision floor lock: {e}"))?;
     lock.lock().map_err(|e| format!("could not lock the revision floor: {e}"))?;
     if revision > floor(paths) {
@@ -264,17 +273,24 @@ fn forget_now(account: &Account, not_entitled: bool) {
 /// forgets the Pro state at once. "Entitled" drops an earlier "not entitled"
 /// and the retry clock, so the next scan fetches the Pro build.
 pub fn settle(account: &Account, login: u64, pro: bool) {
-    if !pro {
-        return forget_if(account, Some(login), true);
-    }
     let store = Store::new(account);
-    let Ok(_lock) = store.lock() else { return };
-    if store.state().is_some_and(|s| s.signed_in && s.login == login) {
-        let paths = Paths::new(account);
-        let _ = std::fs::remove_file(paths.not_entitled());
+    // A busy lock skips the answer: the next whoami or refresh brings it again.
+    let Ok(lock) = store.lock_for(SETTLE_LOCK_WAIT) else { return };
+    if !store.state().is_some_and(|s| s.signed_in && s.login == login) {
+        return;
+    }
+    if !pro {
+        return forget_holding(&lock, account, true);
+    }
+    // Lift an earlier "no" and its retry clocks; without one, leave the
+    // clocks alone so a failing install keeps its pace.
+    let paths = Paths::new(account);
+    if std::fs::remove_file(paths.not_entitled()).is_ok() {
         remove_attempts(&paths);
     }
 }
+
+const SETTLE_LOCK_WAIT: Duration = Duration::from_secs(5);
 
 /// [`forget`], skipped when the machine has since signed in again
 /// (`login` is the sign-in the answer was about).
@@ -845,6 +861,17 @@ mod install_tests {
         remove_installed(&new);
         assert!(!old.current().exists() && !new.current().exists());
         let _ = std::fs::remove_dir_all(&a.home);
+    }
+
+    #[test]
+    fn each_floor_has_its_own_lock() {
+        // Catches (review, Cursor): with_extension cutting "floor-0.1.21-…" at the version's dot, so every engine shared "floor-0.1.lock".
+        let a = account("floor-lock");
+        let lock = floor_lock(&Paths::new(&a));
+        assert_eq!(
+            lock.file_name().unwrap().to_string_lossy(),
+            format!("{}.lock", Paths::new(&a).floor().file_name().unwrap().to_string_lossy())
+        );
     }
 
     #[test]
