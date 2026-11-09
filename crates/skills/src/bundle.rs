@@ -83,6 +83,9 @@ pub fn download(url: &str) -> Result<Vec<u8>, String> {
     match impeccable_context::http::get_following(url, 5, |b| {
         b.timeout_connect(CONNECT_TIMEOUT).timeout_read(IDLE_TIMEOUT).timeout_write(IDLE_TIMEOUT)
     }) {
+        // A 3xx left over (hops ran out, no usable Location, an https to http
+        // downgrade) is a failed download, not bytes to verify.
+        Ok(res) if !(200..300).contains(&res.status()) => Err(format!("HTTP {}", res.status())),
         Ok(res) => {
             let mut body = Vec::new();
             res.into_reader()

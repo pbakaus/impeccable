@@ -282,7 +282,13 @@ fn sniffed_type(bytes: &[u8]) -> Option<&'static str> {
 /// the caller names the URL.
 pub(crate) fn fetch_image(url: &str, timeout: std::time::Duration, redirects: u32) -> Result<(Vec<u8>, &'static str), String> {
     use std::io::Read;
-    let response = match crate::http::get_following(url, redirects, |b| b.timeout_connect(timeout).timeout(timeout)) {
+    // One deadline for the whole fetch, redirects included: each hop gets
+    // only the time that is left.
+    let started = std::time::Instant::now();
+    let response = match crate::http::get_following(url, redirects, |b| {
+        let left = timeout.saturating_sub(started.elapsed()).max(std::time::Duration::from_millis(1));
+        b.timeout_connect(left).timeout(left)
+    }) {
         Ok(r) => r,
         Err(ureq::Error::Status(code, _)) => return Err(format!("HTTP {}", code)),
         Err(_) => return Err("the request failed".into()),

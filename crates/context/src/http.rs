@@ -76,7 +76,8 @@ pub fn get_following(
         else {
             return Ok(response);
         };
-        if current.starts_with("https:") && next.scheme() != "https" {
+        let was_https = url::Url::parse(&current).map(|u| u.scheme() == "https").unwrap_or(false);
+        if was_https && next.scheme() != "https" {
             return Ok(response);
         }
         current = next.to_string();
@@ -466,6 +467,34 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
         assert_eq!(response.into_string().unwrap(), "proxied");
         origin_thread.join().unwrap();
         proxy_thread.join().unwrap();
+    }
+
+    #[test]
+    fn get_following_returns_the_last_redirect_when_hops_run_out() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let served_in = served.clone();
+        let server = std::thread::spawn(move || {
+            accept_until(listener, |stream| {
+                let mut buf = [0u8; 4096];
+                if stream.read(&mut buf).unwrap_or(0) == 0 {
+                    return false;
+                }
+                let _ = stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: /again\r\nContent-Length: 0\r\n\r\n");
+                served_in.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1 >= 3
+            });
+        });
+        let _env_guard = ProxyEnvGuard::set(&[("NO_PROXY", None), ("no_proxy", None)]);
+        let response = get_following(&format!("{base}/start"), 2, |b| b.timeout(Duration::from_secs(2))).expect("response");
+        assert_eq!(response.status(), 302);
+        server.join().unwrap();
+        assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 3, "the first request plus two hops");
     }
 
     #[test]
