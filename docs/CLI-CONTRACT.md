@@ -2166,3 +2166,29 @@ carrying a visual decision never creates a submitted receipt or accepts stale fi
 this rule to an existing unsubmitted draft. It verifies stored image blobs and
 current source integrity, preserves any new reviewer decisions, records the
 prior approval revision, and leaves packet revisions and old receipts unchanged.
+
+## Loop macOS app
+
+- `impeccable loop install [--version X.Y.Z] [--no-open]` installs the highest
+  pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
+  An existing installation exits non-zero and directs the user to `update`.
+- `impeccable loop update [--no-open]` replaces an installed app with the highest
+  pinned version. An already current app exits 0. Quit Loop before updating.
+- Both commands open the installed app unless `--no-open` is passed. Other
+  platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
+  only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
+- SHA-256 pins in `crates/cli/loop-checksums.txt` are compiled into the engine.
+  Missing pins or mismatches fail closed before extraction. The initial empty
+  manifest means no Loop release can be installed yet.
+- Downloads stage inside `~/Applications`; update preserves the old app until
+  the rename swap succeeds and restores it on failure. An interrupted swap's
+  backup is recovered on the next invocation. Installation holds an exclusive
+  process lock; a crash releases it automatically.
+
+Loop releases publish `impeccable-loop-<version>.zip` on tag `loop-v<version>`.
+Run `node scripts/check-loop-release.mjs --record <version>` to download and
+record a new pin; run without arguments to verify every recorded release.
+Existing pins cannot be overwritten with a different digest.
+**A new Loop version needs an engine release before `loop update` can see it.**
+That is intended at Loop's cadence: the pins live inside the checksummed engine
+binary, including for npx and PATH installs without an adjacent skill directory.
