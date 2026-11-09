@@ -8752,11 +8752,10 @@
       try {
         const res = await fetch(source.href);
         if (!res.ok) return;
-        const text = await res.text();
-        const fontFaceRe = /@font-face\s*\{[^}]*\}/g;
-        let m2;
+        const parsed = new CSSStyleSheet();
+        parsed.replaceSync(await res.text());
         // res.url is the base the browser used if the sheet redirected.
-        while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], res.url || source.href));
+        await collectFontFaces(parsed, res.url || source.href, chunks);
       } catch { /* ignore; capture is best-effort */ }
       return;
     }

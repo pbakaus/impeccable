@@ -1312,6 +1312,7 @@ describe('live-browser source contracts', () => {
     const rule = (cssText) => ({ constructor: { name: 'CSSFontFaceRule' }, cssText });
     const context = {
       URL, btoa,
+      CSSStyleSheet: class { replaceSync(text) { this.cssRules = [rule(text)]; } },
       document: {
         baseURI: 'http://h/app/page',
         styleSheets: [
@@ -1342,8 +1343,13 @@ describe('live-browser source contracts', () => {
     const group = (mediaText, ...cssRules) => ({ media: { mediaText }, cssRules });
     const supports = (conditionText, ...cssRules) => ({ constructor: { name: 'CSSSupportsRule' }, conditionText, cssRules });
     const imp = (mediaText, styleSheet) => ({ media: { mediaText }, styleSheet });
+    const parsedBodies = {
+      'x.css body': [face('f/x.woff2'), group('print', face('f/x-print.woff2')), supports('(display: nope)', face('f/x-nope.woff2'))],
+      'old.css body': [face('fonts/z.woff2')],
+    };
     const context = {
       URL, btoa,
+      CSSStyleSheet: class { replaceSync(text) { this.cssRules = parsedBodies[text]; } },
       CSS: { supports: (c) => c !== '(display: nope)' },
       window: { matchMedia: (q) => ({ matches: q !== 'print' }) },
       document: {
@@ -1364,8 +1370,8 @@ describe('live-browser source contracts', () => {
       },
       fetch: async (url) => {
         fetched.push(url);
-        if (url.endsWith('x.css')) return { ok: true, text: async () => '@font-face{src:url(f/x.woff2)}' };
-        if (url.endsWith('old.css')) return { ok: true, url: 'http://cdn/v2/b.css', text: async () => '@font-face{src:url(fonts/z.woff2)}' };
+        if (url.endsWith('x.css')) return { ok: true, text: async () => 'x.css body' };
+        if (url.endsWith('old.css')) return { ok: true, url: 'http://cdn/v2/b.css', text: async () => 'old.css body' };
         return { ok: true, headers: { get: () => 'font/ttf; charset=binary' }, arrayBuffer: async () => new Uint8Array([1]).buffer };
       },
     };
