@@ -87,11 +87,16 @@ pub(super) fn remove_owned(
     if s.harness == "claude" && !s.hooks.is_empty() {
         return remove_json_hooks(s, current, original);
     }
-    if s.harness == "codex" && !s.hooks.is_empty() {
+    if s.harness == "codex" && (!s.hooks.is_empty() || !s.mcp_approvals.is_empty()) {
         if current.iter().copied().find(|b| !b.is_ascii_whitespace()) == Some(b'{') {
             return remove_json_hooks(s, current, original);
         }
-        return remove_codex_hooks(current, original).map(Some);
+        let features = if s.hooks.is_empty() {
+            current.to_vec()
+        } else {
+            remove_codex_hooks(current, original)?
+        };
+        return restore_approvals(s, &features, original).map(Some);
     }
     let _ = path;
     Ok(None)
@@ -114,6 +119,14 @@ fn remove_rule_block(
     let Some(a) = text.find(&start) else {
         return Ok(current.to_vec());
     };
+    // A block the person edited is theirs now: leave it, and undo reports the conflict.
+    let written = render_rule(s, None)?;
+    let written = String::from_utf8_lossy(&written);
+    if crate::resources::block_body(&text, &start, &end)
+        != crate::resources::block_body(&written, &start, &end)
+    {
+        return Ok(current.to_vec());
+    }
     let Some(e) = text.find(&end) else {
         return Err((
             "ambiguous_markers",
@@ -441,6 +454,130 @@ pub(super) fn render_codex_config(
     s: &Spec,
     before: Option<&[u8]>,
 ) -> Result<Vec<u8>, (&'static str, String, i32)> {
+    let mut out = render_codex_features(s, before)?;
+    for a in &s.mcp_approvals {
+        let text =
+            std::str::from_utf8(&out).map_err(|_| invalid_toml("Codex TOML is not UTF-8"))?;
+        out = set_approval(text, &a.server, Some(&a.mode))?.into_bytes();
+    }
+    Ok(out)
+}
+const APPROVAL_KEY: &str = "default_tools_approval_mode";
+/// The standard `[mcp_servers.<server>]` table. Inline and dotted forms are
+/// refused rather than rewritten, and a missing server is never created here.
+fn server_table<'a>(
+    doc: &'a ImDocument<String>,
+    server: &str,
+) -> Result<&'a toml_edit::Table, (&'static str, String, i32)> {
+    let missing = || {
+        (
+            "server_missing",
+            format!("Codex has no [mcp_servers.{server}] to set approval on"),
+            4,
+        )
+    };
+    let servers = doc.as_table().get("mcp_servers").ok_or_else(missing)?;
+    let Some(servers) = servers.as_table() else {
+        return Err(invalid_toml("mcp_servers must be a table"));
+    };
+    match servers.get(server).ok_or_else(missing)? {
+        Item::Table(table) if !table.is_dotted() && table.span().is_some() => Ok(table),
+        _ => Err(invalid_toml(
+            "Inline or dotted MCP server tables need a manual edit",
+        )),
+    }
+}
+pub(super) fn approval_value(text: &str, server: &str) -> Option<String> {
+    let doc = parse_codex_document(text).ok()?;
+    let table = server_table(&doc, server).ok()?;
+    table.get(APPROVAL_KEY)?.as_str().map(ToOwned::to_owned)
+}
+/// Sets (`Some`) or removes (`None`) the server's approval mode, touching only that line.
+fn set_approval(
+    text: &str,
+    server: &str,
+    mode: Option<&str>,
+) -> Result<String, (&'static str, String, i32)> {
+    let doc = parse_codex_document(text)?;
+    let table = server_table(&doc, server)?;
+    let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    match (table.get(APPROVAL_KEY), mode) {
+        (Some(item), Some(mode)) => {
+            if item.as_str() == Some(mode) {
+                return Ok(text.to_owned());
+            }
+            if item.as_str().is_none() {
+                return Err(invalid_toml("default_tools_approval_mode must be a string"));
+            }
+            let span = item
+                .span()
+                .ok_or_else(|| invalid_toml("Missing approval value span"))?;
+            Ok(splice(text, span, &format!("\"{mode}\"")))
+        }
+        (Some(item), None) => {
+            let span = item
+                .span()
+                .ok_or_else(|| invalid_toml("Missing approval value span"))?;
+            let line = line_range(text, span.start, span.end);
+            let end = if text[line.end..].starts_with("\r\n") {
+                line.end + 2
+            } else if text[line.end..].starts_with('\n') {
+                line.end + 1
+            } else {
+                line.end
+            };
+            Ok(format!("{}{}", &text[..line.start], &text[end..]))
+        }
+        (None, Some(mode)) => {
+            let header = table.span().unwrap();
+            let line = line_range(text, header.start, header.start);
+            let at = if line.end < text.len() {
+                line.end
+                    + if text[line.end..].starts_with("\r\n") {
+                        2
+                    } else {
+                        1
+                    }
+            } else {
+                text.len()
+            };
+            let lead = if at == text.len() && !text.ends_with('\n') {
+                newline
+            } else {
+                ""
+            };
+            let mut out = text.to_owned();
+            out.insert_str(at, &format!("{lead}{APPROVAL_KEY} = \"{mode}\"{newline}"));
+            Ok(out)
+        }
+        (None, None) => Ok(text.to_owned()),
+    }
+}
+/// Undo: put back each approval the engine changed, if it still holds the written mode.
+pub(super) fn restore_approvals(
+    s: &Spec,
+    current: &[u8],
+    original: Option<&[u8]>,
+) -> Result<Vec<u8>, (&'static str, String, i32)> {
+    let mut text = std::str::from_utf8(current)
+        .map_err(|_| invalid_toml("Codex TOML is not UTF-8"))?
+        .to_owned();
+    let before = original.and_then(|b| std::str::from_utf8(b).ok());
+    for a in &s.mcp_approvals {
+        let prior = before.and_then(|t| approval_value(t, &a.server));
+        if prior.as_deref() == Some(a.mode.as_str())
+            || approval_value(&text, &a.server).as_deref() != Some(a.mode.as_str())
+        {
+            continue;
+        }
+        text = set_approval(&text, &a.server, prior.as_deref())?;
+    }
+    Ok(text.into_bytes())
+}
+fn render_codex_features(
+    s: &Spec,
+    before: Option<&[u8]>,
+) -> Result<Vec<u8>, (&'static str, String, i32)> {
     if s.hooks.is_empty() {
         return Ok(before.unwrap_or_default().to_vec());
     }
@@ -450,15 +587,12 @@ pub(super) fn render_codex_config(
     match feature_hooks(Some(&document))? {
         Some(true) => return Ok(before.unwrap_or_default().to_vec()),
         Some(false) => {
-            let feature = document.as_table().get("features").unwrap();
-            let hook = feature
-                .as_table_like()
-                .and_then(|table| table.get("hooks"))
-                .unwrap();
-            let span = hook
-                .span()
-                .ok_or_else(|| invalid_toml("Missing hooks value span"))?;
-            return Ok(splice(text, span, "true").into_bytes());
+            // An explicit off switch also silences the person's other hooks; never flip it for them.
+            return Err((
+                "hooks_disabled",
+                "Codex hooks are turned off (features.hooks = false); turn them on first".into(),
+                4,
+            ));
         }
         None => match document.as_table().get("features") {
             Some(Item::Table(table)) => {

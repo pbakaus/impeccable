@@ -77,6 +77,30 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Instruction body contains reserved marker syntax".into());
         }
     }
+    for h in &s.hooks {
+        if s.harness == "codex" && (h.run_async.is_some() || h.async_rewake.is_some()) {
+            return Err("async and asyncRewake hooks are Claude Code only".into());
+        }
+        if h.timeout == Some(0) {
+            return Err("Hook timeout must be at least one second".into());
+        }
+    }
+    for a in &s.mcp_approvals {
+        if s.harness != "codex" {
+            return Err("MCP approvals are Codex only".into());
+        }
+        if a.server.is_empty()
+            || !a
+                .server
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err("Invalid MCP server name".into());
+        }
+        if !["approve", "prompt", "auto", "writes"].contains(&a.mode.as_str()) {
+            return Err("Unsupported MCP approval mode".into());
+        }
+    }
     for m in &s.mcp_servers {
         if m.name.is_empty() || m.name.contains(['/', '\\']) {
             return Err("Invalid MCP server name".into());
