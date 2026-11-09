@@ -34,8 +34,20 @@ config with `features.hooks = false` (`hooks_disabled`): the engine never turns
 the person's global hook switch back on. Undo leaves an instruction block whose
 body was edited in place and reports it as a conflict.
 
-Supported verbs are `capabilities`, `plan`, `apply`, `undo`, `status`, and
-`recover`. `capabilities` does not need a spec. Request and response schemas
+Supported verbs are `capabilities`, `list`, `plan`, `apply`, `undo`, `status`,
+and `recover`. `capabilities` and `list` do not need a spec.
+
+`list` is the setup report: every committed installation in the journal, with
+`owner`, `harness`, its hook `event`s and `matcher`s, whether it wrote an
+instruction, the MCP server names it added or approved, and each resource's
+`kind` and `state` (`created`, `preexisting`, `conflict` when the file no
+longer holds what the engine wrote, or `unchecked` when the harness CLI that
+would check it can't run). It also returns the engine's own `engineVersion`, a
+count of `pendingTransactions` that `recover` would settle, and a count of
+`unreadableJournals` (invalid, or written by a newer engine), which it skips
+rather than failing the whole report. It is read-only, takes no lock, and returns no path, command, account
+root or instruction text, so a signed-in client may send it to a server. Like
+`status`, checking a Claude MCP server runs `claude mcp get`. Request and response schemas
 are version 1; the journal schema is version 2 under
 `~/.impeccable/agents`. Set `IMPECCABLE_AGENTS_HOME` to isolate it in tests.
 The lock wait is ten seconds.
