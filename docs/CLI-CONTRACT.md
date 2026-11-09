@@ -2164,3 +2164,17 @@ carrying a visual decision never creates a submitted receipt or accepts stale fi
 this rule to an existing unsubmitted draft. It verifies stored image blobs and
 current source integrity, preserves any new reviewer decisions, records the
 prior approval revision, and leaves packet revisions and old receipts unchanged.
+
+### Engine download failures in launchers and the npm shim
+
+The POSIX launcher (curl path), Windows launcher (curl.exe), and npm shim
+attribute HTTP 5xx failures to the final effective URL's host. They print
+`impeccable: could not download engine ${version}: GitHub's downloads are failing right now (HTTP ${status} from ${host}). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`
+for `github.com`, `*.github.com`, `githubusercontent.com`, and
+`*.githubusercontent.com`. Other hosts print
+`impeccable: could not download engine ${version}: ${host} is failing right now (HTTP ${status}), a server error on ${host}'s side. Try again later.`
+
+Exit status remains 127. The npm shim still follows that line with its existing
+`impeccable: no binary for ${target}...` diagnostic. Launchers omit setup advice
+for these outages. Other failures retain the existing download and setup
+diagnostics; the POSIX wget fallback retains those diagnostics for every failure.
