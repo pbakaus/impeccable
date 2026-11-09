@@ -313,7 +313,17 @@ fn url_file_name(url: &str) -> String {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
-    run_with_api_base(args, io, "https://api.openai.com/v1")
+    let api_base = api_base(&io.env);
+    run_with_api_base(args, io, &api_base)
+}
+
+/// OPENAI_BASE_URL is the variable the OpenAI SDKs read for a proxy or compatible endpoint, with
+/// the same meaning: the base that `/images/...` hangs off, `/v1` included.
+fn api_base(env: &Env) -> String {
+    env.get("OPENAI_BASE_URL")
+        .map(|b| b.trim().trim_end_matches('/').to_string())
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| "https://api.openai.com/v1".into())
 }
 
 fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
@@ -854,6 +864,16 @@ mod tests {
         }
         assert_eq!(raw[4], 0); // transparent corner
         assert_eq!(raw[8 * (16 * 4 + 1) + 1 + 8 * 4 + 3], 255); // opaque subject
+    }
+
+    #[test]
+    fn api_base_reads_openai_base_url() {
+        let env = |v: &str| Env::from([("OPENAI_BASE_URL".into(), v.into())]);
+        assert_eq!(api_base(&Env::new()), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("")), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("  ")), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("http://127.0.0.1:8790/openai/v1/")), "http://127.0.0.1:8790/openai/v1");
+        assert_eq!(api_base(&env("https://proxy.example/v1")), "https://proxy.example/v1");
     }
 
     #[test]

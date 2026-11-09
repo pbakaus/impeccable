@@ -1,4 +1,5 @@
 use super::*;
+use crate::cli::list;
 use crate::render::{render_codex_config, render_rule};
 use std::sync::Mutex;
 
@@ -1084,6 +1085,58 @@ fn reapply_refuses_an_approval_the_person_changed_and_undo_keeps_an_edited_block
         .iter()
         .any(|c| c.as_str().unwrap().ends_with("AGENTS.md")));
 }
+#[test]
+fn list_reports_every_installation_without_paths_and_marks_edited_entries() {
+    // Catches: a setup report that leaks account roots or hook commands, misses an installation, or calls an
+    // entry the person changed still installed.
+    let root = temp();
+    let home = temp();
+    let s: Spec = serde_json::from_value(json!({
+        "version": 1, "owner": "impeccable-loop", "harness": "claude", "root": root,
+        "hooks": [{"event":"Stop","command":"secret-command /Users/someone","timeout":10},
+                  {"event":"PreToolUse","matcher":"AskUserQuestion","command":"ask"}]
+    }))
+    .unwrap();
+    let j = apply(&s, None, &home, &home.join("loop.json"), None).unwrap();
+    fs::write(home.join("loop.json"), serde_json::to_vec(&j).unwrap()).unwrap();
+    // operate() removes the transaction's pending file on commit; this test commits by hand.
+    for e in fs::read_dir(&home).unwrap().flatten() {
+        if e.file_name().to_string_lossy().ends_with(".pending.json") {
+            fs::remove_file(e.path()).unwrap();
+        }
+    }
+    fs::write(home.join("other.pending.json"), b"{}").unwrap();
+    let report = list(&home).unwrap();
+    let text = report.to_string();
+    assert!(!text.contains(&*root.to_string_lossy()) && !text.contains("secret-command"));
+    assert_eq!(report["pendingTransactions"], 1);
+    let install = &report["installations"][0];
+    assert_eq!(
+        (install["owner"].as_str(), install["harness"].as_str()),
+        (Some("impeccable-loop"), Some("claude"))
+    );
+    assert_eq!(
+        install["hooks"],
+        json!([{"event":"Stop","matcher":null},{"event":"PreToolUse","matcher":"AskUserQuestion"}])
+    );
+    let states = |r: &Value| {
+        r["installations"][0]["resources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["state"].as_str().unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    assert!(!states(&report).is_empty() && states(&report).iter().all(|s| s == "created"));
+    fs::write(root.join("settings.json"), b"{\"hooks\":{}}").unwrap();
+    assert!(states(&list(&home).unwrap())
+        .iter()
+        .all(|s| s == "conflict"));
+    assert_eq!(
+        list(&temp().join("absent")).unwrap()["installations"],
+        json!([])
+    );
+}
 fn approve(servers: &[&str], mode: &str) -> Vec<McpApproval> {
     servers
         .iter()
@@ -1224,4 +1277,67 @@ fn reapply_keeps_hooks_on_when_an_older_journal_recorded_them_off() {
     assert!(fs::read_to_string(&config)
         .unwrap()
         .contains("hooks = false"));
+}
+#[test]
+#[cfg(unix)]
+fn list_reports_every_installation_past_a_bad_journal_or_an_unchecked_resource() {
+    // Catches: one unreadable, invalid or newer journal, or a harness CLI that is gone, dropping every other
+    // installation from the setup report; and a report that lists only the first installation (#1344 review).
+    let _guard = MCP_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let home = temp();
+    let committed = |owner: &str, file: &str| {
+        let s: Spec = serde_json::from_value(json!({
+            "version": 1, "owner": owner, "harness": "claude", "root": temp(),
+            "hooks": [{"event":"Stop","command":"loop","timeout":10}]
+        }))
+        .unwrap();
+        let j = apply(&s, None, &home, &home.join(file), None).unwrap();
+        for e in fs::read_dir(&home).unwrap().flatten() {
+            if e.file_name().to_string_lossy().ends_with(".pending.json") {
+                fs::remove_file(e.path()).unwrap();
+            }
+        }
+        j
+    };
+    let loop_journal = committed("impeccable-loop", "loop.json");
+    fs::write(
+        home.join("loop.json"),
+        serde_json::to_vec(&loop_journal).unwrap(),
+    )
+    .unwrap();
+    let mut design = committed("impeccable-design", "design.json");
+    // A resource only the harness CLI can check, with that CLI gone.
+    design.resources.push(ResourceRecord {
+        resource_id: "mcp:design".into(),
+        kind: "mcp-server".into(),
+        path: PathBuf::from("claude:design"),
+        state: ResourceState::Created,
+        original_value: None,
+        last_written_value: json!({"name":"impeccable"}),
+        claims: vec![],
+    });
+    fs::write(
+        home.join("design.json"),
+        serde_json::to_vec(&design).unwrap(),
+    )
+    .unwrap();
+    fs::write(home.join("broken.json"), b"not json").unwrap();
+    fs::write(home.join("newer.json"), br#"{"version":999}"#).unwrap();
+    std::env::set_var("IMPECCABLE_CLAUDE_BIN", home.join("no-such-claude"));
+    let report = list(&home);
+    std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
+    let report = report.unwrap();
+    assert_eq!(report["unreadableJournals"], 2);
+    let owners: Vec<_> = report["installations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["owner"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(owners, ["impeccable-design", "impeccable-loop"]);
+    assert!(report["installations"][0]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["kind"] == "mcp-server" && r["state"] == "unchecked"));
 }
