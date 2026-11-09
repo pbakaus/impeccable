@@ -34,6 +34,7 @@ fn spec(harness: &str, root: PathBuf) -> Spec {
         root,
         hooks: vec![],
         mcp_servers: vec![],
+        mcp_approvals: vec![],
         instruction: Some("managed text".into()),
     }
 }
@@ -114,6 +115,9 @@ fn journal_records_each_hook_resource_and_claim() {
         event: "PreToolUse".into(),
         matcher: Some("Edit".into()),
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let j = apply(&s, None, &home, &home.join("journal"), None).unwrap();
     let hook = j.resources.iter().find(|r| r.kind == "hook").unwrap();
@@ -129,15 +133,27 @@ fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
+    assert_eq!(
+        render_codex_config(
+            &s,
+            Some(b"model = 'x'\n\n[features]\nhooks = false # user note\n\n[other]\nx = 1\n"),
+        )
+        .unwrap_err()
+        .0,
+        "hooks_disabled"
+    );
     let result = render_codex_config(
         &s,
-        Some(b"model = 'x'\n\n[features]\nhooks = false # user note\n\n[other]\nx = 1\n"),
+        Some(b"model = 'x'\n\n[features]\nother = 1 # user note\n\n[other]\nx = 1\n"),
     )
     .unwrap();
     assert_eq!(
         String::from_utf8(result).unwrap(),
-        "model = 'x'\n\n[features]\nhooks = true # user note\n\n[other]\nx = 1\n"
+        "model = 'x'\n\n[features]\nother = 1 # user note\nhooks = true\n\n[other]\nx = 1\n"
     );
     let commented = render_codex_config(&s, Some(b"# keep this comment\nmodel = 'x'\n")).unwrap();
     assert!(String::from_utf8(commented)
@@ -151,7 +167,7 @@ fn codex_features_setting_uses_toml_edit_and_preserves_comments() {
     );
     let with_mcp = render_codex_config(
         &s,
-        Some(b"[mcp_servers.tools]\ncommand = 'tool'\n\n[features]\nhooks = false\n"),
+        Some(b"[mcp_servers.tools]\ncommand = 'tool'\n\n[features]\nhooks = true\n"),
     )
     .unwrap();
     assert!(String::from_utf8(with_mcp)
@@ -165,6 +181,9 @@ fn codex_toml_edit_accepts_inline_tables_and_quoted_dotted_server_names() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let input = "[mcp_servers.\"local.tools\"]\ncommand = 'tool'\nenv = { MODE = 'test', ENABLED = true }\n";
     let output = render_codex_config(&s, Some(input.as_bytes())).unwrap();
@@ -180,6 +199,9 @@ fn codex_toml_edit_preserves_crlf_and_existing_feature_keys() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let input = b"model = 'x'\r\n\r\n[features]\r\nother = true\r\n\r\n[mcp_servers.\"a.b\"]\r\ncommand = 'tool'\r\n";
     let output = render_codex_config(&s, Some(input)).unwrap();
@@ -324,6 +346,9 @@ fn two_owners_can_undo_in_either_order_and_keep_the_other_hook() {
             event: "PreToolUse".into(),
             matcher: None,
             command: "design".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         });
         let mut b = spec("claude", root.clone());
         b.owner = "impeccable-loop".into();
@@ -331,6 +356,9 @@ fn two_owners_can_undo_in_either_order_and_keep_the_other_hook() {
             event: "PreToolUse".into(),
             matcher: None,
             command: "loop".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         });
         let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
         let pa = home.join(format!("{}.json", installation_id(&a)));
@@ -373,6 +401,9 @@ fn preexisting_identical_hook_is_never_removed() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "already-here".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let path = root.join("settings.json");
     let expected = serde_json::to_vec_pretty(
@@ -399,6 +430,9 @@ fn undo_surgically_removes_managed_hook_after_user_edit() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "managed".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let journal = home.join("journal");
     let j = apply(&s, None, &home, &journal, None).unwrap();
@@ -422,6 +456,9 @@ fn apply_converges_when_a_hook_is_removed_from_the_spec() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "remove-me".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let p = home.join("journal");
     let first = apply(&s, None, &home, &p, None).unwrap();
@@ -449,6 +486,9 @@ fn shared_codex_features_claim_is_restored_after_last_installation() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "a".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let mut b = spec("codex", root_b.clone());
     b.owner = "impeccable-design".into();
@@ -517,6 +557,9 @@ fn two_accounts_sharing_symlinked_settings_hold_separate_claims() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "same-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let mut b = a.clone();
     b.root = account_b.clone();
@@ -566,6 +609,9 @@ fn conflicting_values_for_a_shared_account_resource_are_refused() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "one".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
     write_journal(&home.join(format!("{}.json", installation_id(&a))), &ja).unwrap();
@@ -574,6 +620,9 @@ fn conflicting_values_for_a_shared_account_resource_are_refused() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "two".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     assert_eq!(
         apply(&b, None, &home, &home.join("b"), None).unwrap_err().0,
@@ -587,6 +636,9 @@ fn identical_hook_is_not_duplicated() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "echo".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let p = s.root.join("settings.json");
     let first = render(&s, &p, None).unwrap();
@@ -601,6 +653,9 @@ fn preexisting_identical_hook_keeps_original_json_bytes() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "already-here".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let path = s.root.join("settings.json");
     let bytes =
@@ -619,6 +674,9 @@ fn plan_reports_actual_changes_and_json_reformatting_without_writing() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let result = plan(&s, None, &temp()).unwrap();
     assert_eq!(result["resources"][0]["change"], "update");
@@ -634,6 +692,9 @@ fn status_checks_owned_resources_without_marking_unrelated_edits_as_drift() {
         event: "PreToolUse".into(),
         matcher: None,
         command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let journal = apply(&s, None, &home, &home.join("journal"), None).unwrap();
     let settings = root.join("settings.json");
@@ -695,6 +756,9 @@ fn no_op_reapply_keeps_compact_settings_byte_exact_undo_eligibility() {
         event: "PreToolUse".into(),
         matcher: Some("Write".into()),
         command: "impeccable-hook".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let home = temp();
     let journal_path = home.join(format!("{}.json", installation_id(&desired)));
@@ -730,6 +794,9 @@ fn changed_spec_reapply_uses_surgical_undo_and_keeps_personal_hook() {
         event: "PreToolUse".into(),
         matcher: Some("Write".into()),
         command: "impeccable-hook-v1".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
     });
     let home = temp();
     let journal_path = home.join(format!("{}.json", installation_id(&initial)));
@@ -799,11 +866,17 @@ fn codex_hooks_use_the_nested_shape_codex_reads_and_undo_keeps_personal_hooks() 
             event: "PostToolUse".into(),
             matcher: Some("Edit".into()),
             command: "loop register".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         },
         Hook {
             event: "SessionStart".into(),
             matcher: None,
             command: "loop lifecycle".into(),
+            timeout: None,
+            run_async: None,
+            async_rewake: None,
         },
     ];
     let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
@@ -834,4 +907,321 @@ fn codex_hooks_use_the_nested_shape_codex_reads_and_undo_keeps_personal_hooks() 
     );
     let left: Value = serde_json::from_slice(&fs::read(root.join("hooks.json")).unwrap()).unwrap();
     assert_eq!(left, json!({"hooks":{"SessionStart":[personal]}}));
+}
+#[test]
+fn hook_options_reach_the_harness_and_undo_removes_them() {
+    // Catches: wake hooks written without asyncRewake/timeout, so Claude never wakes the session.
+    let root = temp();
+    let home = temp();
+    let parse = |harness: &str| -> Spec {
+        serde_json::from_value(json!({
+            "version": 1, "owner": "impeccable-loop", "harness": harness, "root": root,
+            "hooks": [{"event":"Stop","command":"loop wake","async":true,"asyncRewake":true,"timeout":86400}]
+        }))
+        .unwrap()
+    };
+    let s = parse("claude");
+    assert!(validate(&s).is_ok());
+    assert!(validate(&parse("codex"))
+        .unwrap_err()
+        .contains("Claude Code only"));
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written: Value =
+        serde_json::from_slice(&fs::read(root.join("settings.json")).unwrap()).unwrap();
+    assert_eq!(
+        written["hooks"]["Stop"],
+        json!([{"hooks":[{"type":"command","command":"loop wake","timeout":86400,"async":true,"asyncRewake":true}]}])
+    );
+    let mut edited = written.clone();
+    edited["model"] = json!("personal");
+    fs::write(
+        root.join("settings.json"),
+        serde_json::to_vec_pretty(&edited).unwrap(),
+    )
+    .unwrap();
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let left: Value =
+        serde_json::from_slice(&fs::read(root.join("settings.json")).unwrap()).unwrap();
+    assert_eq!(left, json!({"model":"personal"}));
+}
+#[test]
+fn codex_mcp_approval_is_set_on_the_existing_server_and_restored_on_undo() {
+    // Catches: no way to auto-approve Loop's MCP tools in Codex, or undo that loses the person's prior mode.
+    for (prior, line) in [
+        (None, ""),
+        (Some("prompt"), "default_tools_approval_mode = \"prompt\"\n"),
+    ] {
+        let root = temp();
+        let home = temp();
+        let config = root.join("config.toml");
+        let original = format!("model = 'x'\n\n[mcp_servers.impeccable]\n{line}url = \"https://example.test/mcp\" # keep\n\n[mcp_servers.other]\nurl = \"o\"\n");
+        fs::write(&config, &original).unwrap();
+        let mut s = spec("codex", root.clone());
+        s.instruction = None;
+        s.mcp_approvals = vec![McpApproval {
+            server: "impeccable".into(),
+            mode: "approve".into(),
+        }];
+        s.hooks = vec![Hook {
+            event: "SessionStart".into(),
+            matcher: None,
+            command: "loop lifecycle".into(),
+            timeout: Some(10),
+            run_async: None,
+            async_rewake: None,
+        }];
+        assert!(validate(&s).is_ok());
+        let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+        let written = fs::read_to_string(&config).unwrap();
+        assert_eq!(
+            render::approval_value(&written, "impeccable").as_deref(),
+            Some("approve")
+        );
+        assert_eq!(render::approval_value(&written, "other"), None);
+        assert!(written.contains("# keep") && written.starts_with("model = 'x'\n"));
+        fs::write(&config, written.replace("model = 'x'", "model = 'mine'")).unwrap();
+        assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        let left = fs::read_to_string(&config).unwrap();
+        assert_eq!(
+            left,
+            original.replace("model = 'x'", "model = 'mine'"),
+            "prior {prior:?}"
+        );
+    }
+    let root = temp();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    for (text, code) in [
+        ("model = 'x'\n", "server_missing"),
+        (
+            "mcp_servers = { impeccable = { url = 'u' } }\n",
+            "invalid_settings",
+        ),
+    ] {
+        fs::write(root.join("config.toml"), text).unwrap();
+        let home = temp();
+        let err = apply(&s, None, &home, &home.join("journal.json"), None).unwrap_err();
+        assert_eq!(err.0, code);
+        assert_eq!(fs::read_to_string(root.join("config.toml")).unwrap(), text);
+    }
+    let mut claude = spec("claude", root);
+    claude.mcp_approvals = s.mcp_approvals.clone();
+    assert!(validate(&claude).is_err());
+}
+#[test]
+fn undo_removes_what_the_journal_recorded_not_the_callers_spec() {
+    // Catches: an undo spec without approvals leaving the approval behind after unrelated edits.
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    let original = "[mcp_servers.impeccable]\nurl = \"u\"\n";
+    fs::write(&config, original).unwrap();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written = fs::read_to_string(&config).unwrap();
+    fs::write(&config, format!("model = 'mine'\n{written}")).unwrap();
+    let bare = Spec {
+        mcp_approvals: vec![],
+        instruction: None,
+        ..s.clone()
+    };
+    assert!(undo(&bare, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        fs::read_to_string(&config).unwrap(),
+        format!("model = 'mine'\n{original}")
+    );
+    assert!(!fs::read_to_string(root.join("AGENTS.md"))
+        .unwrap_or_default()
+        .contains("impeccable:"));
+}
+#[test]
+fn reapply_refuses_an_approval_the_person_changed_and_undo_keeps_an_edited_block() {
+    // Catches: reinstall flipping a person's "prompt" back to "approve", and undo deleting
+    // personal text written inside the managed instruction block.
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(&config, "[mcp_servers.impeccable]\nurl = \"u\"\n").unwrap();
+    let mut s = spec("codex", root.clone());
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let tightened = fs::read_to_string(&config)
+        .unwrap()
+        .replace("\"approve\"", "\"prompt\"");
+    fs::write(&config, &tightened).unwrap();
+    let err = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap_err();
+    assert_eq!(err.0, "approval_drift");
+    assert_eq!(fs::read_to_string(&config).unwrap(), tightened);
+    let agents = root.join("AGENTS.md");
+    let edited = fs::read_to_string(&agents)
+        .unwrap()
+        .replace("managed text", "managed text\nMy own rule.");
+    fs::write(&agents, &edited).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert_eq!(fs::read_to_string(&agents).unwrap(), edited);
+    assert!(result["conflicts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c.as_str().unwrap().ends_with("AGENTS.md")));
+}
+fn approve(servers: &[&str], mode: &str) -> Vec<McpApproval> {
+    servers
+        .iter()
+        .map(|s| McpApproval {
+            server: (*s).into(),
+            mode: mode.into(),
+        })
+        .collect()
+}
+fn approval_states(s: &Spec, j: &Journal) -> Vec<String> {
+    let mut v: Vec<(String, String)> = j
+        .resources
+        .iter()
+        .filter(|r| r.kind == "mcp-approval")
+        .map(|r| {
+            let state = if crate::targets::resource_matches(s, j, r).unwrap() {
+                format!("{:?}", r.state).to_lowercase()
+            } else {
+                "conflict".into()
+            };
+            (r.resource_id.clone(), state)
+        })
+        .collect();
+    v.sort();
+    v.into_iter().map(|(_, s)| s).collect()
+}
+#[test]
+#[cfg(unix)]
+fn undo_of_one_codex_owner_restores_its_approvals_in_a_shared_config() {
+    // Catches: undo skipping a config.toml another Codex installation claims, which left this
+    // installation's approval on with no journal to remove it (#1342 review, render.rs:99).
+    use std::os::unix::fs::symlink;
+    let home = temp();
+    let (root_a, root_b) = (temp(), temp());
+    let config = home.join("config.toml");
+    let original = "[mcp_servers.one]\nurl = \"1\"\n\n[mcp_servers.two]\nurl = \"2\"\n";
+    fs::write(&config, original).unwrap();
+    symlink(&config, root_a.join("config.toml")).unwrap();
+    symlink(&config, root_b.join("config.toml")).unwrap();
+    let mut a = spec("codex", root_a);
+    a.instruction = None;
+    a.mcp_approvals = approve(&["one"], "approve");
+    let mut b = spec("codex", root_b);
+    b.instruction = None;
+    b.owner = "impeccable-design".into();
+    b.mcp_approvals = approve(&["two"], "approve");
+    let ja = apply(&a, None, &home, &home.join("a"), None).unwrap();
+    let pa = home.join(format!("{}.json", installation_id(&a)));
+    write_journal(&pa, &ja).unwrap();
+    let jb = apply(&b, None, &home, &home.join("b"), None).unwrap();
+    write_journal(&home.join(format!("{}.json", installation_id(&b))), &jb).unwrap();
+    undo(&a, Some(&ja), &home).unwrap();
+    let _ = fs::remove_file(pa);
+    let left = fs::read_to_string(&config).unwrap();
+    assert_eq!(render::approval_value(&left, "one"), None);
+    assert_eq!(
+        render::approval_value(&left, "two").as_deref(),
+        Some("approve")
+    );
+    undo(&b, Some(&jb), &home).unwrap();
+    assert_eq!(fs::read_to_string(&config).unwrap(), original);
+}
+#[test]
+fn status_checks_each_approval_on_its_own_server() {
+    // Catches: status matching an approval's mode on any server, so a change on one server
+    // hid behind another with the same mode (#1342 review, targets.rs:163).
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(
+        &config,
+        "[mcp_servers.one]\nurl = \"1\"\n\n[mcp_servers.two]\nurl = \"2\"\n",
+    )
+    .unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.mcp_approvals = approve(&["one", "two"], "approve");
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let text = fs::read_to_string(&config).unwrap();
+    let at = text.find("[mcp_servers.two]").unwrap();
+    fs::write(
+        &config,
+        format!(
+            "{}{}",
+            &text[..at],
+            text[at..].replacen("\"approve\"", "\"prompt\"", 1)
+        ),
+    )
+    .unwrap();
+    let mut states = approval_states(&s, &j);
+    states.sort();
+    assert_eq!(states, ["conflict", "created"]);
+}
+#[test]
+fn reapply_with_a_new_approval_mode_records_the_mode_it_wrote() {
+    // Catches: a reused resource record keeping the old mode, so status called a successful
+    // change a conflict (#1342 review, resources.rs:341).
+    let root = temp();
+    let home = temp();
+    fs::write(root.join("config.toml"), "[mcp_servers.one]\nurl = \"1\"\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.mcp_approvals = approve(&["one"], "approve");
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    s.mcp_approvals = approve(&["one"], "prompt");
+    let j = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap();
+    assert_eq!(approval_states(&s, &j), ["created"]);
+}
+#[test]
+fn reapply_keeps_hooks_on_when_an_older_journal_recorded_them_off() {
+    // Catches: reapply restoring an older engine's recorded `hooks = false` before rendering,
+    // then refusing although the person's file has hooks on (#1342 review, render.rs:595).
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    fs::write(&config, "[features]\nhooks = true\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.hooks.push(Hook {
+        event: "SessionStart".into(),
+        matcher: None,
+        command: "loop".into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
+    });
+    let mut j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let physical = canonical_target(&config).unwrap();
+    for snap in j.snapshots.iter_mut().filter(|x| x.path == physical) {
+        snap.before = Some(b"[features]\nhooks = false\n".to_vec());
+    }
+    write_journal(&home.join(format!("{}.json", installation_id(&s))), &j).unwrap();
+    let j = apply(&s, Some(&j), &home, &home.join("journal.json"), None).unwrap();
+    assert!(fs::read_to_string(&config)
+        .unwrap()
+        .contains("hooks = true"));
+    undo(&s, Some(&j), &home).unwrap();
+    assert!(fs::read_to_string(&config)
+        .unwrap()
+        .contains("hooks = false"));
 }

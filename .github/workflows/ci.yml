@@ -83,9 +83,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -128,6 +126,17 @@ jobs:
       - name: Install wasm-pack
         if: needs.changes.outputs.detector == 'true'
         run: cargo install wasm-pack --locked
+
+      # wasm-pack fetches wasm-bindgen and binaryen (wasm-opt) from GitHub
+      # releases on first use; cached, a GitHub release outage cannot fail the build.
+      - name: Cache wasm-pack tools
+        if: needs.changes.outputs.detector == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/.wasm-pack
+          key: ${{ runner.os }}-wasm-pack-tools-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-pack-tools-
 
       - name: Build extension
         if: needs.changes.outputs.detector == 'true'
@@ -296,9 +305,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -382,9 +389,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -428,9 +433,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -514,9 +517,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -592,9 +593,7 @@ jobs:
 
       - name: Setup Bun
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -669,9 +668,7 @@ jobs:
 
       - name: Setup Bun
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
@@ -734,9 +731,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -764,9 +759,7 @@ jobs:
         with:
           node-version: 24
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Prepare engine and browser before billing
