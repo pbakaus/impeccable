@@ -639,6 +639,12 @@ mod tests {
                 "{raw}"
             );
         }
+        // A self-hosted server's SSH port is how this clone connects, not
+        // which repo it is: its HTTPS clone (no port) is the same repo.
+        assert_eq!(
+            normalize_remote("ssh://git@git.example.com:2222/a/b.git"),
+            normalize_remote("https://git.example.com/a/b")
+        );
         assert_eq!(
             normalize_remote("https://git.example.com:8443/a/b").as_deref(),
             Some("https://git.example.com:8443/a/b")
