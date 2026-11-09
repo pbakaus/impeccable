@@ -205,8 +205,8 @@ Illustration or icon (not just text on blank page)
 ```javascript
 // Namespace keys by account id + onboarding version, so a shared browser
 // doesn't let one account's progress hide onboarding for another.
-localStorage.setItem('onboarding-completed:' + userId, 'true');
-localStorage.setItem('feature-tooltip-seen-reports:' + userId, 'true');
+localStorage.setItem('onboarding-completed:v1:' + userId, 'true');
+localStorage.setItem('feature-tooltip-seen-reports:v1:' + userId, 'true');
 ```
 
 Show onboarding once: track completion and respect dismissals.
