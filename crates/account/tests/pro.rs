@@ -315,3 +315,30 @@ fn an_answer_about_an_earlier_sign_in_leaves_the_current_one_alone() {
     impeccable_account::pro::settle(&s.account, current, false);
     assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
 }
+
+#[test]
+fn whoami_keeps_the_retry_clock_when_there_was_no_denial() {
+    // Catches (review, Greptile): every whoami deleting the retry clocks, so a failing Pro install retries on every scan.
+    let s = setup("whoami-keeps-clock");
+    let install = s.account.dir().join(format!("pro/{}-{}", impeccable_account::pro::ENGINE, impeccable_account::pro::target()));
+    std::fs::create_dir_all(&install).unwrap();
+    std::fs::write(install.join("attempt"), unix_now().to_string()).unwrap();
+    assert_eq!(whoami(&s.env), 0);
+    assert!(install.join("attempt").exists(), "no earlier denial, so the clock stays");
+}
+
+#[test]
+fn a_stale_answer_never_forgets_when_the_sign_in_lock_is_busy() {
+    // Catches (review, Cursor): settle falling back to forgetting, unchecked, when the lock wait runs out.
+    let s = setup("stale-answer-busy-lock");
+    let earlier = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    login(&s.env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    let store = impeccable_account::store::Store::new(&s.account);
+    let held = store.lock().unwrap();
+    let started = Instant::now();
+    impeccable_account::pro::settle(&s.account, earlier, false);
+    assert!(started.elapsed() < Duration::from_secs(30), "settle gave up waiting in {:?}", started.elapsed());
+    drop(held);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
+}
