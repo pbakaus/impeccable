@@ -256,15 +256,37 @@ pub fn forget(account: &Account, not_entitled: bool) {
 
 /// [`forget`] for a caller that already holds the sign-in lock.
 pub fn forget_holding(_lock: &Lock, account: &Account, not_entitled: bool) {
-    forget_now(account, not_entitled)
+    forget_now(account, not_entitled, None)
 }
 
-fn forget_now(account: &Account, not_entitled: bool) {
+fn forget_now(account: &Account, not_entitled: bool, login: Option<u64>) {
     let paths = Paths::new(account);
     remove_installed(&paths);
-    if not_entitled && private_dir(&paths.dir).is_ok() {
-        let _ = write_private(&paths.not_entitled(), now().to_string().as_bytes());
+    if not_entitled {
+        record_refusal(&paths, login);
     }
+}
+
+/// Record "not entitled" with its time and, when known, the sign-in it was
+/// about. It needs no lock (one atomic write), so a denial is never lost to a
+/// busy lock, and dispatch honors it only for that sign-in.
+fn record_refusal(paths: &Paths, login: Option<u64>) {
+    if private_dir(&paths.dir).is_ok() {
+        let text = match login {
+            Some(l) => format!("{} {l}", now()),
+            None => now().to_string(),
+        };
+        let _ = write_private(&paths.not_entitled(), text.as_bytes());
+    }
+}
+
+/// The recorded "not entitled": when, and for which sign-in (`None` for
+/// every sign-in, as older builds wrote it).
+fn refusal(paths: &Paths) -> Option<(u64, Option<u64>)> {
+    let text = read_text(&paths.not_entitled())?;
+    let mut parts = text.split_whitespace();
+    let at = parts.next()?.parse().ok()?;
+    Some((at, parts.next().and_then(|l| l.parse().ok())))
 }
 
 /// Apply an entitlement answer the service gave about sign-in `login`, under
@@ -274,17 +296,27 @@ fn forget_now(account: &Account, not_entitled: bool) {
 /// and the retry clock, so the next scan fetches the Pro build.
 pub fn settle(account: &Account, login: u64, pro: bool) {
     let store = Store::new(account);
-    // A busy lock skips the answer: the next whoami or refresh brings it again.
-    let Ok(lock) = store.lock_for(SETTLE_LOCK_WAIT) else { return };
+    let paths = Paths::new(account);
+    let Ok(lock) = store.lock_for(SETTLE_LOCK_WAIT) else {
+        // A busy lock (a token refresh mid-request): a denial is still
+        // recorded, tagged with its sign-in, so dispatch stops using Pro for
+        // it at once; the lease goes with the next locked step.
+        if !pro {
+            record_refusal(&paths, Some(login));
+        }
+        return;
+    };
     if !store.state().is_some_and(|s| s.signed_in && s.login == login) {
         return;
     }
     if !pro {
-        return forget_holding(&lock, account, true);
+        // Still holding the lock, so this orders with an install.
+        forget_now(account, true, Some(login));
+        drop(lock);
+        return;
     }
     // Lift an earlier "no" and its retry clocks; without one, leave the
     // clocks alone so a failing install keeps its pace.
-    let paths = Paths::new(account);
     if std::fs::remove_file(paths.not_entitled()).is_ok() {
         remove_attempts(&paths);
     }
@@ -300,11 +332,17 @@ fn forget_if(account: &Account, login: Option<u64>, not_entitled: bool) {
         Ok(lock) => {
             let same = login.is_none_or(|l| store.state().is_some_and(|s| s.login == l));
             if same {
-                forget_holding(&lock, account, not_entitled)
+                forget_now(account, not_entitled, login);
+                drop(lock);
             }
         }
-        // The lock is stuck: forgetting is the safe side.
-        Err(_) => forget_now(account, not_entitled),
+        // The lock is stuck. Without a sign-in to check, forgetting is the
+        // safe side; with one, record only a denial tagged with it.
+        Err(_) => match login {
+            None => forget_now(account, not_entitled, None),
+            Some(l) if not_entitled => record_refusal(&Paths::new(account), Some(l)),
+            Some(_) => {}
+        },
     }
 }
 
@@ -513,7 +551,7 @@ fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed 
     {
         return Refreshed::NotSignedIn;
     }
-    let refused_at = read_text(&paths.not_entitled()).and_then(|t| t.trim().parse::<u64>().ok());
+    let refused_at = refusal(&paths).map(|(at, _)| at);
     if refused_at.is_some_and(|t| t >= started) {
         return Refreshed::NotEntitled;
     }
@@ -637,7 +675,7 @@ pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
         };
     };
     let paths = Paths::new(account);
-    if paths.not_entitled().exists() {
+    if refusal(&paths).is_some_and(|(_, l)| l.is_none_or(|l| l == state.login)) {
         return Decision::Open {
             why: Some(WHY_NOT_ENTITLED),
             renew: due(&paths, at, NOT_ENTITLED_RETRY_SECS),

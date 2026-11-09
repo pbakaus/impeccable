@@ -342,3 +342,16 @@ fn a_stale_answer_never_forgets_when_the_sign_in_lock_is_busy() {
     drop(held);
     assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
 }
+
+#[test]
+fn a_denial_for_the_current_sign_in_applies_even_while_the_lock_is_busy() {
+    // Catches (review, Greptile): a token refresh holding the lock making settle drop a real "not entitled", leaving the lease usable.
+    let s = setup("denial-busy-lock");
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    let current = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    let store = impeccable_account::store::Store::new(&s.account);
+    let held = store.lock().unwrap();
+    impeccable_account::pro::settle(&s.account, current, false);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
+    drop(held);
+}
