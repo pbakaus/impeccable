@@ -377,3 +377,59 @@ fn an_old_denial_neither_replaces_a_current_one_nor_blocks_a_current_install() {
     drop(held);
     assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
 }
+
+#[test]
+fn a_denial_recorded_while_an_install_waits_is_not_erased_by_it() {
+    // Catches (review, Greptile P1 on #1299): an install holding the sign-in lock while it waits on the
+    // revision floor, settle timing out and recording a denial without the lock, then the install
+    // deleting that newer denial, so scans kept the Pro lease.
+    let s = setup("denial-during-install");
+    let sha = s.fake.publish("r1", &s.release, b"pro build", 1);
+    s.fake.lease("l1", &s.lease_key, &sha, unix_now() + 6 * DAY);
+    let current = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    // Another account's refresh holds the shared revision floor.
+    let floor_lock = s.account.home.join("pro").join(format!(
+        "floor-{}-{}.lock",
+        impeccable_account::pro::ENGINE,
+        impeccable_account::pro::target()
+    ));
+    std::fs::create_dir_all(floor_lock.parent().unwrap()).unwrap();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&floor_lock)
+        .unwrap();
+    held.lock().unwrap();
+    let (account, keys) = (s.account.clone(), s.keys.clone());
+    let running = std::thread::spawn(move || refresh(&account, &keys));
+    // The install now holds the sign-in lock, so this denial is recorded without it.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while impeccable_account::store::Store::new(&s.account).lock_for(Duration::ZERO).is_ok() {
+        assert!(Instant::now() < deadline, "the install never took the sign-in lock");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    impeccable_account::pro::settle(&s.account, current, false);
+    drop(held);
+    let _ = running.join().unwrap();
+    assert!(matches!(
+        decide(&s.account, &s.keys, unix_now()),
+        Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }
+    ));
+}
+
+#[test]
+fn a_sign_in_that_fails_to_save_leaves_the_current_pro_state_alone() {
+    // Catches (review, Cursor on #1299): login clearing the Pro install before saving the new
+    // sign-in, so a failed save left `whoami` signed in but scans on the open rules.
+    let s = setup("failed-relogin-keeps-pro");
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
+    // The new secret can't be written: a directory where the file goes.
+    let secret = s.account.dir().join("credentials.json");
+    std::fs::remove_file(&secret).unwrap();
+    std::fs::create_dir(&secret).unwrap();
+    assert!(login(&s.env, &mut |url| browser(url), Duration::from_secs(10)).is_err());
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
+}

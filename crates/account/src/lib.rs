@@ -94,9 +94,11 @@ pub fn login(
             access_token: tokens.access_token,
             access_expires_at: session::now() + tokens.expires_in,
         };
-        // Nothing Pro from an earlier sign-in carries over to this one.
-        pro::reset_holding(&lock, &account);
         store.save(&lock, &state, &secret)?;
+        // Nothing Pro from an earlier sign-in carries over to this one. Only
+        // once the new sign-in is saved: a failed save leaves the previous
+        // sign-in current, with its Pro state intact. Still under the lock.
+        pro::reset_holding(&lock, &account);
         (replaced, generation)
     };
     // The grant this sign-in replaced is ended at the service too.

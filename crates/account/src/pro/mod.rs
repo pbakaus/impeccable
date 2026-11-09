@@ -79,6 +79,12 @@ struct Current {
     signature: String,
     lease: String,
     login: u64,
+    /// When the refresh that installed this started. A "not entitled"
+    /// recorded at or after it outranks the install, so the install never
+    /// has to delete a marker (and can't erase one written while it waited).
+    /// 0 in files from before this field: every marker outranks them.
+    #[serde(default)]
+    installed_at: u64,
 }
 
 struct Paths {
@@ -300,6 +306,15 @@ fn refusal(paths: &Paths, login: u64) -> Option<u64> {
         (Some(a), Some(b)) => Some(a.max(b)),
         (a, b) => a.or(b),
     }
+}
+
+/// A "not entitled" for sign-in `login` that the installed Pro state, if
+/// any, doesn't outrank: one recorded at or after the refresh that installed
+/// it started.
+fn standing_refusal(paths: &Paths, login: u64) -> Option<u64> {
+    let at = refusal(paths, login)?;
+    let since = installed(paths, login).map_or(0, |c| c.installed_at);
+    (at >= since).then_some(at)
 }
 
 /// Remove every "not entitled" marker (a new sign-in or a sign-out).
@@ -587,6 +602,7 @@ fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed 
         signature,
         lease,
         login,
+        installed_at: started,
     };
     let written = serde_json::to_vec(&current)
         .map_err(|e| e.to_string())
@@ -595,8 +611,8 @@ fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed 
     if let Err(e) = written {
         return Refreshed::Failed(e);
     }
-    let _ = std::fs::remove_file(paths.not_entitled_for(login));
-    let _ = std::fs::remove_file(paths.not_entitled());
+    // Earlier "not entitled" markers stay: `installed_at` outranks them, and
+    // deleting here could erase one recorded while this install waited.
     let _ = std::fs::remove_file(paths.legacy_lease());
     drop(lock);
     Refreshed::Ready {
@@ -688,7 +704,7 @@ pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
         };
     };
     let paths = Paths::new(account);
-    if refusal(&paths, state.login).is_some() {
+    if standing_refusal(&paths, state.login).is_some() {
         return Decision::Open {
             why: Some(WHY_NOT_ENTITLED),
             renew: due(&paths, at, NOT_ENTITLED_RETRY_SECS),
@@ -820,7 +836,7 @@ fn spawn_refresh(account: &Account) {
         return;
     };
     let login = Store::new(account).state().map(|s| s.login).unwrap_or(0);
-    let every = if refusal(&paths, login).is_some() {
+    let every = if standing_refusal(&paths, login).is_some() {
         NOT_ENTITLED_RETRY_SECS
     } else {
         RETRY_SECS
