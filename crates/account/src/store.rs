@@ -41,6 +41,10 @@ pub struct State {
     pub token_endpoint: String,
     #[serde(default)]
     pub revocation_endpoint: Option<String>,
+    /// The generation of the latest logout, carried through every later
+    /// sign-in and refresh, so a sign-in that started before it can tell.
+    #[serde(default)]
+    pub signed_out_at: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -265,10 +269,12 @@ impl Store {
         previous: Option<&State>,
         fallback: Backend,
     ) -> Result<(), String> {
+        let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
             schema: 1,
             issuer: self.account.issuer.clone(),
-            generation: previous.map(|s| s.generation + 1).unwrap_or(1),
+            generation,
+            signed_out_at: generation,
             signed_in: false,
             backend: previous.map(|s| s.backend).unwrap_or(fallback),
             token_endpoint: previous

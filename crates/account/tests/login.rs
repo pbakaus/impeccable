@@ -180,3 +180,27 @@ fn a_logout_while_the_browser_is_open_is_not_undone_by_the_sign_in() {
         "the tokens the late sign-in got are revoked"
     );
 }
+
+#[test]
+fn a_sign_in_started_before_a_logout_never_replaces_a_later_one() {
+    // Catches (review, Greptile): login A, logout, login B finishes, then A finishes and overwrites B and revokes B's grant.
+    let fake = Fake::start();
+    let env = fake.env("logout-then-newer-login");
+    let account = Account::from_env(&env).unwrap();
+    let late = login(
+        &env,
+        &mut |url| {
+            logout(&env).unwrap();
+            login(&env, &mut |u| browser(u), WAIT).expect("the newer sign-in");
+            browser(url)
+        },
+        WAIT,
+    );
+    assert!(late.is_err(), "the attempt from before the logout is refused");
+    assert!(Session::load(&account).is_ok(), "the newer sign-in stands");
+    assert_eq!(
+        fake.record.lock().unwrap().revoked.len(),
+        1,
+        "only the late attempt's tokens are revoked, never the newer sign-in's"
+    );
+}
