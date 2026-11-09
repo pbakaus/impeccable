@@ -231,10 +231,16 @@ fn bearer_header(token: &str) -> Result<String, ApiError> {
     }
 }
 
+/// The longest token the client accepts. Both tokens and their metadata
+/// must fit one Windows Credential Manager blob ([`crate::store::MAX_SECRET`]),
+/// so a sign-in the browser step completed can always be saved. The service's
+/// tokens are far shorter (a signed access token is about 450 bytes).
+pub const MAX_TOKEN: usize = 1024;
+
 pub fn valid_token(token: &str) -> bool {
     let body = token.trim_end_matches('=');
     !body.is_empty()
-        && token.len() <= 8 * 1024
+        && token.len() <= MAX_TOKEN
         && body
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-._~+/".contains(&b))

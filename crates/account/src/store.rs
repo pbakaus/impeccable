@@ -47,6 +47,10 @@ pub struct State {
     pub signed_out_at: u64,
 }
 
+/// The most a saved secret may take: one Windows Credential Manager blob
+/// (CRED_MAX_CREDENTIAL_BLOB_SIZE), the smallest of the backends.
+pub const MAX_SECRET: usize = 5 * 512;
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Secret {
     pub generation: u64,
@@ -463,7 +467,7 @@ mod keychain {
     const GENERIC: u32 = 1;
     const PERSIST_LOCAL_MACHINE: u32 = 2;
     const ERROR_NOT_FOUND: u32 = 1168;
-    const MAX_BLOB: usize = 5 * 512;
+    const MAX_BLOB: usize = super::MAX_SECRET;
 
     fn target(service: &str, account: &str) -> Vec<u16> {
         format!("{service}:{account}")
@@ -544,5 +548,26 @@ mod keychain {
     }
     pub fn delete(_: &str, _: &str) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn the_largest_sign_in_the_client_accepts_fits_windows_credential_manager() {
+        // Catches (review, Greptile): tokens the client accepts that the default Windows store can't save, failing sign-in after the browser step.
+        let biggest = "a".repeat(crate::http::MAX_TOKEN);
+        assert!(crate::http::valid_token(&biggest));
+        assert!(!crate::http::valid_token(&format!("{biggest}a")));
+        let secret = Secret {
+            generation: u64::MAX,
+            refresh_token: biggest.clone(),
+            access_token: biggest,
+            access_expires_at: u64::MAX,
+        };
+        let bytes = serde_json::to_vec(&secret).unwrap();
+        assert!(bytes.len() <= MAX_SECRET, "{} > {MAX_SECRET}", bytes.len());
     }
 }
