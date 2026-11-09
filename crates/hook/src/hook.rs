@@ -762,6 +762,10 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // cwd that sits above them. Without a recorded root this is the walk up
     // alone, as before.
     let mut roots = vec![resolve_stop_cwd(rt, &session_cwd, &session_id)];
+    // Shell writes never reach the per-edit pass, so Stop also scans UI files
+    // modified since the session started, when the event says when that was.
+    let session_start = crate::stop_discovery::session_start_ms(&event);
+    let home = rt.resolve(&[&rt.homedir()]);
     if named_session {
         for root in crate::hook_sessions::recorded_roots(rt, &session_id) {
             if !roots.contains(&root) {
@@ -801,7 +805,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             continue;
         }
         let mut root_cache = if at_session_cwd { cache.clone() } else { read_cache(root) };
-        let touched = touched_files(&root_cache, &session_id);
+        let mut touched = touched_files(&root_cache, &session_id);
+        if let Some(since) = session_start {
+            let mut discovered = 0usize;
+            for file in crate::stop_discovery::changed_since(root, &home, since, &root_config.extensions) {
+                if !touched.contains(&file) {
+                    touched.push(file);
+                    discovered += 1;
+                }
+            }
+            if discovered > 0 {
+                audit.insert("discovered".into(), Value::from(discovered));
+                root_audit.insert("discovered".into(), Value::from(discovered));
+            }
+        }
         if touched.is_empty() {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
