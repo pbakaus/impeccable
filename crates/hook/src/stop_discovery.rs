@@ -69,21 +69,21 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
-/// Whether `root` is a project, or sits inside one below `home`: the walk up
-/// the per-edit pass takes to key its cache (`.git`, `package.json` or
-/// `.impeccable`). A folder above several projects is neither.
-pub fn inside_project(root: &str, home: &str) -> bool {
-    let mut dir = root.to_string();
+/// The project `dir` sits in, found on the walk up to (not including) `home`
+/// with the per-edit pass's markers (`.git`, `package.json`, `.impeccable`).
+/// A folder above several projects has none.
+pub fn owning_project(dir: &str, home: &str) -> Option<String> {
+    let mut dir = dir.to_string();
     loop {
         if dir == home {
-            return false;
+            return None;
         }
         if crate::hook_lib::looks_like_project_root(&dir) {
-            return true;
+            return Some(dir);
         }
         let parent = jsp::dirname(&dir);
         if parent == dir {
-            return false;
+            return None;
         }
         dir = parent;
     }

@@ -761,11 +761,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // recorded for this session (#1101), which finds projects below a session
     // cwd that sits above them. Without a recorded root this is the walk up
     // alone, as before.
-    let mut roots = vec![resolve_stop_cwd(rt, &session_cwd, &session_id)];
     // Shell writes never reach the per-edit pass, so Stop also scans UI files
     // modified since the session started, when the event says when that was.
     let session_start = crate::stop_discovery::session_start_ms(&event);
     let home = rt.resolve(&[&rt.homedir()]);
+    let mut first_root = resolve_stop_cwd(rt, &session_cwd, &session_id);
+    // A session started inside a project (`src/`) keys to that project, as the
+    // per-edit pass does, so discovery neither writes a cache into the
+    // subfolder nor walks it outside the project's skip rules.
+    if session_start.is_some() && !looks_like_project_root(&first_root) {
+        if let Some(project) = crate::stop_discovery::owning_project(&first_root, &home) {
+            first_root = project;
+        }
+    }
+    let mut roots = vec![first_root];
     if named_session {
         for root in crate::hook_sessions::recorded_roots(rt, &session_id) {
             if !roots.contains(&root) {
@@ -806,14 +815,14 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             continue;
         }
         let mut root_cache = if at_session_cwd { cache.clone() } else { read_cache(root) };
-        // Discovery walks a root only when it is a project or sits inside one
-        // (a session started in `src/`), so a session cwd above several
+        // Discovery walks a root only when it is a project (a session started
+        // inside one was keyed to it above), so a session cwd above several
         // projects never scans them under its settings; each recorded project
         // root walks itself. Discovered files keep their own budget and never
         // push out files the per-edit pass recorded.
         let cached = touched_files(&root_cache, &session_id);
         let discovered: Vec<String> = match session_start {
-            Some(since) if crate::stop_discovery::inside_project(root, &home) => crate::stop_discovery::changed_since(
+            Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
                 root,
                 &home,
                 since,

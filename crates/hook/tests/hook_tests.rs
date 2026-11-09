@@ -4082,4 +4082,20 @@ fn stop_discovery_covers_a_session_started_inside_a_project() {
     let r = rt(&cwd);
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert!(deep.stdout.contains("[side-tab]"), "{} {:?}", deep.stdout, deep.audit);
+    // Keyed to the project: no cache lands in the subfolder, where its
+    // `.impeccable` would later pass for a project root.
+    assert!(!std::path::Path::new(&format!("{cwd}/.impeccable")).exists());
+    assert!(std::path::Path::new(&format!("{root}/.impeccable")).exists());
+}
+
+#[test]
+fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("vendor/lib/x.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/vendor");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "", "{:?}", deep.audit);
 }
