@@ -100,7 +100,7 @@ fn not_entitled_deletes_the_lease_at_once() {
         r#"{"error":"not_entitled"}"#,
     );
     assert_eq!(refresh(&s.account, &s.keys), Refreshed::NotEntitled);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
     assert!(matches!(
         decide(&s.account, &s.keys, unix_now()),
         Decision::Open {
@@ -172,7 +172,7 @@ fn a_revocation_seen_during_a_refresh_is_not_undone_by_it() {
     forget(&s.account, true);
     gate.open();
     assert_eq!(running.join().unwrap(), Refreshed::NotEntitled);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
     assert!(matches!(
         decide(&s.account, &s.keys, unix_now()),
         Decision::Open {
@@ -197,7 +197,7 @@ fn a_stalled_download_does_not_hold_up_logout() {
     assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     gate.open();
     assert_eq!(running.join().unwrap(), Refreshed::NotSignedIn);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
 }
 
 #[test]

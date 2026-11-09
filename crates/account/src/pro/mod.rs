@@ -83,17 +83,40 @@ struct Current {
 
 struct Paths {
     dir: PathBuf,
+    /// This engine and target's own install (manifest, lease, retry clock,
+    /// refresh claim), so two skills pinning different engines under one
+    /// home never overwrite each other's Pro build.
+    install: PathBuf,
     artifacts: PathBuf,
 }
 
 impl Paths {
     fn new(account: &Account) -> Paths {
+        Paths::for_engine(account, ENGINE)
+    }
+    fn for_engine(account: &Account, engine: &str) -> Paths {
+        let dir = account.dir().join("pro");
         Paths {
-            dir: account.dir().join("pro"),
+            install: dir.join(format!("{engine}-{}", target())),
+            dir,
             artifacts: account.home.join("pro").join("artifacts"),
         }
     }
+    /// Create the account's Pro folder and this engine's install folder.
+    fn ensure(&self) -> Result<(), String> {
+        private_dir(&self.dir).and_then(|_| private_dir(&self.install))
+    }
+    /// Every engine's install folder under this account.
+    fn installs(&self) -> Vec<PathBuf> {
+        std::fs::read_dir(&self.dir)
+            .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+            .unwrap_or_default()
+    }
     fn current(&self) -> PathBuf {
+        self.install.join("current.json")
+    }
+    /// Where builds before per-engine installs kept the manifest.
+    fn legacy_current(&self) -> PathBuf {
         self.dir.join("current.json")
     }
     /// Where an older build kept the lease; removed when Pro state is.
@@ -101,7 +124,7 @@ impl Paths {
         self.dir.join("lease")
     }
     fn claim(&self) -> PathBuf {
-        self.dir.join("refresh.lock")
+        self.install.join("refresh.lock")
     }
     /// The highest revision accepted for this engine and target. Kept
     /// outside the account's Pro state, so forgetting a lease never lowers it.
@@ -113,7 +136,7 @@ impl Paths {
         self.dir.join("lease-keys.json")
     }
     fn attempt(&self) -> PathBuf {
-        self.dir.join("attempt")
+        self.install.join("attempt")
     }
     fn not_entitled(&self) -> PathBuf {
         self.dir.join("not-entitled")
@@ -178,16 +201,39 @@ fn floor(paths: &Paths) -> u64 {
         .unwrap_or(0)
 }
 
+/// Raise the floor, never lower it. The floor is shared by every account
+/// under this home, so the read and the write happen under one lock: two
+/// refreshes for different accounts can't write 3 and then 2.
 fn raise_floor(paths: &Paths, revision: u64) -> Result<(), String> {
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .no_follow()
+        .open(paths.floor().with_extension("lock"))
+        .map_err(|e| format!("could not open the revision floor lock: {e}"))?;
+    lock.lock().map_err(|e| format!("could not lock the revision floor: {e}"))?;
     if revision > floor(paths) {
         write_private(&paths.floor(), revision.to_string().as_bytes())?;
     }
     Ok(())
 }
 
+/// Remove every engine's installed manifest and lease for this account.
 fn remove_installed(paths: &Paths) {
-    let _ = std::fs::remove_file(paths.current());
+    for install in paths.installs() {
+        let _ = std::fs::remove_file(install.join("current.json"));
+    }
+    let _ = std::fs::remove_file(paths.legacy_current());
     let _ = std::fs::remove_file(paths.legacy_lease());
+}
+
+/// Every engine's retry clock: the next scan of each tries again.
+fn remove_attempts(paths: &Paths) {
+    for install in paths.installs() {
+        let _ = std::fs::remove_file(install.join("attempt"));
+    }
 }
 
 /// Forget this account's lease and installed manifest, under the sign-in
@@ -226,7 +272,7 @@ pub fn settle(account: &Account, login: u64, pro: bool) {
     if store.state().is_some_and(|s| s.signed_in && s.login == login) {
         let paths = Paths::new(account);
         let _ = std::fs::remove_file(paths.not_entitled());
-        let _ = std::fs::remove_file(paths.attempt());
+        remove_attempts(&paths);
     }
 }
 
@@ -253,7 +299,7 @@ pub fn reset_holding(_lock: &Lock, account: &Account) {
     let paths = Paths::new(account);
     remove_installed(&paths);
     let _ = std::fs::remove_file(paths.not_entitled());
-    let _ = std::fs::remove_file(paths.attempt());
+    remove_attempts(&paths);
 }
 
 /// One refresh at a time per account: an exclusive OS lock on
@@ -338,7 +384,7 @@ pub fn refresh(account: &Account, keys: &Keyring) -> Refreshed {
 
 fn refresh_with(account: &Account, keys: &Keyring, wait: Duration) -> Refreshed {
     let paths = Paths::new(account);
-    if let Err(e) = private_dir(&paths.dir).and_then(|_| private_dir(&paths.artifacts)) {
+    if let Err(e) = paths.ensure().and_then(|_| private_dir(&paths.artifacts)) {
         return Refreshed::Failed(e);
     }
     let Some(_claim) = claim(&paths, wait) else {
@@ -700,7 +746,7 @@ fn spawn_refresh(account: &Account) {
         return;
     };
     let paths = Paths::new(account);
-    if private_dir(&paths.dir).is_err() {
+    if paths.ensure().is_err() {
         return;
     }
     let Some(claim) = claim(&paths, Duration::ZERO) else {
@@ -761,7 +807,7 @@ mod notice_tests {
     fn an_account_without_pro_hears_it_once_a_day_and_never_from_hooks() {
         // Catches (REN-1553 decision 1): "this account doesn't include them" on every scan and every edit hook.
         let dir = std::env::temp_dir().join(format!("impeccable-pro-notice-{}", std::process::id()));
-        let paths = Paths { dir: dir.join("pro"), artifacts: dir.join("artifacts") };
+        let paths = Paths { dir: dir.join("pro"), install: dir.join("pro").join("engine"), artifacts: dir.join("artifacts") };
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let day = SAY_NOT_ENTITLED_EVERY_SECS;
         assert!(!say(WHY_NOT_ENTITLED, &args(&["hook"]), &paths, 1_000_000));
@@ -772,5 +818,51 @@ mod notice_tests {
         // Lines that say something is wrong are never held back.
         assert!(say(WHY_UNVERIFIED, &args(&["hook"]), &paths, 1_000_000 + day));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+
+    fn account(name: &str) -> Account {
+        let home = std::env::temp_dir().join(format!("impeccable-pro-{name}-{}", std::process::id()));
+        Account { issuer: "https://api.example.test".into(), home }
+    }
+
+    #[test]
+    fn two_engines_keep_their_own_install_and_forget_clears_both() {
+        // Catches (review, Greptile): two skills pinning different engines under one home overwriting each other's manifest and lease.
+        let a = account("engines");
+        let (old, new) = (Paths::for_engine(&a, "0.1.20"), Paths::for_engine(&a, "0.1.21"));
+        assert_ne!(old.current(), new.current());
+        assert_ne!(old.attempt(), new.attempt());
+        assert_ne!(old.claim(), new.claim());
+        for p in [&old, &new] {
+            p.ensure().unwrap();
+            write_private(&p.current(), b"{}").unwrap();
+        }
+        remove_installed(&new);
+        assert!(!old.current().exists() && !new.current().exists());
+        let _ = std::fs::remove_dir_all(&a.home);
+    }
+
+    #[test]
+    fn concurrent_floor_raises_keep_the_highest() {
+        // Catches (review, Greptile): two accounts' refreshes racing so a lower revision overwrites a higher floor.
+        let a = account("floor");
+        let paths = Paths::new(&a);
+        std::fs::create_dir_all(paths.floor().parent().unwrap()).unwrap();
+        for round in 0..20u64 {
+            let base = round * 100;
+            std::thread::scope(|s| {
+                for r in 1..=16 {
+                    let paths = &paths;
+                    s.spawn(move || raise_floor(paths, base + r).unwrap());
+                }
+            });
+            assert_eq!(floor(&paths), base + 16, "round {round}");
+        }
+        let _ = std::fs::remove_dir_all(&a.home);
     }
 }
