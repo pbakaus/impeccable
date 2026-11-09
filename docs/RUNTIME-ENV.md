@@ -167,7 +167,7 @@ lowers it, and both refresh and dispatch refuse a revision below it.
 "not entitled"; an installed manifest for this sign-in that verifies for
 this engine and target, at or above the floor; a lease that verifies (key,
 digest, `iat`, `exp`); and only then the artifact's digest. Any failure runs
-the open engine with one line on stderr saying why.
+the open engine with one line on stderr saying why. The one exception is an account without Pro ("this account doesn't include them"). That line comes at most once a day, and only from a scan a person ran (`detect` or its path shorthand), never from the edit hooks (`NOT_ENTITLED_QUIETLY` in `crates/account/src/pro/mod.rs`, pending Paul's choice on REN-1553).
 
 **What this protects, and what it does not.** Dispatch runs a Pro build only
 when the release key signed it, the service leased it to this sign-in, and
