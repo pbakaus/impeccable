@@ -136,7 +136,7 @@ or any other verb. A machine that never signed in sees nothing new.
 **Refresh** (at `login`, and in a detached hidden `pro-refresh` when a lease
 has under two days left or is missing; at most every ten minutes, hourly
 after "not entitled"). One refresh runs at a time per account: it holds an
-exclusive OS lock on `pro/refresh.lock`, and a scan claims the attempt under
+exclusive OS lock on `pro/<engine>-<target>/refresh.lock`, and a scan claims the attempt under
 that lock before it starts one, so of many scans that find a refresh due at
 once, one starts it (a scan that cannot record the attempt starts none). The
 refresh at `login` waits up to a minute for one already running; a
@@ -169,7 +169,7 @@ except the artifact download, which has ten minutes.
    refresh started that it would undo: the machine is still signed in with
    the **same sign-in**, no "not entitled" answer was recorded after the
    refresh started, and no newer revision was accepted. Then
-   `pro/current.json` (manifest bytes and signature as served, the lease,
+   `pro/<engine>-<target>/current.json`, one per engine version so two skills pinning different engines never overwrite each other (manifest bytes and signature as served, the lease,
    and the sign-in it belongs to) is replaced in one write, and the
    revision floor raised.
 
@@ -190,7 +190,7 @@ and network failures keep an existing lease: it runs to its own `exp`
 The **revision floor** (`$IMPECCABLE_HOME/pro/floor-<engine>-<target>`) is
 the highest `artifact_revision` accepted for this engine and target. It is
 outside the account's Pro state, so forgetting a lease or signing out never
-lowers it, and both refresh and dispatch refuse a revision below it.
+lowers it, and both refresh and dispatch refuse a revision below it. It is raised under its own lock, so refreshes for two accounts under one home can never lower it.
 
 **Dispatch** (every scan, offline), cheapest checks first: signed in; no
 "not entitled"; an installed manifest for this sign-in that verifies for

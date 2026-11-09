@@ -222,6 +222,7 @@ const KNOWN_VERBS: &[&str] = &[
     "whoami",
     "health",
     "pro-refresh",
+    "agents",
     "skills",
     "help",
     "install",
@@ -263,3 +264,31 @@ fn url_engine() -> &'static impeccable_browser::BrowserEngine {
     ENGINE.get_or_init(impeccable_browser::BrowserEngine::from_process_env)
 }
 // -------------------------------------------------------------------------
+
+#[cfg(test)]
+mod verb_tests {
+    /// Catches (review, Greptile and Cursor): a verb `run` handles by name but
+    /// missing from `KNOWN_VERBS`, so a same-named path in the working
+    /// directory sends it through Pro dispatch as if it were a scan.
+    #[test]
+    fn every_named_verb_is_known_or_a_scan() {
+        let src = include_str!("router.rs");
+        let body = &src[src.find("pub fn run(").unwrap()..src.find("pub fn is_scan(").unwrap()];
+        let mut named = Vec::new();
+        for line in body.lines() {
+            let line = line.trim_start();
+            let Some((arm, _)) = line.split_once("=>") else { continue };
+            if !arm.starts_with('"') {
+                continue;
+            }
+            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+        }
+        assert!(named.len() > 30, "parsed {named:?}");
+        let scans = ["detect", "hook", "hook-before-edit"];
+        let missing: Vec<_> = named
+            .iter()
+            .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
+            .collect();
+        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+    }
+}
