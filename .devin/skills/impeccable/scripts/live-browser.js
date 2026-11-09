@@ -8724,17 +8724,15 @@
     const urlRe = /url\((['"]?)(https?:\/\/[^'")\s]+)\1\)/g;
     const urls = new Set();
     let m;
-    while ((m = urlRe.exec(cssText))) {
-      if (FONT_EXT_RE.test(m[2])) urls.add(m[2]);
-    }
+    while ((m = urlRe.exec(cssText))) urls.add(m[2]);
     const map = new Map();
     await Promise.all([...urls].map(async (url) => {
       try {
         const res = await fetch(url);
         if (!res.ok) return;
         const buf = await res.arrayBuffer();
-        const ext = url.toLowerCase().match(FONT_EXT_RE)?.[1] || 'woff2';
-        const mime = FONT_MIME[ext] || 'application/octet-stream';
+        const ext = url.toLowerCase().match(FONT_EXT_RE)?.[1];
+        const mime = FONT_MIME[ext] || res.headers.get('content-type')?.split(';')[0].trim() || 'application/octet-stream';
         map.set(url, 'data:' + mime + ';base64,' + bufferToBase64(buf));
       } catch { /* skip; fall through to URL */ }
     }));
@@ -8743,27 +8741,42 @@
       return data ? 'url(' + q + data + q + ')' : orig;
     });
   }
+  // Walks a stylesheet or grouping rule in cascade order. The result is embedded
+  // without its conditional wrappers, so faces behind a false @media or @supports stay out.
+  async function collectFontFaces(source, base, chunks) {
+    let rules;
+    try {
+      rules = source.cssRules;
+    } catch {
+      if (!source.href) return;
+      try {
+        const res = await fetch(source.href);
+        if (!res.ok) return;
+        const parsed = new CSSStyleSheet();
+        parsed.replaceSync(await res.text());
+        // res.url is the base the browser used if the sheet redirected.
+        await collectFontFaces(parsed, res.url || source.href, chunks);
+      } catch { /* ignore; capture is best-effort */ }
+      return;
+    }
+    for (const rule of rules) {
+      if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
+        chunks.push(absolutizeUrls(rule.cssText, base));
+      } else if (rule.media && !window.matchMedia(rule.media.mediaText).matches) {
+        continue;
+      } else if (rule.constructor.name === 'CSSSupportsRule' && !CSS.supports(rule.conditionText)) {
+        continue;
+      } else if (rule.styleSheet) {
+        await collectFontFaces(rule.styleSheet, rule.styleSheet.href, chunks);
+      } else if (rule.cssRules) {
+        await collectFontFaces(rule, base, chunks);
+      }
+    }
+  }
   async function collectFontCssText() {
     const chunks = [];
-    const fontFaceRe = /@font-face\s*\{[^}]*\}/g;
     for (const sheet of document.styleSheets) {
-      try {
-        const rules = sheet.cssRules;
-        for (const rule of rules) {
-          if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
-            chunks.push(absolutizeUrls(rule.cssText, sheet.href || document.baseURI));
-          }
-        }
-      } catch {
-        if (!sheet.href) continue;
-        try {
-          const res = await fetch(sheet.href);
-          if (!res.ok) continue;
-          const text = await res.text();
-          let m2;
-          while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], sheet.href));
-        } catch { /* ignore; capture is best-effort */ }
-      }
+      await collectFontFaces(sheet, sheet.href || document.baseURI, chunks);
     }
     if (chunks.length === 0) return '';
     return inlineFontUrls(chunks.join('\n'));
