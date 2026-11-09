@@ -23,9 +23,15 @@ const digest = (body) => createHash('sha256').update(body).digest('hex');
 
 let server;
 let base;
+const failOnce = new Set();
 
 before(async () => {
   server = http.createServer((req, res) => {
+    if (failOnce.delete(req.url)) {
+      res.writeHead(503);
+      res.end('');
+      return;
+    }
     if (req.url.startsWith('/npm/@impeccable%2fcli-') && req.url.endsWith(`/${VERSION}`)) {
       res.writeHead(200);
       res.end('{}');
@@ -67,6 +73,15 @@ describe('engine checksum manifest', () => {
       [...bodies].map(([asset, body]) => `${VERSION} ${asset} ${digest(body)}`).sort(),
     );
     assert.deepEqual(await check(root), { ok: true, version: VERSION, base, missing: [] });
+  });
+
+  // Catches: a single failed download of a published asset reported it missing.
+  it('counts an asset whose first download fails as published', async () => {
+    const { root } = stageRoot();
+    await recordEngineChecksums({ version: VERSION, base, root });
+    for (const asset of bodies.keys()) for (const name of [asset, `${asset}.sha256`]) failOnce.add(`/engine-v${VERSION}/${name}`);
+    assert.deepEqual(await check(root), { ok: true, version: VERSION, base, missing: [] });
+    assert.equal(failOnce.size, 0);
   });
 
   it('reports a line that no longer matches the release sidecar', async () => {

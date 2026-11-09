@@ -30,13 +30,22 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     }
 }
 
+/// Claude Code's active user configuration directory. An explicit account is
+/// exclusive; a relative CLAUDE_CONFIG_DIR is resolved against the caller.
+pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
+    match env_nonempty(env, "CLAUDE_CONFIG_DIR") {
+        Some(dir) => jsp::resolve(cwd, &[dir]),
+        None => jsp::join(&[&crate::util::homedir(env), ".claude"]),
+    }
+}
+
 /// The user-level hook manifest this provider's harness loads:
-/// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
+/// Claude's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`); Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
-        "claude-code" => Some(jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"])),
+        "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
             None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),
@@ -243,15 +252,38 @@ fn append_subagent_authorization_directive(parts: &mut Parts) {
     ].join(" "));
 }
 
+fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
+    let provider_dir = match provider.id.as_str() {
+        "claude-code" => ".claude", "codex" | "agents" => ".agents",
+        "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
+    };
+    let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
+    let expected = (target.manifest)();
+    automatic_hook_mode(ctx, cwd, env, provider) != "none" &&
+        (hook_manifest_search_roots(ctx, cwd, env).iter().any(|root|
+            hook_enabled_at(root, env) && hook_manifests_for(&provider.id).iter().any(|rel|
+                crate::hook_wiring::manifest_is_wired(&jsp::join(&[root, rel]), &expected)))
+        || user_hook_manifest(&provider.id, cwd, env).is_some_and(|path|
+            crate::hook_wiring::manifest_is_wired(&path, &expected)))
+}
+
 fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) {
-    if automatic_hook_mode(ctx, cwd, env, provider) != "none" {
+    if current_hook_wiring(ctx, cwd, env, provider) {
         return;
     }
     if is_native(ctx.platform.as_deref()) {
         return;
     }
+    let manifests = match provider.id.as_str() {
+        "claude-code" | "codex" | "agents" | "cursor" | "grok" | "github" => hook_manifests_for(&provider.id),
+        _ => &[],
+    };
+    let wiring = if manifests.is_empty() { String::new() } else {
+        format!(" Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", manifests.join(" or "))
+    };
     parts.push([
-        "MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.".to_string(),
+        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
         format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
@@ -666,6 +698,14 @@ fn load_native_platform_references(platform: Option<&str>, provider: &Provider) 
 // ─── cli ───────────────────────────────────────────────────────────────────
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_hook_repair(args, io, &mut |_| Ok(None))
+}
+
+/// The CLI supplies hook maintenance to avoid a context -> hook dependency cycle.
+pub fn run_with_hook_repair(
+    args: &[String], io: &mut Io,
+    repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
+) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -701,6 +741,19 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
+    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+        let mut notices = Vec::new();
+        for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
+            match repair(&root) {
+                Ok(Some(message)) => notices.push(message),
+                Err(error) => notices.push(format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.")),
+                _ => {}
+            }
+        }
+        if !notices.is_empty() {
+            io.out(&format!("{}\n", notices.join(" ")));
+        }
+    }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
     let cmd = &provider.command;
 
@@ -1299,5 +1352,22 @@ mod worktree_hook_tests {
         std::fs::write(&manifest, r#"{"version":1,"hooks":{"preToolUse":[{"command":"\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit","timeout":5}]}}"#).unwrap();
         assert_eq!(mode(), "per-edit");
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod wiring_fallback_tests {
+    #[test]
+    fn gemini_does_not_offer_to_repair_unsupported_detector_hooks() {
+        let mut parts = super::Parts::default();
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_PROVIDER_ID".to_string(), "gemini".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/missing-project");
+        let ctx = crate::context::load_context("/missing-project", &crate::target_args::TargetOptions::default(), &env);
+        super::append_detector_fallback(&mut parts, &ctx, "/missing-project", &env, &provider);
+        let output = parts.render();
+        assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
+        assert!(!output.contains("repair with impeccable hooks on"));
     }
 }

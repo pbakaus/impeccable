@@ -65,7 +65,7 @@ fn create_fake_universal_bundle(root: &str, providers: &[&str]) -> String {
             &format!("{bundle_root}/.claude/settings.json"),
             &json!({
                 "description": "fresh claude hook",
-                "hooks": { "PostToolUse": [{ "matcher": "Edit", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
+                "hooks": { "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "Stop": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
             })
             .to_string(),
         );
@@ -603,6 +603,34 @@ fn check_reports_stale_impeccable_in_home_rooted_tree() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn check_ignores_engine_binary_installed_beside_the_skill() {
+    let root = temp_root("check-1247-engine-bin");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &project, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=project", "--no-hooks", "--providers=claude"],
+        &project,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    // A real install fetches the engine here; the bundle never ships it.
+    write(&format!("{project}/.claude/skills/impeccable/scripts/bin/windows-x64/impeccable.exe"), "MZ");
+
+    let r = run_cli(&["check"], &project, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
 // ─── inferred agent update scope (d2a9efb9) ──────────────────────────────────
 
 #[test]
@@ -1109,7 +1137,7 @@ fn user_hook_with_missing_launcher_is_not_current() {
     let command = impeccable_skills::hook_manifest::user_claude_hook_command(&home, false).unwrap();
     write(
         &settings,
-        &serde_json::json!({"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":command}]}]}}).to_string(),
+        &impeccable_context::hook_wiring::claude_manifest_for_command(&command).to_string(),
     );
     assert!(!impeccable_skills::hook_manifest::user_claude_hook_is_current_for(&home, false));
     write(&format!("{home}/.claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n");

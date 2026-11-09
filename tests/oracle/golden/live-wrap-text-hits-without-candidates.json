@@ -1,0 +1,12 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"Found file but could not locate element in <WS>/src/Components/Detail.html. Searched for: panel-body, <div class=\\\"panel-body, <div className=\\\"panel-body\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n",
+    "src/Components/Detail.html": "<section>\n  <p class=\"panel-body\">Checklist item detail copy.</p>\n</section>\n",
+    "src/Pages/Show.html": "<main>\n  <p class=\"panel-body\">Company billing contact Primary contact for invoices and renewal notices.</p>\n</main>\n"
+  }
+}
