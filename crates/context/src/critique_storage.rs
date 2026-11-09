@@ -499,6 +499,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
             let dir = get_critique_dir(&cwd, &env);
             let _ = std::fs::create_dir_all(&dir);
+            // Snapshots are local runtime output; `ignore.md` is the one hand-edited, team-shared file here.
+            impeccable_common::git::ensure_dir_ignored(&dir, &["*", "!ignore.md"]);
             let timestamp = now_filename_stamp();
             let mut front = meta.clone();
             front.insert("timestamp".into(), Value::String(timestamp.clone()));
@@ -859,6 +861,20 @@ mod tests_660 {
         let (code, _, _) = run_capture(&cwd, &["latest", "App.tsx"]);
         assert_eq!(code, 2);
 
+        let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn write_keeps_snapshots_out_of_git_but_not_ignore_md() {
+        let cwd = tmp();
+        let body = jsp::join(&[&cwd, "body.md"]);
+        std::fs::write(&body, "# Critique\n").unwrap();
+        assert_eq!(run_capture(&cwd, &["write", "demo", &body]).0, 0);
+        let ignore = jsp::join(&[&cwd, ".impeccable", "critique", ".gitignore"]);
+        let expected = format!("{}\n*\n!ignore.md\n", impeccable_common::git::RUNTIME_IGNORE_HEADER);
+        assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected);
+        assert_eq!(run_capture(&cwd, &["write", "demo", &body]).0, 0);
+        assert_eq!(std::fs::read_to_string(&ignore).unwrap(), expected, "idempotent");
         let _ = std::fs::remove_dir_all(&cwd);
     }
 

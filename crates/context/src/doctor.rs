@@ -63,7 +63,8 @@ fn read_project_root_patterns(repo_root: &str) -> Vec<String> {
     read_impeccable_project_roots(repo_root)
 }
 
-fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider_id: &str) -> Report {
+fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider: &crate::provider::Provider) -> Report {
+    let provider_id = provider.id.as_str();
     let ctx = load_context(cwd, target, env);
     let project_root = if ctx.project_root.is_empty() { cwd.to_string() } else { ctx.project_root.clone() };
     let abs_product_path = ctx.product_path.as_deref().map(|p| jsp::resolve(cwd, &[p]));
@@ -97,9 +98,11 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider_id: &str) -> R
     findings.extend(boot.build_path);
     findings.extend(check_detector_ignores(&project_root, known.as_deref()));
     findings.extend(boot.surface_briefs);
+    findings.extend(crate::context_cli::check_hook_not_installed(&ctx, cwd, env, provider));
     let user_manifest = crate::context_cli::user_hook_manifest(provider_id, cwd, env);
     findings.extend(check_hook_installation(&project_root, Some(&ctx.repo_root), provider_id, user_manifest.as_deref()));
     findings.extend(check_legacy_live_state(&project_root));
+    findings.extend(check_spent_build_artifacts(&project_root));
     findings.extend(boot.project_roots);
     findings.extend(ws_findings);
 
@@ -277,7 +280,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         io.out(&format!("{}\n", usage()));
         return 0;
     }
-    let report = collect(&cwd, &target, &env, &provider.id);
+    let report = collect(&cwd, &target, &env, &provider);
     let fixes = if flags.fix { Some(apply_fixes(&report)) } else { None };
     if flags.json {
         let mut m = Map::new();

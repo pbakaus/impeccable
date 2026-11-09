@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "stdout": "Design hook enabled for this project (wrote .impeccable/config.json). Recorded local hook consent in .impeccable/config.local.json. Installed or repaired hook manifests for: .claude.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n  wiring .claude: wired\n  wiring .agents: not wired (missing or stale entries)\n  wiring .cursor: not wired (missing or stale entries)\n  wiring .github: not wired (missing or stale entries)\n  wiring .grok: not wired (missing or stale entries)\n  wiring .gemini: not wired (missing or stale entries)\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Design hook enabled for this project (wrote .impeccable/config.json). Recorded local hook consent in .impeccable/config.local.json. No installed provider skill folders found to repair. No design harness is wired. Checked Claude Code project skill <WS>/.claude/skills/impeccable and user launcher <WS>/claude-account/skills/impeccable/scripts/impeccable. Install the skill for your harness or fix the skipped settings, then run impeccable hooks on.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/config.json": "{\n  \"hook\": {\n    \"enabled\": true,\n    \"limits\": {\n      \"maxFindings\": 5,\n      \"maxChars\": 8000\n    }\n  }\n}\n",
+    ".impeccable/config.local.json": "{\n  \"hook\": {\n    \"consent\": \"accepted\"\n  }\n}\n",
+    "claude-account/installed-settings.json": "{\n  \"description\": \"Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.\",\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Edit|Write\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f '<WS>/claude-account/skills/impeccable/scripts/impeccable' ] || '<WS>/claude-account/skills/impeccable/scripts/impeccable' hook\",\n            \"timeout\": 5,\n            \"statusMessage\": \"Checking UI changes\"\n          }\n        ]\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"[ ! -f '<WS>/claude-account/skills/impeccable/scripts/impeccable' ] || '<WS>/claude-account/skills/impeccable/scripts/impeccable' hook\",\n            \"timeout\": 30,\n            \"statusMessage\": \"Design deep pass\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+  }
+}

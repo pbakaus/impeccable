@@ -39,16 +39,38 @@ fn runtime<'a>(io: &Io, html: &'a dyn HtmlEngine) -> Runtime<'a> {
 
 /// `impeccable hook` (PostToolUse per-edit pass + Stop deep pass). Exit 0.
 pub fn run_hook(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
+    run_hook_with_pack(_args, io, html, None)
+}
+
+/// Run with build-supplied source hooks (HTML hooks travel with the engine).
+pub fn run_hook_with_pack(
+    _args: &[String],
+    io: &mut Io,
+    html: &dyn HtmlEngine,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
     let stdin = io.stdin().to_string();
-    let rt = runtime(io, html);
+    let mut rt = runtime(io, html);
+    rt.rule_pack = rule_pack;
     hook::run(&rt, &stdin, io)
 }
 
 /// `impeccable hook-before-edit` (the retired Cursor preToolUse gate, kept
 /// for manifests not yet migrated to the post-edit hook). Exit 0.
 pub fn run_hook_before_edit(_args: &[String], io: &mut Io, html: &dyn HtmlEngine) -> i32 {
+    run_hook_before_edit_with_pack(_args, io, html, None)
+}
+
+/// Run with build-supplied source hooks (HTML hooks travel with the engine).
+pub fn run_hook_before_edit_with_pack(
+    _args: &[String],
+    io: &mut Io,
+    html: &dyn HtmlEngine,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
     let stdin = io.stdin().to_string();
-    let rt = runtime(io, html);
+    let mut rt = runtime(io, html);
+    rt.rule_pack = rule_pack;
     before_edit::run(&rt, &stdin, io)
 }
 
@@ -57,4 +79,11 @@ pub fn run_hook_admin(args: &[String], io: &mut Io) -> i32 {
     static NONE: impeccable_detect::MissingHtmlEngine = impeccable_detect::MissingHtmlEngine;
     let rt = runtime(io, &NONE);
     admin::run(&rt, args, io)
+}
+
+/// Context entry point with consent-gated hook maintenance.
+pub fn run_context(args: &[String], io: &mut Io) -> i32 {
+    static NONE: impeccable_detect::MissingHtmlEngine = impeccable_detect::MissingHtmlEngine;
+    let rt = runtime(io, &NONE);
+    impeccable_context::context_cli::run_with_hook_repair(args, io, &mut |root| admin::repair_for_context(&rt, root))
 }
