@@ -56,11 +56,13 @@ fn parse_pins(text: &str) -> Result<BTreeMap<Version, String>> {
     Ok(pins)
 }
 
-fn secure_url(raw: &str) -> Result<Url> {
+/// The configured base never carries a query; a redirect may (GitHub's release assets 302 to a signed
+/// `?sp=…&sig=…` URL), and HTTPS is required either way.
+fn secure_url(raw: &str, allow_query: bool) -> Result<Url> {
     let url = Url::parse(raw).map_err(|e| e.to_string())?;
     if !url.username().is_empty()
         || url.password().is_some()
-        || url.query().is_some()
+        || (url.query().is_some() && !allow_query)
         || url.fragment().is_some()
     {
         return Err(
@@ -79,9 +81,10 @@ fn secure_url(raw: &str) -> Result<Url> {
 
 fn download(raw: &str, path: &Path, expected: &str) -> Result<()> {
     // Validate every redirect too: an HTTPS asset must never downgrade to HTTP.
-    let mut url = secure_url(raw)?;
+    let mut url = secure_url(raw, false)?;
     let local_http = url.scheme() == "http";
-    let agent = ureq::AgentBuilder::new()
+    // The engine's shared builder: its trust store and the ALL_/HTTPS_/HTTP_PROXY variables (#823).
+    let agent = impeccable_context::http::agent_builder()
         .redirects(0)
         .timeout(Duration::from_secs(300))
         .build();
@@ -95,7 +98,7 @@ fn download(raw: &str, path: &Path, expected: &str) -> Result<()> {
                 .header("Location")
                 .ok_or("Loop download redirect has no Location.")?;
             let next = url.join(location).map_err(|e| e.to_string())?;
-            secure_url(next.as_str())?;
+            secure_url(next.as_str(), true)?;
             if next.scheme() == "http" && !local_http {
                 return Err("Loop download refused an insecure redirect.".into());
             }
@@ -293,6 +296,18 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
     }
     let _lock = lock;
+    // Under the lock no other run is staging, so any stage folder left here is from a run that crashed.
+    for entry in fs::read_dir(&apps).map_err(|e| e.to_string())?.flatten() {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(".impeccable-loop-")
+            && entry.file_name() != ".impeccable-loop-previous.app"
+            && entry.path().is_dir()
+        {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
     let app = apps.join(APP);
     let backup = apps.join(".impeccable-loop-previous.app");
     if backup.exists() {
@@ -325,7 +340,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         .env("IMPECCABLE_DOWNLOAD_BASE")
         .filter(|s| !s.is_empty())
         .unwrap_or(BASE);
-    secure_url(base)?;
+    secure_url(base, false)?;
     let stage = Stage::new(&apps)?;
     let zip = stage.0.join("loop.zip");
     download(

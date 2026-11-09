@@ -78,6 +78,7 @@ export const SUITES = {
           'tests/rust-test-selection.test.mjs',
           'tests/cli-shim.test.mjs',
           'tests/check-engine-release.test.mjs',
+          'tests/check-loop-release.test.mjs',
           'tests/launcher-download.test.mjs',
           'tests/publish-platform-packages.test.mjs',
           'tests/github-sheriff.test.mjs',

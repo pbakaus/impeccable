@@ -31,15 +31,20 @@ fn urls_and_missing_pins_fail_closed() {
         "https://user@example.com",
         "http://127.0.0.2",
     ] {
-        assert!(secure_url(url).is_err(), "{url}");
+        assert!(secure_url(url, true).is_err(), "{url}");
     }
     for url in [
         "https://github.com/pbakaus/impeccable/releases/download",
         "http://127.0.0.1:1234",
         "http://localhost:1234",
     ] {
-        assert!(secure_url(url).is_ok(), "{url}");
+        assert!(secure_url(url, false).is_ok(), "{url}");
     }
+    // A configured base never carries a query; a redirect target may (GitHub's signed asset URLs), still HTTPS-only.
+    let signed = "https://objects.githubusercontent.com/x/loop.zip?sp=r&sig=abc";
+    assert!(secure_url(signed, false).is_err());
+    assert!(secure_url(signed, true).is_ok());
+    assert!(secure_url("http://example.com/loop.zip?sig=abc", true).is_err());
     let home = Stage::new(&std::env::temp_dir()).unwrap();
     let mut io = Io::stdio();
     io.env
@@ -116,6 +121,61 @@ mod mac {
             stream.write_all(&bytes).unwrap();
         });
         (base, task)
+    }
+
+    /// Answers the release path with a 302 to a signed, query-carrying URL (as GitHub does), then serves the zip there.
+    fn serve_signed(bytes: Vec<u8>, version: &str) -> (String, thread::JoinHandle<()>) {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", server.local_addr().unwrap());
+        let expected = format!("GET /loop-v{version}/impeccable-loop-{version}.zip HTTP/1.1");
+        let task = thread::spawn(move || {
+            for step in 0..2 {
+                let (mut stream, _) = server.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(10)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut byte = [0];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                let request = String::from_utf8_lossy(&request).into_owned();
+                if step == 0 {
+                    assert!(request.starts_with(&expected));
+                    write!(stream, "HTTP/1.1 302 Found\r\nLocation: /signed/loop.zip?sp=r&sig=abc\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                } else {
+                    assert!(request.starts_with("GET /signed/loop.zip?sp=r&sig=abc HTTP/1.1"));
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        bytes.len()
+                    )
+                    .unwrap();
+                    stream.write_all(&bytes).unwrap();
+                }
+            }
+        });
+        (base, task)
+    }
+
+    #[test]
+    fn follows_a_signed_redirect_and_sweeps_stale_stages() {
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let apps = home.0.join("Applications");
+        // A crashed run's stage is swept under the lock.
+        fs::create_dir_all(apps.join(".impeccable-loop-1-2-3/unpacked")).unwrap();
+        let bytes = fixture("1.0.0", &source.0);
+        let pins = pin("1.0.0", &bytes);
+        let (base, server) = serve_signed(bytes, "1.0.0");
+        assert!(
+            run_inner(&args("install"), &io(&home.0, &base), &pins, "macos")
+                .unwrap()
+                .contains("Installed Loop 1.0.0")
+        );
+        server.join().unwrap();
+        clean(&apps);
     }
 
     fn io(home: &Path, base: &str) -> Io {

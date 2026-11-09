@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { checkLoopRelease, recordLoopChecksum, parsePins } from '../../../../scripts/check-loop-release.mjs';
+import { checkLoopRelease, recordLoopChecksum, parsePins } from '../scripts/check-loop-release.mjs';
 
 test('Loop release recording and checking fail closed without real network', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'loop-release-test-'));
@@ -38,6 +38,15 @@ test('Loop release recording and checking fail closed without real network', asy
     await assert.rejects(checkLoopRelease({ ...options, base: 'http://example.com' }), /HTTPS/);
     globalThis.fetch = async () => new Response(null, { status: 302, headers: { location: 'http://evil.test/zip' } });
     await assert.rejects(checkLoopRelease(options), /HTTPS/);
+    // GitHub's release assets redirect to a signed URL with a query; that is followed, and its bytes are checked.
+    const signed = [];
+    globalThis.fetch = async (url) => {
+      signed.push(String(url));
+      return String(url).includes('sig=') ? new Response(payload) : new Response(null, { status: 302, headers: { location: '/signed/loop.zip?sp=r&sig=abc' } });
+    };
+    assert.equal(await checkLoopRelease(options), 2);
+    assert.equal(signed[1], `${options.base}/signed/loop.zip?sp=r&sig=abc`);
+    await assert.rejects(checkLoopRelease({ ...options, base: 'http://127.0.0.1:1234/?x=1' }), /HTTPS/);
     globalThis.fetch = async () => new Response(null, { status: 404 });
     await assert.rejects(checkLoopRelease(options), /HTTP 404/);
     assert.throws(() => parsePins('bad'), /Invalid/);

@@ -24,9 +24,10 @@ export function parsePins(text) {
   return pins;
 }
 
-function secureUrl(raw) {
+// The configured base never carries a query; a redirect may (GitHub's release assets 302 to a signed ?sp=…&sig=… URL).
+function secureUrl(raw, allowQuery = false) {
   const url = new URL(raw);
-  if (url.username || url.password || url.search || url.hash ||
+  if (url.username || url.password || (url.search && !allowQuery) || url.hash ||
       (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname)))) {
     throw new Error('Loop downloads require HTTPS (HTTP allowed only on localhost or 127.0.0.1)');
   }
@@ -41,7 +42,7 @@ async function digest(version, base) {
     if (res.status >= 300 && res.status < 400) {
       await res.body?.cancel();
       if (!res.headers.get('location')) throw new Error('Loop redirect has no Location');
-      url = secureUrl(new URL(res.headers.get('location'), url));
+      url = secureUrl(new URL(res.headers.get('location'), url), true);
       if (!localHttp && url.protocol === 'http:') throw new Error('Refusing insecure Loop redirect');
       continue;
     }
