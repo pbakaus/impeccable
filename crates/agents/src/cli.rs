@@ -1,0 +1,142 @@
+use super::*;
+
+pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
+    let Some(verb) = args.first().map(String::as_str) else {
+        return fail(
+            io,
+            "invalid_request",
+            "Expected capabilities, plan, apply, undo, status, or recover",
+            2,
+        );
+    };
+    if verb == "capabilities" {
+        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex"],"scopes":["user"],"verbs":["plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
+        return 0;
+    }
+    let Some(spec_path) = args
+        .windows(2)
+        .find(|w| w[0] == "--spec")
+        .map(|w| w[1].as_str())
+    else {
+        return fail(io, "invalid_request", "--spec <file|-> is required", 2);
+    };
+    let mut raw = String::new();
+    let read = if spec_path == "-" {
+        std::io::stdin().read_to_string(&mut raw).map(|_| ())
+    } else {
+        fs::read_to_string(spec_path).map(|s| raw = s)
+    };
+    if read.is_err() {
+        return fail(io, "invalid_request", "Unable to read request", 2);
+    }
+    let spec: Spec = match serde_json::from_str(&raw) {
+        Ok(s) => s,
+        Err(_) => return fail(io, "invalid_request", "Invalid request JSON", 2),
+    };
+    if let Err(msg) = validate(&spec) {
+        return fail(io, "invalid_request", &msg, 2);
+    }
+    match operate(verb, &spec) {
+        Ok(body) => {
+            io.out(&json!({"schemaVersion":RESPONSE_VERSION,"ok":true,"result":body}).to_string());
+            0
+        }
+        Err((code, msg, exit)) => fail(io, code, &msg, exit),
+    }
+}
+pub(super) fn fail(
+    io: &mut impeccable_common::Io,
+    code: &'static str,
+    message: &str,
+    exit: i32,
+) -> i32 {
+    io.out(&json!({"schemaVersion":RESPONSE_VERSION,"ok":false,"error":ErrorBody{code,message:message.to_owned()}}).to_string());
+    exit
+}
+pub(super) fn validate(s: &Spec) -> Result<(), String> {
+    if s.version != REQUEST_VERSION {
+        return Err("Unsupported request version".into());
+    }
+    if !(2..=32).contains(&s.owner.len())
+        || !s.owner.as_bytes()[0].is_ascii_lowercase()
+        || !s
+            .owner
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        return Err("Invalid owner id".into());
+    }
+    if !["claude", "codex"].contains(&s.harness.as_str()) {
+        return Err("Only Claude Code and Codex user installations are supported".into());
+    }
+    if !s.root.is_absolute() {
+        return Err("Account root must be an explicit absolute path".into());
+    }
+    if let Some(body) = &s.instruction {
+        if body.contains("impeccable:") {
+            return Err("Instruction body contains reserved marker syntax".into());
+        }
+    }
+    for m in &s.mcp_servers {
+        if m.name.is_empty() || m.name.contains(['/', '\\']) {
+            return Err("Invalid MCP server name".into());
+        }
+    }
+    Ok(())
+}
+pub(super) fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, String, i32)> {
+    let home = std::env::var_os("IMPECCABLE_AGENTS_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".impeccable/agents")))
+        .ok_or_else(|| ("io_error", "No home directory configured".into(), 1))?;
+    ensure_private_home(&home)?;
+    let lock = home.join("agents.lock");
+    let _lock_guard = acquire_lock(&lock, Duration::from_secs(10))?;
+    let id = format!(
+        "{}-{}-{}",
+        s.owner,
+        s.harness,
+        hex(&Sha256::digest(s.root.to_string_lossy().as_bytes())[..8])
+    );
+    let journal = home.join(format!("{id}.json"));
+    let result = (|| {
+        let prior = read_journal(&journal)?;
+        match verb {
+            "plan" => plan(s, prior.as_ref(), &home),
+            "status" => status(s, prior.as_ref()),
+            "apply" => {
+                let prior_bytes = fs::read(&journal).ok();
+                let result = apply(s, prior.as_ref(), &home, &journal, prior_bytes)?;
+                write_journal(&journal, &result)?;
+                failpoint("journal_commit")?;
+                let _ = fs::remove_file(home.join(format!("{id}.pending.json")));
+                Ok(json!({"installation":id,"state":"applied"}))
+            }
+            "undo" => {
+                let result = undo(s, prior.as_ref(), &home)?;
+                if result["conflicts"]
+                    .as_array()
+                    .is_some_and(|a| !a.is_empty())
+                {
+                    let mut retained = prior.unwrap();
+                    let paths = result["conflicts"].as_array().unwrap();
+                    for resource in &mut retained.resources {
+                        if paths.iter().any(|path| {
+                            path.as_str()
+                                .is_some_and(|path| resource.path == Path::new(path))
+                        }) {
+                            resource.state = ResourceState::Conflict;
+                        }
+                    }
+                    write_journal(&journal, &retained)?;
+                } else {
+                    let _ = fs::remove_file(&journal);
+                }
+                Ok(result)
+            }
+            "recover" => recover(&home, &id),
+            _ => Err(("invalid_request", "Unknown agents verb".into(), 2)),
+        }
+    })();
+    result
+}
