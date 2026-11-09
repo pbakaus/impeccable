@@ -105,6 +105,14 @@ async function exercise(t, scenario) {
     const after = scenario === 'removed-after-move' ? 'rm -f "$3"\n' : scenario === 'emptied-after-move' ? ': > "$3"\n' : '';
     fs.writeFileSync(path.join(tools, 'mv'), scenario === 'move-failure' ? '#!/bin/sh\nexit 1\n' : `#!/bin/sh\n${before}/bin/mv "$@" || exit $?\n${after}`, { mode: 0o755 });
   }
+  if (WINDOWS && scenario === 'github-outage') {
+    // curl.exe is an executable, so instrument only that external boundary
+    // in the staged launcher, as the hash/move fault cases below do.
+    const source = fs.readFileSync(launcher, 'utf8');
+    assert.match(source, /^curl\.exe .*$/m);
+    fs.writeFileSync(launcher, source.replace(/^curl\.exe .*\r?$/gm,
+      '>"%staging%\\http.txt" echo 504 https://release-assets.githubusercontent.com/asset\r\ncmd /c exit 22'));
+  }
   if (WINDOWS && scenario === 'cache-write-failure') {
     // The cmd launcher claims a fresh staging directory per run, so no
     // pre-created path can collide with it; fail the claim itself instead.
@@ -557,7 +565,7 @@ for (const [scenario, host, status] of [['outage-503', '127.0.0.1', 503], ['outa
   });
 }
 
-test('launcher attributes GitHub storage outages to GitHub', { skip: WINDOWS ? 'POSIX curl stub' : false }, async t => {
+test('launcher attributes GitHub storage outages to GitHub', async t => {
   const result = await exercise(t, 'github-outage');
   assert.equal(result.status, 127);
   assert.equal(result.stderr, "impeccable: could not download engine 0.0.0-test: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.\n");
