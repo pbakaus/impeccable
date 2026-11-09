@@ -285,3 +285,93 @@ fn an_upload_that_needs_a_fresh_token_keeps_the_sign_in() {
     let out = run(&env, &root, &["whoami", "--json"]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
+
+#[test]
+fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
+    // Catches (review, Cursor): `detect --quiet` sending counts and using up the one notice that says so.
+    let (fake, env) = signed_in("health-quiet");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let notice = "Design health: this scan's counts were saved";
+    let quiet = run(&env, &root, &["detect", "--quiet", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    assert!(!String::from_utf8_lossy(&quiet.stderr).contains(notice));
+    let loud = run(&env, &root, &["detect", "."]);
+    assert!(String::from_utf8_lossy(&loud.stderr).contains(notice));
+
+    fake.knobs.lock().unwrap().health_denied = true;
+    let hint = "can't save scan results";
+    let quiet = run(&env, &root, &["detect", "--quiet", "."]);
+    assert!(!String::from_utf8_lossy(&quiet.stderr).contains(hint));
+    let loud = run(&env, &root, &["detect", "."]);
+    assert!(String::from_utf8_lossy(&loud.stderr).contains(hint));
+}
+
+#[test]
+fn each_service_gives_its_own_notice() {
+    // Catches (review, Greptile): a staging upload's notice hiding production's for the same sign-in count.
+    let (staging, env) = signed_in("health-two-issuers");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let notice = "Design health: this scan's counts were saved";
+    assert!(String::from_utf8_lossy(&run(&env, &root, &["detect", "."]).stderr).contains(notice));
+    assert_eq!(staging.hits("/cli/v1/health/scans"), 1);
+
+    let production = Fake::start();
+    production.knobs.lock().unwrap().health = true;
+    let mut prod_env = env.clone();
+    prod_env.insert("IMPECCABLE_ACCOUNT_URL".into(), production.url.clone());
+    login(&prod_env);
+    let out = run(&prod_env, &root, &["detect", "."]);
+    assert_eq!(production.hits("/cli/v1/health/scans"), 1);
+    assert!(String::from_utf8_lossy(&out.stderr).contains(notice));
+}
+
+#[test]
+fn a_busy_sign_in_skips_the_upload_instead_of_holding_detect() {
+    // Catches (review, Greptile): an upload due a token refresh waiting up to 60 s on the sign-in lock.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.access_ttl = 0;
+    }
+    let env = fake.env("health-busy-lock");
+    login(&env);
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let accounts = Path::new(&env["IMPECCABLE_HOME"]).join("account");
+    let dir = std::fs::read_dir(&accounts).unwrap().next().unwrap().unwrap().path();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(dir.join("lock"))
+        .unwrap();
+    held.try_lock().unwrap();
+    let started = std::time::Instant::now();
+    let out = run(&env, &root, &["detect", "."]);
+    let took = started.elapsed();
+    drop(held);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(took < std::time::Duration::from_secs(10), "detect waited {took:?} on the lock");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+    // Once the lock is free the next scan refreshes and uploads as usual.
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+}
+
+#[test]
+fn a_changed_design_system_starts_a_new_ruleset() {
+    // Catches (review, Greptile): editing DESIGN.md's allowed colors removing findings that the trend then reports as fixed.
+    let (fake, env) = signed_in("health-design-system");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let design = |primary: &str| format!("---\nname: Site\ncolors:\n  primary: \"{primary}\"\n---\n\n# Design\n");
+    std::fs::write(root.join("DESIGN.md"), design("#0ea5e9")).unwrap();
+    run(&env, &root, &["detect", "."]);
+    std::fs::write(root.join("DESIGN.md"), design("#7c3aed")).unwrap();
+    run(&env, &root, &["detect", "."]);
+    run(&env, &root, &["detect", &root.to_string_lossy()]);
+    let all = scans(&fake);
+    assert_eq!(all.len(), 3);
+    assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"], "a new DESIGN.md is a new ruleset");
+    assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"], "the same one is the same ruleset");
+}

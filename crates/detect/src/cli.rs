@@ -887,6 +887,26 @@ fn detect_cli(
                 .map(|e| serde_json::json!([e.ext, e.engine]).to_string())
                 .collect();
             extensions.sort();
+            // The design systems the scan read decide matches too (allowed
+            // colors, fonts, radii): a changed DESIGN.md is a new ruleset, not
+            // a round of fixes. Paths are left out so every checkout agrees.
+            let mut design_systems: Vec<String> = ctx
+                .cache
+                .iter()
+                .filter_map(|(key, ds)| {
+                    let mut ds = (**ds.as_ref()?).clone();
+                    ds.source_path = None;
+                    ds.sidecar_path = None;
+                    let dir = key.strip_prefix("root:").unwrap_or(key);
+                    let dir = std::path::Path::new(dir)
+                        .strip_prefix(&root)
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_else(|_| dir.to_string());
+                    Some(format!("design-system:{dir}={ds:?}"))
+                })
+                .collect();
+            design_systems.sort();
+            ruleset.extend(design_systems);
             ruleset.extend([
                 format!("config={config_enabled}"),
                 format!("inline-ignores={inline_ignores_enabled}"),

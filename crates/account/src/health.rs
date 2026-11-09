@@ -109,36 +109,36 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // A token refresh, when one is due, goes through the ordinary sign-in
     // path and client, exactly as `whoami` does: a short timeout there could
     // drop a rotated refresh token the service already spent.
-    let Ok(token) = session.access_token() else {
+    // A busy sign-in (another command mid-refresh) skips this upload rather
+    // than holding detect on the lock.
+    let Ok(token) = session.access_token_within(std::time::Duration::ZERO) else {
         return;
     };
-    let login = session.state.login;
+    // The one-time notice and hint belong to this sign-in on this service.
+    let marker = format!("{} {}", account.issuer, session.state.login);
     // `off` or `forget` may have run while the scan did.
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
         return;
     }
     // One request, one deadline, no retry: a 401 waits for the next scan.
+    // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
         Ok(_) => {
             let fresh = Local::read(&io.env).unwrap_or_default();
-            if fresh.noticed != Some(login) {
-                if !quiet {
-                    io.err(&format!(
-                        "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                        account.display_host()
-                    ));
-                }
-                let _ = Local::update(&io.env, |l| l.noticed = Some(login));
+            if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
+                io.err(&format!(
+                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
+                    account.display_host()
+                ));
+                let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
         Err(ApiError::Status { status: 403, .. }) => {
             let fresh = Local::read(&io.env).unwrap_or_default();
-            if fresh.hinted != Some(login) {
-                if !quiet {
-                    io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
-                }
-                let _ = Local::update(&io.env, |l| l.hinted = Some(login));
+            if !quiet && fresh.hinted.as_deref() != Some(marker.as_str()) {
+                io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
+                let _ = Local::update(&io.env, |l| l.hinted = Some(marker));
             }
         }
         Err(_) => {}
@@ -255,8 +255,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 #[derive(Default, Clone)]
 struct Local {
     sync: Option<bool>,
-    noticed: Option<u64>,
-    hinted: Option<u64>,
+    /// `<issuer> <login>` of the sign-in the notice was shown for.
+    noticed: Option<String>,
+    hinted: Option<String>,
 }
 
 impl Local {
@@ -276,8 +277,8 @@ impl Local {
         let v = v.as_object()?;
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
-            noticed: v.get("noticed").and_then(Value::as_u64),
-            hinted: v.get("hinted").and_then(Value::as_u64),
+            noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
+            hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
         })
     }
     fn sync(&self) -> bool {
@@ -386,18 +387,34 @@ fn local_repo_id(top: &str, env: &std::collections::HashMap<String, String>) -> 
     let canonical = Path::new(top).canonicalize().ok()?;
     let name = hex(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
     let file = impeccable_home(env)?.join("health").join("repos").join(name);
-    if let Ok(id) = std::fs::read_to_string(&file) {
-        let id = id.trim();
-        if id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Some(id.to_string());
-        }
+    if let Some(id) = read_id(&file) {
+        return Some(id);
     }
     let mut bytes = [0u8; 16];
     SystemRandom::new().fill(&mut bytes).ok()?;
-    let id = hex(&bytes);
     std::fs::create_dir_all(file.parent()?).ok()?;
-    crate::store::write_private(&file, format!("{id}\n").as_bytes()).ok()?;
-    Some(id)
+    publish_id(&file, &hex(&bytes))
+}
+
+fn read_id(file: &Path) -> Option<String> {
+    let id = std::fs::read_to_string(file).ok()?;
+    let id = id.trim();
+    (id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())).then(|| id.to_string())
+}
+
+/// Save `id` as the repo's id unless another scan saved one first, and
+/// return whichever won: two first scans racing must not split one repo
+/// into two trends. A hard link never replaces an existing file.
+fn publish_id(file: &Path, id: &str) -> Option<String> {
+    let staged = file.with_extension(format!("{id}.new"));
+    crate::store::write_private(&staged, format!("{id}\n").as_bytes()).ok()?;
+    let linked = std::fs::hard_link(&staged, file);
+    let _ = std::fs::remove_file(&staged);
+    match linked {
+        Ok(()) => Some(id.to_string()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => read_id(file),
+        Err(_) => None,
+    }
 }
 
 /// The `origin` remote in one spelling, so every clone of a repo hashes the
@@ -709,9 +726,9 @@ mod tests {
         let seen_by_scan = Local::read(&env).unwrap();
         assert!(seen_by_scan.sync());
         Local::update(&env, |l| l.sync = Some(false)).unwrap(); // `health off` meanwhile
-        Local::update(&env, |l| l.noticed = Some(7)).unwrap(); // the scan's notice
+        Local::update(&env, |l| l.noticed = Some("https://issuer 7".into())).unwrap(); // the scan's notice
         let now = Local::read(&env).unwrap();
-        assert_eq!((now.sync, now.noticed), (Some(false), Some(7)));
+        assert_eq!((now.sync, now.noticed.as_deref()), (Some(false), Some("https://issuer 7")));
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -724,5 +741,18 @@ mod tests {
         assert!(semver("0.1.19") && semver("1.0.0-rc.1+b5") && !semver("0.1") && !semver("01.0.0"));
         let id = scan_id();
         assert!(id.len() == 36 && &id[14..15] == "4", "{id}");
+    }
+
+    #[test]
+    fn a_racing_first_scan_takes_the_id_already_saved() {
+        // Catches (review, Greptile): two first scans of a repo without a remote each keeping their own id.
+        let dir = std::env::temp_dir().join(format!("impeccable-health-id-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("repo");
+        let first = "a".repeat(32);
+        assert_eq!(publish_id(&file, &first).as_deref(), Some(first.as_str()));
+        assert_eq!(publish_id(&file, &"b".repeat(32)).as_deref(), Some(first.as_str()));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no staged file left behind");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
