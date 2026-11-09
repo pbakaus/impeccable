@@ -510,6 +510,27 @@ describe('live-browser source contracts', () => {
     );
   });
 
+  it('moves every spelling of a variant selector to the accepted session scope (#1310)', () => {
+    const body = SOURCE.match(/function scopeAcceptedCss\([\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const scopeAcceptedCss = new Function(`${body}\nreturn scopeAcceptedCss;`)();
+    const pending = { id: 's1', variant: '3' };
+    for (const spelling of [
+      '[data-impeccable-variant="3"]',
+      '[data-impeccable-variant = "3"]',
+      "[ data-impeccable-variant='3' ]",
+      '[data-impeccable-variant=3]',
+      '[data-impeccable-variant="3" i]',
+    ]) {
+      assert.equal(scopeAcceptedCss(`@scope (${spelling}) {}`, pending), '@scope ([data-impeccable-accepted="s1"]) {}', spelling);
+    }
+    assert.equal(
+      scopeAcceptedCss('[data-impeccable-variant = "2"] > h1 {}', pending),
+      '[data-impeccable-accepted="s1:2"] > h1 {}',
+      'rules for the other variants must match nothing',
+    );
+  });
+
   it('never runs accept or discard structural fallbacks inside framework-owned HMR DOM', () => {
     assert.match(
       SOURCE,

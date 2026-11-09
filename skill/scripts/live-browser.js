@@ -9690,6 +9690,12 @@ void main() {
     setLiveState('PICKING');
   }
 
+  function scopeAcceptedCss(css, pending) {
+    return css.replace(/\[\s*data-impeccable-variant\s*=\s*(["']?)([^"'\]\s]+)\1\s*(?:[is]\s*)?\]/gi, (_, __, variant) => (
+      '[data-impeccable-accepted="' + pending.id + (variant === pending.variant ? '' : ':' + variant) + '"]'
+    ));
+  }
+
   // Keeps the accepted look until reload: the style, then a display: contents
   // shell carrying the tuned --p-* values. Variant numbers repeat across
   // sessions, so the shell and its rules move to a per-session attribute that
@@ -9701,9 +9707,7 @@ void main() {
     if (accepted) {
       const style = wrapper.querySelector('style[data-impeccable-css]');
       if (style) {
-        style.textContent = style.textContent.replace(/\[data-impeccable-variant=(["']?)([^"'\]]+)\1\]/g, (_, __, variant) => (
-          '[data-impeccable-accepted="' + pending.id + (variant === pending.variant ? '' : ':' + variant) + '"]'
-        ));
+        style.textContent = scopeAcceptedCss(style.textContent, pending);
         parent.insertBefore(style, wrapper);
       }
       accepted.removeAttribute('data-impeccable-variant');
