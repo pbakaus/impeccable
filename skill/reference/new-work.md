@@ -24,7 +24,7 @@ Before implementation, get the user's answer through the structured question too
 - **Read:** the reader's question, source material, structure, wayfinding.
 - **Experience:** what leads, how exploration unfolds, which interaction or transition matters.
 
-Across modes, ask what success looks like, what must remain untouched, and what would make a polished result feel wrong. Never ask for CSS values or canned aesthetic lanes.
+Across modes, ask what success looks like, what must remain untouched, and what would make a polished result feel wrong. Never ask for CSS values or canned aesthetic lanes. On a new or replacement world these are product questions only: propose no look of your own before concept-seed has run, because a direction named in a question is the one the answer confirms.
 
 ## 3. Choose the right amount of invention
 
