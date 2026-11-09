@@ -25,6 +25,8 @@ const DEFAULT_LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 /// The outcome of a completed sign-in.
 pub struct LoggedIn {
     pub account: Account,
+    /// The sign-in this made (`State::login`).
+    pub login: u64,
     pub entitlement: Result<Entitlement, SessionError>,
 }
 
@@ -55,7 +57,7 @@ pub fn login(
         .map_err(|e| e.to_string())?;
     let tokens = oauth::exchange(&client, &account, &meta.token_endpoint, &pending, &code)
         .map_err(|e| format!("the account service did not accept the sign-in: {e}"))?;
-    let replaced = {
+    let (replaced, login) = {
         let lock = store.lock()?;
         let previous = store.state();
         // A logout since this attempt started, even one a newer sign-in
@@ -94,7 +96,7 @@ pub fn login(
         // Nothing Pro from an earlier sign-in carries over to this one.
         pro::reset_holding(&lock, &account);
         store.save(&lock, &state, &secret)?;
-        replaced
+        (replaced, generation)
     };
     // The grant this sign-in replaced is ended at the service too.
     if let Some((endpoint, old)) = replaced {
@@ -103,6 +105,7 @@ pub fn login(
     let entitlement = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
     Ok(LoggedIn {
         account,
+        login,
         entitlement,
     })
 }
@@ -186,7 +189,7 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
                     pro::report(io, &outcome);
                 }
                 Ok(_) => {
-                    pro::forget(&done.account, true);
+                    pro::settle(&done.account, done.login, false);
                     report_entitlement(io, &done.entitlement);
                 }
                 Err(_) => report_entitlement(io, &done.entitlement),
@@ -257,12 +260,15 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
-    let result = Session::load(&account).and_then(|mut s| session::entitlement(&mut s));
-    // An explicit "not entitled" ends the offline grace at once.
-    if let Ok(e) = &result {
-        if !e.pro {
-            pro::forget(&account, true);
-        }
+    let mut login = None;
+    let result = Session::load(&account).and_then(|mut s| {
+        login = Some(s.state.login);
+        session::entitlement(&mut s)
+    });
+    // An explicit answer applies at once, to the sign-in it was about: "not
+    // entitled" ends the offline grace, "entitled" lifts an earlier "no".
+    if let (Ok(e), Some(login)) = (&result, login) {
+        pro::settle(&account, login, e.pro);
     }
     // What the plan includes, from the public catalog; optional.
     let plan = result.as_ref().ok().and_then(|e| {

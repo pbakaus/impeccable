@@ -100,7 +100,7 @@ fn not_entitled_deletes_the_lease_at_once() {
         r#"{"error":"not_entitled"}"#,
     );
     assert_eq!(refresh(&s.account, &s.keys), Refreshed::NotEntitled);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
     assert!(matches!(
         decide(&s.account, &s.keys, unix_now()),
         Decision::Open {
@@ -172,7 +172,7 @@ fn a_revocation_seen_during_a_refresh_is_not_undone_by_it() {
     forget(&s.account, true);
     gate.open();
     assert_eq!(running.join().unwrap(), Refreshed::NotEntitled);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
     assert!(matches!(
         decide(&s.account, &s.keys, unix_now()),
         Decision::Open {
@@ -197,7 +197,7 @@ fn a_stalled_download_does_not_hold_up_logout() {
     assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     gate.open();
     assert_eq!(running.join().unwrap(), Refreshed::NotSignedIn);
-    assert!(!s.account.dir().join("pro/current.json").exists());
+    assert!(!s.account.dir().join(format!("pro/{}-{}/current.json", impeccable_account::pro::ENGINE, impeccable_account::pro::target())).exists());
 }
 
 #[test]
@@ -280,4 +280,38 @@ fn a_fifo_in_place_of_the_artifact_falls_back_instead_of_hanging() {
             ..
         }
     ));
+}
+
+fn whoami(env: &HashMap<String, String>) -> i32 {
+    let (mut io, _out) = impeccable_common::Io::captured("", std::env::temp_dir(), env.clone());
+    impeccable_account::run_whoami(&[], &mut io)
+}
+
+#[test]
+fn whoami_seeing_pro_clears_a_stale_not_entitled_answer() {
+    // Catches (review, Cursor): after a plan upgrade, whoami says Pro is included while scans keep the open rules on an old "not entitled".
+    let s = setup("whoami-upgrade");
+    s.fake.knobs.lock().unwrap().entitled = false;
+    assert_eq!(whoami(&s.env), 0);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
+    s.fake.knobs.lock().unwrap().entitled = true;
+    assert_eq!(whoami(&s.env), 0);
+    assert!(matches!(
+        decide(&s.account, &s.keys, unix_now()),
+        Decision::Open { why: Some(WHY_NOT_READY), renew: true }
+    ));
+}
+
+#[test]
+fn an_answer_about_an_earlier_sign_in_leaves_the_current_one_alone() {
+    // Catches (review, Greptile): whoami's "not entitled" for sign-in A, arriving after sign-in B installed Pro, wiping B.
+    let s = setup("stale-answer");
+    let earlier = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    login(&s.env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    impeccable_account::pro::settle(&s.account, earlier, false);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
+    let current = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    impeccable_account::pro::settle(&s.account, current, false);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
 }
