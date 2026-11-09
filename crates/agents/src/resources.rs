@@ -41,6 +41,20 @@ pub(super) fn apply(
             ));
         }
     }
+    // A managed block the person edited is theirs: a reapply that would
+    // replace it is refused before anything is written (pristine#4333).
+    if s.instruction.is_some() {
+        if let Some(path) = render::instruction_drift(old.map(|o| &o.spec), s)? {
+            return Err((
+                "instruction_drift",
+                format!(
+                    "The managed instruction block in {} was edited outside the engine",
+                    path.display()
+                ),
+                4,
+            ));
+        }
+    }
     let mut snapshots = Vec::new();
     let mut writes = Vec::new();
     let desired_targets = targets(s);
@@ -198,7 +212,13 @@ pub(super) fn apply(
                 last_written_value: written.clone(),
                 written_hash: hex(&Sha256::digest(&written)),
                 claims,
-                pure_install: existing.is_none(),
+                // Exact restore stays possible across the engine's own rewrites
+                // (a staged enable): only while the file still held what the engine
+                // last wrote, so an outside edit still means surgical undo.
+                pure_install: existing.is_none_or(|x| {
+                    x.pure_install
+                        && before.as_ref().is_some_and(|b| hex(&Sha256::digest(b)) == x.written_hash)
+                }),
             });
         }
     }
@@ -560,6 +580,19 @@ pub(super) fn undo(
     _home: &Path,
 ) -> Result<Value, (&'static str, String, i32)> {
     let Some(j) = j else {
+        // No journal: fine when nothing of this installation is on disk, but
+        // resources still there mean the record was lost, and "removed" would
+        // be a lie (pristine#4333).
+        if let Some(path) = render::installed_on_disk(s) {
+            return Err((
+                "journal_missing",
+                format!(
+                    "{} holds this installation's resources but its journal is missing; nothing was removed",
+                    path.display()
+                ),
+                4,
+            ));
+        }
         return Ok(json!({"removed":false,"conflicts":[]}));
     };
     let mut conflicts = Vec::new();
@@ -622,8 +655,18 @@ pub(super) fn undo(
                 Some(updated) if current.as_deref() != Some(updated.as_slice()) => {
                     safe_write(&snap.path, current.as_deref(), &updated)?;
                     removed.push(snap.path.clone());
+                    // A hook the person edited stays; report it, not just the file.
+                    for hook in render::drifted_hooks(&j.spec, &updated, snap.before.as_deref()) {
+                        conflicts.push(json!(format!("{}#{hook}", snap.path.display())));
+                    }
                 }
-                _ => conflicts.push(json!(snap.path.display().to_string())),
+                _ => {
+                    conflicts.push(json!(snap.path.display().to_string()));
+                    let left = current.as_deref().unwrap_or_default();
+                    for hook in render::drifted_hooks(&j.spec, left, snap.before.as_deref()) {
+                        conflicts.push(json!(format!("{}#{hook}", snap.path.display())));
+                    }
+                }
             }
         }
     }

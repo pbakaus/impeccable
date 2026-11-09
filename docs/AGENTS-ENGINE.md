@@ -32,10 +32,31 @@ server tables need a manual edit. Undo restores the prior mode. Reapplying
 after the person changed that mode is refused (`approval_drift`), as is a Codex
 config with `features.hooks = false` (`hooks_disabled`): the engine never turns
 the person's global hook switch back on. Undo leaves an instruction block whose
-body was edited in place and reports it as a conflict.
+body was edited in place and reports it as a conflict, and an apply that would
+replace a block holding neither the last-written nor the requested body is
+refused before anything is written (`instruction_drift`), journal or not. Undo also
+leaves a managed hook whose entry the person edited (same command, other
+fields) and reports it as `<path>#hook:<event>:<command>` in `conflicts`.
+Undo without a journal is refused (`journal_missing`) while this installation's
+block is in the rule file or one of its exact hook entries is in the JSON hook
+file (shared settings such as Codex's `features.hooks` don't count); with none
+of that on disk, it returns `removed: false`. A hook entry that was there before
+the install is never reported as edited.
 
-Supported verbs are `capabilities`, `plan`, `apply`, `undo`, `status`, and
-`recover`. `capabilities` does not need a spec. Request and response schemas
+Supported verbs are `capabilities`, `list`, `plan`, `apply`, `undo`, `status`,
+and `recover`. `capabilities` and `list` do not need a spec.
+
+`list` is the setup report: every committed installation in the journal, with
+`owner`, `harness`, its hook `event`s and `matcher`s, whether it wrote an
+instruction, the MCP server names it added or approved, and each resource's
+`kind` and `state` (`created`, `preexisting`, `conflict` when the file no
+longer holds what the engine wrote, or `unchecked` when the harness CLI that
+would check it can't run). It also returns the engine's own `engineVersion`, a
+count of `pendingTransactions` that `recover` would settle, and a count of
+`unreadableJournals` (invalid, or written by a newer engine), which it skips
+rather than failing the whole report. It is read-only, takes no lock, and returns no path, command, account
+root or instruction text, so a signed-in client may send it to a server. Like
+`status`, checking a Claude MCP server runs `claude mcp get`. Request and response schemas
 are version 1; the journal schema is version 2 under
 `~/.impeccable/agents`. Set `IMPECCABLE_AGENTS_HOME` to isolate it in tests.
 The lock wait is ten seconds.
@@ -51,7 +72,9 @@ Installations are keyed by owner, harness, and account root. Journal records
 carry resource ids, state, original and last-written values, and installation
 claims. Shared physical files can have claims from multiple Claude accounts.
 Undo restores prior bytes when the file still matches the last write and no
-other installation claims it. Otherwise it removes identifiable owner hook
+other installation claims it. That holds across reapplies too (for example
+installing first and enabling approvals later), as long as nothing outside the
+engine changed the file between them. Otherwise it removes identifiable owner hook
 entries or instruction blocks; drift it cannot identify safely is left in
 place and reported.
 

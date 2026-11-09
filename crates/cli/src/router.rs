@@ -56,6 +56,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
+        "loop" => crate::loop_install::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
@@ -223,6 +224,7 @@ const KNOWN_VERBS: &[&str] = &[
     "health",
     "pro-refresh",
     "agents",
+    "loop",
     "skills",
     "help",
     "install",
