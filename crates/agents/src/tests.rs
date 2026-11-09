@@ -814,13 +814,13 @@ fn changed_spec_reapply_uses_surgical_undo_and_keeps_personal_hook() {
         fs::read(&journal_path).ok(),
     )
     .unwrap();
-    assert!(second
-        .snapshots
-        .iter()
-        .all(|snapshot| !snapshot.pure_install));
+    // Only the engine rewrote the file between the two applies, so undo can
+    // still put back the original bytes (pristine#4333 finding 8).
+    assert!(second.snapshots.iter().all(|snapshot| snapshot.pure_install));
     write_journal(&journal_path, &second).unwrap();
 
     undo(&changed, Some(&second), &home).unwrap();
+    assert_eq!(fs::read(&settings).unwrap(), original, "byte-exact");
     let current = render::parse_unique_json(&fs::read(settings).unwrap()).unwrap();
     let entries = current["hooks"]["PreToolUse"].as_array().unwrap();
     assert_eq!(entries.len(), 1);
@@ -1340,4 +1340,193 @@ fn list_reports_every_installation_past_a_bad_journal_or_an_unchecked_resource()
         .unwrap()
         .iter()
         .any(|r| r["kind"] == "mcp-server" && r["state"] == "unchecked"));
+}
+
+fn hook(event: &str, command: &str) -> Hook {
+    Hook {
+        event: event.into(),
+        matcher: None,
+        command: command.into(),
+        timeout: None,
+        run_async: None,
+        async_rewake: None,
+    }
+}
+
+#[test]
+fn reinstall_refuses_an_edited_instruction_block_before_writing_anything() {
+    // Catches (pristine#4333 review, finding 1): reinstall over an edited managed CLAUDE.md block deleting the person's edit.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("claude", root.clone());
+    s.hooks = vec![hook("SessionStart", "loop lifecycle")];
+    let journal = home.join("journal.json");
+    let j = apply(&s, None, &home, &journal, None).unwrap();
+    let rules = root.join("CLAUDE.md");
+    let edited = fs::read_to_string(&rules).unwrap().replace("managed text", "managed text\nMy own rule.");
+    fs::write(&rules, &edited).unwrap();
+    let settings = fs::read(root.join("settings.json")).unwrap();
+    let err = apply(&s, Some(&j), &home, &journal, None).unwrap_err();
+    assert_eq!(err.0, "instruction_drift");
+    assert_eq!(fs::read_to_string(&rules).unwrap(), edited, "the edit survives");
+    assert_eq!(fs::read(root.join("settings.json")).unwrap(), settings, "nothing else written");
+}
+
+#[test]
+fn undo_without_a_journal_refuses_while_installed_resources_remain() {
+    // Catches (pristine#4333 review, finding 5): a deleted journal making undo report success with everything still installed.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("claude", root.clone());
+    s.hooks = vec![hook("SessionStart", "loop lifecycle")];
+    apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let err = undo(&s, None, &home).unwrap_err();
+    assert_eq!(err.0, "journal_missing");
+    // Nothing of ours on disk: there is nothing to undo, and that's fine.
+    let clean = temp();
+    let s2 = spec("claude", clean);
+    assert_eq!(undo(&s2, None, &home).unwrap()["removed"], false);
+}
+
+#[test]
+fn undo_reports_a_managed_hook_the_person_edited_and_keeps_it() {
+    // Catches (pristine#4333 review, finding 5): one edited hook hidden because removing its sibling counted as success.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("SessionStart", "loop start"), hook("Stop", "loop stop")];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let path = root.join("settings.json");
+    let text = fs::read_to_string(&path).unwrap();
+    let mut value: Value = serde_json::from_str(&text).unwrap();
+    value["hooks"]["Stop"][0]["hooks"][0]["timeout"] = json!(99);
+    fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert!(after["hooks"].get("SessionStart").is_none(), "the untouched hook goes");
+    assert_eq!(after["hooks"]["Stop"][0]["hooks"][0]["timeout"], 99, "the edited hook stays");
+    let conflicts = result["conflicts"].as_array().unwrap();
+    assert!(
+        conflicts.iter().any(|c| c.as_str().unwrap().contains("Stop")),
+        "the edited hook is reported: {result}"
+    );
+}
+
+#[test]
+fn staged_enable_still_restores_the_original_config_bytes() {
+    // Catches (pristine#4333 review, finding 8): install, then install again with approvals, then undo bringing 'prompt' # personal back as "prompt".
+    let root = temp();
+    let home = temp();
+    let config = root.join("config.toml");
+    let original = "[mcp_servers.impeccable]\nurl = 'u'\ndefault_tools_approval_mode = 'prompt' # personal";
+    fs::write(&config, original).unwrap();
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("SessionStart", "loop lifecycle")];
+    let journal = home.join("journal.json");
+    let first = apply(&s, None, &home, &journal, None).unwrap();
+    s.mcp_approvals = vec![McpApproval { server: "impeccable".into(), mode: "approve".into() }];
+    let second = apply(&s, Some(&first), &home, &journal, None).unwrap();
+    let result = undo(&s, Some(&second), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+    assert_eq!(fs::read_to_string(&config).unwrap(), original);
+}
+
+#[test]
+fn an_outside_edit_between_applies_still_means_surgical_undo() {
+    // Catches: keeping exact-restore eligibility across a reapply after the person edited the file, which would undo their edit.
+    let root = temp();
+    let home = temp();
+    let settings = root.join("settings.json");
+    fs::write(&settings, b"{\"other\":1}\n").unwrap();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("SessionStart", "loop start")];
+    let journal = home.join("journal.json");
+    let first = apply(&s, None, &home, &journal, None).unwrap();
+    let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    value["personal"] = json!(true);
+    fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    s.hooks.push(hook("Stop", "loop stop"));
+    let second = apply(&s, Some(&first), &home, &journal, None).unwrap();
+    assert!(second.snapshots.iter().all(|x| !x.pure_install));
+    undo(&s, Some(&second), &home).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    assert_eq!(after["personal"], true, "the person's edit stays");
+    assert!(after.get("hooks").is_none());
+}
+
+#[test]
+fn undo_without_a_journal_finds_the_block_even_from_a_reduced_spec() {
+    // Catches (review, Greptile): an owner/harness/root-only undo spec checking no files, so a lost journal reads as clean while the block stays.
+    let root = temp();
+    let home = temp();
+    let s = spec("claude", root.clone());
+    apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let reduced = Spec { instruction: None, ..spec("claude", root) };
+    assert_eq!(undo(&reduced, None, &home).unwrap_err().0, "journal_missing");
+}
+
+#[test]
+fn undo_without_a_journal_ignores_a_codex_hook_switch_the_person_set() {
+    // Catches (review, Cursor): features.hooks = true from before reading as this installation's, failing a no-op cleanup.
+    let root = temp();
+    let home = temp();
+    fs::write(root.join("config.toml"), "[features]\nhooks = true\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.hooks = vec![hook("SessionStart", "loop lifecycle")];
+    assert_eq!(undo(&s, None, &home).unwrap()["removed"], false);
+}
+
+#[test]
+fn a_block_left_by_an_apply_without_instruction_is_not_overwritten_later() {
+    // Catches (review, Cursor): drop the instruction (the edited block stays), then reapply with one and overwrite the edit.
+    let root = temp();
+    let home = temp();
+    let journal = home.join("journal.json");
+    let s = spec("claude", root.clone());
+    let first = apply(&s, None, &home, &journal, None).unwrap();
+    let rules = root.join("CLAUDE.md");
+    let edited = fs::read_to_string(&rules).unwrap().replace("managed text", "managed text\nMy own rule.");
+    fs::write(&rules, &edited).unwrap();
+    let without = Spec { instruction: None, hooks: vec![hook("SessionStart", "x")], ..s.clone() };
+    let second = apply(&without, Some(&first), &home, &journal, None).unwrap();
+    assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
+    assert_eq!(apply(&s, Some(&second), &home, &journal, None).unwrap_err().0, "instruction_drift");
+    assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
+}
+
+#[test]
+fn a_personal_hook_with_the_same_command_is_not_a_conflict_and_a_lone_edited_hook_is_named() {
+    // Catches (review, Greptile): a pre-existing personal hook sharing the command flagged as drift, and a single edited hook reported only as a path.
+    let root = temp();
+    let home = temp();
+    let settings = root.join("settings.json");
+    let personal = r#"{"hooks":{"Stop":[{"matcher":"Edit","hooks":[{"type":"command","command":"loop stop"}]}]},"x":1}"#;
+    fs::write(&settings, personal).unwrap();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("Stop", "loop stop")];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    value["x"] = json!(2);
+    fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+
+    // One managed hook, edited: undo removes nothing and names it.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("Stop", "loop stop")];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let settings = root.join("settings.json");
+    let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    value["hooks"]["Stop"][0]["hooks"][0]["timeout"] = json!(5);
+    fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("#hook:Stop:loop stop")), "{result}");
 }
