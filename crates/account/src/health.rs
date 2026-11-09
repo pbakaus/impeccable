@@ -338,7 +338,11 @@ impl Repo {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
         };
-        let branch = git(root, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+        // The branch, also before the first commit; "HEAD" when detached. A
+        // git that fails or times out here skips the upload rather than file
+        // the scan under a branch it couldn't read.
+        let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
+            .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
         // The folder name can say more than the person meant to share, so it
         // waits for the decider's answer (REN-1559 question 3).
