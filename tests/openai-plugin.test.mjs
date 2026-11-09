@@ -92,3 +92,13 @@ describe('OpenAI plugin staging', () => {
     assert.doesNotMatch(hooks.hooks.PostToolUse[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
   });
 });
+
+describe('OpenAI plugin release step', () => {
+  it('reminds a skill release to upload the ChatGPT package (#1023)', () => {
+    const release = fs.readFileSync(new URL('../scripts/release.mjs', import.meta.url), 'utf8');
+    const skill = release.match(/\n  skill: \{([\s\S]*?)\n  \},/)?.[1] ?? '';
+    const hint = skill.match(/postReleaseHint:\s*\n?\s*(['`])([\s\S]*?)\1,/)?.[2] ?? '';
+    assert.match(hint, /dist\/openai-plugin\.zip/);
+    assert.match(hint, /docs\/openai-plugin-submission\.md/);
+  });
+});
