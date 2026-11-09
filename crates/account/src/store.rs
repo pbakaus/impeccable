@@ -210,21 +210,38 @@ impl Store {
     }
 
     pub fn state(&self) -> Option<State> {
-        let bytes = read_private(&self.dir.join("state.json")).ok()??;
-        let state: State = serde_json::from_slice(&bytes).ok()?;
-        (state.schema == 1 && state.issuer == self.account.issuer).then_some(state)
+        self.try_state().ok().flatten()
+    }
+
+    /// [`Store::state`], with a file that is there but can't be read as an
+    /// error rather than as no sign-in.
+    pub fn try_state(&self) -> Result<Option<State>, String> {
+        let Some(bytes) = read_private(&self.dir.join("state.json"))? else {
+            return Ok(None);
+        };
+        let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
+            return Ok(None);
+        };
+        Ok((state.schema == 1 && state.issuer == self.account.issuer).then_some(state))
     }
 
     /// The secret for a signed-in state, from that state's backend only.
     pub fn secret(&self, state: &State) -> Option<Secret> {
+        self.try_secret(state).ok().flatten()
+    }
+
+    /// [`Store::secret`], with a backend that refuses the read (a denied
+    /// Keychain prompt, an unreadable file) as an error rather than as no
+    /// sign-in.
+    pub fn try_secret(&self, state: &State) -> Result<Option<Secret>, String> {
         if !state.signed_in {
-            return None;
+            return Ok(None);
         }
         let bytes = match state.backend {
-            Backend::File => read_private(&self.dir.join("credentials.json")).ok()??,
-            Backend::Keychain => keychain::get(SERVICE, &self.keychain_account()).ok()??,
+            Backend::File => read_private(&self.dir.join("credentials.json"))?,
+            Backend::Keychain => keychain::get(SERVICE, &self.keychain_account())?,
         };
-        serde_json::from_slice(&bytes).ok()
+        Ok(bytes.and_then(|b| serde_json::from_slice(&b).ok()))
     }
 
     /// Write a secret and then the state naming it (caller holds the lock).

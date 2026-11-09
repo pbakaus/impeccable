@@ -244,3 +244,25 @@ fn a_grant_the_service_ended_signs_the_machine_out() {
         "signed out locally"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_sign_in_that_cannot_be_read_says_so_instead_of_signed_out() {
+    // Catches (review, Greptile): a denied Keychain prompt or unreadable credentials reported as "not signed in".
+    use std::os::unix::fs::PermissionsExt;
+    let fake = Fake::start();
+    let env = fake.env("unreadable-sign-in");
+    login(&env, &mut |url| browser(url), WAIT).expect("login");
+    let account = Account::from_env(&env).unwrap();
+    let creds = account.dir().join("credentials.json");
+    std::fs::set_permissions(&creds, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let loaded = Session::load(&account).err();
+    std::fs::set_permissions(&creds, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(matches!(loaded, Some(SessionError::Local(_))), "{loaded:?}");
+    let state = account.dir().join("state.json");
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let loaded = Session::load(&account).err();
+    std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert!(matches!(loaded, Some(SessionError::Local(_))), "{loaded:?}");
+    assert!(Session::load(&account).is_ok());
+}
