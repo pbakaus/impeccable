@@ -375,3 +375,44 @@ fn a_changed_design_system_starts_a_new_ruleset() {
     assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"], "a new DESIGN.md is a new ruleset");
     assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"], "the same one is the same ruleset");
 }
+
+#[test]
+fn a_touched_design_file_keeps_the_ruleset() {
+    // Catches (review, Greptile and Cursor): DESIGN.md's mtime against its sidecar's starting a new baseline with the same settings.
+    let (fake, env) = signed_in("health-design-mtime");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    std::fs::write(root.join("DESIGN.md"), "---\nname: Site\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n").unwrap();
+    std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+    std::fs::write(root.join(".impeccable/design.json"), r#"{"schemaVersion":1}"#).unwrap();
+    let at = |secs: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+    let touch = |file: &str, secs: u64| {
+        std::fs::File::options().write(true).open(root.join(file)).unwrap().set_modified(at(secs)).unwrap();
+    };
+    touch(".impeccable/design.json", 1_700_000_000);
+    touch("DESIGN.md", 1_600_000_000);
+    run(&env, &root, &["detect", "."]);
+    touch("DESIGN.md", 1_800_000_000);
+    run(&env, &root, &["detect", "."]);
+    let all = scans(&fake);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0]["rulesetId"], all[1]["rulesetId"]);
+}
+
+#[test]
+fn an_ignored_rule_starts_a_new_ruleset_however_it_is_spelled() {
+    // Catches (review, Greptile): "CREAM-PALETTE" in ignoreRules hiding cream-palette findings without changing rulesetId.
+    let (fake, env) = signed_in("health-ignore-case");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+    let config = root.join(".impeccable/config.json");
+    run(&env, &root, &["detect", "."]);
+    std::fs::write(&config, r#"{"detector":{"ignoreRules":[" CREAM-PALETTE "]}}"#).unwrap();
+    run(&env, &root, &["detect", "."]);
+    std::fs::write(&config, r#"{"detector":{"ignoreRules":["cream-palette"]}}"#).unwrap();
+    run(&env, &root, &["detect", "."]);
+    let all = scans(&fake);
+    assert_eq!(all.len(), 3);
+    assert_ne!(all[0]["rules"], all[1]["rules"], "the ignore took effect");
+    assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"]);
+    assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"]);
+}

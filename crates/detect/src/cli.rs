@@ -866,7 +866,7 @@ fn detect_cli(
         if let Some(root) = root.filter(|r| whole && std::path::Path::new(r).is_dir()) {
             let mut ruleset: Vec<String> = impeccable_core::registry::all_antipatterns()
                 .map(|ap| ap.id.to_string())
-                .filter(|id| !ctx.config.ignore_rules.contains(id))
+                .filter(|id| !ctx.config.ignore_rules.iter().any(|r| normalize_ignore_rule(r) == *id))
                 .collect();
             ruleset.sort();
             ruleset.dedup();
@@ -897,6 +897,9 @@ fn detect_cli(
                     let mut ds = (**ds.as_ref()?).clone();
                     ds.source_path = None;
                     ds.sidecar_path = None;
+                    // A timestamp comparison that only feeds the edit
+                    // hook's staleness note; it decides no finding.
+                    ds.md_newer_than_json = false;
                     let dir = key.strip_prefix("root:").unwrap_or(key);
                     let dir = std::path::Path::new(dir)
                         .strip_prefix(&root)
