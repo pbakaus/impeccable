@@ -568,5 +568,6 @@ for (const [scenario, host, status] of [['outage-503', '127.0.0.1', 503], ['outa
 test('launcher attributes GitHub storage outages to GitHub', async t => {
   const result = await exercise(t, 'github-outage');
   assert.equal(result.status, 127);
-  assert.equal(result.stderr, "impeccable: could not download engine 0.0.0-test: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.\n");
+  // cmd echo adds a trailing space before redirection and uses CRLF.
+  assert.equal(result.stderr.trimEnd(), "impeccable: could not download engine 0.0.0-test: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.");
 });
