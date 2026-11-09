@@ -1333,6 +1333,50 @@ describe('live-browser source contracts', () => {
     assert.equal(css.split('data:font/woff2;base64,').length - 1, 4);
   });
 
+  it('finds fonts behind extensionless URLs, nested rules and redirects (#1323)', async () => {
+    const start = SOURCE.indexOf('const FONT_EXT_RE');
+    const end = SOURCE.indexOf('// True if `s` is a computed color string', start);
+    const fonts = SOURCE.slice(start, end);
+    const fetched = [];
+    const face = (url) => ({ cssText: `@font-face { font-family: F; src: url(${url}); }` });
+    const group = (mediaText, ...cssRules) => ({ media: { mediaText }, cssRules });
+    const supports = (conditionText, ...cssRules) => ({ constructor: { name: 'CSSSupportsRule' }, conditionText, cssRules });
+    const imp = (mediaText, styleSheet) => ({ media: { mediaText }, styleSheet });
+    const context = {
+      URL, btoa,
+      CSS: { supports: (c) => c !== '(display: nope)' },
+      window: { matchMedia: (q) => ({ matches: q !== 'print' }) },
+      document: {
+        baseURI: 'http://h/page',
+        styleSheets: [
+          { href: 'http://h/css/a.css', cssRules: [
+            face('http://h/api/font?id=brand'),
+            group('screen', face('../fonts/m.woff2')),
+            group('print', face('../fonts/print.woff2')),
+            supports('(display: grid)', face('../fonts/s.woff2')),
+            supports('(display: nope)', face('../fonts/nope.woff2')),
+            imp('', { href: 'http://h/imp/i.css', cssRules: [face('f/i.woff2')] }),
+            imp('print', { href: 'http://h/imp/p.css', cssRules: [face('f/p.woff2')] }),
+            imp('', { href: 'http://cdn/imp/x.css', get cssRules() { throw new Error('cross-origin'); } }),
+          ] },
+          { href: 'http://cdn/old.css', get cssRules() { throw new Error('cross-origin'); } },
+        ],
+      },
+      fetch: async (url) => {
+        fetched.push(url);
+        if (url.endsWith('x.css')) return { ok: true, text: async () => '@font-face{src:url(f/x.woff2)}' };
+        if (url.endsWith('old.css')) return { ok: true, url: 'http://cdn/v2/b.css', text: async () => '@font-face{src:url(fonts/z.woff2)}' };
+        return { ok: true, headers: { get: () => 'font/ttf; charset=binary' }, arrayBuffer: async () => new Uint8Array([1]).buffer };
+      },
+    };
+    const css = await runInNewContext(`${fonts}\ncollectFontCssText();`, context);
+    assert.deepEqual(fetched.filter((u) => !u.endsWith('.css')).sort(), [
+      'http://cdn/imp/f/x.woff2', 'http://cdn/v2/fonts/z.woff2', 'http://h/api/font?id=brand', 'http://h/fonts/m.woff2', 'http://h/fonts/s.woff2', 'http://h/imp/f/i.woff2',
+    ]);
+    assert.equal(css.split('data:').length - 1, 6);
+    assert.ok(css.includes('data:font/ttf;base64,'));
+  });
+
   it('never submits on the Enter that commits an IME candidate (#856)', () => {
     const imeSrc = SOURCE.match(/function isImeKeydown\(e\) \{[\s\S]*?\n  \}/)?.[0];
     const annotSrc = SOURCE.match(/function onAnnotInputKey\(e\) \{[\s\S]*?\n  \}/)?.[0];
