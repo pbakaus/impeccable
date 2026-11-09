@@ -46,7 +46,15 @@ pub struct State {
     /// sign-out moves it.
     #[serde(default)]
     pub login: u64,
+    /// The generation of the latest logout, carried through every later
+    /// sign-in and refresh, so a sign-in that started before it can tell.
+    #[serde(default)]
+    pub signed_out_at: u64,
 }
+
+/// The most a saved secret may take: one Windows Credential Manager blob
+/// (CRED_MAX_CREDENTIAL_BLOB_SIZE), the smallest of the backends.
+pub const MAX_SECRET: usize = 5 * 512;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Secret {
@@ -207,21 +215,38 @@ impl Store {
     }
 
     pub fn state(&self) -> Option<State> {
-        let bytes = read_private(&self.dir.join("state.json")).ok()??;
-        let state: State = serde_json::from_slice(&bytes).ok()?;
-        (state.schema == 1 && state.issuer == self.account.issuer).then_some(state)
+        self.try_state().ok().flatten()
+    }
+
+    /// [`Store::state`], with a file that is there but can't be read as an
+    /// error rather than as no sign-in.
+    pub fn try_state(&self) -> Result<Option<State>, String> {
+        let Some(bytes) = read_private(&self.dir.join("state.json"))? else {
+            return Ok(None);
+        };
+        let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
+            return Ok(None);
+        };
+        Ok((state.schema == 1 && state.issuer == self.account.issuer).then_some(state))
     }
 
     /// The secret for a signed-in state, from that state's backend only.
     pub fn secret(&self, state: &State) -> Option<Secret> {
+        self.try_secret(state).ok().flatten()
+    }
+
+    /// [`Store::secret`], with a backend that refuses the read (a denied
+    /// Keychain prompt, an unreadable file) as an error rather than as no
+    /// sign-in.
+    pub fn try_secret(&self, state: &State) -> Result<Option<Secret>, String> {
         if !state.signed_in {
-            return None;
+            return Ok(None);
         }
         let bytes = match state.backend {
-            Backend::File => read_private(&self.dir.join("credentials.json")).ok()??,
-            Backend::Keychain => keychain::get(SERVICE, &self.keychain_account()).ok()??,
+            Backend::File => read_private(&self.dir.join("credentials.json"))?,
+            Backend::Keychain => keychain::get(SERVICE, &self.keychain_account())?,
         };
-        serde_json::from_slice(&bytes).ok()
+        Ok(bytes.and_then(|b| serde_json::from_slice(&b).ok()))
     }
 
     /// Write a secret and then the state naming it (caller holds the lock).
@@ -270,10 +295,12 @@ impl Store {
         previous: Option<&State>,
         fallback: Backend,
     ) -> Result<(), String> {
+        let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
             schema: 1,
             issuer: self.account.issuer.clone(),
-            generation: previous.map(|s| s.generation + 1).unwrap_or(1),
+            generation,
+            signed_out_at: generation,
             signed_in: false,
             backend: previous.map(|s| s.backend).unwrap_or(fallback),
             token_endpoint: previous
@@ -476,7 +503,7 @@ mod keychain {
     const GENERIC: u32 = 1;
     const PERSIST_LOCAL_MACHINE: u32 = 2;
     const ERROR_NOT_FOUND: u32 = 1168;
-    const MAX_BLOB: usize = 5 * 512;
+    const MAX_BLOB: usize = super::MAX_SECRET;
 
     fn target(service: &str, account: &str) -> Vec<u16> {
         format!("{service}:{account}")
@@ -557,5 +584,26 @@ mod keychain {
     }
     pub fn delete(_: &str, _: &str) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn the_largest_sign_in_the_client_accepts_fits_windows_credential_manager() {
+        // Catches (review, Greptile): tokens the client accepts that the default Windows store can't save, failing sign-in after the browser step.
+        let biggest = "a".repeat(crate::http::MAX_TOKEN);
+        assert!(crate::http::valid_token(&biggest));
+        assert!(!crate::http::valid_token(&format!("{biggest}a")));
+        let secret = Secret {
+            generation: u64::MAX,
+            refresh_token: biggest.clone(),
+            access_token: biggest,
+            access_expires_at: u64::MAX,
+        };
+        let bytes = serde_json::to_vec(&secret).unwrap();
+        assert!(bytes.len() <= MAX_SECRET, "{} > {MAX_SECRET}", bytes.len());
     }
 }

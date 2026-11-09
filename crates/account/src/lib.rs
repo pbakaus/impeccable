@@ -58,9 +58,11 @@ pub fn login(
     let replaced = {
         let lock = store.lock()?;
         let previous = store.state();
+        // A logout since this attempt started, even one a newer sign-in
+        // has followed, ends this attempt: it must not replace that sign-in.
         let signed_out_since = previous
             .as_ref()
-            .is_some_and(|s| s.generation != started && !s.signed_in);
+            .is_some_and(|s| s.signed_out_at > started || (s.generation != started && !s.signed_in));
         if signed_out_since {
             drop(lock);
             if let Some(endpoint) = &meta.revocation_endpoint {
@@ -81,6 +83,7 @@ pub fn login(
             token_endpoint: meta.token_endpoint.clone(),
             revocation_endpoint: meta.revocation_endpoint.clone(),
             login: generation,
+            signed_out_at: previous.as_ref().map(|s| s.signed_out_at).unwrap_or(0),
         };
         let secret = Secret {
             generation,
