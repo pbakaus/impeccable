@@ -52,10 +52,14 @@ impl Session {
     pub fn load(account: &Account) -> Result<Session, SessionError> {
         let store = Store::new(account);
         let state = store
-            .state()
+            .try_state()
+            .map_err(SessionError::Local)?
             .filter(|s| s.signed_in)
             .ok_or(SessionError::NotSignedIn)?;
-        let secret = store.secret(&state).ok_or(SessionError::NotSignedIn)?;
+        let secret = store
+            .try_secret(&state)
+            .map_err(SessionError::Local)?
+            .ok_or(SessionError::NotSignedIn)?;
         Ok(Session {
             client: Client::new(account),
             store,
