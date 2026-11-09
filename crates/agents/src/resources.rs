@@ -41,10 +41,10 @@ pub(super) fn apply(
             ));
         }
     }
-    // A managed block the person edited is theirs: a reinstall that would
+    // A managed block the person edited is theirs: a reapply that would
     // replace it is refused before anything is written (pristine#4333).
-    if let Some(old) = old.filter(|_| s.instruction.is_some()) {
-        if let Some(path) = render::instruction_drift(&old.spec, &targets(&old.spec))? {
+    if s.instruction.is_some() {
+        if let Some(path) = render::instruction_drift(old.map(|o| &o.spec), s)? {
             return Err((
                 "instruction_drift",
                 format!(
@@ -583,24 +583,15 @@ pub(super) fn undo(
         // No journal: fine when nothing of this installation is on disk, but
         // resources still there mean the record was lost, and "removed" would
         // be a lie (pristine#4333).
-        let marker = format!("impeccable:{} start", s.owner);
-        for path in targets(s) {
-            let Ok(current) = fs::read(&path) else { continue };
-            let ours = String::from_utf8_lossy(&current).contains(&marker)
-                || render::remove_owned(s, &path, &current, None)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|updated| updated != current);
-            if ours {
-                return Err((
-                    "journal_missing",
-                    format!(
-                        "{} holds this installation's resources but its journal is missing; nothing was removed",
-                        path.display()
-                    ),
-                    4,
-                ));
-            }
+        if let Some(path) = render::installed_on_disk(s) {
+            return Err((
+                "journal_missing",
+                format!(
+                    "{} holds this installation's resources but its journal is missing; nothing was removed",
+                    path.display()
+                ),
+                4,
+            ));
         }
         return Ok(json!({"removed":false,"conflicts":[]}));
     };
@@ -665,11 +656,17 @@ pub(super) fn undo(
                     safe_write(&snap.path, current.as_deref(), &updated)?;
                     removed.push(snap.path.clone());
                     // A hook the person edited stays; report it, not just the file.
-                    for hook in render::drifted_hooks(&j.spec, &updated) {
+                    for hook in render::drifted_hooks(&j.spec, &updated, snap.before.as_deref()) {
                         conflicts.push(json!(format!("{}#{hook}", snap.path.display())));
                     }
                 }
-                _ => conflicts.push(json!(snap.path.display().to_string())),
+                _ => {
+                    conflicts.push(json!(snap.path.display().to_string()));
+                    let left = current.as_deref().unwrap_or_default();
+                    for hook in render::drifted_hooks(&j.spec, left, snap.before.as_deref()) {
+                        conflicts.push(json!(format!("{}#{hook}", snap.path.display())));
+                    }
+                }
             }
         }
     }

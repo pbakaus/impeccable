@@ -1456,3 +1456,77 @@ fn an_outside_edit_between_applies_still_means_surgical_undo() {
     assert_eq!(after["personal"], true, "the person's edit stays");
     assert!(after.get("hooks").is_none());
 }
+
+#[test]
+fn undo_without_a_journal_finds_the_block_even_from_a_reduced_spec() {
+    // Catches (review, Greptile): an owner/harness/root-only undo spec checking no files, so a lost journal reads as clean while the block stays.
+    let root = temp();
+    let home = temp();
+    let s = spec("claude", root.clone());
+    apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let reduced = Spec { instruction: None, ..spec("claude", root) };
+    assert_eq!(undo(&reduced, None, &home).unwrap_err().0, "journal_missing");
+}
+
+#[test]
+fn undo_without_a_journal_ignores_a_codex_hook_switch_the_person_set() {
+    // Catches (review, Cursor): features.hooks = true from before reading as this installation's, failing a no-op cleanup.
+    let root = temp();
+    let home = temp();
+    fs::write(root.join("config.toml"), "[features]\nhooks = true\n").unwrap();
+    let mut s = spec("codex", root);
+    s.instruction = None;
+    s.hooks = vec![hook("SessionStart", "loop lifecycle")];
+    assert_eq!(undo(&s, None, &home).unwrap()["removed"], false);
+}
+
+#[test]
+fn a_block_left_by_an_apply_without_instruction_is_not_overwritten_later() {
+    // Catches (review, Cursor): drop the instruction (the edited block stays), then reapply with one and overwrite the edit.
+    let root = temp();
+    let home = temp();
+    let journal = home.join("journal.json");
+    let s = spec("claude", root.clone());
+    let first = apply(&s, None, &home, &journal, None).unwrap();
+    let rules = root.join("CLAUDE.md");
+    let edited = fs::read_to_string(&rules).unwrap().replace("managed text", "managed text\nMy own rule.");
+    fs::write(&rules, &edited).unwrap();
+    let without = Spec { instruction: None, hooks: vec![hook("SessionStart", "x")], ..s.clone() };
+    let second = apply(&without, Some(&first), &home, &journal, None).unwrap();
+    assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
+    assert_eq!(apply(&s, Some(&second), &home, &journal, None).unwrap_err().0, "instruction_drift");
+    assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
+}
+
+#[test]
+fn a_personal_hook_with_the_same_command_is_not_a_conflict_and_a_lone_edited_hook_is_named() {
+    // Catches (review, Greptile): a pre-existing personal hook sharing the command flagged as drift, and a single edited hook reported only as a path.
+    let root = temp();
+    let home = temp();
+    let settings = root.join("settings.json");
+    let personal = r#"{"hooks":{"Stop":[{"matcher":"Edit","hooks":[{"type":"command","command":"loop stop"}]}]},"x":1}"#;
+    fs::write(&settings, personal).unwrap();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("Stop", "loop stop")];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    value["x"] = json!(2);
+    fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+
+    // One managed hook, edited: undo removes nothing and names it.
+    let root = temp();
+    let home = temp();
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.hooks = vec![hook("Stop", "loop stop")];
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let settings = root.join("settings.json");
+    let mut value: Value = serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    value["hooks"]["Stop"][0]["hooks"][0]["timeout"] = json!(5);
+    fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("#hook:Stop:loop stop")), "{result}");
+}

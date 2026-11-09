@@ -32,13 +32,16 @@ server tables need a manual edit. Undo restores the prior mode. Reapplying
 after the person changed that mode is refused (`approval_drift`), as is a Codex
 config with `features.hooks = false` (`hooks_disabled`): the engine never turns
 the person's global hook switch back on. Undo leaves an instruction block whose
-body was edited in place and reports it as a conflict, and reapplying over such
-a block is refused before anything is written (`instruction_drift`). Undo also
+body was edited in place and reports it as a conflict, and an apply that would
+replace a block holding neither the last-written nor the requested body is
+refused before anything is written (`instruction_drift`), journal or not. Undo also
 leaves a managed hook whose entry the person edited (same command, other
 fields) and reports it as `<path>#hook:<event>:<command>` in `conflicts`.
 Undo without a journal is refused (`journal_missing`) while this installation's
-resources are still on disk; with nothing of it on disk, it returns
-`removed: false`.
+block is in the rule file or one of its exact hook entries is in the JSON hook
+file (shared settings such as Codex's `features.hooks` don't count); with none
+of that on disk, it returns `removed: false`. A hook entry that was there before
+the install is never reported as edited.
 
 Supported verbs are `capabilities`, `list`, `plan`, `apply`, `undo`, `status`,
 and `recover`. `capabilities` and `list` do not need a spec.
