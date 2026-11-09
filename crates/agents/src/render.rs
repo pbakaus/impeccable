@@ -1,7 +1,8 @@
 use super::Spec;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use toml_edit::{ImDocument, Item, Value as TomlValue};
 
 pub(super) fn render(
@@ -101,6 +102,52 @@ pub(super) fn remove_owned(
     let _ = path;
     Ok(None)
 }
+/// The first rule file whose managed block no longer holds what `old` wrote:
+/// the person edited it, and a reinstall would overwrite their edit.
+pub(super) fn instruction_drift(
+    old: &Spec,
+    paths: &[PathBuf],
+) -> Result<Option<PathBuf>, (&'static str, String, i32)> {
+    if old.instruction.is_none() {
+        return Ok(None);
+    }
+    let marker = format!("impeccable:{}", old.owner);
+    let start = format!("<!-- {marker} start -->");
+    let end = format!("<!-- {marker} end -->");
+    let written = render_rule(old, None)?;
+    let written = String::from_utf8_lossy(&written);
+    let expected = crate::resources::block_body(&written, &start, &end);
+    for path in paths {
+        let Ok(text) = fs::read_to_string(path) else { continue };
+        if text.contains(&start) && crate::resources::block_body(&text, &start, &end) != expected {
+            return Ok(Some(path.clone()));
+        }
+    }
+    Ok(None)
+}
+
+/// The spec's hooks still in `settings` (JSON) in a form the engine didn't
+/// write: same command, other fields changed. Undo leaves them, and says so.
+pub(super) fn drifted_hooks(s: &Spec, settings: &[u8]) -> Vec<String> {
+    let Ok(value) = parse_unique_json(settings) else { return vec![] };
+    let mut out = Vec::new();
+    for h in &s.hooks {
+        let Some(entries) = value.get("hooks").and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
+            continue;
+        };
+        let ours = h.entry();
+        let same_command = |e: &Value| {
+            e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
+                hs.iter().any(|c| c.get("command").and_then(Value::as_str) == Some(h.command.as_str()))
+            })
+        };
+        if entries.iter().any(|e| e != &ours && same_command(e)) {
+            out.push(format!("hook:{}:{}", h.event, h.command));
+        }
+    }
+    out
+}
+
 fn remove_rule_block(
     s: &Spec,
     current: &[u8],
