@@ -31,7 +31,37 @@ pub struct Record {
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
     access: HashSet<String>,
+    /// Which grant each token belongs to, so a revoke ends the whole grant.
+    grant_of: HashMap<String, u64>,
     next: u64,
+}
+
+impl Record {
+    /// The refresh tokens the service would still accept.
+    pub fn live_refresh_tokens(&self) -> Vec<String> {
+        self.live_refresh.iter().cloned().collect()
+    }
+    /// Whether a refresh token would still be accepted.
+    pub fn refresh_is_live(&self, token: &str) -> bool {
+        self.live_refresh.contains(token)
+    }
+    /// End a grant, as `/oauth/revoke` or the service itself does: every
+    /// token of the grant `token` belongs to stops working.
+    pub fn end_grant_of(&mut self, token: &str) {
+        let Some(grant) = self.grant_of.get(token).copied() else {
+            return;
+        };
+        let ended: Vec<String> = self
+            .grant_of
+            .iter()
+            .filter(|(_, g)| **g == grant)
+            .map(|(t, _)| t.clone())
+            .collect();
+        for t in ended {
+            self.live_refresh.remove(&t);
+            self.access.remove(&t);
+        }
+    }
 }
 
 pub struct Fake {
@@ -238,11 +268,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
             }
             ("POST", "/oauth/token") => token(&form, issuer, knobs, record),
             ("POST", "/oauth/revoke") => {
-                record
-                    .lock()
-                    .unwrap()
-                    .revoked
-                    .push(form.get("token").cloned().unwrap_or_default());
+                let token = form.get("token").cloned().unwrap_or_default();
+                let mut r = record.lock().unwrap();
+                r.end_grant_of(&token);
+                r.revoked.push(token);
                 (200, vec![], vec![])
             }
             ("GET", "/cli/v1/entitlement") => {
@@ -297,7 +326,7 @@ fn token(
     }
     let ttl = knobs.lock().unwrap().access_ttl;
     let mut r = record.lock().unwrap();
-    match form.get("grant_type").map(String::as_str) {
+    let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
             let Some((challenge, redirect)) = form.get("code").and_then(|c| r.codes.remove(c))
             else {
@@ -309,6 +338,7 @@ fn token(
             {
                 return invalid();
             }
+            r.next + 1
         }
         Some("refresh_token") => {
             let t = form.get("refresh_token").cloned().unwrap_or_default();
@@ -321,7 +351,9 @@ fn token(
             if !r.live_refresh.remove(&t) {
                 return invalid();
             }
+            let grant = r.grant_of.get(&t).copied().unwrap_or(0);
             r.spent_refresh.insert(t);
+            grant
         }
         _ => {
             return json(
@@ -329,9 +361,11 @@ fn token(
                 serde_json::json!({ "error": "unsupported_grant_type" }),
             )
         }
-    }
+    };
     r.next += 1;
     let (access, refresh) = (format!("at-{}", r.next), format!("rt-{}", r.next));
+    r.grant_of.insert(access.clone(), grant);
+    r.grant_of.insert(refresh.clone(), grant);
     r.access.insert(access.clone());
     r.live_refresh.insert(refresh.clone());
     json(
