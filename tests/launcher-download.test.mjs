@@ -86,6 +86,9 @@ async function exercise(t, scenario) {
   }
   const tools = path.join(root, 'tools');
   fs.mkdirSync(tools);
+  if (!WINDOWS && scenario === 'github-outage') {
+    fs.writeFileSync(path.join(tools, 'curl'), "#!/bin/sh\nprintf '%s' '504 https://release-assets.githubusercontent.com/asset'\nexit 22\n", { mode: 0o755 });
+  }
   if (!WINDOWS && scenario === 'cache-write-failure') {
     // The POSIX staging name contains the launcher's PID, so intercept the
     // preceding mkdir to place a directory at precisely that file path.
@@ -101,6 +104,14 @@ async function exercise(t, scenario) {
     const before = scenario === 'removed-before-move' ? 'rm -f "$2"\n' : '';
     const after = scenario === 'removed-after-move' ? 'rm -f "$3"\n' : scenario === 'emptied-after-move' ? ': > "$3"\n' : '';
     fs.writeFileSync(path.join(tools, 'mv'), scenario === 'move-failure' ? '#!/bin/sh\nexit 1\n' : `#!/bin/sh\n${before}/bin/mv "$@" || exit $?\n${after}`, { mode: 0o755 });
+  }
+  if (WINDOWS && scenario === 'github-outage') {
+    // curl.exe is an executable, so instrument only that external boundary
+    // in the staged launcher, as the hash/move fault cases below do.
+    const source = fs.readFileSync(launcher, 'utf8');
+    assert.match(source, /^curl\.exe .*$/m);
+    fs.writeFileSync(launcher, source.replace(/^curl\.exe [^\r\n]*\r?\n/gm,
+      '>"%staging%\\http.txt" echo 504 https://release-assets.githubusercontent.com/asset\r\ncmd /c exit 22\r\n'));
   }
   if (WINDOWS && scenario === 'cache-write-failure') {
     // The cmd launcher claims a fresh staging directory per run, so no
@@ -140,6 +151,13 @@ async function exercise(t, scenario) {
   const interrupt = scenario.startsWith('interrupt-') ? scenario.slice('interrupt-'.length) : null;
   let stalled;
   const stall = new Promise(resolve => { stalled = resolve; });
+  let redirectBase;
+  if (scenario === 'outage-redirect') {
+    const storage = http.createServer((req, res) => { res.writeHead(504); res.end(); });
+    await new Promise(resolve => storage.listen(0, '127.0.0.1', resolve));
+    t.after(() => new Promise(resolve => storage.close(resolve)));
+    redirectBase = `http://localhost:${storage.address().port}`;
+  }
   const server = http.createServer((req, res) => {
     requests.push(req.url);
     if (scenario === 'transport-failure') {
@@ -151,6 +169,10 @@ async function exercise(t, scenario) {
       res.writeHead(200);
       res.write(PAYLOAD.subarray(0, 8), stalled);
       return;
+    }
+    if (scenario === 'outage-503') { res.writeHead(503); res.end(); return; }
+    if (scenario === 'outage-redirect') {
+      res.writeHead(302, { location: `${redirectBase}/engine` }); res.end(); return;
     }
     if (scenario === 'download-failure') res.writeHead(404);
     res.end(scenario === 'empty-download' ? '' : PAYLOAD);
@@ -192,9 +214,9 @@ async function exercise(t, scenario) {
     assert.equal(requests.length, requestCount, 'subsequent runs use the cached engine without network');
   }
   assert.equal(result.signal, null, JSON.stringify(result));
-  const noDownload = scenario.startsWith('cache-') || scenario.startsWith('no-manifest')
+  const noDownload = scenario === 'github-outage' || scenario.startsWith('cache-') || scenario.startsWith('no-manifest')
     || ['cached-unstamped', 'cached-empty-stamp', 'cached-foreign-stamp', 'cached-digest-only-stamp', 'cached-stamp-trusted'].includes(scenario);
-  assert.equal(requests.length, noDownload ? 0 : 1,
+  assert.equal(requests.length, noDownload ? 0 : scenario.startsWith('outage-') ? 3 : 1,
     'cache failures, a missing digest and a verified cache make no request; other scenarios download once');
   return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).sort() : [], requests, cacheDir };
 }
@@ -532,3 +554,20 @@ for (const [signal, status] of [['SIGINT', 130], ['SIGTERM', 143]]) {
     assert.deepEqual(result.files, [], 'no staging file left behind');
   });
 }
+
+for (const [scenario, host, status] of [['outage-503', '127.0.0.1', 503], ['outage-redirect', 'localhost', 504]]) {
+  test(`launcher attributes ${scenario} to the final download host`, async t => {
+    const result = await exercise(t, scenario);
+    assert.equal(result.status, 127, result.stderr);
+    assert.ok(result.stderr.includes(`could not download engine 0.0.0-test: ${host} is failing right now (HTTP ${status}), a server error on ${host}'s side. Try again later.`), result.stderr);
+    assert.doesNotMatch(result.stderr, /setup needs|check network|engine-probe/);
+    assert.deepEqual(result.files, []);
+  });
+}
+
+test('launcher attributes GitHub storage outages to GitHub', async t => {
+  const result = await exercise(t, 'github-outage');
+  assert.equal(result.status, 127);
+  // cmd echo adds a trailing space before redirection and uses CRLF.
+  assert.equal(result.stderr.trimEnd(), "impeccable: could not download engine 0.0.0-test: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.");
+});

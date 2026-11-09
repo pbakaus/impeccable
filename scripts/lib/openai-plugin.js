@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 
 import { buildCodexPluginManifest } from './codex-plugin.js';
-import { buildCodexPluginHooksManifest } from './transformers/hooks.js';
 
 function requirePath(absPath, label) {
   if (!fs.existsSync(absPath)) {
@@ -22,6 +21,10 @@ function writeJson(absPath, value) {
  * its shared skills/ directory here silently ships Claude paths and slash
  * commands inside a Codex plugin. Keep this stage independent so each plugin
  * receives the provider transform it was built for.
+ *
+ * No hooks/hooks.json: OpenAI's review no longer accepts plugins that bundle
+ * hooks. Without a hook, `impeccable context` prints MANUAL_DETECTOR_REQUIRED
+ * so the agent runs the detector itself.
  */
 export function stageOpenAIPlugin(rootDir, distDir) {
   const rootManifestPath = path.join(rootDir, '.claude-plugin', 'plugin.json');
@@ -50,11 +53,6 @@ export function stageOpenAIPlugin(rootDir, distDir) {
     codexSkillSrc,
     path.join(pluginRoot, 'skills', 'impeccable'),
     { recursive: true },
-  );
-
-  writeJson(
-    path.join(pluginRoot, 'hooks', 'hooks.json'),
-    buildCodexPluginHooksManifest(),
   );
 
   return pluginRoot;

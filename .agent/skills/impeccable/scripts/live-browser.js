@@ -8724,17 +8724,15 @@
     const urlRe = /url\((['"]?)(https?:\/\/[^'")\s]+)\1\)/g;
     const urls = new Set();
     let m;
-    while ((m = urlRe.exec(cssText))) {
-      if (FONT_EXT_RE.test(m[2])) urls.add(m[2]);
-    }
+    while ((m = urlRe.exec(cssText))) urls.add(m[2]);
     const map = new Map();
     await Promise.all([...urls].map(async (url) => {
       try {
         const res = await fetch(url);
         if (!res.ok) return;
         const buf = await res.arrayBuffer();
-        const ext = url.toLowerCase().match(FONT_EXT_RE)?.[1] || 'woff2';
-        const mime = FONT_MIME[ext] || 'application/octet-stream';
+        const ext = url.toLowerCase().match(FONT_EXT_RE)?.[1];
+        const mime = FONT_MIME[ext] || res.headers.get('content-type')?.split(';')[0].trim() || 'application/octet-stream';
         map.set(url, 'data:' + mime + ';base64,' + bufferToBase64(buf));
       } catch { /* skip; fall through to URL */ }
     }));
@@ -8743,27 +8741,42 @@
       return data ? 'url(' + q + data + q + ')' : orig;
     });
   }
+  // Walks a stylesheet or grouping rule in cascade order. The result is embedded
+  // without its conditional wrappers, so faces behind a false @media or @supports stay out.
+  async function collectFontFaces(source, base, chunks) {
+    let rules;
+    try {
+      rules = source.cssRules;
+    } catch {
+      if (!source.href) return;
+      try {
+        const res = await fetch(source.href);
+        if (!res.ok) return;
+        const parsed = new CSSStyleSheet();
+        parsed.replaceSync(await res.text());
+        // res.url is the base the browser used if the sheet redirected.
+        await collectFontFaces(parsed, res.url || source.href, chunks);
+      } catch { /* ignore; capture is best-effort */ }
+      return;
+    }
+    for (const rule of rules) {
+      if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
+        chunks.push(absolutizeUrls(rule.cssText, base));
+      } else if (rule.media && !window.matchMedia(rule.media.mediaText).matches) {
+        continue;
+      } else if (rule.constructor.name === 'CSSSupportsRule' && !CSS.supports(rule.conditionText)) {
+        continue;
+      } else if (rule.styleSheet) {
+        await collectFontFaces(rule.styleSheet, rule.styleSheet.href, chunks);
+      } else if (rule.cssRules) {
+        await collectFontFaces(rule, base, chunks);
+      }
+    }
+  }
   async function collectFontCssText() {
     const chunks = [];
-    const fontFaceRe = /@font-face\s*\{[^}]*\}/g;
     for (const sheet of document.styleSheets) {
-      try {
-        const rules = sheet.cssRules;
-        for (const rule of rules) {
-          if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
-            chunks.push(absolutizeUrls(rule.cssText, sheet.href || document.baseURI));
-          }
-        }
-      } catch {
-        if (!sheet.href) continue;
-        try {
-          const res = await fetch(sheet.href);
-          if (!res.ok) continue;
-          const text = await res.text();
-          let m2;
-          while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], sheet.href));
-        } catch { /* ignore; capture is best-effort */ }
-      }
+      await collectFontFaces(sheet, sheet.href || document.baseURI, chunks);
     }
     if (chunks.length === 0) return '';
     return inlineFontUrls(chunks.join('\n'));
@@ -9480,8 +9493,8 @@ void main() {
     // (all other variants are display:none). HMR from the source rewrite will
     // replace the wrapper imminently. Don't eagerly replaceChild here - React
     // reconciliation races with our mutation and throws NotFoundError in Next
-    // 16 / Turbopack. Schedule a fallback that runs the manual swap only if
-    // HMR hasn't cleaned up by then (keeps static-server flows working).
+    // 16 / Turbopack. A page without HMR commits in scheduleAcceptCleanup;
+    // framework pages get a deferred fallback in case HMR misses the update.
     const acceptedSessionId = currentSessionId;
     const acceptedVariant = visibleVariant;
     const acceptedIsSvelteComponent = svelteComponentSession?.sessionId === acceptedSessionId
@@ -9494,6 +9507,7 @@ void main() {
       id: acceptedSessionId,
       variant: String(acceptedVariant),
       isSvelteComponent: acceptedIsSvelteComponent,
+      paramValues: { ...paramsCurrentValues },
       ...acceptedSnapshot,
       finalizing: false,
     };
@@ -9550,6 +9564,12 @@ void main() {
       // Pick → Go loop while carbonize finishes in the background.
       if (accepted?.isSvelteComponent) {
         commitAcceptedSvelteComponentToDom(accepted.id);
+      } else {
+        // A page with no HMR never swaps the wrapper, and the variant-state
+        // stylesheet goes away below, so commit now or the original and the
+        // other variants show.
+        const wrapper = findVariantsWrapper(accepted.id);
+        if (wrapper && !hasFrameworkHmrOwnership(wrapper)) commitAcceptedVariantToDom(wrapper, accepted);
       }
       cleanupAcceptedSession();
     });
@@ -9600,7 +9620,6 @@ void main() {
     if (deferredRecoverySuperseded(pending?.id, recoveryRevision)) return;
     if (acceptedDomAlreadyClean(pending)) return;
     const sessionId = pending?.id;
-    const variantId = pending?.variant;
     const wrappers = findAcceptedRuntimeWrappers(sessionId);
     if (hasFrameworkHmrOwnership(wrappers[0] || pending?.parentElement)) {
       // Vite can coalesce rapid scaffold/carbonize writes and leave the last
@@ -9618,18 +9637,7 @@ void main() {
       return;
     }
     for (const wrapper of wrappers) {
-      if (!wrapper?.isConnected) continue;
-      const accepted = wrapper.querySelector?.('[data-impeccable-variant="' + variantId + '"]');
-      if (!accepted) {
-        wrapper.remove();
-        continue;
-      }
-      const parent = wrapper.parentElement;
-      if (!parent) continue;
-      while (accepted.firstChild) {
-        parent.insertBefore(accepted.firstChild, wrapper);
-      }
-      wrapper.remove();
+      if (wrapper?.isConnected) commitAcceptedVariantToDom(wrapper, pending);
     }
     if (!acceptedDomAlreadyClean(pending)) restoreAcceptedDomFromSnapshot(pending, recoveryRevision);
   }
@@ -9695,26 +9703,33 @@ void main() {
     setLiveState('PICKING');
   }
 
-  function commitAcceptedVariantToDom(sessionId, variantId) {
-    const wrapper = findVariantsWrapper(sessionId);
-    if (!wrapper) return false;
-    const accepted = wrapper.querySelector('[data-impeccable-variant="' + variantId + '"]');
-    if (!accepted || !accepted.firstElementChild) return false;
+  function scopeAcceptedCss(css, pending) {
+    return css.replace(/\[\s*data-impeccable-variant\s*=\s*(["']?)([^"'\]\s]+)\1\s*(?:[is]\s*)?\]/gi, (_, __, variant) => (
+      '[data-impeccable-accepted="' + pending.id + (variant === pending.variant ? '' : ':' + variant) + '"]'
+    ));
+  }
+
+  // Keeps the accepted look until reload: the style, then a display: contents
+  // shell carrying the tuned --p-* values. Variant numbers repeat across
+  // sessions, so the shell and its rules move to a per-session attribute that
+  // a later session's variants and CSS cannot match.
+  function commitAcceptedVariantToDom(wrapper, pending) {
     const parent = wrapper.parentElement;
-    if (!parent) return false;
-
-    const style = wrapper.querySelector('style[data-impeccable-css]');
-    if (style && !document.querySelector('style[data-impeccable-accepted-css="' + sessionId + '"]')) {
-      const promotedStyle = style.cloneNode(true);
-      promotedStyle.setAttribute('data-impeccable-accepted-css', sessionId);
-      parent.insertBefore(promotedStyle, wrapper);
+    if (!parent) return;
+    const accepted = wrapper.querySelector('[data-impeccable-variant="' + pending.variant + '"]');
+    if (accepted) {
+      const style = wrapper.querySelector('style[data-impeccable-css]');
+      if (style) {
+        style.textContent = scopeAcceptedCss(style.textContent, pending);
+        parent.insertBefore(style, wrapper);
+      }
+      accepted.removeAttribute('data-impeccable-variant');
+      accepted.setAttribute('data-impeccable-accepted', pending.id);
+      accepted.style.display = 'contents';
+      accepted.style.cssText += variantParamDecls(pending.paramValues);
+      parent.insertBefore(accepted, wrapper);
     }
-
-    const committed = accepted.cloneNode(true);
-    committed.removeAttribute('hidden');
-    committed.style.display = 'contents';
-    parent.replaceChild(committed, wrapper);
-    return true;
+    wrapper.remove();
   }
 
   function handleDiscard() {

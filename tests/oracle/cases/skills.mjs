@@ -18,6 +18,9 @@ export default [
   { id: 'skills-link-help', verb: 'link', args: ['--help'] },
   { id: 'skills-update-help', verb: 'update', args: ['--help'] },
   { id: 'skills-check-help', verb: 'check', args: ['--help'] },
+  // loop parses its arguments before its macOS check, so usage and a bad verb read the same on every OS.
+  { id: 'loop-help', verb: 'loop', args: ['--help'] },
+  { id: 'loop-unknown-verb', verb: 'loop', args: ['bogus'] },
   { id: 'skills-namespace-install-help', verb: 'skills', args: ['install', '--help'] },
   { id: 'skills-namespace-check-help-short', verb: 'skills', args: ['check', '-h'] },
   // A Replit project: `.replit` at the root plus the empty `.agents/` dir every
