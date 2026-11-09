@@ -24,6 +24,10 @@ pub struct Metadata {
     pub authorization_endpoint: String,
     pub token_endpoint: String,
     pub revocation_endpoint: Option<String>,
+    /// The service lists `health:write` in `scopes_supported`, which it does
+    /// only while design health is switched on there. Asking for a scope it
+    /// doesn't list fails the sign-in with `invalid_scope`.
+    pub health: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -53,13 +57,31 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
     let authorization_endpoint = s("authorization_endpoint").filter(|e| browser_safe(e, account));
     let token_endpoint = s("token_endpoint").filter(|e| on_origin(e, &account.issuer));
     let revocation_endpoint = s("revocation_endpoint").filter(|e| on_origin(e, &account.issuer));
+    let health = doc
+        .get("scopes_supported")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| a.iter().any(|s| s == HEALTH_SCOPE));
     match (authorization_endpoint, token_endpoint) {
         (Some(authorization_endpoint), Some(token_endpoint)) => Ok(Metadata {
             authorization_endpoint,
             token_endpoint,
             revocation_endpoint,
+            health,
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
+    }
+}
+
+/// Uploading design health results (`crate::health`).
+pub const HEALTH_SCOPE: &str = "health:write";
+
+/// What sign-in asks for: the CLI's scopes, plus `health:write` where the
+/// service offers it.
+fn scopes(meta: &Metadata) -> String {
+    if meta.health {
+        format!("{SCOPES} {HEALTH_SCOPE}")
+    } else {
+        SCOPES.to_string()
     }
 }
 
@@ -102,7 +124,7 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("resource", &account.resource())
-        .append_pair("scope", SCOPES)
+        .append_pair("scope", &scopes(meta))
         .append_pair("state", &state);
     Ok(Pending {
         listener,

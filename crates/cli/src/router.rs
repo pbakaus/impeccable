@@ -46,14 +46,13 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
-        "detect" => {
-            impeccable_detect::cli::run_detect_with_pack(rest, io, &engines, pack.rule_pack)
-        }
+        "detect" => detect(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
         "login" => impeccable_account::run_login(rest, io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "health" => impeccable_account::health::run(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
@@ -135,7 +134,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
         v if impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy()) => {
-            impeccable_detect::cli::run_detect_with_pack(args, io, &engines, pack.rule_pack)
+            detect(args, io, &engines, pack.rule_pack)
         }
         "init" => {
             io.err(impeccable_detect::INIT_MESSAGE);
@@ -148,6 +147,51 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             1
         }
     }
+}
+
+/// `detect`, then design health's upload of a full scan once the output is
+/// out (`impeccable_account::health`: it never changes the output or the
+/// exit code). Hook scans don't come through here.
+fn detect(
+    args: &[String],
+    io: &mut Io,
+    engines: &impeccable_detect::Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
+    use std::io::Write;
+    // Most runs can't upload (not signed in, CI, opted out): those don't
+    // pay for a report.
+    if !impeccable_account::health::wanted(io) {
+        return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
+    }
+    let started = std::time::SystemTime::now();
+    let mut report = None;
+    let code =
+        impeccable_detect::cli::run_detect_reporting(args, io, engines, rule_pack, &mut report);
+    if let Some(full) = report {
+        let _ = io.stdout.flush();
+        let _ = io.stderr.flush();
+        let scan = impeccable_account::health::Scan {
+            root: full.root,
+            files_scanned: full.files_scanned,
+            hits: full
+                .findings
+                .into_iter()
+                .map(|f| impeccable_account::health::Hit {
+                    advisory: f.advisory == Some(true),
+                    rule: f.antipattern,
+                    file: f.file,
+                    snippet: f.snippet,
+                })
+                .collect(),
+            ruleset: full.ruleset,
+            engine_version: VERSION.to_string(),
+            started,
+        };
+        let quiet = args.iter().any(|a| a == "--quiet");
+        impeccable_account::health::after_scan(io, &scan, quiet);
+    }
+    code
 }
 
 /// Whether this invocation is a scan the Pro engine may take over: the
@@ -176,6 +220,7 @@ const KNOWN_VERBS: &[&str] = &[
     "login",
     "logout",
     "whoami",
+    "health",
     "pro-refresh",
     "agents",
     "skills",

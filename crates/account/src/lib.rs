@@ -4,8 +4,10 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod health;
 pub mod http;
 pub mod oauth;
+pub mod plans;
 pub mod pro;
 pub mod session;
 pub mod store;
@@ -210,6 +212,20 @@ fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
     }
 }
 
+/// `Plan: Pro. Everything in Free, plus:` and one line per item, with
+/// announced items marked `(soon)` as the catalog's own markdown does.
+fn plan_lines(p: &plans::Plan) -> String {
+    let mut out = match &p.builds {
+        Some(b) => format!("Plan: {}. Everything in {b}, plus:\n", p.name),
+        None => format!("Plan: {}. Includes:\n", p.name),
+    };
+    for item in &p.adds {
+        let soon = if item.soon { " (soon)" } else { "" };
+        out.push_str(&format!("  - {}{soon}\n", item.text));
+    }
+    out
+}
+
 pub fn run_logout(args: &[String], io: &mut Io) -> i32 {
     if unknown_args(args, &[], io, "logout") {
         return 1;
@@ -255,6 +271,14 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     if let (Ok(e), Some(login)) = (&result, login) {
         pro::settle(&account, login, e.pro);
     }
+    // What the plan includes, from the public catalog; optional.
+    let plan = result.as_ref().ok().and_then(|e| {
+        let id = e
+            .plan
+            .as_deref()
+            .unwrap_or(if e.pro { "pro" } else { "free" });
+        plans::fetch(&account, id)
+    });
     if json {
         let mut v = serde_json::json!({ "account_url": account.issuer, "signed_in": false });
         match &result {
@@ -262,6 +286,16 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
                 v["signed_in"] = true.into();
                 v["pro"] = e.pro.into();
                 v["reason"] = e.reason.clone().into();
+                if let Some(p) = &plan {
+                    v["plan"] = serde_json::json!({
+                        "id": p.id,
+                        "name": p.name,
+                        "builds": p.builds,
+                        "adds": p.adds.iter()
+                            .map(|i| serde_json::json!({ "text": i.text, "soon": i.soon }))
+                            .collect::<Vec<_>>(),
+                    });
+                }
             }
             Err(SessionError::NotSignedIn | SessionError::Expired) => {}
             Err(e) => {
@@ -275,10 +309,10 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     match result {
         Ok(e) => {
             io.out(&format!("Signed in to {}.\n", account.display_host()));
-            if e.pro {
-                io.out("Pro rules: included.\n");
-            } else {
-                io.out("Pro rules: not included with this account.\n");
+            match &plan {
+                Some(p) => io.out(&plan_lines(p)),
+                None if e.pro => io.out("Pro rules: included.\n"),
+                None => io.out("Pro rules: not included with this account.\n"),
             }
             0
         }

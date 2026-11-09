@@ -81,6 +81,17 @@ impl Session {
         Ok(self.secret.access_token.clone())
     }
 
+    /// [`Session::access_token`] for a caller that would rather fail than
+    /// wait more than `wait` for another command's sign-in step.
+    pub fn access_token_within(&mut self, wait: std::time::Duration) -> Result<String, SessionError> {
+        if self.secret.access_expires_at > now() + SKEW_SECS {
+            return Ok(self.secret.access_token.clone());
+        }
+        let lock = self.store.lock_for(wait).map_err(SessionError::Local)?;
+        self.refresh_holding(&lock)?;
+        Ok(self.secret.access_token.clone())
+    }
+
     /// Rotate the tokens under the lock (see the module note).
     pub fn refresh(&mut self) -> Result<(), SessionError> {
         let lock = self.store.lock().map_err(SessionError::Local)?;
@@ -183,6 +194,9 @@ impl Session {
 pub struct Entitlement {
     pub pro: bool,
     pub reason: String,
+    /// The plan id, when the service names one the catalog knows
+    /// (`free`, `pro`, `team`, `enterprise`). Without it, `pro` decides.
+    pub plan: Option<String>,
 }
 
 pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
@@ -197,5 +211,10 @@ pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
         .filter(|r| r.len() <= 64 && r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'))
         .unwrap_or("unknown")
         .to_string();
-    Ok(Entitlement { pro, reason })
+    let plan = v
+        .get("plan")
+        .and_then(|p| p.as_str())
+        .filter(|p| crate::plans::known(p))
+        .map(str::to_string);
+    Ok(Entitlement { pro, reason, plan })
 }
