@@ -79,8 +79,10 @@ fn describe_io_error(e: &std::io::Error, url: &str, idle: std::time::Duration) -
 /// through `download_file`, which streams to disk. Reads are capped at
 /// [`MAX_DOWNLOAD_BYTES`]; a longer response is an error, not a truncation.
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let agent = download_agent(url, CONNECT_TIMEOUT, IDLE_TIMEOUT).build();
-    match agent.get(url).call() {
+    // Redirects are followed hop by hop so each host gets its own proxy choice.
+    match impeccable_context::http::get_following(url, 5, |b| {
+        b.timeout_connect(CONNECT_TIMEOUT).timeout_read(IDLE_TIMEOUT).timeout_write(IDLE_TIMEOUT)
+    }) {
         Ok(res) => {
             let mut body = Vec::new();
             res.into_reader()

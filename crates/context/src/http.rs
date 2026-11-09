@@ -51,6 +51,39 @@ pub fn agent_builder(url: &str) -> ureq::AgentBuilder {
     }
 }
 
+/// GET `url`, following up to `max_redirects` redirects itself so every hop
+/// gets an agent built for its own host: ureq follows a redirect on the agent
+/// it started with, which keeps the first host's proxy choice for a hop that
+/// may need the other one. Like ureq, a redirect from https to http is not
+/// followed; that response, or the last 3xx when the hops run out, is
+/// returned for the caller to treat as the failure it is.
+pub fn get_following(
+    url: &str,
+    max_redirects: u32,
+    configure: impl Fn(ureq::AgentBuilder) -> ureq::AgentBuilder,
+) -> Result<ureq::Response, ureq::Error> {
+    let mut current = url.to_string();
+    let mut hops = 0;
+    loop {
+        let agent = configure(agent_builder(&current)).redirects(0).build();
+        let response = agent.get(&current).call()?;
+        if !(300..400).contains(&response.status()) || hops >= max_redirects {
+            return Ok(response);
+        }
+        let Some(next) = response
+            .header("location")
+            .and_then(|loc| url::Url::parse(&current).ok()?.join(loc).ok())
+        else {
+            return Ok(response);
+        };
+        if current.starts_with("https:") && next.scheme() != "https" {
+            return Ok(response);
+        }
+        current = next.to_string();
+        hops += 1;
+    }
+}
+
 fn no_proxy_from_env() -> String {
     ["NO_PROXY", "no_proxy"]
         .iter()
@@ -79,6 +112,11 @@ pub(crate) fn bypasses_proxy(url: &str, no_proxy: &str) -> bool {
         let (name, entry_port) = split_port(&entry);
         if entry_port.is_some_and(|p| p != port) {
             return false;
+        }
+        // An address entry matches the same address in any spelling
+        // (`fd00::5` is `fd00:0:0:0:0:0:0:5`); only names match by suffix.
+        if let Ok(entry_ip) = name.parse::<std::net::IpAddr>() {
+            return ip == Some(entry_ip);
         }
         let name = name.trim_start_matches("*.").trim_start_matches('.');
         !name.is_empty() && (host == name || host.ends_with(&format!(".{name}")))
@@ -285,6 +323,9 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("https://gpu.lan/", "gpu.lan:443", true),
             ("http://user:pw@gpu.lan:9000/x", " foo.com , gpu.lan ", true),
             ("http://[fd00::5]:80/", "fd00::/8", true),
+            ("http://[fd00:0:0:0:0:0:0:5]/", "fd00::5", true),
+            ("http://[fd00::6]/", "fd00::5", false),
+            ("http://10.1.2.30/", "10.1.2.3", false),
             ("not a url", "*", false),
         ];
         for (url, no_proxy, want) in cases {
@@ -338,6 +379,93 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
         let response = agent.get(&url).call().expect("direct request to a NO_PROXY host");
         assert_eq!(response.status(), 200);
         target_thread.join().expect("target thread");
+    }
+
+    #[test]
+    fn no_proxy_from_the_environment_routes_a_named_host_direct() {
+        // Not loopback, so only the NO_PROXY entry can send this one direct:
+        // the proxy must see nothing, and the direct lookup of `.invalid` fails.
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        let proxy = TcpListener::bind("127.0.0.1:0").expect("bind proxy");
+        let proxy_url = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let hits_in = hits.clone();
+        let _proxy_thread = std::thread::spawn(move || {
+            accept_until(proxy, |stream| {
+                let mut buf = [0u8; 4096];
+                if stream.read(&mut buf).unwrap_or(0) > 0 {
+                    hits_in.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+                }
+                false
+            });
+        });
+        let url = "http://proxy-test.invalid/";
+        for (no_proxy, proxied) in [("proxy-test.invalid", false), ("other.example", true)] {
+            let _env_guard = ProxyEnvGuard::set(&[
+                ("ALL_PROXY", None),
+                ("all_proxy", None),
+                ("HTTPS_PROXY", None),
+                ("https_proxy", None),
+                ("HTTP_PROXY", Some(&proxy_url)),
+                ("http_proxy", Some(&proxy_url)),
+                ("NO_PROXY", Some(no_proxy)),
+                ("no_proxy", None),
+            ]);
+            let before = hits.load(std::sync::atomic::Ordering::SeqCst);
+            let result = agent_builder(url).timeout(Duration::from_secs(2)).build().get(url).call();
+            let went_through_proxy = hits.load(std::sync::atomic::Ordering::SeqCst) > before;
+            assert_eq!(went_through_proxy, proxied, "NO_PROXY={no_proxy}");
+            assert_eq!(result.is_ok(), proxied, "NO_PROXY={no_proxy}");
+        }
+    }
+
+    #[test]
+    fn each_redirect_hop_gets_its_own_proxy_choice() {
+        // A loopback host (always direct) redirects to a public name that
+        // needs the proxy: the second hop must go through it.
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+        let proxy = TcpListener::bind("127.0.0.1:0").expect("bind proxy");
+        let proxy_url = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let origin = TcpListener::bind("127.0.0.1:0").expect("bind origin");
+        let origin_url = format!("http://127.0.0.1:{}/start", origin.local_addr().unwrap().port());
+        let serve = |listener: TcpListener, reply: &'static [u8]| {
+            std::thread::spawn(move || {
+                accept_until(listener, |stream| {
+                    let mut buf = [0u8; 4096];
+                    if stream.read(&mut buf).unwrap_or(0) == 0 {
+                        return false;
+                    }
+                    let _ = stream.write_all(reply);
+                    true
+                });
+            })
+        };
+        let origin_thread = serve(origin, b"HTTP/1.1 302 Found\r\nLocation: http://proxy-test.invalid/image.png\r\nContent-Length: 0\r\n\r\n");
+        let proxy_thread = serve(proxy, b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\nproxied");
+        let _env_guard = ProxyEnvGuard::set(&[
+            ("ALL_PROXY", None),
+            ("all_proxy", None),
+            ("HTTPS_PROXY", None),
+            ("https_proxy", None),
+            ("HTTP_PROXY", Some(&proxy_url)),
+            ("http_proxy", Some(&proxy_url)),
+            ("NO_PROXY", None),
+            ("no_proxy", None),
+        ]);
+        let response = get_following(&origin_url, 3, |b| b.timeout(Duration::from_secs(2))).expect("redirect followed");
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.into_string().unwrap(), "proxied");
+        origin_thread.join().unwrap();
+        proxy_thread.join().unwrap();
     }
 
     #[test]
