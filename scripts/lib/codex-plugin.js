@@ -22,7 +22,7 @@ export function buildCodexPluginManifest(rootManifest) {
     interface: {
       displayName: 'Impeccable',
       shortDescription: 'Design and refine interfaces',
-      longDescription: 'Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 23 focused design commands, live browser iteration for exploring visual directions, and automatic checks that flag common design anti-patterns as you work.',
+      longDescription: 'Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 23 focused design commands, live browser iteration for exploring visual directions, and a bundled detector that flags common design anti-patterns.',
       developerName: 'Renaissance Geek Inc',
       category: 'Creativity',
       capabilities: ['Interactive', 'Read', 'Write'],
