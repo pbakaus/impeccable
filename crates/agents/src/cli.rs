@@ -185,6 +185,7 @@ fn agents_home() -> Result<PathBuf, (&'static str, String, i32)> {
 pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
     let mut installations = Vec::new();
     let mut pending = 0;
+    let mut unreadable = 0;
     let entries = match fs::read_dir(home) {
         Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => vec![],
@@ -202,15 +203,24 @@ pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
         if !name.ends_with(".json") {
             continue;
         }
-        let Some(j) = read_journal(&path)? else {
-            continue;
+        // One journal never sinks the report: one an undo removed since the directory was read is gone, and one that
+        // cannot be read (invalid, or a newer engine's) is counted, not named.
+        let j = match read_journal(&path) {
+            Ok(Some(j)) => j,
+            Ok(None) => continue,
+            Err(_) if !path.exists() => continue,
+            Err(_) => {
+                unreadable += 1;
+                continue;
+            }
         };
         let mut resources = Vec::new();
         for r in &j.resources {
-            let state = if resource_matches(&j.spec, &j, r)? {
-                format!("{:?}", r.state).to_lowercase()
-            } else {
-                "conflict".into()
+            // A resource only a harness CLI can check, with that CLI gone, is unchecked rather than an error.
+            let state = match resource_matches(&j.spec, &j, r) {
+                Ok(true) => format!("{:?}", r.state).to_lowercase(),
+                Ok(false) => "conflict".into(),
+                Err(_) => "unchecked".into(),
             };
             resources.push(json!({"kind":r.kind,"state":state}));
         }
@@ -226,6 +236,6 @@ pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
     }
     installations.sort_by_key(|i| (i["owner"].to_string(), i["harness"].to_string()));
     Ok(
-        json!({"engineVersion":env!("CARGO_PKG_VERSION"),"installations":installations,"pendingTransactions":pending}),
+        json!({"engineVersion":env!("CARGO_PKG_VERSION"),"installations":installations,"pendingTransactions":pending,"unreadableJournals":unreadable}),
     )
 }
