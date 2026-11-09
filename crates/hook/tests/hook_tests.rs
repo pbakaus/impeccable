@@ -4070,3 +4070,16 @@ fn stop_discovery_skips_named_pipes() {
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert_eq!(deep.stdout, "");
 }
+
+#[test]
+fn stop_discovery_covers_a_session_started_inside_a_project() {
+    // A Codex session started in `src/`: the project marker sits one level up.
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/src");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert!(deep.stdout.contains("[side-tab]"), "{} {:?}", deep.stdout, deep.audit);
+}

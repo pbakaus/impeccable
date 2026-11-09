@@ -69,6 +69,26 @@ fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
+/// Whether `root` is a project, or sits inside one below `home`: the walk up
+/// the per-edit pass takes to key its cache (`.git`, `package.json` or
+/// `.impeccable`). A folder above several projects is neither.
+pub fn inside_project(root: &str, home: &str) -> bool {
+    let mut dir = root.to_string();
+    loop {
+        if dir == home {
+            return false;
+        }
+        if crate::hook_lib::looks_like_project_root(&dir) {
+            return true;
+        }
+        let parent = jsp::dirname(&dir);
+        if parent == dir {
+            return false;
+        }
+        dir = parent;
+    }
+}
+
 /// UI files under `root` modified at or after `since_ms`, newest first.
 /// Regular files only (a named pipe would block the read), none over
 /// `max_bytes` when that limit is set.

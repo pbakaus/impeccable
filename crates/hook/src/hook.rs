@@ -806,14 +806,14 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             continue;
         }
         let mut root_cache = if at_session_cwd { cache.clone() } else { read_cache(root) };
-        // Discovery follows the per-edit pass's own root rule: it walks a root
-        // only when that root is a project, so a session cwd above several
+        // Discovery walks a root only when it is a project or sits inside one
+        // (a session started in `src/`), so a session cwd above several
         // projects never scans them under its settings; each recorded project
         // root walks itself. Discovered files keep their own budget and never
         // push out files the per-edit pass recorded.
         let cached = touched_files(&root_cache, &session_id);
         let discovered: Vec<String> = match session_start {
-            Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
+            Some(since) if crate::stop_discovery::inside_project(root, &home) => crate::stop_discovery::changed_since(
                 root,
                 &home,
                 since,
