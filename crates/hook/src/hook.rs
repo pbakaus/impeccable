@@ -670,6 +670,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     };
     let harness = resolve_harness(rt, Some(&event));
     audit.insert("harness".into(), Value::from(harness));
+    // Neither VS Code route shows Stop output usably, and every rule already ran
+    // per edit (`per_edit_tiering_active`), so a deep pass would only burn its budget
+    // and mark the footer shown when nobody saw it (#1249).
+    if harness == "vscode" {
+        return result(&audit, vec![("skipped", Value::from("vscode-stop")), ("durationMs", ms_since(started))]);
+    }
     let event = normalize_hook_event(rt, &event, &rt.proc_cwd, harness);
     // Stop-hook re-entry guard (#400): Claude Code and Codex send
     // `stop_hook_active`; Grok sends `stopHookActive`, copied onto the

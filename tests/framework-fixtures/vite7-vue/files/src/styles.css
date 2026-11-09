@@ -1,0 +1,5 @@
+body { font-family: system-ui, sans-serif; margin: 0; }
+main.page { padding: 48px; }
+.note-form { display: block; padding: 32px; width: 520px; border: 1px solid #ccc; }
+.note-label { display: block; font-size: 20px; }
+.note-input { display: block; width: 100%; height: 80px; }

@@ -1,5 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   CLOSE_MARKER,
@@ -413,6 +418,147 @@ describe('github sheriff', () => {
     assert.equal(plan.readyToMerge, false);
     assert.deepEqual(plan.labelsToAdd, ['needs maintainer review']);
     assert.deepEqual(plan.labelsToRemove, ['ready to merge']);
+  });
+
+  it('keeps draft PR #1195 with a pending maintainer decision out of contributor aging', () => {
+    for (const comments of [[], [comment('github-actions[bot]', '2026-11-03T15:20:42Z', WARNING_MARKER)]]) {
+      const plan = evaluatePullRequest(pr({
+        number: 1195,
+        authorLogin: 'mager',
+        isDraft: true,
+        createdAt: '2026-10-26T00:00:00Z',
+        labels: ['policy: needs maintainer decision', 'waiting on contributor', 'stale'],
+        comments: [
+          ...comments,
+          comment('mager', '2026-11-02T17:11:17Z', 'I have kept this PR in draft pending your decision.'),
+        ],
+      }), { now: '2026-11-20T00:00:00Z', autoCloseRegulars: true });
+
+      assert.equal(plan.contributorActionRequired, false);
+      assert.equal(plan.waitingDays, 0);
+      assert.equal(plan.readyToMerge, false);
+      assert.deepEqual(plan.labelsToAdd, ['needs maintainer review']);
+      assert.deepEqual(plan.labelsToRemove, ['stale', 'waiting on contributor']);
+      assert.equal(plan.shouldWarn, false);
+      assert.equal(plan.shouldClose, false);
+    }
+  });
+
+  it('keeps other blockers visible without aging contributors during a maintainer decision', () => {
+    const plan = evaluatePullRequest(pr({
+      isDraft: true,
+      mergeable: 'CONFLICTING',
+      statusState: 'FAILURE',
+      labels: ['policy: needs maintainer decision', 'policy: needs issue'],
+      comments: [comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait')],
+      reviewThreads: [{ isResolved: false, comments: [comment('pbakaus', '2026-06-21T00:00:00Z', 'Please fix this.')] }],
+    }), { now: NOW });
+
+    assert.equal(plan.contributorActionRequired, false);
+    assert.equal(plan.shouldWarn, false);
+    assert.equal(plan.shouldClose, false);
+    assert.deepEqual(plan.desiredLabels, [
+      'blocked: ci', 'blocked: merge conflicts', 'blocked: review threads', 'needs maintainer review',
+    ]);
+  });
+
+  it('starts a fresh contributor window after the latest maintainer-decision handoff', () => {
+    const source = pr({
+      isDraft: true,
+      createdAt: '2026-06-01T00:00:00Z',
+      labels: ['waiting on contributor', 'stale'],
+      labelEvents: [
+        labelEvent('LabeledEvent', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-06-02T00:00:00Z'),
+        labelEvent('UnlabeledEvent', 'policy: needs maintainer decision', 'pbakaus', '2026-06-10T00:00:00Z'),
+        labelEvent('LabeledEvent', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-06-20T00:00:00Z'),
+        labelEvent('UnlabeledEvent', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-07-07T00:00:00Z'),
+      ],
+      comments: [comment('github-actions[bot]', '2026-06-15T00:00:00Z', WARNING_MARKER)],
+    });
+    const handoff = evaluatePullRequest(source, { now: NOW });
+    assert.equal(handoff.contributorActionRequired, true);
+    assert.equal(handoff.waitingDays, 1);
+    assert.deepEqual(handoff.labelsToRemove, ['stale']);
+    assert.equal(handoff.shouldWarn, false);
+    assert.equal(handoff.shouldClose, false);
+
+    for (const now of ['2026-07-14T00:00:00Z', '2026-07-21T00:00:00Z']) {
+      const plan = evaluatePullRequest(source, { now });
+      assert.equal(plan.shouldWarn, true);
+      assert.equal(plan.shouldClose, false, 'the warning from the previous window cannot authorize closure');
+    }
+    source.comments.push(comment('github-actions[bot]', '2026-07-14T00:00:00Z', WARNING_MARKER));
+    assert.equal(evaluatePullRequest(source, { now: '2026-07-20T00:00:00Z' }).shouldClose, false);
+    assert.equal(evaluatePullRequest(source, { now: '2026-07-21T00:00:00Z' }).shouldClose, true);
+
+    source.draftEvents = [draftEvent('ConvertToDraftEvent', '2026-07-08T00:00:00Z')];
+    assert.equal(evaluatePullRequest(source, { now: NOW }).waitingDays, 0);
+    source.isDraft = false;
+    assert.equal(evaluatePullRequest(source, { now: NOW }).contributorActionRequired, false);
+  });
+
+  it('hydrates a multi-megabyte history beyond the GraphQL label window in the real CLI', { skip: process.platform === 'win32' }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sheriff-handoff-'));
+    try {
+      const recentLabels = Array.from({ length: 100 }, (_, i) => ({
+        __typename: 'LabeledEvent', label: { name: `unrelated-${i}` },
+        actor: { login: 'pbakaus' }, createdAt: '2026-07-07T12:00:00Z',
+      }));
+      const node = graphqlPrNode({
+        isDraft: true, createdAt: '2026-06-01T00:00:00Z',
+        // Test both no waiting label and one already present in the seed.
+        labelTimelineItems: { nodes: recentLabels },
+      });
+      const events = Array.from({ length: 4 }, () => Array.from({ length: 100 }, () => ({
+        event: 'referenced', created_at: '2026-07-01T00:00:00Z',
+        irrelevant_payload: 'x'.repeat(16 * 1024),
+      })));
+      events[0][0] = issueEvent('labeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-06-02T00:00:00Z');
+      events.push([issueEvent('unlabeled', 'policy: needs maintainer decision', 'github-actions[bot]', '2026-07-07T00:00:00Z')]);
+      assert.ok(Buffer.byteLength(JSON.stringify(events)) > 6 * 1024 * 1024);
+      assert.ok(Buffer.byteLength(JSON.stringify(events[1])) > 1024 * 1024);
+
+      fs.writeFileSync(path.join(dir, 'gh'), '#!/bin/sh\nexec "' + process.execPath + '" "' + path.join(dir, 'gh.mjs') + '" "$@"\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(dir, 'gh.mjs'), `
+        import fs from 'node:fs';
+        const args = process.argv.slice(2);
+        const fixture = JSON.parse(fs.readFileSync(new URL('./fixture.json', import.meta.url)));
+        if (args[0] !== 'api') process.exit(2);
+        if (args[1] === 'graphql') console.log(JSON.stringify({ data: { repository: { pullRequests: { nodes: [fixture.node], pageInfo: { hasNextPage: false } } } } }));
+        else if (args.at(-1).includes('/comments?')) console.log(JSON.stringify([[{ user: { login: 'github-actions[bot]' }, created_at: '2026-06-15T00:00:00Z', body: ${JSON.stringify(WARNING_MARKER)} }]]));
+        else if (args.some(arg => arg.includes('/events?'))) {
+          if (args.includes('--slurp')) console.log(JSON.stringify(fixture.events));
+          else {
+            const url = new URL(args.find(arg => arg.includes('/events?')), 'https://api.github.com/');
+            const page = fixture.events[Number(url.searchParams.get('page')) - 1] || [];
+            // Emulate gh's projection before Node buffers its stdout. A page
+            // containing no label events must not terminate pagination.
+            if (!args.includes('--jq')) console.log(JSON.stringify(page));
+            else console.log(JSON.stringify({ count: page.length, events: page
+              .filter(event => ['labeled', 'unlabeled'].includes(event.event))
+              .map(({ event, label, actor, created_at }) => ({ event, label, actor, created_at })) }));
+          }
+        }
+        else process.exit(4);
+      `);
+      for (const hasWaitingLabel of [false, true]) {
+        if (hasWaitingLabel) {
+          node.labels.nodes = [{ name: 'waiting on contributor' }];
+          recentLabels[0].label.name = 'waiting on contributor';
+          recentLabels[0].actor.login = 'github-actions[bot]';
+        }
+        fs.writeFileSync(path.join(dir, 'fixture.json'), JSON.stringify({ node, events }));
+        const result = spawnSync(process.execPath, [
+          fileURLToPath(new URL('../scripts/github/sheriff.mjs', import.meta.url)),
+          '--dry-run', '--repo', 'pbakaus/impeccable', '--now', NOW,
+        ], { env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}` }, encoding: 'utf8' });
+        assert.equal(result.status, 0, result.stderr);
+        assert.doesNotMatch(result.stdout, /stale|warn|close/);
+        assert.match(result.stdout, /Dry run sheriff pass for 1 open PR/);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('does not treat policy approval as a blocker', () => {

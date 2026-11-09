@@ -10,7 +10,7 @@ use crate::svelte_component::{
     build_svelte_component_css_authoring, scaffold_svelte_component_session,
     should_use_svelte_component_injection, Scaffold,
 };
-use crate::util::{eprintln, json_compact, jsp, println, safe_read};
+use crate::util::{eprintln, json_compact, jsp, println};
 use crate::wrap_common::*;
 use impeccable_common::Io;
 use impeccable_core::js::trim;
@@ -58,15 +58,6 @@ fn nonempty(v: Option<String>) -> Option<String> {
     v.filter(|s| !s.is_empty())
 }
 
-/// The candidate range in the JS shape `{ startLine, endLine }` (1-indexed).
-fn candidates_json(list: &[ElementMatch]) -> Value {
-    Value::Array(
-        list.iter()
-            .map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) }))
-            .collect(),
-    )
-}
-
 fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println(io, HELP);
@@ -102,8 +93,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         query.as_deref(),
     );
 
-    let target_file: String;
-    if let Some(fp) = &file_path {
+    let resolved = if let Some(fp) = &file_path {
         if is_generated_file(fp, &cwd) {
             eprintln(
                 io,
@@ -116,158 +106,117 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
-        target_file = fp.clone();
-    } else {
-        let mut found: Option<String> = None;
-        for q in &queries {
-            found = find_file_with_query(q, &cwd, false);
-            if found.is_some() {
-                break;
-            }
-        }
-        match found {
-            Some(f) => target_file = f,
+        match SourceFile::read(&cwd, fp) {
+            Some(file) => resolve_in_file(file, &queries, tag.as_deref(), text.as_deref()),
             None => {
-                let mut generated_hit: Option<String> = None;
-                for q in &queries {
-                    generated_hit = find_file_with_query(q, &cwd, true);
-                    if generated_hit.is_some() {
-                        break;
-                    }
-                }
-                if let Some(hit) = generated_hit {
-                    eprintln(
-                        io,
-                        &json_compact(&json!({
-                            "error": "element_not_in_source",
-                            "fallback": "agent-driven",
-                            "generatedMatch": jsp::relative("/", &cwd, &hit),
-                            "hint": "Element found only in a generated file. See \"Handle fallback\" in live.md.",
-                        })),
-                    );
-                } else {
-                    eprintln(
-                        io,
-                        &json_compact(&json!({
-                            "error": "element_not_found",
-                            "fallback": "agent-driven",
-                            "hint": "Element not found in any project file. It may be runtime-injected (JS component, etc.). See \"Handle fallback\" in live.md.",
-                        })),
-                    );
-                }
-                return 1;
-            }
-        }
-    }
-
-    let content = match safe_read(&jsp::resolve(&cwd, &[&target_file])) {
-        Some(c) => c,
-        None => {
-            // JS: readFileSync throws (uncaught) -> exit 1 with the stack on stderr.
-            eprintln(
-                io,
-                &format!(
-                    "Error: ENOENT: no such file or directory, open '{}'",
-                    target_file
-                ),
-            );
-            return 1;
-        }
-    };
-    let lines: Vec<String> = content.split('\n').map(String::from).collect();
-
-    let target_rel_for_errors = jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[&target_file]));
-    // JS interpolates `targetFile` as given (explicit --file stays relative).
-    let target_display = target_file.clone();
-    let not_located = |io: &mut Io| {
-        eprintln(
-            io,
-            &json_compact(&json!({
-                "error": format!("Found file but could not locate element in {}. Searched for: {}", target_display, queries.join(", ")),
-            })),
-        );
-        1
-    };
-
-    let m: ElementMatch;
-    if let Some(text) = &text {
-        let mut candidates: Vec<ElementMatch> = Vec::new();
-        for q in &queries {
-            for c in find_all_elements(&lines, q, tag.as_deref()) {
-                if !candidates.iter().any(|x| x.start_line == c.start_line) {
-                    candidates.push(c);
-                }
-            }
-            if candidates.len() == 1 {
-                break;
-            }
-        }
-        if candidates.is_empty() {
-            return not_located(io);
-        }
-        if candidates.len() == 1 {
-            m = candidates[0];
-        } else {
-            let filtered = filter_by_text(&candidates, &lines, text);
-            if filtered.len() == 1 {
-                m = filtered[0];
-            } else if filtered.is_empty() {
-                let normalized: String = {
-                    let re = regex::Regex::new(&format!("{}+", impeccable_core::js::WS)).unwrap();
-                    trim(&re.replace_all(text, " ")).to_string()
-                };
-                if normalized.encode_utf16().count() < 8 {
-                    m = candidates[0];
-                } else {
-                    eprintln(
-                        io,
-                        &json_compact(&json!({
-                            "error": "element_ambiguous",
-                            "fallback": "agent-driven",
-                            "reason": "rendered_text_not_in_source",
-                            "file": target_rel_for_errors,
-                            "candidates": candidates_json(&candidates),
-                            "hint": "Rendered text does not occur in any matching source branch. The element may use dynamic props or expressions; inspect the candidates and wrap the intended instance manually.",
-                        })),
-                    );
-                    return 1;
-                }
-            } else {
+                // JS: readFileSync throws (uncaught) -> exit 1 with the stack on stderr.
                 eprintln(
                     io,
-                    &json_compact(&json!({
-                        "error": "element_ambiguous",
-                        "fallback": "agent-driven",
-                        "file": target_rel_for_errors,
-                        "candidates": candidates_json(&filtered),
-                        "hint": "Multiple source elements match both classes/tag and textContent. Pass --element-id, a more specific --text, or write the wrapper manually. See \"Handle fallback\" in live.md.",
-                    })),
+                    &format!("Error: ENOENT: no such file or directory, open '{}'", fp),
                 );
                 return 1;
             }
         }
     } else {
-        let mut found: Option<ElementMatch> = None;
-        for q in &queries {
-            found = find_element(&lines, q, tag.as_deref());
-            if found.is_some() {
-                break;
+        resolve_in_project(&queries, &cwd, tag.as_deref(), text.as_deref())
+    };
+    let rel = |path: &str| jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[path]));
+    let (file, m) = match resolved {
+        Resolution::Match(file, m) => (file, m),
+        // A lone candidate without the text is still the element; its text may come from props.
+        Resolution::TextNotInFile(file, candidates) if candidates.len() == 1 => (file, candidates[0]),
+        Resolution::TextNotInFile(file, candidates) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "reason": "rendered_text_not_in_source",
+                    "file": rel(&file.path),
+                    "candidates": candidates_json(&candidates),
+                    "hint": "Rendered text does not occur in any matching source branch. The element may use dynamic props or expressions; inspect the candidates and wrap the intended instance manually.",
+                })),
+            );
+            return 1;
+        }
+        Resolution::Ambiguous(file, candidates) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "file": rel(&file.path),
+                    "candidates": candidates_json(&candidates),
+                    "hint": "Multiple source elements match both classes/tag and textContent. Pass --element-id, a more specific --text, or write the wrapper manually. See \"Handle fallback\" in live.md.",
+                })),
+            );
+            return 1;
+        }
+        Resolution::NotLocated(path) => {
+            // JS interpolates `targetFile` as given (explicit --file stays relative).
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": format!("Found file but could not locate element in {}. Searched for: {}", path, queries.join(", ")),
+                })),
+            );
+            return 1;
+        }
+        Resolution::TextInNoFile(hits) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "reason": "rendered_text_not_in_source",
+                    "candidates": file_candidates_json(&cwd, &hits),
+                    "hint": "Rendered text does not occur in any matching source branch of the files that contain the locator. The element may use dynamic props or expressions; inspect the candidates and wrap the intended instance manually.",
+                })),
+            );
+            return 1;
+        }
+        Resolution::NotFound => {
+            let mut generated_hit: Option<String> = None;
+            for q in &queries {
+                generated_hit = find_file_with_query(q, &cwd, true);
+                if generated_hit.is_some() {
+                    break;
+                }
             }
+            if let Some(hit) = generated_hit {
+                eprintln(
+                    io,
+                    &json_compact(&json!({
+                        "error": "element_not_in_source",
+                        "fallback": "agent-driven",
+                        "generatedMatch": jsp::relative("/", &cwd, &hit),
+                        "hint": "Element found only in a generated file. See \"Handle fallback\" in live.md.",
+                    })),
+                );
+            } else {
+                eprintln(
+                    io,
+                    &json_compact(&json!({
+                        "error": "element_not_found",
+                        "fallback": "agent-driven",
+                        "hint": "Element not found in any project file. It may be runtime-injected (JS component, etc.). See \"Handle fallback\" in live.md.",
+                    })),
+                );
+            }
+            return 1;
         }
-        match found {
-            Some(f) => m = f,
-            None => return not_located(io),
-        }
-    }
+    };
+    let target_file = file.path;
+    let lines = file.lines;
 
     let start_line = m.start_line;
     let Some(end_line) = m.end_line else {
-        let err = element_unclosed_error(&target_rel_for_errors, start_line);
+        let err = element_unclosed_error(&rel(&target_file), start_line);
         eprintln(io, &json_compact(&err));
         return 1;
     };
     let comment_syntax = detect_comment_syntax(&target_file);
-    let style_mode = detect_style_mode(&target_file);
+    let traits = resolve_source_traits(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
     let indent = leading_ws(&lines[start_line]);
 
@@ -500,7 +449,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         Value::String(if component_active {
             "svelte-component".into()
         } else {
-            style_mode.0.into()
+            traits.style_mode.into()
         }),
     );
     out.insert(
@@ -508,7 +457,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         if component_active {
             Value::Null
         } else {
-            Value::String(style_mode.1.into())
+            Value::String(traits.style_tag.into())
         },
     );
     out.insert(
@@ -517,7 +466,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             json!([])
         } else {
             json!(build_css_selector_prefix_examples(
-                style_mode.0,
+                traits.style_mode,
                 count_len(count)
             ))
         },
@@ -527,7 +476,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         if component_active {
             build_svelte_component_css_authoring(count)
         } else {
-            build_css_authoring(style_mode, count_len(count))
+            build_css_authoring(&traits, count_len(count))
         },
     );
     out.insert("originalLineCount".into(), json!(original_lines.len()));

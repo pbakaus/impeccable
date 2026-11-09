@@ -17,6 +17,28 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('picks the nearest pickable ancestor of a too-small hover but never leaves the live chrome (#1297)', () => {
+    const body = SOURCE.match(/function handleMouseMove\(e\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const hover = (hit) => {
+      const highlighted = [];
+      const ctx = {
+        pendingApplyInFlight: false, state: 'PICKING', insertActive: false, pickActive: true, hoveredElement: null,
+        document: { elementFromPoint: () => hit },
+        own: (el) => !!el?.chrome,
+        pickable: (el) => !!el?.big && !el.chrome,
+        showHighlight: (el) => highlighted.push(el),
+      };
+      runInNewContext(`${body}; handleMouseMove({ clientX: 1, clientY: 1 });`, ctx);
+      return { hovered: ctx.hoveredElement, highlighted };
+    };
+    const form = { big: true, parentElement: null };
+    const label = { parentElement: form };
+    assert.deepEqual(hover(label), { hovered: form, highlighted: [form] }, 'a small label resolves to its form');
+    const chrome = { chrome: true, parentElement: form };
+    assert.deepEqual(hover(chrome), { hovered: null, highlighted: [] }, 'chrome inside a page element is not walked out of');
+  });
+
   it('describes the picked element with the anchor a bake would use and its match count', () => {
     const body = SOURCE.match(/function extractContext\(el\) \{[\s\S]*?\n  \}/)?.[0];
     assert.ok(body);
@@ -158,7 +180,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function setPendingApplyLoading\(loading, count\)[\s\S]*?pendingPillSpinnerEl\.style\.display = pendingApplyInFlight \? 'inline-block' : 'none';[\s\S]*?pendingPillEl\.disabled = pendingApplyInFlight;[\s\S]*?pendingTrashBtn\.disabled = pendingApplyInFlight;[\s\S]*?schedulePendingDockPosition\(\);[\s\S]*?\n  \}/,
+      /function renderPendingDockControls\(mode, count\)[\s\S]*?pendingPillSpinnerEl\.style\.display = applying \? 'inline-block' : 'none';[\s\S]*?pendingPillEl\.disabled = !normal;[\s\S]*?pendingTrashBtn\.disabled = !normal;[\s\S]*?function setPendingApplyLoading\(loading, count\)[\s\S]*?renderPendingDockControls\(pendingApplyInFlight \? 'applying' : 'normal', currentCount\);[\s\S]*?schedulePendingDockPosition\(\);/,
       'Apply copy edits should show a loading state and prevent double apply/discard while the AI batch runs',
     );
     assert.match(
@@ -443,13 +465,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted, recoveryRevision\);[\s\S]*?\}, 1200\);/,
-      'foreground cleanup should be immediate while the no-HMR DOM fallback stays deferred',
+      /function scheduleAcceptCleanup\(accepted\)[\s\S]*?queueMicrotask\(function\(\) \{[\s\S]*?findVariantsWrapper\(accepted\.id\)[\s\S]*?hasFrameworkHmrOwnership\(wrapper\)[\s\S]*?commitAcceptedVariantToDom\(wrapper, accepted\);[\s\S]*?cleanupAcceptedSession\(\);[\s\S]*?setTimeout\(function\(\) \{[\s\S]*?ensureAcceptedDomClean\(accepted, recoveryRevision\);[\s\S]*?\}, 1200\);/,
+      'foreground cleanup should be immediate and commit a non-HMR wrapper before the variant-state stylesheet goes, while the HMR and late-wrapper fallback stays deferred',
     );
     assert.match(
       SOURCE,
-      /function ensureAcceptedDomClean\(pending, recoveryRevision\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?parent\.insertBefore\(accepted\.firstChild, wrapper\);[\s\S]*?wrapper\.remove\(\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
-      'post-cleanup fallback should unwrap the accepted variant instead of preserving live runtime wrappers',
+      /function ensureAcceptedDomClean\(pending, recoveryRevision\)[\s\S]*?acceptedDomAlreadyClean\(pending\)[\s\S]*?findAcceptedRuntimeWrappers\(sessionId\)[\s\S]*?for \(const wrapper of wrappers\)[\s\S]*?commitAcceptedVariantToDom\(wrapper, pending\);[\s\S]*?acceptedDomAlreadyClean\(pending\)/,
+      'post-cleanup fallback should commit the accepted variant instead of preserving live runtime wrappers',
     );
     assert.match(
       SOURCE,
@@ -463,8 +485,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /if \(!accepted\) \{[\s\S]{0,80}?wrapper\.remove\(\);[\s\S]{0,80}?continue;/,
-      'post-cleanup fallback should not leave a variants wrapper behind when the accepted variant node is missing',
+      /function commitAcceptedVariantToDom\(wrapper, pending\)[\s\S]*?style\[data-impeccable-css\][\s\S]*?setAttribute\('data-impeccable-accepted', pending\.id\)[\s\S]*?style\.display = 'contents'[\s\S]*?variantParamDecls\(pending\.paramValues\)[\s\S]*?\n    wrapper\.remove\(\);/,
+      'the commit should keep the scoped style and a display: contents shell with the tuned params, and always remove the wrapper, even when the accepted variant node is missing',
     );
     assert.match(
       SOURCE,
@@ -485,6 +507,27 @@ describe('live-browser source contracts', () => {
       SOURCE,
       /function ensureAcceptedDomClean\(pending, recoveryRevision\) \{[\s\S]{0,250}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]*?setTimeout\(function\(\) \{[\s\S]{0,180}?deferredRecoverySuperseded\(pending\?\.id, recoveryRevision\)[\s\S]{0,180}?location\.reload\(\);/,
       'accepted-session cleanup and its reload fallback must yield to a newer Live session',
+    );
+  });
+
+  it('moves every spelling of a variant selector to the accepted session scope (#1310)', () => {
+    const body = SOURCE.match(/function scopeAcceptedCss\([\s\S]*?\n  \}/)?.[0];
+    assert.ok(body);
+    const scopeAcceptedCss = new Function(`${body}\nreturn scopeAcceptedCss;`)();
+    const pending = { id: 's1', variant: '3' };
+    for (const spelling of [
+      '[data-impeccable-variant="3"]',
+      '[data-impeccable-variant = "3"]',
+      "[ data-impeccable-variant='3' ]",
+      '[data-impeccable-variant=3]',
+      '[data-impeccable-variant="3" i]',
+    ]) {
+      assert.equal(scopeAcceptedCss(`@scope (${spelling}) {}`, pending), '@scope ([data-impeccable-accepted="s1"]) {}', spelling);
+    }
+    assert.equal(
+      scopeAcceptedCss('[data-impeccable-variant = "2"] > h1 {}', pending),
+      '[data-impeccable-accepted="s1:2"] > h1 {}',
+      'rules for the other variants must match nothing',
     );
   });
 
@@ -808,7 +851,7 @@ describe('live-browser source contracts', () => {
       'function mountedParameterCount()',
       'function readVisibleVariantFromDOM(sessionId)',
       'function snapshotAcceptedVariantDom(sessionId, variantId)',
-      'function commitAcceptedVariantToDom(sessionId, variantId)',
+      'function commitAcceptedVariantToDom(wrapper, pending)',
     ]) {
       const at = SOURCE.indexOf(fn);
       assert.ok(at > 0, `${fn} should exist`);
@@ -1103,22 +1146,23 @@ describe('live-browser source contracts', () => {
     assert.equal(pending.size, 0, 'stop cancels the only loop');
   });
 
-  it('never DOMParser-injects JSX source (#454)', () => {
-    const isJsxStart = SOURCE.indexOf('function isJsxSourceFile(');
+  it('never DOMParser-injects JSX or Vue SFC source (#454, #1279)', () => {
+    const isJsxStart = SOURCE.indexOf('function isCompiledTemplateSourceFile(');
     const isJsxEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', isJsxStart);
-    const isJsxSourceFile = new Function(
-      SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isJsxSourceFile;',
+    const isCompiledTemplateSourceFile = new Function(
+      SOURCE.slice(isJsxStart, isJsxEnd) + '\nreturn isCompiledTemplateSourceFile;',
     )();
 
-    assert.equal(isJsxSourceFile('src/App.jsx'), true);
-    assert.equal(isJsxSourceFile('panel/src/Widget.tsx'), true);
-    assert.equal(isJsxSourceFile('index.html'), false);
-    assert.equal(isJsxSourceFile('Card.vue'), false);
+    assert.equal(isCompiledTemplateSourceFile('src/App.jsx'), true);
+    assert.equal(isCompiledTemplateSourceFile('panel/src/Widget.tsx'), true);
+    assert.equal(isCompiledTemplateSourceFile('index.html'), false);
+    assert.equal(isCompiledTemplateSourceFile('src/Page.astro'), false);
+    assert.equal(isCompiledTemplateSourceFile('Card.vue'), true);
 
     const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
     const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
     const injectFn = SOURCE.slice(injectStart, injectEnd);
-    const jsxGateIdx = injectFn.indexOf('if (isJsxSourceFile(filePath))');
+    const jsxGateIdx = injectFn.indexOf('if (isCompiledTemplateSourceFile(filePath))');
     const htmlFetchIdx = injectFn.indexOf("const url = 'http://localhost:'");
     assert.ok(jsxGateIdx !== -1 && htmlFetchIdx > jsxGateIdx, 'JSX must return before /source fetch');
     const jsxGate = injectFn.slice(jsxGateIdx, htmlFetchIdx);
@@ -1159,6 +1203,40 @@ describe('live-browser source contracts', () => {
       /querySelectorAll\(tag \+ '\\.' \+ cls\.split/,
       'source fallback should not construct unsafe selectors from JSX-ish class strings',
     );
+  });
+
+  it('waits for compiled Svelte wrappers instead of fetching raw source (#1282)', () => {
+    const guardStart = SOURCE.indexOf('function isCompiledTemplateSourceFile(');
+    const guardEnd = SOURCE.indexOf('function sourceHasSessionWrapper(', guardStart);
+    const injectStart = SOURCE.indexOf('function injectVariantsFromSource(');
+    const injectEnd = SOURCE.indexOf('function buildSvelteExpressionTextMap', injectStart);
+    let sourceFetches = 0;
+    let adoptedWrapper = null;
+    let mountedWrapper = null;
+    const context = {
+      isSvelteComponentManifestPath: () => false,
+      rememberSessionFileMeta: () => {},
+      findVariantsWrapper: () => mountedWrapper,
+      completeSourceInjection: (wrapper) => { adoptedWrapper = wrapper; },
+      PORT: 7331,
+      TOKEN: 'test-token',
+      fetch: () => {
+        sourceFetches++;
+        return { then() { return this; }, catch() { return this; } };
+      },
+    };
+    const functions = SOURCE.slice(guardStart, guardEnd) + SOURCE.slice(injectStart, injectEnd);
+    runInNewContext(functions + "\ninjectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(sourceFetches, 0, 'an unmounted Svelte wrapper must wait for HMR');
+    assert.equal(adoptedWrapper, null);
+
+    mountedWrapper = { querySelector: () => ({}) };
+    runInNewContext("injectVariantsFromSource('src/routes/+page.svelte', 'session');", context);
+    assert.equal(adoptedWrapper, mountedWrapper, 'adopt the framework-rendered wrapper once mounted');
+    assert.equal(sourceFetches, 0);
+
+    runInNewContext("injectVariantsFromSource('index.html', 'session');", context);
+    assert.equal(sourceFetches, 1, 'plain HTML keeps its source fallback');
   });
 
   it('self-discards a JSX session whose wrapper left the source file (#439)', () => {
@@ -1244,6 +1322,86 @@ describe('live-browser source contracts', () => {
       /setTimeout\([\s\S]{0,260}?injectVariantsFromSource\(msg\.file, msg\.id, \{ generationCompleted: true \}\)[\s\S]{0,40}?\}, 750\)/,
       'done should source-inject via the 750ms fallback for harnesses without HMR',
     );
+  });
+
+  it('resolves relative font sources against their stylesheet before inlining them (#1313)', async () => {
+    const start = SOURCE.indexOf('const FONT_EXT_RE');
+    const end = SOURCE.indexOf('// True if `s` is a computed color string', start);
+    const fonts = SOURCE.slice(start, end);
+    assert.ok(start > 0 && end > start);
+    const fetched = [];
+    const rule = (cssText) => ({ constructor: { name: 'CSSFontFaceRule' }, cssText });
+    const context = {
+      URL, btoa,
+      CSSStyleSheet: class { replaceSync(text) { this.cssRules = [rule(text)]; } },
+      document: {
+        baseURI: 'http://h/app/page',
+        styleSheets: [
+          { href: null, cssRules: [rule('@font-face { font-family: Root; src: url("/fonts/y.woff2") format("woff2"); }')] },
+          { href: 'http://h/css/a.css', cssRules: [rule('@font-face { font-family: A; src: url(../fonts/x.woff2), url("../fonts/My Font.woff2"); }')] },
+          { href: 'http://cdn/css/b.css', get cssRules() { throw new Error('cross-origin'); } },
+        ],
+      },
+      fetch: async (url) => {
+        fetched.push(url);
+        if (url.endsWith('b.css')) return { ok: true, text: async () => '@font-face{font-family:Cdn;src:url(fonts/z.woff2)}' };
+        return { ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+      },
+    };
+    const css = await runInNewContext(`${fonts}\ncollectFontCssText();`, context);
+    assert.deepEqual(fetched.filter((u) => u.endsWith('.woff2')).sort(), [
+      'http://cdn/css/fonts/z.woff2', 'http://h/fonts/My%20Font.woff2', 'http://h/fonts/x.woff2', 'http://h/fonts/y.woff2',
+    ]);
+    assert.equal(css.split('data:font/woff2;base64,').length - 1, 4);
+  });
+
+  it('finds fonts behind extensionless URLs, nested rules and redirects (#1323)', async () => {
+    const start = SOURCE.indexOf('const FONT_EXT_RE');
+    const end = SOURCE.indexOf('// True if `s` is a computed color string', start);
+    const fonts = SOURCE.slice(start, end);
+    const fetched = [];
+    const face = (url) => ({ cssText: `@font-face { font-family: F; src: url(${url}); }` });
+    const group = (mediaText, ...cssRules) => ({ media: { mediaText }, cssRules });
+    const supports = (conditionText, ...cssRules) => ({ constructor: { name: 'CSSSupportsRule' }, conditionText, cssRules });
+    const imp = (mediaText, styleSheet) => ({ media: { mediaText }, styleSheet });
+    const parsedBodies = {
+      'x.css body': [face('f/x.woff2'), group('print', face('f/x-print.woff2')), supports('(display: nope)', face('f/x-nope.woff2'))],
+      'old.css body': [face('fonts/z.woff2')],
+    };
+    const context = {
+      URL, btoa,
+      CSSStyleSheet: class { replaceSync(text) { this.cssRules = parsedBodies[text]; } },
+      CSS: { supports: (c) => c !== '(display: nope)' },
+      window: { matchMedia: (q) => ({ matches: q !== 'print' }) },
+      document: {
+        baseURI: 'http://h/page',
+        styleSheets: [
+          { href: 'http://h/css/a.css', cssRules: [
+            face('http://h/api/font?id=brand'),
+            group('screen', face('../fonts/m.woff2')),
+            group('print', face('../fonts/print.woff2')),
+            supports('(display: grid)', face('../fonts/s.woff2')),
+            supports('(display: nope)', face('../fonts/nope.woff2')),
+            imp('', { href: 'http://h/imp/i.css', cssRules: [face('f/i.woff2')] }),
+            imp('print', { href: 'http://h/imp/p.css', cssRules: [face('f/p.woff2')] }),
+            imp('', { href: 'http://cdn/imp/x.css', get cssRules() { throw new Error('cross-origin'); } }),
+          ] },
+          { href: 'http://cdn/old.css', get cssRules() { throw new Error('cross-origin'); } },
+        ],
+      },
+      fetch: async (url) => {
+        fetched.push(url);
+        if (url.endsWith('x.css')) return { ok: true, text: async () => 'x.css body' };
+        if (url.endsWith('old.css')) return { ok: true, url: 'http://cdn/v2/b.css', text: async () => 'old.css body' };
+        return { ok: true, headers: { get: () => 'font/ttf; charset=binary' }, arrayBuffer: async () => new Uint8Array([1]).buffer };
+      },
+    };
+    const css = await runInNewContext(`${fonts}\ncollectFontCssText();`, context);
+    assert.deepEqual(fetched.filter((u) => !u.endsWith('.css')).sort(), [
+      'http://cdn/imp/f/x.woff2', 'http://cdn/v2/fonts/z.woff2', 'http://h/api/font?id=brand', 'http://h/fonts/m.woff2', 'http://h/fonts/s.woff2', 'http://h/imp/f/i.woff2',
+    ]);
+    assert.equal(css.split('data:').length - 1, 6);
+    assert.ok(css.includes('data:font/ttf;base64,'));
   });
 
   it('never submits on the Enter that commits an IME candidate (#856)', () => {
@@ -1354,6 +1512,15 @@ describe('live-browser source contracts', () => {
   });
 });
 
+// The named top-level overlay functions, verbatim, for a vm harness to run.
+function overlayFunctions(names) {
+  return names.map(name => {
+    const source = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+    assert.ok(source, name);
+    return source;
+  }).join('\n');
+}
+
 // Exercise Tune's real control listeners and open/close lifecycle without a server.
 function tuneHarness(params) {
   function node(tag) {
@@ -1368,7 +1535,7 @@ function tuneHarness(params) {
   const body = node('div');
   const context = {
     state: 'CYCLING', paramsCurrentValues: {}, tuneOpen: false, currentSessionId: null,
-    visibleVariant: 1, restoredParamValues: null, rememberSessionFileMeta() {},
+    visibleVariant: 1, keptParamValues: null, rememberSessionFileMeta() {},
     paramsPanelBody: body, paramsPanelEl: node('div'), paramsPanelPalette: {},
     barEl: null, C: { brand: 'gold', ink: 'black' }, FONT: 'sans-serif', EASE: 'ease',
     document: { createElement: node }, el: (tag, style) => Object.assign(node(tag), { style }),
@@ -1378,15 +1545,11 @@ function tuneHarness(params) {
     saveSession() { context.savedParamValues = { ...context.paramsCurrentValues }; },
   };
   const names = [
-    'applyParamDefaults', 'rememberSavedParamValues', 'restoredParamValuesForVisibleVariant', 'noteParamEdited',
+    'applyParamDefaults', 'rememberSavedParamValues', 'keptParamValuesForVisibleVariant', 'noteParamEdited',
     'isValidSavedParamValue', 'applySavedParamValues', 'applySavedSessionMeta',
     'formatRangeValue', 'buildParamsPanel', 'openTunePopover', 'closeTunePopover', 'refreshParamsPanel',
   ];
-  const functions = names.map(name => {
-    const source = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
-    assert.ok(source, name);
-    return source;
-  }).join('\n');
+  const functions = overlayFunctions(names);
   const api = runInNewContext(`${functions}\n({refreshParamsPanel, openTunePopover, closeTunePopover, applySavedSessionMeta, rememberSavedParamValues})`, context);
   const fire = (control, event) => control.listeners[event]({ stopPropagation() {} });
   return { api, context, variant, body, fire };
@@ -1439,12 +1602,33 @@ describe('Tune reopening', () => {
     assert.equal(h.body.children[0].children[1].children[1].style.background, 'gold');
     const nextVariant = { values: {} };
     h.context.getVisibleVariantEl = () => nextVariant;
+    h.context.visibleVariant = 2;
     h.api.refreshParamsPanel();
     assert.equal(h.context.paramsCurrentValues.face, 'sans');
     assert.equal(nextVariant.values.face, 'sans');
   });
 });
 
+describe('Tune values across progressive arrival', () => {
+  it('keeps a knob edit when the remaining variants land (#1312)', () => {
+    const h = tuneHarness([{ id: 'size', kind: 'range', min: 0, max: 1, default: 0.4 }]);
+    h.context.currentSessionId = 's1';
+    // The first variant refreshes before the bar starts cycling.
+    h.context.state = 'GENERATING';
+    h.api.refreshParamsPanel();
+    h.context.state = 'CYCLING';
+    h.api.openTunePopover();
+    const input = h.body.children[0].children[1];
+    input.value = '0.8';
+    h.fire(input, 'input');
+    // The last variant landing refreshes twice.
+    h.api.refreshParamsPanel();
+    h.api.refreshParamsPanel();
+    assert.equal(h.context.paramsCurrentValues.size, 0.8);
+    assert.equal(h.variant.values.size, 0.8);
+    assert.equal(h.body.children[0].children[1].value, '0.8', 'slider agrees');
+  });
+});
 
 describe('Tune session boundaries', () => {
   it('clears old values when leaving the cycling state', () => {
@@ -1541,20 +1725,20 @@ describe('Tune values across a reload', () => {
     const defaults = { size: 0.4, italic: false, face: 'sans' };
     assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
     assert.deepEqual({ ...nextVariant.values }, defaults);
-    assert.equal(h.context.restoredParamValues, null);
+    assert.equal(h.context.keptParamValues, null);
     h.context.getVisibleVariantEl = () => h.variant;
     h.context.visibleVariant = 2;
     h.api.refreshParamsPanel();
     assert.deepEqual({ ...h.context.paramsCurrentValues }, defaults);
   });
 
-  it('drops the stash once a knob is edited, so a later refresh does not revive it', () => {
+  it('replaces the stash with a knob edit, so a later refresh keeps the edit', () => {
     const h = resumed({ paramValues: { size: 0.8 } });
     h.api.refreshParamsPanel();
     h.api.openTunePopover();
     h.fire(h.body.children[1].children[1], 'click');
-    assert.equal(h.context.restoredParamValues, null);
-    assert.equal(h.context.paramsCurrentValues.italic, true);
+    h.api.refreshParamsPanel();
+    assert.deepEqual({ ...h.context.paramsCurrentValues }, { size: 0.8, italic: true, face: 'sans' });
   });
 
   it('saves a knob edit locally, so the next reload restores it', () => {
@@ -1595,11 +1779,100 @@ describe('Tune values across a reload', () => {
   it('reads the variant from both the local and the server session shapes', () => {
     const h = tuneHarness(PARAMS);
     h.api.rememberSavedParamValues({ id: 's1', visibleVariant: 2, paramValues: { size: 0.2 } });
-    assert.deepEqual({ ...h.context.restoredParamValues, values: { ...h.context.restoredParamValues.values } },
+    assert.deepEqual({ ...h.context.keptParamValues, values: { ...h.context.keptParamValues.values } },
       { sessionId: 's1', variant: 2, values: { size: 0.2 } });
     h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: {} });
-    assert.equal(h.context.restoredParamValues.variant, 2, 'an empty save keeps the server values');
+    assert.equal(h.context.keptParamValues.variant, 2, 'an empty save keeps the server values');
     h.api.rememberSavedParamValues({ id: 's1', visible: 3, paramValues: { size: 0.3 } });
-    assert.equal(h.context.restoredParamValues.variant, 3);
+    assert.equal(h.context.keptParamValues.variant, 3);
+  });
+});
+
+// One page load of the overlay's pending dock; the shared Map stands in for sessionStorage across reloads.
+function pendingDockHarness(storage) {
+  const node = () => ({ style: {}, dataset: {}, setAttribute() {}, textContent: '' });
+  const context = {
+    PREFIX: 'impeccable-live', PORT: 8400, TOKEN: 'tok', MANUAL_APPLY_STATE_TTL_MS: 15 * 60 * 1000,
+    location: { pathname: '/' },
+    sessionStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key),
+    },
+    pendingApplyInFlight: false,
+    pendingDockEl: node(), pendingPillEl: node(), pendingPillLabelEl: node(), pendingPillCountEl: node(),
+    pendingPillSpinnerEl: node(), pendingTrashBtn: node(), pendingKeepFixingBtn: node(), pendingRollbackBtn: node(),
+    pendingApplyLabel: count => (count === 1 ? 'Apply edit' : 'Apply edits'),
+    retryDeclinedAgentTargets() {}, schedulePendingDockPosition() {}, refreshLiveControlsForManualApply() {}, playPendingIntroAnimation() {},
+    fetchPendingCount() {},
+  };
+  const names = [
+    'manualApplyStateKey', 'readStoredManualApplyState', 'writeManualApplyState', 'storeManualApplyState', 'clearStoredManualApplyState',
+    'shouldResumeManualApplyLoading', 'manualApplyLoadingText',
+    'renderPendingDockControls', 'setPendingApplyLoading', 'showManualApplyDecision', 'updatePendingCounter', 'numberOrNull',
+    'manualEditEventForCurrentPage', 'handleManualEditActivity',
+  ];
+  const functions = overlayFunctions(names);
+  const api = runInNewContext(`${functions}\n({showManualApplyDecision, storeManualApplyState, updatePendingCounter, handleManualEditActivity})`, context);
+  return { api, context };
+}
+
+describe('Pending dock after a reload', () => {
+  it('shows the repair decision again instead of an endless spinner (#1311)', () => {
+    const storage = new Map();
+    pendingDockHarness(storage).api.showManualApplyDecision({ remainingCount: 2, repair: { attempts: 3, maxAttempts: 3 } });
+    const { api, context } = pendingDockHarness(storage);
+    api.updatePendingCounter(2);
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingRollbackBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingPillSpinnerEl.style.display, 'none');
+    assert.equal(context.pendingApplyInFlight, false);
+  });
+
+  it('still resumes the loading state for a repair that is running (#1311)', () => {
+    const storage = new Map();
+    pendingDockHarness(storage).api.storeManualApplyState(2, { phase: 'repairing', repairAttempt: 1, repairMaxAttempts: 3 });
+    const { api, context } = pendingDockHarness(storage);
+    api.updatePendingCounter(2);
+    assert.equal(context.pendingApplyInFlight, true);
+    assert.equal(context.pendingPillSpinnerEl.style.display, 'inline-block');
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'none');
+    assert.equal(context.pendingRollbackBtn.style.display, 'none');
+  });
+});
+
+describe('Pending dock after Rollback', () => {
+  const decisionThenRollback = () => {
+    const { api, context } = pendingDockHarness(new Map());
+    api.updatePendingCounter(1);
+    api.showManualApplyDecision({ remainingCount: 1, repair: { attempts: 3, maxAttempts: 3 } });
+    return { api, context };
+  };
+  const assertNormalDock = context => {
+    assert.equal(context.pendingKeepFixingBtn.style.display, 'none');
+    assert.equal(context.pendingRollbackBtn.style.display, 'none');
+    assert.equal(context.pendingPillEl.disabled, false);
+    assert.equal(context.pendingPillCountEl.style.display, 'inline-flex');
+    assert.equal(context.pendingTrashBtn.style.display, 'inline-flex');
+    assert.equal(context.pendingTrashBtn.disabled, false);
+  };
+
+  it('returns to the normal enabled Apply and Discard when the rollback event arrives (#1322)', () => {
+    const { api, context } = decisionThenRollback();
+    api.handleManualEditActivity({ type: 'manual_edit_repair_rollback_done', pageUrl: '/' });
+    api.updatePendingCounter(1);
+    assertNormalDock(context);
+  });
+
+  it('returns to the normal enabled Apply and Discard from the Rollback click (#1322)', async () => {
+    const { context } = decisionThenRollback();
+    Object.assign(context, {
+      confirm: () => true,
+      fetch: async () => ({ ok: true, json: async () => ({ remainingCount: 1 }) }),
+      showToast() {},
+    });
+    const click = runInNewContext(`${SOURCE.match(/async function onPendingRollbackClick\(\) \{[\s\S]*?\n  \}/)[0]}\nonPendingRollbackClick`, context);
+    await click();
+    assertNormalDock(context);
   });
 });

@@ -108,6 +108,7 @@ pub fn target_signature(event: &Map<String, Value>) -> String {
         "elementId": t.element_id.clone().map(Value::String).unwrap_or(Value::Null),
         "classes": t.classes.clone().map(Value::String).unwrap_or(Value::Null),
         "tag": t.tag.clone().map(Value::String).unwrap_or(Value::Null),
+        "text": t.text.clone().map(Value::String).unwrap_or(Value::Null),
         "pageUrl": page_url,
     }))
     .unwrap_or_default()
@@ -222,4 +223,26 @@ pub fn compact_error(stderr: &str, message: Option<&str>) -> String {
         .or_else(|| message.map(String::from))
         .unwrap_or_else(|| "preflight failed".to_string());
     msg.chars().take(500).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sig(element: Value) -> String {
+        let event = json!({ "mode": "replace", "pageUrl": "/a", "element": element });
+        target_signature(event.as_object().unwrap())
+    }
+
+    #[test]
+    fn signature_separates_picks_that_differ_only_in_text() {
+        let base = json!({ "tagName": "div", "classes": ["card-body"] });
+        let mut one = base.clone();
+        one["textContent"] = json!("Company billing contact");
+        let mut two = base.clone();
+        two["textContent"] = json!("Checklist item detail");
+        assert_ne!(sig(one.clone()), sig(two));
+        assert!(sig(one).contains("\"text\":\"Company billing contact\""));
+        assert!(sig(base).contains("\"text\":null"));
+    }
 }

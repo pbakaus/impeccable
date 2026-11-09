@@ -5,17 +5,17 @@
  * where the accepted source has been carbonized cleanly but the browser still
  * exposes the accepted element under stale data-impeccable runtime wrappers.
  *
- * Run with:
- *   set -a; source .env.local; set +a
+ * Run with (keys from the environment or ~/.config/impeccable/dev.env):
  *   node --test --test-timeout=600000 tests/live-e2e-accept-cleanup-regression.test.mjs
  */
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
+import { devEnvView } from './lib/dev-keys.mjs';
 import { bootFixtureSession, FIXTURES_DIR } from './live-e2e/session.mjs';
 import { runSteerSmoke } from './live-e2e/steer.mjs';
 import { runPreActions, waitForCyclingRobust } from './live-e2e/preactions.mjs';
@@ -27,8 +27,6 @@ import {
   pickElement,
   waitForHandshake,
 } from './live-e2e/ui.mjs';
-
-loadEnvLocal();
 
 const FIXTURE_NAME = 'vite8-react-plain';
 const PICK_SELECTOR = 'h1.hero-title';
@@ -51,7 +49,7 @@ describe('live-e2e accept cleanup regression', () => {
     const fixture = readFixture(FIXTURE_NAME);
     const llmConfig = resolveLlmAgentConfig({
       provider: process.env.IMPECCABLE_E2E_LLM_PROVIDER || 'deepseek',
-    });
+    }, devEnvView());
     const agent = await createLlmAgent({
       config: llmConfig,
       log: (msg) => t.diagnostic('[llm] ' + msg),
@@ -145,31 +143,6 @@ describe('live-e2e accept cleanup regression', () => {
 
 function readFixture(name) {
   return JSON.parse(readFileSync(join(FIXTURES_DIR, name, 'fixture.json'), 'utf-8'));
-}
-
-function loadEnvLocal() {
-  const envPath = join(process.cwd(), '.env.local');
-  if (!existsSync(envPath)) return;
-  const body = readFileSync(envPath, 'utf-8');
-  for (const line of body.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-    if (!match) continue;
-    const [, key, rawValue] = match;
-    if (process.env[key]) continue;
-    process.env[key] = unquoteEnvValue(rawValue.trim());
-  }
-}
-
-function unquoteEnvValue(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"'))
-    || (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
 }
 
 function wrapTargetFromPickedElement(event) {

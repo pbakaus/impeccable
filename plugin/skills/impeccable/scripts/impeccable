@@ -74,6 +74,9 @@ hash_file() {
 }
 
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# VS Code syncs a plugin without the executable bit. Its hooks run this through
+# sh, so restore the bit for the commands the skill runs directly (#1249).
+[ -x "$0" ] || chmod +x "$0" 2>/dev/null || :
 manifest="$dir/engine-checksums.txt"
 
 # What the binary needs to know about its home: the skill directory (for
@@ -157,8 +160,23 @@ setup_help() {
   echo "Alternatively, set IMPECCABLE_HOME to a writable cache location, or IMPECCABLE_BIN to a preinstalled engine binary." >&2
 }
 fetch_url() {
+  http_status=""
+  download_host=""
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --retry 2 -o "$tmp" "$1" 2>/dev/null
+    fetch_result=0
+    metadata=$(curl -fsSL --retry 2 -w '%{http_code} %{url_effective}' -o "$tmp" "$1" 2>/dev/null) || fetch_result=$?
+    http_status=${metadata%% *}
+    effective_url=${metadata#* }
+    # Only the authority is needed, never the signed storage URL's query.
+    download_host=${effective_url#*://}
+    download_host=${download_host%%/*}
+    download_host=${download_host##*@}
+    case "$download_host" in
+      \[*) download_host=${download_host%%]*}] ;;
+      *) download_host=${download_host%%:*} ;;
+    esac
+    download_host=$(printf '%s' "$download_host" | tr '[:upper:]' '[:lower:]')
+    return "$fetch_result"
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$tmp" "$1" 2>/dev/null
   else
@@ -253,6 +271,16 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     exec "$cached" "$@"
   fi
   rm -f "$tmp" 2>/dev/null
+  case "$http_status" in
+    5[0-9][0-9])
+      case "$download_host" in
+        github.com|*.github.com|githubusercontent.com|*.githubusercontent.com)
+          echo "impeccable: could not download engine $version: GitHub's downloads are failing right now (HTTP $http_status from $download_host). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered." >&2 ;;
+        *)
+          echo "impeccable: could not download engine $version: $download_host is failing right now (HTTP $http_status), a server error on $download_host's side. Try again later." >&2 ;;
+      esac
+      exit 127 ;;
+  esac
   echo "impeccable: could not download engine $version from $url; check network access, the release URL, and curl or wget availability." >&2
   setup_help
   exit 127
