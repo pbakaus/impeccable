@@ -3138,11 +3138,12 @@
   let paramsPanelBody = null;   // grid holding the knob cells
   let paramsCurrentValues = {}; // {paramId: value} - mirror of the visible variant's live values
   let tuneOpen = false;         // whether the Tune popover is open right now
-  // Tune values a saved session carried across a reload: {sessionId, variant,
-  // values}. Cycling refreshes of that session and variant restore them (a
-  // resume refreshes more than once); a refresh for any other variant, or a
-  // knob edit, drops them.
-  let restoredParamValues = null;
+  // Tune values to keep for one session and variant: {sessionId, variant,
+  // values}. A reload restores them from the saved session and every knob
+  // edit replaces them. Cycling refreshes of that session and variant keep
+  // them (a resume, or the last progressive variant landing, refreshes more
+  // than once); a refresh for any other variant drops them.
+  let keptParamValues = null;
 
   // Theme-aware Tune popover. Appears as a drawer that slides out from the
   // contextual bar's bar-facing edge (below if the bar sits below the
@@ -3284,21 +3285,21 @@
     if (!values || typeof values !== 'object' || Array.isArray(values)) return;
     if (Object.keys(values).length === 0) return;
     const variant = Number(saved.visible != null ? saved.visible : saved.visibleVariant) || 0;
-    restoredParamValues = { sessionId: saved.id || null, variant, values: { ...values } };
+    keptParamValues = { sessionId: saved.id || null, variant, values: { ...values } };
   }
 
-  function restoredParamValuesForVisibleVariant() {
-    const restored = restoredParamValues;
-    if (!restored) return null;
-    if (restored.sessionId === currentSessionId && restored.variant === visibleVariant) return restored.values;
-    restoredParamValues = null;
+  function keptParamValuesForVisibleVariant() {
+    const kept = keptParamValues;
+    if (!kept) return null;
+    if (kept.sessionId === currentSessionId && kept.variant === visibleVariant) return kept.values;
+    keptParamValues = null;
     return null;
   }
 
   // The local save is what a reload resumes from, so an edit is saved there
   // as well as checkpointed to the server.
   function noteParamEdited() {
-    restoredParamValues = null;
+    keptParamValues = { sessionId: currentSessionId, variant: visibleVariant, values: { ...paramsCurrentValues } };
     saveSession();
     queueCheckpoint('param_changed');
   }
@@ -4288,32 +4289,46 @@
     retryDeclinedAgentTargets();
     clearStoredManualApplyState();
     if (pendingIntroAnimation) { pendingIntroAnimation.cancel(); pendingIntroAnimation = null; }
+    renderPendingDockControls('normal', 0);
     if (pendingDockEl) pendingDockEl.style.display = 'none';
     if (pendingPillEl) {
       pendingPillEl.dataset.count = '0';
       pendingPillEl.style.display = 'none';
-      pendingPillEl.disabled = false;
-      pendingPillEl.setAttribute('aria-busy', 'false');
       pendingPillEl.setAttribute('aria-label', 'Apply edits to source');
-      pendingPillEl.style.cursor = 'pointer';
-      pendingPillEl.style.filter = 'none';
+    }
+    if (pendingPillCountEl) pendingPillCountEl.textContent = '0';
+    if (pendingTrashBtn) pendingTrashBtn.style.display = 'none';
+    refreshLiveControlsForManualApply();
+  }
+
+  // Sets every control the dock's modes differ in, so leaving a mode can never
+  // leave its controls behind. 'normal': Apply and Discard enabled.
+  // 'applying': a spinner, both disabled. 'decision': Keep fixing and Rollback.
+  function renderPendingDockControls(mode, count) {
+    const applying = mode === 'applying';
+    const decision = mode === 'decision';
+    const normal = !applying && !decision;
+    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = applying ? 'inline-block' : 'none';
+    if (pendingPillLabelEl) {
+      pendingPillLabelEl.textContent = decision ? 'Apply needs attention'
+        : applying ? manualApplyLoadingText(count) : pendingApplyLabel(count);
+    }
+    if (pendingPillCountEl) pendingPillCountEl.style.display = normal ? 'inline-flex' : 'none';
+    if (pendingPillEl) {
+      pendingPillEl.disabled = !normal;
+      pendingPillEl.setAttribute('aria-busy', applying ? 'true' : 'false');
+      pendingPillEl.style.cursor = applying ? 'wait' : decision ? 'default' : 'pointer';
+      pendingPillEl.style.filter = applying ? 'brightness(0.98)' : 'none';
       pendingPillEl.style.transform = 'scale(1)';
     }
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
-    if (pendingPillLabelEl) pendingPillLabelEl.textContent = pendingApplyLabel(0);
-    if (pendingPillCountEl) {
-      pendingPillCountEl.textContent = '0';
-      pendingPillCountEl.style.display = 'inline-flex';
-    }
     if (pendingTrashBtn) {
-      pendingTrashBtn.style.display = 'none';
-      pendingTrashBtn.disabled = false;
-      pendingTrashBtn.style.cursor = 'pointer';
-      pendingTrashBtn.style.opacity = '1';
+      pendingTrashBtn.style.display = decision ? 'none' : 'inline-flex';
+      pendingTrashBtn.disabled = !normal;
+      pendingTrashBtn.style.cursor = normal ? 'pointer' : 'not-allowed';
+      pendingTrashBtn.style.opacity = normal ? '1' : '0.58';
     }
-    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-    refreshLiveControlsForManualApply();
+    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = decision ? 'inline-flex' : 'none';
+    if (pendingRollbackBtn) pendingRollbackBtn.style.display = decision ? 'inline-flex' : 'none';
   }
 
   function setPendingApplyLoading(loading, count) {
@@ -4323,24 +4338,7 @@
     const currentCount = count || parseInt(pendingPillEl.dataset.count || '0', 10) || 0;
     if (pendingApplyInFlight) storeManualApplyState(currentCount);
     else clearStoredManualApplyState();
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = pendingApplyInFlight ? 'inline-block' : 'none';
-    pendingPillLabelEl.textContent = pendingApplyInFlight
-      ? manualApplyLoadingText(currentCount)
-      : pendingApplyLabel(currentCount);
-    pendingPillCountEl.style.display = pendingApplyInFlight ? 'none' : 'inline-flex';
-    pendingPillEl.disabled = pendingApplyInFlight;
-    pendingPillEl.setAttribute('aria-busy', pendingApplyInFlight ? 'true' : 'false');
-    pendingPillEl.style.cursor = pendingApplyInFlight ? 'wait' : 'pointer';
-    pendingPillEl.style.filter = pendingApplyInFlight ? 'brightness(0.98)' : 'none';
-    pendingPillEl.style.transform = 'scale(1)';
-    pendingTrashBtn.disabled = pendingApplyInFlight;
-    pendingTrashBtn.style.cursor = pendingApplyInFlight ? 'not-allowed' : 'pointer';
-    pendingTrashBtn.style.opacity = pendingApplyInFlight ? '0.58' : '1';
-    if (pendingApplyInFlight) {
-      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-      pendingTrashBtn.style.display = 'inline-flex';
-    }
+    renderPendingDockControls(pendingApplyInFlight ? 'applying' : 'normal', currentCount);
     schedulePendingDockPosition();
     refreshLiveControlsForManualApply();
   }
@@ -4359,7 +4357,8 @@
     pendingTrashBtn.style.display = 'inline-flex';
     pendingDockEl.style.display = 'inline-flex';
     pendingPillEl.dataset.count = String(currentPageCount);
-    if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
+    if (readStoredManualApplyState()?.phase === 'repair-decision') showManualApplyDecision();
+    else if (pendingApplyInFlight || shouldResumeManualApplyLoading(currentPageCount)) setPendingApplyLoading(true, currentPageCount);
     schedulePendingDockPosition();
     if (previousCount <= 0) playPendingIntroAnimation();
   }
@@ -4463,18 +4462,8 @@
       repairAttempt: numberOrNull(msg?.repair?.attempts) || numberOrNull(msg?.repair?.attempt) || 3,
       repairMaxAttempts: numberOrNull(msg?.repair?.maxAttempts) || 3,
     });
-    if (pendingPillSpinnerEl) pendingPillSpinnerEl.style.display = 'none';
-    if (pendingPillLabelEl) pendingPillLabelEl.textContent = 'Apply needs attention';
-    if (pendingPillCountEl) pendingPillCountEl.style.display = 'none';
-    if (pendingPillEl) {
-      pendingPillEl.disabled = true;
-      pendingPillEl.setAttribute('aria-busy', 'false');
-      pendingPillEl.style.cursor = 'default';
-      pendingPillEl.style.display = 'inline-flex';
-    }
-    if (pendingTrashBtn) pendingTrashBtn.style.display = 'none';
-    if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'inline-flex';
-    if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'inline-flex';
+    renderPendingDockControls('decision', count);
+    if (pendingPillEl) pendingPillEl.style.display = 'inline-flex';
     if (pendingDockEl) pendingDockEl.style.display = 'inline-flex';
     schedulePendingDockPosition();
     refreshLiveControlsForManualApply();
@@ -4490,9 +4479,6 @@
         { method: 'POST', keepalive: true },
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      if (pendingKeepFixingBtn) pendingKeepFixingBtn.style.display = 'none';
-      if (pendingRollbackBtn) pendingRollbackBtn.style.display = 'none';
-      if (pendingTrashBtn) pendingTrashBtn.style.display = 'inline-flex';
     } catch (err) {
       console.error('[impeccable] repair retry failed:', err);
       showToast('Repair retry failed - see console', 4000);
@@ -4514,7 +4500,7 @@
       );
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const result = await res.json().catch(() => ({}));
-      clearStoredManualApplyState();
+      setPendingApplyLoading(false);
       updatePendingCounter(numberOrNull(result.remainingCount) || 0);
       showToast('Rolled back source; edits are still staged.', 3500);
     } catch (err) {
@@ -4577,7 +4563,7 @@
     }
 
     if (msg.type === 'manual_edit_repair_rollback_done') {
-      clearStoredManualApplyState();
+      setPendingApplyLoading(false);
       fetchPendingCount();
       return;
     }
@@ -5158,7 +5144,7 @@
   }
 
   // Build/rebuild the panel's contents for the current variant AND apply
-  // its defaults to the variant wrapper (so scoped CSS responds even before
+  // its values to the variant wrapper (so scoped CSS responds even before
   // the user opens the popover). Visibility is governed by tuneOpen.
   function refreshParamsPanel() {
     if (state !== 'CYCLING') {
@@ -5169,9 +5155,9 @@
     }
     const variantEl = getVisibleVariantEl();
     const params = parseVariantParams(variantEl);
-    // Values saved before a reload come back for the variant they were saved
-    // on; a switch to any other variant starts from its defaults.
-    const restored = restoredParamValuesForVisibleVariant();
+    // Values kept for this session and variant (restored by a reload, or the
+    // last knob edit) come back; any other variant starts from its defaults.
+    const kept = keptParamValuesForVisibleVariant();
     if (!variantEl || params.length === 0) {
       paramsCurrentValues = {};
       tuneOpen = false;
@@ -5180,7 +5166,7 @@
       return;
     }
     applyParamDefaults(variantEl, params);
-    if (restored) applySavedParamValues(variantEl, params, restored);
+    if (kept) applySavedParamValues(variantEl, params, kept);
     buildParamsPanel(variantEl, params);
     if (tuneOpen) {
       // If already visible (variant cycled while open), refresh in place
@@ -6514,8 +6500,8 @@
     showToast('The previous live session no longer matches the source file, so it was discarded. Pick an element to start fresh.', 6000);
   }
 
-  function isJsxSourceFile(filePath) {
-    return /\.[cm]?[jt]sx$/i.test(String(filePath || ''));
+  function isCompiledTemplateSourceFile(filePath) {
+    return /\.([cm]?[jt]sx|vue|svelte)$/i.test(String(filePath || ''));
   }
 
   function sourceHasSessionWrapper(text, sessionId) {
@@ -6662,15 +6648,15 @@
       return;
     }
     rememberSessionFileMeta({ file: filePath });
-    if (isJsxSourceFile(filePath)) {
+    if (isCompiledTemplateSourceFile(filePath)) {
       const liveWrapper = findVariantsWrapper(sessionId);
       if (liveWrapper && liveWrapper.querySelector('[data-impeccable-variant]:not([data-impeccable-variant="original"])')) {
         completeSourceInjection(liveWrapper, sessionId, { ...opts, filePath });
         return;
       }
-      // #454: never fetch/parse JSX. Missing wrap waits for mount (closed
-      // modal / other route). Insert scaffolds stay for late HMR. A replace
-      // scaffold with no variants after retries is a failed generation.
+      // #454, #1279, #1282: never fetch/parse JSX, Vue or Svelte. Missing wrap waits for
+      // mount (closed modal / other route). Insert scaffolds stay for late HMR.
+      // A replace scaffold with no variants after retries is a failed generation.
       if (opts.generationCompleted && sessionId === currentSessionId) {
         const attempt = opts.attempt || 0;
         if (attempt < COMPLETED_SOURCE_FALLBACK_RETRIES) {
@@ -8214,8 +8200,11 @@
       return;
     }
     if (state !== 'PICKING' || !pickActive) return;
-    const target = document.elementFromPoint(e.clientX, e.clientY);
-    if (!target || !pickable(target) || target === hoveredElement) return;
+    let target = document.elementFromPoint(e.clientX, e.clientY);
+    if (own(target)) return;
+    // Too small to pick (a bare <label>, an icon): take the nearest ancestor that is (#1297).
+    while (target && !pickable(target)) target = target.parentElement;
+    if (!target || target === hoveredElement) return;
     hoveredElement = target;
     showHighlight(target);
   }
@@ -8725,6 +8714,12 @@
     }
     return btoa(binary);
   }
+  // CSSOM keeps url() as written, and a relative source can't load inside the rasterized SVG.
+  function absolutizeUrls(cssText, base) {
+    return cssText.replace(/url\((?:(['"])([^'"]*)\1|([^'")\s]+))\)/g, (orig, q = '', quoted, bare) => {
+      try { return 'url(' + q + new URL(quoted ?? bare, base).href + q + ')'; } catch { return orig; }
+    });
+  }
   async function inlineFontUrls(cssText) {
     const urlRe = /url\((['"]?)(https?:\/\/[^'")\s]+)\1\)/g;
     const urls = new Set();
@@ -8756,7 +8751,7 @@
         const rules = sheet.cssRules;
         for (const rule of rules) {
           if (rule.constructor.name === 'CSSFontFaceRule' || rule.cssText?.startsWith('@font-face')) {
-            chunks.push(rule.cssText);
+            chunks.push(absolutizeUrls(rule.cssText, sheet.href || document.baseURI));
           }
         }
       } catch {
@@ -8766,7 +8761,7 @@
           if (!res.ok) continue;
           const text = await res.text();
           let m2;
-          while ((m2 = fontFaceRe.exec(text))) chunks.push(m2[0]);
+          while ((m2 = fontFaceRe.exec(text))) chunks.push(absolutizeUrls(m2[0], sheet.href));
         } catch { /* ignore; capture is best-effort */ }
       }
     }

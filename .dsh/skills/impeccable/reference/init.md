@@ -121,6 +121,8 @@ Then configure live mode when useful: skip native or non-runnable projects and l
 
 Summarize captured and deliberately undecided facts. Do not offer DESIGN.md merely because it is missing.
 
+Tell the user once which files to commit: PRODUCT.md, DESIGN.md, `.impeccable/config.json`, `.impeccable/surfaces/`, `.impeccable/design.json`, `.impeccable/live/config.json`, and `.impeccable/critique/ignore.md`. A blanket `.impeccable/` ignore hides them from teammates and other worktrees. The runtime directories (`questions/`, `mocks/`, `review/`, critique snapshots) ignore themselves, and `.impeccable/config.local.json` stays on the developer's machine.
+
 Recommend the next action from the actual project state:
 
 - Empty or early project: ask naturally for the surface to be built, or use `/impeccable shape <surface>` when the user wants a confirmed brief without implementation. New-work will establish a visual world only when the requested work needs one.
