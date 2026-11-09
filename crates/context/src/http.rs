@@ -18,7 +18,8 @@
 //!
 //! The shared agent builder also honors `ALL_PROXY`, `HTTPS_PROXY`, and
 //! `HTTP_PROXY` (and their lowercase forms) so `update` and `install` work
-//! behind a corporate proxy (#823). Live-mode localhost HTTP does not use
+//! behind a corporate proxy (#823), and `NO_PROXY`, which ureq 2 ignores,
+//! per request. Live-mode localhost HTTP does not use
 //! this builder. The `socks-proxy` feature is enabled because ureq 2.x
 //! prefers `ALL_PROXY`, which is often `socks5://`. We opt in on this
 //! builder only, not globally via ureq's `proxy-from-env` feature.
@@ -35,10 +36,99 @@ use ureq::rustls::{self, ClientConfig, RootCertStore};
 /// `ureq::AgentBuilder::new()` with the engine's trust store installed and
 /// env proxy vars honored. Every HTTPS call site builds its agent from this;
 /// the plain-HTTP calls to the live server on localhost do not use it.
-pub fn agent_builder() -> ureq::AgentBuilder {
-    ureq::AgentBuilder::new()
-        .tls_config(tls_config())
-        .try_proxy_from_env(true)
+///
+/// `url` is the request the agent is for: ureq 2 never reads `NO_PROXY`, so
+/// the builder leaves the proxy off when that host matches it, and always for
+/// loopback (a proxy cannot reach this machine's localhost; Go's net/http
+/// skips it the same way). Behind a proxy with `NO_PROXY=127.0.0.1`, a local
+/// image endpoint otherwise got the proxy's 403.
+pub fn agent_builder(url: &str) -> ureq::AgentBuilder {
+    let builder = ureq::AgentBuilder::new().tls_config(tls_config());
+    if bypasses_proxy(url, &no_proxy_from_env()) {
+        builder
+    } else {
+        builder.try_proxy_from_env(true)
+    }
+}
+
+fn no_proxy_from_env() -> String {
+    ["NO_PROXY", "no_proxy"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok().filter(|v| !v.trim().is_empty()))
+        .unwrap_or_default()
+}
+
+/// Whether a request to `url` goes direct under `no_proxy`, read as curl
+/// reads it: comma-separated entries; `*` matches every host; a domain
+/// (with or without a leading `.` or `*.`) matches itself and its
+/// subdomains; an IP or a CIDR range matches an IP host; `host:port`
+/// matches that port only; case does not matter.
+pub(crate) fn bypasses_proxy(url: &str, no_proxy: &str) -> bool {
+    let Some((host, port)) = host_and_port(url) else { return false };
+    let ip = host.parse::<std::net::IpAddr>().ok();
+    if host == "localhost" || host.ends_with(".localhost") || ip.is_some_and(|ip| ip.is_loopback()) {
+        return true;
+    }
+    no_proxy.split(',').map(|e| e.trim().to_ascii_lowercase()).filter(|e| !e.is_empty()).any(|entry| {
+        if entry == "*" {
+            return true;
+        }
+        if let Some((net, bits)) = entry.split_once('/') {
+            return matches!((ip, net.parse::<std::net::IpAddr>(), bits.parse::<u32>()), (Some(ip), Ok(net), Ok(bits)) if in_cidr(ip, net, bits));
+        }
+        let (name, entry_port) = split_port(&entry);
+        if entry_port.is_some_and(|p| p != port) {
+            return false;
+        }
+        let name = name.trim_start_matches("*.").trim_start_matches('.');
+        !name.is_empty() && (host == name || host.ends_with(&format!(".{name}")))
+    })
+}
+
+/// The lowercased host (brackets stripped) and the port, defaulted by scheme.
+fn host_and_port(url: &str) -> Option<(String, u16)> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let default = match scheme.to_ascii_lowercase().as_str() {
+        "https" => 443,
+        "http" => 80,
+        _ => return None,
+    };
+    let (host, port) = split_port(authority);
+    let host = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    (!host.is_empty()).then(|| (host, port.unwrap_or(default)))
+}
+
+/// `name:port`, `[v6]:port`, or a bare name or address. A bare IPv6
+/// address (more than one colon, no brackets) has no port.
+fn split_port(s: &str) -> (&str, Option<u16>) {
+    if let Some(rest) = s.strip_prefix('[') {
+        if let Some((addr, tail)) = rest.split_once(']') {
+            return (addr, tail.strip_prefix(':').and_then(|p| p.parse().ok()));
+        }
+    }
+    match s.rsplit_once(':') {
+        Some((name, port)) if !name.contains(':') => match port.parse() {
+            Ok(p) => (name, Some(p)),
+            Err(_) => (s, None),
+        },
+        _ => (s, None),
+    }
+}
+
+fn in_cidr(ip: std::net::IpAddr, net: std::net::IpAddr, bits: u32) -> bool {
+    use std::net::IpAddr::{V4, V6};
+    let (a, b, width) = match (ip, net) {
+        (V4(a), V4(b)) => (u128::from(u32::from(a)), u128::from(u32::from(b)), 32),
+        (V6(a), V6(b)) => (u128::from(a), u128::from(b), 128),
+        _ => return false,
+    };
+    if bits > width {
+        return false;
+    }
+    let shift = width - bits;
+    shift >= 128 || (a >> shift) == (b >> shift)
 }
 
 fn tls_config() -> Arc<ClientConfig> {
@@ -112,7 +202,7 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
         // Runs the real rustls-native-certs load: it must not panic, and the
         // shared config must be accepted by a ureq agent.
         let _lock = PROXY_ENV_LOCK.lock().unwrap();
-        let _agent = agent_builder().build();
+        let _agent = agent_builder("https://impeccable.style/").build();
     }
 
     struct ProxyEnvGuard {
@@ -173,6 +263,84 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
     }
 
     #[test]
+    fn no_proxy_matches_like_curl() {
+        let cases: &[(&str, &str, bool)] = &[
+            ("http://127.0.0.1:8790/openai/v1", "", true), // loopback never goes through a proxy
+            ("http://localhost:3000/", "", true),
+            ("http://[::1]:8080/", "", true),
+            ("http://app.localhost/", "", true),
+            ("https://api.openai.com/v1", "", false),
+            ("https://api.openai.com/v1", "*", true),
+            ("https://api.openai.com/v1", "openai.com", true),
+            ("https://api.openai.com/v1", ".openai.com", true),
+            ("https://api.openai.com/v1", "*.openai.com", true),
+            ("https://openai.com/", ".openai.com", true),
+            ("https://notopenai.com/", "openai.com", false),
+            ("https://API.OpenAI.com/", "api.openai.com", true),
+            ("http://10.1.2.3:9000/", "10.0.0.0/8", true),
+            ("http://11.1.2.3:9000/", "10.0.0.0/8", false),
+            ("http://10.1.2.3:9000/", "10.1.2.3", true),
+            ("http://gpu.lan:9000/", "gpu.lan:9000", true),
+            ("http://gpu.lan:9001/", "gpu.lan:9000", false),
+            ("https://gpu.lan/", "gpu.lan:443", true),
+            ("http://user:pw@gpu.lan:9000/x", " foo.com , gpu.lan ", true),
+            ("http://[fd00::5]:80/", "fd00::/8", true),
+            ("not a url", "*", false),
+        ];
+        for (url, no_proxy, want) in cases {
+            assert_eq!(bypasses_proxy(url, no_proxy), *want, "{url} with NO_PROXY={no_proxy:?}");
+        }
+    }
+
+    #[test]
+    fn agent_skips_the_proxy_for_no_proxy_hosts() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        let _lock = PROXY_ENV_LOCK.lock().unwrap();
+
+        // A proxy that refuses everything, as a sandbox or corporate proxy
+        // refuses a loopback destination it cannot reach.
+        let proxy = TcpListener::bind("127.0.0.1:0").expect("bind proxy");
+        let proxy_port = proxy.local_addr().unwrap().port();
+        let target = TcpListener::bind("127.0.0.1:0").expect("bind target");
+        let target_port = target.local_addr().unwrap().port();
+        let serve = |listener: TcpListener, reply: &'static [u8]| {
+            std::thread::spawn(move || {
+                accept_until(listener, |stream| {
+                    let mut buf = [0u8; 4096];
+                    if stream.read(&mut buf).unwrap_or(0) == 0 {
+                        return false;
+                    }
+                    let _ = stream.write_all(reply);
+                    true
+                });
+            })
+        };
+        let _proxy_thread = serve(proxy, b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n");
+        let target_thread = serve(target, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok");
+
+        let proxy_url = format!("http://127.0.0.1:{proxy_port}");
+        let _env_guard = ProxyEnvGuard::set(&[
+            ("ALL_PROXY", None),
+            ("all_proxy", None),
+            ("HTTPS_PROXY", Some(&proxy_url)),
+            ("https_proxy", Some(&proxy_url)),
+            ("HTTP_PROXY", Some(&proxy_url)),
+            ("http_proxy", Some(&proxy_url)),
+            ("NO_PROXY", Some("127.0.0.1,localhost")),
+            ("no_proxy", None),
+        ]);
+
+        let url = format!("http://127.0.0.1:{target_port}/openai/v1/images");
+        let agent = agent_builder(&url).timeout(Duration::from_secs(2)).build();
+        let response = agent.get(&url).call().expect("direct request to a NO_PROXY host");
+        assert_eq!(response.status(), 200);
+        target_thread.join().expect("target thread");
+    }
+
+    #[test]
     fn agent_honors_http_proxy_from_env() {
         use std::io::{Read, Write};
         use std::net::TcpListener;
@@ -211,7 +379,7 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("http_proxy", Some(&proxy_url)),
         ]);
 
-        let agent = agent_builder()
+        let agent = agent_builder("http://proxy-test.invalid/")
             .timeout(Duration::from_secs(2))
             .build();
         let response = agent.get("http://proxy-test.invalid/").call();
@@ -315,7 +483,7 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("http_proxy", None),
         ]);
 
-        let agent = agent_builder()
+        let agent = agent_builder("http://proxy-test.invalid/")
             .timeout(Duration::from_secs(2))
             .build();
         let response = agent.get("http://proxy-test.invalid/").call();

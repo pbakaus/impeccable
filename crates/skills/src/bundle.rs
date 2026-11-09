@@ -56,8 +56,8 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 /// set.
 const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-fn download_agent(connect: std::time::Duration, idle: std::time::Duration) -> ureq::AgentBuilder {
-    impeccable_context::http::agent_builder()
+fn download_agent(url: &str, connect: std::time::Duration, idle: std::time::Duration) -> ureq::AgentBuilder {
+    impeccable_context::http::agent_builder(url)
         .timeout_connect(connect)
         .timeout_read(idle)
         .timeout_write(idle)
@@ -79,7 +79,7 @@ fn describe_io_error(e: &std::io::Error, url: &str, idle: std::time::Duration) -
 /// through `download_file`, which streams to disk. Reads are capped at
 /// [`MAX_DOWNLOAD_BYTES`]; a longer response is an error, not a truncation.
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let agent = download_agent(CONNECT_TIMEOUT, IDLE_TIMEOUT).build();
+    let agent = download_agent(url, CONNECT_TIMEOUT, IDLE_TIMEOUT).build();
     match agent.get(url).call() {
         Ok(res) => {
             let mut body = Vec::new();
@@ -113,7 +113,7 @@ fn ureq_fetch(url: &str) -> Result<FetchResponse, String> {
 /// One transport hop with a connect timeout and an idle timeout, and no cap
 /// on the whole transfer (see [`IDLE_TIMEOUT`]).
 fn ureq_fetch_with(url: &str, connect: std::time::Duration, idle: std::time::Duration) -> Result<FetchResponse, String> {
-    let agent = download_agent(connect, idle).redirects(0).build();
+    let agent = download_agent(url, connect, idle).redirects(0).build();
     match agent.get(url).call() {
         Ok(res) => Ok(FetchResponse {
             status: res.status(),

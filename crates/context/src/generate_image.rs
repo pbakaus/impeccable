@@ -282,7 +282,7 @@ fn sniffed_type(bytes: &[u8]) -> Option<&'static str> {
 /// the caller names the URL.
 pub(crate) fn fetch_image(url: &str, timeout: std::time::Duration, redirects: u32) -> Result<(Vec<u8>, &'static str), String> {
     use std::io::Read;
-    let agent = crate::http::agent_builder().timeout_connect(timeout).timeout(timeout).redirects(redirects).build();
+    let agent = crate::http::agent_builder(url).timeout_connect(timeout).timeout(timeout).redirects(redirects).build();
     let response = match agent.get(url).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(code, _)) => return Err(format!("HTTP {}", code)),
@@ -407,7 +407,7 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
             }
         }
     }
-    let agent = crate::http::agent_builder().build();
+    let agent = crate::http::agent_builder(api_base).build();
     let response = if !refs.is_empty() {
         let boundary = format!("----impeccable{:x}", crate::util::now_ms() as u64);
         let mut body: Vec<u8> = Vec::new();

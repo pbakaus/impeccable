@@ -83,12 +83,13 @@ fn download(raw: &str, path: &Path, expected: &str) -> Result<()> {
     // Validate every redirect too: an HTTPS asset must never downgrade to HTTP.
     let mut url = secure_url(raw, false)?;
     let local_http = url.scheme() == "http";
-    // The engine's shared builder: its trust store and the ALL_/HTTPS_/HTTP_PROXY variables (#823).
-    let agent = impeccable_context::http::agent_builder()
-        .redirects(0)
-        .timeout(Duration::from_secs(300))
-        .build();
     for _ in 0..10 {
+        // The engine's shared builder: its trust store and the proxy variables
+        // (#823), NO_PROXY matched per hop since a redirect can change host.
+        let agent = impeccable_context::http::agent_builder(url.as_str())
+            .redirects(0)
+            .timeout(Duration::from_secs(300))
+            .build();
         let response = agent
             .get(url.as_str())
             .call()
