@@ -70,7 +70,9 @@ impl Client {
         let builder = if account.is_loopback() {
             ureq::AgentBuilder::new().resolver(resolve_loopback)
         } else {
-            impeccable_context::http::agent_builder()
+            // Every request stays on the issuer's origin (`checked`), so its
+            // host decides the NO_PROXY match for the whole client.
+            impeccable_context::http::agent_builder(&account.issuer)
         };
         let agent = builder
             .timeout_connect(Duration::from_secs(10))
