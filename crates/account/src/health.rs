@@ -33,6 +33,8 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
 /// Each git question (top level, remote, branch).
 const GIT_DEADLINE: Duration = Duration::from_secs(2);
+/// How long a change to `health.json` waits for one in another process.
+const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
 const MAX_FINGERPRINTS: usize = 5000;
 const MAX_LABEL: usize = 100;
@@ -281,14 +283,41 @@ impl Local {
     fn sync(&self) -> bool {
         self.sync.unwrap_or(SYNC_BY_DEFAULT)
     }
-    /// Re-read, change one thing, save. Starting from what is on disk now
-    /// keeps a notice from undoing an `off` written meanwhile. An unreadable
-    /// file is replaced only by a choice of sync, never by a notice.
+    /// Re-read, change one thing, save, all under `health.json.lock`, so a
+    /// scan's notice can't read "on", lose the race to an `off` in another
+    /// process and then write its stale state over it. The OS drops the lock
+    /// if the process dies. An unreadable file is replaced only by a choice of
+    /// sync, never by a notice.
     fn update(
         env: &std::collections::HashMap<String, String>,
         change: impl FnOnce(&mut Local),
     ) -> Result<(), String> {
         let path = Local::path(env).ok_or("no home directory; set IMPECCABLE_HOME")?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let lock = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path.with_extension("json.lock"))
+            .map_err(|e| format!("could not open the design health lock: {e}"))?;
+        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        loop {
+            match lock.try_lock() {
+                Ok(()) => break,
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(25))
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err("another impeccable health change is still running; retry shortly".into())
+                }
+                Err(std::fs::TryLockError::Error(e)) => {
+                    return Err(format!("could not take the design health lock: {e}"))
+                }
+            }
+        }
         let mut local = Local::read(env).unwrap_or(Local {
             sync: Some(false),
             ..Local::default()
@@ -304,10 +333,9 @@ impl Local {
         if let Some(h) = local.hinted {
             m.insert("hinted".into(), h.into());
         }
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-        crate::store::write_private(&path, Value::Object(m).to_string().as_bytes())
+        let saved = crate::store::write_private(&path, Value::Object(m).to_string().as_bytes());
+        drop(lock);
+        saved
     }
 }
 
@@ -740,6 +768,41 @@ mod tests {
         assert!(seen_by_scan.sync());
         Local::update(&env, |l| l.sync = Some(false)).unwrap(); // `health off` meanwhile
         Local::update(&env, |l| l.noticed = Some("https://issuer 7".into())).unwrap(); // the scan's notice
+        let now = Local::read(&env).unwrap();
+        assert_eq!((now.sync, now.noticed.as_deref()), (Some(false), Some("https://issuer 7")));
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn an_update_waits_for_one_in_progress_in_another_process() {
+        // Catches (review, Greptile P1 on #1343): a scan's notice reading "on", an `off` saving
+        // meanwhile, then the notice writing its stale state over it, so uploads resume.
+        let home = std::env::temp_dir().join(format!("impeccable-health-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let env = std::collections::HashMap::from([(
+            "IMPECCABLE_HOME".to_string(),
+            home.to_string_lossy().into_owned(),
+        )]);
+        // Another process is mid-update: it holds the lock.
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(home.join("health.json.lock"))
+            .unwrap();
+        held.lock().unwrap();
+        let scan = {
+            let env = env.clone();
+            std::thread::spawn(move || Local::update(&env, |l| l.noticed = Some("https://issuer 7".into())))
+        };
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!home.join("health.json").exists(), "the notice wrote while another update held the lock");
+        // The other process saves `off`, then lets go.
+        crate::store::write_private(&home.join("health.json"), br#"{"sync":false}"#).unwrap();
+        drop(held);
+        scan.join().unwrap().unwrap();
         let now = Local::read(&env).unwrap();
         assert_eq!((now.sync, now.noticed.as_deref()), (Some(false), Some("https://issuer 7")));
         let _ = std::fs::remove_dir_all(&home);
