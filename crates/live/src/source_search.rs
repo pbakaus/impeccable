@@ -200,13 +200,38 @@ pub fn find_source_file(
     skip_dirs: &[&str],
     file_filter: &dyn Fn(&str) -> bool,
 ) -> Option<String> {
+    let mut first: Option<String> = None;
+    visit_source_files(
+        query,
+        cwd,
+        extensions,
+        skip_dirs,
+        file_filter,
+        &mut |path, _| {
+            first = Some(path.to_string());
+            true
+        },
+    );
+    first
+}
+
+/// Every template file whose contents include `query`, in `find_source_file`'s
+/// walk order, as (absolute path, contents). Stops once `on_hit` returns true.
+pub fn visit_source_files(
+    query: &str,
+    cwd: &str,
+    extensions: &[String],
+    skip_dirs: &[&str],
+    file_filter: &dyn Fn(&str) -> bool,
+    on_hit: &mut dyn FnMut(&str, &str) -> bool,
+) {
     let mut seen: Vec<String> = Vec::new();
     for dir in SOURCE_SEARCH_DIRS {
         let abs_dir = jsp::join(&[cwd, dir]);
         if !exists(&abs_dir) {
             continue;
         }
-        if let Some(r) = walk(
+        if walk(
             &abs_dir,
             query,
             extensions,
@@ -214,13 +239,15 @@ pub fn find_source_file(
             file_filter,
             &mut seen,
             0,
+            on_hit,
         ) {
-            return Some(r);
+            return;
         }
     }
-    None
 }
 
+/// True once `on_hit` has asked to stop.
+#[allow(clippy::too_many_arguments)]
 fn walk(
     dir: &str,
     query: &str,
@@ -229,17 +256,22 @@ fn walk(
     file_filter: &dyn Fn(&str) -> bool,
     seen: &mut Vec<String>,
     depth: usize,
-) -> Option<String> {
+    on_hit: &mut dyn FnMut(&str, &str) -> bool,
+) -> bool {
     if depth > MAX_DEPTH {
-        return None;
+        return false;
     }
-    let real = std::fs::canonicalize(dir).ok()?;
+    let Ok(real) = std::fs::canonicalize(dir) else {
+        return false;
+    };
     let real = real.to_string_lossy().into_owned();
     if seen.contains(&real) {
-        return None;
+        return false;
     }
     seen.push(real);
-    let entries = read_dir_sorted(dir)?;
+    let Some(entries) = read_dir_sorted(dir) else {
+        return false;
+    };
     for entry in &entries {
         if !entry.is_file {
             continue;
@@ -248,13 +280,16 @@ fn walk(
             continue;
         }
         let file_path = jsp::join(&[dir, &entry.name]);
-        if !file_filter(&file_path) {
+        // Read before filtering: the filter may spawn git, and with text the
+        // walk no longer stops at the first hit.
+        let Some(text) = safe_read(&file_path) else {
+            continue;
+        };
+        if !text.contains(query) || !file_filter(&file_path) {
             continue;
         }
-        if let Some(text) = safe_read(&file_path) {
-            if text.contains(query) {
-                return Some(file_path);
-            }
+        if on_hit(&file_path, &text) {
+            return true;
         }
     }
     for entry in &entries {
@@ -268,9 +303,18 @@ fn walk(
         if !is_dir(&sub) {
             continue;
         }
-        if let Some(r) = walk(&sub, query, extensions, skip, file_filter, seen, depth + 1) {
-            return Some(r);
+        if walk(
+            &sub,
+            query,
+            extensions,
+            skip,
+            file_filter,
+            seen,
+            depth + 1,
+            on_hit,
+        ) {
+            return true;
         }
     }
-    None
+    false
 }

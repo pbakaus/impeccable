@@ -3,10 +3,12 @@
 //! comment syntax and style mode from the framework registry, and the
 //! cssAuthoring contracts.
 
-use crate::inject::resolve_source_traits;
+use crate::inject::{resolve_source_traits, SourceTraits};
 use crate::source_search::{
-    find_source_file, is_generated_file, resolve_live_template_extensions, NEVER_SOURCE_DIRS,
+    find_source_file, is_generated_file, resolve_live_template_extensions, visit_source_files,
+    NEVER_SOURCE_DIRS,
 };
+use crate::util::{jsp, safe_read};
 use impeccable_core::js::{is_js_whitespace, trim, WS};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -242,6 +244,30 @@ pub fn filter_by_text(
         .collect()
 }
 
+/// Whether `text` is long enough (8 normalized chars) to choose between
+/// elements; `filter_by_text` matches nothing below that.
+fn text_disambiguates(text: &str) -> bool {
+    let collapsed = WS_RUN_RE.replace_all(text, " ");
+    trim(&collapsed).encode_utf16().count() >= 8
+}
+
+/// Every element any query finds, first-found order. Stops at the first query
+/// that leaves exactly one candidate.
+fn collect_candidates(lines: &[String], queries: &[String], tag: Option<&str>) -> Vec<ElementMatch> {
+    let mut candidates: Vec<ElementMatch> = Vec::new();
+    for q in queries {
+        for c in find_all_elements(lines, q, tag) {
+            if !candidates.iter().any(|x| x.start_line == c.start_line) {
+                candidates.push(c);
+            }
+        }
+        if candidates.len() == 1 {
+            break;
+        }
+    }
+    candidates
+}
+
 /// JS: findOpenerLine(lines, matchLine, tag)
 /// The browser reports the rendered tag lowercased, so a source `<Input>` matches `input`.
 pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) -> Option<usize> {
@@ -373,12 +399,6 @@ pub fn comment_syntax_value(cs: (&str, &str)) -> Value {
     json!({ "open": cs.0, "close": cs.1 })
 }
 
-/// JS: detectStyleMode(filePath) → (mode, styleTag)
-pub fn detect_style_mode(file_path: &str) -> (&'static str, &'static str) {
-    let t = resolve_source_traits(file_path);
-    (t.style_mode, t.style_tag)
-}
-
 /// JS: buildCssSelectorPrefixExamples(styleMode, count)
 pub fn build_css_selector_prefix_examples(style_mode: &str, count: i64) -> Vec<String> {
     if style_mode != "astro-global-prefixed" {
@@ -389,14 +409,15 @@ pub fn build_css_selector_prefix_examples(style_mode: &str, count: i64) -> Vec<S
         .collect()
 }
 
-/// JS: buildCssAuthoring(styleMode, count)
-pub fn build_css_authoring(style_mode: (&str, &str), count: i64) -> Value {
-    let (mode, style_tag) = style_mode;
+/// JS: buildCssAuthoring(styleMode, count), read from the file's source traits.
+pub fn build_css_authoring(traits: &SourceTraits, count: i64) -> Value {
+    let (mode, style_tag, style_close) = (traits.style_mode, traits.style_tag, traits.style_close);
     let numbers: Vec<i64> = (1..=count.max(0)).collect();
     if mode == "astro-global-prefixed" {
         return json!({
             "mode": mode,
             "styleTag": style_tag,
+            "styleClose": style_close,
             "strategy": "global-prefixed",
             "rulePattern": "[data-impeccable-variant=\"N\"] > .variant-class { ... }",
             "selectorExamples": numbers.iter().map(|n| format!("[data-impeccable-variant=\"{}\"] > .variant-class", n)).collect::<Vec<_>>(),
@@ -416,6 +437,7 @@ pub fn build_css_authoring(style_mode: (&str, &str), count: i64) -> Value {
     json!({
         "mode": mode,
         "styleTag": style_tag,
+        "styleClose": style_close,
         "strategy": "scope-rule",
         "rulePattern": "@scope ([data-impeccable-variant=\"N\"]) { :scope > .variant-class { ... } }",
         "selectorExamples": numbers.iter().map(|n| format!("@scope ([data-impeccable-variant=\"{}\"]) {{ :scope > .variant-class {{ ... }} }}", n)).collect::<Vec<_>>(),
@@ -436,6 +458,169 @@ pub fn find_file_with_query(query: &str, cwd: &str, include_generated: bool) -> 
     let extensions = resolve_live_template_extensions(cwd);
     let filter = |p: &str| include_generated || !is_generated_file(p, cwd);
     find_source_file(query, cwd, &extensions, &NEVER_SOURCE_DIRS, &filter)
+}
+
+/// A source file read once for element resolution: the path as the caller
+/// spelled it (absolute from the search, verbatim from `--file`) and its lines.
+pub struct SourceFile {
+    pub path: String,
+    pub lines: Vec<String>,
+}
+
+impl SourceFile {
+    pub fn read(cwd: &str, path: &str) -> Option<Self> {
+        let content = safe_read(&jsp::resolve(cwd, &[path]))?;
+        Some(Self::from_content(path, &content))
+    }
+
+    fn from_content(path: &str, content: &str) -> Self {
+        SourceFile {
+            path: path.to_string(),
+            lines: content.split('\n').map(String::from).collect(),
+        }
+    }
+}
+
+/// JS: resolveElementMatch, grown across files. How the locator queries, and
+/// the picked text when it has at least 8 normalized chars, resolved.
+pub enum Resolution {
+    /// One element: the first the locator finds, or the one the text picks.
+    Match(SourceFile, ElementMatch),
+    /// Several elements in the file carry the text.
+    Ambiguous(SourceFile, Vec<ElementMatch>),
+    /// The file's candidates carry the text nowhere.
+    TextNotInFile(SourceFile, Vec<ElementMatch>),
+    /// The locator hits several files (path, candidates); the text is in none
+    /// of their candidates.
+    TextInNoFile(Vec<(String, Vec<ElementMatch>)>),
+    /// The file (its path as spelled) holds no element for the locator.
+    NotLocated(String),
+    /// No source file contains the locator.
+    NotFound,
+}
+
+/// Resolve the locator inside one file.
+pub fn resolve_in_file(
+    file: SourceFile,
+    queries: &[String],
+    tag: Option<&str>,
+    text: Option<&str>,
+) -> Resolution {
+    resolve_lines(file, queries, tag, text.filter(|t| text_disambiguates(t)))
+}
+
+/// The in-file pass; `text` is already known to disambiguate.
+fn resolve_lines(
+    file: SourceFile,
+    queries: &[String],
+    tag: Option<&str>,
+    text: Option<&str>,
+) -> Resolution {
+    let Some(text) = text else {
+        for q in queries {
+            if let Some(m) = find_element(&file.lines, q, tag) {
+                return Resolution::Match(file, m);
+            }
+        }
+        return Resolution::NotLocated(file.path);
+    };
+    let candidates = collect_candidates(&file.lines, queries, tag);
+    if candidates.is_empty() {
+        return Resolution::NotLocated(file.path);
+    }
+    let filtered = filter_by_text(&candidates, &file.lines, text);
+    match filtered.len() {
+        0 => Resolution::TextNotInFile(file, candidates),
+        1 => Resolution::Match(file, filtered[0]),
+        _ => Resolution::Ambiguous(file, filtered),
+    }
+}
+
+/// Resolve the locator across the project's source files (JS-era
+/// `findFileWithQuery` over every query, then the in-file pass): the first
+/// file the first hitting query matches, or with usable text the first such
+/// file whose candidates carry the text. A file the query hits without a
+/// candidate (the class in a `<style>` block, or on another tag) says nothing
+/// about the text and only counts when no file has a candidate.
+pub fn resolve_in_project(
+    queries: &[String],
+    cwd: &str,
+    tag: Option<&str>,
+    text: Option<&str>,
+) -> Resolution {
+    let text = text.filter(|t| text_disambiguates(t));
+    let extensions = resolve_live_template_extensions(cwd);
+    let filter = |p: &str| !is_generated_file(p, cwd);
+    for q in queries {
+        let mut chosen: Option<Resolution> = None;
+        // A miss keeps its path and ranges; only the first keeps its lines,
+        // for the single-miss fallback.
+        let mut misses: Vec<(String, Vec<ElementMatch>)> = Vec::new();
+        let mut first_miss: Option<SourceFile> = None;
+        let mut unlocated: Option<String> = None;
+        visit_source_files(
+            q,
+            cwd,
+            &extensions,
+            &NEVER_SOURCE_DIRS,
+            &filter,
+            &mut |path, content| {
+                let resolved =
+                    resolve_lines(SourceFile::from_content(path, content), queries, tag, text);
+                if text.is_none() {
+                    chosen = Some(resolved);
+                    return true;
+                }
+                match resolved {
+                    Resolution::TextNotInFile(file, candidates) => {
+                        misses.push((file.path.clone(), candidates));
+                        first_miss.get_or_insert(file);
+                    }
+                    Resolution::NotLocated(path) => {
+                        unlocated.get_or_insert(path);
+                    }
+                    found => {
+                        chosen = Some(found);
+                        return true;
+                    }
+                }
+                false
+            },
+        );
+        if let Some(resolved) = chosen {
+            return resolved;
+        }
+        if misses.len() > 1 {
+            return Resolution::TextInNoFile(misses);
+        }
+        if let Some(file) = first_miss {
+            return Resolution::TextNotInFile(file, misses.remove(0).1);
+        }
+        match unlocated {
+            Some(path) => return Resolution::NotLocated(path),
+            None => continue,
+        }
+    }
+    Resolution::NotFound
+}
+
+/// Candidate ranges in the JS shape `{ startLine, endLine }` (1-indexed).
+pub fn candidates_json(list: &[ElementMatch]) -> Vec<Value> {
+    list.iter()
+        .map(|c| json!({ "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) }))
+        .collect()
+}
+
+/// The same ranges across files, each naming its project-relative `file` first.
+pub fn file_candidates_json(cwd: &str, hits: &[(String, Vec<ElementMatch>)]) -> Vec<Value> {
+    hits.iter()
+        .flat_map(|(path, list)| {
+            let file = jsp::relative("/", cwd, &jsp::resolve(cwd, &[path]));
+            list.iter().map(move |c| {
+                json!({ "file": file, "startLine": c.start_line + 1, "endLine": c.end_line.map(|e| e + 1) })
+            })
+        })
+        .collect()
 }
 
 /// `parseInt(x || '3')` for `--count`.

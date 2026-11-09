@@ -23,6 +23,44 @@ export function FieldGroup({ children }) {
   return <div className="field-group">{children}</div>;
 }
 `;
+// #1281: the locator's first hit (Components/) lacks the picked text; Pages/ has it.
+const PANEL_TEXT = 'Company billing contact Primary contact for invoices and renewal notices.';
+const PANEL_FILES = {
+  snap: ['src/**'],
+  setup: (ws) => {
+    write(ws, 'src/Components/Detail.html', '<section>\n  <div class="panel-body">Checklist item detail copy.</div>\n</section>\n');
+    write(ws, 'src/Pages/Show.html', `<main>\n  <div class="panel-body">${PANEL_TEXT}</div>\n</main>\n`);
+  },
+};
+const PANEL_DYNAMIC = {
+  snap: ['src/**'],
+  setup: (ws) => write(ws, 'src/Pages/Show.html', '<main>\n  <div class="panel-body">{{ company.billing_contact }}</div>\n</main>\n'),
+};
+// A hit without a candidate (the class only in a <style> block) must not count against the one real element.
+const PANEL_STYLE_HIT = {
+  snap: ['src/**'],
+  setup: (ws) => {
+    write(ws, 'src/Components/Detail.html', '<style>.panel-body { padding: 1rem; }</style>\n<section>\n  <div class="panel-head">Detail</div>\n</section>\n');
+    write(ws, 'src/Pages/Show.html', '<main>\n  <div class="panel-body">{{ company.billing_contact }}</div>\n</main>\n');
+  },
+};
+// Both hits carry the class on a <p>, so --tag div locates nothing anywhere.
+const PANEL_WRONG_TAG = {
+  snap: ['src/**'],
+  setup: (ws) => {
+    write(ws, 'src/Components/Detail.html', '<section>\n  <p class="panel-body">Checklist item detail copy.</p>\n</section>\n');
+    write(ws, 'src/Pages/Show.html', `<main>\n  <p class="panel-body">${PANEL_TEXT}</p>\n</main>\n`);
+  },
+};
+// The text's file sits in a later search dir (pages/ after src/).
+const PANEL_LATER_DIR = {
+  snap: ['src/**', 'pages/**'],
+  setup: (ws) => {
+    write(ws, 'src/Components/Detail.html', '<section>\n  <div class="panel-body">Checklist item detail copy.</div>\n</section>\n');
+    write(ws, 'pages/show.html', `<main>\n  <div class="panel-body">${PANEL_TEXT}</div>\n</main>\n`);
+  },
+};
+
 // An img that never closes, then a twin that does: the first stays the match.
 const UNCLOSED = {
   snap: ['src/**'], setup: (ws) => write(ws, 'src/void.html', '<main>\n  <img class="void-hero" src="/a.png">\n  <img class="void-hero" src="/b.png" />\n</main>\n'),
@@ -54,6 +92,12 @@ export default [
   W('live-wrap-text-not-in-source', 'live-html', ['--id', 'ab12cd34', '--classes', 'card', '--tag', 'div', '--text', 'Rendered from props elsewhere', '--file', 'src/cards.html'], { snap: ['src/**'] }),
   W('live-wrap-text-short-falls-back', 'live-html', ['--id', 'ab12cd34', '--classes', 'card', '--tag', 'div', '--text', 'zzz', '--file', 'src/cards.html'], { snap: ['src/**'] }),
   W('live-wrap-no-text-first-match', 'live-html', ['--id', 'ab12cd34', '--classes', 'card', '--tag', 'div', '--file', 'src/cards.html'], { snap: ['src/**'] }),
+  W('live-wrap-text-picks-later-file', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT, '--defer-source-write'], PANEL_FILES),
+  W('live-wrap-text-in-no-file', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', 'Rendered from props elsewhere'], PANEL_FILES),
+  W('live-wrap-text-single-file-dynamic', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT, '--defer-source-write'], PANEL_DYNAMIC),
+  W('live-wrap-text-style-hit-and-dynamic', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT, '--defer-source-write'], PANEL_STYLE_HIT),
+  W('live-wrap-text-hits-without-candidates', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT], PANEL_WRONG_TAG),
+  W('live-wrap-text-picks-later-search-dir', 'live-html', ['--id', 'ab12cd34', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT, '--defer-source-write'], PANEL_LATER_DIR),
   // --- JSX / TSX / Astro / Vue ---
   W('live-wrap-jsx', 'live-vite', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['src/**'] }),
   W('live-wrap-jsx-deferred', 'live-vite', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1', '--defer-source-write'], { snap: ['src/**'] }),
@@ -111,6 +155,8 @@ export default [
   I('live-insert-html-deferred', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'side-note', '--tag', 'aside', '--defer-source-write'], { snap: ['index.html'] }),
   I('live-insert-html-text-ambiguous', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'card-body', '--tag', 'p', '--text', 'card body copy', '--file', 'src/cards.html'], { snap: ['src/**'] }),
   I('live-insert-html-text-picks', 'live-html', ['--id', 'ab12cd34', '--position', 'before', '--classes', 'card', '--tag', 'div', '--text', 'Gamma card Third card body copy.', '--file', 'src/cards.html'], { snap: ['src/**'] }),
+  I('live-insert-text-picks-later-file', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'panel-body', '--tag', 'div', '--text', PANEL_TEXT, '--defer-source-write'], PANEL_FILES),
+  I('live-insert-text-in-no-file', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'panel-body', '--tag', 'div', '--text', 'Rendered from props elsewhere'], PANEL_FILES),
   I('live-insert-html-unclosed-before', 'live-html', ['--id', 'ab12cd34', '--position', 'before', '--classes', 'void-hero', '--tag', 'img', '--file', 'src/void.html'], UNCLOSED),
   I('live-insert-html-unclosed-after', 'live-html', ['--id', 'ab12cd34', '--position', 'after', '--classes', 'void-hero', '--tag', 'img', '--file', 'src/void.html'], UNCLOSED),
   I('live-insert-jsx-after', 'live-vite', ['--id', 'ab12cd34', '--position', 'after', '--element-id', 'features'], { snap: ['src/**'] }),

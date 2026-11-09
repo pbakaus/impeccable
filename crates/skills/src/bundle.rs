@@ -290,7 +290,10 @@ fn extract_zip_from<R: Read + std::io::Seek>(reader: R, target_dir: &str, cwd: &
     let mut total: u64 = 0;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let entry_path = entry.name().to_string();
+        let entry_path = entry
+            .name()
+            .map_err(|e| format!("Refusing to extract entry with an undecodable name: {e}"))?
+            .into_owned();
         if entry_path.ends_with('/') {
             continue;
         }
@@ -538,7 +541,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
             if meta.is_dir() {
                 walk(root, &full, out);
             } else if meta.is_file() {
-                let rel = jsp::relative("/", root, &full);
+                let rel = jsp::to_posix(&jsp::relative("/", root, &full));
                 if rel.starts_with("scripts/bin/") {
                     continue;
                 }

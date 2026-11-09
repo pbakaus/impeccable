@@ -481,6 +481,34 @@ function validateAskInstructionSites(rootDir) {
 }
 
 /**
+ * Validate that Claude Code's description still fits its skill-listing budget.
+ *
+ * Claude Code lists a non-bundled skill by its bare name when the listing is
+ * over budget (1% of the context window in characters: 6,000 on a 200k model)
+ * and the description doesn't fit in what the bundled skills leave. Measured on
+ * Claude Code 2.1.281: about 220 characters survives beside its default bundled
+ * skills, 225 does not (tests/skill-behavior/README.md). The cap keeps headroom
+ * under that, so a longer draft fails here rather than vanishing for users.
+ *
+ * Returns the number of validation errors. Build fails if > 0.
+ */
+const CLAUDE_CODE_DESCRIPTION_MAX = 200;
+function validateClaudeCodeDescription(rootDir) {
+  const src = fs.readFileSync(path.join(rootDir, 'skill', 'SKILL.src.md'), 'utf-8');
+  const m = src.match(/^claude-code-description:\s*"(.*)"\s*$/m);
+  if (!m) {
+    console.error('  ❌ skill/SKILL.src.md has no claude-code-description; Claude Code would list the shared description, which is over its budget');
+    return 1;
+  }
+  if (m[1].length > CLAUDE_CODE_DESCRIPTION_MAX) {
+    console.error(`  ❌ claude-code-description is ${m[1].length} characters; Claude Code's skill listing drops it above about 220, and the cap is ${CLAUDE_CODE_DESCRIPTION_MAX}`);
+    return 1;
+  }
+  console.log(`✓ claude-code-description: ${m[1].length} of ${CLAUDE_CODE_DESCRIPTION_MAX} characters`);
+  return 0;
+}
+
+/**
  * Validate that every hand-authored HTML page carries the shared site header.
  * The partial is stamped with `<!-- site-header v1 -->` so drift is loud.
  *
@@ -992,10 +1020,13 @@ async function build() {
   // guidance to every provider at once.
   const askSiteErrors = validateAskInstructionSites(ROOT_DIR);
 
+  // Claude Code drops a description that outgrows its skill-listing budget.
+  const claudeDescriptionErrors = validateClaudeCodeDescription(ROOT_DIR);
+
   // cmd.exe misparses an LF-only batch file, so every emitted .cmd is CRLF.
   const batchEolErrors = validateBatchLineEndings(ROOT_DIR, DIST_DIR, BUILD_OPTIONS);
 
-  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0 || batchEolErrors > 0) {
+  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0 || claudeDescriptionErrors > 0 || batchEolErrors > 0) {
     process.exit(1);
   }
 

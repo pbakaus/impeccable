@@ -963,9 +963,11 @@ pub fn split_findings_by_tier(findings: Vec<Finding>) -> (Vec<Finding>, Vec<Find
 /// deep pass wired, so deferring for them would silently drop the
 /// non-immediate rules entirely. Cursor's `stop` hook can only answer with a
 /// `followup_message` that Cursor submits as a new user turn, which is not
-/// wired (#1061), so its post-edit hook keeps the full rule set.
+/// wired (#1061), so its post-edit hook keeps the full rule set. VS Code's
+/// Copilot extension only honors a blocking Stop reply, and nothing shows its
+/// agent host using Stop output at all (#1249), so it keeps the full set too.
 pub fn per_edit_tiering_active(config: &HookConfig, harness: &str) -> bool {
-    if harness == "cursor" || harness == "github" {
+    if matches!(harness, "cursor" | "github" | "vscode") {
         return false;
     }
     config.per_edit_rules != "all"
@@ -1305,13 +1307,13 @@ fn format_deduped_finding_line(rt: &Runtime, f: &Finding, seen_rules: &mut Vec<S
 /// JS: directiveFooter({ mode })
 pub fn directive_footer(rt: &Runtime, short: bool) -> String {
     if short {
-        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, ask in one line.".to_string();
+        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, leave it with a reason.".to_string();
     }
     [
         "Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:".to_string(),
         "- Real design problem: fix it. Keep intentional design as designed.".to_string(),
         format!("- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `{} ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"` with the pair shown on the finding line, or value \"*\" plus `--file <path>` when the line shows none. Write \"user confirmed\" in a reason only when the user did.", rt.hook_admin_command),
-        "- Unsure: leave it as is and ask the user in one line.".to_string(),
+        "- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.".to_string(),
         format!("Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: {} hooks.", rt.impeccable_command),
     ]
     .join("\n")
@@ -1843,6 +1845,11 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         );
         inner.insert("additionalContext".into(), Value::String(text.to_string()));
         out.insert("hookSpecificOutput".into(), Value::Object(inner));
+        // VS Code's Copilot extension reads the nested field, its agent host only
+        // the top-level one (#1249).
+        if harness == "vscode" {
+            out.insert("additionalContext".into(), Value::String(text.to_string()));
+        }
     }
     serde_json::to_string(&Value::Object(out)).unwrap_or_default()
 }
@@ -1950,6 +1957,11 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         if str_field(ev, "turn_id").is_some() {
             return "codex";
         }
+    }
+    // The plugin manifest sets this in the handler's `env`, which Grok honors too,
+    // so it ranks below the event shapes above.
+    if rt.env("IMPECCABLE_HOOK_HARNESS") == Some("vscode") {
+        return "vscode";
     }
     "claude"
 }
@@ -2085,6 +2097,39 @@ fn normalize_github_event(
     out
 }
 
+/// VS Code reports edits in its tools' own shapes (#1249): the agent host's
+/// `Edit` carries the patch itself as `tool_input`; the Copilot extension's tools
+/// take `filePath`, `replacements[].filePath`, or a patch under `input`. Patches go
+/// through the `apply_patch` path, which handles several files.
+fn normalize_vscode_event(event: &Map<String, Value>) -> Map<String, Value> {
+    let raw = event.get("tool_input");
+    let input = raw.and_then(Value::as_object);
+    let replaced = input.and_then(|o| o.get("replacements")).and_then(Value::as_array).map(|edits| {
+        edits
+            .iter()
+            .filter_map(|edit| edit.get("filePath").and_then(Value::as_str))
+            .map(|path| format!("*** Update File: {path}\n"))
+            .collect::<String>()
+    });
+    let patch = if looks_like_apply_patch(raw) {
+        Some(apply_patch_text(raw))
+    } else if let Some(patch) = input.and_then(|o| o.get("input")).filter(|v| looks_like_apply_patch(Some(v))) {
+        Some(apply_patch_text(Some(patch)))
+    } else {
+        replaced
+    };
+    let mut out = event.clone();
+    let mut tool_input = input.cloned().unwrap_or_default();
+    if let Some(patch) = patch {
+        tool_input.insert("command".into(), Value::String(patch));
+        out.insert("tool_name".into(), Value::String("apply_patch".to_string()));
+    } else if let Some(path) = tool_input.get("filePath").cloned() {
+        tool_input.insert("file_path".into(), path);
+    }
+    out.insert("tool_input".into(), Value::Object(tool_input));
+    out
+}
+
 /// JS: hook-lib.mjs#normalizeGrokEvent — Grok Build 1.0.5 (captured
 /// 2026-08-24) sends camelCase `toolName` / `toolInput` / `sessionId` /
 /// `stopHookActive`, plus `cwd` alongside a trailing-slashed
@@ -2153,6 +2198,9 @@ pub fn normalize_hook_event(
     }
     if harness == "grok" {
         return normalize_grok_event(rt, event, project_cwd);
+    }
+    if harness == "vscode" {
+        return normalize_vscode_event(event);
     }
     if harness != "cursor" {
         return event.clone();
