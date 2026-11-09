@@ -539,8 +539,12 @@ dependencies = [
  "impeccable-html",
  "impeccable-live",
  "impeccable-skills",
+ "libc",
+ "semver",
  "serde_json",
  "sha2",
+ "ureq",
+ "url",
 ]
 
 [[package]]

@@ -21,6 +21,10 @@ impeccable-agents = { workspace = true }
 serde_json = { workspace = true }
 base64 = "0.22"
 sha2 = "0.10"
+semver = "1"
+url = "2"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+libc = "0.2"
 
 [dev-dependencies]
 serde_json = { workspace = true }
