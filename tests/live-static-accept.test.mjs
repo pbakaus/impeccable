@@ -110,6 +110,23 @@ describe('accept on a static page', () => {
       assert.equal(await visibleCount(page, 'h1.hero-title'), 1, 'one title after the fallback window');
       assert.equal(await computed(page, 'h1.hero-title', 'textTransform'), 'uppercase', 'scoped CSS still applies');
 
+      // Variant numbers repeat across sessions: a later session's rules must
+      // miss the accepted title, and the kept rules must miss its variants.
+      await page.evaluate(() => {
+        const css = document.createElement('style');
+        css.textContent = '@scope ([data-impeccable-variant="3"]) { :scope > h1 { color: rgb(1, 2, 3); } }';
+        document.head.append(css);
+        const later = document.createElement('div');
+        later.dataset.impeccableVariant = '1';
+        later.innerHTML = '<h1 id="later-variant">Later</h1>';
+        document.body.append(later);
+        later.dataset.probe = 'true';
+        css.dataset.probe = 'true';
+      });
+      assert.notEqual(await computed(page, 'h1.hero-title', 'color'), 'rgb(1, 2, 3)', 'later rules miss the accepted title');
+      assert.equal(await computed(page, '#later-variant', 'fontWeight'), '700', 'kept rules miss later variants');
+      await page.evaluate(() => document.querySelectorAll('[data-probe]').forEach((el) => el.remove()));
+
       // Variant 1 reads its tuned --p-lightness for the paragraph colour.
       await clickGo(page);
       await waitForCycling(page, 3);

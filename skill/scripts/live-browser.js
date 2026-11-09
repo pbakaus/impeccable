@@ -9597,10 +9597,8 @@ void main() {
   function acceptedDomAlreadyClean(pending) {
     if (!pending?.acceptedSelector) return false;
     const matches = [...document.querySelectorAll(pending.acceptedSelector)];
-    // A bare variant shell outside those wrappers is the committed accept (the
-    // shape the HTML carbonize block renders), not a live wrapper.
     return matches.length > 0
-      && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-carbonize]'));
+      && matches.every((el) => !el.closest('[data-impeccable-variants],[data-impeccable-variant],[data-impeccable-carbonize]'));
   }
 
   function ensureAcceptedDomClean(pending, recoveryRevision) {
@@ -9692,16 +9690,24 @@ void main() {
     setLiveState('PICKING');
   }
 
-  // Leaves the same shape the HTML carbonize block has in source (the style,
-  // then a display: contents shell), so the @scope rules and tuned --p-*
-  // values keep applying until reload.
+  // Keeps the accepted look until reload: the style, then a display: contents
+  // shell carrying the tuned --p-* values. Variant numbers repeat across
+  // sessions, so the shell and its rules move to a per-session attribute that
+  // a later session's variants and CSS cannot match.
   function commitAcceptedVariantToDom(wrapper, pending) {
     const parent = wrapper.parentElement;
     if (!parent) return;
     const accepted = wrapper.querySelector('[data-impeccable-variant="' + pending.variant + '"]');
     if (accepted) {
       const style = wrapper.querySelector('style[data-impeccable-css]');
-      if (style) parent.insertBefore(style, wrapper);
+      if (style) {
+        style.textContent = style.textContent.replace(/\[data-impeccable-variant=(["']?)([^"'\]]+)\1\]/g, (_, __, variant) => (
+          '[data-impeccable-accepted="' + pending.id + (variant === pending.variant ? '' : ':' + variant) + '"]'
+        ));
+        parent.insertBefore(style, wrapper);
+      }
+      accepted.removeAttribute('data-impeccable-variant');
+      accepted.setAttribute('data-impeccable-accepted', pending.id);
       accepted.style.display = 'contents';
       accepted.style.cssText += variantParamDecls(pending.paramValues);
       parent.insertBefore(accepted, wrapper);

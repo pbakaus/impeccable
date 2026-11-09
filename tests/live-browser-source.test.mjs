@@ -485,7 +485,7 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function commitAcceptedVariantToDom\(wrapper, pending\)[\s\S]*?style\[data-impeccable-css\][\s\S]*?style\.display = 'contents'[\s\S]*?variantParamDecls\(pending\.paramValues\)[\s\S]*?\n    wrapper\.remove\(\);/,
+      /function commitAcceptedVariantToDom\(wrapper, pending\)[\s\S]*?style\[data-impeccable-css\][\s\S]*?setAttribute\('data-impeccable-accepted', pending\.id\)[\s\S]*?style\.display = 'contents'[\s\S]*?variantParamDecls\(pending\.paramValues\)[\s\S]*?\n    wrapper\.remove\(\);/,
       'the commit should keep the scoped style and a display: contents shell with the tuned params, and always remove the wrapper, even when the accepted variant node is missing',
     );
     assert.match(
