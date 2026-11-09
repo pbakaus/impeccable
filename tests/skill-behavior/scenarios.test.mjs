@@ -911,7 +911,10 @@ for (const modelId of resolveModelList()) {
     // would bias this decision, so the turn gets the real shell and a local catalog.
     it('scenario 23: a pinned world with an open first surface still rolls', async () => {
       const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
-      const scopedRolls = (trace) => trace.bashCommands.filter((command) => /concept-seed\b.*--scope/.test(command));
+      // A roll counts only once it ran and dealt: the trace records a command
+      // before it runs, so an attempt that fails would otherwise pass.
+      const scopedRolls = (trace) => trace.bashCommands.filter((command, i) => /concept-seed\b.*--scope/.test(command)
+        && trace.bashOutputs[i]?.startsWith('exit=0\n') && trace.bashOutputs[i].includes('SEED REFERENCE:'));
       try {
         const { trace, text } = await runTurn({
           checkpoint: (trace) => scopedRolls(trace).length > 0,
