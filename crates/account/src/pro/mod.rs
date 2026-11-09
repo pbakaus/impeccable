@@ -212,6 +212,24 @@ fn forget_now(account: &Account, not_entitled: bool) {
     }
 }
 
+/// Apply an entitlement answer the service gave about sign-in `login`, under
+/// the sign-in lock, and only while the machine is still on that sign-in: an
+/// answer that arrives after a newer sign-in never touches it. "Not entitled"
+/// forgets the Pro state at once. "Entitled" drops an earlier "not entitled"
+/// and the retry clock, so the next scan fetches the Pro build.
+pub fn settle(account: &Account, login: u64, pro: bool) {
+    if !pro {
+        return forget_if(account, Some(login), true);
+    }
+    let store = Store::new(account);
+    let Ok(_lock) = store.lock() else { return };
+    if store.state().is_some_and(|s| s.signed_in && s.login == login) {
+        let paths = Paths::new(account);
+        let _ = std::fs::remove_file(paths.not_entitled());
+        let _ = std::fs::remove_file(paths.attempt());
+    }
+}
+
 /// [`forget`], skipped when the machine has since signed in again
 /// (`login` is the sign-in the answer was about).
 fn forget_if(account: &Account, login: Option<u64>, not_entitled: bool) {
