@@ -1188,3 +1188,85 @@ fn merge_hook_manifests_replaces_legacy_windows_path_claude_hooks() {
     assert_eq!(post[0]["hooks"][0]["command"], Value::String(fresh_command.clone()));
     assert_eq!(stop[0]["hooks"][0]["command"], Value::String(fresh_command));
 }
+
+/// `update` ends with the doctor report on both of its success paths, and it
+/// only reports: the project file the findings name stays as it was.
+#[test]
+fn update_ends_with_the_doctor_report() {
+    let root = temp_root("update-doctor-report");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    write(&format!("{project}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let product = "# Product\n\n## Register\n\nbrand\n";
+    write(&format!("{project}/PRODUCT.md"), product);
+    let bundle = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+
+    for last_line in ["Done!", "Nothing else to do."] {
+        let r = run_cli(&["update", "-y"], &project, &env);
+        assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+        let (_, report) = r.stdout.split_once(&format!("{last_line}\n\nImpeccable doctor:")).unwrap_or_else(|| panic!("{}", r.stdout));
+        assert!(report.contains("product-deprecated-register"), "{}", r.stdout);
+    }
+    assert_eq!(read(&format!("{project}/PRODUCT.md")), product);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// The npm shim runs `update` outside any skill folder, so the report takes
+/// its harness from the skill it refreshed (the hook checks need one) and its
+/// project from the working directory, even when that skill lives under home.
+#[test]
+fn update_doctor_report_checks_the_updated_harness_in_the_project() {
+    let root = temp_root("update-doctor-harness");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    write(&format!("{home}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    write(&format!("{project}/PRODUCT.md"), "# Product\n\n## Register\n\nbrand\n");
+    let bundle = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+
+    let r = run_cli(&["update", "-y", "--user", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let (_, report) = r.stdout.split_once("Impeccable doctor:").unwrap_or_else(|| panic!("{}", r.stdout));
+    assert!(report.contains("hook-not-installed"), "{}", r.stdout);
+    assert!(report.contains("product-deprecated-register"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// Two harnesses in one project share every finding but the hook ones, so the
+/// report lists each harness's missing hook and the shared findings once.
+#[test]
+fn update_doctor_report_merges_the_updated_harnesses() {
+    let root = temp_root("update-doctor-merge");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    for provider in [".claude", ".cursor"] {
+        write(&format!("{project}/{provider}/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    }
+    write(&format!("{project}/PRODUCT.md"), "# Product\n\n## Register\n\nbrand\n");
+    let bundle = create_fake_universal_bundle(&root, &[".claude", ".cursor"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let (_, report) = r.stdout.split_once("Impeccable doctor:").unwrap_or_else(|| panic!("{}", r.stdout));
+    assert!(report.contains("hook-not-installed  [.claude/settings.local.json]"), "{}", r.stdout);
+    assert!(report.contains("hook-not-installed  [.cursor/hooks.json]"), "{}", r.stdout);
+    assert_eq!(report.matches("product-deprecated-register").count(), 1, "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}

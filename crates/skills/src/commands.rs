@@ -495,6 +495,18 @@ fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, sk
     Ok(())
 }
 
+/// Ends an update with the doctor pass over the project: the skill just
+/// refreshed may read PRODUCT.md, DESIGN.md and the config differently from
+/// the version that wrote them. A report only; update repairs nothing in it.
+fn report_doctor(sys: &Sys, io: &mut Io, root: &str, providers: &[&'static str], scope: Option<Scope>) {
+    let skill_dirs: Vec<String> =
+        sys.deduplicate_providers(root, providers, scope).into_iter().map(|(_, dir)| util::jsp::join(&[&dir, "impeccable"])).collect();
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    if let Some(report) = impeccable_context::doctor::report_for_skills(&skill_dirs, &cwd, &io.env) {
+        out(io, &format!("\n{report}"));
+    }
+}
+
 // ─── link ────────────────────────────────────────────────────────────────────
 
 /// JS: link(flags)
@@ -900,6 +912,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
                 out(io, &format!("Skills are up to date{}.", version_suffix(&v)));
                 report_hook_targets(&sys, io, &hook_targets, if want_hooks { &copy_providers } else { &[] });
                 out(io, "Nothing else to do.");
+                report_doctor(&sys, io, &root, &copy_providers, scope);
                 Err(Flow::Exit(0))
             }
             Err(Flow::Throw(e)) => {
@@ -950,7 +963,8 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         out(io, &format!("Updated {} skill(s){}.", refreshed.len(), to_version_suffix(&v)));
         install_engine_binaries(&sys, io, &refreshed);
         report_hook_targets(&sys, io, &hook_targets, if want_hooks { &providers } else { &[] });
-        out(io, "Done!\n");
+        out(io, "Done!");
+        report_doctor(&sys, io, &root, &copy_providers, scope);
         Ok(())
     })();
     match outcome {
