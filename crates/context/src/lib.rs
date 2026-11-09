@@ -30,6 +30,7 @@ pub use palette::run as run_palette;
 pub mod critique_storage;
 pub mod surface_brief_cli;
 pub use critique_storage::run as run_critique_storage;
+pub use critique_storage::run_audit as run_audit_storage;
 pub use surface_brief_cli::run as run_surface_brief;
 pub mod embed_prompt;
 pub use embed_prompt::run as run_embed_prompt;

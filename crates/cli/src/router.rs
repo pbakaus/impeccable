@@ -61,6 +61,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "palette" => impeccable_context::run_palette(rest, io),
         "surface-brief" => impeccable_context::run_surface_brief(rest, io),
         "critique-storage" => impeccable_context::run_critique_storage(rest, io),
+        "audit-storage" => impeccable_context::run_audit_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
         "doctor" => impeccable_context::run_doctor(rest, io),
