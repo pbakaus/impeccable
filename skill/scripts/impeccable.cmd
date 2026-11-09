@@ -97,7 +97,7 @@ where impeccable >nul 2>nul
 if errorlevel 1 goto download
 call :probe impeccable
 if not "%probe_ok%"=="1" goto download
-impeccable %*
+call impeccable %*
 exit /b %errorlevel%
 
 :download
@@ -255,11 +255,13 @@ rem Sets probe_ok=1 when %1 answers the engine handshake: prints
 rem "impeccable-engine <version>" and exits 0, and probe_version to that
 rem version. The 3.x npm CLI answers any unknown verb with "Unknown command",
 rem exit 1, so it never passes.
+rem The candidate runs under call: an npm .cmd shim run without it takes
+rem over this script and never returns (#1240).
 set "probe_ok="
 set "probe_version="
 set "probe_tmp=%TEMP%\impeccable-probe-%RANDOM%%RANDOM%.txt"
 set "IMPECCABLE_LAUNCHER_PROBE=1"
-"%~1" engine-probe >"%probe_tmp%" 2>nul
+call "%~1" engine-probe >"%probe_tmp%" 2>nul
 set "probe_err=%ERRORLEVEL%"
 set "IMPECCABLE_LAUNCHER_PROBE="
 if not "%probe_err%"=="0" goto probe_done
