@@ -355,3 +355,25 @@ fn a_denial_for_the_current_sign_in_applies_even_while_the_lock_is_busy() {
     assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
     drop(held);
 }
+
+#[test]
+fn an_old_denial_neither_replaces_a_current_one_nor_blocks_a_current_install() {
+    // Catches (review, Greptile and Cursor): one shared marker, so an old sign-in's denial overwrote the current one's, or aborted its install.
+    let s = setup("denials-per-sign-in");
+    let earlier = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    login(&s.env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+    let current = impeccable_account::store::Store::new(&s.account).state().unwrap().login;
+    let store = impeccable_account::store::Store::new(&s.account);
+    // An old answer recorded while the lock is busy doesn't stop this sign-in's install.
+    let held = store.lock().unwrap();
+    impeccable_account::pro::settle(&s.account, earlier, false);
+    drop(held);
+    ready(&s, b"pro build", unix_now() + 6 * DAY);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Pro { .. }));
+    // A current denial, then an old one landing last: the current one stands.
+    let held = store.lock().unwrap();
+    impeccable_account::pro::settle(&s.account, current, false);
+    impeccable_account::pro::settle(&s.account, earlier, false);
+    drop(held);
+    assert!(matches!(decide(&s.account, &s.keys, unix_now()), Decision::Open { why: Some(WHY_NOT_ENTITLED), .. }));
+}
