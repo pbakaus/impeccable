@@ -14,7 +14,8 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { checkEngineRelease, recordEngineChecksums } from '../scripts/check-engine-release.mjs';
+process.env.IMPECCABLE_RELEASE_CHECK_RETRY_MS = '5';
+const { checkEngineRelease, recordEngineChecksums } = await import('../scripts/check-engine-release.mjs');
 import { ENGINE_TARGETS, assetName, binaryPath, currentTarget, fetchEngine } from '../scripts/fetch-engine.mjs';
 
 const VERSION = '9.9.9';
@@ -23,11 +24,16 @@ const digest = (body) => createHash('sha256').update(body).digest('hex');
 
 let server;
 let base;
+// When set, the first request for each path answers 503 (a release CDN outage).
+let flakyOnce = null;
+// Paths whose next request answers 503 once.
 const failOnce = new Set();
 
 before(async () => {
   server = http.createServer((req, res) => {
-    if (failOnce.delete(req.url)) {
+    const flaky = flakyOnce && !flakyOnce.has(req.url);
+    if (flaky) flakyOnce.add(req.url);
+    if (failOnce.delete(req.url) || flaky) {
       res.writeHead(503);
       res.end('');
       return;
@@ -134,4 +140,20 @@ describe('fetch-engine verification', () => {
       assert.equal(fs.existsSync(dest), false);
     });
   }
+});
+
+describe('transient release download failures', () => {
+  it('retries a 503 instead of reporting the asset missing', async () => {
+    // Catches: a CDN blip (GitHub answered 504 for hours on 8 Nov 2026) failing CI as "release incomplete".
+    const { root } = stageRoot();
+    await recordEngineChecksums({ version: VERSION, base, root });
+    flakyOnce = new Set();
+    try {
+      const result = await check(root);
+      assert.deepEqual(result.missing, []);
+      assert.ok(flakyOnce.size > 0, 'the server answered 503 first');
+    } finally {
+      flakyOnce = null;
+    }
+  });
 });

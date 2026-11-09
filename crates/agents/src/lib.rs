@@ -47,7 +47,15 @@ pub struct Spec {
     pub hooks: Vec<Hook>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
+    /// Codex only: `default_tools_approval_mode` on an existing `[mcp_servers.<server>]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mcp_approvals: Vec<McpApproval>,
     pub instruction: Option<String>,
+}
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct McpApproval {
+    pub server: String,
+    pub mode: String,
 }
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct Hook {
@@ -55,19 +63,42 @@ pub struct Hook {
     #[serde(default)]
     pub matcher: Option<String>,
     pub command: String,
+    /// Seconds before the harness stops the command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    /// Claude Code only: run in the background.
+    #[serde(default, rename = "async", skip_serializing_if = "Option::is_none")]
+    pub run_async: Option<bool>,
+    /// Claude Code only: a background hook that exits 2 wakes the session.
+    #[serde(
+        default,
+        rename = "asyncRewake",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub async_rewake: Option<bool>,
 }
 impl Hook {
     /// The entry both Claude Code and Codex read under `hooks.<event>`:
-    /// `{"matcher"?, "hooks":[{"type":"command","command"}]}`. No matcher, no key.
+    /// `{"matcher"?, "hooks":[{"type":"command","command",options…}]}`. Unset
+    /// fields are omitted, never written as null.
     pub(crate) fn entry(&self) -> Value {
+        let mut command = serde_json::Map::new();
+        command.insert("type".into(), json!("command"));
+        command.insert("command".into(), json!(self.command));
+        for (key, value) in [
+            ("timeout", self.timeout.map(|t| json!(t))),
+            ("async", self.run_async.map(|a| json!(a))),
+            ("asyncRewake", self.async_rewake.map(|a| json!(a))),
+        ] {
+            if let Some(value) = value {
+                command.insert(key.into(), value);
+            }
+        }
         let mut entry = serde_json::Map::new();
         if let Some(matcher) = &self.matcher {
             entry.insert("matcher".into(), json!(matcher));
         }
-        entry.insert(
-            "hooks".into(),
-            json!([{"type":"command","command":self.command}]),
-        );
+        entry.insert("hooks".into(), json!([command]));
         Value::Object(entry)
     }
 }
