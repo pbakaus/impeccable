@@ -110,8 +110,8 @@ async function exercise(t, scenario) {
     // in the staged launcher, as the hash/move fault cases below do.
     const source = fs.readFileSync(launcher, 'utf8');
     assert.match(source, /^curl\.exe .*$/m);
-    fs.writeFileSync(launcher, source.replace(/^curl\.exe .*\r?$/gm,
-      '>"%staging%\\http.txt" echo 504 https://release-assets.githubusercontent.com/asset\r\ncmd /c exit 22'));
+    fs.writeFileSync(launcher, source.replace(/^curl\.exe [^\r\n]*\r?\n/gm,
+      '>"%staging%\\http.txt" echo 504 https://release-assets.githubusercontent.com/asset\r\ncmd /c exit 22\r\n'));
   }
   if (WINDOWS && scenario === 'cache-write-failure') {
     // The cmd launcher claims a fresh staging directory per run, so no
