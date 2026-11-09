@@ -501,6 +501,10 @@ pub fn user_claude_hook_is_current_for(home_root: &str, win32: bool) -> bool {
     let mut commands = Vec::new();
     collect_impeccable_hook_commands(hooks, &mut commands);
     !commands.is_empty() && commands.iter().all(|c| *c == expected)
+        && impeccable_context::hook_wiring::manifest_is_wired(
+            &jsp::join(&[home_root, ".claude", "settings.json"]),
+            &impeccable_context::hook_wiring::claude_manifest_for_command(&expected),
+        )
 }
 
 fn marker_in(entry: &Map<String, Value>, key: &str) -> bool {
@@ -649,7 +653,11 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
                 continue;
             }
             if let Some(shared) = &artifact.shared_dest {
-                if file_has_impeccable_hook_marker(shared) {
+                if impeccable_context::hook_wiring::manifest_is_wired(
+                    shared,
+                    &(impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter()
+                        .find(|target| target.provider == ".claude").unwrap().manifest)(),
+                ) {
                     prune_impeccable_hook_from_manifest(&artifact.dest)?;
                     continue;
                 }

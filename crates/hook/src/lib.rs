@@ -80,3 +80,10 @@ pub fn run_hook_admin(args: &[String], io: &mut Io) -> i32 {
     let rt = runtime(io, &NONE);
     admin::run(&rt, args, io)
 }
+
+/// Context entry point with consent-gated hook maintenance.
+pub fn run_context(args: &[String], io: &mut Io) -> i32 {
+    static NONE: impeccable_detect::MissingHtmlEngine = impeccable_detect::MissingHtmlEngine;
+    let rt = runtime(io, &NONE);
+    impeccable_context::context_cli::run_with_hook_repair(args, io, &mut |root| admin::repair_for_context(&rt, root))
+}

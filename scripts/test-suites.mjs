@@ -90,6 +90,7 @@ export const SUITES = {
           'tests/release.test.mjs',
           'tests/bundle-signing.test.mjs',
           'tests/skill-reference.test.mjs',
+          'tests/lib/dev-keys.test.mjs',
           'tests/skill-behavior-harness.test.mjs',
           'tests/readme-gitignore.test.mjs',
           'tests/test-suites.test.mjs',
@@ -125,7 +126,7 @@ export const SUITES = {
       ...COMMON_INFRA_PATTERNS,
       /^extension\/(background|content|detector|devtools|offscreen|popup|shared|manifest\.json)/,
       /^scripts\/build-extension\.js$/,
-      /^tests\/extension-(build|devtools)\.test\.mjs$/,
+      /^tests\/extension-(build|devtools|report|popup)\.test\.mjs$/,
       /^browser-bundle\//,
       // Everything `cargo xtask bundle` reads: the rules and the registry
       // rows (core, foundation), the wasm module (wasm), the assembly and the
@@ -140,7 +141,7 @@ export const SUITES = {
     commands: [
       {
         runner: 'node',
-        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs'],
+        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs', 'tests/extension-report.test.mjs', 'tests/extension-popup.test.mjs'],
       },
     ],
   },

@@ -50,9 +50,24 @@ const NPM_REGISTRY = 'https://registry.npmjs.org';
 // answer HEAD inconsistently across their 302 to object storage, but a
 // `Range: bytes=0-0` GET follows the redirect and returns 200/206 for a real
 // asset and 404 for a missing one without pulling the whole binary.
+// GitHub's release storage sometimes fails a single download for a published
+// asset (CI saw a different 4–8 of 10 "missing" on each run), so every probe
+// tries three times before it counts an asset as absent.
+async function settledFetch(url, init, tries = 3) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || attempt >= tries) return res;
+    } catch (err) {
+      if (attempt >= tries) throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * 4 ** (attempt - 1)));
+  }
+}
+
 async function urlExists(url) {
   try {
-    const res = await fetch(url, { redirect: 'follow', headers: { Range: 'bytes=0-0' } });
+    const res = await settledFetch(url, { redirect: 'follow', headers: { Range: 'bytes=0-0' } });
     return res.ok || res.status === 206;
   } catch (err) {
     return false;
@@ -62,7 +77,7 @@ async function urlExists(url) {
 // The digest a .sha256 sidecar publishes, or null when it cannot be fetched.
 async function sidecarDigest(url) {
   try {
-    const res = await fetch(url, { redirect: 'follow' });
+    const res = await settledFetch(url, { redirect: 'follow' });
     return res.ok ? (await res.text()).trim().split(/\s+/)[0].toLowerCase() || null : null;
   } catch {
     return null;
