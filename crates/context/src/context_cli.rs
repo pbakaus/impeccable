@@ -1559,7 +1559,9 @@ mod hook_not_installed_tests {
         };
         assert!(fix().contains("`impeccable update`"), "{}", fix());
         fixture.put("other/.claude/skills/impeccable/SKILL.md", "");
-        assert!(fix().contains("`impeccable hooks on` from `../other`, where the skill is installed"), "{}", fix());
+        // The folder is spelled with the platform's separator.
+        let from = format!("`impeccable hooks on` from `..{}other`, where the skill is installed", std::path::MAIN_SEPARATOR);
+        assert!(fix().contains(&from), "{}", fix());
     }
 
     #[test]
