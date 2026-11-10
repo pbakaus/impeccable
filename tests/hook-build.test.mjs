@@ -107,6 +107,12 @@ describe('hook manifest builders', () => {
     expectCommand(stop.command, '.claude/skills/impeccable/scripts');
   });
 
+  // `impeccable hooks on` (crates/context/src/hook_wiring.rs) asserts the same
+  // fixture, so the installer and the repair write one manifest (#1307).
+  it('matches the shared Claude manifest fixture the engine also pins', () => {
+    assert.deepEqual(buildClaudeSettingsManifest(), readJson('tests/fixtures/hook-manifests/claude-settings.json'));
+  });
+
   it('builds Codex project-local hooks for the real detector hook', () => {
     // Default install dir is `.codex`: a `.codex`-directory install keeps the
     // skill payload at `.codex/skills/...`, so the hook must point there (not at
