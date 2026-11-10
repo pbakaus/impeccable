@@ -160,7 +160,12 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         sync: Some(false),
         ..Local::default()
     });
-    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| l.sync = Some(on)) {
+    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| {
+        l.sync = Some(on);
+        if args.first().map(String::as_str) == Some("forget") {
+            l.design_generation = l.design_generation.wrapping_add(1);
+        }
+    }) {
         Ok(()) => true,
         Err(e) => {
             io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
@@ -264,6 +269,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 struct Local {
     sync: Option<bool>,
     design: Option<bool>,
+    design_generation: u64,
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
@@ -287,6 +293,10 @@ impl Local {
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
             design: v.get("design").and_then(Value::as_bool),
+            design_generation: v
+                .get("designGeneration")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
         })
@@ -337,6 +347,9 @@ impl Local {
         let mut m = Map::new();
         if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
+        }
+        if local.design_generation != 0 {
+            m.insert("designGeneration".into(), local.design_generation.into());
         }
         if let Some(d) = local.design {
             m.insert("design".into(), d.into());

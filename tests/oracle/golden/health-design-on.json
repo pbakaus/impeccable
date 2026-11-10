@@ -1,0 +1,9 @@
+{
+  "stdout": "DESIGN.md sync: on.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".oracle-home/impeccable/health.json": "{\"design\":true}"
+  }
+}

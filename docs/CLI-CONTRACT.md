@@ -2241,10 +2241,13 @@ the JSON body must fit 160 KiB. The optional sidecar copies only
 `colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
 `.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
 64-entry and short-string bounds. Invalid or absent metadata sends null.
-Components and narrative are never copied. Symlink files are skipped.
+Components and narrative are never copied. Reads use directory handles and refuse symlink files, sidecar directory links,
+and non-regular files without blocking.
 
 Only the hash of successfully uploaded text and selected metadata is saved
 under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
 Unchanged content is skipped; failed uploads remain eligible on the next
-scan. A new sign-in can upload the same repo again, including after forget.
+scan. A new sign-in can upload the same repo again. Forget advances a local
+`designGeneration` before contacting the service, so a late upload response
+cannot suppress a later upload after sync is turned back on.
 Generated provider output is not involved.

@@ -61,7 +61,8 @@ pub struct Record {
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
-    codes: HashMap<String, (String, String)>,
+    codes: HashMap<String, (String, String, String)>,
+    grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
     access: HashSet<String>,
@@ -321,7 +322,15 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     let code = format!("code-{}", r.next);
                     r.codes.insert(
                         code.clone(),
-                        (q["code_challenge"].clone(), redirect.clone()),
+                        (
+                            q["code_challenge"].clone(),
+                            redirect.clone(),
+                            scope
+                                .split_whitespace()
+                                .filter(|s| !k.design_denied || *s != "design:write")
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        ),
                     );
                     let mut loc = url::Url::parse(&redirect).unwrap();
                     loc.query_pairs_mut()
@@ -463,11 +472,11 @@ fn token(
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
     let ttl = knobs.lock().unwrap().access_ttl;
-    let design_denied = knobs.lock().unwrap().design_denied;
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
-            let Some((challenge, redirect)) = form.get("code").and_then(|c| r.codes.remove(c))
+            let Some((challenge, redirect, scopes)) =
+                form.get("code").and_then(|c| r.codes.remove(c))
             else {
                 return invalid();
             };
@@ -477,7 +486,9 @@ fn token(
             {
                 return invalid();
             }
-            r.next + 1
+            let grant = r.next + 1;
+            r.grant_scopes.insert(grant, scopes);
+            grant
         }
         Some("refresh_token") => {
             let t = form.get("refresh_token").cloned().unwrap_or_default();
@@ -509,7 +520,7 @@ fn token(
     r.live_refresh.insert(refresh.clone());
     json(
         200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.scopes.last().cloned().unwrap_or_default().split_whitespace().filter(|s| !design_denied || *s != "design:write").collect::<Vec<_>>().join(" ") }),
+        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.grant_scopes.get(&grant).cloned().unwrap_or_default() }),
     )
 }
 

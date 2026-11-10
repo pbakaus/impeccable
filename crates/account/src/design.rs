@@ -1,6 +1,5 @@
 //! Opt-in DESIGN.md contents upload. Only called behind design health's gate.
 use super::*;
-use std::io::Read;
 
 /// This is the single default for DESIGN.md contents sync.
 pub const DESIGN_SYNC_DEFAULT_ON: bool = false;
@@ -34,22 +33,6 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
-/// Read regular files only, without following a symlink out of the repo or
-/// opening a pipe. The cap also bounds a file growing after its metadata read.
-fn read(path: &Path, cap: usize) -> Option<Vec<u8>> {
-    let meta = std::fs::symlink_metadata(path).ok()?;
-    if !meta.is_file() || meta.len() > cap as u64 {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take((cap + 1) as u64)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    (bytes.len() <= cap).then_some(bytes)
-}
-
 pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Session) {
     if !Local::read(&io.env).is_some_and(|l| l.sync() && l.design.unwrap_or(DESIGN_SYNC_DEFAULT_ON))
         || !session
@@ -63,7 +46,10 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
     let Ok(root) = Path::new(&scan.root).canonicalize() else {
         return;
     };
-    let Some(bytes) = read(&root.join("DESIGN.md"), TEXT_BYTES) else {
+    let Some(reader) = crate::design_read::Reader::new(&root) else {
+        return;
+    };
+    let Some(bytes) = reader.read(false, TEXT_BYTES) else {
         return;
     };
     let Ok(text) = String::from_utf8(bytes) else {
@@ -74,16 +60,16 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
     }
     // Bound the source sidecar too. Only the listed extensions are copied;
     // components, narrative, and other fields never enter the request.
-    let sidecar_path = root.join(".impeccable/design.json");
-    let sidecar = sidecar_path
-        .canonicalize()
-        .ok()
-        .filter(|p| p.starts_with(&root))
-        .and_then(|_| read(&sidecar_path, 256 * 1024))
+    let sidecar = reader
+        .read(true, 256 * 1024)
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|v| metadata(&v["extensions"]))
         .unwrap_or(Value::Null);
     let digest = hex(&hash(&[&text, &sidecar.to_string()]));
+    let Some(local) = Local::read(&io.env) else {
+        return;
+    };
+    let generation = local.design_generation.to_string();
     // A separate service or sign-in must get its own copy. This directory is
     // design health's local per-repo state, never the work tree.
     let account = session.account().clone();
@@ -91,6 +77,7 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
         &account.issuer,
         &session.state.login.to_string(),
         &repo.key,
+        &generation,
     ]));
     let Some(home) = impeccable_home(&io.env) else {
         return;
@@ -146,13 +133,17 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
         &account.issuer,
         &session.state.login.to_string(),
         &repo.key,
+        &generation,
     ]));
     if current_marker != marker {
         return;
     }
     let url = format!("{}/cli/v1/design", account.issuer);
     if let Ok(answer) = Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
-        if matches!(answer["outcome"].as_str(), Some("recorded" | "repeat")) {
+        if matches!(answer["outcome"].as_str(), Some("recorded" | "repeat"))
+            && Local::read(&io.env)
+                .is_some_and(|l| l.sync() && l.design_generation.to_string() == generation)
+        {
             let _ = crate::store::write_private(&path, digest.as_bytes());
         }
     }

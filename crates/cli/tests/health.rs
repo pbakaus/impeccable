@@ -581,3 +581,57 @@ fn design_sync_requires_the_granted_scope() {
     run(&env, &root, &["detect", "--json", "."]);
     assert_eq!(fake.record.lock().unwrap().designs.len(), 1);
 }
+
+#[test]
+fn design_forget_fences_a_late_success_response() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-forget-race");
+    login(&env);
+    let root = repo(&env, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    run(&env, &root, &["health", "design", "on"]);
+    let gate = fake.hold("/cli/v1/design");
+    let mut child = impeccable(&env, &root, &["detect", "--json", "."])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(4);
+    while fake.record.lock().unwrap().designs.is_empty() {
+        assert!(std::time::Instant::now() < until);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(run(&env, &root, &["health", "forget"]).status.success());
+    assert!(run(&env, &root, &["health", "on"]).status.success());
+    gate.open();
+    child.wait().unwrap();
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 2);
+}
+
+#[test]
+fn design_scopes_stay_with_the_grant_when_another_person_signs_in() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.access_ttl = 0;
+    }
+    let old = fake.env("design-old-grant");
+    login(&old);
+    let root = repo(&old, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    run(&old, &root, &["health", "design", "on"]);
+    fake.knobs.lock().unwrap().design = true;
+    let newer = fake.env("design-new-grant");
+    login(&newer);
+    // First scan refreshes through health; the second must still lack consent.
+    run(&old, &root, &["detect", "--json", "."]);
+    run(&old, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+}
