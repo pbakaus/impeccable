@@ -10,7 +10,7 @@ const action = (job, name) => job.steps.find(step => step.uses?.startsWith(`${na
 
 describe('engine release signing boundary', () => {
   test('only the protected signing job receives an OIDC token', () => {
-    expect(workflow.on).toEqual({ push: { tags: ['engine-v*'] } });
+    expect(workflow.on).toEqual({ push: { tags: ['engine-v*'] }, workflow_dispatch: null });
     expect(workflow.permissions).toEqual({ contents: 'read' });
     const sign = workflow.jobs['sign-windows'];
     expect(sign.environment).toBe('windows-signing');
@@ -19,6 +19,20 @@ describe('engine release signing boundary', () => {
     expect(workflow.jobs.build.permissions?.['id-token']).toBeUndefined();
     expect(workflow.jobs.publish.permissions).toEqual({ contents: 'write' });
     expect(sign.steps.some(step => step.uses?.startsWith('actions/checkout@'))).toBe(false);
+  });
+
+  test('a manual run only builds: signing and publication need the tag push', () => {
+    // Catches: a workflow_dispatch rehearsal reaching the Azure signing identity or creating a release.
+    const tagPush = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')";
+    expect(workflow.jobs['sign-windows'].if).toBe(tagPush);
+    expect(workflow.jobs.publish.if).toBe(tagPush);
+    // The manual trigger takes no inputs, so nothing a dispatcher types reaches a step.
+    expect(workflow.on.workflow_dispatch).toBeNull();
+    // The build job holds no environment, no write or OIDC permission and no secret.
+    const build = workflow.jobs.build;
+    expect(build.environment).toBeUndefined();
+    expect(build.permissions).toBeUndefined();
+    expect(JSON.stringify(build)).not.toContain('secrets.');
   });
 
   test('publication waits for signing and cannot collect the unsigned artifact', () => {
@@ -125,6 +139,18 @@ describe.skipIf(process.platform === 'win32')('engine release version agreement'
       expect(drifted.status).toBe(1);
       expect(drifted.stdout).toContain("'1.2.4' != ENGINE_VERSION 1.2.3");
       expect(check({ tag: 'engine-v1.2.4' }).status).toBe(1);
+    });
+
+    test('a manual run skips only the tag comparison', () => {
+      const manual = (opts) => inTree({
+        ENGINE_VERSION: '1.2.3\n',
+        'Cargo.toml': ['[workspace]', '', '[workspace.package]', `version = "${opts.cargo}"`, ''].join('\n'),
+      }, script, { GITHUB_REF_NAME: 'main', GITHUB_EVENT_NAME: 'workflow_dispatch' });
+      expect(manual({ cargo: '1.2.3' }).status).toBe(0);
+      expect(manual({ cargo: '1.2.4' }).status).toBe(1);
+      // A tag push still compares the tag.
+      expect(inTree({ ENGINE_VERSION: '1.2.3\n', 'Cargo.toml': '[workspace.package]\nversion = "1.2.3"\n' }, script,
+        { GITHUB_REF_NAME: 'main', GITHUB_EVENT_NAME: 'push' }).status).toBe(1);
     });
 
     test('fails when it cannot find the workspace version', () => {
