@@ -612,6 +612,8 @@ pub(crate) fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
             "transform",
             "opacity",
             "filter",
+            "backdrop-filter",
+            "-webkit-backdrop-filter",
             "z-index",
             "position",
             "translate",

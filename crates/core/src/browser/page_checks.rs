@@ -8904,6 +8904,10 @@ mod tests {
         assert_eq!(hits, vec![Some(quotes[0])], "{hits:?}");
         let (hits, quotes) = run(&[("willChange", "color, opacity")], &[]);
         assert_eq!(hits, vec![Some(quotes[1])], "a will-change hint for opacity lifts the first card");
+        // `backdrop-filter` opens a layer too; the old substring match caught
+        // it through `filter`, the exact list must name it.
+        let (hits, quotes) = run(&[("willChange", "backdrop-filter")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "a will-change hint for backdrop-filter lifts the first card");
         let (hits, _) = run(&[], &[("transform", "matrix(0.966, 0.259, -0.259, 0.966, 0, 0)")]);
         assert!(hits.is_empty(), "a tilted cover: {hits:?}");
         let (hits, _) = run(&[], &[("clipPath", "inset(0px 0px 0px 80px)")]);
