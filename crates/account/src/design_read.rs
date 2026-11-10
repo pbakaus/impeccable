@@ -16,7 +16,7 @@ impl Reader {
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
-            options.custom_flags(0x02000000 | 0x00200000); // BACKUP_SEMANTICS, OPEN_REPARSE_POINT
+            options.custom_flags(0x02000000 | 0x00200000 | 0x00100000); // BACKUP_SEMANTICS, OPEN_REPARSE_POINT, OPEN_NO_RECALL
         }
         let file = options.open(root).ok()?;
         plain(&file, true).then_some(Self(file))
@@ -48,9 +48,48 @@ fn plain(file: &File, directory: bool) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        if meta.file_attributes() & 0x400 != 0 {
+        let attributes = meta.file_attributes();
+        if !resident(attributes, directory) {
             return false;
-        } // REPARSE_POINT
+        }
+        if attributes & 0x400 != 0 {
+            use std::ffi::c_void;
+            use std::os::windows::io::AsRawHandle;
+            #[repr(C)]
+            struct AttributeTagInfo {
+                attributes: u32,
+                tag: u32,
+            }
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetFileInformationByHandleEx(
+                    handle: *mut c_void,
+                    class: i32,
+                    info: *mut c_void,
+                    size: u32,
+                ) -> i32;
+            }
+            let mut info = AttributeTagInfo {
+                attributes: 0,
+                tag: 0,
+            };
+            // SAFETY: file is live; FileAttributeTagInfo (9) writes exactly this
+            // structure, whose size and writable storage are supplied here.
+            let ok = unsafe {
+                GetFileInformationByHandleEx(
+                    file.as_raw_handle(),
+                    9,
+                    (&mut info as *mut AttributeTagInfo).cast(),
+                    std::mem::size_of::<AttributeTagInfo>() as u32,
+                )
+            };
+            if ok == 0
+                || redirecting_reparse(info.attributes, info.tag)
+                || !resident(info.attributes, directory)
+            {
+                return false;
+            }
+        }
     }
     if directory {
         meta.is_dir()
@@ -85,6 +124,7 @@ fn child(dir: &File, name: &str, directory: bool) -> Option<File> {
     // NtOpenFile supplies the handle-relative open Windows' CreateFile lacks.
     // OPEN_REPARSE_POINT prevents following a replaced leaf; NON_DIRECTORY_FILE
     // plus the opened-handle metadata check refuses devices and pipes.
+    // NO_RECALL also keeps the open from fetching offline file contents.
     #[repr(C)]
     struct UnicodeString {
         length: u16,
@@ -136,9 +176,9 @@ fn child(dir: &File, name: &str, directory: bool) -> Option<File> {
         status: 0,
         information: 0,
     };
-    let options = 0x00200000 | 0x20 | if directory { 1 } else { 0x40 };
-    // SAFETY: all structures and UTF-16 storage remain live for this synchronous
-    // call; root is a live directory handle; NtOpenFile initializes handle.
+    let options = 0x00200000 | 0x00400000 | 0x20 | if directory { 1 } else { 0x40 }; // OPEN_REPARSE_POINT, OPEN_NO_RECALL, SYNCHRONOUS_IO_NONALERT
+                                                                                     // SAFETY: all structures and UTF-16 storage remain live for this synchronous
+                                                                                     // call; root is a live directory handle; NtOpenFile initializes handle.
     let result =
         unsafe { NtOpenFile(&mut handle, 0x00120089, &mut attrs, &mut status, 7, options) };
     if result < 0 || handle.is_null() {
@@ -188,5 +228,34 @@ mod tests {
             "sidecar parents must not redirect"
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(any(windows, test))]
+fn redirecting_reparse(attributes: u32, tag: u32) -> bool {
+    // IsReparseTagNameSurrogate: redirects names (symlinks/junctions), as
+    // distinct from content filters such as hydrated cloud or WOF files.
+    attributes & 0x400 != 0 && tag & 0x20000000 != 0
+}
+
+#[cfg(any(windows, test))]
+fn resident(attributes: u32, directory: bool) -> bool {
+    // OFFLINE, RECALL_ON_OPEN, RECALL_ON_DATA_ACCESS: do not hydrate file data
+    // for a best-effort background upload. Directory handles only anchor names.
+    directory || attributes & (0x1000 | 0x40000 | 0x400000) == 0
+}
+
+#[cfg(test)]
+mod reparse_tests {
+    #[test]
+    fn hydrated_cloud_tags_are_not_path_redirects() {
+        assert!(!super::redirecting_reparse(0x400, 0x9000001a));
+        assert!(!super::redirecting_reparse(0x400, 0x80000017));
+        assert!(super::redirecting_reparse(0x400, 0xa000000c));
+        assert!(super::redirecting_reparse(0x400, 0xa0000003));
+        assert!(super::resident(0x400, false));
+        for recall in [0x1000, 0x40000, 0x400000] {
+            assert!(!super::resident(0x400 | recall, false));
+        }
     }
 }

@@ -2242,7 +2242,8 @@ the JSON body must fit 160 KiB. The optional sidecar copies only
 `.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
 64-entry and short-string bounds. Invalid or absent metadata sends null.
 Components and narrative are never copied. Reads use directory handles and refuse symlink files, sidecar directory links,
-and non-regular files without blocking.
+and non-regular files without blocking. Windows permits resident cloud-backed
+files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
 
 Only the hash of successfully uploaded text and selected metadata is saved
 under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
