@@ -15,18 +15,32 @@ use serde_json::{json, Value};
 pub const SVELTE_LIVE_ROOT_COMPONENT: &str = "src/lib/impeccable/ImpeccableLiveRoot.svelte";
 pub const SVELTE_LAYOUT_MARKER_OPEN: &str = "<!-- impeccable-live-svelte-start -->";
 pub const SVELTE_LAYOUT_MARKER_CLOSE: &str = "<!-- impeccable-live-svelte-end -->";
-pub const SVELTE_ROOT_IMPORT: &str =
-    "import ImpeccableLiveRoot from '$lib/impeccable/ImpeccableLiveRoot.svelte';";
-
+/// Matches the import in every form a version wrote: the `$lib` alias
+/// (SvelteKit 2 only; Kit 3 removed it) and the relative path used now.
 static SVELTE_ROOT_IMPORT_LINE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[ \t]*import ImpeccableLiveRoot from '\$lib/impeccable/ImpeccableLiveRoot\.svelte(?:\?[^']*)?';[ \t]*\r?\n?").unwrap()
+    Regex::new(r"(?m)^[ \t]*import ImpeccableLiveRoot from '(?:\$lib|(?:\.\.?/)+lib)/impeccable/ImpeccableLiveRoot\.svelte(?:\?[^']*)?';[ \t]*\r?\n?").unwrap()
 });
 
-/// JS: svelteRootImportLine(rev)
-pub fn svelte_root_import_line(rev: Option<&str>) -> String {
+/// The import of the live root from `layout_rel`, relative to the layout
+/// file. SvelteKit 3 removed the `$lib` alias, and a relative path resolves
+/// on every version: `src/routes/+layout.svelte` imports
+/// `../lib/impeccable/ImpeccableLiveRoot.svelte`.
+pub fn svelte_root_import_spec(layout_rel: &str) -> String {
+    let from = jsp::dirname(layout_rel);
+    let depth = from.split('/').filter(|p| !p.is_empty() && *p != ".").count();
+    // The component lives at src/lib/...; climb out of the layout's folder
+    // to src/, then down into lib/.
+    let up = depth.saturating_sub(1);
+    let prefix = if up == 0 { "./".to_string() } else { "../".repeat(up) };
+    format!("{prefix}lib/impeccable/ImpeccableLiveRoot.svelte")
+}
+
+/// JS: svelteRootImportLine(rev), now relative to the layout file.
+pub fn svelte_root_import_line(rev: Option<&str>, layout_rel: &str) -> String {
+    let spec = svelte_root_import_spec(layout_rel);
     match rev {
-        Some(r) if !r.is_empty() => format!("import ImpeccableLiveRoot from '$lib/impeccable/ImpeccableLiveRoot.svelte?impeccable-live={}';", r),
-        _ => SVELTE_ROOT_IMPORT.to_string(),
+        Some(r) if !r.is_empty() => format!("import ImpeccableLiveRoot from '{spec}?impeccable-live={r}';"),
+        _ => format!("import ImpeccableLiveRoot from '{spec}';"),
     }
 }
 
@@ -96,7 +110,7 @@ pub fn apply_sveltekit_live_adapter(
     } else {
         default_svelte_layout()
     };
-    let after = patch_svelte_layout(&before, svelte_adapter_rev(token).as_deref());
+    let after = patch_svelte_layout(&before, svelte_adapter_rev(token).as_deref(), &layout_rel);
     let _ = write_file(&layout_abs, &after);
     json!({
         "file": layout_rel,
@@ -152,9 +166,9 @@ static EMPTY_SCRIPT_RE: Lazy<Regex> =
 static MULTI_NL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
 
 /// JS: patchSvelteLayout(content, { rev })
-pub fn patch_svelte_layout(content: &str, rev: Option<&str>) -> String {
+pub fn patch_svelte_layout(content: &str, rev: Option<&str>, layout_rel: &str) -> String {
     let mut out = content.to_string();
-    let import_line = svelte_root_import_line(rev);
+    let import_line = svelte_root_import_line(rev, layout_rel);
     if !out.contains(&import_line) {
         let mut replaced = false;
         // JS: replace ALL matches; the first is rewritten, later ones dropped.
@@ -392,4 +406,35 @@ pub fn sveltekit_artifacts(project: &SvelteKitProject) -> Vec<Value> {
         json!({ "kind": "created", "path": SVELTE_LIVE_ROOT_COMPONENT, "marker": "impeccable-live-root", "pruneTo": "src" }),
         json!({ "kind": "patched", "path": project.layout_file, "patch": "sveltekit-layout", "markers": [SVELTE_LAYOUT_MARKER_OPEN] }),
     ]
+}
+
+#[cfg(test)]
+mod kit3_import_tests {
+    use super::*;
+
+    #[test]
+    fn the_live_root_is_imported_relative_to_the_layout() {
+        // SvelteKit 3 removed `$lib`; a relative path works on 2 and 3.
+        assert_eq!(svelte_root_import_spec("src/routes/+layout.svelte"), "../lib/impeccable/ImpeccableLiveRoot.svelte");
+        assert_eq!(svelte_root_import_spec("src/routes/(app)/+layout.svelte"), "../../lib/impeccable/ImpeccableLiveRoot.svelte");
+        assert_eq!(
+            svelte_root_import_line(Some("ab12cd34"), "src/routes/+layout.svelte"),
+            "import ImpeccableLiveRoot from '../lib/impeccable/ImpeccableLiveRoot.svelte?impeccable-live=ab12cd34';"
+        );
+    }
+
+    #[test]
+    fn an_older_lib_alias_import_is_rewritten_and_removed() {
+        let layout = "src/routes/+layout.svelte";
+        let old = "<script>\n  import ImpeccableLiveRoot from '$lib/impeccable/ImpeccableLiveRoot.svelte?impeccable-live=0000aaaa';\n  let { children } = $props();\n</script>\n\n<!-- impeccable-live-svelte-start -->\n<ImpeccableLiveRoot />\n<!-- impeccable-live-svelte-end -->\n{@render children?.()}\n";
+        let patched = patch_svelte_layout(old, Some("ab12cd34"), layout);
+        assert!(!patched.contains("$lib/impeccable"), "{patched}");
+        assert!(patched.contains("from '../lib/impeccable/ImpeccableLiveRoot.svelte?impeccable-live=ab12cd34'"), "{patched}");
+        assert_eq!(patched.matches("import ImpeccableLiveRoot").count(), 1, "{patched}");
+        // Both spellings come out on removal.
+        for content in [old.to_string(), patched] {
+            let removed = unpatch_svelte_layout(&content);
+            assert!(!removed.contains("ImpeccableLiveRoot"), "{removed}");
+        }
+    }
 }
