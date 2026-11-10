@@ -299,7 +299,7 @@ fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, 
     };
     parts.push([
         format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
-        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
+        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json --changed` (without git, pass the changed files instead of `--changed`).", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
 }

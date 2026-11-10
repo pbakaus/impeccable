@@ -68,19 +68,13 @@ re!(
     .join("|")
 );
 
-// JS: GENERATED_PATH (case-insensitive).
-re!(
-    GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
-);
 
 pub fn is_sensitive_path(p: &str) -> bool {
     SENSITIVE_PATH_RE.is_match(p)
 }
 
-pub fn is_generated_path(p: &str) -> bool {
-    GENERATED_PATH_RE.is_match(p)
-}
+/// Lives in `impeccable-detect` so `detect --changed` skips the same paths.
+pub use impeccable_detect::file_system::is_generated_path;
 
 /// JS: truthy(value) — `/^(1|true|yes|on)$/i` on a string (no trim).
 pub fn truthy(value: Option<&str>) -> bool {
