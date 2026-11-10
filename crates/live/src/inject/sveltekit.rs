@@ -15,10 +15,11 @@ use serde_json::{json, Value};
 pub const SVELTE_LIVE_ROOT_COMPONENT: &str = "src/lib/impeccable/ImpeccableLiveRoot.svelte";
 pub const SVELTE_LAYOUT_MARKER_OPEN: &str = "<!-- impeccable-live-svelte-start -->";
 pub const SVELTE_LAYOUT_MARKER_CLOSE: &str = "<!-- impeccable-live-svelte-end -->";
-/// Matches the import in every form a version wrote: the `$lib` alias
-/// (SvelteKit 2 only; Kit 3 removed it) and the relative path used now.
+/// Matches the import in every form a project can hold: the `$lib` alias
+/// (SvelteKit 2 only; Kit 3 removed it), the `#lib` spelling Kit 3's
+/// migrator rewrites `$lib` into, and the relative path used now.
 static SVELTE_ROOT_IMPORT_LINE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?m)^[ \t]*import ImpeccableLiveRoot from '(?:\$lib|(?:\.\.?/)+lib)/impeccable/ImpeccableLiveRoot\.svelte(?:\?[^']*)?';[ \t]*\r?\n?").unwrap()
+    Regex::new(r"(?m)^[ \t]*import ImpeccableLiveRoot from '(?:[$#]lib|(?:\.\.?/)+lib)/impeccable/ImpeccableLiveRoot\.svelte(?:\?[^']*)?';[ \t]*\r?\n?").unwrap()
 });
 
 /// The import of the live root from `layout_rel`, relative to the layout
@@ -431,8 +432,13 @@ mod kit3_import_tests {
         assert!(!patched.contains("$lib/impeccable"), "{patched}");
         assert!(patched.contains("from '../lib/impeccable/ImpeccableLiveRoot.svelte?impeccable-live=ab12cd34'"), "{patched}");
         assert_eq!(patched.matches("import ImpeccableLiveRoot").count(), 1, "{patched}");
-        // Both spellings come out on removal.
-        for content in [old.to_string(), patched] {
+        // Kit 3's migrator turns `$lib` into `#lib`; that line is ours too.
+        let migrated = old.replace("'$lib/", "'#lib/");
+        let repatched = patch_svelte_layout(&migrated, Some("ab12cd34"), layout);
+        assert!(!repatched.contains("#lib/impeccable"), "{repatched}");
+        assert_eq!(repatched.matches("import ImpeccableLiveRoot").count(), 1, "{repatched}");
+        // Every spelling comes out on removal.
+        for content in [old.to_string(), patched, migrated] {
             let removed = unpatch_svelte_layout(&content);
             assert!(!removed.contains("ImpeccableLiveRoot"), "{removed}");
         }
