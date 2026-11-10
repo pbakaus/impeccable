@@ -623,7 +623,7 @@ fn label(name: &str) -> Option<String> {
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control() || format(c));
+        && !l.chars().any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
 }
 
@@ -813,6 +813,8 @@ mod tests {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
         assert_eq!(label("a\u{200B}b"), None);
+        // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
+        assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
