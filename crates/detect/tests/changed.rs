@@ -162,7 +162,7 @@ fn a_clean_tree_is_a_clean_scan() {
 }
 
 #[test]
-fn outside_a_git_work_tree_exits_2() {
+fn outside_a_git_work_tree_exits_1() {
     let dir = tmp("norepo");
     write(&dir, "a.css", FLAGGED);
     // The temp dir must not sit inside some other checkout.
@@ -176,7 +176,7 @@ fn outside_a_git_work_tree_exits_2() {
         return;
     }
     let (code, out, err) = run(&dir, &["--json", "--changed"]);
-    assert_eq!(code, 2);
+    assert_eq!(code, 1);
     assert_eq!(out, "");
     assert!(err.starts_with("Error: --changed reads the changed files from git"), "{err}");
     let _ = std::fs::remove_dir_all(&dir);

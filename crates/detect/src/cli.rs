@@ -86,7 +86,7 @@ Exit status:
   1  At least one requested target could not be scanned
   2  Scan completed with primary findings
   Operational failure takes precedence when a multi-target scan is partial.
-  --changed outside a git work tree exits 2 with an error and scans nothing.
+  --changed outside a git work tree exits 1 with an error and scans nothing.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector

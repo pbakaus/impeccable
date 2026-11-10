@@ -19,8 +19,8 @@ use crate::jsp;
 /// Not inside a git work tree, or git could not run.
 pub const NOT_A_REPO: &str = "Error: --changed reads the changed files from git, and this directory is not inside a git work tree. Pass the files or directories to scan instead.\n";
 
-/// The exit status for [`NOT_A_REPO`].
-pub const NOT_A_REPO_EXIT: i32 = 2;
+/// The exit status for [`NOT_A_REPO`]: an operational failure, like a target that cannot be read. Exit 2 stays reserved for findings.
+pub const NOT_A_REPO_EXIT: i32 = 1;
 
 fn git(cwd: &str, args: &[&str]) -> Option<Vec<u8>> {
     let mut cmd = Command::new("git");
