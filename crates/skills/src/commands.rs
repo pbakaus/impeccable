@@ -500,17 +500,19 @@ fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, sk
 /// skills from `.agents/skills` only (its loader joins that onto each directory
 /// from the project root to the cwd), and the user-level install Impeccable
 /// maintains is `~/.agents/skills`, so a copy there (an unzipped bundle, a
-/// hand copy) stays at the version it was. A `.codex/skills` that links onto
-/// a managed skills dir is that install, not a copy. Returns the skill name.
+/// hand copy) stays at the version it was. A `.codex/skills` entry that links
+/// onto a managed skill dir is that install, not a copy, and is skipped
+/// without hiding a copy beside it. Returns the first copy's name.
 fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
     let skills_dir = util::jsp::join(&[root, ".codex", "skills"]);
-    let name = util::read_dir_names(&skills_dir)?.into_iter().find(|n| is_impeccable_skill_name(n) && is_skill_dir(&skills_dir, n))?;
-    let skill_dir = util::jsp::join(&[&skills_dir, &name]);
-    let real = util::realpath(&skill_dir).unwrap_or(skill_dir);
-    if managed.iter().any(|m| *m == real) {
-        return None;
-    }
-    Some(name)
+    util::read_dir_names(&skills_dir)?.into_iter().find(|n| {
+        if !is_impeccable_skill_name(n) || !is_skill_dir(&skills_dir, n) {
+            return false;
+        }
+        let skill_dir = util::jsp::join(&[&skills_dir, n]);
+        let real = util::realpath(&skill_dir).unwrap_or(skill_dir);
+        !managed.iter().any(|m| *m == real)
+    })
 }
 
 /// Says so when `root` carries such a copy, so a run that reports the install
@@ -520,11 +522,7 @@ fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
 /// be made.
 fn note_unmanaged_codex_skill(sys: &Sys, io: &mut Io, root: &str, user: bool, has_agents: bool, managed: &[String]) {
     let Some(name) = unmanaged_codex_skill(root, managed) else { return };
-    let shown = if user {
-        sys.format_path_for_display(&util::jsp::join(&[root, ".codex", "skills", &name]))
-    } else {
-        format!(".codex/skills/{name}")
-    };
+    let shown = if user { format!("{}/.codex/skills/{name}", sys.format_path_for_display(root)) } else { format!(".codex/skills/{name}") };
     let reads = if user {
         "the user-level install Impeccable maintains is ~/.agents/skills/impeccable"
     } else {
@@ -893,6 +891,10 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         return Err(Flow::Exit(1));
     };
 
+    // An unscoped run that found no project install and fell back to the user
+    // one: the project may still hold a `.codex/skills` copy, which is why
+    // nothing was found there, so that root is checked as well.
+    let fell_back_to_user = matches!(target, UpdateTarget::Resolved { scope: Some(Scope::User), .. }) && explicit_scope.is_none();
     let (root, scope, agent_scope, providers, scope_label) = match target {
         UpdateTarget::Resolved { root, scope, agent_scope, providers, scope_label } => (root, scope, agent_scope, providers, scope_label),
         UpdateTarget::Ambiguous { project_providers, user_providers } => {
@@ -979,6 +981,9 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
                 out(io, &format!("Skills are up to date{}.", version_suffix(&v)));
                 report_hook_targets(&sys, io, &hook_targets, if want_hooks { &copy_providers } else { &[] });
                 note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
+                if fell_back_to_user {
+                    note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &[]);
+                }
                 out(io, "Nothing else to do.");
                 report_doctor(&sys, io, &root, &copy_providers, scope, false);
                 Err(Flow::Exit(0))
@@ -1032,6 +1037,9 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         install_engine_binaries(&sys, io, &refreshed);
         report_hook_targets(&sys, io, &hook_targets, if want_hooks { &providers } else { &[] });
         note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
+        if fell_back_to_user {
+            note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &[]);
+        }
         out(io, "Done!");
         report_doctor(&sys, io, &root, &copy_providers, scope, true);
         Ok(())

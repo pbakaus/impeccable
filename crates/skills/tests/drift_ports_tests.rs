@@ -1338,6 +1338,29 @@ fn update_is_silent_about_a_codex_skills_link_onto_the_agents_install() {
     let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
     assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
     assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    // A linked entry does not hide a real copy beside it.
+    std::fs::remove_file(format!("{project}/.codex/skills")).unwrap();
+    std::fs::create_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink("../../.agents/skills/impeccable", format!("{project}/.codex/skills/impeccable")).unwrap();
+    write(&format!("{project}/.codex/skills/teach-impeccable/SKILL.md"), "---\nname: teach-impeccable\nversion: 3.9.1\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Found an Impeccable skill at .codex/skills/teach-impeccable, which update does not manage"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_falling_back_to_the_user_install_names_the_project_codex_copy() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-fallback", false, false);
+    let home = format!("{root}/home");
+    write(&format!("{home}/.agents/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Updating the user level install"), "{}", r.stdout);
+    let note = "Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run `npx impeccable install --providers=codex` to install it there, then delete .codex/skills/impeccable.\nDone!\n";
+    assert!(r.stdout.contains(note), "{}", r.stdout);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    assert!(read(&format!("{home}/.agents/skills/impeccable/SKILL.md")).contains("9.9.9-local"));
     std::fs::remove_dir_all(&root).ok();
 }
 
