@@ -308,6 +308,7 @@ fn multiline_metadata_never_becomes_report_body() {
         .unwrap();
     let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
     meta["notes"] = "Internal notes\n---\nprivate context".into();
+    meta["list_notes"] = serde_json::json!(["one\n---\nprivate", "two"]);
     let out = impeccable(
         &env,
         root,
@@ -321,6 +322,10 @@ fn multiline_metadata_never_becomes_report_body() {
     assert_eq!(
         impeccable_context::critique_storage::parse_frontmatter(&saved)["notes"],
         meta["notes"]
+    );
+    assert_eq!(
+        impeccable_context::critique_storage::parse_frontmatter(&saved)["list_notes"],
+        "one\n---\nprivate,two"
     );
     assert!(saved.contains(r#"notes: "Internal notes\n---\nprivate context""#));
     assert_eq!(

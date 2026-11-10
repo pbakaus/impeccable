@@ -44,8 +44,8 @@ fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
             Value::Array(_) | Value::Object(_) => (js_string_of(v), false),
             Value::Null => unreachable!(),
         };
-        let needs_quotes =
-            is_string && (s.contains(':') || s.contains('#') || s.contains(['\n', '\r']));
+        let multiline = s.contains(['\n', '\r']);
+        let needs_quotes = multiline || (is_string && (s.contains(':') || s.contains('#')));
         lines.push(format!(
             "{}: {}",
             k,
