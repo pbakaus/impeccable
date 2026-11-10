@@ -183,6 +183,17 @@ describe('release.mjs guards', () => {
     assert.match(stderr, /no Pro release key/);
   });
 
+  it('engine: refuses a keyring with one valid key and one malformed entry', () => {
+    // Catches (#1372 review): one valid key passed the check, but the engine rejects the
+    // whole file when any entry is malformed, so it would ship trusting no key at all.
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'ab'.repeat(32), 'release-2': 'AB'.repeat(32) }));
+    git(workDir, 'commit', '-am', 'one bad key');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key.*invalid: "release-2"/);
+  });
+
   it('engine: refuses when the tag already exists on origin', () => {
     git(workDir, 'tag', 'engine-v0.1.0');
     git(workDir, 'push', 'origin', 'engine-v0.1.0');

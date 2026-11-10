@@ -47,6 +47,17 @@ impl Account {
         self.home.join("account").join(id)
     }
 
+    /// The account as people read it: "Impeccable" for the production
+    /// service, and "Impeccable (<host>)" for any other, so a staging or test
+    /// sign-in is never mistaken for the real account.
+    pub fn display_name(&self) -> String {
+        if self.issuer == DEFAULT_ACCOUNT_URL {
+            "Impeccable".to_string()
+        } else {
+            format!("Impeccable ({})", self.display_host())
+        }
+    }
+
     /// The host shown to people (`api.impeccable.style`).
     pub fn display_host(&self) -> &str {
         self.issuer.split("://").nth(1).unwrap_or(&self.issuer)
@@ -123,6 +134,17 @@ pub fn browser_safe(endpoint: &str, account: &Account) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_account_is_named_impeccable_and_only_other_services_show_a_host() {
+        // Catches: sign-in lines naming the host (api.impeccable.style) where a person expects their Impeccable account.
+        let at = |url: &str| Account { issuer: url.to_string(), home: PathBuf::from("/h") };
+        assert_eq!(at(DEFAULT_ACCOUNT_URL).display_name(), "Impeccable");
+        assert_eq!(
+            at("https://api.staging.impeccable.style").display_name(),
+            "Impeccable (api.staging.impeccable.style)"
+        );
+    }
     use super::*;
 
     #[test]

@@ -330,7 +330,7 @@ mod mac {
         assert!(process.try_wait().unwrap().is_none(), "the Loop that didn't quit is left running");
         process.kill().unwrap();
         process.wait().unwrap();
-        assert!(error.contains("Quit Loop first"), "{error}");
+        assert_eq!(error, "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.");
         assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.0.0");
     }
 

@@ -185,7 +185,7 @@ fn executable(app: &Path) -> Result<PathBuf> {
 }
 
 const RUNNING: &str =
-    "Impeccable Loop is running. Quit Loop first, then run impeccable loop update.";
+    "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.";
 /// How long `loop update` waits for a running Loop to quit.
 const QUIT_WAIT: Duration = Duration::from_secs(10);
 

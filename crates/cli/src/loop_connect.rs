@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 /// environment or a server response.
 const MCP_URL: &str = "https://api.impeccable.style/mcp";
 const MCP_NAME: &str = "impeccable";
+/// Why an existing entry of that name isn't the one connect would write.
+const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
 const APP: &str = "Applications/Impeccable Loop.app";
@@ -121,7 +123,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             .filter(|dir| *dir != agent.root)
         {
             return Err(format!(
-                "Codex is already connected for {}; run impeccable loop disconnect first",
+                "Codex is already connected for {}; run impeccable loop disconnect first.",
                 other.display()
             ));
         }
@@ -130,6 +132,12 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     let mut added = false;
     match read_entry(agent) {
         Entry::Exact => {}
+        Entry::Other(why) if why == SETTINGS_DIFFER => {
+            return Err(format!(
+                "{} already has a different MCP server called {MCP_NAME}; it was left alone. Remove or rename it, then connect again.",
+                agent.mcp_file.display()
+            ))
+        }
         Entry::Other(why) => {
             return Err(format!(
                 "{} already has an MCP server called {MCP_NAME} ({why}); it was left alone",
@@ -490,7 +498,7 @@ fn read_entry(agent: &Agent) -> Entry {
         return match v.get("mcpServers").and_then(|s| s.get(MCP_NAME)) {
             None => Entry::Absent,
             Some(e) if *e == json!({"type": "http", "url": MCP_URL}) => Entry::Exact,
-            Some(_) => Entry::Other("its settings differ".into()),
+            Some(_) => Entry::Other(SETTINGS_DIFFER.into()),
         };
     }
     let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
@@ -500,13 +508,13 @@ fn read_entry(agent: &Agent) -> Entry {
         return Entry::Absent;
     };
     let Some(table) = entry.as_table_like() else {
-        return Entry::Other("its settings differ".into());
+        return Entry::Other(SETTINGS_DIFFER.into());
     };
     let keys: Vec<&str> = table.iter().map(|(k, _)| k).collect();
     if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(MCP_URL) {
         Entry::Exact
     } else {
-        Entry::Other("its settings differ".into())
+        Entry::Other(SETTINGS_DIFFER.into())
     }
 }
 
@@ -676,7 +684,10 @@ fn support_dir(home: &Path) -> Result<PathBuf> {
 fn lock(support: &Path) -> Result<fs::File> {
     let path = support.join(".connect.lock");
     if fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
-        return Err(format!("{} isn't a plain file.", path.display()));
+        return Err(format!(
+            "{} isn't a plain file; refusing to write there.",
+            path.display()
+        ));
     }
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(false);
