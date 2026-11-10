@@ -552,6 +552,18 @@ fn disconnect_rolls_back_a_connect_that_stopped_part_way() {
     assert!(out.status.success(), "{}", text(&out));
     assert!(!pending.exists());
     assert_eq!(fs::read_to_string(&settings).unwrap(), before);
+    // Its journal is gone with the rollback; the MCP server it added and Loop's record
+    // are still handled (#1389 review).
+    let said = text(&out);
+    assert!(
+        said.contains("Claude Code: an earlier connect that stopped part way was rolled back")
+            && said.contains("claude mcp remove"),
+        "{said}"
+    );
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(record["enabled"], false, "{record}");
 }
 
 #[test]

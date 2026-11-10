@@ -244,6 +244,7 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // A connect that stopped part way is rolled back first, so its hooks are either
     // gone or committed (and then undone below).
     let found = installed_specs(OWNER).map_err(|(_, m)| m)?;
+    let mut rolled_back = Vec::new();
     for spec in &found.pending {
         let label = label(&spec.harness);
         match recover_spec(spec) {
@@ -253,7 +254,7 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
                     "{label}: an earlier connect stopped part way and a file it touched has changed since; its hooks were left as they are.\n"
                 ));
             }
-            Ok(_) => {}
+            Ok(_) => rolled_back.push(spec),
             Err((_, msg)) => {
                 failed = true;
                 out.push_str(&format!(
@@ -271,6 +272,27 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         ));
     }
     let specs = found.committed;
+    // A rolled-back first connect has no journal left, but may have added the MCP
+    // server and Loop's record: stop the waking and say how to remove the server.
+    for spec in rolled_back {
+        if specs
+            .iter()
+            .any(|s| s.harness == spec.harness && s.root == spec.root)
+        {
+            continue;
+        }
+        let label = label(&spec.harness);
+        match forget_account(&support, &spec.harness, &spec.root) {
+            Ok(()) => out.push_str(&format!(
+                "{label}: an earlier connect that stopped part way was rolled back.\n"
+            )),
+            Err(e) => {
+                failed = true;
+                out.push_str(&format!("{label}: couldn't stop Loop waking it: {e}\n"));
+            }
+        }
+        out.push_str(&mcp_stays(&support, spec));
+    }
     for spec in &specs {
         if let Err(e) = forget_account(&support, &spec.harness, &spec.root) {
             failed = true;
@@ -294,15 +316,7 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
                 out.push_str(&format!("{label}: hooks not removed: {msg}\n"));
             }
         }
-        if let Some(agent) = recorded_target(&support, &spec.harness, &spec.root) {
-            if !matches!(read_entry(&agent), Entry::Absent) {
-                out.push_str(&format!(
-                    "  Its {MCP_NAME} MCP server stays in {}. To remove it: {}\n",
-                    agent.mcp_file.display(),
-                    remove_command(&agent)
-                ));
-            }
-        }
+        out.push_str(&mcp_stays(&support, spec));
     }
     if out.is_empty() {
         out.push_str("Nothing to disconnect.\n");
@@ -311,6 +325,19 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         return Err(out.trim_end().to_string());
     }
     Ok(out)
+}
+
+/// The line saying where `spec`'s MCP server stays and the exact command to remove it,
+/// or nothing when connect recorded no target or the server is already gone.
+fn mcp_stays(support: &Path, spec: &Spec) -> String {
+    match recorded_target(support, &spec.harness, &spec.root) {
+        Some(agent) if !matches!(read_entry(&agent), Entry::Absent) => format!(
+            "  Its {MCP_NAME} MCP server stays in {}. To remove it: {}\n",
+            agent.mcp_file.display(),
+            remove_command(&agent)
+        ),
+        _ => String::new(),
+    }
 }
 
 fn home(io: &Io) -> Result<PathBuf> {
