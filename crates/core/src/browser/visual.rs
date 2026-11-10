@@ -572,7 +572,7 @@ enum Order {
 /// nothing the capture recorded opens one and it did not record `isolation`
 /// (a capture older than that property); a Tailwind `isolate` class answers
 /// for it there.
-fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
+pub(crate) fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
     if box_layer(dom, n).context.is_some() {
         return Some(true);
     }
@@ -604,22 +604,27 @@ fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
     if ["paint", "layout", "strict", "content"].iter().any(|k| contain.contains(k)) {
         return Some(true);
     }
+    // A `will-change` hint opens one for a property that would: `color`,
+    // `contents` or `scroll-position` opens nothing.
     let will = value("willChange");
-    if [
-        "transform",
-        "opacity",
-        "filter",
-        "z-index",
-        "translate",
-        "rotate",
-        "scale",
-        "isolation",
-        "mix-blend-mode",
-        "perspective",
-    ]
-    .iter()
-    .any(|k| will.contains(k))
-    {
+    if will.split(',').map(js::trim).any(|k| {
+        [
+            "transform",
+            "opacity",
+            "filter",
+            "z-index",
+            "position",
+            "translate",
+            "rotate",
+            "scale",
+            "isolation",
+            "mix-blend-mode",
+            "perspective",
+            "clip-path",
+            "mask",
+        ]
+        .contains(&k)
+    }) {
         return Some(true);
     }
     match value("isolation").as_str() {

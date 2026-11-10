@@ -4829,25 +4829,13 @@ fn card_level(dom: &dyn Dom, e: ElId) -> f64 {
     }
 }
 
-/// The `will-change` values that open a stacking context: a hint for a
-/// property that would open one when set. `will-change: color` or
-/// `scroll-position` changes nothing about paint order.
-const CARD_CONTEXT_WILL_CHANGE: &[&str] =
-    &["transform", "opacity", "filter", "perspective", "clip-path", "mask", "isolation", "z-index", "position"];
-
-/// Whether `e` opens a stacking context: a `z-index` that applies, or a
-/// transform, a filter, a `will-change` hint for one of those, an opacity
-/// under 1, a fixed or sticky position, or `isolation: isolate`.
+/// Whether `e` opens a stacking context, by the predicate the contrast pass
+/// reads paint order with: a `z-index` that applies, an opacity under 1, a
+/// transform, a filter, a blend mode, `contain: paint`, `isolation:
+/// isolate`, a `will-change` hint for one of those, a fixed or sticky
+/// position. A capture that cannot say reads as none.
 fn card_opens_context(dom: &dyn Dom, e: ElId) -> bool {
-    let set = |p: &str| !matches!(dom.style(e, p).as_str(), "" | "none" | "auto");
-    let will = js::to_lower_case(&dom.style(e, "willChange"));
-    (card_z_applies(dom, e) && parse_float(&dom.style(e, "zIndex")).is_finite())
-        || set("transform")
-        || set("filter")
-        || will.split(',').any(|v| CARD_CONTEXT_WILL_CHANGE.contains(&js::trim(v)))
-        || parse_float(&dom.style(e, "opacity")) < 1.0
-        || matches!(dom.style(e, "position").as_str(), "fixed" | "sticky")
-        || dom.style(e, "isolation") == "isolate"
+    super::visual::opens_stacking_context(dom, e) == Some(true)
 }
 
 /// Whether `e` paints as a layer of its own: a positioned box, or one that
@@ -8962,6 +8950,8 @@ mod tests {
         assert_eq!(hits, vec![Some(quotes[0])], "a quote at z-index 0 is under the z-index 1 card");
         let (hits, quotes) = run(&[("position", "relative"), ("zIndex", "2")], &[("opacity", "0.99")]);
         assert_eq!(hits, vec![Some(quotes[0])], "a card that opens a context keeps its quote inside it");
+        let (hits, quotes) = run(&[("position", "relative"), ("zIndex", "2")], &[("contain", "paint")]);
+        assert_eq!(hits, vec![Some(quotes[0])], "contain: paint keeps the quote inside its card");
     }
 
     /// A rounded card's rect is its bounding box: where the overlap lands

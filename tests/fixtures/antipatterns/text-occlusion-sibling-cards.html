@@ -15,7 +15,8 @@
 
   Flag: cards wider than their grid tracks, stickies placed at fixed offsets
   shorter than their content, absolute cards side by side, and a card pulled
-  over its neighbour by a negative margin.
+  over its neighbour by a negative margin, and a quote raised by its own
+  z-index inside a card whose contain: paint keeps it under the sibling.
   Pass: cards that fit their tracks, list cards that share a 1px border, an
   avatar stack, a card that covers only the empty body of the one behind it
   (its title stays clear), a carousel's next slide parked over the
@@ -67,6 +68,10 @@
   .slides .card { position: absolute; left: 0; top: 0; width: 360px; height: 92px; }
   .slides .next { opacity: 0; }
 
+  .held .card { width: 360px; height: 110px; contain: paint; }
+  .held .card + .card { position: relative; z-index: 1; height: 64px; margin-top: -28px; padding-top: 40px; contain: none; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
+  .held .lifted { position: relative; z-index: 2; }
+
   .raised .card { width: 360px; height: 64px; }
   .raised .card + .card { position: relative; z-index: 1; margin-top: -30px; padding-top: 40px; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
   .raised .lifted { position: relative; z-index: 2; }
@@ -116,6 +121,13 @@
         <div class="pulled">
           <article class="card"><b>Hal, owner</b><p class="flag-pulled-quote">Wanted one invoice for every workspace he pays for.</p></article>
           <article class="card"><b>Ivy, support</b><p>Answered the same refund question three times.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A raised quote held in by contain: paint</h3>
+        <div class="held">
+          <article class="card"><b>Rae, planner</b><p class="lifted flag-contained-quote">Booked the venue in March, the caterer in April and the band in May, then wrote every date and deposit into one sheet so the whole team could check what was still owed before the day.</p></article>
+          <article class="card"><b>Sol, host</b></article>
         </div>
       </section>
     </div>

@@ -159,7 +159,7 @@ fn text_occlusion_reads_a_card_laid_over_a_sibling_card() {
     let found = findings_at(&engine, port, "text-occlusion-sibling-cards.html", "text-occlusion", Some((1280, 1400)));
     assert_cases(
         &found,
-        &["flag-grid-quote", "flag-board-quote", "flag-side-quote", "flag-pulled-quote"],
+        &["flag-grid-quote", "flag-board-quote", "flag-side-quote", "flag-pulled-quote", "flag-contained-quote"],
         &[
             "pass-grid-fits",
             "pass-shared-border",
