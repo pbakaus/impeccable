@@ -4147,3 +4147,51 @@ fn a_configured_extension_is_not_a_plain_script() {
     let js = t.write("src/a.js", TS_SLOP);
     assert!(hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).stdout.contains("[gradient-text]"));
 }
+
+#[test]
+fn the_stop_pass_skips_a_cached_plain_script_once_the_project_drops_impeccable() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write("PRODUCT.md", "# Product\n");
+    let r = rt(&cwd);
+    let ts = t.write("src/theme.ts", TS_SLOP);
+    // Cached by the per-edit pass while the project used Impeccable.
+    hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+    std::fs::remove_file(t.0.join("PRODUCT.md")).unwrap();
+    std::fs::remove_dir_all(t.0.join(".impeccable")).ok();
+    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
+    assert!(!stop.stdout.contains("[gradient-text]"), "{}", stop.stdout);
+}
+
+#[test]
+fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let css = t.0.join("src/page.css");
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+    std::fs::OpenOptions::new().write(true).open(&css).unwrap().set_modified(earlier).unwrap();
+    // More plain scripts than discovery keeps, all newer than the stylesheet.
+    for i in 0..45 {
+        t.write(&format!("server/route{i}.ts"), TS_SLOP);
+    }
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "the stylesheet still scans: {} {:?}", deep.stdout, deep.audit);
+    assert!(!deep.stdout.contains("[gradient-text]"), "no server script scans: {}", deep.stdout);
+}
+
+#[test]
+fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let write = cursor(&cwd, "Write", json!({"file_path": "src/server.ts", "content": TS_SLOP}));
+    assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
+    t.write("DESIGN.md", "# Design\n");
+    assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
+}
