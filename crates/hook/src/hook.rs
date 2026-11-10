@@ -248,6 +248,10 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd) {
+            last_skip = "plain-script";
+            continue;
+        }
         if is_ignored_file(&rt.proc_cwd, file_path, &project_cwd, &config.ignore_files) {
             last_skip = "config-ignore-file";
             continue;
