@@ -1190,7 +1190,9 @@ fn merge_hook_manifests_replaces_legacy_windows_path_claude_hooks() {
 }
 
 /// `update` ends with the doctor report on both of its success paths, and it
-/// only reports: the project file the findings name stays as it was.
+/// only reports: the project file the findings name stays as it was. The
+/// fixes are the agent's to offer, so a run that installed a new version
+/// ends by sending the user to the `doctor` command there.
 #[test]
 fn update_ends_with_the_doctor_report() {
     let root = temp_root("update-doctor-report");
@@ -1207,11 +1209,13 @@ fn update_ends_with_the_doctor_report() {
     let bundle = create_fake_universal_bundle(&root, &[".claude"]);
     let env = base_env(&home, &tmpdir, &bundle);
 
-    for last_line in ["Done!", "Nothing else to do."] {
+    let next_step = "\nNext step: run /impeccable doctor in your coding agent. It checks this project's setup against the version you just installed and offers the fixes.\n";
+    for (last_line, installed) in [("Done!", true), ("Nothing else to do.", false)] {
         let r = run_cli(&["update", "-y"], &project, &env);
         assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
         let (_, report) = r.stdout.split_once(&format!("{last_line}\n\nImpeccable doctor:")).unwrap_or_else(|| panic!("{}", r.stdout));
         assert!(report.contains("product-deprecated-register"), "{}", r.stdout);
+        assert_eq!(r.stdout.ends_with(next_step), installed, "{}", r.stdout);
     }
     assert_eq!(read(&format!("{project}/PRODUCT.md")), product);
     std::fs::remove_dir_all(&root).ok();
