@@ -299,9 +299,24 @@ fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, 
     };
     parts.push([
         format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
-        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json --changed` (without git, pass the changed files instead of `--changed`).", provider.verb_cmd("detect")),
+        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json --changed`{} (without git, pass the changed files instead of `--changed`).", provider.verb_cmd("detect"), changed_scan_dir(ctx, cwd)),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
+}
+
+/// `--changed` scans only cwd's subtree, so when context resolved a project
+/// other than cwd (an explicit `--target`, or a session started below the
+/// project root) the directive names the directory to run it from.
+fn changed_scan_dir(ctx: &Ctx, cwd: &str) -> String {
+    let same = |a: &str, b: &str| {
+        let canon = |p: &str| std::fs::canonicalize(p).map(|c| c.to_string_lossy().into_owned()).unwrap_or_else(|_| p.trim_end_matches(['/', '\\']).to_string());
+        canon(a) == canon(b)
+    };
+    if ctx.project_root.is_empty() || same(&ctx.project_root, cwd) {
+        String::new()
+    } else {
+        format!(" from `{}`", ctx.project_root)
+    }
 }
 
 /// `which <tool>` exit 0 (`where` on Windows).
