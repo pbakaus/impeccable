@@ -34,7 +34,7 @@ jobs:
           - { os: macos-15,       target: x86_64-apple-darwin,        short: darwin-x64 }
           - { os: namespace-profile-impeccable, target: x86_64-unknown-linux-musl,  short: linux-x64 }
           - { os: namespace-profile-impeccable, target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
-          - { os: namespace-profile-impeccable-windows, target: x86_64-pc-windows-msvc, short: windows-x64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
