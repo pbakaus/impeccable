@@ -35,18 +35,19 @@ impl Box {
             "PATH".into(),
             format!("{}:/usr/bin:/bin", root.join("bin").display()),
         );
-        env.insert("MCP_STATE_DIR".into(), root.display().to_string());
         // Fakes in the image of the real CLIs: Claude 2.1.x prints text on `get` and takes no
         // --scope there; Codex answers `get --json` with its transport object.
+        // Fakes in the image of the real CLIs, writing the same files: Claude keeps user
+        // MCP servers in .claude.json (in CLAUDE_CONFIG_DIR when set, else HOME); Codex in
+        // CODEX_HOME/config.toml.
         script(
             &root.join("bin/claude"),
             r#"#!/bin/sh
-s="$MCP_STATE_DIR/claude-$3"
+f="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+[ -f "$f" ] || echo '{}' > "$f"
 case "$2" in
-get) for a in "$@"; do [ "$a" = "--scope" ] && exit 1; done; [ -f "$s" ] || exit 1
-  url=$(sed -n 's/.*"url":"\([^"]*\)".*/\1/p' "$s"); printf '%s:\n  Scope: User config\n  Type: http\n  URL: %s\n' "$3" "$url";;
-add-json) printf '%s' "$6" > "$MCP_STATE_DIR/claude-$5";;
-remove) rm -f "$MCP_STATE_DIR/claude-$5";;
+add-json) jq --arg n "$5" --argjson c "$6" '.mcpServers[$n]=$c' "$f" > "$f.t" && mv "$f.t" "$f";;
+remove) jq --arg n "$5" 'del(.mcpServers[$n])' "$f" > "$f.t" && mv "$f.t" "$f";;
 esac
 exit 0
 "#,
@@ -54,11 +55,10 @@ exit 0
         script(
             &root.join("bin/codex"),
             r#"#!/bin/sh
-s="$MCP_STATE_DIR/codex-$3"
+f="${CODEX_HOME:-$HOME/.codex}/config.toml"
 case "$2" in
-get) [ -f "$s" ] || exit 1; cat "$s";;
-add) printf '{"name":"%s","transport":{"type":"streamable_http","url":"%s"}}' "$3" "$5" > "$s";;
-remove) rm -f "$s";;
+add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
 esac
 exit 0
 "#,
@@ -99,6 +99,18 @@ impl Drop for Box {
 fn script(path: &Path, body: &str) {
     fs::write(path, body).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn claude_entry(file: &Path) -> serde_json::Value {
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .map(|v| v["mcpServers"]["impeccable"].clone())
+        .unwrap_or(serde_json::Value::Null)
+}
+
+fn codex_config(b: &Box) -> String {
+    fs::read_to_string(b.home().join(".codex/config.toml")).unwrap_or_default()
 }
 
 fn text(o: &Output) -> String {
@@ -147,12 +159,16 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
         "{said}"
     );
 
-    // The MCP server: the built-in URL, for both agents.
-    let claude_mcp = fs::read_to_string(b.root.join("claude-impeccable")).unwrap();
-    assert_eq!(claude_mcp, format!(r#"{{"type":"http","url":"{URL}"}}"#));
-    assert!(fs::read_to_string(b.root.join("codex-impeccable"))
-        .unwrap()
-        .contains(URL));
+    // The MCP server: the built-in URL, for both agents, in their own files.
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(
+        codex_config(&b).contains(&format!("[mcp_servers.impeccable]\nurl = \"{URL}\"")),
+        "{}",
+        codex_config(&b)
+    );
 
     // Claude's hooks call Loop's helper with the agreed arguments and options.
     let settings: serde_json::Value =
@@ -246,8 +262,8 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
         fs::read_to_string(b.home().join(".claude/settings.json")).unwrap(),
         personal
     );
-    assert!(!b.root.join("claude-impeccable").exists());
-    assert!(!b.root.join("codex-impeccable").exists());
+    assert!(claude_entry(&b.home().join(".claude.json")).is_null());
+    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
     let record: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&claude).unwrap()).unwrap();
     assert_eq!(
@@ -264,7 +280,7 @@ fn an_agent_without_its_cli_is_skipped_not_failed() {
     let out = b.run(&["loop", "connect"]);
     assert!(out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("Codex: not found"), "{}", text(&out));
-    assert!(b.root.join("claude-impeccable").exists());
+    assert!(!claude_entry(&b.home().join(".claude.json")).is_null());
     assert!(!b.support().join("codex-install.json").exists());
 }
 
@@ -287,7 +303,8 @@ fn disconnect_undoes_the_account_connect_used_not_todays() {
         !work.join("settings.json").exists(),
         "the work account's hooks are gone"
     );
-    assert!(!b.root.join("claude-impeccable").exists());
+    assert!(claude_entry(&b.home().join(".claude.json")).is_null());
+    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
 }
 
 #[test]
@@ -298,13 +315,14 @@ fn a_missing_cli_does_not_stop_the_other_agent_disconnecting() {
     fs::rename(b.root.join("bin/claude"), b.root.join("claude-moved")).unwrap();
     let out = b.run(&["loop", "disconnect"]);
     assert!(!out.status.success(), "a partial disconnect says so");
-    assert!(text(&out).contains("Codex: disconnected"), "{}", text(&out));
+    let said = text(&out);
+    assert!(said.contains("Codex: disconnected"), "{said}");
+    assert!(said.contains("CLI wasn't found"), "{said}");
+    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
     assert!(
-        text(&out).contains("Claude Code: not fully disconnected"),
-        "{}",
-        text(&out)
+        !b.home().join(".claude/settings.json").exists(),
+        "Claude's hooks still went"
     );
-    assert!(!b.root.join("codex-impeccable").exists());
     let record: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
             .unwrap();
@@ -345,19 +363,21 @@ fn one_agent_failing_reports_the_other_and_rolls_itself_back() {
     let b = Box::new("partial");
     b.install_loop();
     // Codex already has a different server called impeccable: connect must not take it over.
-    fs::write(b.root.join("codex-impeccable"), r#"{"name":"impeccable","transport":{"type":"streamable_http","url":"https://elsewhere.example/mcp"}}"#).unwrap();
+    let theirs = "[mcp_servers.impeccable]\nurl = \"https://elsewhere.example/mcp\"\n";
+    fs::write(b.home().join(".codex/config.toml"), theirs).unwrap();
     let out = b.run(&["loop", "connect"]);
     assert!(!out.status.success());
     let said = text(&out);
     assert!(said.contains("Claude Code: connected"), "{said}");
-    assert!(said.contains("Codex: not connected"), "{said}");
+    assert!(
+        said.contains("Codex: not connected") && said.contains("left alone"),
+        "{said}"
+    );
     assert!(
         !b.home().join(".codex/hooks.json").exists(),
-        "Codex's half install was rolled back"
+        "nothing of Codex's was touched"
     );
-    assert!(fs::read_to_string(b.root.join("codex-impeccable"))
-        .unwrap()
-        .contains("elsewhere"));
+    assert_eq!(codex_config(&b), theirs);
 }
 
 #[test]
@@ -377,5 +397,41 @@ fn the_cli_is_resolved_once_from_absolute_executable_entries() {
     assert_eq!(
         record["executable"],
         b.root.join("bin/claude").display().to_string()
+    );
+}
+
+#[test]
+fn an_entry_the_person_already_had_is_kept_on_disconnect() {
+    // connect adds only when absent, so disconnect removes only what it added.
+    let b = Box::new("theirs-exact");
+    b.install_loop();
+    let mine = format!("[mcp_servers.impeccable]\nurl = \"{URL}\"\n");
+    fs::write(b.home().join(".codex/config.toml"), &mine).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(codex_config(&b), mine, "the person's own entry stays");
+}
+
+#[test]
+fn an_entry_changed_after_connect_is_left_in_place_and_reported() {
+    let b = Box::new("changed");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    // The person narrows Codex's tools on the server connect added.
+    let edited = codex_config(&b).replace(
+        &format!("url = \"{URL}\""),
+        &format!("url = \"{URL}\"\ndisabled_tools = [\"post\"]"),
+    );
+    fs::write(b.home().join(".codex/config.toml"), &edited).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        text(&out).contains("changed since connect"),
+        "{}",
+        text(&out)
+    );
+    assert!(
+        codex_config(&b).contains("disabled_tools"),
+        "the edited entry stays"
     );
 }

@@ -545,6 +545,7 @@ dependencies = [
  "semver",
  "serde_json",
  "sha2",
+ "toml_edit",
  "ureq",
  "url",
 ]
@@ -575,7 +576,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml_edit",
- "url",
 ]
 
 [[package]]

@@ -106,17 +106,11 @@ impl Hook {
 #[serde(rename_all = "camelCase")]
 pub struct McpServer {
     pub name: String,
-    /// A local (stdio) server's command. Empty for a remote server.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub command: String,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
     pub env: std::collections::BTreeMap<String, String>,
-    /// A remote server's URL (Streamable HTTP; `https` only). Exclusive with `command`,
-    /// `args` and `env`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
