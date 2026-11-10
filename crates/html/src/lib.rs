@@ -18,6 +18,7 @@ pub mod quality;
 pub mod select;
 pub mod static_engine;
 pub mod text_context;
+pub mod wiring;
 
 pub use engine::{
     detect_html, detect_html_source, DesignSystemHook, DetectHtmlOptions, HtmlEngineError,

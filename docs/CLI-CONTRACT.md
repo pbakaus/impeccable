@@ -111,6 +111,8 @@ Notation: `stdout>` / `stderr>` are literal writes; `exit N`; template strings u
 | `--viewport <WxH>` / `--viewport=WxH` | regex `/^(\d{2,5})x(\d{2,5})$/i`; failure → `stderr> Error: --viewport requires a WxH value, e.g. --viewport 390x844\n`, `exit 1`. Sets `baseScanOptions.viewport = {width,height}` (browser scans only). Spliced out. |
 | `--cdp <v>` / `--cdp=<v>` | Rust engine only. Scan a page of a running Chromium-based app through its DevTools endpoint instead of any target (see **Attached pages** below). Spliced out with its value (the last one given wins). Value missing (end of args, or the next arg starts with `--`) → `stderr> Error: --cdp requires a DevTools port or URL, e.g. --cdp 9222 or --cdp ws://127.0.0.1:9222/devtools/browser/<id>\n`, `exit 1`. Accepted values: a port (`9222`, host `127.0.0.1`), `host:port`, `[v6]:port`, `http://host:port[/]`, `ws://host:port[/]`, `ws://host:port/devtools/browser/<id>`, `ws://host:port/devtools/page/<id>` (that page is the target). A host that is not `localhost` or a loopback address → `stderr> Error: --cdp only attaches to a DevTools port on this machine (127.0.0.1, localhost or [::1]), not <host>\n`; a port outside 1 to 65535 → `stderr> Error: --cdp port must be between 1 and 65535; got <v>\n`; another scheme → `stderr> Error: --cdp takes a port, host:port, http:// or ws:// URL; got <v>\n`; another path → `stderr> Error: --cdp expects a DevTools port or a ws://.../devtools/browser/<id> or .../devtools/page/<id> URL; got <v>\n`; each `exit 1`. With `--viewport` → `stderr> Error: --viewport does not apply with --cdp: the attached window keeps its own size\n`, `exit 1`. With positional targets (checked after `--help`) → `stderr> Error: --cdp scans the page of a running app and takes no file or URL targets\n`, `exit 1`. Stdin is never read under `--cdp`. |
 | `--target <s>` / `--target=<s>` | With `--cdp`: picks the page (below). Spliced out with its value. Missing or blank value → `stderr> Error: --target requires a substring of the page's URL or title, e.g. --target localhost:5173\n`, `exit 1`. Without `--cdp` → `stderr> Error: --target picks a page of the app --cdp attaches to; pass --cdp <port> with it\n`, `exit 1`. |
+| `--before` | Rust engine only. Record each positional target's wiring inventory instead of scanning (see **Wiring check** below). Evaluated after `--help`. Exit 0, or 1 when any target could not be recorded |
+| `--kept` | Rust engine only. Compare each positional target with its `--before` inventory instead of scanning (see **Wiring check** below). Evaluated after `--help`. Exit 0 kept, 1 a wiring item is missing, 2 a target could not be compared |
 | positional | `targets = args.filter(a => !a.startsWith('--'))` (so a bare `-x` single-dash arg is a *target*, except `-json`/`-fast` which were rewritten) |
 
 **Usage text** (`printUsage`, stdout, verbatim):
@@ -152,6 +154,12 @@ Options:
                       resized or closed. Takes no file or URL targets
   --target <text>     With --cdp: pick the page whose URL or title contains
                       this text when the app has more than one
+  --before            Record the wiring of each local .html file (links,
+                      forms, fields, buttons, handlers, ids, test hooks,
+                      scripts, label targets) under .impeccable/wiring/
+  --kept              Compare each local .html file with its --before
+                      inventory: exit 1 when wiring went missing, 2 when
+                      a file has no inventory. New items are listed
   --help              Show this help message
 
 Advisory findings:
@@ -171,6 +179,9 @@ Exit status:
   2  Scan completed with primary findings
   Operational failure takes precedence when a multi-target scan is partial.
   --changed outside a git work tree exits 1 with an error and scans nothing.
+  --kept: 0 wiring kept, 1 a wiring item is missing, 2 a file could not be
+  compared (no --before inventory); 2 takes precedence. --before: 0 saved,
+  1 a file could not be recorded.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -203,6 +214,8 @@ Examples:
   impeccable detect --github src/
   impeccable detect --list-rules
   impeccable detect --no-config src/
+  impeccable detect --before index.html
+  impeccable detect --kept index.html
 ```
 
 **Config**: `readDetectionConfig(process.cwd())` (see "Config file" below). Note config is resolved from **cwd**, not from the target.
@@ -298,6 +311,40 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
 **Categories**: `category` is `'slop'` (AI tells) or `'quality'`. Category has **no effect on output**, ordering, or exit codes; it is only carried in the finding and used by `getRulesForCategory`. Registry (62 ids, in order): side-tab, border-accent-on-rounded, overused-font, flat-type-hierarchy, gradient-text, ai-color-palette, cream-palette, nested-cards, monotonous-spacing, bounce-easing, pulsing-dot, blinking-cursor, shape-assembled-illustration, organic-clip-path, buried-raster, hard-offset-shadow, dark-glow, radial-halo, radial-spotlight-glow, marquee, icon-tile-stack, italic-serif-display, hero-eyebrow-chip, kicker-above-heading, numbered-section-labels, em-dash-overuse, marketing-buzzword, aphoristic-cadence, oversized-h1, extreme-negative-tracking, broken-image, script-error, content-hidden-at-rest, edge-flush-cards, text-occlusion, first-viewport-column-overflow, gray-on-color, low-contrast, line-length, cramped-padding, body-text-viewport-edge, tight-leading, skipped-heading, heading-rhythm, justified-text, straggler, unbalanced-heading, tiny-text, undersized-ui-text, all-caps-body, wide-tracking, text-overflow, repeated-container-text, clipped-overflow-container, design-system-font, design-system-color, design-system-radius, design-system-font-size, gpt-thin-border-wide-shadow, repeating-stripes-gradient, codex-grid-background, theater-slop-phrase. Retired ids (`image-hover-transform`, `layout-transition`) are in no list and no engine reports them; an `ignoreRules` entry or an inline `impeccable-disable` naming one still parses and suppresses nothing, and `doctor` reports it as `detector-ignore-rules-unknown`. Scopes: `type` = overused-font, flat-type-hierarchy, italic-serif-display, hero-eyebrow-chip, kicker-above-heading, numbered-section-labels, oversized-h1, extreme-negative-tracking, line-length, tight-leading, skipped-heading, heading-rhythm, justified-text, straggler, unbalanced-heading, tiny-text, undersized-ui-text, all-caps-body, wide-tracking, design-system-font, design-system-font-size; `layout` = nested-cards, monotonous-spacing, icon-tile-stack, content-hidden-at-rest, edge-flush-cards, text-occlusion, first-viewport-column-overflow, line-length, cramped-padding, body-text-viewport-edge, heading-rhythm, text-overflow, clipped-overflow-container. `RULE_ENGINE_SUPPORT = { regex: Set['source','page-analyzer'], 'static-html': Set['element','page'], browser: Set['element','page','layout'], visual: Set['visual-contrast'] }`.
 
 **Tests**: `tests/detect-antipatterns-fixtures.test.mjs` (CLI block: `--help exits 0` and contains `Usage:`/`--quiet`, not `--gpt`; `--gpt` prints deprecation; `detect` prefix accepted; should-pass exits 0; should-flag exits 2 with `side-tab` in stderr; `--json` parses; `--quiet` stdout empty and stderr matches `/^[1-9]\d* anti-patterns? found\.$/`; `formatFindings — advisory partitioning`), `tests/detect-cli-stdin-dispatch.test.mjs`, `tests/detect-cli-design-contamination.test.mjs`, `tests/inline-ignores.test.mjs` ("detect CLI end-to-end"), `tests/detect-url-launch.test.mjs`.
+
+#### Wiring check: `impeccable detect --before` / `--kept` (Rust engine, `crates/detect/src/wiring.rs`, `crates/html/src/wiring.rs`)
+
+A before/after comparison of a page's wiring, the markup a redesign can drop without changing a pixel (#1291). It runs only when asked, never in the design hook, and reads local static HTML only: a target must be an `.html` / `.htm` file (`detector.extensions` opt-ins are not read). A URL target (`http:`, `https:`, `file:`), a directory, or any other extension is a per-target error, checked before any inventory is looked up. Rendered or framework routes are not covered yet. Neither flag is a scan for Pro dispatch (`is_scan` in `crates/cli/src/router.rs`): the open binary always runs them, so a Pro build that predates the flags never turns `--kept` into a plain scan.
+
+**Usage errors** (exit 1, before any file is read): no positional target → `stderr> Error: --before needs one or more local .html files, e.g. detect --before index.html\n` (`--kept` likewise); `--before` with `--kept`, or either with `--cdp`, `--list-rules` or `--github` → `stderr> Error: --before works on local HTML files and cannot be used with <flag>\n` (the first conflicting flag, in that order). Stdin is never read. `--scope` and `--viewport` are validated first, as on every detect run (a bad value exits 1 with its usual error), but change nothing in the inventory; `--quiet` and the config flags are ignored.
+
+**Inventory.** The static engine parses the page (the same `parse_html` the scan uses, so `<template>` content counts) and records one key string per item. Values are JSON-quoted; enumerated values are lowercased and HTML defaults applied, so spelling out a default is not a change. `id`, test-hook and `label[for]` values are kept exactly, untrimmed, since scripts and tests look them up exactly; `href`, `action` and `src` are trimmed, as URL parsing trims them.
+
+| Item | Key |
+|---|---|
+| `a[href]` | `link href="<href>"` |
+| `form` | `form action="<action or empty>" method="<method, default get>"` |
+| named `input` (not a button type) | `field input name="<n>" type="<type, default text>"`, plus ` value="<v>"` for radio and checkbox (default `on`), plus ` required` |
+| named `select` / `textarea` | `field select name="<n>"` / `field textarea name="<n>"`, plus ` required` |
+| `button` | `button type="<type, default submit>"`, plus ` name=` / ` value=` when present |
+| `input` of type submit, reset, button, image | `button input type="<type>"`, plus ` name=` when present |
+| any `on*` attribute | `handler <tag> <attr> #<hash>`: the hash covers the handler text, so a changed body is a different item |
+| `id` | `id "<id>"` |
+| `data-testid`, `data-test`, `data-cy`, `data-qa`, `data-test-id` | `test-hook <attr>="<value>"` |
+| `script[src]` / inline `script` | `script src="<src>"` / `script inline #<hash>` (empty inline scripts are skipped) |
+| `label[for]` | `label for="<for>"` |
+
+`<hash>` is 8 hex digits of FNV-1a 64 over the text with whitespace runs collapsed and trimmed, so re-indenting is not a change. Headings (`heading h<n> "<text>"`, whitespace collapsed) and image alt text (`image alt="<alt>"`) are recorded as **content**: compared and reported, never a failure.
+
+**Comparison** is a multiset: duplicates are kept, so a page that linked to `/` twice and now links once is missing one `link href="/"`. Missing = items before minus items now; new = the reverse. A renamed field is one missing and one new item.
+
+**Project root.** The nearest directory from cwd up that holds `.git`, `package.json` or `.impeccable` (the design-system discovery markers), never `$HOME` itself (compared in both its logical and canonical forms, as design-system discovery does, so a symlinked home is still recognized), else cwd. A run from a subdirectory shares the project's inventories and never creates a new `.impeccable/` there (which would be a design-system boundary for the files under it). Every path the two flags print or save (`<rel>`, the inventory path) is relative to that root.
+
+**Saved file.** `<root>/.impeccable/wiring/<slug>.json`, where the target's path (resolved against cwd) relative to the root (`/` separators; `page.html`, `./page.html`, the absolute path and `web/page.html` from the root agree) gives `<slug>`: its ASCII letters and digits lowercased and joined by `-` (cut at 80 chars), then `-` and the FNV-1a hash of the relative path exactly as given (no whitespace collapsing), so `a b.html` and `a  b.html` get separate files. Contents (pretty JSON, no timestamps): `{"version": 1, "target": "<relative path>", "wiring": [...sorted], "content": [...sorted]}`. Every `--before` keeps `.impeccable/wiring/.gitignore` holding `*` (`ensure_dir_ignored`), so inventories are never committed; a second `--before` overwrites the file.
+
+**`--before` output.** Per target, text mode: `stderr> Saved the wiring of <rel> to .impeccable/wiring/<slug>.json (<n> wiring item(s), <m> content item(s)).\n`; a target that cannot be read or written: `stderr> Error: cannot record the wiring of <target>: <reason>\n` (an unreadable file gives the Node errno wording, `ENOENT: no such file or directory, open '<abs path>'`). `--json`: `stdout> {"mode": "before", "targets": [{"file", "status": "saved", "inventory", "wiring": n, "content": m} | {"file", "status": "error", "error"}]}`, pretty-printed, nothing on stderr. Exit 1 when any target failed, else 0.
+
+**`--kept` output.** Per target, text mode on stderr: `<rel>: wiring kept (<n> item(s))` or `<rel>: <k> wiring item(s) missing of <n>`, then `, <j> new` when there are new items, then `.`; then `  MISSING  <item>` and `  NEW      <item>` lines (sorted; repeats folded as ` (x<count>)`); then, when headings or alt text changed, `  Content changes (informational, never a failure):` with `    gone   <item>` / `    new    <item>` lines. After every target: `\nNew items are not failures. Justify each one in the handoff: a renamed field shows as one missing and one new.\n` when any target had new items, then `\nWiring check failed: <k> item(s) missing in <f> of <c> file(s).\n` or, when nothing is missing and every target was compared, `\nWiring kept in <c> file(s).\n`. A target that cannot be compared prints `stderr> Error: <message>\n`: `no saved wiring for <rel>; run detect --before <rel> first`, `the saved wiring in <file> cannot be compared (<why>); run detect --before <rel> again` (not JSON, no or another `version`, or a `target` other than `<rel>`: `it records <target>, not <rel>`, status `bad-inventory`), or `cannot read the wiring of <target>: <reason>`. `--json`: `stdout> {"mode": "kept", "ok": bool, "targets": [...]}`, each target `{"file", "status": "kept"|"missing", "inventory", "wiring": {"before", "after"}, "missing": [...], "new": [...], "content": {"gone": [...], "new": [...]}}` or `{"file", "status": "no-inventory"|"bad-inventory"|"error", "inventory", "error"}`. Exit 2 when any target could not be compared, else 1 when any wiring item is missing, else 0; 2 takes precedence, since a partial comparison is not a pass.
 
 #### `cli/engine/node/file-system.mjs`
 

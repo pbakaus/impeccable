@@ -68,6 +68,12 @@ Options:
                       resized or closed. Takes no file or URL targets
   --target <text>     With --cdp: pick the page whose URL or title contains
                       this text when the app has more than one
+  --before            Record the wiring of each local .html file (links,
+                      forms, fields, buttons, handlers, ids, test hooks,
+                      scripts, label targets) under .impeccable/wiring/
+  --kept              Compare each local .html file with its --before
+                      inventory: exit 1 when wiring went missing, 2 when
+                      a file has no inventory. New items are listed
   --help              Show this help message
 
 Advisory findings:
@@ -87,6 +93,9 @@ Exit status:
   2  Scan completed with primary findings
   Operational failure takes precedence when a multi-target scan is partial.
   --changed outside a git work tree exits 1 with an error and scans nothing.
+  --kept: 0 wiring kept, 1 a wiring item is missing, 2 a file could not be
+  compared (no --before inventory); 2 takes precedence. --before: 0 saved,
+  1 a file could not be recorded.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -119,6 +128,8 @@ Examples:
   impeccable detect --github src/
   impeccable detect --list-rules
   impeccable detect --no-config src/
+  impeccable detect --before index.html
+  impeccable detect --kept index.html
 ";
 
 /// Remove every `--name <value>` / `--name=<value>` from `args`. `None` when
@@ -715,6 +726,32 @@ fn detect_cli(
     if help_mode {
         io.out(USAGE);
         return Ok(0);
+    }
+    let before_mode = has(&args, "--before");
+    let kept_mode = has(&args, "--kept");
+    if before_mode || kept_mode {
+        use crate::wiring::{run_before, run_kept, usage_error, Mode};
+        let mode = if before_mode { Mode::Before } else { Mode::Kept };
+        let mut other: Vec<&str> = Vec::new();
+        if before_mode && kept_mode {
+            other.push("--kept");
+        }
+        if cdp.is_some() {
+            other.push("--cdp");
+        }
+        for flag in ["--list-rules", "--github"] {
+            if has(&args, flag) {
+                other.push(flag);
+            }
+        }
+        if let Some(message) = usage_error(mode, &targets, &other) {
+            io.err(&message);
+            return Err(Exit(1));
+        }
+        return Ok(match mode {
+            Mode::Before => run_before(&targets, json_mode, io, engines),
+            Mode::Kept => run_kept(&targets, json_mode, io, engines),
+        });
     }
     if has(&args, "--list-rules") {
         if github_mode {
