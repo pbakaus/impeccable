@@ -1264,7 +1264,10 @@ fn update_doctor_report_merges_the_updated_harnesses() {
     }
     write(&format!("{project}/PRODUCT.md"), "# Product\n\n## Register\n\nbrand\n");
     let bundle = create_fake_universal_bundle(&root, &[".claude", ".cursor"]);
-    let env = base_env(&home, &tmpdir, &bundle);
+    let mut env = base_env(&home, &tmpdir, &bundle);
+    // A provider id exported in the shell must not make every pass check the
+    // same harness: each refreshed folder names its own.
+    env.insert("IMPECCABLE_PROVIDER_ID".to_string(), "claude-code".to_string());
 
     let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
     assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);

@@ -270,14 +270,17 @@ fn self_cmd(env: &Env) -> String {
 /// The text report for the installs at `skill_dirs`, for a caller that does
 /// not run from one of them. `impeccable update` runs from the npm shim, where
 /// the provider detects as `source` and the hook checks are skipped, so each
-/// skill folder names its own provider here. The findings are the same for
-/// every harness except the hook ones, so the reports merge into one. Returns
-/// the report and the first folder's `<prefix>impeccable` command.
+/// skill folder names its own provider here, and a provider id exported in
+/// the caller's shell is dropped: kept, it would make every pass check the
+/// same harness. The findings are the same for every harness except the hook
+/// ones, so the reports merge into one. Returns the report and the first
+/// folder's `<prefix>impeccable` command.
 pub fn report_for_skills(skill_dirs: &[String], cwd: &str, env: &Env) -> Option<(String, String)> {
     let mut merged: Option<(Report, String)> = None;
     for dir in skill_dirs {
         let mut env = env.clone();
         env.insert("IMPECCABLE_SKILL_DIR".to_string(), dir.clone());
+        env.remove("IMPECCABLE_PROVIDER_ID");
         let provider = crate::provider::detect(&env, cwd);
         let report = collect(cwd, &TargetOptions::default(), &env, &provider);
         match &mut merged {
