@@ -683,10 +683,13 @@ const MACHINE_OUTPUT: &[&str] = &["--json", "-json", "--github", "--quiet"];
 /// Whether this scan prints `why`. Paul's choice (REN-1553 decision 1, 10 Nov):
 /// an account without Pro hears "this account doesn't include them" on every
 /// scan a person runs, but never from the edit hooks and never when the output
-/// is for a program. The other lines say something is wrong or about to change,
-/// so they always print.
+/// is for a program. The expired-access line (offline past the lease) follows
+/// the same rule (captain, 10 Nov). The other lines say something is wrong, so
+/// they always print.
 fn say(why: &str, args: &[String]) -> bool {
-    if why != WHY_NOT_ENTITLED {
+    // Expected states, not faults: an account without Pro, and Pro access
+    // lapsed while offline. The others say something is wrong, so they print.
+    if why != WHY_NOT_ENTITLED && why != WHY_EXPIRED {
         return true;
     }
     let hook = matches!(args.first().map(String::as_str), Some("hook" | "hook-before-edit"));
@@ -901,6 +904,12 @@ mod notice_tests {
             assert!(!say(WHY_NOT_ENTITLED, &args(&["detect", flag, "."])), "{flag}");
             assert!(!say(WHY_NOT_ENTITLED, &args(&["src/", flag])), "{flag}");
         }
+        // The expired-access line is an expected offline state, quiet the same way (captain, 10 Nov):
+        // an offline Pro agent session must not see it on every edit hook.
+        assert!(!say(WHY_EXPIRED, &args(&["hook"])));
+        assert!(!say(WHY_EXPIRED, &args(&["hook-before-edit"])));
+        assert!(!say(WHY_EXPIRED, &args(&["detect", "--json", "."])));
+        assert!(say(WHY_EXPIRED, &args(&["detect", "."])));
         // Lines that say something is wrong are never held back.
         assert!(say(WHY_UNVERIFIED, &args(&["hook"])));
         assert!(say(WHY_UNVERIFIED, &args(&["detect", "--json", "."])));
