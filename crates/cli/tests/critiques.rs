@@ -488,3 +488,29 @@ fn a_busy_admission_lock_is_bounded_and_never_claims_an_optout() {
     assert!(write(&env, root).status.success());
     assert_eq!(fake.hits("/cli/v1/critiques"), 1);
 }
+
+#[test]
+fn invalid_service_settings_never_prevent_local_optout() {
+    let (_fake, env) = setup("critique-invalid-service-optout");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let mut invalid = env.clone();
+    invalid.insert("IMPECCABLE_ACCOUNT_URL".into(), "not an origin".into());
+    for choice in ["off", "forget"] {
+        impeccable(&env, root, &["critiques", "on"])
+            .output()
+            .unwrap();
+        let out = impeccable(&invalid, root, &["critiques", choice])
+            .output()
+            .unwrap();
+        if choice == "off" {
+            assert!(out.status.success());
+        } else {
+            assert!(!out.status.success());
+            assert!(String::from_utf8_lossy(&out.stderr).contains("deletion couldn't be confirmed"));
+        }
+        let status = impeccable(&env, root, &["critiques", "status"])
+            .output()
+            .unwrap();
+        assert_eq!(status.stdout, b"Critique sync: off.\n");
+    }
+}

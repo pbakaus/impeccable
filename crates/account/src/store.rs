@@ -218,8 +218,8 @@ impl Store {
 
     /// Global preference, so this lock is shared across account issuers too.
     /// Uploads hold it from their final preference check through transmission.
-    pub(crate) fn critique_lock_for(&self, wait: Duration) -> Result<Lock, String> {
-        fs::create_dir_all(&self.account.home).map_err(|e| e.to_string())?;
+    pub(crate) fn critique_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
         let mut options = fs::OpenOptions::new();
         options
             .read(true)
@@ -233,7 +233,7 @@ impl Store {
             options.mode(0o600);
         }
         let file = options
-            .open(self.account.home.join("critiques.lock"))
+            .open(home.join("critiques.lock"))
             .map_err(|e| e.to_string())?;
         let deadline = std::time::Instant::now() + wait;
         loop {

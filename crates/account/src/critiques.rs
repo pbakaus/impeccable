@@ -156,7 +156,8 @@ pub fn after_save(io: &Io, snapshot: &SavedReport) {
     let Some(token) = session.existing_access_token() else {
         return;
     };
-    let Ok(_admission) = session.store.critique_lock_for(Duration::ZERO) else {
+    let Ok(_admission) = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO)
+    else {
         return;
     };
     if !enabled(io) {
@@ -189,10 +190,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         });
         return 0;
     }
-    let admission = Account::from_env(&io.env).ok().and_then(|account| {
-        crate::store::Store::new(&account)
-            .critique_lock_for(Duration::from_secs(3))
-            .ok()
+    let admission = impeccable_home(&io.env).and_then(|home| {
+        crate::store::Store::critique_lock_for(&home, Duration::from_secs(3)).ok()
     });
     let Some(_admission) = admission else {
         io.err("Critique sync: couldn't save the setting.\n");
