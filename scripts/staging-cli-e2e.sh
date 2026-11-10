@@ -95,16 +95,21 @@ if [ "${E2E_DISPATCH_REQUIRED:-0}" = 1 ]; then
 else
   info "dispatch (not required): $([ -n "$installed" ] && echo 'a Pro build is installed' || echo 'no Pro build installed'). $(grep -m1 'Pro rules' "$H/detect.err" | cut -c1-120)"
 fi
+# The scan's notices (no secrets: product lines only), so a failure shows its cause.
+while IFS= read -r line; do info "detect stderr: $line"; done < <(grep -E "^(Design health|Pro rules)" "$H/detect.err" | cut -c1-200)
 if [ $health = 1 ]; then
   check "health: the scan's counts were saved (one-time notice)" 'grep -q "counts were saved to your account" "$H/detect.err"'
   "$BIN" health status > "$H/health.out" 2>&1
+  info "health status: $(head -1 "$H/health.out" | cut -c1-200)"
   check "health: status says on" 'grep -q "^Design health: on" "$H/health.out"'
 fi
 
 # 4. --json output stays free of notices.
 (cd "$R" && "$BIN" detect --json .) > "$H/json.out" 2> "$H/json.err"
 check "json: stdout parses as JSON" 'jq -e . "$H/json.out" >/dev/null'
-check "json: no Pro or health notice on stderr" '! grep -qE "Pro rules|Design health" "$H/json.err"'
+# Paul's rule (REN-1553): the not-entitled line stays out of machine output.
+# Lines that say something is wrong ("not ready", "didn't verify") still print, on stderr.
+check "json: no not-entitled line on stderr" '! grep -q "this account doesn.t include them" "$H/json.err"'
 
 # 5. Sign out.
 "$BIN" logout > "$H/logout.out" 2>&1; rc=$?
