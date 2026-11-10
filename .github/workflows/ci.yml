@@ -259,6 +259,8 @@ jobs:
           node-version: 24
       - name: Exercise Windows launcher downloads and verification
         run: node --test tests/launcher-download.test.mjs
+      - name: Exercise Windows plugin hook commands
+        run: node --test tests/hook-build-windows.test.mjs
 
   # The npm package ships only the shim (cli/bin/cli.js), and npm skips
   # `latest` for a Node its engines reject, serving the newest version that
