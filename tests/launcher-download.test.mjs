@@ -352,6 +352,8 @@ test('cmd launcher runs a PATH binary directly so % in its arguments survives', 
   assert.match(source, /^if \/I "%path_ext%"==".cmd" goto path_shim\r?$/m);
   assert.match(source, /^if \/I "%path_ext%"==".bat" goto path_shim\r?$/m);
   assert.match(source, /^"%path_bin%" %\*\r?$/m, 'a binary runs without call');
+  // npm writes an extensionless POSIX shim next to impeccable.cmd; where lists it first.
+  assert.match(source, /for %%x in \(\.exe \.com \.cmd \.bat\) do if \/I "%%~xp"=="%%x"/, 'only a runnable extension is taken');
   assert.doesNotMatch(source, /^call impeccable %\*/m);
 });
 
@@ -365,6 +367,8 @@ test('cmd launcher runs a .cmd engine shim found on PATH', { skip: WINDOWS ? fal
   fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
   const launcher = path.join(scripts, 'impeccable.cmd');
   fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), launcher);
+  // npm also writes an extensionless POSIX shim; where lists it first.
+  fs.writeFileSync(path.join(tools, 'impeccable'), '#!/bin/sh\nexec node "$basedir/x.js" "$@"\n');
   // An npm-style batch shim that answers the handshake, then runs the verb.
   fs.writeFileSync(path.join(tools, 'impeccable.cmd'), [
     '@echo off',
