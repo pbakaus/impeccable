@@ -2235,4 +2235,6 @@ This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
 has a two-second deadline, no retries and no terminal messages. A 404 or any
 other failure leaves the health request, detect output and exit code intact.
-Design health notices are also suppressed for `--json`, `--quiet` and `--github`.
+Design health notices are also suppressed for `--json` (including `-json`),
+`--quiet` and `--github`. The saved sync choice is rechecked between requests,
+so `health off` during a foundations upload prevents the health upload.

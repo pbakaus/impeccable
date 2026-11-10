@@ -138,6 +138,11 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             foundation_body,
         );
     }
+    // The foundations request may have been in flight when another
+    // terminal saved `off` or `forget`. Do not start a second upload then.
+    if !Local::read(&io.env).is_some_and(|l| l.sync()) {
+        return;
+    }
     // One request, one deadline, no retry: a 401 waits for the next scan.
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);

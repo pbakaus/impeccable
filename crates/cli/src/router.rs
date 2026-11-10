@@ -214,7 +214,7 @@ fn detect(
         };
         let quiet = args
             .iter()
-            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "--github"));
+            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code

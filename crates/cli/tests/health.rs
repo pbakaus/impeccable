@@ -537,3 +537,39 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
         serde_json::json!({})
     );
 }
+
+#[test]
+fn foundations_review_off_during_upload_prevents_the_health_request() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.foundations = true;
+    }
+    let env = fake.env("foundations-racing-off");
+    login(&env);
+    let root = repo(&env, Some("https://github.com/acme/site"));
+    let gate = fake.hold("/cli/v1/foundations");
+    let child = impeccable(&env, &root, &["detect", "--json", "."])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    fake.wait_for_hits("/cli/v1/foundations", 1);
+    assert!(run(&env, &root, &["health", "off"]).status.success());
+    gate.open();
+    child.wait_with_output().unwrap();
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn foundations_review_json_alias_preserves_the_health_notice() {
+    let (fake, env) = signed_in("health-json-alias");
+    let root = repo(&env, Some("https://github.com/acme/site"));
+    let out = run(&env, &root, &["detect", "-json", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health:"));
+    let out = run(&env, &root, &["detect", "."]);
+    assert!(String::from_utf8_lossy(&out.stderr)
+        .contains("Design health: this scan's counts were saved"));
+}
