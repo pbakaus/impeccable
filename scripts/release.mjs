@@ -471,6 +471,21 @@ async function releaseEngine() {
   if (wrong.length) fail(`package.json pins ${wrong.map(([n, r]) => `${n}@${r}`).join(', ')}; expected ${version}. Bump them with ENGINE_VERSION.`);
   ok(`${pins.length} platform package pins agree`);
 
+  // The engine compiles in scripts/cli-pro-release-keys.json (crates/account
+  // pro/verify.rs). With no key there, every Pro build fails its signature
+  // check and every user falls back to the open rules, and only another engine
+  // release fixes it, so refuse to tag one.
+  step('Checking a Pro release key is compiled in');
+  let releaseKeys = {};
+  try {
+    releaseKeys = JSON.parse(readFileSync(path.join(repoRoot, 'scripts/cli-pro-release-keys.json'), 'utf8'));
+  } catch {}
+  const validKeys = Object.values(releaseKeys || {}).filter((hex) => /^[0-9a-f]{64}$/.test(String(hex)));
+  if (!validKeys.length) {
+    fail('scripts/cli-pro-release-keys.json holds no Pro release key (an id mapped to 64 lowercase hex). Add the production public key first, or this engine ships with Pro dispatch off for everyone.');
+  }
+  ok(`${validKeys.length} Pro release key(s)`);
+
   const tag = `${cfg.tagPrefix}${version}`;
 
   step('Checking working tree is clean');
