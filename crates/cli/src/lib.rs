@@ -14,5 +14,7 @@ pub mod reviewed_entry;
 
 mod font_render;
 mod router;
-pub use router::{run, InstalledPack};
+pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+mod loop_install;

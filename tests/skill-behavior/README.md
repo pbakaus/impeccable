@@ -445,6 +445,7 @@ results remain the completed measurements.
 | 20 | PRODUCT.md + DESIGN.md + `index.html`; prompt is `/impeccable generate 2 bold variants of the hero heading` | loads `reference/generate.md`, and before any `live.md` read (live.md alone is the misroute) |
 | 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
 | 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
+| 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll; stops at the roll, no build |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
@@ -588,6 +589,15 @@ The full-build file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder
 refinement, and critique's closing question. It checks question order and
 context/artifact writes rather than only reference-file loading.
+
+The bolder artifact check compares header text and links and footer text to the
+original fixture, with whitespace normalized. It also requires a change to the
+`#case-study` DOM or computed styles at desktop or mobile size; CSS-only changes
+are valid, while comments and unused CSS are not. This is a scope/change check,
+not a design-quality score. The existing trace and fresh-capture checks remain.
+Run its offline positive and negative cases with
+`node --test tests/skill-workflow-scope.test.mjs`; they also run in
+`bun run test:skill-workflow` before any provider-backed turns.
 
 `critique closes with the question or an explicit skip line` is a regression
 guard, not a routing check. A critique that prints its report and then stops,

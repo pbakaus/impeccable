@@ -14,6 +14,14 @@ use impeccable_common::Io;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut io = Io::stdio();
+    // Only the open binary dispatches; a Pro build calls `run` directly.
+    if impeccable::is_scan(&args, &io) {
+        if let Some(code) = impeccable_account::pro::dispatch(&args, &mut io) {
+            let _ = io.stdout.flush();
+            let _ = io.stderr.flush();
+            std::process::exit(code);
+        }
+    }
     let code = impeccable::run(&args, &mut io, impeccable::InstalledPack::NONE);
     let _ = io.stdout.flush();
     let _ = io.stderr.flush();

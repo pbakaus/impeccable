@@ -218,6 +218,12 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 - [Changelog](https://impeccable.style/changelog) for what shipped.
 - Follow [@pbakaus](https://x.com/pbakaus) for release notes and new rules.
 
+## Sponsors
+
+[![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=impeccable)
+
+Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux runners.
+
 ## License
 
 Apache 2.0. See [LICENSE](LICENSE). Impeccable started from Anthropic's [frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) skill.
