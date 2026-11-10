@@ -173,6 +173,22 @@ describe('skill reference authoring contracts', () => {
     assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
   });
 
+  it('reads project personas from PRODUCT.md, not the retired Design Context section (#985)', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8');
+    assert.doesNotMatch(critique, /Design Context/);
+    assert.match(critique, /PRODUCT\.md has a `## Users` section/);
+  });
+
+  it('scales onboard empty states by type and lists permissive tour libraries (#985)', () => {
+    const onboard = readFileSync(join(ROOT, 'skill/reference/onboard.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    assert.doesNotMatch(onboard, /^Every empty state needs:/m);
+    assert.doesNotMatch(onboard, /Popper\.js/);
+    const tours = onboard.match(/^\*\*Tour libraries\*\*:.*$/m)?.[0] ?? '';
+    assert.match(tours, /Driver\.js/);
+    assert.match(tours, /React Joyride/);
+    assert.doesNotMatch(tours, /Intro\.js|Shepherd\.js/);
+  });
+
   it('keeps audit score-table dimensions aligned with their numbered sections', () => {
     for (const filename of ['audit.md', 'audit.native.md']) {
       const audit = readFileSync(join(ROOT, `skill/reference/${filename}`), 'utf-8').replace(/\r\n?/g, '\n');
