@@ -1,5 +1,6 @@
 use super::*;
 use crate::cli::validate;
+use crate::mcp::parse_mcp_observation;
 
 #[cfg(unix)]
 #[test]
@@ -416,4 +417,69 @@ fn a_url_server_must_be_https_and_carry_nothing_else() {
         .is_err(),
         "neither command nor url"
     );
+}
+
+#[test]
+fn a_remote_observation_is_complete_scoped_and_unambiguous() {
+    // Catches (adversarial review, #1389): a project entry vouching for the user one; an edited
+    // remote entry reduced to {name,url} and removed as unchanged; any URL: line winning.
+    let url = "https://api.impeccable.style/mcp";
+    let text = |extra: &str| {
+        format!("impeccable:\n  Scope: User config (available in all your projects)\n  Status: ✘ Failed to connect\n  Type: http\n  URL: {url}\n{extra}\nTo remove this server, run: claude mcp remove impeccable -s user\n")
+    };
+    assert_eq!(parse_mcp_observation(text("").as_bytes(), "impeccable"), Some(json!({"name":"impeccable","url":url})));
+    let project = text("").replace("User config (available in all your projects)", "Project config (shared via .mcp.json)");
+    assert_eq!(parse_mcp_observation(project.as_bytes(), "impeccable").unwrap()["unparsed"], true);
+    let headers = text("  Headers: X-Token: abc");
+    assert_eq!(parse_mcp_observation(headers.as_bytes(), "impeccable").unwrap()["modified"], true);
+    let mixed = text("  Command: /bin/sh");
+    assert_eq!(parse_mcp_observation(mixed.as_bytes(), "impeccable").unwrap()["unparsed"], true);
+    let twice = text(&format!("  URL: {url}"));
+    assert_eq!(parse_mcp_observation(twice.as_bytes(), "impeccable").unwrap()["unparsed"], true);
+    // Codex's JSON: defaults pass, any edited setting marks it changed.
+    let codex = |extra: &str| format!(r#"{{"name":"impeccable","enabled":true,"disabled_reason":null,"transport":{{"type":"streamable_http","url":"{url}","bearer_token_env_var":null,"http_headers":null,"env_http_headers":null,"http_headers_helper":null}},"enabled_tools":null,"disabled_tools":null{extra},"startup_timeout_sec":null,"tool_timeout_sec":null}}"#);
+    assert_eq!(parse_mcp_observation(codex("").as_bytes(), "impeccable"), Some(json!({"name":"impeccable","url":url})));
+    for edited in [codex(r#","x":1"#).replace(r#""disabled_tools":null"#, r#""disabled_tools":["post"]"#), codex("").replace(r#""enabled":true"#, r#""enabled":false"#)] {
+        assert_eq!(parse_mcp_observation(edited.as_bytes(), "impeccable").unwrap()["modified"], true, "{edited}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn undo_leaves_an_edited_remote_server_in_place() {
+    use std::os::unix::fs::PermissionsExt;
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let script = root.join("fake-codex-edit");
+    let state = root.join("mcp-edit-state.json");
+    fs::write(
+        &script,
+        r#"#!/bin/sh
+case "$2" in
+get) [ -f "$MCP_STATE" ] || exit 1; cat "$MCP_STATE";;
+add) printf '{"name":"%s","enabled":true,"transport":{"type":"streamable_http","url":"%s"}}' "$3" "$5" > "$MCP_STATE";;
+remove) rm -f "$MCP_STATE";;
+esac
+exit 0
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    std::env::set_var("IMPECCABLE_CODEX_BIN", &script);
+    std::env::set_var("MCP_STATE", &state);
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.mcp_servers.push(url_server("https://api.impeccable.style/mcp"));
+    let journal_path = home.join(format!("{}.json", installation_id(&s)));
+    let journal = apply(&s, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &journal).unwrap();
+    // The person narrows its tools after connect.
+    let edited = fs::read_to_string(&state).unwrap().replace(r#""enabled":true"#, r#""enabled":true,"disabled_tools":["post"]"#);
+    fs::write(&state, &edited).unwrap();
+    let result = undo(&s, Some(&journal), &home).unwrap();
+    std::env::remove_var("IMPECCABLE_CODEX_BIN");
+    std::env::remove_var("MCP_STATE");
+    assert_ne!(result["conflicts"], json!([]), "the edited entry is reported");
+    assert_eq!(fs::read_to_string(&state).unwrap(), edited, "and left as the person made it");
 }

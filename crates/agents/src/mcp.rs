@@ -116,6 +116,8 @@ pub(super) fn preflight_mcp(
     }
     Ok(conflicts)
 }
+/// How long `codex mcp add --url` may take, its browser sign-in included.
+const CODEX_SIGN_IN_WAIT: std::time::Duration = std::time::Duration::from_secs(300);
 pub(super) fn mcp_resource_id(spec: &Spec, name: &str) -> String {
     let identity = format!("{}:{}:{}", spec.harness, spec.root.display(), name);
     format!("mcp:{}", hex(&Sha256::digest(identity.as_bytes())))
@@ -156,6 +158,33 @@ pub(super) fn find_peer_mcp_record_from_journal(
         .find(|record| record.resource_id == id)
         .cloned()
 }
+/// A remote server's observation carries nothing but its url: Codex's `get --json`
+/// settings at their defaults (enabled, no tool filters, timeouts, headers or bearer
+/// variable) and a streamable HTTP transport; Claude's JSON with only `type: http`.
+fn remote_is_default(candidate: &Value) -> bool {
+    let null = |v: Option<&Value>| v.is_none_or(Value::is_null);
+    let transport = candidate.get("transport");
+    let codex_ok = transport.is_none_or(|t| {
+        t.get("type").and_then(Value::as_str) == Some("streamable_http")
+            && ["bearer_token_env_var", "http_headers", "env_http_headers", "http_headers_helper"]
+                .iter()
+                .all(|k| null(t.get(k)))
+    });
+    let settings_ok = candidate.get("enabled").is_none_or(|v| v == &Value::Bool(true))
+        && [
+            "disabled_reason",
+            "enabled_tools",
+            "disabled_tools",
+            "startup_timeout_sec",
+            "tool_timeout_sec",
+            "headers",
+            "oauth",
+        ]
+        .iter()
+        .all(|k| null(candidate.get(*k)));
+    let claude_type_ok = candidate.get("type").is_none_or(|t| t == "http");
+    codex_ok && settings_ok && claude_type_ok
+}
 pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
     if let Ok(value) = render::parse_unique_json(bytes) {
         let candidate = value
@@ -170,13 +199,19 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
         {
             return None;
         }
-        // A remote server: `url` directly (Claude) or under `transport` (Codex's JSON).
+        // A remote server: `url` directly (Claude) or under `transport` (Codex's JSON). Any
+        // setting beyond the url that isn't its default marks it changed, so an edited entry
+        // is never taken for the one installed (and never removed as if it were).
         if let Some(url) = candidate
             .get("url")
             .or_else(|| candidate.get("transport").and_then(|t| t.get("url")))
             .and_then(Value::as_str)
         {
-            return Some(json!({"name":name,"url":url}));
+            return Some(if remote_is_default(candidate) {
+                json!({"name":name,"url":url})
+            } else {
+                json!({"name":name,"url":url,"modified":true})
+            });
         }
         let command = candidate.get("command")?.as_str()?;
         let args = match candidate.get("args") {
@@ -203,15 +238,27 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
     let text = std::str::from_utf8(bytes).ok()?;
     let mut command = None;
     let mut url = None;
+    let mut kind = None;
+    let mut scope = None;
+    let mut other = false;
     let mut args: Vec<String> = Vec::new();
     let mut env = std::collections::BTreeMap::new();
     for line in text.lines() {
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };
+        // Claude's fields are indented under the server's name; other lines are prose.
+        let field = line.starts_with("  ") && !line.starts_with("   ");
         match key.trim().to_ascii_lowercase().as_str() {
+            "scope" if field => scope = Some(value.trim().to_owned()),
+            "type" if field => kind = Some(value.trim().to_ascii_lowercase()),
+            "status" | "issue" if field => {}
+            "url" if field => {
+                if url.replace(value.trim().to_owned()).is_some() {
+                    return Some(json!({"name":name,"unparsed":true}));
+                }
+            }
             "command" => command = Some(value.trim().to_owned()),
-            "url" => url = Some(value.trim().to_owned()),
             "args" => {
                 let value = value.trim();
                 if !value.is_empty() {
@@ -226,11 +273,24 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
                     env = values;
                 }
             }
+            _ if field => other = true,
             _ => {}
         }
     }
+    // Only a user-scoped entry is the one installed: a project or local entry of the same
+    // name shadows it, and can't vouch for (or be removed as) the user one.
+    if scope.as_deref().is_some_and(|s| !s.to_ascii_lowercase().starts_with("user")) {
+        return Some(json!({"name":name,"unparsed":true}));
+    }
     if let Some(url) = url {
-        return Some(json!({"name":name,"url":url}));
+        if command.is_some() || kind.as_deref().is_some_and(|k| k != "http") {
+            return Some(json!({"name":name,"unparsed":true}));
+        }
+        return Some(if other {
+            json!({"name":name,"url":url,"modified":true})
+        } else {
+            json!({"name":name,"url":url})
+        });
     }
     Some(json!({"name":name,"command":command?,"args":args,"env":env}))
 }
@@ -253,7 +313,10 @@ pub(super) fn mcp_get(
     );
     if spec.harness == "claude" {
         // Claude Code 2.1.x has no --scope on `get`; it reports the server's scope itself.
+        // Run it from the agent's config folder, not the caller's project, so a project or
+        // local entry of the same name doesn't shadow the user one (the scope is checked too).
         cmd.args(["mcp", "get", name]);
+        cmd.current_dir(if spec.root.is_dir() { spec.root.clone() } else { std::env::temp_dir() });
     } else {
         cmd.args(["mcp", "get", name, "--json"]);
     }
@@ -331,6 +394,37 @@ pub(super) fn run_mcp(
                 cmd.arg("--").arg(&m.command).args(&m.args);
             }
         }
+    }
+    // Codex starts its own OAuth sign-in after adding a remote server that offers one. The
+    // person completes it in their browser, so its output is theirs to see; it is bounded so
+    // a sign-in nobody finishes can't hang the caller. The CLI never sees the tokens.
+    if spec.harness == "codex" && action == "add" && server.is_some_and(|m| m.url.is_some()) {
+        let mut child = cmd
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .map_err(|_| ("harness_cli_error", "Could not run configured codex CLI".to_string(), 4))?;
+        let deadline = std::time::Instant::now() + CODEX_SIGN_IN_WAIT;
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(|e| ("harness_cli_error", e.to_string(), 4))? {
+                break Some(status);
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        return match status {
+            Some(s) if s.success() => Ok(()),
+            _ => Err((
+                "mcp_refused",
+                format!("codex didn't finish adding MCP server {name} (or its sign-in)"),
+                4,
+            )),
+        };
     }
     let output = cmd.output().map_err(|_| {
         (

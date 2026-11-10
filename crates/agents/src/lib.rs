@@ -514,3 +514,39 @@ pub fn run_spec(verb: &str, spec: &Spec) -> Result<Value, (String, String)> {
     cli::validate(spec).map_err(|m| ("invalid_request".to_string(), m))?;
     cli::operate(verb, spec).map_err(|(code, msg, _)| (code.to_string(), msg))
 }
+
+/// Every committed installation `owner` made, as the spec it installed (from the
+/// journals), so a caller can undo what was installed rather than what today's
+/// environment would install. Pending transactions are reported separately, by count.
+pub fn installed_specs(owner: &str) -> Result<(Vec<Spec>, usize), (String, String)> {
+    let home = cli::agents_home().map_err(|(c, m, _)| (c.to_string(), m))?;
+    let entries = match fs::read_dir(&home) {
+        Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((vec![], 0)),
+        Err(e) => return Err(("io_error".into(), e.to_string())),
+    };
+    let mut specs = Vec::new();
+    let mut pending = 0;
+    for path in entries {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if name.ends_with(".pending.json") {
+            pending += 1;
+            continue;
+        }
+        if !name.ends_with(".json") {
+            continue;
+        }
+        if let Ok(Some(j)) = read_journal(&path) {
+            if j.spec.owner == owner {
+                specs.push(j.spec);
+            }
+        }
+    }
+    Ok((specs, pending))
+}
+
+/// Roll back any pending transaction of `spec`'s installation (an apply that stopped
+/// part way), as `impeccable agents recover` does.
+pub fn recover_spec(spec: &Spec) -> Result<Value, (String, String)> {
+    run_spec("recover", spec)
+}

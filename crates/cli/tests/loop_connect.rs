@@ -267,3 +267,115 @@ fn an_agent_without_its_cli_is_skipped_not_failed() {
     assert!(b.root.join("claude-impeccable").exists());
     assert!(!b.support().join("codex-install.json").exists());
 }
+
+#[test]
+fn disconnect_undoes_the_account_connect_used_not_todays() {
+    // Catches (adversarial review, #1389): disconnect from a shell without CLAUDE_CONFIG_DIR
+    // missing the work account connect configured.
+    let mut b = Box::new("accounts");
+    b.install_loop();
+    let work = b.root.join("work-claude");
+    fs::create_dir_all(&work).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), work.display().to_string());
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(work.join("settings.json").exists());
+    b.env.remove("CLAUDE_CONFIG_DIR");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        !work.join("settings.json").exists(),
+        "the work account's hooks are gone"
+    );
+    assert!(!b.root.join("claude-impeccable").exists());
+}
+
+#[test]
+fn a_missing_cli_does_not_stop_the_other_agent_disconnecting() {
+    let b = Box::new("missing-cli");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    fs::rename(b.root.join("bin/claude"), b.root.join("claude-moved")).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(!out.status.success(), "a partial disconnect says so");
+    assert!(text(&out).contains("Codex: disconnected"), "{}", text(&out));
+    assert!(
+        text(&out).contains("Claude Code: not fully disconnected"),
+        "{}",
+        text(&out)
+    );
+    assert!(!b.root.join("codex-impeccable").exists());
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        record["enabled"], false,
+        "Loop stops waking even when cleanup can't finish"
+    );
+}
+
+#[test]
+fn a_symlinked_support_folder_is_refused_before_anything_is_written() {
+    let b = Box::new("symlink");
+    b.install_loop();
+    let elsewhere = b.root.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    fs::create_dir_all(
+        b.home()
+            .join("Library/Application Support/Impeccable Reviews"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&elsewhere, b.support()).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(!out.status.success());
+    assert!(
+        text(&out).contains("isn't a plain folder"),
+        "{}",
+        text(&out)
+    );
+    assert!(
+        !b.home().join(".claude/settings.json").exists(),
+        "no agent changed"
+    );
+    assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
+}
+
+#[test]
+fn one_agent_failing_reports_the_other_and_rolls_itself_back() {
+    let b = Box::new("partial");
+    b.install_loop();
+    // Codex already has a different server called impeccable: connect must not take it over.
+    fs::write(b.root.join("codex-impeccable"), r#"{"name":"impeccable","transport":{"type":"streamable_http","url":"https://elsewhere.example/mcp"}}"#).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(!out.status.success());
+    let said = text(&out);
+    assert!(said.contains("Claude Code: connected"), "{said}");
+    assert!(said.contains("Codex: not connected"), "{said}");
+    assert!(
+        !b.home().join(".codex/hooks.json").exists(),
+        "Codex's half install was rolled back"
+    );
+    assert!(fs::read_to_string(b.root.join("codex-impeccable"))
+        .unwrap()
+        .contains("elsewhere"));
+}
+
+#[test]
+fn the_cli_is_resolved_once_from_absolute_executable_entries() {
+    let mut b = Box::new("resolve");
+    b.install_loop();
+    // A '.' entry and a non-executable claude earlier in PATH are both passed over.
+    let decoy = b.root.join("decoy");
+    fs::create_dir_all(&decoy).unwrap();
+    fs::write(decoy.join("claude"), "not a program").unwrap();
+    let path = format!(".:{}:{}", decoy.display(), b.env["PATH"]);
+    b.env.insert("PATH".into(), path);
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        record["executable"],
+        b.root.join("bin/claude").display().to_string()
+    );
+}
