@@ -68,6 +68,27 @@ impl Session {
         })
     }
 
+    /// Read existing credentials without prompting, with a caller-owned deadline.
+    /// The worker only reads; timing out cannot rotate tokens or upload later.
+    pub(crate) fn load_for_upload(account: &Account, wait: std::time::Duration) -> Option<Session> {
+        let account = account.clone();
+        read_within(wait, move || {
+            let store = Store::new(&account);
+            let state = store.try_state().ok()??;
+            if !state.signed_in {
+                return None;
+            }
+            let secret = store.try_secret_noninteractive(&state).ok()??;
+            Some(Session {
+                client: Client::new(&account),
+                store,
+                state,
+                secret,
+            })
+        })
+        .flatten()
+    }
+
     /// Uploads with a short deadline skip refresh rather than risk losing a rotated token.
     pub fn existing_access_token(&self) -> Option<&str> {
         (self.secret.access_expires_at > now() + SKEW_SECS)
@@ -228,4 +249,31 @@ pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
         .filter(|p| crate::plans::known(p))
         .map(str::to_string);
     Ok(Entitlement { pro, reason, plan })
+}
+
+fn read_within<T: Send + 'static>(
+    wait: std::time::Duration,
+    read: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .spawn(move || {
+            let _ = send.send(read());
+        })
+        .ok()?;
+    receive.recv_timeout(wait).ok()
+}
+
+#[cfg(test)]
+mod upload_budget_tests {
+    #[test]
+    fn a_stalled_credential_backend_does_not_hold_the_caller() {
+        let start = std::time::Instant::now();
+        let result = super::read_within(std::time::Duration::from_millis(20), || {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            7
+        });
+        assert!(start.elapsed() < std::time::Duration::from_millis(500));
+        assert!(result.is_none());
+    }
 }

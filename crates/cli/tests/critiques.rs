@@ -237,3 +237,27 @@ fn a_single_na_index_survives_the_saved_frontmatter_parser() {
     assert_eq!(r.critiques.len(), 1);
     assert_eq!(r.critiques[0]["na"], serde_json::json!([7]));
 }
+
+#[test]
+fn review_numeric_target_keeps_its_original_spelling() {
+    let (fake, env) = setup("critique-numeric-target");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    assert!(impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    let meta = META.replace("Pricing", "00404");
+    let out = impeccable(
+        &env,
+        root,
+        &["critique-storage", "write", "pricing", "report.md"],
+    )
+    .env("IMPECCABLE_CRITIQUE_META", meta)
+    .output()
+    .unwrap();
+    assert!(out.status.success());
+    let r = fake.record.lock().unwrap();
+    assert_eq!(r.critiques.len(), 1);
+    assert_eq!(r.critiques[0]["target"], "00404");
+}

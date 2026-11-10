@@ -555,7 +555,9 @@ fn write_report(
                         callback(Snapshot {
                             path: file_path.clone(),
                             body: contents.clone(),
-                            meta: parse_frontmatter(&contents),
+                            // Keep the original string types: plain numeric target names
+                            // are otherwise coerced by the legacy frontmatter parser.
+                            meta: front.clone(),
                         });
                     }
                 }

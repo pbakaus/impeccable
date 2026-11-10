@@ -251,6 +251,21 @@ impl Store {
         Ok(bytes.and_then(|b| serde_json::from_slice(&b).ok()))
     }
 
+    /// Background uploads must never ask for Keychain approval.
+    pub(crate) fn try_secret_noninteractive(
+        &self,
+        state: &State,
+    ) -> Result<Option<Secret>, String> {
+        #[cfg(target_os = "macos")]
+        if state.signed_in && state.backend == Backend::Keychain {
+            return Ok(
+                keychain::get_noninteractive(SERVICE, &self.keychain_account())?
+                    .and_then(|b| serde_json::from_slice(&b).ok()),
+            );
+        }
+        self.try_secret(state)
+    }
+
     /// Write a secret and then the state naming it (caller holds the lock).
     /// The secret goes first: a rotated refresh token is never lost to a
     /// crash between the two writes.
@@ -448,6 +463,25 @@ mod keychain {
             Err(e) => Err(format!("keychain read failed ({})", e.code())),
         }
     }
+    pub fn get_noninteractive(service: &str, account: &str) -> Result<Option<Vec<u8>>, String> {
+        use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
+        let mut options = ItemSearchOptions::new();
+        options
+            .class(ItemClass::generic_password())
+            .service(service)
+            .account(account)
+            .load_data(true)
+            .skip_authenticated_items(true);
+        match options.search() {
+            Ok(items) => Ok(items.into_iter().find_map(|item| match item {
+                SearchResult::Data(bytes) => Some(bytes),
+                _ => None,
+            })),
+            Err(e) if e.code() == NOT_FOUND => Ok(None),
+            Err(e) => Err(format!("keychain read failed ({})", e.code())),
+        }
+    }
+
     pub fn set(service: &str, account: &str, secret: &[u8]) -> Result<(), String> {
         passwords::set_generic_password(service, account, secret)
             .map_err(|e| format!("keychain write failed ({})", e.code()))

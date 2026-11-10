@@ -2229,7 +2229,8 @@ best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
 the storage verb's output and exit code and emits no upload notices. It never
 uploads from hooks, reads, closes, audit writes or disabled reports. CI,
 telemetry opt-outs, no sign-in, missing `critiques:write`, expired tokens and
-unreadable preferences skip uploads. Expired tokens are left for the ordinary
+unreadable preferences skip uploads. Credential reads share the two-second
+budget and never prompt for Keychain approval. Expired tokens are left for the ordinary
 account commands to refresh, avoiding refresh-token rotation on a short deadline.
 Native projects follow the same report-save path.
 

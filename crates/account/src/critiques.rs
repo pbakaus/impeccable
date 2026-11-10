@@ -130,7 +130,10 @@ pub fn after_save(io: &Io, snapshot: &Snapshot) {
             body["repoKey"] = key.into();
         }
     }
-    let Ok(session) = Session::load(&account) else {
+    let Some(wait) = Duration::from_secs(2).checked_sub(started.elapsed()) else {
+        return;
+    };
+    let Some(session) = Session::load_for_upload(&account, wait) else {
         return;
     };
     let Some(token) = session.existing_access_token() else {
