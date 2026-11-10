@@ -500,9 +500,11 @@ fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, sk
 /// skills from `.agents/skills` only (its loader joins that onto each directory
 /// from the project root to the cwd), and the user-level install Impeccable
 /// maintains is `~/.agents/skills`, so a copy there (an unzipped bundle, a
-/// hand copy) stays at the version it was. A `.codex/skills` entry that links
-/// onto a managed skill dir is that install, not a copy, and is skipped
-/// without hiding a copy beside it. Returns the first copy's name.
+/// hand copy) stays at the version it was. `managed` holds the real paths of
+/// the skills dirs this run updates: an entry that resolves into one of them
+/// (the entry linked, or `.codex/skills` itself linked) is that install, not
+/// a copy, and is skipped without hiding a copy beside it. Returns the first
+/// copy's name.
 fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
     let skills_dir = util::jsp::join(&[root, ".codex", "skills"]);
     util::read_dir_names(&skills_dir)?.into_iter().find(|n| {
@@ -511,7 +513,7 @@ fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
         }
         let skill_dir = util::jsp::join(&[&skills_dir, n]);
         let real = util::realpath(&skill_dir).unwrap_or(skill_dir);
-        !managed.iter().any(|m| *m == real)
+        !managed.contains(&util::jsp::dirname(&real))
     })
 }
 
@@ -922,10 +924,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
     let managed: Vec<String> = sys
         .deduplicate_providers(&root, &providers, scope)
         .into_iter()
-        .map(|(_, dir)| {
-            let skill = util::jsp::join(&[&dir, "impeccable"]);
-            util::realpath(&skill).unwrap_or(skill)
-        })
+        .map(|(_, dir)| util::realpath(&dir).unwrap_or(dir))
         .collect();
     // Hook manifests follow install's placement: a user-scope install keeps
     // the skill under home but writes every non-Claude manifest (Cursor,
@@ -982,7 +981,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
                 report_hook_targets(&sys, io, &hook_targets, if want_hooks { &copy_providers } else { &[] });
                 note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
                 if fell_back_to_user {
-                    note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &[]);
+                    note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &managed);
                 }
                 out(io, "Nothing else to do.");
                 report_doctor(&sys, io, &root, &copy_providers, scope, false);
@@ -1038,7 +1037,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         report_hook_targets(&sys, io, &hook_targets, if want_hooks { &providers } else { &[] });
         note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
         if fell_back_to_user {
-            note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &[]);
+            note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &managed);
         }
         out(io, "Done!");
         report_doctor(&sys, io, &root, &copy_providers, scope, true);

@@ -1335,6 +1335,8 @@ fn update_is_silent_about_a_codex_skills_link_onto_the_agents_install() {
     let (root, project, env) = codex_dir_project("update-codex-dir-link", true, false);
     std::fs::remove_dir_all(format!("{project}/.codex/skills")).unwrap();
     std::os::unix::fs::symlink("../.agents/skills", format!("{project}/.codex/skills")).unwrap();
+    // A second skill in the linked folder is that install's too, not a copy.
+    write(&format!("{project}/.agents/skills/teach-impeccable/SKILL.md"), "---\nname: teach-impeccable\nversion: 1.0.0\n---\n");
     let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
     assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
     assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
@@ -1361,6 +1363,15 @@ fn update_falling_back_to_the_user_install_names_the_project_codex_copy() {
     assert!(r.stdout.contains(note), "{}", r.stdout);
     assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
     assert!(read(&format!("{home}/.agents/skills/impeccable/SKILL.md")).contains("9.9.9-local"));
+    // A project entry linked onto the user install just updated is that install.
+    #[cfg(unix)]
+    {
+        std::fs::remove_dir_all(format!("{project}/.codex/skills/impeccable")).unwrap();
+        std::os::unix::fs::symlink(format!("{home}/.agents/skills/impeccable"), format!("{project}/.codex/skills/impeccable")).unwrap();
+        let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+        assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+        assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    }
     std::fs::remove_dir_all(&root).ok();
 }
 
