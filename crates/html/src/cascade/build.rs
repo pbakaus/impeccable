@@ -656,14 +656,24 @@ fn compute_styles(
                         Some(h) if compare_static_priority(resting_meta, &h.meta) => Some(h),
                         _ => resting_img,
                     };
-                    // Resolve `var()` and `inherit` first; an image that
-                    // still cannot be resolved counts as painting, so the
-                    // reset never invents a surface behind it.
+                    // Resolve `var()` and `inherit` first, against the
+                    // custom properties as they stand on hover; an image
+                    // that still cannot be resolved counts as painting, so
+                    // the reset never invents a surface behind it.
+                    let mut hover_custom = custom_props.clone();
+                    for (name, decl) in hover_map {
+                        if name.starts_with("--")
+                            && compare_static_priority(specified_map.get(name).map(|d| &d.meta), &decl.meta)
+                        {
+                            let resolved = super::checks_shim::resolve_var_refs(&decl.value, &hover_custom);
+                            hover_custom.insert(name.clone(), resolved);
+                        }
+                    }
                     let paints = effective_img.is_some_and(|d| {
                         let resolved = normalize_static_css_value(
                             "backgroundImage",
                             &d.value,
-                            &custom_props,
+                            &hover_custom,
                             parent_style.as_deref(),
                             Some(&values),
                         );
