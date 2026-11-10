@@ -23,6 +23,22 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         return 0;
     };
     let rest = &args[1..];
+    // A small allowlist excludes every hook and internal verb. All I/O beyond
+    // the cheap daily gate belongs to a detached process.
+    if matches!(
+        verb,
+        "context"
+            | "detect"
+            | "doctor"
+            | "whoami"
+            | "agents"
+            | "skills"
+            | "install"
+            | "update"
+            | "check"
+    ) {
+        crate::setup_report::schedule(io);
+    }
     match verb {
         "--help" | "-h" => {
             io.out(impeccable_detect::ROOT_USAGE);
@@ -49,7 +65,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect" => detect(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
-        "login" => impeccable_account::run_login(rest, io),
+        "login" => {
+            let code = impeccable_account::run_login(rest, io);
+            if code == 0 {
+                crate::setup_report::schedule(io);
+            }
+            code
+        }
+        "setup" => impeccable_account::setup::run(rest, io),
+        "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
         "health" => impeccable_account::health::run(rest, io),
@@ -223,6 +247,8 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "setup",
+    "setup-report",
     "pro-refresh",
     "agents",
     "loop",
