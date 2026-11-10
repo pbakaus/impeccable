@@ -881,9 +881,6 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
                 continue;
             }
-            if plain_script_out_of_scope(&ext, configured.is_some(), root) {
-                continue;
-            }
             if is_ignored_file(&rt.proc_cwd, file_path, root, &root_config.ignore_files) {
                 continue;
             }

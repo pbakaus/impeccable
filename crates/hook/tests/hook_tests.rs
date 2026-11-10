@@ -4149,22 +4149,6 @@ fn a_configured_extension_is_not_a_plain_script() {
 }
 
 #[test]
-fn the_stop_pass_skips_a_cached_plain_script_once_the_project_drops_impeccable() {
-    let t = Tmp::new();
-    let cwd = t.path();
-    t.write("package.json", "{}");
-    t.write("PRODUCT.md", "# Product\n");
-    let r = rt(&cwd);
-    let ts = t.write("src/theme.ts", TS_SLOP);
-    // Cached by the per-edit pass while the project used Impeccable.
-    hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
-    std::fs::remove_file(t.0.join("PRODUCT.md")).unwrap();
-    std::fs::remove_dir_all(t.0.join(".impeccable")).ok();
-    let stop = hook::run_stop_hook(&r, &stop_event(&cwd, "s1"));
-    assert!(!stop.stdout.contains("[gradient-text]"), "{}", stop.stdout);
-}
-
-#[test]
 fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
     let t = Tmp::new();
     let cwd = t.path();
