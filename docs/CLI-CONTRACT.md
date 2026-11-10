@@ -2213,3 +2213,31 @@ Existing pins cannot be overwritten with a different digest.
 **A new Loop version needs an engine release before `loop update` can see it.**
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
+
+### Critique history sync
+
+`impeccable critiques [status|on|off|forget]` manages the local
+`IMPECCABLE_HOME/critiques.json` setting. The default is off
+(`CRITIQUE_SYNC_DEFAULT_ON = false`). `on` opts into uploading saved report
+contents; `off` stops uploads. `forget` first saves off, then posts `{}` to
+`/cli/v1/critiques/forget`. A 404 is quiet and leaves sync off without claiming
+deletion. Other unconfirmed deletions exit 1; confirmed deletions exit 0.
+Status reports the saved preference, independent of sign-in or CI.
+
+After a successful `critique-storage write`, the CLI makes at most one
+best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
+the storage verb's output and exit code and emits no upload notices. It never
+uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+telemetry opt-outs, no sign-in, missing `critiques:write`, expired tokens and
+unreadable preferences skip uploads. Expired tokens are left for the ordinary
+account commands to refresh, avoiding refresh-token rotation on a short deadline.
+Native projects follow the same report-save path.
+
+Sign-in requests `critiques:write` only when advertised in
+`scopes_supported`. Payload v1 maps saved `target`, `total_score`,
+`max_score`, `na_heuristics`, and severity counts to `target`, `score`,
+`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`body` is the saved report after removing the local frontmatter.
+A fresh UUID identifies each saved report; `createdAt` is its save time.
+Optional `repoKey` uses design health's remote normalization and local repo ID,
+including from subdirectories. No repo label or other local metadata is sent.

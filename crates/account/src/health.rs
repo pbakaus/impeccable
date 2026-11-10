@@ -379,6 +379,23 @@ impl Repo {
 /// One short git question, given at most [`GIT_DEADLINE`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
+    git_with_timeout(dir, args, GIT_DEADLINE)
+}
+
+/// Critiques use the same repo identity, including for native projects and subdirectories.
+pub(crate) fn critique_repo_key(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<String> {
+    let short = Duration::from_millis(150);
+    let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
+    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
+        .and_then(|r| normalize_remote(&r));
+    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    Some(hex(&Sha256::digest(identity.as_bytes())))
+}
+
+fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -387,7 +404,7 @@ fn git(dir: &str, args: &[&str]) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    let until = std::time::Instant::now() + GIT_DEADLINE;
+    let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,

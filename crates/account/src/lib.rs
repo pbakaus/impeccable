@@ -4,6 +4,7 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod critiques;
 pub mod health;
 pub mod http;
 pub mod oauth;
@@ -78,6 +79,7 @@ pub fn login(
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
+            scopes: tokens.scope.clone(),
             schema: 1,
             issuer: account.issuer.clone(),
             generation,

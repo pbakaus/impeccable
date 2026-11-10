@@ -469,7 +469,14 @@ fn store_dir(cwd: &str, env: &Env, kind: &str) -> String {
 
 /// `write <slug-or-target> <body-file>` for any report kind. Prints the path
 /// it wrote, or a `REPORTS OFF:` line when the project turned reports off.
-fn write_report(kind: &str, rest: &[String], io: &mut Io, cwd: &str, env: &Env) -> i32 {
+fn write_report(
+    kind: &str,
+    rest: &[String],
+    io: &mut Io,
+    cwd: &str,
+    env: &Env,
+    mut saved: Option<&mut dyn FnMut(Snapshot)>,
+) -> i32 {
     let settings = report_settings(cwd, env);
     if !settings.enabled {
         io.out(&format!("REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the {kind} report was not saved. Carry on; nothing else changes.\n"));
@@ -542,7 +549,16 @@ fn write_report(kind: &str, rest: &[String], io: &mut Io, cwd: &str, env: &Env) 
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path) {
             Ok(mut f) => {
                 use std::io::Write;
-                let _ = f.write_all(contents.as_bytes());
+                let complete = f.write_all(contents.as_bytes()).is_ok();
+                if complete {
+                    if let Some(callback) = saved.as_mut() {
+                        callback(Snapshot {
+                            path: file_path.clone(),
+                            body: contents.clone(),
+                            meta: parse_frontmatter(&contents),
+                        });
+                    }
+                }
                 written = Some(file_path);
                 break;
             }
@@ -574,7 +590,7 @@ pub fn run_audit(args: &[String], io: &mut Io) -> i32 {
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     match args.first().map(String::as_str).unwrap_or("") {
         "slug" => run(args, io),
-        "write" => write_report("audit", rest, io, &cwd, &env),
+        "write" => write_report("audit", rest, io, &cwd, &env, None),
         _ => {
             io.err("usage: audit-storage <slug|write> ...\n  slug <target>\n  write <slug-or-target> <body-file>\n");
             1
@@ -583,6 +599,11 @@ pub fn run_audit(args: &[String], io: &mut Io) -> i32 {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_saved(args, io, &mut |_| {})
+}
+
+/// Hands only a newly saved critique to the CLI, never a read or close.
+pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(Snapshot)) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let cmd = args.first().map(String::as_str).unwrap_or("");
@@ -601,7 +622,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 }
             }
         }
-        "write" => write_report("critique", rest, io, &cwd, &env),
+        "write" => write_report("critique", rest, io, &cwd, &env, Some(saved)),
         "latest" => {
             let target = rest.first().map(String::as_str).unwrap_or("");
             let format = rest.get(1).map(String::as_str);

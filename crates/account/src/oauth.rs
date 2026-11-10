@@ -28,6 +28,7 @@ pub struct Metadata {
     /// only while design health is switched on there. Asking for a scope it
     /// doesn't list fails the sign-in with `invalid_scope`.
     pub health: bool,
+    pub critiques: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -67,22 +68,31 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
             token_endpoint,
             revocation_endpoint,
             health,
+            critiques: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == CRITIQUES_SCOPE)),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
 }
 
+/// Uploading saved critique reports (`crate::critiques`).
+pub const CRITIQUES_SCOPE: &str = "critiques:write";
+
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
 
-/// What sign-in asks for: the CLI's scopes, plus `health:write` where the
-/// service offers it.
+/// What sign-in asks for: the CLI's scopes plus each advertised feature scope.
 fn scopes(meta: &Metadata) -> String {
+    let mut scopes = SCOPES.to_string();
     if meta.health {
-        format!("{SCOPES} {HEALTH_SCOPE}")
-    } else {
-        SCOPES.to_string()
+        scopes.push_str(&format!(" {HEALTH_SCOPE}"));
     }
+    if meta.critiques {
+        scopes.push_str(&format!(" {CRITIQUES_SCOPE}"));
+    }
+    scopes
 }
 
 pub fn random_b64(len: usize) -> String {
@@ -316,6 +326,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub struct Tokens {
+    pub scope: String,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
@@ -343,6 +354,11 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
             access_token,
             refresh_token,
             expires_in,
+            scope: v
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
         }),
         _ => Err(ApiError::Network(
             "the account service sent an incomplete token answer".into(),

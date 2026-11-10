@@ -68,6 +68,12 @@ impl Session {
         })
     }
 
+    /// Uploads with a short deadline skip refresh rather than risk losing a rotated token.
+    pub fn existing_access_token(&self) -> Option<&str> {
+        (self.secret.access_expires_at > now() + SKEW_SECS)
+            .then_some(self.secret.access_token.as_str())
+    }
+
     pub fn account(&self) -> &Account {
         &self.store.account
     }
@@ -121,6 +127,11 @@ impl Session {
             Ok(tokens) => {
                 let generation = state.generation + 1;
                 let next_state = State {
+                    scopes: if tokens.scope.is_empty() {
+                        state.scopes.clone()
+                    } else {
+                        tokens.scope.clone()
+                    },
                     generation,
                     ..state
                 };

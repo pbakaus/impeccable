@@ -52,6 +52,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "login" => impeccable_account::run_login(rest, io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
@@ -65,7 +66,16 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
         "surface-brief" => impeccable_context::run_surface_brief(rest, io),
-        "critique-storage" => impeccable_context::run_critique_storage(rest, io),
+        "critique-storage" => {
+            let mut saved = None;
+            let code = impeccable_context::critique_storage::run_with_saved(rest, io, &mut |s| {
+                saved = Some(s)
+            });
+            if let Some(snapshot) = saved {
+                impeccable_account::critiques::after_save(io, &snapshot);
+            }
+            code
+        }
         "audit-storage" => impeccable_context::run_audit_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
@@ -223,6 +233,7 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "critiques",
     "pro-refresh",
     "agents",
     "loop",
@@ -281,7 +292,9 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }

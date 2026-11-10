@@ -21,6 +21,8 @@ pub struct Knobs {
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
+    pub critiques: bool,
+    pub critiques_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -55,6 +57,7 @@ pub struct Record {
     pub scopes: Vec<String>,
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
+    pub critiques: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
@@ -283,11 +286,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
-                    "scopes_supported": if knobs.lock().unwrap().health {
-                        serde_json::json!(["account:read", "rules:read", "health:write"])
-                    } else {
-                        serde_json::json!(["account:read", "rules:read"])
-                    },
+                    "scopes_supported": ({
+                        let k = knobs.lock().unwrap();
+                        let mut scopes = vec!["account:read", "rules:read"];
+                        if k.health { scopes.push("health:write"); }
+                        if k.critiques { scopes.push("critiques:write"); }
+                        scopes
+                    }),
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -295,9 +300,15 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 let scope = q.get("scope").cloned().unwrap_or_default();
                 record.lock().unwrap().scopes.push(scope.clone());
                 // The real service refuses a scope it doesn't list.
-                let scope_ok = scope == "account:read rules:read"
-                    || (scope == "account:read rules:read health:write"
-                        && knobs.lock().unwrap().health);
+                let scope_ok = {
+                    let k = knobs.lock().unwrap();
+                    scope.split_whitespace().all(|s| match s {
+                        "account:read" | "rules:read" => true,
+                        "health:write" => k.health,
+                        "critiques:write" => k.critiques,
+                        _ => false,
+                    })
+                };
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
@@ -350,6 +361,57 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         200,
                         serde_json::json!({ "pro": false, "reason": "not_entitled" }),
                     )
+                }
+            }
+            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget") => {
+                let k = knobs.lock().unwrap();
+                if !k.critiques {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if k.critiques_denied {
+                    (403, vec![], vec![])
+                } else if path.ends_with("/forget") {
+                    json(200, serde_json::json!({"forgot": 1}))
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let allowed = [
+                        "version",
+                        "critiqueId",
+                        "createdAt",
+                        "target",
+                        "repoKey",
+                        "score",
+                        "na",
+                        "heuristics",
+                        "counts",
+                        "body",
+                    ];
+                    assert!(v
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|k| allowed.contains(&k.as_str())));
+                    assert_eq!(v["version"], 1);
+                    let na = v["na"].as_array().unwrap();
+                    let max = v["score"]["max"].as_u64().unwrap();
+                    assert_eq!(max, 4 * (10 - na.len() as u64));
+                    assert!(v["score"]["total"].as_u64().unwrap() <= max);
+                    for k in ["p0", "p1"] {
+                        assert!(v["counts"][k].as_u64().unwrap() <= 100);
+                    }
+                    let text = v["body"].as_str().unwrap();
+                    assert!(!text.trim().is_empty() && text.len() <= 65536 && !text.contains('\0'));
+                    let id = v["critiqueId"].as_str().unwrap();
+                    assert_eq!(
+                        id.split('-').map(str::len).collect::<Vec<_>>(),
+                        [8, 4, 4, 4, 12]
+                    );
+                    record.lock().unwrap().critiques.push(v);
+                    json(200, serde_json::json!({"outcome": "recorded"}))
                 }
             }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
@@ -428,6 +490,14 @@ fn token(
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
     let ttl = knobs.lock().unwrap().access_ttl;
+    let scope = if {
+        let k = knobs.lock().unwrap();
+        k.critiques && !k.critiques_denied
+    } {
+        "account:read rules:read critiques:write"
+    } else {
+        "account:read rules:read"
+    };
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
@@ -473,7 +543,7 @@ fn token(
     r.live_refresh.insert(refresh.clone());
     json(
         200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
+        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": scope }),
     )
 }
 
