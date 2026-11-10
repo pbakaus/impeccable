@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -571,3 +571,82 @@ test('launcher attributes GitHub storage outages to GitHub', async t => {
   // cmd echo adds a trailing space before redirection and uses CRLF.
   assert.equal(result.stderr.trimEnd(), "impeccable: could not download engine 0.0.0-test: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.");
 });
+
+// #1237: hooks run this launcher on every edit and turn end, and on a loaded
+// Windows box each process it starts before the engine costs seconds. With a
+// verified cached engine it may start at most one uname and one wc.
+test('sh launcher reaches a cached engine starting almost no processes', { skip: WINDOWS ? 'POSIX launcher' : false }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-cost-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const scripts = path.join(root, 'skill scripts');
+  const cacheDir = path.join(root, 'cache', 'bin', '0.0.0-test');
+  const tools = path.join(root, 'tools');
+  const log = path.join(root, 'spawned.log');
+  for (const dir of [scripts, cacheDir, tools, path.join(root, 'home')]) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+  fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable'), path.join(scripts, 'impeccable'));
+  // The stub reports where it runs and the skill dir it was handed.
+  const engine = Buffer.from('#!/bin/sh\necho "verified-engine cwd=$PWD skill=$IMPECCABLE_SKILL_DIR"\n');
+  const digest = createHash('sha256').update(engine).digest('hex');
+  fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), `0.0.0-test ${ASSET} ${digest}\n`);
+  const cached = path.join(cacheDir, BIN);
+  fs.writeFileSync(cached, engine, { mode: 0o755 });
+  fs.writeFileSync(`${cached}.verified`, `${digest} ${engine.length}\n`);
+  const project = path.join(root, 'project');
+  fs.mkdirSync(project);
+  const past = new Date(Date.now() - 60000);
+  fs.utimesSync(cached, past, past);
+  // Every external tool the launcher could reach logs itself, then runs.
+  for (const name of ['dirname', 'uname', 'tr', 'wc', 'cat', 'sed', 'awk', 'basename', 'shasum', 'sha256sum', 'printf']) {
+    const real = ['/usr/bin', '/bin'].map(d => path.join(d, name)).find(p => fs.existsSync(p));
+    if (!real) continue;
+    fs.writeFileSync(path.join(tools, name), `#!/bin/sh\necho ${name} >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
+  }
+  const result = spawnSync('/bin/sh', [path.join(scripts, 'impeccable'), 'engine-probe'], {
+    encoding: 'utf8',
+    cwd: project,
+    env: { PATH: tools, HOME: path.join(root, 'home'), IMPECCABLE_HOME: path.join(root, 'cache') },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), `verified-engine cwd=${fs.realpathSync(project)} skill=${root}`,
+    'the engine runs in the caller\'s directory and gets the skill dir');
+  const spawned = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean) : [];
+  const count = name => spawned.filter(s => s === name).length;
+  assert.deepEqual(spawned.filter(s => !['uname', 'wc'].includes(s)), [], `no other tool runs: ${spawned}`);
+  assert.ok(count('uname') <= 1 && count('wc') <= 1, `at most one uname and one wc: ${spawned}`);
+});
+
+// The Windows branch reads OS and PROCESSOR_ARCHITECTURE instead of uname.
+// Exercised from a POSIX shell: a uname that runs at all fails the case.
+for (const [arch, manifestAsset] of [['AMD64', 'impeccable-windows-x64.exe'], ['ARM64', 'impeccable-windows-x64.exe'], ['ARM64', 'impeccable-windows-arm64.exe']]) {
+  test(`sh launcher on Windows ${arch} runs the cached engine stamped for ${manifestAsset} without uname`, { skip: WINDOWS ? 'POSIX shell stand-in for Git Bash' : false }, async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-win-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const scripts = path.join(root, 'scripts');
+    const cacheDir = path.join(root, 'cache', 'bin', '0.0.0-test');
+    const tools = path.join(root, 'tools');
+    for (const dir of [scripts, cacheDir, tools, path.join(root, 'home')]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+    fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable'), path.join(scripts, 'impeccable'));
+    const engine = Buffer.from('#!/bin/sh\necho windows-engine\n');
+    const digest = createHash('sha256').update(engine).digest('hex');
+    fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), `0.0.0-test ${manifestAsset} ${digest}\n`);
+    const cached = path.join(cacheDir, 'impeccable.exe');
+    fs.writeFileSync(cached, engine, { mode: 0o755 });
+    fs.writeFileSync(`${cached}.verified`, `${digest} ${engine.length}\n`);
+    const past = new Date(Date.now() - 60000);
+    fs.utimesSync(cached, past, past);
+    fs.writeFileSync(path.join(tools, 'uname'), `#!/bin/sh\necho uname-ran >&2\nexit 1\n`, { mode: 0o755 });
+    for (const name of ['wc']) {
+      const real = ['/usr/bin', '/bin'].map(d => path.join(d, name)).find(p => fs.existsSync(p));
+      fs.writeFileSync(path.join(tools, name), `#!/bin/sh\nexec '${real}' "$@"\n`, { mode: 0o755 });
+    }
+    const result = spawnSync('/bin/sh', [path.join(scripts, 'impeccable'), 'engine-probe'], {
+      encoding: 'utf8',
+      env: { PATH: tools, HOME: path.join(root, 'home'), IMPECCABLE_HOME: path.join(root, 'cache'), OS: 'Windows_NT', PROCESSOR_ARCHITECTURE: arch },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'windows-engine');
+    assert.doesNotMatch(result.stderr, /uname-ran/);
+  });
+}
