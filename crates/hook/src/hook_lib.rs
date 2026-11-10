@@ -19,7 +19,7 @@ use impeccable_detect::config::{
 pub use impeccable_detect::config::{
     match_configured_extension, merge_extensions, normalize_extension_entries, ExtensionEntry,
 };
-use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
+use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, resolve_design_sidecar_path, DesignSystem};
 use impeccable_detect::detect_text::{detect_text, TextOptions};
 use impeccable_detect::engines::{HtmlEngine, ScanOptions};
 use once_cell::sync::Lazy;
@@ -1671,6 +1671,32 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
 /// Resolve design rules for the edited workspace without moving hook state,
 /// and waive the linked stylesheets `detector.ignoreFiles` covers, matched
 /// like the edited file ([`is_ignored_file`]).
+/// The design documents a Stop pass under `root` reads: the DESIGN.md and
+/// sidecar of the project root and of the repo root, resolved the way
+/// [`design_system_options_for_file`] resolves them. The turn-end claim keys
+/// on them, so a turn that only edited an inherited DESIGN.md is a new pass.
+pub fn stop_design_inputs(rt: &Runtime, root: &str) -> Vec<String> {
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        &rt.env,
+    );
+    let mut out = Vec::new();
+    for dir in [&project.project_root, &project.repo_root] {
+        if let Some(doc) = resolve_design_md_path(dir) {
+            if !out.contains(&doc.path) {
+                out.push(doc.path.clone());
+            }
+            if let Some(sidecar) = resolve_design_sidecar_path(dir, &doc.context_dir) {
+                if !out.contains(&sidecar) {
+                    out.push(sidecar);
+                }
+            }
+        }
+    }
+    out
+}
+
 pub fn design_system_options_for_file(
     rt: &Runtime,
     config: &HookConfig,

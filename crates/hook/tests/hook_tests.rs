@@ -4201,3 +4201,24 @@ fn a_cache_save_keeps_the_file_mode_and_a_symlinked_cache() {
     assert!(t.read("elsewhere/cache.json").contains("s-mode"), "the save went through the link");
     assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o600);
 }
+
+#[test]
+fn a_turn_that_only_changed_an_inherited_design_md_runs_a_new_deep_pass() {
+    // The app has no DESIGN.md of its own, so the deep pass reads the repo
+    // root's; editing that file alone must not read as a copy of the last Stop.
+    let t = Tmp::new();
+    // A monorepo: the app inherits the workspace root's DESIGN.md.
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt_with(&app, claim_env(&t, &[]));
+    let css = t.write("app/src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&app, &css, "s-inherit"));
+    hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    t.write("DESIGN.md", "# Design\n\nColors changed.\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}

@@ -854,7 +854,8 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         // A plugin hook next to a project hook fires this pass twice at once:
         // only the first copy scans, as PostToolUse does.
         let touched_paths: Vec<String> = touched.iter().map(|(f, _)| f.clone()).collect();
-        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths) == crate::hook_claim::Claim::Duplicate {
+        let design_inputs = stop_design_inputs(rt, root);
+        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths, &design_inputs) == crate::hook_claim::Claim::Duplicate {
             // A duplicate says more than an empty root's skip, so it wins.
             first_skip = Some(result(
                 &root_audit,
