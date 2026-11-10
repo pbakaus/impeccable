@@ -872,6 +872,51 @@ fn repeat_global_install_rewrites_a_legacy_home_hook() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A repeat Global install whose home hooks are already current, run in a
+/// project that still holds a legacy `.mjs` Codex manifest naming a project
+/// skill (PR #1378 review): the stale-manifest repair retargets it at the
+/// home skill, so it must run before the duplicate cleanup, as `update` does,
+/// or the project file is left as a second home hook.
+#[test]
+fn repeat_global_install_prunes_a_legacy_project_hook_it_repairs() {
+    let root = temp_root("home-hooks-repair-then-prune");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&project, &[".agents"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        if target.provider == ".agents" {
+            write(&format!("{bundle_root}/.codex/hooks.json"), &(target.manifest)().to_string());
+        }
+    }
+    let env = base_env(&home, &tmpdir, &bundle_root);
+    let args = ["install", "-y", "--providers=codex", "--scope=global"];
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(manifest_names_launcher(&format!("{home}/.codex/hooks.json"), &home, ".agents"));
+
+    // A v3-era project manifest: a dead `node .../hook.mjs` naming the
+    // project's own skill copy.
+    let legacy = format!("node '{}'", jsp::join(&[&project, ".agents", "skills", "impeccable", "scripts", "hook.mjs"]));
+    write(&format!("{project}/.codex/hooks.json"), &json!({ "hooks": {
+        "PostToolUse": [{ "matcher": "Edit|Write|apply_patch", "hooks": [{ "type": "command", "command": legacy }] }],
+    } }).to_string());
+
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let project_codex = format!("{project}/.codex/hooks.json");
+    if std::path::Path::new(&project_codex).exists() {
+        let text = read(&project_codex);
+        assert!(!text.contains("impeccable"), "a second home hook was left in the project: {text}");
+    }
+    assert!(manifest_names_launcher(&format!("{home}/.codex/hooks.json"), &home, ".agents"));
+    std::fs::remove_dir_all(&root).ok();
+}
+
 #[test]
 fn global_install_rewrites_github_project_hook_to_the_global_skill_path() {
     let root = temp_root("github-global");

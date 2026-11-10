@@ -719,6 +719,13 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                 Vec::new()
             };
             report_hook_targets(&sys, io, &written_hook_targets, if want_hooks { &hook_targets } else { &[] });
+            // Self-heal any pre-launcher (`node .../hook.mjs`) manifest left by a
+            // v3 install into a present provider dir (triage E8). Independent of
+            // hook consent: it repairs an existing hook rather than adding one.
+            // It runs before the duplicate cleanup below, as `update` does, so a
+            // stale project manifest it retargets at the home skill is then
+            // pruned rather than left as a second home hook.
+            hook_manifest::repair_stale_hook_manifests(&sys, &hook_root, &hook_targets, Some(&install_root))?;
             // A repeat user-scope install whose user hook is already current
             // never sends Claude through copy_provider_hooks, so the
             // duplicate-hook cleanup that function ends with runs here as well.
@@ -733,11 +740,6 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             if want_hooks && scope == Scope::User {
                 hook_manifest::prune_duplicate_home_hooks(&sys, &install_root, &hook_root, &hook_targets)?;
             }
-
-            // Self-heal any pre-launcher (`node .../hook.mjs`) manifest left by a
-            // v3 install into a present provider dir (triage E8). Independent of
-            // hook consent: it repairs an existing hook rather than adding one.
-            hook_manifest::repair_stale_hook_manifests(&sys, &hook_root, &hook_targets, Some(&install_root))?;
 
             if update_check_skipped {
                 out(io, "Existing skills were left unchanged.");
