@@ -30,8 +30,10 @@ login_pid=""
 cleanup() { if [ -n "$login_pid" ]; then kill "$login_pid" 2>/dev/null; wait "$login_pid" 2>/dev/null; fi; rm -rf "$H"; }
 trap cleanup EXIT
 export IMPECCABLE_HOME="$H/home" IMPECCABLE_ACCOUNT_URL="$ISSUER" IMPECCABLE_TELEMETRY_CHANNEL=test
-export IMPECCABLE_NO_UPDATE_CHECK=1 IMPECCABLE_QUESTION_DISABLED=1 CI=${CI:-1}
-unset IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
+export IMPECCABLE_NO_UPDATE_CHECK=1 IMPECCABLE_QUESTION_DISABLED=1
+# Design health is off by design whenever CI is set (GitHub Actions sets CI=true), so
+# the scans below run as a person's terminal would: no CI, no opt-out variables.
+unset CI IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
 
 failed=0
 pass() { echo "PASS $1"; }
