@@ -19,7 +19,7 @@ source, including any em dashes inside user-facing messages; do not "fix" them.
 Sections:
 
 1. Detect CLI and misc verbs (`detect`, `ignores`, `skills`, `concept-seed`, `serve-question`, `generate-image`)
-2. Context and utility verbs (`context`, `doctor`, `pin`, `surface-brief`, `critique-storage`, `palette`, `embed-prompt`, `signals`, `detect-csp`)
+2. Context and utility verbs (`context`, `doctor`, `pin`, `surface-brief`, `critique-storage`, `audit-storage`, `palette`, `embed-prompt`, `signals`, `detect-csp`)
 3. Design hook (`hook`, `hook-before-edit`, `hooks`)
 4. Live mode (`live*`)
 
@@ -888,6 +888,12 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 - **Outputs**: `slug`: slug + `\n` exit 0, or stderr `no stable slug for input\n` exit 1. `write`: missing args -> stderr `usage: write <slug-or-target> <body-file>\n` exit 1; else absolute path written + `\n`. `latest`: none -> exit 2 (no output); else prints file body verbatim. For explicit path/URL targets, `latest`, `trend`, and `close` probe both the current hashed long slug and the previous suffix-only long slug, but accept a legacy snapshot only when its recorded target identity matches. Identity-less pre-upgrade snapshots remain available by passing their exact legacy slug, which avoids guessing a path/URL owner for a collision-prone key. `trend`: `JSON.stringify(rows, null, 2)` + `\n`, rows = frontmatter objects of the last N matching files oldest->newest (`[]` if none). Unknown -> stderr `usage: critique-storage.mjs <slug|write|latest|trend> [args]\n` exit 1.
 - **Gotchas**: `latest`/`trend` match by suffix `__<slug>.md`; `readLatestSnapshotAcrossTargets` uses suffix `.md`. Main-module guard compares realpaths so symlinked invocation works.
 - **Tests**: `tests/critique-storage.test.mjs` (slug rules, stamp format, round-trip, newest selection, meta cannot override timestamp/slug, quoting `:`/`#`, CLI slug/exit codes/symlink/latest exit 2, trend ordering).
+- **Saved reports (binary only, #1329)**: `write` reads `reports` from `<projectRoot>/.impeccable/config.json`, then `config.local.json` per key: `enabled` (default `true`) and `commit` (default `false`). `enabled: false` writes nothing and prints `REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the <kind> report was not saved. Carry on; nothing else changes.`, exit 0. Unless `commit` is `true`, every write keeps `<dir>/.gitignore` listing `*` and `!ignore.md` (`ensure_dir_ignored`), so reports stay local while `ignore.md` stays shareable. With `commit: true`, a write lifts those two rules from an engine-written `.gitignore` (`release_dir_ignored`: only a file whose first line is the engine header; user lines stay; a file left with nothing else is deleted), so switching on after a default write makes the folder committable. `IMPECCABLE_REPORT_META` is read before `IMPECCABLE_CRITIQUE_META`.
+
+#### `impeccable audit-storage` (binary only, #1329)
+
+- **Invoked from**: `reference/audit.md` (Save the Report): `audit-storage write "<resolved target>" <body-file>`.
+- **CLI args**: `slug <target>` (same as critique-storage); `write <slug-or-target> <body-file>`, the critique-storage write path with dir `<projectRoot>/.impeccable/audit/` (a target with no slug, such as `.` for a project-wide audit, is stored as `project`), the same file names, frontmatter, fingerprint and the saved-reports rules above. Anything else: stderr `usage: audit-storage <slug|write> ...` exit 1. Nothing reads audit history yet, so there is no `latest`, `trend` or `close`.
 
 ---
 

@@ -647,6 +647,13 @@ const cases = [
   { id: 'critique-trend-existing', verb: 'critique-storage', workspace: 'ctx-full', args: ['trend', 'src-pages-index-astro'], env: env() },
   { id: 'critique-trend-none', verb: 'critique-storage', workspace: 'ctx-full', args: ['trend', 'nothing-here', '3'], env: env() },
   { id: 'critique-write-usage', verb: 'critique-storage', workspace: 'ctx-full', args: ['write', 'src/pages/index.astro'], env: env() },
+  { id: 'audit-storage-usage', verb: 'audit-storage', workspace: 'ctx-full', args: ['trend', 'x'], env: env() },
+  {
+    // #1329: reports.enabled false writes nothing and says so.
+    id: 'report-write-reports-off', verb: 'audit-storage', workspace: 'ctx-empty',
+    setup: (ws) => { write(ws, '.impeccable/config.json', '{"reports":{"enabled":false}}'); write(ws, 'body.md', '# Audit\n'); },
+    args: ['write', 'src/App.tsx', `${WS}/body.md`], env: env(),
+  },
   {
     // The snapshot filename carries the wall clock, so files are not
     // snapshotted; latest/trend afterwards prove the round trip. The written
