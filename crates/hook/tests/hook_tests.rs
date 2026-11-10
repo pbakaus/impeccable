@@ -4261,6 +4261,23 @@ fn plain_scripts_scan_once_the_project_uses_impeccable() {
 }
 
 #[test]
+fn plain_scripts_scan_in_a_monorepo_app_that_inherits_design_context() {
+    // Review: the app has its own package.json and no local context; it
+    // inherits the workspace root's DESIGN.md, so its scripts are in scope.
+    let t = Tmp::new();
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt(&app);
+    let ts = t.write("app/src/theme.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&app, &ts, "s-mono"));
+    assert_ne!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.contains("[gradient-text]"), "{:?}", out.audit);
+}
+
+#[test]
 fn a_configured_extension_is_not_a_plain_script() {
     let t = Tmp::new();
     let cwd = t.path();

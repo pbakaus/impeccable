@@ -45,8 +45,26 @@ pub const PLAIN_SCRIPT_EXTS: &[&str] = &[".ts", ".js"];
 
 /// Whether `root` uses Impeccable: a PRODUCT.md or DESIGN.md where context
 /// resolution looks (the root, `.agents/context`, `docs`), or an `.impeccable`
-/// folder. A few stats, paid only for a plain script.
-pub fn uses_impeccable(root: &str) -> bool {
+/// folder, at `root` or at the project and repo roots context resolution
+/// inherits from (a monorepo app with its own package.json takes the
+/// workspace root's DESIGN.md). A few stats, then one project resolution,
+/// paid only for a plain script.
+pub fn uses_impeccable(root: &str, env: &HashMap<String, String>) -> bool {
+    if marks_impeccable(root) {
+        return true;
+    }
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        env,
+    );
+    let inherited = [project.project_root.as_str(), project.repo_root.as_str()]
+        .into_iter()
+        .any(|dir| dir != root && marks_impeccable(dir));
+    inherited
+}
+
+fn marks_impeccable(root: &str) -> bool {
     use impeccable_context::context::{DESIGN_NAMES, FALLBACK_DIRS, PRODUCT_NAMES};
     if exists(&jsp::join(&[root, ".impeccable"])) {
         return true;
@@ -58,8 +76,8 @@ pub fn uses_impeccable(root: &str) -> bool {
 
 /// False for a plain script (not claimed by a configured extension) in a
 /// project that does not use Impeccable.
-pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str) -> bool {
-    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root)
+pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str, env: &HashMap<String, String>) -> bool {
+    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root, env)
 }
 
 pub const ACK_EXTS: &[&str] = &[

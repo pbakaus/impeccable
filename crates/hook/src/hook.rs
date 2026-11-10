@@ -248,7 +248,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
-        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd) {
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd, &rt.env) {
             last_skip = "plain-script";
             continue;
         }
@@ -829,6 +829,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
                 root,
                 &home,
+                &rt.env,
                 since,
                 &root_config.extensions,
                 root_config.limits.max_file_bytes,
