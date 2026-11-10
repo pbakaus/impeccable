@@ -660,13 +660,40 @@ fn compute_styles(
                     // custom properties as they stand on hover; an image
                     // that still cannot be resolved counts as painting, so
                     // the reset never invents a surface behind it.
+                    // Collect every winning hover `--*` first, so declaration
+                    // order never decides what a reference sees; `inherit`
+                    // takes the parent's value. References then resolve
+                    // against the whole hover map until it settles.
+                    let winners: Vec<(String, String)> = hover_map
+                        .iter()
+                        .filter(|(name, decl)| {
+                            name.starts_with("--")
+                                && compare_static_priority(specified_map.get(*name).map(|d| &d.meta), &decl.meta)
+                        })
+                        .map(|(name, decl)| {
+                            let raw = if js::to_lower_case(js::trim(&decl.value)) == "inherit" {
+                                parent_custom.get(name).cloned().unwrap_or_default()
+                            } else {
+                                decl.value.clone()
+                            };
+                            (name.clone(), raw)
+                        })
+                        .collect();
                     let mut hover_custom = custom_props.clone();
-                    for (name, decl) in hover_map {
-                        if name.starts_with("--")
-                            && compare_static_priority(specified_map.get(name).map(|d| &d.meta), &decl.meta)
-                        {
-                            let resolved = super::checks_shim::resolve_var_refs(&decl.value, &hover_custom);
-                            hover_custom.insert(name.clone(), resolved);
+                    for (name, raw) in &winners {
+                        hover_custom.insert(name.clone(), raw.clone());
+                    }
+                    for _ in 0..4 {
+                        let mut changed = false;
+                        for (name, raw) in &winners {
+                            let resolved = super::checks_shim::resolve_var_refs(raw, &hover_custom);
+                            if hover_custom.get(name) != Some(&resolved) {
+                                hover_custom.insert(name.clone(), resolved);
+                                changed = true;
+                            }
+                        }
+                        if !changed {
+                            break;
                         }
                     }
                     let paints = effective_img.is_some_and(|d| {

@@ -209,6 +209,37 @@ fn a_hover_custom_property_that_removes_the_image_exposes_the_reset() {
 }
 
 #[test]
+fn hover_custom_properties_resolve_regardless_of_declaration_order() {
+    // `--photo` names `--base`, which hover also changes to a url(): the
+    // dark image paints, whatever order the two are declared in.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { --base: none; background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { --photo: var(--base); --base: url(dark.png); background: url(other.png); background-image: var(--photo); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().all(|f| !f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn a_hover_custom_property_set_to_inherit_takes_the_parents_value() {
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.wrap { --photo: url(dark.png); }
+.card { background-color: #111111; background-image: url(rest.png); color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { --photo: inherit; background: url(other.png); background-image: var(--photo); }
+</style></head><body style="background:#ffffff"><div class="wrap"><div class="card">Cancel the trial now</div></div></body></html>"#,
+    );
+    assert!(
+        findings.iter().all(|f| !f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn a_hover_reset_with_no_image_left_still_counts() {
     // The hover image loses to a resting `!important` `none`: nothing
     // paints, so the implied transparent reset is the hover surface.
