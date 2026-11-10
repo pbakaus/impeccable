@@ -1,0 +1,4 @@
+/* Tokens for side-tab-status-rows.svelte: declared here, read there. */
+:root {
+  --fixture-mark-broken: oklch(63% .23 27);
+}

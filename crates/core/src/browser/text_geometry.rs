@@ -411,7 +411,7 @@ fn is_transformed(dom: &dyn Dom, el: ElId) -> bool {
 
 /// Whether two consecutive children with area sit side by side: one starts
 /// where the other ends, on overlapping lines.
-fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
+pub(crate) fn holds_row(dom: &dyn Dom, el: ElId) -> bool {
     let boxes: Vec<Rect> = dom
         .children(el)
         .into_iter()

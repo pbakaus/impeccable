@@ -14,8 +14,9 @@
  *   IMPECCABLE_DOWNLOAD_BASE  release channel root (default: the public repo's GitHub Releases)
  *   IMPECCABLE_BIN            copy this local binary for the current platform instead of downloading
  *
- * The URL scheme is the launcher's: <base>/engine-v<version>/impeccable-<os>-<arch>[.exe],
- * with an optional <asset>.sha256 next to it that is verified when present.
+ * The URL scheme is the launcher's: <base>/engine-v<version>/impeccable-<os>-<arch>[.exe].
+ * Every download is verified against the line for its version and asset in
+ * skill/scripts/engine-checksums.txt; no line means no download.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,16 +42,45 @@ export function binaryName(target) {
   return target.startsWith('windows-') ? 'impeccable.exe' : 'impeccable';
 }
 
+export function assetName(target) {
+  return `impeccable-${target}${target.startsWith('windows-') ? '.exe' : ''}`;
+}
+
 export function assetUrl(version, target, base = process.env.IMPECCABLE_DOWNLOAD_BASE || DEFAULT_DOWNLOAD_BASE) {
-  const asset = `impeccable-${target}${target.startsWith('windows-') ? '.exe' : ''}`;
-  return `${base.replace(/\/$/, '')}/engine-v${version}/${asset}`;
+  return `${base.replace(/\/$/, '')}/engine-v${version}/${assetName(target)}`;
+}
+
+export function manifestPath(root = ROOT) {
+  return path.join(root, 'skill', 'scripts', 'engine-checksums.txt');
+}
+
+/**
+ * The sha256 engine-checksums.txt records for one version and target, or null
+ * when no line matches. Lines are `<version> <asset> <sha256>`; `#` comments
+ * and blank lines are skipped. A malformed line throws, so a damaged manifest
+ * never reads as "no entry".
+ */
+export function expectedChecksum(version, target, root = ROOT) {
+  const file = manifestPath(root);
+  if (!fs.existsSync(file)) return null;
+  const lines = fs.readFileSync(file, 'utf-8').split(/\r?\n/);
+  for (const [i, raw] of lines.entries()) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const fields = line.split(/\s+/);
+    if (fields.length !== 3 || !/^[0-9a-f]{64}$/.test(fields[2])) {
+      throw new Error(`${file} line ${i + 1}: expected '<version> <asset> <sha256>', got ${JSON.stringify(line)}`);
+    }
+    if (fields[0] === version && fields[1] === assetName(target)) return fields[2];
+  }
+  return null;
 }
 
 export function binaryPath(target, dest = path.join(ROOT, 'skill', 'scripts', 'bin')) {
   return path.join(dest, target, binaryName(target));
 }
 
-async function download(url) {
+export async function download(url) {
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return Buffer.from(await res.arrayBuffer());
@@ -70,24 +100,20 @@ function install(buffer, target, dest) {
  * Fetch one target. Returns the installed path. Throws when the asset is
  * unavailable or its checksum does not match.
  */
-export async function fetchEngine(target, { version = readEngineVersion(), dest, base } = {}) {
+export async function fetchEngine(target, { version = readEngineVersion(), dest, base, root } = {}) {
   const local = process.env.IMPECCABLE_BIN;
   if (local && target === currentTarget()) {
     if (!fs.existsSync(local)) throw new Error(`IMPECCABLE_BIN points at a missing file: ${local}`);
     return install(fs.readFileSync(local), target, dest);
   }
+  const checksum = expectedChecksum(version, target, root);
+  if (!checksum) {
+    throw new Error(`no checksum for engine ${version} (${assetName(target)}) in ${manifestPath(root)}; refusing the unverified download`);
+  }
   const url = assetUrl(version, target, base);
   const buffer = await download(url);
-  let checksum = null;
-  try {
-    checksum = (await download(`${url}.sha256`)).toString('utf-8').trim().split(/\s+/)[0];
-  } catch {
-    // No checksum published for this asset: accept the download as-is, like the launcher.
-  }
-  if (checksum) {
-    const actual = createHash('sha256').update(buffer).digest('hex');
-    if (actual !== checksum) throw new Error(`checksum mismatch for ${url}: expected ${checksum}, got ${actual}`);
-  }
+  const actual = createHash('sha256').update(buffer).digest('hex');
+  if (actual !== checksum) throw new Error(`checksum mismatch for ${url}: expected ${checksum}, got ${actual}`);
   return install(buffer, target, dest);
 }
 

@@ -200,7 +200,7 @@ Complete HTML replacement of the original element per variant, not a CSS-only pa
 </div>
 ```
 
-Replace the style opening tag with `cssAuthoring.styleTag` when the tool returns a different one. **Each variant div contains exactly one top-level element**, same tag as the original; loose siblings break outline tracking and accept. First variant visible, all others `display: none`. The browser's MutationObserver accepts atomic or progressive arrival; accepting an arrived variant fences the worker, so later publications are rejected.
+Replace the style opening tag with `cssAuthoring.styleTag` when the tool returns a different one, and close it with `cssAuthoring.styleClose` (`</component>` on `.vue`). **Each variant div contains exactly one top-level element**, same tag as the original; loose siblings break outline tracking and accept. First variant visible, all others `display: none`. The browser's MutationObserver accepts atomic or progressive arrival; accepting an arrived variant fences the worker, so later publications are rejected.
 
 For `styleMode: "scoped"`, author every `:scope` rule with a descendant combinator: the `@scope` boundary is the variant wrapper div, not your element, so a bare `:scope { ... }` styles a `display: contents` shell. Always step in (`:scope > .card`, `:scope .hero-title`). The fake test agent's CSS in the [repo agent template](https://github.com/pbakaus/impeccable/blob/8dac6ae7e020c43ab10ce9b41939f6fd42627b96/tests/live-e2e/agent.mjs) is a faithful template.
 
@@ -280,11 +280,11 @@ Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already
 
 `carbonize: true` means the accepted variant is stitched into source with helper markers and inline CSS (so the browser renders with no gap). That stitch-in is temporary; rewrite it into permanent form before anything else, or dead `@scope` rules, wrapper divs, and marker comments accumulate across sessions. Five steps, synchronously, before the next poll:
 
-1. **Locate the carbonize block** in `_acceptResult.file`: bracketed by `<!-- impeccable-carbonize-start/end SESSION_ID -->` with a `<style data-impeccable-css>` element; read the `<!-- impeccable-param-values -->` comment first when present, it drives steps 3 and 4.
+1. **Locate the carbonize block** in `_acceptResult.file`: bracketed by `<!-- impeccable-carbonize-start/end SESSION_ID -->` with a `data-impeccable-css` style element; read the `<!-- impeccable-param-values -->` comment first when present, it drives steps 3 and 4.
 2. **Move the CSS rules** into the project's real stylesheet (whichever already owns styling for the surrounding element).
 3. **Bake param values while rewriting selectors**: retarget `@scope ([data-impeccable-variant="N"])` to real semantic classes; keep only the `:scope[data-p-<id>="VALUE"]` branch matching the chosen value; substitute `var(--p-<id>)` literals or update the var's default.
 4. **Unwrap the accepted content**: delete the inner variant div (and on JSX the outer `data-impeccable-carbonize` div); drop `data-impeccable-params` and all `data-p-*` attributes.
-5. **Delete** the inline `<style>` block, the param-values comment, both carbonize markers, and any `@scope` rules for non-accepted variants.
+5. **Delete** the inline `data-impeccable-css` style element, the param-values comment, both carbonize markers, and any `@scope` rules for non-accepted variants.
 
 Then run `impeccable live-complete --id SESSION_ID` and verify `phase: "completed"` before polling again. The command is a gate, not a formality: it refuses with `error: "source_dirty"` plus findings while any live-mode leftover remains; fix and rerun (`--force` only for false positives).
 
@@ -307,6 +307,8 @@ Event: `{id, pageUrl, batch: {entries}, evidencePath?, chunk?, repair?, deadline
 The user already clicked Apply. Do not ask what to do, discard, or redirect to Go. The parent live thread keeps the foreground poll loop and sends the final `/poll --reply --data`.
 
 When native subagents are available, delegate source edits to `impeccable_manual_edit_applier` / `impeccable-manual-edit-applier`. Pass cwd, scripts path, event id, page URL, chunk/deadline, `batch`, `evidencePath`, and the canonical JSON result schema. The subagent must not poll or reply. If unavailable, apply inline with the same contract.
+
+An op with `deleted: true` and `removeElement: true` is the browser's Remove badge: delete that whole element from source, children included, not just its text. Locate it by `sourceHint`, then by `leaf.outerHTML` and `originalText`, and remove exactly that element's source range; leave no empty wrapper, orphaned children, or dangling markup behind.
 
 If `repair` is present, the previous Apply changed source but final validation failed. Fix the current source and return the same canonical JSON result; do not roll files back yourself. The browser will ask the user before any rollback.
 

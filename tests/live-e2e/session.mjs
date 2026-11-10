@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { runAgentLoop } from './agent.mjs';
 import { ENGINE_MISSING_MESSAGE, engineEnv, findEngineBinary } from '../lib/engine-bin.mjs';
 import { armLiveServerReaper, trackServerChild } from '../lib/live-servers.mjs';
+import { withoutProviderKeys } from '../lib/dev-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -217,7 +218,8 @@ export function startDevServer(tmp, runtime) {
     // runtime.env lets a fixture pin framework behavior. Astro 7 needs
     // ASTRO_DEV_BACKGROUND set: it auto-detects AI-agent environments and
     // daemonizes `astro dev`, which the harness reads as a crashed server.
-    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...(runtime.env || {}) },
+    // Provider keys stop at the harness: fixture dev servers run third-party code.
+    env: { ...withoutProviderKeys(process.env), FORCE_COLOR: '0', NO_COLOR: '1', ...(runtime.env || {}) },
     stdio: ['ignore', 'pipe', 'pipe'],
   }));
 

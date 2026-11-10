@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: an unnamed intro over a sparse page</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .spl { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #cfe9f7 0%, #eafbf9 100%); color: #1d3b5a; font: 700 32px/1.2 system-ui, sans-serif;
+      transition: opacity 300ms; }
+    .spl-logo { animation: logo 1.2s ease forwards; }
+    @keyframes logo { 0% { opacity: 0; transform: scale(.2); } 100% { opacity: 1; transform: none; } }
+    /* The same intro over a page with under 200 characters outside it, as on
+       articulation-hub.vercel.app's inner pages (corpus run 1010). While it
+       animates the wait drops only that minimum, so the page's script is
+       still waited for: the page's `main` is under it at a probe point. Pinned by crates/browser/tests/overlay_hiding.rs. */
+  </style>
+</head>
+<body>
+  <div class="spl" aria-hidden="true"><div class="spl-logo">MOTOR SPEECH LAB</div></div>
+  <main style="min-height: 400px;">
+  <h1>A page under an intro</h1>
+  <p class="body-copy">Short copy under the layer.</p>
+  <p class="faint" id="covered-copy">Faint copy the intro covers.</p>
+  </main>
+  <script>
+    setTimeout(() => {
+      const spl = document.querySelector('.spl');
+      spl.style.opacity = '0';
+      spl.addEventListener('transitionend', () => spl.remove());
+    }, 1300);
+  </script>
+</body>
+</html>

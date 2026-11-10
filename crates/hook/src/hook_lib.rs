@@ -213,6 +213,7 @@ pub fn get_pending_path(cwd: &str) -> String {
 /// `lib/provider.mjs`: the process cwd, the environment, the command names
 /// printed in messages, and the detector engines.
 pub struct Runtime<'a> {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub proc_cwd: String,
     pub env: HashMap<String, String>,
     /// `IMPECCABLE_COMMAND` (`/impeccable` or `$impeccable`).
@@ -239,6 +240,7 @@ impl<'a> Runtime<'a> {
         let win32 = cfg!(windows);
         let self_command = self_command_spelling(self_cmd, win32);
         Runtime {
+            rule_pack: None,
             proc_cwd,
             env,
             impeccable_command,
@@ -300,7 +302,7 @@ pub fn resolve_project_cwd(
 }
 
 /// JS: looksLikeProjectRoot(dir)
-fn looks_like_project_root(dir: &str) -> bool {
+pub fn looks_like_project_root(dir: &str) -> bool {
     [".git", "package.json", ".impeccable"]
         .iter()
         .any(|m| exists(&jsp::join(&[dir, m])))
@@ -961,16 +963,19 @@ pub fn split_findings_by_tier(findings: Vec<Finding>) -> (Vec<Finding>, Vec<Find
 /// deep pass wired, so deferring for them would silently drop the
 /// non-immediate rules entirely. Cursor's `stop` hook can only answer with a
 /// `followup_message` that Cursor submits as a new user turn, which is not
-/// wired (#1061), so its post-edit hook keeps the full rule set.
+/// wired (#1061), so its post-edit hook keeps the full rule set. VS Code's
+/// Copilot extension only honors a blocking Stop reply, and nothing shows its
+/// agent host using Stop output at all (#1249), so it keeps the full set too.
 pub fn per_edit_tiering_active(config: &HookConfig, harness: &str) -> bool {
-    if harness == "cursor" || harness == "github" {
+    if matches!(harness, "cursor" | "github" | "vscode") {
         return false;
     }
     config.per_edit_rules != "all"
 }
 
-/// JS: findingCacheKey(finding)
-pub fn finding_cache_key(f: &Finding) -> String {
+/// JS: findingCacheKey(finding). The pending ack's label for a finding, with
+/// its line; no longer a cache key (see [`finding_cache_keys`]).
+pub fn pending_label(f: &Finding) -> String {
     let line = if f.line.is_nan() { 0.0 } else { f.line };
     let value = extract_finding_ignore_value(f);
     if line > 0.0 && !value.is_empty() {
@@ -982,7 +987,8 @@ pub fn finding_cache_key(f: &Finding) -> String {
     if !value.is_empty() {
         return format!("{}:0:{}", f.antipattern, value);
     }
-    let snippet = slice_prefix(js::trim(&f.snippet), 80);
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
     if snippet.is_empty() {
         format!("{}:0", f.antipattern)
     } else {
@@ -990,7 +996,48 @@ pub fn finding_cache_key(f: &Finding) -> String {
     }
 }
 
-fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
+/// What a finding says, without where it sits: an edit above it must not
+/// make it a new finding.
+fn finding_identity(f: &Finding) -> String {
+    let value = extract_finding_ignore_value(f);
+    if !value.is_empty() {
+        return format!("{}:{}", f.antipattern, value);
+    }
+    // A finding that counts the copies it speaks for is the same finding
+    // when the count moves: one more link wearing a reported colour pair is
+    // not a new finding to repeat.
+    let (uncounted, _) = impeccable_core::checks::rules::split_more_count(&f.snippet);
+    let snippet = slice_prefix(js::trim(&uncounted), 80);
+    if snippet.is_empty() {
+        f.antipattern.to_string()
+    } else {
+        format!("{}:{}", f.antipattern, snippet)
+    }
+}
+
+/// Cache keys, index-aligned with `findings`: identity plus the occurrence
+/// among identical findings, top to bottom (identical findings on one line
+/// are one occurrence). An edit above a finding leaves its key alone, and one
+/// more identical finding on a new line adds exactly one fresh key.
+pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
+    let line = |i: usize| if findings[i].line.is_nan() { 0.0 } else { findings[i].line };
+    let mut order: Vec<usize> = (0..findings.len()).collect();
+    order.sort_by(|&a, &b| line(a).total_cmp(&line(b)).then(a.cmp(&b)));
+    let mut seen: HashMap<String, (usize, Option<f64>)> = HashMap::new();
+    let mut keys = vec![String::new(); findings.len()];
+    for i in order {
+        let identity = finding_identity(&findings[i]);
+        let (n, last) = seen.entry(identity.clone()).or_insert((0, None));
+        if *last != Some(line(i)) {
+            *n += 1;
+            *last = Some(line(i));
+        }
+        keys[i] = format!("{identity}#{n}");
+    }
+    keys
+}
+
+pub fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
     match entry.get("findings") {
         Some(Value::Array(list)) => list.iter().map(js_string).collect(),
         _ => vec![],
@@ -1000,6 +1047,7 @@ fn known_findings(entry: &Map<String, Value>) -> Vec<String> {
 /// JS: dedupeAgainstCache(findings, cache, sessionId, filePath)
 pub fn dedupe_against_cache(
     findings: &[Finding],
+    keys: &[String],
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
@@ -1010,12 +1058,11 @@ pub fn dedupe_against_cache(
     let entry = ensure_file(cache, session_id, file_path);
     let mut known = known_findings(entry);
     let mut fresh = Vec::new();
-    for f in findings {
-        let key = finding_cache_key(f);
-        if known.contains(&key) {
+    for (f, key) in findings.iter().zip(keys) {
+        if known.contains(key) {
             continue;
         }
-        known.push(key);
+        known.push(key.clone());
         fresh.push(f.clone());
     }
     fresh
@@ -1026,19 +1073,18 @@ pub fn remember_findings(
     cache: &mut Cache,
     session_id: &str,
     file_path: &str,
-    findings: &[Finding],
+    keys: &[String],
 ) {
     let entry = ensure_file(cache, session_id, file_path);
-    let mut keys: Vec<String> = Vec::new();
-    for f in findings {
-        let k = finding_cache_key(f);
-        if !keys.contains(&k) {
-            keys.push(k);
+    let mut unique: Vec<String> = Vec::new();
+    for k in keys {
+        if !unique.contains(k) {
+            unique.push(k.clone());
         }
     }
     entry.insert(
         "findings".into(),
-        Value::Array(keys.into_iter().map(Value::String).collect()),
+        Value::Array(unique.into_iter().map(Value::String).collect()),
     );
     ensure_session(cache, session_id).insert("updatedAt".into(), now_value());
 }
@@ -1261,13 +1307,13 @@ fn format_deduped_finding_line(rt: &Runtime, f: &Finding, seen_rules: &mut Vec<S
 /// JS: directiveFooter({ mode })
 pub fn directive_footer(rt: &Runtime, short: bool) -> String {
     if short {
-        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, ask in one line.".to_string();
+        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, leave it with a reason.".to_string();
     }
     [
         "Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:".to_string(),
         "- Real design problem: fix it. Keep intentional design as designed.".to_string(),
         format!("- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `{} ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"` with the pair shown on the finding line, or value \"*\" plus `--file <path>` when the line shows none. Write \"user confirmed\" in a reason only when the user did.", rt.hook_admin_command),
-        "- Unsure: leave it as is and ask the user in one line.".to_string(),
+        "- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.".to_string(),
         format!("Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: {} hooks.", rt.impeccable_command),
     ]
     .join("\n")
@@ -1582,6 +1628,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
 /// The detector option object the hook builds (`{ designSystem? }`).
 #[derive(Default, Clone)]
 pub struct HookScanOptions {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub design_system: Option<Rc<DesignSystem>>,
     /// `ScanOptions::ignored_linked_stylesheet`, from the hook's
     /// `detector.ignoreFiles`.
@@ -1601,7 +1648,7 @@ impl HookScanOptions {
             design_system: self.design_system.clone(),
             viewport: None,
             profile: None,
-            rule_pack: None,
+            rule_pack: self.rule_pack,
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
@@ -1636,7 +1683,7 @@ pub fn design_system_options_for_file(
         Some(Rc::new(move |path: &str| is_ignored_file(&proc_cwd, path, &cwd, &globs)))
     };
     if !config.design_system_enabled {
-        return HookScanOptions { ignored_linked_stylesheet, ..HookScanOptions::default() };
+        return HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..HookScanOptions::default() };
     }
     let project = impeccable_context::context::resolve_project(
         project_cwd,
@@ -1652,7 +1699,7 @@ pub fn design_system_options_for_file(
     } else {
         &project.repo_root
     };
-    HookScanOptions { ignored_linked_stylesheet, ..design_system_options(config, root) }
+    HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..design_system_options(config, root) }
 }
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`
@@ -1666,7 +1713,8 @@ pub fn detector_detect_text(
         profile: None,
         design_system: scan.design_system.as_deref(),
         inline_ignores: true,
-        rule_pack: None,
+        rule_pack: scan.rule_pack,
+        tokens: None,
     };
     detect_text(content, file_path, &opts)
 }
@@ -1778,11 +1826,12 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
+        // Hermes' pre_verify plugin hands this same shape to its verify gate.
         if js::trim(text).is_empty() {
             return String::new();
         }
@@ -1796,6 +1845,11 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         );
         inner.insert("additionalContext".into(), Value::String(text.to_string()));
         out.insert("hookSpecificOutput".into(), Value::Object(inner));
+        // VS Code's Copilot extension reads the nested field, its agent host only
+        // the top-level one (#1249).
+        if harness == "vscode" {
+            out.insert("additionalContext".into(), Value::String(text.to_string()));
+        }
     }
     serde_json::to_string(&Value::Object(out)).unwrap_or_default()
 }
@@ -1869,6 +1923,7 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("claude") => return "claude",
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
+        Some("hermes") => return "hermes",
         _ => {}
     }
     if let Some(ev) = event {
@@ -1902,6 +1957,11 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         if str_field(ev, "turn_id").is_some() {
             return "codex";
         }
+    }
+    // The plugin manifest sets this in the handler's `env`, which Grok honors too,
+    // so it ranks below the event shapes above.
+    if rt.env("IMPECCABLE_HOOK_HARNESS") == Some("vscode") {
+        return "vscode";
     }
     "claude"
 }
@@ -2037,6 +2097,39 @@ fn normalize_github_event(
     out
 }
 
+/// VS Code reports edits in its tools' own shapes (#1249): the agent host's
+/// `Edit` carries the patch itself as `tool_input`; the Copilot extension's tools
+/// take `filePath`, `replacements[].filePath`, or a patch under `input`. Patches go
+/// through the `apply_patch` path, which handles several files.
+fn normalize_vscode_event(event: &Map<String, Value>) -> Map<String, Value> {
+    let raw = event.get("tool_input");
+    let input = raw.and_then(Value::as_object);
+    let replaced = input.and_then(|o| o.get("replacements")).and_then(Value::as_array).map(|edits| {
+        edits
+            .iter()
+            .filter_map(|edit| edit.get("filePath").and_then(Value::as_str))
+            .map(|path| format!("*** Update File: {path}\n"))
+            .collect::<String>()
+    });
+    let patch = if looks_like_apply_patch(raw) {
+        Some(apply_patch_text(raw))
+    } else if let Some(patch) = input.and_then(|o| o.get("input")).filter(|v| looks_like_apply_patch(Some(v))) {
+        Some(apply_patch_text(Some(patch)))
+    } else {
+        replaced
+    };
+    let mut out = event.clone();
+    let mut tool_input = input.cloned().unwrap_or_default();
+    if let Some(patch) = patch {
+        tool_input.insert("command".into(), Value::String(patch));
+        out.insert("tool_name".into(), Value::String("apply_patch".to_string()));
+    } else if let Some(path) = tool_input.get("filePath").cloned() {
+        tool_input.insert("file_path".into(), path);
+    }
+    out.insert("tool_input".into(), Value::Object(tool_input));
+    out
+}
+
 /// JS: hook-lib.mjs#normalizeGrokEvent — Grok Build 1.0.5 (captured
 /// 2026-08-24) sends camelCase `toolName` / `toolInput` / `sessionId` /
 /// `stopHookActive`, plus `cwd` alongside a trailing-slashed
@@ -2105,6 +2198,9 @@ pub fn normalize_hook_event(
     }
     if harness == "grok" {
         return normalize_grok_event(rt, event, project_cwd);
+    }
+    if harness == "vscode" {
+        return normalize_vscode_event(event);
     }
     if harness != "cursor" {
         return event.clone();

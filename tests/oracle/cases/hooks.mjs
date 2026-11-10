@@ -122,6 +122,7 @@ export default [
       { verb: 'hook', stdin: claudeEdit('src/components/Card.tsx', { tool_use_id: 'toolu_next' }) },
     ],
   },
+  { id: 'hook-harness-vscode-patch-string', verb: 'hook', workspace: 'hook-project', env: { IMPECCABLE_HOOK_HARNESS: 'vscode' }, stdin: { session_id: 'v1', cwd: WS, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: '*** Begin Patch\n*** Update File: src/components/Card.module.css\n@@\n-a\n+b\n*** End Patch\n' } },
   { id: 'hook-harness-forced-github', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), env: { IMPECCABLE_HOOK_HARNESS: 'github' }, files: CACHE_FILES },
   { id: 'hook-audit-log', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), env: { IMPECCABLE_HOOK_LOG: `${WS}/.impeccable/audit.ndjson` }, files: CACHE_FILES },
   {
@@ -221,6 +222,17 @@ export default [
     ],
   },
 
+  // Hermes (#1178): the plugin forces the harness and sends Claude-shaped
+  // events; its pre_verify gate reads the same top-level decision/block.
+  {
+    id: 'hook-session-hermes-stop-decision', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    env: { IMPECCABLE_HOOK_HARNESS: 'hermes' },
+    steps: [
+      { stdin: claudeEdit('src/components/Card.module.css', { session_id: 'hm1' }) },
+      { stdin: stop({ session_id: 'hm1' }) },
+    ],
+  },
+
   // Umbrella session (#1101): the session cwd is a plain folder holding the
   // projects, so the per-edit pass keys each cache to the project root below
   // it. Stop finds them through the per-user session index (in the case's
@@ -269,6 +281,27 @@ export default [
   { id: 'hadmin-status-noargs', verb: 'hook-admin', workspace: 'hook-project', args: [], files: CACHE_FILES },
   { id: 'hadmin-unknown-action', verb: 'hook-admin', workspace: 'hook-project', args: ['bogus'], files: CACHE_FILES },
   { id: 'hadmin-off', verb: 'hook-admin', workspace: 'hook-project', args: ['off'], files: CACHE_FILES },
+  {
+    id: 'hadmin-user-account-install', verb: 'hook-admin', workspace: 'hook-project', platforms: ['linux', 'darwin'],
+    env: { CLAUDE_CONFIG_DIR: '<WS>/claude-account' },
+    files: [...CACHE_FILES, 'claude-account/installed-settings.json'],
+    setup(ws) {
+      for (const provider of ['.claude', '.cursor']) {
+        fs.rmSync(`${ws}/${provider}/skills/impeccable`, { recursive: true, force: true });
+      }
+      fs.mkdirSync(`${ws}/claude-account/skills/impeccable/scripts`, { recursive: true });
+      fs.writeFileSync(`${ws}/claude-account/skills/impeccable/scripts/impeccable`, '#!/bin/sh\n');
+    },
+    steps: [
+      { args: ['on'] },
+      { args: ['status'] },
+      { args: ['on'], setup(ws) {
+        fs.copyFileSync(`${ws}/claude-account/settings.json`, `${ws}/claude-account/installed-settings.json`);
+        fs.rmSync(`${ws}/claude-account/skills/impeccable`, { recursive: true, force: true });
+        fs.rmSync(`${ws}/claude-account/settings.json`);
+      } },
+    ],
+  },
   { id: 'hadmin-on', verb: 'hook-admin', workspace: 'hook-project', args: ['on'], files: CACHE_FILES },
   { id: 'hadmin-on-twice', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['on'] }, { args: ['on'] }, { args: ['status'] }] },
   { id: 'hadmin-off-then-status', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['off'] }, { args: ['status'] }, { args: ['on'] }, { args: ['status'] }] },

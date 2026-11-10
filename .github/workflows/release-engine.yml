@@ -21,28 +21,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,       target: aarch64-apple-darwin,       short: darwin-arm64 }
-          # No Intel runner: GitHub retired macos-13. Apple's toolchain builds
+          - { os: macos-15,       target: aarch64-apple-darwin,       short: darwin-arm64 }
+          # No Intel runner: GitHub retired macos-13 (and macos-14 on 2 Nov 2026). Apple's toolchain builds
           # x86_64 on an arm64 host natively once the target is installed.
-          - { os: macos-14,       target: x86_64-apple-darwin,        short: darwin-x64 }
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl,  short: linux-x64 }
-          - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
+          - { os: macos-15,       target: x86_64-apple-darwin,        short: darwin-x64 }
+          - { os: namespace-profile-impeccable, target: x86_64-unknown-linux-musl,  short: linux-x64 }
+          - { os: namespace-profile-impeccable, target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check the tag matches ENGINE_VERSION
+      - name: Check the tag and Cargo.toml match ENGINE_VERSION
         shell: bash
         run: |
           set -e
-          want="engine-v$(tr -d '[:space:]' < ENGINE_VERSION)"
-          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
+          version="$(tr -d '[:space:]' < ENGINE_VERSION)"
+          [ "$GITHUB_REF_NAME" = "engine-v$version" ] || { echo "tag $GITHUB_REF_NAME != engine-v$version"; exit 1; }
+          # The binary reports the workspace version, and the launchers skip a
+          # sibling engine that reports anything but ENGINE_VERSION. Checked here
+          # as well as in the smoke step because that one cannot run the cross target.
+          cargo_version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)".*/\1/p' Cargo.toml)"
+          [ "$cargo_version" = "$version" ] || { echo "Cargo.toml workspace version '$cargo_version' != ENGINE_VERSION $version"; exit 1; }
       # rust-toolchain.toml names the channel; `rustup show` installs it.
       # Never override the toolchain here.
       - name: Install the pinned toolchain
         shell: bash
         run: rustup show && rustup target add ${{ matrix.target }}
-      - if: matrix.os == 'ubuntu-latest'
+      - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - if: matrix.cross
         run: cargo install cross --locked
@@ -52,7 +57,11 @@ jobs:
       - name: Smoke the binary
         if: ${{ !matrix.cross }}
         shell: bash
-        run: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe
+        run: |
+          set -e
+          want="impeccable-engine $(tr -d '[:space:]' < ENGINE_VERSION)"
+          got="$(target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe)"
+          [ "$got" = "$want" ] || { echo "engine-probe printed '$got', want '$want'"; exit 1; }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Keep unsigned Windows output outside the publish job's pattern.
@@ -120,7 +129,7 @@ jobs:
           if-no-files-found: error
   publish:
     needs: [build, sign-windows]
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     permissions:
       contents: write
     steps:
@@ -142,12 +151,13 @@ jobs:
           ls -la out
       - name: Publish the GitHub Release
         env: { GH_TOKEN: "${{ github.token }}" }
-        # No --clobber: a published asset is immutable. A re-run against an
-        # existing release fails on the first existing asset instead of
-        # silently replacing a binary and its sidecar hash.
+        # With asset files, `gh release create` makes a draft, uploads every
+        # asset, then publishes, and deletes the draft if any step fails, so a
+        # release is never public with assets missing. Immutable releases need
+        # that order: assets and the tag freeze at publish. A re-run against a
+        # published release fails at create on purpose: there is nothing to top up.
         run: |
           set -e
           tag="${GITHUB_REF_NAME}"
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "impeccable engine $tag" \
-            --notes "Prebuilt impeccable engine binaries ($tag). The launcher, the npm shim and impeccable install download these on first run. Docs: https://impeccable.style" out/* || \
-          gh release upload "$tag" out/* --repo "$GITHUB_REPOSITORY"
+            --notes "Prebuilt impeccable engine binaries ($tag). The launcher, the npm shim and impeccable install download these on first run. Docs: https://impeccable.style" out/*

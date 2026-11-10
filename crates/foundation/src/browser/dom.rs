@@ -122,6 +122,35 @@ pub trait Dom {
     fn linked_stylesheet_text(&self) -> String {
         String::new()
     }
+    /// Whether the browser applies `text-wrap: pretty`: `CSS.supports` on
+    /// the shorthand or on the `text-wrap-style` longhand (Chrome before 130
+    /// knew only the former). Firefox parses no `pretty`, drops the
+    /// declaration before the CSSOM sees it and computes `auto`, so a rule
+    /// that read the computed style alone could not tell "never set" from
+    /// "set and dropped" (issue #1136). `None` where the probe did not ask
+    /// (a capture older than the flag, a page without `CSS.supports`); a
+    /// caller then trusts the computed style.
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        None
+    }
+
+    /// The faces `document.fonts` holds, as `(family, status)`: the family
+    /// with its quotes removed, the status one of `unloaded`, `loading`,
+    /// `loaded` or `error`. It lists `@font-face` rules and faces a script
+    /// added, never a face installed on the system. `None` where the
+    /// capture did not ask (a recording older than the field), and a caller
+    /// then knows nothing about which faces loaded.
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        None
+    }
+
+    /// For each face that heads the font stack of an element holding text,
+    /// whether the browser draws text in it at all, from a face installed on
+    /// the system or one the page loaded: `(face, drawn)`, measured on a
+    /// canvas at capture. `None` where the capture did not measure.
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        None
+    }
 
     // ── element identity / tree ───────────────────────────────────────
     /// `el.tagName` (uppercase for HTML elements, as-is for SVG/foreign).
@@ -228,6 +257,20 @@ pub trait Dom {
     /// and calls the pieces lines, because the union of a long first line and
     /// a short tail says nothing about either.
     fn text_line_rects(&self, _el: ElId) -> Option<Vec<Rect>> {
+        None
+    }
+
+    /// Where the last two words of the element's rendered text sit: the
+    /// rect of the word before the last, then the last word's, each the last
+    /// of the word's client rects (a word hyphenated across two lines ends on
+    /// the lower one). The text is the one `text_line_rects` measures, split
+    /// on white space with soft hyphens and zero-width spaces dropped.
+    ///
+    /// `None` from a DOM that did not measure them: a snapshot records them
+    /// only for the prose blocks `straggler` reads, and only from a capture
+    /// that knew to. A caller stands down there rather than guess where the
+    /// words broke.
+    fn last_word_rects(&self, _el: ElId) -> Option<[Rect; 2]> {
         None
     }
 

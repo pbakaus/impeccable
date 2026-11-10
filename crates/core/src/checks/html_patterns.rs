@@ -4,7 +4,7 @@
 
 use crate::checks::css_scan::{
     enclosing_css_selector, scan_css_text_for_buried_raster, scan_css_text_for_glow_with,
-    scan_css_text_for_grid_background, scan_css_text_for_inset_stripe, scan_css_text_for_marquee,
+    scan_css_text_for_inset_stripe, scan_css_text_for_marquee,
     scan_css_text_for_organic_clip_path, scan_css_text_for_pseudo_stripe,
     scan_css_text_for_pulsing_dot, scan_css_text_for_radial_halo_with,
     PatternFinding,
@@ -942,10 +942,8 @@ pub fn check_html_patterns_picking(
     );
 
     // --- Generated-UI tells: two-axis grid-line background ---
-    let grid_hits = scan_css_text_for_grid_background(style_text);
     findings.extend(
-        grid_hits
-            .iter()
+        crate::checks::css_scan::grid_background_hits(style_text)
             .map(|h| pf("codex-grid-background", h.snippet.clone(), enclosing_css_selector(style_text, h.index)))
             .take(PICK_MAX_CANDIDATES)
             .find(|f| stands(f)),

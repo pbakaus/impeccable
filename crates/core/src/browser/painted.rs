@@ -1180,17 +1180,23 @@ const FALLBACK_HOST_TAGS: &[&str] = &["audio", "canvas", "iframe", "video"];
 /// larger is read at the drawn size ([`drawn_enlargement`]): `font-size: 1px`
 /// under `transform: scale(16)` paints 16px letters.
 fn no_font_size(dom: &dyn Dom, el: ElId) -> Option<Unpainted> {
-    if !at_most_1px(&dom.style(el, "fontSize")) {
-        return None;
-    }
-    let drawn = js::parse_float(&dom.style(el, "fontSize")) * drawn_enlargement(dom, el);
-    if !(drawn <= 1.0) {
+    if !drawn_at_most_1px(dom, el) {
         return None;
     }
     let sized_text = dom.query_all(Some(el), "*").unwrap_or_default().into_iter().any(|d| {
-        has_direct_text_longer_than(dom, d, 0) && !at_most_1px(&dom.style(d, "fontSize"))
+        has_direct_text_longer_than(dom, d, 0) && !drawn_at_most_1px(dom, d)
     });
     (!sized_text).then_some(Unpainted::NoFontSize)
+}
+
+/// Whether `el`'s text is drawn at 1px or less: its computed font size is
+/// 1px or under ([`at_most_1px`]) and stays there at the size the transforms
+/// on it and its ancestors draw it ([`drawn_enlargement`]). `font-size: 1px`
+/// under `scale(16)` draws 16px letters. Every reader that treats 1px text
+/// as glyphless asks this, so a run a transform enlarges is read as text.
+pub fn drawn_at_most_1px(dom: &dyn Dom, el: ElId) -> bool {
+    let size = dom.style(el, "fontSize");
+    at_most_1px(&size) && js::parse_float(&size) * drawn_enlargement(dom, el) <= 1.0
 }
 
 /// A computed individual `scale` as its x and y factors: `none` or an empty
@@ -2832,7 +2838,7 @@ fn awaits_class_reveal(dom: &dyn Dom, el: ElId) -> bool {
 }
 
 /// The distinct class tokens of an element, as written.
-fn class_tokens(dom: &dyn Dom, el: ElId) -> Vec<String> {
+pub(crate) fn class_tokens(dom: &dyn Dom, el: ElId) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     for token in class_attr(dom, el).split_ascii_whitespace() {
         if !tokens.iter().any(|t| t == token) {
@@ -3605,6 +3611,21 @@ mod tests {
         d.set_rect(hidden, 76.0, 5895.0, 18.0, 2.0);
         assert_eq!(text(&d, hidden), None);
         assert!(!at_most_1px("1.5px"));
+        // #1076: the sub-1px descendant test reads the drawn size too. A 1px
+        // row whose 1px child a transform draws at 16px holds readable text.
+        let row = d.add(Some(body), "div");
+        d.set_style(row, "fontSize", "1px");
+        d.set_rect(row, 76.0, 1000.0, 160.0, 16.0);
+        d.add_text(row, " ");
+        let child = d.add(Some(row), "span");
+        d.set_styles(child, &[("fontSize", "1px"), ("scale", "16")]);
+        d.set_rect(child, 76.0, 1000.0, 160.0, 16.0);
+        d.add_text(child, "Scaled child");
+        assert_eq!(text(&d, row), None);
+        assert!(!drawn_at_most_1px(&d, child));
+        d.set_style(child, "scale", "none");
+        assert!(drawn_at_most_1px(&d, child));
+        assert_eq!(text(&d, row), Some(Unpainted::NoFontSize));
     }
 
     /// stroq.dev's "your browser does not support video" line inside the

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page-Level Stylesheet Forms on the White Canvas: Should Flag vs Should Pass</title>
+  <style>
+    /* observations-1010 row 4 (gseek.kr): neither html nor body paints a
+       fill, so the page shows the browser's white canvas. A dark player box
+       in the stylesheet does not make it a dark page, and nothing else here
+       paints the ground (no dark in-flow root, no dark fixed layer, no dark
+       color-scheme), so in the URL engine the root reads light.
+
+       Should pass, URL engine: an offset glow in a style attribute that no
+       element computes (inside a template), whose only claim to a dark page
+       was the player box; and a glow and a black background written in a
+       JS string inside a script, which is not markup at all.
+
+       Its should-flag twin is page-level-forms-dark-root.html: the same page
+       whose in-flow root paints the ground near-black.
+
+       The static HTML engine has no painted root and keeps its base
+       behavior, deciding "dark page" from the player box's #000000. */
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #111111; }
+    main { width: 1200px; padding: 32px; }
+    .player { width: 320px; height: 180px; background: #000; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Course catalogue</h1>
+    <p>Pick a course to see its outline and enrol.</p>
+    <div class="player"></div>
+    <template id="card"><div style="width: 200px; height: 80px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4)">Course</div></template>
+  </main>
+  <script>
+    var html = '<button class="learn-button" style="padding: 12px 32px; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.5)">Start</button>'
+      + '<div class="video-wrapper" style="width: 100%; height: 100vh; background: #000;"></div>';
+  </script>
+</body>
+</html>

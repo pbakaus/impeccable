@@ -1443,6 +1443,33 @@ fn responsive_failures_print_crops_and_escalate_after_three_attempts() {
 }
 
 #[test]
+fn forced_responsive_advance_records_inputs_so_finish_ships() {
+    let ws = menu_workspace();
+    ws.write("index.html", b"<main>Menu</main>");
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phase":"responsive","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    let mut io = ws.io();
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    #[cfg(unix)] {
+        // Unfingerprintable inputs (a symlink) could never be checked at ship, so force cannot close.
+        std::os::unix::fs::symlink("index.html", ws.path.join("link.html")).unwrap();
+        assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+        let state = load_state(&io).unwrap();
+        assert!(state["phases"]["responsive"]["status"] == "open" && state["responsiveInputSha256"].is_null());
+        std::fs::remove_file(ws.path.join("link.html")).unwrap();
+    }
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["phases"]["responsive"]["forced"].is_object() && state["responsiveInputSha256"].is_string());
+    let finish = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
+}
+
+#[test]
 fn responsive_escalation_after_acceptance_routes_to_the_user_not_a_new_review() {
     let mut state = json!({"phases":{"responsive":{}}});
     let mut gate = Gate::fail(vec!["at desktop width, region sign-off is displaced, not missing".into()]);

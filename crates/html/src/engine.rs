@@ -31,6 +31,7 @@ use crate::profile::{self, Meta, ProfileSink};
 use crate::quality::{check_element_quality, check_page_quality_from_doc, pf0};
 use impeccable_core::checks::css_scan::{side_stripe_index, CssHostIndex};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
+use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
 use impeccable_core::checks::rules::{is_rounded_away_from_side, RuleHit, SafeTagTextSeen};
 use impeccable_core::findings::{try_finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
@@ -252,6 +253,9 @@ pub fn detect_html_source(
         let elements = doc.query_selector_all(selector);
         // One document, one set of already-reported SAFE_TAGS text colours.
         let mut color_seen = SafeTagTextSeen::default();
+        // Each low-contrast finding this rule pushed, with its element's
+        // handle, for the count below.
+        let mut pair_findings: Vec<(usize, u64)> = Vec::new();
         for el in &elements {
             let tag = el.tag_lower();
             let hits = profile::findings(
@@ -283,9 +287,15 @@ pub fn detect_html_source(
                         f.severity = sev;
                         impeccable_core::findings::derive_advisory_flag(&mut f);
                     }
+                    if f.antipattern == "low-contrast" {
+                        pair_findings.push((findings.len(), crate::adapters::element_handle(el)));
+                    }
                     findings.push(f);
                 }
             }
+        }
+        if !pair_findings.is_empty() {
+            count_colour_pairs(&mut findings, &pair_findings, color_seen.take_copies(), &elements);
         }
     }
 
@@ -435,6 +445,57 @@ pub fn detect_html_source(
             }
         }
 
+        // A side stripe on a status row or cell, which the card scans above
+        // skip: it reports when the page has a row or cell it paints.
+        let row_hits = profile::findings(
+            profile,
+            Meta::new("page", "row-stripe", fp),
+            |f: &impeccable_core::checks::css_scan::PatternFinding| f.id.as_str(),
+            || scan_css_text_for_row_stripe(&corpora.style_text, None),
+        );
+        for f in row_hits {
+            let Some(selector) = f.selector.as_deref() else { continue };
+            // The selector as written when the engine reads it, so a
+            // `:not()` keeps excluding; stripped of what it cannot read
+            // otherwise.
+            let stripped = PSEUDO_STRIP_RE.replace_all(selector, "");
+            let query = if doc.compile(selector).is_ok() {
+                selector
+            } else {
+                impeccable_core::js::trim(&stripped)
+            };
+            if doc.compile(query).is_err() {
+                continue;
+            }
+            // A row by class only that may be rounded (another rule's
+            // radius, or one the engine cannot see) is a card, and the card
+            // scans above report it: a table or ARIA row or cell is a row
+            // whatever its corners.
+            let hosts: Vec<_> = doc
+                .query_selector_all(query)
+                .into_iter()
+                .filter(|el| {
+                    let tag = el.tag_lower();
+                    let role = el.get_attribute("role").unwrap_or("").to_ascii_lowercase();
+                    if matches!(tag.as_str(), "tr" | "td" | "th")
+                        || matches!(role.as_str(), "row" | "cell" | "gridcell" | "rowheader")
+                    {
+                        return true;
+                    }
+                    let style = el.style();
+                    resolve_side_accent_corners(el, style, pf0(sv(style, "width"))).is_some_and(|c| {
+                        [c.top_left, c.top_right, c.bottom_right, c.bottom_left].iter().all(|r| *r <= 0.0)
+                    })
+                })
+                .collect();
+            if hosts.is_empty() || hosts.iter().all(|el| scoped_ignore_active(el, &f.id)) {
+                continue;
+            }
+            if let Some(item) = mk(&f.id, &f.snippet) {
+                findings.push(item);
+            }
+        }
+
         if let Some(analyzers) = options.text_content_analyzers {
             let text_findings = profile::findings(
                 profile,
@@ -481,6 +542,71 @@ pub fn detect_html_source(
         findings
     } else {
         apply_inline_ignores(findings, Some(html))
+    }
+}
+
+/// One `low-contrast` finding per colour pair (taste call r14-t2): the
+/// findings `pair_findings` names (index into `findings`, element handle)
+/// that share a snippet and a severity collapse onto the first, which says
+/// how many more elements wear the pair. The copies the SAFE_TAGS dedupe
+/// dropped (`copies`, as `(owner, copy)`) count for the element that
+/// claimed their pair, except a copy an inline ignore waives.
+fn count_colour_pairs(
+    findings: &mut Vec<Finding>,
+    pair_findings: &[(usize, u64)],
+    copies: Vec<(u64, u64)>,
+    elements: &[StaticElement<'_>],
+) {
+    use std::collections::{HashMap, HashSet};
+    let mut copies_of: HashMap<u64, usize> = HashMap::new();
+    if !copies.is_empty() {
+        let by_handle: HashMap<u64, &StaticElement<'_>> =
+            elements.iter().map(|e| (crate::adapters::element_handle(e), e)).collect();
+        let mut seen: HashSet<(u64, u64)> = HashSet::new();
+        for (owner, copy) in copies {
+            if !seen.insert((owner, copy)) {
+                continue;
+            }
+            if by_handle.get(&copy).is_some_and(|e| scoped_ignore_active(e, "low-contrast")) {
+                continue;
+            }
+            *copies_of.entry(owner).or_default() += 1;
+        }
+    }
+    let mut first_of_element: HashSet<u64> = HashSet::new();
+    let mut groups: Vec<(usize, usize)> = Vec::new();
+    let mut index: HashMap<(String, String), usize> = HashMap::new();
+    let mut drop: HashSet<usize> = HashSet::new();
+    for &(i, owner) in pair_findings {
+        let f = &findings[i];
+        let mut weight = 1;
+        if first_of_element.insert(owner) {
+            weight += copies_of.get(&owner).copied().unwrap_or(0);
+        }
+        match index.get(&(f.snippet.clone(), f.severity.clone())) {
+            Some(&g) => {
+                groups[g].1 += weight;
+                drop.insert(i);
+            }
+            None => {
+                index.insert((f.snippet.clone(), f.severity.clone()), groups.len());
+                groups.push((i, weight));
+            }
+        }
+    }
+    for (i, total) in groups {
+        if total > 1 {
+            let f = &mut findings[i];
+            f.snippet = impeccable_core::checks::rules::with_more_count(&f.snippet, total - 1);
+        }
+    }
+    if !drop.is_empty() {
+        let mut i = 0;
+        findings.retain(|_| {
+            let keep = !drop.contains(&i);
+            i += 1;
+            keep
+        });
     }
 }
 

@@ -26,6 +26,13 @@ describe('compileProviderBlocks', () => {
     expect(compileProviderBlocks(content, ['cursor'])).toBe('');
   });
 
+  test('compiles devin blocks only for devin output', () => {
+    const content = ['<devin>', 'Devin-only guidance.', '</devin>'].join('\n');
+
+    expect(compileProviderBlocks(content, ['devin'])).toBe('Devin-only guidance.');
+    expect(compileProviderBlocks(content, ['cursor'])).toBe('');
+  });
+
   test('removes non-matching provider blocks', () => {
     const content = [
       'Before',

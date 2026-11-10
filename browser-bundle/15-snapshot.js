@@ -29,7 +29,7 @@ const __SNAP_STYLE_PROPS = [
   "borderRightColor", "borderRightWidth", "borderRightStyle",
   "borderTopColor", "borderTopWidth", "borderTopStyle", "bottom", "boxShadow",
   "clip", "clip-path", "clipPath", "color", "colorScheme", "contain", "content",
-  "contentVisibility", "cssFloat", "direction", "display", "filter", "flexWrap", "float",
+  "contentVisibility", "cssFloat", "cursor", "direction", "display", "filter", "flexWrap", "float",
   "fontFamily", "fontFeatureSettings", "fontSize", "fontStretch",
   "fontStyle", "fontVariant", "fontVariantCaps", "fontWeight", "height",
   "hyphens", "inlineSize", "inset", "insetBlock", "insetBlockEnd",
@@ -91,6 +91,84 @@ function __snapTextRects(node, out) {
     range.detach?.();
   }
   return out;
+}
+
+// The prose blocks `straggler` reads, upper-cased as `tagName` is. Mirrors
+// STRAGGLER_TAGS in crates/core/src/browser/line_breaks.rs: the capture
+// measures the last two words only where the rule will read them.
+const __SNAP_LAST_WORD_TAGS = new Set(['P', 'LI', 'DD', 'BLOCKQUOTE', 'FIGCAPTION']);
+// renders_no_text in crates/foundation/src/browser/dom.rs, as
+// 10-probe.js#__rendersNoText reads it. Copied, not shared: the extension's
+// snapshot piece ships without 10-probe.js.
+const __SNAP_NO_TEXT_TAGS = new Set(['style', 'script', 'noscript', 'template']);
+const __SNAP_NO_CONTAINMENT_DISPLAYS = new Set([
+  'inline', 'inline flow', 'contents', 'table-row', 'table-row-group',
+  'table-header-group', 'table-footer-group', 'table-column',
+  'table-column-group', 'ruby', 'ruby-base', 'ruby-text',
+  'ruby-base-container', 'ruby-text-container',
+]);
+function __snapRendersNoText(el) {
+  if (__SNAP_NO_TEXT_TAGS.has(String(el.localName || '').toLowerCase())) return true;
+  const cs = getComputedStyle(el);
+  if (cs.display === 'none') return true;
+  return String(cs.contentVisibility || '').toLowerCase() === 'hidden'
+    && !__SNAP_NO_CONTAINMENT_DISPLAYS.has(String(cs.display || '').toLowerCase().trim());
+}
+
+// Dom::last_word_rects: the rects of the word before the last and of the
+// last word of `el`'s rendered text, each the lowest of that word's client
+// rects (a hyphenated word ends on its lower line). The text and the words
+// are the ones the Rust side reads (`words` in line_breaks.rs): text nodes
+// in document order, skipping subtrees `rendersNoText` says set no text,
+// split on white space, soft hyphens and zero-width spaces dropped. A word
+// may run across text nodes (`fil<em>ls.</em>`), so a Range spans them.
+// `null` when the text holds fewer than two words. The walk runs backward
+// from the last text node and stops at the space before the second word, so
+// a long block (or each `li` of a nested list) reads only its tail.
+function __snapLastWordRects(el, rendersNoText) {
+  function* textNodesBackward(node) {
+    for (let child = node.lastChild; child; child = child.previousSibling) {
+      if (child.nodeType === 3) yield child;
+      else if (child.nodeType === 1 && !rendersNoText(child)) yield* textNodesBackward(child);
+    }
+  }
+  // Rust's char::is_whitespace: JS \s less U+FEFF, plus U+0085.
+  const space = c => c === '\u0085' || (c !== '\uFEFF' && /\s/.test(c));
+  const ink = c => !space(c) && c !== '\u00AD' && c !== '\u200B';
+  // [node, offset] of each word's first and last inked character, last
+  // word first.
+  const words = [];
+  let end = null, start = null;
+  scan: for (const node of textNodesBackward(el)) {
+    const data = node.data;
+    for (let i = data.length - 1; i >= 0; i--) {
+      const c = data[i];
+      if (space(c)) {
+        if (end) { words.push([start, end]); end = start = null; if (words.length === 2) break scan; }
+      } else if (ink(c)) {
+        if (!end) end = [node, i + 1];
+        start = [node, i];
+      } else if (end) {
+        start = [node, i];
+      }
+    }
+  }
+  if (end && words.length < 2) words.push([start, end]);
+  if (words.length < 2) return null;
+  const lowest = ([s, e]) => {
+    const range = document.createRange();
+    range.setStart(s[0], s[1]);
+    range.setEnd(e[0], e[1]);
+    let best = null;
+    for (const r of range.getClientRects()) {
+      if (r.width >= 1 && r.height >= 1 && (!best || r.top >= best.top)) best = r;
+    }
+    range.detach?.();
+    return best;
+  };
+  const last = lowest(words[0]);
+  const before = lowest(words[1]);
+  return last && before ? [before, last] : null;
 }
 
 // getDirectTextRect(el) over rects already collected: their union, as
@@ -224,6 +302,72 @@ function __snapStyleRuleAppliesToLiveMatches(rule, matches) {
     if (previousValue) style.setProperty(property, previousValue, previousPriority);
     else style.removeProperty(property);
   }
+}
+
+// Dom::text_wrap_pretty_supported (crates/foundation/src/browser/dom.rs):
+// null where CSS.supports is missing, and the consumer then trusts the
+// computed style.
+function __snapTextWrapPrettySupported() {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return null;
+  try { return CSS.supports('text-wrap', 'pretty') || CSS.supports('text-wrap-style', 'pretty'); }
+  catch { return null; }
+}
+
+// Dom::document_font_faces (crates/foundation/src/browser/dom.rs): each
+// face in document.fonts as [family, status], quotes stripped, one entry per
+// distinct pair. null where the FontFaceSet cannot be read.
+function __snapFontFaces() {
+  try {
+    if (typeof document === 'undefined' || !document.fonts || typeof document.fonts.forEach !== 'function') return null;
+    const seen = new Set();
+    const out = [];
+    document.fonts.forEach((face) => {
+      if (out.length >= 512) return;
+      const family = String(face.family || '').trim().replace(/^['"]|['"]$/g, '');
+      const status = String(face.status || '');
+      const key = family + '\u0000' + status;
+      if (!family || seen.has(key)) return;
+      seen.add(key);
+      out.push([family, status]);
+    });
+    return out;
+  } catch { return null; }
+}
+
+// Dom::rendered_faces (crates/foundation/src/browser/dom.rs): for each
+// face that heads the font-family of an element holding text, whether the
+// browser draws text in it at all, installed or loaded: a canvas measures a
+// probe string in "<face>", <generic> against <generic> alone for three
+// generics, and any difference means the face is drawn. Synchronous, so a
+// webfont still loading reads as not drawn (document.fonts says loading).
+// null where no 2D canvas is available.
+function __snapRenderedFaces() {
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx || typeof ctx.measureText !== 'function') return null;
+    const generic = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong', '-apple-system', 'blinkmacsystemfont']);
+    const faces = [];
+    const seen = new Set();
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
+    let steps = 0;
+    for (let node = walker.nextNode(); node && steps < 5000 && faces.length < 40; node = walker.nextNode()) {
+      steps++;
+      if (!node.nodeValue || !node.nodeValue.trim() || !node.parentElement) continue;
+      const stack = getComputedStyle(node.parentElement).fontFamily || '';
+      const first = stack.split(',').map((f) => f.trim().replace(/^['"]|['"]$/g, '')).find((f) => f && !generic.has(f.toLowerCase()));
+      if (!first || seen.has(first.toLowerCase())) continue;
+      seen.add(first.toLowerCase());
+      faces.push(first);
+    }
+    const probe = 'mmmmmmmmmmlliiWW@#0123456789';
+    const width = (font) => { ctx.font = font; return ctx.measureText(probe).width; };
+    return faces.map((face) => {
+      const quoted = '"' + face.replace(/["\\]/g, '') + '"';
+      const drawn = ['monospace', 'serif', 'sans-serif'].some((g) => width('72px ' + quoted + ', ' + g) !== width('72px ' + g));
+      return [face, drawn];
+    });
+  } catch { return null; }
 }
 
 function __snapConditionalCssRuleIsActive(rule) {
@@ -755,6 +899,10 @@ const __impeccableSnapshot = {
       const dtr = __snapDirectTextRectOf(own);
       if (dtr) rec.d = dtr;
       if (own.length) rec.dl = own.map(r => [r.x, r.y, r.width, r.height]);
+      if (__SNAP_LAST_WORD_TAGS.has(tag)) {
+        const lw = __snapLastWordRects(el, __snapRendersNoText);
+        if (lw) rec.lw = lw.map(__snapRect4);
+      }
       if (el.isContentEditable) rec.e = true;
       if (el.hidden) rec.h = true;
       if (typeof el.id !== 'string') rec.i = true;
@@ -804,6 +952,9 @@ const __impeccableSnapshot = {
       keyframes: __snapKeyframes(keyframeKeys),
       keyframeKeys,
       linkedCss: __snapLinkedStylesheetText(),
+      prettyWrap: __snapTextWrapPrettySupported(),
+      fontFaces: __snapFontFaces(),
+      renderedFaces: __snapRenderedFaces(),
       styleProps: __SNAP_STYLE_PROPS,
       pseudoProps: __SNAP_PSEUDO_PROPS,
       strings,

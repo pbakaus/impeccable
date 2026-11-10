@@ -10,7 +10,11 @@
     pictures crawling past. A wave drawn as one SVG path and a highlight
     sweeping across a pill loop the same way and carry nothing to read or
     look at. The static engine cannot see what a selector resolves to and
-    reports all four. Explicit pixel dimensions throughout.
+    reports all four. A loop declared on a pseudo-element moves the
+    pseudo-element, not its host (observations-1010 row 5): a content-less
+    sheen panning across a banner of text carries nothing, and a ticker
+    whose words the pseudo-element generates is a marquee. Explicit pixel
+    dimensions throughout.
   -->
   <style>
     body { margin: 0; padding: 24px 40px; width: 1000px; font: 16px/24px system-ui, sans-serif; color: #1a1a1a; background: #fff; }
@@ -26,6 +30,10 @@
     .pass-wave { position: absolute; left: 0; bottom: 0; width: 1280px; height: 44px; animation: fixture-wave 12s linear infinite; }
     .pill { position: relative; display: inline-block; width: 160px; height: 32px; line-height: 32px; text-align: center; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 16px; }
     .pass-sweep { position: absolute; top: 0; bottom: 0; left: 0; width: 60px; background-image: linear-gradient(100deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.2) 50%, rgba(15, 23, 42, 0) 100%); animation: fixture-sweep 3.6s ease-in-out infinite; }
+    .banner { position: relative; width: 640px; height: 40px; line-height: 40px; padding: 0 16px; overflow: hidden; background: #eef2ff; }
+    .pass-sheen::before { content: ""; position: absolute; top: 0; left: 0; width: 200px; height: 40px; background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.7) 50%, rgba(255, 255, 255, 0) 100%); animation: fixture-flow 4s linear infinite; }
+    .flag-ticker::before { content: "Sale \2022  New arrivals \2022  Free returns \2022 "; display: inline-block; white-space: nowrap; animation: fixture-flow 20s linear infinite; }
+    @keyframes fixture-flow { 0% { transform: translateX(-48%); } 100% { transform: translateX(48%); } }
     @keyframes fixture-crawl { from { transform: translateX(0); } to { transform: translateX(-50%); } }
     @keyframes fixture-wave { 0% { transform: translate(0); } 100% { transform: translate(-50%); } }
     @keyframes fixture-sweep { 0% { transform: translate(-120%); } 100% { transform: translate(220%); } }
@@ -47,6 +55,12 @@
   <div class="cta"><p>Talk to us about your operation.</p>
     <svg class="pass-wave" viewBox="0 0 1280 44" preserveAspectRatio="none" aria-hidden="true"><path d="M0 22 C 160 0, 320 44, 640 22 S 1120 0, 1280 22 V44 H0 Z" fill="#1e293b"/></svg>
   </div>
+
+  <h2>Flag: a ticker whose words a pseudo-element generates</h2>
+  <div class="banner flag-ticker"></div>
+
+  <h2>Pass: a sheen on a pseudo-element panning across a banner of text</h2>
+  <div class="banner pass-sheen">The spring release is out: read what changed.</div>
 
   <h2>Pass: a highlight sweeping across a pill</h2>
   <span class="pill">Human curation<span class="pass-sweep" aria-hidden="true"></span></span>

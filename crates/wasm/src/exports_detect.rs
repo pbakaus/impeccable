@@ -65,6 +65,9 @@ pub fn installed_static_rule_pack() -> Option<&'static dyn StaticRulePack> {
 struct Options {
     inline_ignores: bool,
     design_system: Option<DesignSystem>,
+    /// `tokens`: `{ "--name": "value" }`, custom properties the caller read
+    /// from the project's other stylesheets.
+    tokens: Option<impeccable_core::checks::css_scan::CustomProps>,
 }
 
 fn parse_options(options_json: &str) -> Options {
@@ -87,9 +90,19 @@ fn parse_options(options_json: &str) -> Options {
             false,
         ))
     });
+    let tokens = parsed.get("tokens").and_then(Value::as_object).map(|map| {
+        let mut tokens = impeccable_core::checks::css_scan::CustomProps::new();
+        for (name, value) in map {
+            if let (true, Some(value)) = (name.starts_with("--"), value.as_str()) {
+                tokens.set(name, value.to_string());
+            }
+        }
+        tokens
+    });
     Options {
         inline_ignores,
         design_system,
+        tokens,
     }
 }
 
@@ -111,6 +124,7 @@ pub fn detect_text_json(content: &str, file_path: &str, options_json: &str) -> S
             design_system: options.design_system.as_ref(),
             inline_ignores: options.inline_ignores,
             rule_pack: crate::installed_rule_pack(),
+            tokens: options.tokens.as_ref(),
         },
     );
     findings_json(&findings)

@@ -84,7 +84,7 @@ Fixtures can also opt into a **runtime E2E** pass that actually installs depende
     },
     "steer": {
       "message": "steer-e2e mark hero",
-      "expectSelector": "h1.hero-title[data-impeccable-steer=\"e2e\"]"
+      "expectSelector": "h1.hero-title[data-e2e-steer=\"e2e\"]"
     },
     "probe": {
       "expectLiveInit": true,
@@ -106,7 +106,7 @@ The `runtime` block is optional. Fixtures without it only run the static checks 
 3. Starts `impeccable live-server --background` and runs `impeccable live-inject --port` against it.
 4. Spawns `runtime.devCommand` and scrapes the port from stdout using `runtime.readyPattern` (the first capture group must be the port).
 5. Opens Playwright Chromium at the dev URL and asserts `window.__IMPECCABLE_LIVE_INIT__ === true` (the browser-side handshake oracle) within `runtime.readyTimeoutMs`.
-6. Runs a **Steer smoke** step (unless `runtime.steer === false`): submit a message in the global Steer bar, wait for the fake agent to reply `steer_done`, assert the bar unlocks and a `data-impeccable-steer` marker lands in source + DOM. Then continues with pick → Go → cycle → accept.
+6. Runs a **Steer smoke** step (unless `runtime.steer === false`): submit a message in the global Steer bar, wait for the fake agent to reply `steer_done`, assert the bar unlocks and a `data-e2e-steer` marker lands in source + DOM. Then continues with pick → Go → cycle → accept.
 7. Tears everything down (Playwright close, dev server SIGTERM, live-server stop, tmp rm).
 
 ### `runtime.appDir`
@@ -181,8 +181,8 @@ Optional `runtime.steer` fields:
 "steer": {
   "message": "steer-e2e mark hero",
   "sourceFile": "src/routes/About.jsx",
-  "expectSelector": "h1.hero-title[data-impeccable-steer=\"e2e\"]",
-  "expectSourceContains": "data-impeccable-steer=\"e2e\"",
+  "expectSelector": "h1.hero-title[data-e2e-steer=\"e2e\"]",
+  "expectSourceContains": "data-e2e-steer=\"e2e\"",
   "preActions": [{ "type": "click", "selector": "[data-testid='nav-about']" }]
 }
 ```
