@@ -33,8 +33,6 @@ pub fn run(io: &Io) -> i32 {
     let Ok(inventory) = serde_json::from_slice::<Value>(&captured.stdout.borrow()) else {
         return 0;
     };
-    let cli: Value =
-        serde_json::from_str(include_str!("../../../package.json")).unwrap_or_default();
     let mut skills = json!({});
     let home = impeccable_context::util::homedir(&io.env);
     for (h, dir) in [
@@ -69,11 +67,6 @@ pub fn run(io: &Io) -> i32 {
     ) {
         skills[h] = v.into();
     }
-    impeccable_account::setup::report(
-        io,
-        &inventory["result"],
-        cli["version"].as_str().unwrap_or(""),
-        &skills,
-    );
+    impeccable_account::setup::report(io, &inventory["result"], crate::VERSION, &skills);
     0
 }
