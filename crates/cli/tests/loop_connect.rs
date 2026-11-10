@@ -582,3 +582,22 @@ fn a_status_it_cannot_read_stops_connect_before_anything_changes() {
     assert!(said.contains("couldn't read its hooks"), "{said}");
     assert_eq!(fs::read(&settings).unwrap(), installed);
 }
+
+#[test]
+fn connect_says_when_the_hooks_point_at_a_loop_that_moved() {
+    // Catches (t6): Loop moved to /Applications leaves hooks calling a missing helper,
+    // which exits quietly; connect said only "isn't installed".
+    let b = Box::new("loop-moved");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    fs::remove_dir_all(b.home().join("Applications/Impeccable Loop.app")).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(
+        said.contains("Loop's hooks point at a Loop that isn't there")
+            && said.contains("Impeccable Loop.app/Contents/MacOS/loop-hook")
+            && said.contains("~/Applications"),
+        "{said}"
+    );
+}
