@@ -353,7 +353,9 @@ test('cmd launcher runs a PATH binary directly so % in its arguments survives', 
   assert.match(source, /^if \/I "%path_ext%"==".bat" goto path_shim\r?$/m);
   assert.match(source, /^"%path_bin%" %\*\r?$/m, 'a binary runs without call');
   // npm writes an extensionless POSIX shim next to impeccable.cmd; where lists it first.
-  assert.match(source, /for %%x in \(\.exe \.com \.cmd \.bat\) do if \/I "%%~xp"=="%%x"/, 'only a runnable extension is taken');
+  assert.match(source, /for %%k in \(\.exe \.com \.cmd \.bat\) do if \/I "%%~xc"=="%%k"/, 'only a runnable extension is taken');
+  // A FOR letter that is also a path modifier (d p n x s a t z f) makes %%~x<v> ambiguous.
+  for (const [, v] of source.matchAll(/%%~[a-z$:]*?x([a-z])\b/gi)) assert.doesNotMatch(v, /[dpnxsatzf]/i, `%%~x on a loop variable whose letter is a path modifier: %%${v}`);
   assert.doesNotMatch(source, /^call impeccable %\*/m);
 });
 

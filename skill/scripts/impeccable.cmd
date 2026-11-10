@@ -100,11 +100,13 @@ rem time; a real binary runs directly so a target such as a%20b reaches it intac
 set "path_bin="
 rem where also lists npm's extensionless POSIX shim, which cmd cannot run:
 rem take the first match with a runnable extension.
-for /f "delims=" %%p in ('where impeccable 2^>nul') do if not defined path_bin for %%x in (.exe .com .cmd .bat) do if /I "%%~xp"=="%%x" set "path_bin=%%p"
+rem Loop letters c and k are not path modifiers, so %%~xc reads as the
+rem extension of c and never as a loop variable followed by text.
+for /f "delims=" %%c in ('where impeccable 2^>nul') do if not defined path_bin for %%k in (.exe .com .cmd .bat) do if /I "%%~xc"=="%%k" set "path_bin=%%c"
 if not defined path_bin goto download
 call :probe "%path_bin%"
 if not "%probe_ok%"=="1" goto download
-for %%e in ("%path_bin%") do set "path_ext=%%~xe"
+for %%k in ("%path_bin%") do set "path_ext=%%~xk"
 if /I "%path_ext%"==".cmd" goto path_shim
 if /I "%path_ext%"==".bat" goto path_shim
 "%path_bin%" %*
