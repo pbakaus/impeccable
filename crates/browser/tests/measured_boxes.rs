@@ -148,13 +148,15 @@ fn text_occlusion_needs_text_under_the_cover() {
 /// card's text line reports; cards that fit, a shared 1px border, an avatar
 /// stack, a card over only the empty body of the one behind, a slide
 /// parked at opacity 0, a quote whose own z-index raises it over the card
-/// laid on it, and a round card over a line only in its empty corner do not.
+/// laid on it, a round card over a line only in its empty corner, and cards
+/// over only the empty side of a sibling (an isolated card over a later one,
+/// a later card over one hinted `will-change: color`) do not.
 #[test]
 fn text_occlusion_reads_a_card_laid_over_a_sibling_card() {
     let Some(engine) = engine() else { return };
     let port = serve();
     // Text below the fold is not read, and the last pass rows sit past 800px.
-    let found = findings_at(&engine, port, "text-occlusion-sibling-cards.html", "text-occlusion", Some((1280, 1100)));
+    let found = findings_at(&engine, port, "text-occlusion-sibling-cards.html", "text-occlusion", Some((1280, 1400)));
     assert_cases(
         &found,
         &["flag-grid-quote", "flag-board-quote", "flag-side-quote", "flag-pulled-quote"],
@@ -166,6 +168,8 @@ fn text_occlusion_reads_a_card_laid_over_a_sibling_card() {
             "pass-current-slide",
             "pass-raised-quote",
             "pass-corner-line",
+            "pass-isolated-card",
+            "pass-hinted-under",
         ],
         "text-occlusion",
     );

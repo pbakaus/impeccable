@@ -4829,15 +4829,22 @@ fn card_level(dom: &dyn Dom, e: ElId) -> f64 {
     }
 }
 
+/// The `will-change` values that open a stacking context: a hint for a
+/// property that would open one when set. `will-change: color` or
+/// `scroll-position` changes nothing about paint order.
+const CARD_CONTEXT_WILL_CHANGE: &[&str] =
+    &["transform", "opacity", "filter", "perspective", "clip-path", "mask", "isolation", "z-index", "position"];
+
 /// Whether `e` opens a stacking context: a `z-index` that applies, or a
-/// transform, a filter, `will-change`, an opacity under 1, a fixed or sticky
-/// position, or `isolation: isolate`.
+/// transform, a filter, a `will-change` hint for one of those, an opacity
+/// under 1, a fixed or sticky position, or `isolation: isolate`.
 fn card_opens_context(dom: &dyn Dom, e: ElId) -> bool {
     let set = |p: &str| !matches!(dom.style(e, p).as_str(), "" | "none" | "auto");
+    let will = js::to_lower_case(&dom.style(e, "willChange"));
     (card_z_applies(dom, e) && parse_float(&dom.style(e, "zIndex")).is_finite())
         || set("transform")
         || set("filter")
-        || set("willChange")
+        || will.split(',').any(|v| CARD_CONTEXT_WILL_CHANGE.contains(&js::trim(v)))
         || parse_float(&dom.style(e, "opacity")) < 1.0
         || matches!(dom.style(e, "position").as_str(), "fixed" | "sticky")
         || dom.style(e, "isolation") == "isolate"
@@ -4852,10 +4859,10 @@ fn card_layered(dom: &dyn Dom, e: ElId) -> bool {
 /// Which of two sibling cards paints on top, `a` coming first in tree order.
 /// A higher `z-index` wins where it applies (a positioned box, or a flex or
 /// grid item); on one level a box that paints as a layer of its own (a
-/// positioned one, or one a transform, an opacity under 1, a filter or
-/// `will-change` lifts into a stacking context) paints after one that does
-/// not, and otherwise the later sibling paints last, once flex and grid
-/// `order` is counted.
+/// positioned one, or one that opens a stacking context, `isolation:
+/// isolate` included) paints after an in-flow one that does not, whichever
+/// comes first, and otherwise the later sibling paints last, once flex and
+/// grid `order` is counted.
 fn sibling_card_on_top(dom: &dyn Dom, parent: ElId, a: ElId, b: ElId) -> ElId {
     let (za, zb) = (card_level(dom, a), card_level(dom, b));
     if za != zb {
@@ -8898,6 +8905,17 @@ mod tests {
             &[("position", "relative"), ("zIndex", "1")],
         );
         assert_eq!(hits, vec![Some(quotes[0])], "the positioned z-index 1 card is on top");
+        // `isolation: isolate` lifts the earlier card over its static
+        // sibling; a `will-change` hint for a property that opens no
+        // stacking context lifts nothing.
+        let (hits, quotes) = run(&[("isolation", "isolate")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "an isolated first card paints over the second");
+        let (hits, quotes) = run(&[("willChange", "color")], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "will-change: color leaves the first card under");
+        let (hits, quotes) = run(&[("willChange", "scroll-position, contents")], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "{hits:?}");
+        let (hits, quotes) = run(&[("willChange", "color, opacity")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "a will-change hint for opacity lifts the first card");
         let (hits, _) = run(&[], &[("transform", "matrix(0.966, 0.259, -0.259, 0.966, 0, 0)")]);
         assert!(hits.is_empty(), "a tilted cover: {hits:?}");
         let (hits, _) = run(&[], &[("clipPath", "inset(0px 0px 0px 80px)")]);

@@ -21,8 +21,10 @@
   (its title stays clear), a carousel's next slide parked over the
   current one at opacity 0, a quote raised by its own z-index over the card
   laid on its static card, and a round card whose bounding box reaches a
-  line only in the empty corner outside its curve. Browser engine only:
-  these are layout facts.
+  line only in the empty corner outside its curve, an isolated card laid
+  over the empty side of a later static card, and a later card over the
+  empty side of an earlier one whose will-change: color lifts nothing.
+  Browser engine only: these are layout facts.
 -->
 <style>
   * { margin: 0; box-sizing: border-box; }
@@ -74,6 +76,13 @@
   .corner .note { left: 0; top: 0; width: 260px; height: 60px; }
   .corner .note p { text-align: justify; text-align-last: justify; }
   .corner .round { left: 230px; top: 30px; width: 120px; height: 120px; border-radius: 60px; }
+
+  .layers { display: flex; }
+  .layers .card { width: 260px; height: 64px; flex: none; }
+  .layers .card + .card { margin-left: -100px; }
+  .layers .over { isolation: isolate; padding-left: 120px; }
+  .layers .over + .card { padding-left: 110px; }
+  .layers .hinted { will-change: color; padding-right: 120px; }
 </style>
 </head>
 <body>
@@ -157,6 +166,20 @@
         <div class="corner">
           <article class="card note"><b>Pia, accountant</b><p class="pass-corner-line">Kept every receipt for the audit.</p></article>
           <article class="card round"><b>Quin</b></article>
+        </div>
+      </section>
+      <section>
+        <h3>An isolated card over a later static one</h3>
+        <div class="layers">
+          <article class="card over"><p class="pass-isolated-card">Paid the invoice on the day it arrived.</p></article>
+          <article class="card"><p>Filed it.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A later card over one hinted will-change: color</h3>
+        <div class="layers">
+          <article class="card hinted"><p>Opened the plan.</p></article>
+          <article class="card"><p class="pass-hinted-under">Renewed it a year early.</p></article>
         </div>
       </section>
     </div>
