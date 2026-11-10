@@ -23,6 +23,8 @@
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=${E2E_IMPECCABLE_BIN:-$ROOT/target/release/impeccable}
+# The scans run from a scratch repo: a relative path must not depend on where they run.
+case "$BIN" in /*) ;; *) BIN="$PWD/$BIN" ;; esac
 PRISTINE=${PRISTINE_DIR:-}
 ISSUER=${E2E_ISSUER:-https://api.staging.impeccable.style}
 [ -x "$BIN" ] || { echo "FAIL inputs: no engine binary at $BIN (cargo build --release -p impeccable)"; echo "RESULT FAIL"; exit 3; }
@@ -68,9 +70,10 @@ pass "login: the CLI printed a sign-in link"
 answer=$(cd "$PRISTINE" && bun run --silent staging-admin cli-login "$url" 2>&1 | grep -E '^(approved|refused:)' | tail -1)
 [ "$answer" = approved ] || { fail "login: consent" "${answer:-no answer from staging-admin cli-login}"; finish; }
 pass "login: consent approved as the seeded test person"
-# The CLI should finish within seconds of the approval; never wait on it forever.
-for _ in $(seq 1 300); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
-if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "no code reached its callback within 60 s"; finish; fi
+# After the approval, login also fetches the Pro build, which may take up to its own
+# 600 s download deadline; wait a little past that, never forever.
+for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "still running 620 s after the approval"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
 
@@ -155,7 +158,7 @@ check "logout: exits 0" '[ $rc = 0 ]'
 "$BIN" whoami > "$H/whoami2.out" 2>&1
 check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.out"'
 expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
-check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ]'
+check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ] && grep -q "^Your sign-in expired" "$H/sb3.out"'
 info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
 
 finish

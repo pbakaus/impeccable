@@ -480,11 +480,14 @@ async function releaseEngine() {
   try {
     releaseKeys = JSON.parse(readFileSync(path.join(repoRoot, 'scripts/cli-pro-release-keys.json'), 'utf8'));
   } catch {}
-  const validKeys = Object.values(releaseKeys || {}).filter((hex) => /^[0-9a-f]{64}$/.test(String(hex)));
-  if (!validKeys.length) {
-    fail('scripts/cli-pro-release-keys.json holds no Pro release key (an id mapped to 64 lowercase hex). Add the production public key first, or this engine ships with Pro dispatch off for everyone.');
+  // The engine rejects the whole file if any entry is malformed, so every entry
+  // must be valid, not just one.
+  const entries = releaseKeys && typeof releaseKeys === 'object' && !Array.isArray(releaseKeys) ? Object.entries(releaseKeys) : [];
+  const bad = entries.filter(([id, hex]) => !id || typeof hex !== 'string' || !/^[0-9a-f]{64}$/.test(hex));
+  if (!entries.length || bad.length) {
+    fail(`scripts/cli-pro-release-keys.json holds no Pro release key the engine can use (each id must map to 64 lowercase hex${bad.length ? `; invalid: ${bad.map(([id]) => JSON.stringify(id)).join(', ')}` : ''}). The engine refuses the whole file when any entry is malformed, so this engine would ship with Pro dispatch off for everyone.`);
   }
-  ok(`${validKeys.length} Pro release key(s)`);
+  ok(`${entries.length} Pro release key(s)`);
 
   const tag = `${cfg.tagPrefix}${version}`;
 
