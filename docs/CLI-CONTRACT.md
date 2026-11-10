@@ -334,7 +334,7 @@ A before/after comparison of a page's wiring, the markup a redesign can drop wit
 | `script[src]` / inline `script` | `script src="<src>"` / `script inline #<hash>` (empty inline scripts are skipped) |
 | `label[for]` | `label for="<for>"` |
 
-`<hash>` is 8 hex digits of FNV-1a 64 over the JavaScript with its formatting whitespace normalized: outside string and template literals a whitespace run becomes one newline when it holds a line break and one space otherwise, the ends are trimmed, and literals are kept byte for byte. Re-indenting is not a change; changing a literal's spacing or moving a line break (which can end a statement or a `//` comment) is. Headings (`heading h<n> "<text>"`, whitespace collapsed) and image alt text (`image alt="<alt>"`) are recorded as **content**: compared and reported, never a failure.
+`<hash>` is 8 hex digits of FNV-1a 64 over the JavaScript with its formatting whitespace normalized: outside string and template literals a whitespace run becomes one newline when it holds a line break and one space otherwise, the ends are trimmed, and literals and comments are kept byte for byte (a quote inside a `//` or `/* */` comment opens no string). Re-indenting is not a change; changing a literal's spacing or moving a line break (which can end a statement or a `//` comment) is. Headings (`heading h<n> "<text>"`, whitespace collapsed) and image alt text (`image alt="<alt>"`) are recorded as **content**: compared and reported, never a failure.
 
 **Comparison** is a multiset: duplicates are kept, so a page that linked to `/` twice and now links once is missing one `link href="/"`. Missing = items before minus items now; new = the reverse. A renamed field is one missing and one new item.
 

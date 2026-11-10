@@ -113,27 +113,56 @@ pub fn short_hash(text: &str) -> String {
 /// and whitespace that can change what runs is kept. Outside string and
 /// template literals, a run of whitespace becomes one newline if it holds a
 /// line break (a line break ends a `//` comment and can end a statement),
-/// else one space; the ends are trimmed. Inside a literal every character is
-/// kept, so `save('a  b')` and `save('a b')` differ.
+/// else one space; the ends are trimmed. Inside a literal or a comment every
+/// character is kept (a quote in a comment opens no string), so
+/// `save('a  b')` and `save('a b')` differ.
 pub fn normalize_js_ws(text: &str) -> String {
+    #[derive(PartialEq)]
+    enum State {
+        Code,
+        Quote(char),
+        LineComment,
+        BlockComment,
+    }
     let mut out = String::with_capacity(text.len());
-    let mut quote: Option<char> = None;
+    let mut state = State::Code;
     let mut escaped = false;
     let mut pending: Option<char> = None;
-    for c in text.chars() {
-        if let Some(q) = quote {
-            out.push(c);
-            if escaped {
-                escaped = false;
-            } else if c == '\\' {
-                escaped = true;
-            } else if c == q {
-                quote = None;
+    let mut chars = text.chars().peekable();
+    let is_break = |c: char| matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}');
+    while let Some(c) = chars.next() {
+        match state {
+            State::Quote(q) => {
+                out.push(c);
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == q {
+                    state = State::Code;
+                }
+                continue;
             }
-            continue;
+            // A comment's text is kept as written, so a quote in it never
+            // opens a string. A line comment ends at the line break, which
+            // then normalizes like any other.
+            State::LineComment if !is_break(c) => {
+                out.push(c);
+                continue;
+            }
+            State::LineComment => state = State::Code,
+            State::BlockComment => {
+                out.push(c);
+                if c == '*' && chars.peek() == Some(&'/') {
+                    out.push(chars.next().unwrap());
+                    state = State::Code;
+                }
+                continue;
+            }
+            State::Code => {}
         }
         if c.is_whitespace() {
-            if c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}' {
+            if is_break(c) {
                 pending = Some('\n');
             } else if pending.is_none() {
                 pending = Some(' ');
@@ -147,7 +176,13 @@ pub fn normalize_js_ws(text: &str) -> String {
         }
         out.push(c);
         if c == '\'' || c == '"' || c == '`' {
-            quote = Some(c);
+            state = State::Quote(c);
+        } else if c == '/' && chars.peek() == Some(&'/') {
+            out.push(chars.next().unwrap());
+            state = State::LineComment;
+        } else if c == '/' && chars.peek() == Some(&'*') {
+            out.push(chars.next().unwrap());
+            state = State::BlockComment;
         }
     }
     out
@@ -665,6 +700,11 @@ mod tests {
         assert_eq!(short_hash("  if (a) {\n      go()\n  }"), short_hash("if (a) {\n go()\n}"));
         assert_eq!(short_hash("go( 1,   2 )"), short_hash("go( 1, 2 )"));
         assert_eq!(normalize_js_ws("say(\"it\\\"s  ok\")  ;"), "say(\"it\\\"s  ok\") ;");
+        // A quote inside a comment opens no string, so later re-indenting
+        // is still formatting.
+        assert_eq!(short_hash("// don't\n    go()"), short_hash("// don't\ngo()"));
+        assert_eq!(short_hash("/* it's */\n    go()"), short_hash("/* it's */\ngo()"));
+        assert_ne!(short_hash("/* a */ go()"), short_hash("/* a */\ngo()"));
     }
 
     /// Review (Greptile): a static site whose only marker is an ancestor
