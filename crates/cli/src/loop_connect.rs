@@ -369,10 +369,18 @@ fn home(io: &Io) -> Result<PathBuf> {
 /// The agent as connect configures it today, if its CLI is found.
 fn agent(io: &Io, home: &Path, harness: &'static str) -> Option<Agent> {
     let executable = resolve(io, harness)?;
+    // A relative folder means what it means to the agent started from here: resolved
+    // against this directory, never dropped (that would connect the default account).
     let var = |name: &str| {
         io.env(name)
-            .filter(|v| !v.is_empty() && Path::new(v).is_absolute())
-            .map(PathBuf::from)
+            .filter(|v| !v.is_empty())
+            .map(|v| {
+                io.cwd
+                    .join(v)
+                    .components()
+                    .filter(|c| !matches!(c, std::path::Component::CurDir))
+                    .collect::<PathBuf>()
+            })
     };
     Some(if harness == "claude" {
         // Claude keeps user-scope MCP servers in .claude.json: in CLAUDE_CONFIG_DIR when

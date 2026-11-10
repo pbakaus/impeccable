@@ -604,3 +604,40 @@ fn connect_says_when_the_hooks_point_at_a_loop_that_moved() {
         "{said}"
     );
 }
+
+#[test]
+fn a_relative_config_folder_connects_that_account_not_the_default() {
+    // Catches (#1372 review): a relative CLAUDE_CONFIG_DIR or CODEX_HOME was ignored, so
+    // connect wrote the default account and said it had connected the one asked for.
+    let mut b = Box::new("relative-config");
+    b.install_loop();
+    let work = b.root.join("work");
+    fs::create_dir_all(work.join("claude-work")).unwrap();
+    fs::create_dir_all(work.join("codex-work")).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), "claude-work".into());
+    b.env.insert("CODEX_HOME".into(), "./codex-work".into());
+    let out = Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["loop", "connect"])
+        .current_dir(&work)
+        .env_clear()
+        .envs(&b.env)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(
+        claude_entry(&work.join("claude-work/.claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(work.join("claude-work/settings.json").exists());
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::Value::Null
+    );
+    assert!(!b.home().join(".claude/settings.json").exists());
+    assert!(fs::read_to_string(work.join("codex-work/config.toml"))
+        .unwrap_or_default()
+        .contains(URL));
+    assert!(!codex_config(&b).contains(URL));
+}
