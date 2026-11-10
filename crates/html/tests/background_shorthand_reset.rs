@@ -240,6 +240,33 @@ fn a_hover_custom_property_set_to_inherit_takes_the_parents_value() {
 }
 
 #[test]
+fn self_referencing_hover_custom_properties_stay_bounded() {
+    // Review: `--x: var(--x) var(--x)` used to expand without bound. A
+    // reference cycle is invalid, so the scan finishes at once.
+    let started = std::time::Instant::now();
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { --x: var(--x) var(--x); --a: var(--b) var(--b); --b: var(--a) var(--a); background: url(photo.png); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert!(findings.iter().all(|f| !f.snippet.contains(":hover")), "{findings:#?}");
+}
+
+#[test]
+fn a_hover_custom_property_set_to_unset_takes_the_parents_value() {
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.wrap { --photo: url(dark.png); }
+.card { background-color: #111111; background-image: url(rest.png); color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { --photo: unset; background: url(other.png); background-image: var(--photo); }
+</style></head><body style="background:#ffffff"><div class="wrap"><div class="card">Cancel the trial now</div></div></body></html>"#,
+    );
+    assert!(findings.iter().all(|f| !f.snippet.contains(":hover")), "{findings:#?}");
+}
+
+#[test]
 fn a_hover_reset_with_no_image_left_still_counts() {
     // The hover image loses to a resting `!important` `none`: nothing
     // paints, so the implied transparent reset is the hover surface.
