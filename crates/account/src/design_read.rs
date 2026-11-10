@@ -122,9 +122,9 @@ fn child(dir: &File, name: &str, directory: bool) -> Option<File> {
     use std::ffi::c_void;
     use std::os::windows::io::{AsRawHandle, FromRawHandle};
     // NtOpenFile supplies the handle-relative open Windows' CreateFile lacks.
-    // OPEN_REPARSE_POINT prevents following a replaced leaf; NON_DIRECTORY_FILE
-    // plus the opened-handle metadata check refuses devices and pipes.
-    // NO_RECALL also keeps the open from fetching offline file contents.
+    // Open without a directory-type constraint: FILE_DIRECTORY_FILE's allowed
+    // flag combinations exclude OPEN_REPARSE_POINT. The opened handle is checked
+    // below before it can be traversed or read. NO_RECALL avoids fetching data.
     #[repr(C)]
     struct UnicodeString {
         length: u16,
@@ -176,9 +176,9 @@ fn child(dir: &File, name: &str, directory: bool) -> Option<File> {
         status: 0,
         information: 0,
     };
-    let options = 0x00200000 | 0x00400000 | 0x20 | if directory { 1 } else { 0x40 }; // OPEN_REPARSE_POINT, OPEN_NO_RECALL, SYNCHRONOUS_IO_NONALERT
-                                                                                     // SAFETY: all structures and UTF-16 storage remain live for this synchronous
-                                                                                     // call; root is a live directory handle; NtOpenFile initializes handle.
+    let options = 0x00200000 | 0x00400000 | 0x20; // OPEN_REPARSE_POINT, OPEN_NO_RECALL, SYNCHRONOUS_IO_NONALERT
+                                                  // SAFETY: all structures and UTF-16 storage remain live for this synchronous
+                                                  // call; root is a live directory handle; NtOpenFile initializes handle.
     let result =
         unsafe { NtOpenFile(&mut handle, 0x00120089, &mut attrs, &mut status, 7, options) };
     if result < 0 || handle.is_null() {
