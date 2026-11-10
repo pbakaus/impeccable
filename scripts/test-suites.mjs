@@ -78,6 +78,7 @@ export const SUITES = {
           'tests/rust-test-selection.test.mjs',
           'tests/cli-shim.test.mjs',
           'tests/check-engine-release.test.mjs',
+          'tests/check-loop-release.test.mjs',
           'tests/launcher-download.test.mjs',
           'tests/publish-platform-packages.test.mjs',
           'tests/github-sheriff.test.mjs',
@@ -232,6 +233,7 @@ export const SUITES = {
       /^crates\/(common\/src\/http|live\/src\/live_http)\.rs$/,
       /^tests\/framework-fixtures/,
       /^tests\/live-e2e(\.test\.mjs|\/)/,
+      /^tests\/live-static-accept\.test\.mjs$/,
       /^browser-bundle\/40-overlay\.js$/,
     ],
     commands: [
@@ -239,7 +241,7 @@ export const SUITES = {
         runner: 'node',
         timeoutMs: 600000,
         forceExit: true,
-        files: ['tests/live-e2e.test.mjs', 'tests/live-top-layer.test.mjs'],
+        files: ['tests/live-e2e.test.mjs', 'tests/live-top-layer.test.mjs', 'tests/live-static-accept.test.mjs'],
       },
     ],
   },
@@ -339,7 +341,7 @@ export const SUITES = {
       /^tests\/skill-behavior\/(?!activation[.-])/,
     ],
     commands: [
-      { runner: 'node', files: ['tests/skill-workflow-browser.test.mjs'] },
+      { runner: 'node', files: ['tests/skill-workflow-browser.test.mjs', 'tests/skill-workflow-scope.test.mjs'] },
       {
         runner: 'node', timeoutMs: 240000, wallClockMs: 600000,
         files: ['tests/skill-workflow/finish-handoff.test.mjs'],

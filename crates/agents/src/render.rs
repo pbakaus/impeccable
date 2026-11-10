@@ -1,7 +1,8 @@
 use super::Spec;
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use toml_edit::{ImDocument, Item, Value as TomlValue};
 
 pub(super) fn render(
@@ -101,6 +102,96 @@ pub(super) fn remove_owned(
     let _ = path;
     Ok(None)
 }
+/// The rule file whose managed block holds neither what the engine last
+/// wrote (`old`, when it wrote an instruction) nor what `new` asks for: the
+/// person edited it, and writing `new` would overwrite their edit. This reads
+/// the file itself, so a block an earlier apply left behind, or one whose
+/// journal was lost, is protected too.
+pub(super) fn instruction_drift(
+    old: Option<&Spec>,
+    new: &Spec,
+) -> Result<Option<PathBuf>, (&'static str, String, i32)> {
+    let marker = format!("impeccable:{}", new.owner);
+    let start = format!("<!-- {marker} start -->");
+    let end = format!("<!-- {marker} end -->");
+    let body_of = |spec: &Spec| -> Result<Option<String>, (&'static str, String, i32)> {
+        let written = render_rule(spec, None)?;
+        let written = String::from_utf8_lossy(&written);
+        Ok(crate::resources::block_body(&written, &start, &end).map(str::to_string))
+    };
+    let mut allowed = vec![body_of(new)?];
+    if let Some(old) = old.filter(|o| o.instruction.is_some()) {
+        allowed.push(body_of(old)?);
+    }
+    let path = rule_file(new);
+    let Ok(text) = fs::read_to_string(&path) else { return Ok(None) };
+    if !text.contains(&start) {
+        return Ok(None);
+    }
+    let body = crate::resources::block_body(&text, &start, &end).map(str::to_string);
+    Ok((!allowed.contains(&body)).then_some(path))
+}
+
+/// The harness's rule file for this account root.
+pub(super) fn rule_file(s: &Spec) -> PathBuf {
+    s.root.join(if s.harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
+}
+
+/// Whether this installation's resources are on disk, judged from the files
+/// alone (no journal): its instruction block in the rule file, or one of its
+/// exact hook entries in a JSON hook file. Shared settings such as Codex's
+/// `features.hooks` prove nothing and are not read.
+pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
+    let rules = rule_file(s);
+    if fs::read_to_string(&rules).is_ok_and(|t| t.contains(&format!("<!-- impeccable:{} start -->", s.owner))) {
+        return Some(rules);
+    }
+    let hooks = s.root.join(if s.harness == "claude" { "settings.json" } else { "hooks.json" });
+    let value = fs::read(&hooks).ok().and_then(|b| parse_unique_json(&b).ok())?;
+    s.hooks
+        .iter()
+        .any(|h| {
+            value
+                .get("hooks")
+                .and_then(|v| v.get(&h.event))
+                .and_then(Value::as_array)
+                .is_some_and(|a| a.contains(&h.entry()))
+        })
+        .then_some(hooks)
+}
+
+/// The spec's hooks still in `settings` (JSON) in a form the engine didn't
+/// write: same command, other fields changed. Undo leaves them, and says so.
+pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) -> Vec<String> {
+    let Ok(value) = parse_unique_json(settings) else { return vec![] };
+    let original = original.and_then(|b| parse_unique_json(b).ok());
+    let mut out = Vec::new();
+    for h in &s.hooks {
+        let Some(entries) = value.get("hooks").and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
+            continue;
+        };
+        let ours = h.entry();
+        let same_command = |e: &Value| {
+            e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
+                hs.iter().any(|c| c.get("command").and_then(Value::as_str) == Some(h.command.as_str()))
+            })
+        };
+        // An entry that was there before the install is the person's own.
+        let preexisting = |e: &Value| {
+            original
+                .as_ref()
+                .and_then(|o| o.get("hooks"))
+                .and_then(|v| v.get(&h.event))
+                .and_then(Value::as_array)
+                .is_some_and(|a| a.contains(e))
+        };
+        if entries.iter().any(|e| e != &ours && same_command(e) && !preexisting(e)) {
+            out.push(format!("hook:{}:{}", h.event, h.command));
+        }
+    }
+    out
+}
+
 fn remove_rule_block(
     s: &Spec,
     current: &[u8],

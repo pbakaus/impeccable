@@ -302,7 +302,7 @@ pub fn resolve_project_cwd(
 }
 
 /// JS: looksLikeProjectRoot(dir)
-fn looks_like_project_root(dir: &str) -> bool {
+pub fn looks_like_project_root(dir: &str) -> bool {
     [".git", "package.json", ".impeccable"]
         .iter()
         .any(|m| exists(&jsp::join(&[dir, m])))
