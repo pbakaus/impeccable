@@ -174,12 +174,29 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
-    let was_installed = run_spec("status", &spec).is_ok_and(|s| s["installed"] == true);
+    // An installation whose state can't be read is never treated as absent: a failure
+    // below would then undo hooks that were working.
+    let was_installed = match run_spec("status", &spec) {
+        Ok(s) => s["installed"] == true,
+        Err((_, msg)) => return Err(with_mcp(format!("couldn't read its hooks: {msg}"))),
+    };
     if let Err((_, msg)) = run_spec("apply", &spec) {
-        let _ = recover_spec(&spec);
-        return Err(with_mcp(msg));
+        return Err(with_mcp(match recover_spec(&spec) {
+            Ok(r) if r["state"] == "conflict" => format!(
+                "{msg}; its half-applied hooks couldn't be rolled back because a file changed, see impeccable agents recover"
+            ),
+            Ok(_) => msg,
+            Err((_, m)) => format!("{msg}; rolling back its hooks also failed: {m}"),
+        }));
     }
+    // The record as it was, so a failure puts it back: Loop keeps waking exactly what
+    // it woke before, and nothing this connect only began.
+    let prior_record = fs::read(support.join(format!("{}-install.json", agent.harness))).ok();
     let rollback = |why: String| -> String {
+        let mut why = why;
+        if let Err(e) = restore_record(support, agent.harness, prior_record.as_deref()) {
+            why = format!("{why}; putting back Loop's record also failed: {e}");
+        }
         if !was_installed {
             if let Err((_, msg)) = run_spec("undo", &spec) {
                 return with_mcp(format!("{why}; undoing its hooks also failed: {msg}"));
@@ -222,9 +239,38 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     let home = home(io)?;
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
-    let (specs, pending) = installed_specs(OWNER).map_err(|(_, m)| m)?;
     let mut out = String::new();
     let mut failed = false;
+    // A connect that stopped part way is rolled back first, so its hooks are either
+    // gone or committed (and then undone below).
+    let found = installed_specs(OWNER).map_err(|(_, m)| m)?;
+    for spec in &found.pending {
+        let label = label(&spec.harness);
+        match recover_spec(spec) {
+            Ok(r) if r["state"] == "conflict" => {
+                failed = true;
+                out.push_str(&format!(
+                    "{label}: an earlier connect stopped part way and a file it touched has changed since; its hooks were left as they are.\n"
+                ));
+            }
+            Ok(_) => {}
+            Err((_, msg)) => {
+                failed = true;
+                out.push_str(&format!(
+                    "{label}: an earlier connect stopped part way and rolling it back failed: {msg}\n"
+                ));
+            }
+        }
+    }
+    let found = installed_specs(OWNER).map_err(|(_, m)| m)?;
+    for path in &found.unreadable {
+        failed = true;
+        out.push_str(&format!(
+            "Couldn't read {}; whatever it installed was left in place.\n",
+            path.display()
+        ));
+    }
+    let specs = found.committed;
     for spec in &specs {
         if let Err(e) = forget_account(&support, &spec.harness, &spec.root) {
             failed = true;
@@ -257,10 +303,6 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
                 ));
             }
         }
-    }
-    if pending > 0 {
-        failed = true;
-        out.push_str("An earlier connect stopped part way; run impeccable agents recover, then impeccable loop disconnect again.\n");
     }
     if out.is_empty() {
         out.push_str("Nothing to disconnect.\n");
@@ -691,7 +733,24 @@ fn forget_account(support: &Path, harness: &str, root: &Path) -> Result<()> {
 
 /// Write a file whole: staged beside it (0600, created fresh) and renamed over it, so a
 /// reader never sees half a file and a symlink at the name is replaced, not followed.
+/// Put `harness`'s record back as it was before a connect began: its earlier bytes, or
+/// no record at all.
+fn restore_record(support: &Path, harness: &str, prior: Option<&[u8]>) -> Result<()> {
+    let name = format!("{harness}-install.json");
+    match prior {
+        Some(bytes) => publish_bytes(support, &name, bytes),
+        None => match fs::remove_file(support.join(&name)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+            _ => Ok(()),
+        },
+    }
+}
+
 fn publish(support: &Path, name: &str, value: &Value) -> Result<()> {
+    publish_bytes(support, name, format!("{value:#}\n").as_bytes())
+}
+
+fn publish_bytes(support: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     let path = support.join(name);
     let staged = support.join(format!(".{name}.{}", std::process::id()));
     let _ = fs::remove_file(&staged);
@@ -705,8 +764,7 @@ fn publish(support: &Path, name: &str, value: &Value) -> Result<()> {
             options.mode(0o600);
         }
         let mut file = options.open(&staged).map_err(|e| e.to_string())?;
-        file.write_all(format!("{value:#}\n").as_bytes())
-            .map_err(|e| e.to_string())?;
+        file.write_all(bytes).map_err(|e| e.to_string())?;
     }
     fs::rename(&staged, &path).map_err(|e| {
         let _ = fs::remove_file(&staged);
@@ -719,5 +777,34 @@ fn sign_in(harness: &str) -> &'static str {
         "in Claude Code, run /mcp, choose impeccable, then Authenticate."
     } else {
         "run codex mcp login impeccable (skip it if Codex just signed you in)."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_connect_puts_the_record_back_as_it_was() {
+        // Catches (#1389 review): a failed first connect left `enabled: true`, so Loop
+        // kept waking an agent that wasn't connected.
+        let dir = std::env::temp_dir().join(format!("loop-record-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let record = dir.join("claude-install.json");
+        let earlier = b"{\"enabled\":true,\"accounts\":[\"/a\"]}\n";
+        fs::write(&record, earlier).unwrap();
+        publish(
+            &dir,
+            "claude-install.json",
+            &json!({"enabled": true, "accounts": ["/a", "/b"]}),
+        )
+        .unwrap();
+        restore_record(&dir, "claude", Some(earlier)).unwrap();
+        assert_eq!(fs::read(&record).unwrap(), earlier);
+        restore_record(&dir, "claude", None).unwrap();
+        assert!(!record.exists(), "no earlier record: none is left behind");
+        restore_record(&dir, "claude", None).unwrap();
+        let _ = fs::remove_dir_all(&dir);
     }
 }

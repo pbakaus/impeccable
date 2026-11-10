@@ -509,34 +509,56 @@ pub fn run_spec(verb: &str, spec: &Spec) -> Result<Value, (String, String)> {
     cli::operate(verb, spec).map_err(|(code, msg, _)| (code.to_string(), msg))
 }
 
-/// Every committed installation `owner` made, as the spec it installed (from the
-/// journals), so a caller can undo what was installed rather than what today's
-/// environment would install. Pending transactions are reported separately, by count.
-pub fn installed_specs(owner: &str) -> Result<(Vec<Spec>, usize), (String, String)> {
+/// What `owner` has installed, read from the engine's journals rather than today's
+/// environment, so a caller can undo what was installed.
+#[derive(Default)]
+pub struct Installed {
+    /// Committed installations, as the spec each one installed.
+    pub committed: Vec<Spec>,
+    /// Applies that stopped part way, as the spec each one was installing; roll them
+    /// back with [`recover_spec`].
+    pub pending: Vec<Spec>,
+    /// Journal or pending files that can't be read, so their owner is unknown.
+    pub unreadable: Vec<PathBuf>,
+}
+
+/// Every installation `owner` made. Other owners' journals and pending transactions are
+/// left out; a file that can't be read is reported, never skipped silently.
+pub fn installed_specs(owner: &str) -> Result<Installed, (String, String)> {
     let home = cli::agents_home().map_err(|(c, m, _)| (c.to_string(), m))?;
     let entries = match fs::read_dir(&home) {
         Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((vec![], 0)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Installed::default()),
         Err(e) => return Err(("io_error".into(), e.to_string())),
     };
-    let mut specs = Vec::new();
-    let mut pending = 0;
+    let mut found = Installed::default();
     for path in entries {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if name.ends_with(".pending.json") {
-            pending += 1;
+            let tx = fs::read(&path)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<PendingTransaction>(&b).ok());
+            match tx {
+                Some(tx) if tx.desired_spec.owner == owner => found.pending.push(tx.desired_spec),
+                Some(_) => {}
+                None => found.unreadable.push(path),
+            }
             continue;
         }
         if !name.ends_with(".json") {
             continue;
         }
-        if let Ok(Some(j)) = read_journal(&path) {
-            if j.spec.owner == owner {
-                specs.push(j.spec);
-            }
+        match read_journal(&path) {
+            Ok(Some(j)) if j.spec.owner == owner => found.committed.push(j.spec),
+            Ok(_) => {}
+            Err(_) => found.unreadable.push(path),
         }
     }
-    Ok((specs, pending))
+    found.unreadable.sort();
+    Ok(found)
 }
 
 /// Roll back any pending transaction of `spec`'s installation (an apply that stopped

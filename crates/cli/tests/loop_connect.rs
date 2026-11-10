@@ -1,7 +1,7 @@
 //! `impeccable loop connect` and `loop disconnect` against fake `claude` and `codex` CLIs
 //! in a scratch home: the Impeccable MCP server and Loop's hooks are added through the
 //! agents engine's journal, and disconnect removes exactly what connect wrote.
-#![cfg(unix)]
+#![cfg(target_os = "macos")]
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -444,4 +444,129 @@ fn disconnect_never_touches_another_accounts_server() {
         fs::read_to_string(work.join(".claude.json")).unwrap(),
         theirs
     );
+}
+
+fn journals(b: &Box) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = fs::read_dir(b.home().join(".impeccable/agents"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().unwrap().to_string_lossy().into_owned();
+            n.ends_with(".json") && !n.ends_with(".pending.json")
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+fn claude_journal(b: &Box) -> PathBuf {
+    journals(b)
+        .into_iter()
+        .find(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("impeccable-loop-claude-")
+        })
+        .expect("a Claude journal")
+}
+
+#[test]
+fn an_unreadable_journal_fails_disconnect_instead_of_reporting_nothing() {
+    // Catches (#1389 review): a journal that couldn't be read was skipped, and disconnect
+    // said "Nothing to disconnect" while that installation's hooks stayed.
+    let b = Box::new("unreadable");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal = claude_journal(&b);
+    fs::write(&journal, "{ not json").unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(said.contains(&journal.display().to_string()), "{said}");
+    assert!(!said.contains("Nothing to disconnect"), "{said}");
+}
+
+#[test]
+fn another_owners_pending_transaction_does_not_fail_disconnect() {
+    // Catches (#1389 review): every *.pending.json counted, so another tool's half-done
+    // apply failed Loop's disconnect with advice that didn't help.
+    let b = Box::new("foreign-pending");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(claude_journal(&b)).unwrap()).unwrap();
+    let mut spec = journal["spec"].clone();
+    spec["owner"] = "another-tool".into();
+    let tx = serde_json::json!({
+        "version": 2,
+        "journal_path": b.home().join(".impeccable/agents/other.json"),
+        "prior_journal": null,
+        "desired_spec": spec,
+        "prior_spec": null,
+        "targets": [],
+    });
+    let pending = b.home().join(".impeccable/agents/other.pending.json");
+    fs::write(&pending, tx.to_string()).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        pending.exists(),
+        "another owner's transaction is left alone"
+    );
+}
+
+#[test]
+fn disconnect_rolls_back_a_connect_that_stopped_part_way() {
+    // Catches (#1389 review): a connect that stopped after writing hooks left a pending
+    // transaction; disconnect only printed advice and the hooks stayed.
+    let b = Box::new("own-pending");
+    b.install_loop();
+    let settings = b.home().join(".claude/settings.json");
+    let before = "{\"theme\": \"dark\"}\n";
+    fs::write(&settings, before).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal_path = claude_journal(&b);
+    let journal: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&journal_path).unwrap()).unwrap();
+    let after = fs::read(&settings).unwrap();
+    assert_ne!(after, before.as_bytes());
+    // As if the apply had written the hooks and its journal, then stopped.
+    let tx = serde_json::json!({
+        "version": 2,
+        "journal_path": journal_path,
+        "prior_journal": null,
+        "desired_spec": journal["spec"],
+        "prior_spec": null,
+        "targets": [{"path": settings, "before": before.as_bytes(), "after": after}],
+    });
+    let stem = journal_path
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pending = journal_path.with_file_name(format!("{stem}.pending.json"));
+    fs::write(&pending, tx.to_string()).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!pending.exists());
+    assert_eq!(fs::read_to_string(&settings).unwrap(), before);
+}
+
+#[test]
+fn a_status_it_cannot_read_stops_connect_before_anything_changes() {
+    // Catches (#1389 review): a status error read as "not installed", so a later failure
+    // could undo hooks that were working.
+    let b = Box::new("status-error");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let settings = b.home().join(".claude/settings.json");
+    let installed = fs::read(&settings).unwrap();
+    fs::write(claude_journal(&b), "{ not json").unwrap();
+    let out = b.run(&["loop", "connect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(said.contains("couldn't read its hooks"), "{said}");
+    assert_eq!(fs::read(&settings).unwrap(), installed);
 }
