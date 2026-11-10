@@ -435,7 +435,10 @@ export async function bootFixtureSession({
       // Nuxt prints its URL before the first build finishes and serves a
       // 503 loading page until then; its polling would fail console hygiene.
       const okStartedAt = Date.now();
-      await waitForHttpOk(`${runtime.scheme || 'http'}://127.0.0.1:${devPort}/`, runtime.readyTimeoutMs ?? 120_000);
+      await waitForHttpOk(
+        `${runtime.scheme || 'http'}://127.0.0.1:${devPort}/`,
+        readTimeoutEnv('IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS', runtime.readyTimeoutMs ?? 120_000),
+      );
       log(`dev server answered without a 5xx in ${formatDuration(Date.now() - okStartedAt)}`);
     }
 
