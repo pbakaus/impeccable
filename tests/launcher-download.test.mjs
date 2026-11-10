@@ -336,6 +336,71 @@ test('cmd launcher is checked out with CRLF line endings', () => {
   assert.equal(withoutCrlf.includes(10), false, 'cmd.exe batch labels require CRLF line endings');
 });
 
+test('cmd launcher calls PATH candidates so a batch shim returns to it', () => {
+  // Without `call`, cmd.exe hands control to a .cmd candidate and never comes
+  // back, so the probe and the verb it was meant to run are lost (#1240).
+  const source = fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), 'utf8');
+  assert.match(source, /^call "%~1" engine-probe >"%probe_tmp%" 2>nul\r?$/m);
+  assert.match(source, /^call "%path_bin%" %\*\r?$/m, 'a batch shim runs under call');
+  assert.doesNotMatch(source, /^"%~1" engine-probe/m);
+});
+
+test('cmd launcher runs a PATH binary directly so % in its arguments survives', () => {
+  // call expands % in its arguments a second time, so `a%20b%20c` would lose
+  // `%20b%`; only a .cmd or .bat candidate needs call to return.
+  const source = fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), 'utf8');
+  assert.match(source, /^if \/I "%path_ext%"==".cmd" goto path_shim\r?$/m);
+  assert.match(source, /^if \/I "%path_ext%"==".bat" goto path_shim\r?$/m);
+  assert.match(source, /^"%path_bin%" %\*\r?$/m, 'a binary runs without call');
+  // npm writes an extensionless POSIX shim next to impeccable.cmd; where lists it first.
+  assert.match(source, /for %%k in \(\.exe \.com \.cmd \.bat\) do if \/I "%%~xc"=="%%k"/, 'only a runnable extension is taken');
+  // A FOR letter that is also a path modifier (d p n x s a t z f) makes %%~x<v> ambiguous.
+  for (const [, v] of source.matchAll(/%%~[a-z$:]*?x([a-z])\b/gi)) assert.doesNotMatch(v, /[dpnxsatzf]/i, `%%~x on a loop variable whose letter is a path modifier: %%${v}`);
+  assert.doesNotMatch(source, /^call impeccable %\*/m);
+});
+
+test('cmd launcher runs a .cmd engine shim found on PATH', { skip: WINDOWS ? false : 'Windows-only cmd launcher PATH probe' }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-shim-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const scripts = path.join(root, 'scripts');
+  const tools = path.join(root, 'tools');
+  const home = path.join(root, 'home');
+  for (const dir of [scripts, tools, home]) fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+  const launcher = path.join(scripts, 'impeccable.cmd');
+  fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), launcher);
+  // npm also writes an extensionless POSIX shim; where lists it first.
+  fs.writeFileSync(path.join(tools, 'impeccable'), '#!/bin/sh\nexec node "$basedir/x.js" "$@"\n');
+  // An npm-style batch shim that answers the handshake, then runs the verb.
+  fs.writeFileSync(path.join(tools, 'impeccable.cmd'), [
+    '@echo off',
+    'if "%~1"=="engine-probe" (echo impeccable-engine 0.0.0-test& exit /b 0)',
+    'echo path-shim-ran %*',
+    'exit /b 0',
+    '',
+  ].join('\r\n'));
+  const env = {
+    PATH: `${tools};${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`,
+    HOME: home, USERPROFILE: home, TEMP: root, TMP: root,
+    IMPECCABLE_HOME: path.join(root, 'cache'),
+    SystemRoot: process.env.SystemRoot,
+    ComSpec: COMSPEC,
+    PROCESSOR_ARCHITECTURE: 'AMD64',
+  };
+  const result = await new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(COMSPEC, ['/d', '/s', '/c', `""${launcher}" detect"`], { env, cwd: root, windowsVerbatimArguments: true, timeout: 20000 });
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+  });
+  assert.equal(result.signal, null, JSON.stringify(result));
+  assert.equal(result.status, 0, JSON.stringify(result));
+  assert.match(result.stdout, /path-shim-ran detect/, 'the launcher came back from the probe and ran the verb');
+});
+
 test('cmd launcher forwards engine exit code through cmd /c', { skip: WINDOWS ? false : 'Windows-only cmd /c exit-code forwarding' }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-exit-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
