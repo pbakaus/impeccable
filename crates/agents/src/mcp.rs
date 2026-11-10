@@ -165,10 +165,6 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
         {
             return None;
         }
-        // A remote server is never one this engine installed.
-        if candidate.get("url").is_some() || candidate.get("transport").and_then(|t| t.get("url")).is_some() {
-            return Some(json!({"name":name,"unparsed":true}));
-        }
         let command = candidate.get("command")?.as_str()?;
         let args = match candidate.get("args") {
             None => Vec::new(),
@@ -193,27 +189,13 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
     }
     let text = std::str::from_utf8(bytes).ok()?;
     let mut command = None;
-    let mut url = None;
-    let mut kind = None;
-    let mut scope = None;
-    let mut other = false;
     let mut args: Vec<String> = Vec::new();
     let mut env = std::collections::BTreeMap::new();
     for line in text.lines() {
         let Some((key, value)) = line.split_once(':') else {
             continue;
         };
-        // Claude's fields are indented under the server's name; other lines are prose.
-        let field = line.starts_with("  ") && !line.starts_with("   ");
         match key.trim().to_ascii_lowercase().as_str() {
-            "scope" if field => scope = Some(value.trim().to_owned()),
-            "type" if field => kind = Some(value.trim().to_ascii_lowercase()),
-            "status" | "issue" if field => {}
-            "url" if field => {
-                if url.replace(value.trim().to_owned()).is_some() {
-                    return Some(json!({"name":name,"unparsed":true}));
-                }
-            }
             "command" => command = Some(value.trim().to_owned()),
             "args" => {
                 let value = value.trim();
@@ -229,18 +211,8 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
                     env = values;
                 }
             }
-            _ if field => other = true,
             _ => {}
         }
-    }
-    // Only a user-scoped entry is the one installed: a project or local entry of the same
-    // name shadows it, and can't vouch for (or be removed as) the user one.
-    if scope.as_deref().is_some_and(|s| !s.to_ascii_lowercase().starts_with("user")) {
-        return Some(json!({"name":name,"unparsed":true}));
-    }
-    // A remote server, or fields this parser doesn't know, is never one this engine installed.
-    if url.is_some() || kind.as_deref().is_some_and(|k| k != "stdio") || other {
-        return Some(json!({"name":name,"unparsed":true}));
     }
     Some(json!({"name":name,"command":command?,"args":args,"env":env}))
 }
@@ -262,11 +234,7 @@ pub(super) fn mcp_get(
         &spec.root,
     );
     if spec.harness == "claude" {
-        // Claude Code 2.1.x has no --scope on `get`; it reports the server's scope itself.
-        // Run it from the agent's config folder, not the caller's project, so a project or
-        // local entry of the same name doesn't shadow the user one (the scope is checked too).
-        cmd.args(["mcp", "get", name]);
-        cmd.current_dir(if spec.root.is_dir() { spec.root.clone() } else { std::env::temp_dir() });
+        cmd.args(["mcp", "get", name, "--scope", "user"]);
     } else {
         cmd.args(["mcp", "get", name, "--json"]);
     }

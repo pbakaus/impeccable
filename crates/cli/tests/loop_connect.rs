@@ -262,8 +262,24 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
         fs::read_to_string(b.home().join(".claude/settings.json")).unwrap(),
         personal
     );
-    assert!(claude_entry(&b.home().join(".claude.json")).is_null());
-    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
+    // MCP servers are never removed by disconnect: the exact command is printed instead.
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(codex_config(&b).contains("mcp_servers.impeccable"));
+    let said = text(&out);
+    assert!(
+        said.contains("env -u CLAUDE_CONFIG_DIR claude mcp remove --scope user impeccable"),
+        "{said}"
+    );
+    assert!(
+        said.contains(&format!(
+            "CODEX_HOME='{}' codex mcp remove impeccable",
+            b.home().join(".codex").display()
+        )),
+        "{said}"
+    );
     let record: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&claude).unwrap()).unwrap();
     assert_eq!(
@@ -303,33 +319,30 @@ fn disconnect_undoes_the_account_connect_used_not_todays() {
         !work.join("settings.json").exists(),
         "the work account's hooks are gone"
     );
-    assert!(claude_entry(&b.home().join(".claude.json")).is_null());
-    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
+    let said = text(&out);
+    assert!(
+        said.contains(&format!(
+            "CLAUDE_CONFIG_DIR='{}' claude mcp remove",
+            work.display()
+        )),
+        "the removal command names the work account: {said}"
+    );
 }
 
 #[test]
-fn a_missing_cli_does_not_stop_the_other_agent_disconnecting() {
+fn a_missing_cli_does_not_stop_disconnect() {
+    // Disconnect runs no agent CLI at all: hooks go and Loop stops waking either way.
     let b = Box::new("missing-cli");
     b.install_loop();
     assert!(b.run(&["loop", "connect"]).status.success());
     fs::rename(b.root.join("bin/claude"), b.root.join("claude-moved")).unwrap();
     let out = b.run(&["loop", "disconnect"]);
-    assert!(!out.status.success(), "a partial disconnect says so");
-    let said = text(&out);
-    assert!(said.contains("Codex: disconnected"), "{said}");
-    assert!(said.contains("CLI wasn't found"), "{said}");
-    assert!(!codex_config(&b).contains("mcp_servers.impeccable"));
-    assert!(
-        !b.home().join(".claude/settings.json").exists(),
-        "Claude's hooks still went"
-    );
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!b.home().join(".claude/settings.json").exists());
     let record: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
             .unwrap();
-    assert_eq!(
-        record["enabled"], false,
-        "Loop stops waking even when cleanup can't finish"
-    );
+    assert_eq!(record["enabled"], false);
 }
 
 #[test]
@@ -413,25 +426,22 @@ fn an_entry_the_person_already_had_is_kept_on_disconnect() {
 }
 
 #[test]
-fn an_entry_changed_after_connect_is_left_in_place_and_reported() {
-    let b = Box::new("changed");
+fn disconnect_never_touches_another_accounts_server() {
+    // Catches (adversarial review, #1389, high): disconnect with CLAUDE_CONFIG_DIR pointing
+    // at another account removing that account's server.
+    let mut b = Box::new("other-account");
     b.install_loop();
     assert!(b.run(&["loop", "connect"]).status.success());
-    // The person narrows Codex's tools on the server connect added.
-    let edited = codex_config(&b).replace(
-        &format!("url = \"{URL}\""),
-        &format!("url = \"{URL}\"\ndisabled_tools = [\"post\"]"),
-    );
-    fs::write(b.home().join(".codex/config.toml"), &edited).unwrap();
-    let out = b.run(&["loop", "disconnect"]);
-    assert!(out.status.success(), "{}", text(&out));
-    assert!(
-        text(&out).contains("changed since connect"),
-        "{}",
-        text(&out)
-    );
-    assert!(
-        codex_config(&b).contains("disabled_tools"),
-        "the edited entry stays"
+    let work = b.root.join("work-claude");
+    fs::create_dir_all(&work).unwrap();
+    let theirs =
+        r#"{"mcpServers":{"impeccable":{"type":"http","url":"https://elsewhere.example/mcp"}}}"#;
+    fs::write(work.join(".claude.json"), theirs).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), work.display().to_string());
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(
+        fs::read_to_string(work.join(".claude.json")).unwrap(),
+        theirs
     );
 }

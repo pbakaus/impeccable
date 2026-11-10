@@ -7,10 +7,9 @@
 //! 2. adds Loop's hooks through the agents engine (journaled, undone exactly);
 //! 3. writes the record Loop's helper reads.
 //!
-//! Disconnect stops Loop waking first, removes the hooks, and removes the MCP server only
-//! when connect added it and the entry is still exactly as written; otherwise it prints the
-//! command to remove it. Agent tokens are never seen or stored here: each agent signs in to
-//! the MCP server itself.
+//! Disconnect stops Loop waking, then removes the hooks. It never removes an MCP server:
+//! it prints the exact command for the person to run. Agent tokens are never seen or
+//! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, Spec};
 use impeccable_common::Io;
 use serde_json::{json, Value};
@@ -30,8 +29,9 @@ const HELPER: &str = "Contents/MacOS/loop-hook";
 /// Where Loop's helper keeps its state (the old name stays until Loop migrates it).
 const SUPPORT_PARENT: &str = "Library/Application Support";
 const SUPPORT: [&str; 2] = ["Impeccable Reviews", "Loop"];
-/// This command's own state: which MCP entries it added, per agent and config folder.
-const STATE: &str = "connect.json";
+/// This command's own note, per connected agent and config folder, of where its MCP
+/// server lives, so disconnect can print the exact command to remove it.
+const TARGETS: &str = "connect.json";
 /// How long one connect or disconnect waits for another to finish.
 const LOCK_WAIT: Duration = Duration::from_secs(10);
 /// How long an agent's `mcp add` may take, Codex's browser sign-in included.
@@ -57,8 +57,9 @@ struct Agent {
     root: PathBuf,
     /// The file that holds the agent's global (user-scope) MCP servers.
     mcp_file: PathBuf,
-    /// Variables the agent's CLI needs to find that file, passed explicitly.
-    env: Vec<(&'static str, PathBuf)>,
+    /// The variable that selects that file, set explicitly for every call (Claude's
+    /// default account has none, and its CLI then runs with the variable removed).
+    env: Option<(&'static str, PathBuf)>,
 }
 
 /// `loop connect`.
@@ -112,8 +113,9 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     Ok(out)
 }
 
-/// One agent. Each step that fails undoes the earlier ones of this run, so a failed
-/// connect leaves the agent as it found it.
+/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
+/// working installation is never undone by a failed reconnect. The MCP server is never
+/// removed here: a failure says how to remove it.
 fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
     if agent.harness == "codex" {
         if let Some(other) = read_record(support, "codex")
@@ -128,8 +130,9 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
         }
     }
     // 1. The MCP server: added only when the agent has none of that name.
-    let added = match read_entry(agent)? {
-        Entry::Exact => false,
+    let mut added = false;
+    match read_entry(agent) {
+        Entry::Exact => {}
         Entry::Other(why) => {
             return Err(format!(
                 "{} already has an MCP server called {MCP_NAME} ({why}); it was left alone",
@@ -139,9 +142,9 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
         Entry::Absent => {
             let ran = add_server(agent);
             // Codex writes the entry, then signs in; a sign-in left unfinished still leaves
-            // the exact entry, which is ours and kept (the person signs in later).
-            match read_entry(agent)? {
-                Entry::Exact => true,
+            // the exact entry, which is kept (the person signs in later).
+            match read_entry(agent) {
+                Entry::Exact => added = true,
                 Entry::Absent => {
                     return Err(ran
                         .err()
@@ -155,44 +158,51 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
                 }
             }
         }
-    };
-    let undo_mcp = |why: String| -> String {
-        if added && remove_server(agent).is_err() {
+    }
+    let with_mcp = |why: String| -> String {
+        if added {
             format!(
-                "{why}; also remove the MCP server it added: {}",
+                "{why}; the {MCP_NAME} MCP server it added stays, remove it with: {}",
                 remove_command(agent)
             )
         } else {
             why
         }
     };
+    if let Err(e) = note_target(support, agent) {
+        return Err(with_mcp(e));
+    }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
+    let was_installed = run_spec("status", &spec).is_ok_and(|s| s["installed"] == true);
     if let Err((_, msg)) = run_spec("apply", &spec) {
         let _ = recover_spec(&spec);
-        return Err(undo_mcp(msg));
+        return Err(with_mcp(msg));
     }
     let rollback = |why: String| -> String {
-        let _ = run_spec("undo", &spec);
-        undo_mcp(why)
+        if !was_installed {
+            if let Err((_, msg)) = run_spec("undo", &spec) {
+                return with_mcp(format!("{why}; undoing its hooks also failed: {msg}"));
+            }
+        }
+        with_mcp(why)
     };
-    // 3. The record Loop's helper reads, and this command's own note of what it added.
+    // 3. The record Loop's helper reads, then a check that everything is in place.
     if let Err(e) = write_record(support, agent, true) {
         return Err(rollback(e));
     }
-    let previously = state_added(support, agent);
-    if let Err(e) = set_state(support, agent, added || previously) {
-        return Err(rollback(e));
-    }
-    let status = run_spec("status", &spec).map_err(|(_, m)| m)?;
+    let status = match run_spec("status", &spec) {
+        Ok(s) => s,
+        Err((_, m)) => return Err(rollback(m)),
+    };
     let resources = status["resources"].as_array().cloned().unwrap_or_default();
     if status["installed"] != true
         || resources.is_empty()
         || resources.iter().any(|r| r["state"] == "conflict")
     {
-        return Err(
+        return Err(rollback(
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
-        );
+        ));
     }
     Ok(status["manualActions"]
         .as_array()
@@ -206,7 +216,8 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
 }
 
 /// `loop disconnect`: every installation connect made (from the engine's journals, not
-/// today's environment), each on its own.
+/// today's environment), each on its own. Waking stops first; the hooks go; MCP servers
+/// stay, with the exact command to remove each.
 pub(crate) fn disconnect(io: &Io) -> Result<String> {
     let home = home(io)?;
     let support = support_dir(&home)?;
@@ -214,7 +225,6 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     let (specs, pending) = installed_specs(OWNER).map_err(|(_, m)| m)?;
     let mut out = String::new();
     let mut failed = false;
-    // Waking stops for every installation before anything else is touched.
     for spec in &specs {
         if let Err(e) = forget_account(&support, &spec.harness, &spec.root) {
             failed = true;
@@ -226,23 +236,27 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     }
     for spec in &specs {
         let label = label(&spec.harness);
-        let mut line = match run_spec("undo", spec) {
+        match run_spec("undo", spec) {
             Ok(result) => match result["conflicts"].as_array().map_or(0, Vec::len) {
-                0 => format!("{label}: disconnected"),
-                kept => {
-                    format!("{label}: disconnected; {kept} hooks you changed were left in place")
-                }
+                0 => out.push_str(&format!("{label}: disconnected.\n")),
+                kept => out.push_str(&format!(
+                    "{label}: disconnected; {kept} hooks you changed were left in place.\n"
+                )),
             },
             Err((_, msg)) => {
                 failed = true;
-                format!("{label}: hooks not removed: {msg}")
+                out.push_str(&format!("{label}: hooks not removed: {msg}\n"));
             }
-        };
-        let (said, complete) = disconnect_server(io, &home, &support, spec);
-        failed |= !complete;
-        line.push_str(&said);
-        out.push_str(&line);
-        out.push_str(".\n");
+        }
+        if let Some(agent) = recorded_target(&support, &spec.harness, &spec.root) {
+            if !matches!(read_entry(&agent), Entry::Absent) {
+                out.push_str(&format!(
+                    "  Its {MCP_NAME} MCP server stays in {}. To remove it: {}\n",
+                    agent.mcp_file.display(),
+                    remove_command(&agent)
+                ));
+            }
+        }
     }
     if pending > 0 {
         failed = true;
@@ -257,56 +271,6 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     Ok(out)
 }
 
-/// The MCP half of disconnect for one installation: removed only when connect added it
-/// and the entry is still exactly as written, through a validated CLI; otherwise the
-/// command to remove it is printed. Returns what to add to its line, and whether the
-/// MCP half is done (a server left because it changed is done: that is by design).
-fn disconnect_server(io: &Io, home: &Path, support: &Path, spec: &Spec) -> (String, bool) {
-    let Some(agent) = agent_for(io, home, support, &spec.harness, &spec.root) else {
-        let added = read_json(&support.join(STATE)).is_some_and(|v| {
-            v["added"][format!("{}:{}", spec.harness, spec.root.display())] == true
-        });
-        return if added {
-            (format!(
-                "; its CLI wasn't found, so the {MCP_NAME} MCP server connect added is still there: reinstall it and run impeccable loop disconnect again"
-            ), false)
-        } else {
-            (String::new(), true)
-        };
-    };
-    if !state_added(support, &agent) {
-        return (String::new(), true);
-    }
-    let result = match read_entry(&agent) {
-        Ok(Entry::Absent) => Ok(()),
-        Ok(Entry::Exact) => remove_server(&agent).and_then(|_| match read_entry(&agent)? {
-            Entry::Absent => Ok(()),
-            _ => Err("it is still there".into()),
-        }),
-        Ok(Entry::Other(_)) => {
-            let _ = set_state(support, &agent, false);
-            return (format!(
-                "; its {MCP_NAME} MCP server changed since connect, so it was left in place (remove it with: {})",
-                remove_command(&agent)
-            ), true);
-        }
-        Err(e) => Err(e),
-    };
-    match result {
-        Ok(()) => {
-            let _ = set_state(support, &agent, false);
-            (String::new(), true)
-        }
-        Err(e) => (
-            format!(
-                "; its {MCP_NAME} MCP server wasn't removed ({e}): {}",
-                remove_command(&agent)
-            ),
-            false,
-        ),
-    }
-}
-
 fn home(io: &Io) -> Result<PathBuf> {
     io.env("HOME")
         .filter(|h| !h.is_empty() && Path::new(h).is_absolute())
@@ -314,7 +278,7 @@ fn home(io: &Io) -> Result<PathBuf> {
         .ok_or_else(|| "HOME is not set to an absolute path.".into())
 }
 
-/// The agent as connect would configure it today, if its CLI is found.
+/// The agent as connect configures it today, if its CLI is found.
 fn agent(io: &Io, home: &Path, harness: &'static str) -> Option<Agent> {
     let executable = resolve(io, harness)?;
     let var = |name: &str| {
@@ -323,22 +287,17 @@ fn agent(io: &Io, home: &Path, harness: &'static str) -> Option<Agent> {
             .map(PathBuf::from)
     };
     Some(if harness == "claude" {
-        let custom = var("CLAUDE_CONFIG_DIR");
-        let root = custom.clone().unwrap_or_else(|| home.join(".claude"));
         // Claude keeps user-scope MCP servers in .claude.json: in CLAUDE_CONFIG_DIR when
         // that is set, else in HOME.
-        let mcp_file = custom
-            .as_ref()
-            .map_or_else(|| home.join(".claude.json"), |dir| dir.join(".claude.json"));
-        let env = custom
-            .map(|d| vec![("CLAUDE_CONFIG_DIR", d)])
-            .unwrap_or_default();
+        let custom = var("CLAUDE_CONFIG_DIR");
         Agent {
             harness,
             executable,
-            root,
-            mcp_file,
-            env,
+            root: custom.clone().unwrap_or_else(|| home.join(".claude")),
+            mcp_file: custom
+                .as_ref()
+                .map_or_else(|| home.join(".claude.json"), |dir| dir.join(".claude.json")),
+            env: custom.map(|d| ("CLAUDE_CONFIG_DIR", d)),
         }
     } else {
         let root = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
@@ -346,57 +305,49 @@ fn agent(io: &Io, home: &Path, harness: &'static str) -> Option<Agent> {
             harness,
             executable,
             mcp_file: root.join("config.toml"),
-            env: vec![("CODEX_HOME", root.clone())],
+            env: Some(("CODEX_HOME", root.clone())),
             root,
         }
     })
 }
 
-/// The agent for a recorded installation (its config folder from the journal), with a
-/// validated CLI: today's, else the one connect recorded. Never an unvalidated lookup.
-fn agent_for(io: &Io, home: &Path, support: &Path, harness: &str, root: &Path) -> Option<Agent> {
-    let harness: &'static str = if harness == "claude" {
-        "claude"
-    } else {
-        "codex"
-    };
-    let mut agent = agent(io, home, harness).or_else(|| {
-        let executable = recorded_executable(support, harness)?;
-        let mut a = agent_with(home, harness, root, executable);
-        a.root = root.to_path_buf();
-        Some(a)
-    })?;
-    if agent.root != root {
-        agent = agent_with(home, harness, root, agent.executable);
-    }
-    Some(agent)
+/// Where a recorded installation's MCP server lives, from connect's note (exact, as
+/// connect saw it), for the message disconnect prints. No CLI is run from this.
+fn recorded_target(support: &Path, harness: &str, root: &Path) -> Option<Agent> {
+    let note = read_json(&support.join(TARGETS))?;
+    let entry = &note["targets"][format!("{harness}:{}", root.display())];
+    let mcp_file = PathBuf::from(entry["file"].as_str()?);
+    let env = entry["env"].as_array().and_then(|kv| {
+        let name = match kv.first()?.as_str()? {
+            "CLAUDE_CONFIG_DIR" => "CLAUDE_CONFIG_DIR",
+            "CODEX_HOME" => "CODEX_HOME",
+            _ => return None,
+        };
+        Some((name, PathBuf::from(kv.get(1)?.as_str()?)))
+    });
+    Some(Agent {
+        harness: if harness == "claude" {
+            "claude"
+        } else {
+            "codex"
+        },
+        executable: PathBuf::new(),
+        root: root.to_path_buf(),
+        mcp_file,
+        env,
+    })
 }
 
-/// An agent for an explicit config folder (a recorded installation).
-fn agent_with(home: &Path, harness: &'static str, root: &Path, executable: PathBuf) -> Agent {
-    if harness == "claude" {
-        let default = home.join(".claude");
-        let custom = (root != default).then(|| root.to_path_buf());
-        Agent {
-            harness,
-            executable,
-            root: root.to_path_buf(),
-            mcp_file: custom
-                .as_ref()
-                .map_or_else(|| home.join(".claude.json"), |d| d.join(".claude.json")),
-            env: custom
-                .map(|d| vec![("CLAUDE_CONFIG_DIR", d)])
-                .unwrap_or_default(),
-        }
-    } else {
-        Agent {
-            harness,
-            executable,
-            root: root.to_path_buf(),
-            mcp_file: root.join("config.toml"),
-            env: vec![("CODEX_HOME", root.to_path_buf())],
-        }
+fn note_target(support: &Path, agent: &Agent) -> Result<()> {
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    if !note["targets"].is_object() {
+        note["targets"] = json!({});
     }
+    note["targets"][format!("{}:{}", agent.harness, agent.root.display())] = json!({
+        "file": agent.mcp_file.display().to_string(),
+        "env": agent.env.as_ref().map(|(k, v)| json!([k, v.display().to_string()])),
+    });
+    publish(support, TARGETS, &note)
 }
 
 /// The agent's CLI, resolved once: the engine's override variable, else the first
@@ -445,52 +396,53 @@ enum Entry {
 
 /// The agent's global `impeccable` MCP entry, read from its own file (never through the
 /// CLI, whose view merges in project settings and leaves fields out).
-fn read_entry(agent: &Agent) -> Result<Entry> {
+fn read_entry(agent: &Agent) -> Entry {
     let bytes = match fs::read(&agent.mcp_file) {
         Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Entry::Absent),
-        Err(e) => return Ok(Entry::Other(e.to_string())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Entry::Absent,
+        Err(e) => return Entry::Other(e.to_string()),
     };
     let text = String::from_utf8_lossy(&bytes);
     if agent.harness == "claude" {
         let Ok(v) = serde_json::from_str::<Value>(&text) else {
-            return Ok(Entry::Other("its file isn't valid JSON".into()));
+            return Entry::Other("its file isn't valid JSON".into());
         };
-        return Ok(match v.get("mcpServers").and_then(|s| s.get(MCP_NAME)) {
+        return match v.get("mcpServers").and_then(|s| s.get(MCP_NAME)) {
             None => Entry::Absent,
             Some(e) if *e == json!({"type": "http", "url": MCP_URL}) => Entry::Exact,
             Some(_) => Entry::Other("its settings differ".into()),
-        });
+        };
     }
     let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
-        return Ok(Entry::Other("its file isn't valid TOML".into()));
+        return Entry::Other("its file isn't valid TOML".into());
     };
-    let Some(servers) = doc.get("mcp_servers") else {
-        return Ok(Entry::Absent);
-    };
-    let Some(entry) = servers.get(MCP_NAME) else {
-        return Ok(Entry::Absent);
+    let Some(entry) = doc.get("mcp_servers").and_then(|s| s.get(MCP_NAME)) else {
+        return Entry::Absent;
     };
     let Some(table) = entry.as_table_like() else {
-        return Ok(Entry::Other("its settings differ".into()));
+        return Entry::Other("its settings differ".into());
     };
     let keys: Vec<&str> = table.iter().map(|(k, _)| k).collect();
-    Ok(
-        if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(MCP_URL) {
-            Entry::Exact
-        } else {
-            Entry::Other("its settings differ".into())
-        },
-    )
+    if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(MCP_URL) {
+        Entry::Exact
+    } else {
+        Entry::Other("its settings differ".into())
+    }
 }
 
+/// The agent's CLI with exactly the configuration selection connect saw, run outside
+/// any project so project settings play no part.
 fn cli(agent: &Agent, args: &[&str]) -> Command {
     let mut cmd = Command::new(&agent.executable);
     cmd.args(args).stdin(Stdio::null());
-    for (k, v) in &agent.env {
-        cmd.env(k, v);
+    match &agent.env {
+        Some((k, v)) => {
+            cmd.env(k, v);
+        }
+        None => {
+            cmd.env_remove("CLAUDE_CONFIG_DIR");
+        }
     }
-    // Outside any project, so project settings play no part.
     if agent.root.is_dir() {
         cmd.current_dir(&agent.root);
     }
@@ -537,26 +489,13 @@ fn add_server(agent: &Agent) -> Result<()> {
     }
 }
 
-fn remove_server(agent: &Agent) -> Result<()> {
-    let args: &[&str] = if agent.harness == "claude" {
-        &["mcp", "remove", "--scope", "user", MCP_NAME]
-    } else {
-        &["mcp", "remove", MCP_NAME]
-    };
-    let out = cli(agent, args).output().map_err(|e| e.to_string())?;
-    if out.status.success() {
-        Ok(())
-    } else {
-        Err(format!("{} refused to remove it", agent.harness))
-    }
-}
-
+/// The command a person runs to remove the server, with the exact configuration
+/// selection connect used (Claude's default account: the variable unset).
 fn remove_command(agent: &Agent) -> String {
-    let env: String = agent
-        .env
-        .iter()
-        .map(|(k, v)| format!("{k}={} ", quote(v)))
-        .collect();
+    let env = match &agent.env {
+        Some((k, v)) => format!("{k}={} ", quote(v)),
+        None => "env -u CLAUDE_CONFIG_DIR ".into(),
+    };
     if agent.harness == "claude" {
         format!("{env}claude mcp remove --scope user {MCP_NAME}")
     } else {
@@ -695,11 +634,6 @@ fn read_record(support: &Path, harness: &str) -> Option<Value> {
     read_json(&support.join(format!("{harness}-install.json")))
 }
 
-fn recorded_executable(support: &Path, harness: &str) -> Option<PathBuf> {
-    let p = PathBuf::from(read_record(support, harness)?["executable"].as_str()?);
-    runnable(&p).then_some(p)
-}
-
 /// The record Loop's helper reads. Claude may be connected for several config folders:
 /// `accounts` keeps all of them, `configDir` names the latest.
 fn write_record(support: &Path, agent: &Agent, enabled: bool) -> Result<()> {
@@ -753,29 +687,6 @@ fn forget_account(support: &Path, harness: &str, root: &Path) -> Result<()> {
         }
     }
     publish(support, &format!("{harness}-install.json"), &record)
-}
-
-fn state_key(agent: &Agent) -> String {
-    format!("{}:{}", agent.harness, agent.root.display())
-}
-
-/// Whether connect added this agent's MCP server (so disconnect may remove it).
-fn state_added(support: &Path, agent: &Agent) -> bool {
-    read_json(&support.join(STATE)).is_some_and(|v| v["added"][state_key(agent)] == true)
-}
-
-fn set_state(support: &Path, agent: &Agent, added: bool) -> Result<()> {
-    let mut state = read_json(&support.join(STATE)).unwrap_or_else(|| json!({"added": {}}));
-    if !state["added"].is_object() {
-        state["added"] = json!({});
-    }
-    let key = state_key(agent);
-    if added {
-        state["added"][&key] = json!(true);
-    } else if let Some(map) = state["added"].as_object_mut() {
-        map.remove(&key);
-    }
-    publish(support, STATE, &state)
 }
 
 /// Write a file whole: staged beside it (0600, created fresh) and renamed over it, so a
