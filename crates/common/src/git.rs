@@ -74,6 +74,29 @@ pub fn ensure_dir_ignored(dir: &str, patterns: &[&str]) {
     let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(&file, next));
 }
 
+/// Undoes [`ensure_dir_ignored`] for `patterns` when a project opts in to
+/// committing that directory: removes only those lines (and the header when
+/// nothing else is left), keeps every line the user wrote, and deletes the
+/// file when it held only what the engine put there. Best effort.
+pub fn release_dir_ignored(dir: &str, patterns: &[&str]) {
+    let file = jsp::join(&[dir, ".gitignore"]);
+    let Ok(current) = std::fs::read_to_string(&file) else { return };
+    if !current.lines().next().is_some_and(|l| l.trim() == RUNTIME_IGNORE_HEADER) {
+        return; // not a file the engine wrote
+    }
+    let kept: Vec<&str> = current
+        .lines()
+        .skip(1)
+        .filter(|l| !patterns.contains(&l.trim()))
+        .collect();
+    if kept.iter().all(|l| l.trim().is_empty()) {
+        let _ = std::fs::remove_file(&file);
+    } else if kept.len() + 1 != current.lines().count() {
+        let _ = std::fs::write(&file, format!("{RUNTIME_IGNORE_HEADER}\n{}\n", kept.join("\n")));
+    }
+}
+
+
 /// The comps (`.impeccable/mocks/`) and captures (`.impeccable/review/`) of
 /// a design round are runtime output the agent writes with its own tools, so
 /// every engine verb that precedes those writes makes both ignore themselves.
