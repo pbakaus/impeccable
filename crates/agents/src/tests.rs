@@ -816,7 +816,10 @@ fn changed_spec_reapply_uses_surgical_undo_and_keeps_personal_hook() {
     .unwrap();
     // Only the engine rewrote the file between the two applies, so undo can
     // still put back the original bytes (pristine#4333 finding 8).
-    assert!(second.snapshots.iter().all(|snapshot| snapshot.pure_install));
+    assert!(second
+        .snapshots
+        .iter()
+        .all(|snapshot| snapshot.pure_install));
     write_journal(&journal_path, &second).unwrap();
 
     undo(&changed, Some(&second), &home).unwrap();
@@ -1363,13 +1366,23 @@ fn reinstall_refuses_an_edited_instruction_block_before_writing_anything() {
     let journal = home.join("journal.json");
     let j = apply(&s, None, &home, &journal, None).unwrap();
     let rules = root.join("CLAUDE.md");
-    let edited = fs::read_to_string(&rules).unwrap().replace("managed text", "managed text\nMy own rule.");
+    let edited = fs::read_to_string(&rules)
+        .unwrap()
+        .replace("managed text", "managed text\nMy own rule.");
     fs::write(&rules, &edited).unwrap();
     let settings = fs::read(root.join("settings.json")).unwrap();
     let err = apply(&s, Some(&j), &home, &journal, None).unwrap_err();
     assert_eq!(err.0, "instruction_drift");
-    assert_eq!(fs::read_to_string(&rules).unwrap(), edited, "the edit survives");
-    assert_eq!(fs::read(root.join("settings.json")).unwrap(), settings, "nothing else written");
+    assert_eq!(
+        fs::read_to_string(&rules).unwrap(),
+        edited,
+        "the edit survives"
+    );
+    assert_eq!(
+        fs::read(root.join("settings.json")).unwrap(),
+        settings,
+        "nothing else written"
+    );
 }
 
 #[test]
@@ -1395,7 +1408,10 @@ fn undo_reports_a_managed_hook_the_person_edited_and_keeps_it() {
     let home = temp();
     let mut s = spec("claude", root.clone());
     s.instruction = None;
-    s.hooks = vec![hook("SessionStart", "loop start"), hook("Stop", "loop stop")];
+    s.hooks = vec![
+        hook("SessionStart", "loop start"),
+        hook("Stop", "loop stop"),
+    ];
     let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
     let path = root.join("settings.json");
     let text = fs::read_to_string(&path).unwrap();
@@ -1404,11 +1420,19 @@ fn undo_reports_a_managed_hook_the_person_edited_and_keeps_it() {
     fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     let result = undo(&s, Some(&j), &home).unwrap();
     let after: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert!(after["hooks"].get("SessionStart").is_none(), "the untouched hook goes");
-    assert_eq!(after["hooks"]["Stop"][0]["hooks"][0]["timeout"], 99, "the edited hook stays");
+    assert!(
+        after["hooks"].get("SessionStart").is_none(),
+        "the untouched hook goes"
+    );
+    assert_eq!(
+        after["hooks"]["Stop"][0]["hooks"][0]["timeout"], 99,
+        "the edited hook stays"
+    );
     let conflicts = result["conflicts"].as_array().unwrap();
     assert!(
-        conflicts.iter().any(|c| c.as_str().unwrap().contains("Stop")),
+        conflicts
+            .iter()
+            .any(|c| c.as_str().unwrap().contains("Stop")),
         "the edited hook is reported: {result}"
     );
 }
@@ -1419,17 +1443,24 @@ fn staged_enable_still_restores_the_original_config_bytes() {
     let root = temp();
     let home = temp();
     let config = root.join("config.toml");
-    let original = "[mcp_servers.impeccable]\nurl = 'u'\ndefault_tools_approval_mode = 'prompt' # personal";
+    let original =
+        "[mcp_servers.impeccable]\nurl = 'u'\ndefault_tools_approval_mode = 'prompt' # personal";
     fs::write(&config, original).unwrap();
     let mut s = spec("codex", root.clone());
     s.instruction = None;
     s.hooks = vec![hook("SessionStart", "loop lifecycle")];
     let journal = home.join("journal.json");
     let first = apply(&s, None, &home, &journal, None).unwrap();
-    s.mcp_approvals = vec![McpApproval { server: "impeccable".into(), mode: "approve".into() }];
+    s.mcp_approvals = vec![McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    }];
     let second = apply(&s, Some(&first), &home, &journal, None).unwrap();
     let result = undo(&s, Some(&second), &home).unwrap();
-    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+    assert!(
+        result["conflicts"].as_array().unwrap().is_empty(),
+        "{result}"
+    );
     assert_eq!(fs::read_to_string(&config).unwrap(), original);
 }
 
@@ -1464,8 +1495,14 @@ fn undo_without_a_journal_finds_the_block_even_from_a_reduced_spec() {
     let home = temp();
     let s = spec("claude", root.clone());
     apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
-    let reduced = Spec { instruction: None, ..spec("claude", root) };
-    assert_eq!(undo(&reduced, None, &home).unwrap_err().0, "journal_missing");
+    let reduced = Spec {
+        instruction: None,
+        ..spec("claude", root)
+    };
+    assert_eq!(
+        undo(&reduced, None, &home).unwrap_err().0,
+        "journal_missing"
+    );
 }
 
 #[test]
@@ -1489,12 +1526,23 @@ fn a_block_left_by_an_apply_without_instruction_is_not_overwritten_later() {
     let s = spec("claude", root.clone());
     let first = apply(&s, None, &home, &journal, None).unwrap();
     let rules = root.join("CLAUDE.md");
-    let edited = fs::read_to_string(&rules).unwrap().replace("managed text", "managed text\nMy own rule.");
+    let edited = fs::read_to_string(&rules)
+        .unwrap()
+        .replace("managed text", "managed text\nMy own rule.");
     fs::write(&rules, &edited).unwrap();
-    let without = Spec { instruction: None, hooks: vec![hook("SessionStart", "x")], ..s.clone() };
+    let without = Spec {
+        instruction: None,
+        hooks: vec![hook("SessionStart", "x")],
+        ..s.clone()
+    };
     let second = apply(&without, Some(&first), &home, &journal, None).unwrap();
     assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
-    assert_eq!(apply(&s, Some(&second), &home, &journal, None).unwrap_err().0, "instruction_drift");
+    assert_eq!(
+        apply(&s, Some(&second), &home, &journal, None)
+            .unwrap_err()
+            .0,
+        "instruction_drift"
+    );
     assert_eq!(fs::read_to_string(&rules).unwrap(), edited);
 }
 
@@ -1514,7 +1562,10 @@ fn a_personal_hook_with_the_same_command_is_not_a_conflict_and_a_lone_edited_hoo
     value["x"] = json!(2);
     fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     let result = undo(&s, Some(&j), &home).unwrap();
-    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+    assert!(
+        result["conflicts"].as_array().unwrap().is_empty(),
+        "{result}"
+    );
 
     // One managed hook, edited: undo removes nothing and names it.
     let root = temp();
@@ -1528,5 +1579,12 @@ fn a_personal_hook_with_the_same_command_is_not_a_conflict_and_a_lone_edited_hoo
     value["hooks"]["Stop"][0]["hooks"][0]["timeout"] = json!(5);
     fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     let result = undo(&s, Some(&j), &home).unwrap();
-    assert!(result["conflicts"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("#hook:Stop:loop stop")), "{result}");
+    assert!(
+        result["conflicts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c.as_str().unwrap().contains("#hook:Stop:loop stop")),
+        "{result}"
+    );
 }

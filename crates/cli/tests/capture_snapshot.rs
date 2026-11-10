@@ -136,7 +136,7 @@ fn snapshot_rejects_traversal_symlinks_and_non_html_entries() {
 #[test]
 fn fresh_capture_ignores_saved_receipts_and_rejects_stale_or_wrong_documents() {
     use impeccable_comp_verbs::asset_capture::{
-        AssetCapture, AssetCaptureRequest, AssetRenderer, capture_sha256,
+        capture_sha256, AssetCapture, AssetCaptureRequest, AssetRenderer,
     };
     use serde_json::json;
     use std::sync::Arc;
@@ -182,8 +182,10 @@ fn fresh_capture_ignores_saved_receipts_and_rejects_stale_or_wrong_documents() {
     assert_eq!(capture.receipt["inputSnapshot"]["digest"], s.digest());
     assert_eq!(renderer.calls, 1);
     renderer.wrong = true;
-    let error = s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
-        .err().unwrap();
+    let error = s
+        .capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
+        .err()
+        .unwrap();
     assert!(error.contains("art: resolvedUrl"), "{error}");
     renderer.partial = true;
     assert!(
@@ -194,21 +196,18 @@ fn fresh_capture_ignores_saved_receipts_and_rejects_stale_or_wrong_documents() {
     renderer.partial = false;
     renderer.wrong = false;
     renderer.entry = b"different entry".to_vec();
-    assert!(
-        s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
-            .is_err()
-    );
+    assert!(s
+        .capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
+        .is_err());
     renderer.entry = s.bytes("index.html").unwrap().to_vec();
     renderer.mutation = Some(f.0.join("assets/art.png"));
-    assert!(
-        s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
-            .is_err()
-    );
+    assert!(s
+        .capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
+        .is_err());
     let calls = renderer.calls;
-    assert!(
-        s.capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
-            .is_err()
-    );
+    assert!(s
+        .capture_region(&mut renderer, ".impeccable/spec.json", "art", true)
+        .is_err());
     assert_eq!(
         renderer.calls, calls,
         "stale input must fail before renderer launch"
@@ -249,10 +248,8 @@ fn snapshot_server_serves_frozen_bytes_and_checks_host() {
     fs::write(f.0.join("assets/art.png"), b"new bytes").unwrap();
     let actual = get("/assets/art.png", host);
     assert!(actual.ends_with(b"asset bytes"));
-    assert!(
-        String::from_utf8_lossy(&actual)
-            .contains("Cache-Control: private, max-age=3600, immutable")
-    );
+    assert!(String::from_utf8_lossy(&actual)
+        .contains("Cache-Control: private, max-age=3600, immutable"));
     assert!(String::from_utf8_lossy(&actual).starts_with("HTTP/1.1 200 OK"));
     for (path, h) in [
         ("/.env", host),
@@ -320,7 +317,12 @@ fn native_capture_binds_bom_entry_to_its_frozen_bytes() {
     fs::write(f.0.join(".impeccable/spec.json"),br#"{"comp":".impeccable/comp.png","compSize":{"width":200,"height":200},"regions":[{"id":"art","plate":"assets/art.png","px":{"x":20,"y":20,"w":80,"h":80}}]}"#).unwrap();
     let snapshot = Arc::new(HtmlSnapshot::freeze(f.selection()).unwrap());
     let capture = snapshot
-        .capture_region(&mut CdpAssetRenderer::from_process_env(), ".impeccable/spec.json", "art", true)
+        .capture_region(
+            &mut CdpAssetRenderer::from_process_env(),
+            ".impeccable/spec.json",
+            "art",
+            true,
+        )
         .unwrap();
     assert_eq!(capture.receipt["status"], "captured", "{}", capture.receipt);
     assert_eq!(capture.receipt["documentResponseText"], true);
@@ -468,11 +470,9 @@ fn viewport_capture_does_not_switch_responsive_picture_sources() {
         );
         assert_eq!(capture.receipt["batchStabilityVerified"], true);
         let responses = capture.receipt["settlingResponses"].as_array().unwrap();
-        assert!(
-            !responses
-                .iter()
-                .any(|r| r["url"].as_str().unwrap_or("").ends_with("mobile.png"))
-        );
+        assert!(!responses
+            .iter()
+            .any(|r| r["url"].as_str().unwrap_or("").ends_with("mobile.png")));
     }
 }
 
@@ -491,9 +491,17 @@ fn snapshot_server_serves_around_idle_and_late_connections_and_closes_them_on_dr
     let snapshot = Arc::new(HtmlSnapshot::freeze(f.selection()).unwrap());
     let server = snapshot.serve().unwrap();
     let url = server.entry_url();
-    let host = url.strip_prefix("http://").unwrap().split('/').next().unwrap().to_string();
+    let host = url
+        .strip_prefix("http://")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_string();
     let get = |stream: &mut TcpStream| {
-        stream.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
         write!(stream, "GET /index.html HTTP/1.1\r\nHost: {host}\r\n\r\n").unwrap();
         let mut response = Vec::new();
         stream.read_to_end(&mut response).unwrap();
@@ -505,15 +513,24 @@ fn snapshot_server_serves_around_idle_and_late_connections_and_closes_them_on_dr
     std::thread::sleep(Duration::from_millis(50));
     let started = Instant::now();
     assert!(get(&mut TcpStream::connect(&host).unwrap()).starts_with("HTTP/1.1 200 OK"));
-    assert!(started.elapsed() < Duration::from_millis(1500), "an idle connection held up a request");
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "an idle connection held up a request"
+    );
     // Connected now, written later than the old 2 s idle limit.
     let mut late = TcpStream::connect(&host).unwrap();
     std::thread::sleep(Duration::from_millis(2500));
-    assert!(get(&mut late).starts_with("HTTP/1.1 200 OK"), "a late request lost its connection");
+    assert!(
+        get(&mut late).starts_with("HTTP/1.1 200 OK"),
+        "a late request lost its connection"
+    );
     drop(server);
     idle.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let closed = Instant::now();
     let mut buf = [0u8; 16];
     assert!(matches!(idle.read(&mut buf), Ok(0) | Err(_)));
-    assert!(closed.elapsed() < Duration::from_secs(4), "dropping the server left a connection open");
+    assert!(
+        closed.elapsed() < Duration::from_secs(4),
+        "dropping the server left a connection open"
+    );
 }

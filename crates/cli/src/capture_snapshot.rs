@@ -2,7 +2,7 @@
 //! The native caller owns the selection; private bound inputs are never HTTP routes.
 use impeccable_browser::html_snapshot::Connections;
 use impeccable_comp_verbs::asset_capture::capture_sha256 as hash;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 /// Most raster regions one native capture measures in a frame. The browser
 /// adapter batches a frame's regions into one document and refuses a larger
 /// batch, so no native capture, in process or through the host service, ever
@@ -15,8 +15,8 @@ use std::{
     net::{TcpListener, TcpStream},
     path::{Component, Path, PathBuf},
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -149,7 +149,9 @@ impl HtmlSnapshot {
             || region_ids.len() > MAX_CAPTURE_REGIONS
             || region_ids.iter().copied().collect::<BTreeSet<_>>().len() != region_ids.len()
         {
-            return Err(format!("capture requires 1 to {MAX_CAPTURE_REGIONS} distinct regions"));
+            return Err(format!(
+                "capture requires 1 to {MAX_CAPTURE_REGIONS} distinct regions"
+            ));
         }
         let spec: Value = serde_json::from_slice(
             self.bytes(spec_path)
@@ -241,9 +243,13 @@ impl HtmlSnapshot {
                     "expectedBox": request.expected_box,
                     "reducedMotion": reduced_motion,
                 });
-                let mismatches: Vec<_> = expected.as_object().unwrap().iter()
+                let mismatches: Vec<_> = expected
+                    .as_object()
+                    .unwrap()
+                    .iter()
                     .filter(|(key, value)| receipt[*key] != **value)
-                    .map(|(key, _)| key.as_str()).collect();
+                    .map(|(key, _)| key.as_str())
+                    .collect();
                 if !mismatches.is_empty() {
                     return Err(format!(
                         "native capture does not match frozen inputs and document ({region_id}: {})",
@@ -276,7 +282,9 @@ impl HtmlSnapshot {
     pub fn take_requested(&self) -> Result<Vec<String>, String> {
         let log = std::mem::take(&mut *self.requested.lock().unwrap_or_else(|e| e.into_inner()));
         if log.overflowed {
-            return Err(format!("the page requested more than {MAX_LOGGED_REQUESTS} distinct paths"));
+            return Err(format!(
+                "the page requested more than {MAX_LOGGED_REQUESTS} distinct paths"
+            ));
         }
         Ok(log.paths.into_iter().collect())
     }
@@ -516,7 +524,11 @@ fn respond(
         && protocol == Some("HTTP/1.1")
         && first.next().is_none()
         && hosts == [host];
-    let asked = if valid { target.and_then(decode_target) } else { None };
+    let asked = if valid {
+        target.and_then(decode_target)
+    } else {
+        None
+    };
     if let Some(name) = &asked {
         let mut log = snapshot.requested.lock().unwrap_or_else(|e| e.into_inner());
         if log.paths.len() < MAX_LOGGED_REQUESTS || log.paths.contains(name) {

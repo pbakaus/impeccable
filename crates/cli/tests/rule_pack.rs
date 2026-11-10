@@ -254,8 +254,14 @@ fn cli_stop_pass_reports_only_pack_findings_the_session_added() {
         if session == "none" {
             assert!(!output.contains("testcli/"), "{output}");
         } else {
-            assert!(output.contains("L2 [testcli/source] [new]"), "the added finding is reported: {output}");
-            assert!(!output.contains("L1 [testcli/source]"), "the finding the file already had stays hidden: {output}");
+            assert!(
+                output.contains("L2 [testcli/source] [new]"),
+                "the added finding is reported: {output}"
+            );
+            assert!(
+                !output.contains("L1 [testcli/source]"),
+                "the finding the file already had stays hidden: {output}"
+            );
         }
     }
 }

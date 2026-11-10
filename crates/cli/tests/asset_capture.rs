@@ -25,7 +25,8 @@ fn native_capture_distinguishes_paint_from_file_presence() {
         // One thread per connection, so a socket Chrome opens and leaves idle
         // never holds the page's requests behind its read timeout.
         for mut stream in listener.incoming().flatten() {
-            let (transparent_response, asset, wrong) = (transparent_response.clone(), asset.clone(), wrong.clone());
+            let (transparent_response, asset, wrong) =
+                (transparent_response.clone(), asset.clone(), wrong.clone());
             std::thread::spawn(move || {
                 stream
                     .set_read_timeout(Some(Duration::from_secs(60)))
@@ -254,7 +255,12 @@ fn native_capture_distinguishes_paint_from_file_presence() {
         if mode == "rotated-overlap" {
             assert_eq!(instances.len(), 2);
             assert!(instances.iter().all(|i| i["restorationVerified"] == true));
-            assert!(r["combinedContribution"]["changedPixelsInRegion"].as_u64().unwrap() > 0);
+            assert!(
+                r["combinedContribution"]["changedPixelsInRegion"]
+                    .as_u64()
+                    .unwrap()
+                    > 0
+            );
             continue;
         }
         if mode == "wrong" {
@@ -275,7 +281,17 @@ fn native_capture_distinguishes_paint_from_file_presence() {
         }
         assert_eq!(i["status"], "measured", "{mode}: {r}");
         let pixels = i["changedPixelsInRegion"].as_u64().unwrap();
-        if ["decoration", "hidden", "opacity", "clip", "covered", "pseudo-hidden", "pseudo-covered"].contains(&mode) {
+        if [
+            "decoration",
+            "hidden",
+            "opacity",
+            "clip",
+            "covered",
+            "pseudo-hidden",
+            "pseudo-covered",
+        ]
+        .contains(&mode)
+        {
             assert_eq!(pixels, 0, "{mode}");
         } else {
             assert!(pixels > 0, "{mode}");

@@ -121,7 +121,12 @@ pub(super) fn mcp_resource_id(spec: &Spec, name: &str) -> String {
     format!("mcp:{}", hex(&Sha256::digest(identity.as_bytes())))
 }
 pub(super) fn mcp_config(server: &McpServer) -> Value {
-    json!({"name":server.name,"command":server.command,"args":server.args,"env":server.env})
+    match &server.url {
+        Some(url) => json!({"name":server.name,"url":url}),
+        None => {
+            json!({"name":server.name,"command":server.command,"args":server.args,"env":server.env})
+        }
+    }
 }
 pub(super) fn find_peer_mcp_record(home: &Path, spec: &Spec, name: &str) -> Option<ResourceRecord> {
     let id = mcp_resource_id(spec, name);
@@ -165,6 +170,14 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
         {
             return None;
         }
+        // A remote server: `url` directly (Claude) or under `transport` (Codex's JSON).
+        if let Some(url) = candidate
+            .get("url")
+            .or_else(|| candidate.get("transport").and_then(|t| t.get("url")))
+            .and_then(Value::as_str)
+        {
+            return Some(json!({"name":name,"url":url}));
+        }
         let command = candidate.get("command")?.as_str()?;
         let args = match candidate.get("args") {
             None => Vec::new(),
@@ -189,6 +202,7 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
     }
     let text = std::str::from_utf8(bytes).ok()?;
     let mut command = None;
+    let mut url = None;
     let mut args: Vec<String> = Vec::new();
     let mut env = std::collections::BTreeMap::new();
     for line in text.lines() {
@@ -197,6 +211,7 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
         };
         match key.trim().to_ascii_lowercase().as_str() {
             "command" => command = Some(value.trim().to_owned()),
+            "url" => url = Some(value.trim().to_owned()),
             "args" => {
                 let value = value.trim();
                 if !value.is_empty() {
@@ -213,6 +228,9 @@ pub(super) fn parse_mcp_observation(bytes: &[u8], name: &str) -> Option<Value> {
             }
             _ => {}
         }
+    }
+    if let Some(url) = url {
+        return Some(json!({"name":name,"url":url}));
     }
     Some(json!({"name":name,"command":command?,"args":args,"env":env}))
 }
@@ -234,7 +252,8 @@ pub(super) fn mcp_get(
         &spec.root,
     );
     if spec.harness == "claude" {
-        cmd.args(["mcp", "get", name, "--scope", "user"]);
+        // Claude Code 2.1.x has no --scope on `get`; it reports the server's scope itself.
+        cmd.args(["mcp", "get", name]);
     } else {
         cmd.args(["mcp", "get", name, "--json"]);
     }
@@ -294,18 +313,23 @@ pub(super) fn run_mcp(
             name,
         ]);
         if let Some(m) = server {
-            cmd.arg(
-                serde_json::to_string(&json!({"command":m.command,"args":m.args,"env":m.env}))
-                    .unwrap(),
-            );
+            let config = match &m.url {
+                Some(url) => json!({"type":"http","url":url}),
+                None => json!({"command":m.command,"args":m.args,"env":m.env}),
+            };
+            cmd.arg(serde_json::to_string(&config).unwrap());
         }
     } else {
         cmd.args(["mcp", action, name]);
         if let Some(m) = server {
-            for (key, value) in &m.env {
-                cmd.arg("--env").arg(format!("{key}={value}"));
+            if let Some(url) = &m.url {
+                cmd.arg("--url").arg(url);
+            } else {
+                for (key, value) in &m.env {
+                    cmd.arg("--env").arg(format!("{key}={value}"));
+                }
+                cmd.arg("--").arg(&m.command).args(&m.args);
             }
-            cmd.arg("--").arg(&m.command).args(&m.args);
         }
     }
     let output = cmd.output().map_err(|_| {

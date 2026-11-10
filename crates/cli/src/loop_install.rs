@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -184,7 +184,8 @@ fn executable(app: &Path) -> Result<PathBuf> {
     fs::canonicalize(app.join("Contents/MacOS").join(name)).map_err(|e| e.to_string())
 }
 
-const RUNNING: &str = "Impeccable Loop is running. Quit Loop first, then run impeccable loop update.";
+const RUNNING: &str =
+    "Impeccable Loop is running. Quit Loop first, then run impeccable loop update.";
 /// How long `loop update` waits for a running Loop to quit.
 const QUIT_WAIT: Duration = Duration::from_secs(10);
 
@@ -288,6 +289,17 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
         return Ok(USAGE.into());
+    }
+    match args.first().map(String::as_str) {
+        Some("connect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::connect(io);
+        }
+        Some("disconnect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::disconnect(io);
+        }
+        _ => {}
     }
     let update = match args.first().map(String::as_str) {
         Some("install") => false,

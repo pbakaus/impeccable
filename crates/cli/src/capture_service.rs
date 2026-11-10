@@ -6,7 +6,7 @@ use impeccable_comp_verbs::entry_capture::{
     ApprovedReference, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest, EntryStage,
     FrameEvidence,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Read, Write},
@@ -113,10 +113,14 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     if key.len() < 32 {
         return Err("capability too short".into());
     }
-    let renderer=ReviewedEntryRenderer{session:std::env::var_os("IMPECCABLE_CAPTURE_REVIEW_SESSION").map(PathBuf::from)};
+    let renderer = ReviewedEntryRenderer {
+        session: std::env::var_os("IMPECCABLE_CAPTURE_REVIEW_SESSION").map(PathBuf::from),
+    };
     // Read host policy once. Requests cannot assert or manufacture approval.
-    let component_review_pending = std::env::var("IMPECCABLE_COMPONENT_REVIEW_PENDING").as_deref() == Ok("1");
-    let review_tool = std::env::var("IMPECCABLE_COMPONENT_REVIEW_TOOL").unwrap_or_else(|_| "component_review".into());
+    let component_review_pending =
+        std::env::var("IMPECCABLE_COMPONENT_REVIEW_PENDING").as_deref() == Ok("1");
+    let review_tool = std::env::var("IMPECCABLE_COMPONENT_REVIEW_TOOL")
+        .unwrap_or_else(|_| "component_review".into());
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     write_ready(
@@ -164,8 +168,10 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             let text = |k: &str| body[k].as_str().ok_or_else(|| format!("missing {k}"));
             match route.as_str() {
                 "/capture" => {
-                    require_component_review(component_review_pending
-                        && capture_owes_review(&root, text("spec")?), &review_tool)?;
+                    require_component_review(
+                        component_review_pending && capture_owes_review(&root, text("spec")?),
+                        &review_tool,
+                    )?;
                     if active.len() >= 2 {
                         return Err("active capture limit".into());
                     }
@@ -187,8 +193,7 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                     let captured = ServiceEntry::new(captured, handle.clone(), &root);
                     let evidence = captured.evidence();
                     let frames:Vec<_>=evidence.frames.iter().map(|f|json!({"name":f.name,"png":base64::engine::general_purpose::STANDARD.encode(&f.png),"regions":f.regions.iter().map(|r|r.receipt.clone()).collect::<Vec<_>>()})).collect();
-                    let response =
-                        json!({"ok":true,"handle":handle,"report":evidence.report,"frames":frames,"approvedReference":captured.approved_reference().map(|a|json!({"png":base64::engine::general_purpose::STANDARD.encode(&a.png),"proof":a.proof}))});
+                    let response = json!({"ok":true,"handle":handle,"report":evidence.report,"frames":frames,"approvedReference":captured.approved_reference().map(|a|json!({"png":base64::engine::general_purpose::STANDARD.encode(&a.png),"proof":a.proof}))});
                     if serde_json::to_vec(&response)
                         .map_err(|e| e.to_string())?
                         .len()
@@ -279,7 +284,11 @@ impl ServiceEntry {
     }
 }
 impl CapturedEntry for ServiceEntry {
-    fn approved_reference(&self)->Option<&impeccable_comp_verbs::entry_capture::ApprovedReference>{self.source.approved_reference()}
+    fn approved_reference(
+        &self,
+    ) -> Option<&impeccable_comp_verbs::entry_capture::ApprovedReference> {
+        self.source.approved_reference()
+    }
     fn evidence(&self) -> &impeccable_comp_verbs::entry_capture::EntryEvidence {
         &self.evidence
     }
@@ -335,7 +344,11 @@ fn audit_saved(
     if report != evidence.report {
         return Err("saved capture report differs from host evidence".into());
     }
-    if let Some(approved)=capture.approved_reference(){if read("human-approved.png")?!=approved.png{return Err("saved human reference differs from reviewed capture".into())}}
+    if let Some(approved) = capture.approved_reference() {
+        if read("human-approved.png")? != approved.png {
+            return Err("saved human reference differs from reviewed capture".into());
+        }
+    }
     for frame in &evidence.frames {
         if read(&format!("{}.png", frame.name))? != frame.png {
             return Err("saved frame differs from host capture".into());
@@ -438,7 +451,11 @@ struct RemoteEntry {
     evidence: impeccable_comp_verbs::entry_capture::EntryEvidence,
 }
 impl CapturedEntry for RemoteEntry {
-    fn approved_reference(&self)->Option<&impeccable_comp_verbs::entry_capture::ApprovedReference>{self.approved.as_ref()}
+    fn approved_reference(
+        &self,
+    ) -> Option<&impeccable_comp_verbs::entry_capture::ApprovedReference> {
+        self.approved.as_ref()
+    }
     fn evidence(&self) -> &impeccable_comp_verbs::entry_capture::EntryEvidence {
         &self.evidence
     }
@@ -487,7 +504,8 @@ impl EntryRenderer for RemoteEntryRenderer {
 /// entirely in code.
 fn bound_raster_ids(report: &Value, r: &EntryRequest) -> Result<Vec<String>, String> {
     let root = std::fs::canonicalize(&r.root).map_err(|e| e.to_string())?;
-    let bytes = std::fs::read(root.join(&r.spec)).map_err(|e| format!("cannot read bound spec: {e}"))?;
+    let bytes =
+        std::fs::read(root.join(&r.spec)).map_err(|e| format!("cannot read bound spec: {e}"))?;
     let frozen = report["manifest"]["files"]
         .as_array()
         .into_iter()
@@ -503,7 +521,12 @@ fn bound_raster_ids(report: &Value, r: &EntryRequest) -> Result<Vec<String>, Str
         .ok_or("missing spec regions")?
         .iter()
         .filter(|g| g["medium"] == "raster")
-        .map(|g| g["id"].as_str().map(str::to_string).ok_or_else(|| "raster region missing id".to_string()))
+        .map(|g| {
+            g["id"]
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "raster region missing id".to_string())
+        })
         .collect()
 }
 
@@ -540,16 +563,25 @@ fn parse_capture(
         });
     }
     if text_only
-        && !matches!(report["dependencyPolicy"].as_str(), Some("hero-review-manifest" | "static-inventory"))
+        && !matches!(
+            report["dependencyPolicy"].as_str(),
+            Some("hero-review-manifest" | "static-inventory")
+        )
     {
         return Err("invalid native capture dependency policy".into());
     }
     // Either kind: the page is never served the spec or the comp, by its list
     // of served files or by the input manifest's own served flags.
-    let served = report["servedToPage"].as_array().ok_or("missing native capture page inventory")?;
+    let served = report["servedToPage"]
+        .as_array()
+        .ok_or("missing native capture page inventory")?;
     let bound = |f: &Value| f["path"] == r.spec.as_str() || f["path"] == r.reference.as_str();
     if served.iter().any(bound)
-        || report["manifest"]["files"].as_array().into_iter().flatten().any(|f| bound(f) && f["served"] != false)
+        || report["manifest"]["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|f| bound(f) && f["served"] != false)
     {
         return Err("native capture served a bound input to the page".into());
     }
@@ -572,7 +604,9 @@ fn parse_capture(
             let png = base64::engine::general_purpose::STANDARD
                 .decode(f["png"].as_str().ok_or("missing frame PNG")?)
                 .map_err(|e| e.to_string())?;
-            let receipts = f["regions"].as_array().ok_or("invalid native capture regions")?;
+            let receipts = f["regions"]
+                .as_array()
+                .ok_or("invalid native capture regions")?;
             // Every frame proves images stayed under the share limit: anywhere
             // for a text-only spec, outside the declared raster regions otherwise.
             let share = report["frameProofs"][name]["rasterCoverage"]["share"].as_f64();
@@ -586,9 +620,14 @@ fn parse_capture(
                 }
             } else {
                 // Mobile measures only the first raster region (see entry_capture).
-                let wanted = if name == "mobile" { &raster[..1] } else { &raster[..] };
+                let wanted = if name == "mobile" {
+                    &raster[..1]
+                } else {
+                    &raster[..]
+                };
                 // Every receipt must name its region: one without an id is malformed, not skipped.
-                let mut got: Vec<Option<&str>> = receipts.iter().map(|g| g["regionId"].as_str()).collect();
+                let mut got: Vec<Option<&str>> =
+                    receipts.iter().map(|g| g["regionId"].as_str()).collect();
                 got.sort_unstable();
                 let mut want: Vec<Option<&str>> = wanted.iter().map(|w| Some(w.as_str())).collect();
                 want.sort_unstable();
@@ -622,9 +661,18 @@ fn parse_capture(
         {
             return Err("invalid human reference proof".into());
         }
-        Some(ApprovedReference { png, proof: a["proof"].clone() })
+        Some(ApprovedReference {
+            png,
+            proof: a["proof"].clone(),
+        })
     };
-    Ok((EntryEvidence { report: report.clone(), frames }, approved))
+    Ok((
+        EntryEvidence {
+            report: report.clone(),
+            frames,
+        },
+        approved,
+    ))
 }
 
 #[cfg(test)]
@@ -662,21 +710,17 @@ mod tests {
         }
         assert!(parse("POST /capture HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}".into()).is_err());
         assert!(parse(format!("{header}Content-Length: 16385\r\n\r\n")).is_err());
-        assert!(
-            parse(format!(
-                "{header}X-Large: {}\r\nContent-Length: 2\r\n\r\n{{}}",
-                "x".repeat(8192)
-            ))
-            .is_err()
-        );
+        assert!(parse(format!(
+            "{header}X-Large: {}\r\nContent-Length: 2\r\n\r\n{{}}",
+            "x".repeat(8192)
+        ))
+        .is_err());
         for body in [r#"{"root":"/"}"#, r#"{"url":"file:///outside"}"#, "[]"] {
-            assert!(
-                parse(format!(
-                    "{header}Content-Length: {}\r\n\r\n{body}",
-                    body.len()
-                ))
-                .is_err()
-            );
+            assert!(parse(format!(
+                "{header}Content-Length: {}\r\n\r\n{body}",
+                body.len()
+            ))
+            .is_err());
         }
     }
     #[test]
@@ -688,17 +732,19 @@ mod tests {
         let ready = dir.join("ready.json");
         write_ready(&ready, b"{\"port\":1}").unwrap();
         assert_eq!(std::fs::read(&ready).unwrap(), b"{\"port\":1}");
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "temp file must not remain");
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "temp file must not remain"
+        );
         assert!(write_ready(&dir.join("missing/ready.json"), b"{}").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
     #[test]
     fn partial_service_configuration_never_falls_back_to_local_capture() {
-        assert!(
-            RemoteEntryRenderer::from_env(&HashMap::new())
-                .unwrap()
-                .is_none()
-        );
+        assert!(RemoteEntryRenderer::from_env(&HashMap::new())
+            .unwrap()
+            .is_none());
         let mut env = HashMap::from([("IMPECCABLE_CAPTURE_PORT".into(), "12345".into())]);
         assert!(RemoteEntryRenderer::from_env(&env).is_err());
         env.insert("IMPECCABLE_CAPTURE_CAPABILITY".into(), "a".repeat(64));
@@ -723,18 +769,37 @@ mod component_boundary_tests {
     }
     #[test]
     fn pending_binds_only_while_the_captured_spec_owes_a_review() {
-        let root = std::env::temp_dir().join(format!("impeccable-capture-owed-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("impeccable-capture-owed-{}", std::process::id()));
         std::fs::create_dir_all(root.join("specs")).unwrap();
-        let write = |name: &str, body: &str| std::fs::write(root.join("specs").join(name), body).unwrap();
-        write("text.json", r#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
-        write("plate.json", r#"{"regions":[{"id":"art","kind":"plate","box":{"x":0,"y":0,"w":1,"h":1}}]}"#);
+        let write =
+            |name: &str, body: &str| std::fs::write(root.join("specs").join(name), body).unwrap();
+        write(
+            "text.json",
+            r#"{"regions":[{"id":"copy","kind":"text","box":{"x":0,"y":0,"w":1,"h":1}}]}"#,
+        );
+        write(
+            "plate.json",
+            r#"{"regions":[{"id":"art","kind":"plate","box":{"x":0,"y":0,"w":1,"h":1}}]}"#,
+        );
         write("invalid.json", "{}");
         assert!(!capture_owes_review(&root, "specs/text.json"));
         assert!(capture_owes_review(&root, "specs/plate.json"));
-        assert!(capture_owes_review(&root, "specs/invalid.json"), "no regions array is not a measured spec");
+        assert!(
+            capture_owes_review(&root, "specs/invalid.json"),
+            "no regions array is not a measured spec"
+        );
         assert!(capture_owes_review(&root, "specs/missing.json"));
-        assert!(require_component_review(true && capture_owes_review(&root, "specs/plate.json"), "component_review").is_err());
-        assert!(require_component_review(true && capture_owes_review(&root, "specs/text.json"), "component_review").is_ok());
+        assert!(require_component_review(
+            true && capture_owes_review(&root, "specs/plate.json"),
+            "component_review"
+        )
+        .is_err());
+        assert!(require_component_review(
+            true && capture_owes_review(&root, "specs/text.json"),
+            "component_review"
+        )
+        .is_ok());
         let _ = std::fs::remove_dir_all(&root);
     }
 }
@@ -755,7 +820,9 @@ mod parse_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".impeccable/build")).unwrap();
         let mut regions = vec![json!({"id":"headline","kind":"text","medium":"semantic"})];
-        regions.extend((0..raster).map(|i| json!({"id":format!("art-{i}"),"kind":"plate","medium":"raster"})));
+        regions.extend(
+            (0..raster).map(|i| json!({"id":format!("art-{i}"),"kind":"plate","medium":"raster"})),
+        );
         let spec = serde_json::to_vec(&json!({"comp":"comp.png","regions":regions})).unwrap();
         std::fs::write(dir.join(SPEC), &spec).unwrap();
         let request = EntryRequest {
@@ -781,13 +848,24 @@ mod parse_tests {
         json!({"name":"hero","png":"","regions":regions})
     }
     fn receipts(n: usize) -> Vec<Value> {
-        (0..n).map(|i| json!({"regionId":format!("art-{i}")})).collect()
+        (0..n)
+            .map(|i| json!({"regionId":format!("art-{i}")}))
+            .collect()
     }
     /// The parsed report and per-frame receipt counts.
-    fn parse(request: &EntryRequest, report: &Value, frame: Value) -> Result<(Value, Vec<usize>), String> {
+    fn parse(
+        request: &EntryRequest,
+        report: &Value,
+        frame: Value,
+    ) -> Result<(Value, Vec<usize>), String> {
         parse_frames(request, report, "hero", vec![frame])
     }
-    fn parse_frames(request: &EntryRequest, report: &Value, stage: &str, frames: Vec<Value>) -> Result<(Value, Vec<usize>), String> {
+    fn parse_frames(
+        request: &EntryRequest,
+        report: &Value,
+        stage: &str,
+        frames: Vec<Value>,
+    ) -> Result<(Value, Vec<usize>), String> {
         let result = json!({"report":report,"frames":frames,"approvedReference":null});
         parse_capture(&result, request, stage, "h-1")
             .map(|(e, _)| (e.report, e.frames.iter().map(|f| f.regions.len()).collect()))
@@ -808,12 +886,18 @@ mod parse_tests {
             ("/frameProofs/hero/rasterCoverage/share", json!(0.15)),
             ("/frameProofs/hero", json!(null)),
             ("/dependencyPolicy", json!("caller")),
-            ("/servedToPage", json!([{"path":"index.html"},{"path":"comp.png"}])),
+            (
+                "/servedToPage",
+                json!([{"path":"index.html"},{"path":"comp.png"}]),
+            ),
             ("/servedToPage", json!([{"path":SPEC}])),
         ] {
             let mut broken = report.clone();
             *broken.pointer_mut(pointer).unwrap() = value;
-            assert!(parse(&request, &broken, frame(vec![])).is_err(), "{pointer}");
+            assert!(
+                parse(&request, &broken, frame(vec![])).is_err(),
+                "{pointer}"
+            );
         }
         // The spec, not the response, decides the kind.
         let mut claimed = report.clone();
@@ -833,13 +917,19 @@ mod parse_tests {
         for (pointer, value) in [
             ("/frameProofs/hero/rasterCoverage/share", json!(0.15)),
             ("/frameProofs/hero", json!(null)),
-            ("/servedToPage", json!([{"path":"index.html"},{"path":"comp.png"}])),
+            (
+                "/servedToPage",
+                json!([{"path":"index.html"},{"path":"comp.png"}]),
+            ),
             ("/servedToPage", json!(null)),
             ("/manifest/files/1/served", json!(true)),
         ] {
             let mut broken = report.clone();
             *broken.pointer_mut(pointer).unwrap() = value;
-            assert!(parse(&request, &broken, frame(receipts(2))).is_err(), "{pointer}");
+            assert!(
+                parse(&request, &broken, frame(receipts(2))).is_err(),
+                "{pointer}"
+            );
         }
         // Claiming the text-only method does not excuse a raster spec.
         let mut claimed = report.clone();
@@ -861,10 +951,27 @@ mod parse_tests {
         // Responsive: desktop measures every raster region, mobile only the first.
         let mut responsive = report.clone();
         responsive["stage"] = json!("responsive");
-        let (_, counts) = parse_frames(&request, &responsive, "responsive", vec![named("desktop", receipts(2)), named("mobile", receipts(1))]).unwrap();
+        let (_, counts) = parse_frames(
+            &request,
+            &responsive,
+            "responsive",
+            vec![named("desktop", receipts(2)), named("mobile", receipts(1))],
+        )
+        .unwrap();
         assert_eq!(counts, [2, 1]);
-        for (desktop, mobile) in [(receipts(1), receipts(1)), (receipts(2), receipts(2)), (receipts(2), vec![json!({"regionId":"art-1"})]), (receipts(2), vec![])] {
-            assert!(parse_frames(&request, &responsive, "responsive", vec![named("desktop", desktop), named("mobile", mobile)]).is_err());
+        for (desktop, mobile) in [
+            (receipts(1), receipts(1)),
+            (receipts(2), receipts(2)),
+            (receipts(2), vec![json!({"regionId":"art-1"})]),
+            (receipts(2), vec![]),
+        ] {
+            assert!(parse_frames(
+                &request,
+                &responsive,
+                "responsive",
+                vec![named("desktop", desktop), named("mobile", mobile)]
+            )
+            .is_err());
         }
         // A spec edited after the capture no longer binds it.
         std::fs::write(request.root.join(SPEC), b"{\"regions\":[]}").unwrap();

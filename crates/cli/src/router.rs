@@ -281,11 +281,16 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }
-            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+            named.extend(
+                arm.split('|')
+                    .map(|v| v.trim().trim_matches('"').to_string()),
+            );
         }
         assert!(named.len() > 30, "parsed {named:?}");
         let scans = ["detect", "hook", "hook-before-edit"];
@@ -293,6 +298,9 @@ mod verb_tests {
             .iter()
             .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
             .collect();
-        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
+        );
     }
 }

@@ -217,7 +217,9 @@ pub(super) fn apply(
                 // last wrote, so an outside edit still means surgical undo.
                 pure_install: existing.is_none_or(|x| {
                     x.pure_install
-                        && before.as_ref().is_some_and(|b| hex(&Sha256::digest(b)) == x.written_hash)
+                        && before
+                            .as_ref()
+                            .is_some_and(|b| hex(&Sha256::digest(b)) == x.written_hash)
                 }),
             });
         }

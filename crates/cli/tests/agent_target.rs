@@ -26,9 +26,19 @@ fn http(port: u16, method: &str, target: &str, body: Option<&str>) -> (u16, Stri
     let mut out = Vec::new();
     let _ = s.read_to_end(&mut out);
     let text = String::from_utf8_lossy(&out).into_owned();
-    let status: u16 = text.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
-    let body = text.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default();
-    let body = if text.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+    let status: u16 = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    let body = if text
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
         let mut rest = body.as_str();
         let mut assembled = String::new();
         while let Some((size_line, after)) = rest.split_once("\r\n") {
@@ -132,10 +142,18 @@ static START_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 impl Server {
     fn start(tag: &str) -> Server {
         let _serialized = START_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("impeccable-agent-target-{}-{}", tag, std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "impeccable-agent-target-{}-{}",
+            tag,
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join(".impeccable/live")).unwrap();
-        std::fs::write(dir.join("index.html"), "<html><body><h1>t</h1></body></html>").unwrap();
+        std::fs::write(
+            dir.join("index.html"),
+            "<html><body><h1>t</h1></body></html>",
+        )
+        .unwrap();
         let port = free_port();
         let child = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
             .args(["live-server", &format!("--port={}", port)])
@@ -159,7 +177,12 @@ impl Server {
             serde_json::from_str(&std::fs::read_to_string(&pid_file).unwrap()).unwrap();
         let port = info["port"].as_u64().expect("port") as u16;
         let token = info["token"].as_str().expect("token").to_string();
-        Server { child, dir, port, token }
+        Server {
+            child,
+            dir,
+            port,
+            token,
+        }
     }
 
     fn target(&self, extra: serde_json::Value) -> serde_json::Value {
@@ -191,7 +214,12 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let _ = http(self.port, "GET", &format!("/stop?token={}", self.token), None);
+        let _ = http(
+            self.port,
+            "GET",
+            &format!("/stop?token={}", self.token),
+            None,
+        );
         let _ = self.child.kill();
         let _ = self.child.wait();
         let _ = std::fs::remove_dir_all(&self.dir);
@@ -201,18 +229,43 @@ impl Drop for Server {
 #[test]
 fn agent_target_validates_and_answers_no_browser() {
     let s = Server::start("validate");
-    let (st, body) = post_json(s.port, "/agent-target", serde_json::json!({ "token": "nope", "selector": "h1", "action": "bolder", "count": 3 }));
+    let (st, body) = post_json(
+        s.port,
+        "/agent-target",
+        serde_json::json!({ "token": "nope", "selector": "h1", "action": "bolder", "count": 3 }),
+    );
     assert_eq!(st, 401, "{body}");
-    let (st, body) = post_json(s.port, "/agent-target", s.target(serde_json::json!({ "action": "bold" })));
+    let (st, body) = post_json(
+        s.port,
+        "/agent-target",
+        s.target(serde_json::json!({ "action": "bold" })),
+    );
     assert_eq!(st, 400);
-    assert!(body["error"].as_str().unwrap().contains("invalid action"), "{body}");
+    assert!(
+        body["error"].as_str().unwrap().contains("invalid action"),
+        "{body}"
+    );
     assert!(body["error"].as_str().unwrap().contains("bolder"), "{body}");
-    let (st, body) = post_json(s.port, "/agent-target", s.target(serde_json::json!({ "count": 9 })));
+    let (st, body) = post_json(
+        s.port,
+        "/agent-target",
+        s.target(serde_json::json!({ "count": 9 })),
+    );
     assert_eq!(st, 400);
-    assert_eq!(body["error"], serde_json::json!("agent_target: count must be 1-8"));
-    let (st, body) = post_json(s.port, "/agent-target", serde_json::json!({ "token": s.token, "action": "bolder", "count": 3 }));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target: count must be 1-8")
+    );
+    let (st, body) = post_json(
+        s.port,
+        "/agent-target",
+        serde_json::json!({ "token": s.token, "action": "bolder", "count": 3 }),
+    );
     assert_eq!(st, 400);
-    assert_eq!(body["error"], serde_json::json!("agent_target: selector is required"));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target: selector is required")
+    );
     // No overlay attached: answered at once, not held.
     let (st, body) = post_json(s.port, "/agent-target", s.target(serde_json::json!({})));
     assert_eq!(st, 200);
@@ -225,7 +278,9 @@ fn agent_target_broadcasts_and_resolves_with_the_browser_result() {
     let s = Server::start("resolve");
     let mut tab = Overlay::connect(s.port, &s.token, "tab-a");
     tab.next(|m| m["type"] == "connected");
-    let held = s.hold(serde_json::json!({ "text": "Studio", "index": 2, "prompt": "warmer", "dryRun": true }));
+    let held = s.hold(
+        serde_json::json!({ "text": "Studio", "index": 2, "prompt": "warmer", "dryRun": true }),
+    );
     let pushed = tab.next(|m| m["type"] == "agent_target");
     assert_eq!(pushed["selector"], serde_json::json!("h1"));
     assert_eq!(pushed["text"], serde_json::json!("Studio"));
@@ -235,11 +290,17 @@ fn agent_target_broadcasts_and_resolves_with_the_browser_result() {
     let target_id = pushed["targetId"].as_str().expect("targetId").to_string();
     assert_eq!(target_id.len(), 8);
     let claim = s.claim(&target_id, "tab-a", true);
-    assert_eq!(claim, serde_json::json!({ "ok": true, "granted": true, "pending": true }));
+    assert_eq!(
+        claim,
+        serde_json::json!({ "ok": true, "granted": true, "pending": true })
+    );
     // A second tab is denied while the lease is held, and told the request
     // is still pending.
     let denied = s.claim(&target_id, "tab-b", true);
-    assert_eq!(denied, serde_json::json!({ "ok": true, "granted": false, "pending": true }));
+    assert_eq!(
+        denied,
+        serde_json::json!({ "ok": true, "granted": false, "pending": true })
+    );
     let (st, ack) = post_json(
         s.port,
         "/agent-target-result",
@@ -253,9 +314,16 @@ fn agent_target_broadcasts_and_resolves_with_the_browser_result() {
     assert_eq!(verdict["ok"], serde_json::json!(true));
     assert_eq!(verdict["matchCount"], serde_json::json!(1));
     // Resolved: a late result reports delivered:false, a late claim says gone.
-    let (_, late) = post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true }));
+    let (_, late) = post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true }),
+    );
     assert_eq!(late, serde_json::json!({ "ok": true, "delivered": false }));
-    assert_eq!(s.claim(&target_id, "tab-b", true), serde_json::json!({ "ok": true, "granted": false, "pending": false }));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true),
+        serde_json::json!({ "ok": true, "granted": false, "pending": false })
+    );
 }
 
 #[test]
@@ -284,13 +352,24 @@ fn agent_target_roll_call_answers_busy_once_every_overlay_declined() {
     let held = s.hold(serde_json::json!({}));
     let pushed = a.next(|m| m["type"] == "agent_target");
     let target_id = pushed["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", false), serde_json::json!({ "ok": true, "granted": false, "pending": true }), "the first decline leaves the request pending");
-    assert_eq!(s.claim(&target_id, "tab-b", false), serde_json::json!({ "ok": true, "granted": false, "pending": false }), "the last decline completes the roll call");
+    assert_eq!(
+        s.claim(&target_id, "tab-a", false),
+        serde_json::json!({ "ok": true, "granted": false, "pending": true }),
+        "the first decline leaves the request pending"
+    );
+    assert_eq!(
+        s.claim(&target_id, "tab-b", false),
+        serde_json::json!({ "ok": true, "granted": false, "pending": false }),
+        "the last decline completes the roll call"
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["error"], serde_json::json!("busy"));
     assert_eq!(verdict["state"], serde_json::json!("CYCLING"));
     assert_eq!(verdict["reason"], serde_json::json!("session_active"));
-    assert!(started.elapsed() < Duration::from_millis(350), "the busy verdict did not wait for the timeout");
+    assert!(
+        started.elapsed() < Duration::from_millis(350),
+        "the busy verdict did not wait for the timeout"
+    );
 }
 
 #[test]
@@ -301,10 +380,19 @@ fn agent_target_lease_lapses_and_a_disconnect_releases_it() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // A holds the lease; B is denied inside it.
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    assert_eq!(s.claim(&target_id, "tab-b", true)["granted"], serde_json::json!(false));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true)["granted"],
+        serde_json::json!(false)
+    );
     // A leaves without a result: its lease is handed back at once, well
     // inside the 250ms lease, and B rescues the request.
     drop(a);
@@ -317,7 +405,11 @@ fn agent_target_lease_lapses_and_a_disconnect_releases_it() {
         }
     }
     assert!(granted, "the disconnect released the lease");
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }));
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["ok"], serde_json::json!(true));
     assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
@@ -336,8 +428,15 @@ fn agent_target_replays_pending_targets_to_a_late_overlay() {
     let mut b = Overlay::connect(s.port, &s.token, "tab-b");
     let replayed = b.next(|m| m["type"] == "agent_target");
     assert_eq!(replayed["targetId"], serde_json::json!(target_id));
-    assert_eq!(s.claim(&target_id, "tab-b", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
 }
@@ -350,8 +449,14 @@ fn agent_target_reconnect_keeps_the_overlays_lease_and_word() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // An EventSource reconnect: the same page opens a replacement connection
     // under its clientId before the old one is seen to close.
     let mut a2 = Overlay::connect(s.port, &s.token, "tab-a");
@@ -360,9 +465,20 @@ fn agent_target_reconnect_keeps_the_overlays_lease_and_word() {
     std::thread::sleep(Duration::from_millis(150));
     // The old connection's close must not hand tab-a's lease to anyone:
     // tab-b stays denied, tab-a renews as the holder.
-    assert_eq!(s.claim(&target_id, "tab-b", true)["granted"], serde_json::json!(false), "the lease survived the reconnect");
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true)["granted"],
+        serde_json::json!(false),
+        "the lease survived the reconnect"
+    );
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
     let _ = (&mut a2, &mut b);
@@ -377,13 +493,23 @@ fn agent_target_roll_call_counts_overlays_not_connections() {
     a2.next(|m| m["type"] == "connected");
     let started = Instant::now();
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // One overlay behind two connections reports busy once: that completes
     // the roll call instead of waiting on a "second" report until timeout.
-    assert_eq!(s.claim(&target_id, "tab-a", false), serde_json::json!({ "ok": true, "granted": false, "pending": false }), "one overlay behind two connections completes the roll call alone");
+    assert_eq!(
+        s.claim(&target_id, "tab-a", false),
+        serde_json::json!({ "ok": true, "granted": false, "pending": false }),
+        "one overlay behind two connections completes the roll call alone"
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["error"], serde_json::json!("busy"));
-    assert!(started.elapsed() < Duration::from_millis(350), "the busy verdict did not wait for the timeout");
+    assert!(
+        started.elapsed() < Duration::from_millis(350),
+        "the busy verdict did not wait for the timeout"
+    );
     let _ = &mut a2;
 }
 
@@ -400,7 +526,8 @@ fn agent_target_ignores_the_word_of_a_departed_overlay() {
     let mut last = serde_json::Value::Null;
     for _ in 0..40 {
         let (_, body) = http(s.port, "GET", &format!("/status?token={}", s.token), None);
-        let status: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+        let status: serde_json::Value =
+            serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
         if status["connectedClients"] == serde_json::json!(1) {
             alone = true;
             break;
@@ -410,14 +537,30 @@ fn agent_target_ignores_the_word_of_a_departed_overlay() {
     }
     assert!(alone, "the helper noticed B leave: {last}");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // A busy report under B's id is nobody's word now: it must neither
     // complete the roll call (A has not spoken) nor set its verdict.
-    assert_eq!(s.claim(&target_id, "tab-b", false), serde_json::json!({ "ok": true, "granted": false, "pending": true }));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", false),
+        serde_json::json!({ "ok": true, "granted": false, "pending": true })
+    );
     std::thread::sleep(Duration::from_millis(60));
-    assert!(!held.is_finished(), "a departed overlay's busy report answered the request");
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    assert!(
+        !held.is_finished(),
+        "a departed overlay's busy report answered the request"
+    );
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
 }
@@ -431,20 +574,33 @@ fn agent_target_answers_the_resolution_verdict_when_no_page_can_serve() {
     b.next(|m| m["type"] == "connected");
     let started = Instant::now();
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // Both idle pages lack the element: each declines with its resolution
     // verdict instead of claiming.
     let decline = |cid: &str, raw: u64| serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": cid, "eligible": false, "state": "IDLE", "reason": "no_match", "result": { "ok": false, "error": "no_match", "selector": "h1", "matchCount": 0, "rawMatchCount": raw } });
-    assert_eq!(post_json(s.port, "/agent-target-claim", decline("tab-a", 0)).1, serde_json::json!({ "ok": true, "granted": false, "pending": true }));
+    assert_eq!(
+        post_json(s.port, "/agent-target-claim", decline("tab-a", 0)).1,
+        serde_json::json!({ "ok": true, "granted": false, "pending": true })
+    );
     // Every page said no_match: the roll call stays open for the resolution
     // grace (150ms here), so the last decline is still answered pending.
-    assert_eq!(post_json(s.port, "/agent-target-claim", decline("tab-b", 2)).1, serde_json::json!({ "ok": true, "granted": false, "pending": true }), "an all-no_match roll call stays open for the grace");
+    assert_eq!(
+        post_json(s.port, "/agent-target-claim", decline("tab-b", 2)).1,
+        serde_json::json!({ "ok": true, "granted": false, "pending": true }),
+        "an all-no_match roll call stays open for the grace"
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["error"], serde_json::json!("no_match"), "{verdict}");
     assert_eq!(verdict["ok"], serde_json::json!(false));
     assert_eq!(verdict["targetId"], serde_json::json!(target_id));
     let elapsed = started.elapsed();
-    assert!(elapsed >= Duration::from_millis(140) && elapsed < Duration::from_millis(380), "answered when the grace lapsed, not before and not by the timeout: {elapsed:?}");
+    assert!(
+        elapsed >= Duration::from_millis(140) && elapsed < Duration::from_millis(380),
+        "answered when the grace lapsed, not before and not by the timeout: {elapsed:?}"
+    );
     let _ = &mut b;
 }
 
@@ -456,11 +612,21 @@ fn agent_target_prefers_busy_over_no_match_across_pages() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // The page that has the element is mid-session; the other page lacks it.
     // The agent should retry later, so busy outranks no_match.
-    post_json(s.port, "/agent-target-claim", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "eligible": false, "state": "IDLE", "reason": "no_match", "result": { "ok": false, "error": "no_match", "matchCount": 0, "rawMatchCount": 0 } }));
-    assert_eq!(s.claim(&target_id, "tab-a", false), serde_json::json!({ "ok": true, "granted": false, "pending": false }));
+    post_json(
+        s.port,
+        "/agent-target-claim",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "eligible": false, "state": "IDLE", "reason": "no_match", "result": { "ok": false, "error": "no_match", "matchCount": 0, "rawMatchCount": 0 } }),
+    );
+    assert_eq!(
+        s.claim(&target_id, "tab-a", false),
+        serde_json::json!({ "ok": true, "granted": false, "pending": false })
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["error"], serde_json::json!("busy"), "{verdict}");
     assert_eq!(verdict["reason"], serde_json::json!("session_active"));
@@ -473,15 +639,28 @@ fn agent_target_lets_a_late_mount_claim_within_the_resolution_grace() {
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
     a.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // The only page cannot resolve the target yet: its decline leaves the
     // request pending for the grace instead of answering no_match.
     let decline = serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "eligible": false, "state": "IDLE", "reason": "no_match", "result": { "ok": false, "error": "no_match", "matchCount": 0, "rawMatchCount": 0 } });
-    assert_eq!(post_json(s.port, "/agent-target-claim", decline).1, serde_json::json!({ "ok": true, "granted": false, "pending": true }));
+    assert_eq!(
+        post_json(s.port, "/agent-target-claim", decline).1,
+        serde_json::json!({ "ok": true, "granted": false, "pending": true })
+    );
     std::thread::sleep(Duration::from_millis(60));
     // The element mounted: the same page claims and serves.
-    assert_eq!(s.claim(&target_id, "tab-a", true), serde_json::json!({ "ok": true, "granted": true, "pending": true }));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true),
+        serde_json::json!({ "ok": true, "granted": true, "pending": true })
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
     assert_eq!(verdict["ok"], serde_json::json!(true), "{verdict}");
     assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"));
@@ -495,20 +674,41 @@ fn agent_target_late_overlay_first_no_match_extends_the_grace() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let decline = |cid: &str| serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": cid, "eligible": false, "state": "IDLE", "reason": "no_match", "result": { "ok": false, "error": "no_match", "matchCount": 0, "rawMatchCount": 0 } });
-    assert_eq!(post_json(s.port, "/agent-target-claim", decline("tab-a")).1["pending"], serde_json::json!(true));
+    assert_eq!(
+        post_json(s.port, "/agent-target-claim", decline("tab-a")).1["pending"],
+        serde_json::json!(true)
+    );
     // Tab A's grace (150ms) lapses before tab B says its first word.
     std::thread::sleep(Duration::from_millis(200));
     let reported_at = Instant::now();
     let answer = post_json(s.port, "/agent-target-claim", decline("tab-b")).1;
-    assert_eq!(answer["pending"], serde_json::json!(true), "a late overlay's first no_match word extends the grace: {answer}");
+    assert_eq!(
+        answer["pending"],
+        serde_json::json!(true),
+        "a late overlay's first no_match word extends the grace: {answer}"
+    );
     // Tab B's watcher finds the element within its grace and claims.
     std::thread::sleep(Duration::from_millis(60));
-    assert_eq!(s.claim(&target_id, "tab-b", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "aabbccdd" }),
+    );
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"), "{verdict}");
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("aabbccdd"),
+        "{verdict}"
+    );
     assert!(reported_at.elapsed() < Duration::from_millis(400));
     let _ = &mut b;
 }
@@ -521,26 +721,41 @@ fn agent_target_resolves_from_the_generate_event_when_the_result_never_lands() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // Tab A fires Go: its generate event names the target it serves. Its
     // own result post never lands (the page reloaded right after Go).
     let result = serde_json::json!({ "ok": true, "matchCount": 1, "sessionId": "aabbccdd", "action": "bolder", "count": 3, "element": { "tag": "h1" } });
-    let (status, ack) = post_json(s.port, "/events", serde_json::json!({
-        "token": s.token, "type": "generate", "id": "aabbccdd", "action": "bolder", "count": 3, "pageUrl": "/",
-        "element": { "tagName": "h1", "outerHTML": "<h1>Hero</h1>" },
-        "agentTarget": { "targetId": target_id, "clientId": "tab-a", "result": result },
-    }));
+    let (status, ack) = post_json(
+        s.port,
+        "/events",
+        serde_json::json!({
+            "token": s.token, "type": "generate", "id": "aabbccdd", "action": "bolder", "count": 3, "pageUrl": "/",
+            "element": { "tagName": "h1", "outerHTML": "<h1>Hero</h1>" },
+            "agentTarget": { "targetId": target_id, "clientId": "tab-a", "result": result },
+        }),
+    );
     assert_eq!(status, 200, "{ack}");
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"), "{verdict}");
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("aabbccdd"),
+        "{verdict}"
+    );
     assert_eq!(verdict["targetId"], serde_json::json!(target_id));
     // Nothing is left pending for a rescuer to take over with a second Go.
     let late = s.claim(&target_id, "tab-b", true);
     assert_eq!(late["granted"], serde_json::json!(false), "{late}");
     assert_eq!(late["pending"], serde_json::json!(false), "{late}");
     // The journal carries the event without the envelope.
-    let journal = std::fs::read_to_string(s.dir.join(".impeccable/live/sessions/aabbccdd.jsonl")).unwrap();
+    let journal =
+        std::fs::read_to_string(s.dir.join(".impeccable/live/sessions/aabbccdd.jsonl")).unwrap();
     assert!(journal.contains("generate"), "{journal}");
     assert!(!journal.contains("agentTarget"), "{journal}");
     let _ = &mut b;
@@ -562,28 +777,62 @@ fn agent_target_refuses_a_generate_event_from_a_superseded_claimant() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // Tab A's lease (250ms) lapses while it is still capturing; tab B rescues.
     std::thread::sleep(Duration::from_millis(300));
-    assert_eq!(s.claim(&target_id, "tab-b", true)["granted"], serde_json::json!(true));
+    assert_eq!(
+        s.claim(&target_id, "tab-b", true)["granted"],
+        serde_json::json!(true)
+    );
     // A's delayed event while B holds the lease: refused, nothing journaled.
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "aaaaaaaa", "tab-a"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "aaaaaaaa", "tab-a"),
+    );
     assert_eq!(status, 409, "{body}");
-    assert_eq!(body["error"], serde_json::json!("agent_target_already_served"));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target_already_served")
+    );
     assert!(body.get("sessionId").is_none(), "{body}");
-    assert!(!s.dir.join(".impeccable/live/sessions/aaaaaaaa.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/aaaaaaaa.jsonl")
+        .exists());
     // B's Go serves the request.
-    let (status, _) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "bbbbbbbb", "tab-b"));
+    let (status, _) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "bbbbbbbb", "tab-b"),
+    );
     assert_eq!(status, 200);
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("bbbbbbbb"), "{verdict}");
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("bbbbbbbb"),
+        "{verdict}"
+    );
     // A's event once the request was answered elsewhere: refused, naming
     // the session that serves it.
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "aaaaaaa2", "tab-a"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "aaaaaaa2", "tab-a"),
+    );
     assert_eq!(status, 409, "{body}");
     assert_eq!(body["sessionId"], serde_json::json!("bbbbbbbb"));
-    assert!(!s.dir.join(".impeccable/live/sessions/aaaaaaa2.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/aaaaaaa2.jsonl")
+        .exists());
     let _ = &mut b;
 }
 
@@ -595,24 +844,52 @@ fn agent_target_refuses_a_generate_event_from_a_page_that_never_held_the_lease()
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // Before any claim, no page may open the session from an event.
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "cccccc01", "tab-b"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "cccccc01", "tab-b"),
+    );
     assert_eq!(status, 409, "{body}");
-    assert!(!s.dir.join(".impeccable/live/sessions/cccccc01.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/cccccc01.jsonl")
+        .exists());
     // A holds the lease; it lapses (250ms) with no rescuer. A stranger's
     // event is still refused: a lapsed lease belongs to A until a rescuer
     // claims.
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     std::thread::sleep(Duration::from_millis(300));
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "cccccc02", "tab-b"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "cccccc02", "tab-b"),
+    );
     assert_eq!(status, 409, "{body}");
-    assert!(!s.dir.join(".impeccable/live/sessions/cccccc02.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/cccccc02.jsonl")
+        .exists());
     // A's own late Go is welcome and answers the request.
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "cccccc03", "tab-a"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "cccccc03", "tab-a"),
+    );
     assert_eq!(status, 200, "{body}");
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("cccccc03"), "{verdict}");
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("cccccc03"),
+        "{verdict}"
+    );
     let _ = &mut b;
 }
 
@@ -622,15 +899,36 @@ fn agent_target_welcomes_the_generate_event_of_the_session_that_answered() {
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
     a.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // The result post lands first (the common path), then the event.
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "cccccccc" }));
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "cccccccc" }),
+    );
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("cccccccc"), "{verdict}");
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "cccccccc", "tab-a"));
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("cccccccc"),
+        "{verdict}"
+    );
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "cccccccc", "tab-a"),
+    );
     assert_eq!(status, 200, "{body}");
-    assert!(s.dir.join(".impeccable/live/sessions/cccccccc.jsonl").exists());
+    assert!(s
+        .dir
+        .join(".impeccable/live/sessions/cccccccc.jsonl")
+        .exists());
 }
 
 #[test]
@@ -639,18 +937,38 @@ fn agent_target_fences_a_generate_event_that_lands_after_the_timeout() {
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
     a.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // The holder never answers: the request times out (400ms) and the CLI
     // reports it. Its Go lands after that: refused, nothing journaled, so
     // no session exists that the agent was never told about.
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["error"], serde_json::json!("browser_timeout"), "{verdict}");
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "eeeeeeee", "tab-a"));
+    assert_eq!(
+        verdict["error"],
+        serde_json::json!("browser_timeout"),
+        "{verdict}"
+    );
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "eeeeeeee", "tab-a"),
+    );
     assert_eq!(status, 409, "{body}");
-    assert_eq!(body["error"], serde_json::json!("agent_target_already_served"));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target_already_served")
+    );
     assert!(body.get("sessionId").is_none(), "{body}");
-    assert!(!s.dir.join(".impeccable/live/sessions/eeeeeeee.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/eeeeeeee.jsonl")
+        .exists());
 }
 
 #[test]
@@ -658,11 +976,21 @@ fn agent_target_refuses_a_generate_event_for_a_target_it_never_held() {
     // Unknown means refused: a target this helper never issued, or one
     // evicted from its bounded record, can never be reopened by a late Go.
     let s = Server::start("unknown-target");
-    let (status, body) = post_json(s.port, "/events", generate_event_for(&s, "0badf00d", "ffffffff", "tab-a"));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, "0badf00d", "ffffffff", "tab-a"),
+    );
     assert_eq!(status, 409, "{body}");
-    assert_eq!(body["error"], serde_json::json!("agent_target_already_served"));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target_already_served")
+    );
     assert!(body.get("sessionId").is_none(), "{body}");
-    assert!(!s.dir.join(".impeccable/live/sessions/ffffffff.jsonl").exists());
+    assert!(!s
+        .dir
+        .join(".impeccable/live/sessions/ffffffff.jsonl")
+        .exists());
     // Without an envelope the same event is an ordinary Go.
     let mut plain = generate_event_for(&s, "0badf00d", "ffffffff", "tab-a");
     plain.as_object_mut().unwrap().remove("agentTarget");
@@ -679,47 +1007,98 @@ fn agent_target_forwards_the_hidden_bar_request_to_the_overlay() {
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({ "hideLiveBar": true }));
     // Helper-wide and first: every connected tab hears it before the target.
-    assert_eq!(a.next(|m| m["type"] == "live_bar")["hidden"], serde_json::json!(true));
-    assert_eq!(b.next(|m| m["type"] == "live_bar")["hidden"], serde_json::json!(true));
+    assert_eq!(
+        a.next(|m| m["type"] == "live_bar")["hidden"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        b.next(|m| m["type"] == "live_bar")["hidden"],
+        serde_json::json!(true)
+    );
     let pushed = a.next(|m| m["type"] == "agent_target");
     assert_eq!(pushed["hideLiveBar"], serde_json::json!(true), "{pushed}");
     // A tab connecting later learns it on connect.
     let mut c = Overlay::connect(s.port, &s.token, "tab-c");
-    assert_eq!(c.next(|m| m["type"] == "connected")["hideLiveBar"], serde_json::json!(true));
+    assert_eq!(
+        c.next(|m| m["type"] == "connected")["hideLiveBar"],
+        serde_json::json!(true)
+    );
     let (_, status) = post_json(s.port, "/status", serde_json::json!({ "token": s.token }));
     let _ = status;
     let target_id = pushed["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }),
+    );
     held.join().unwrap();
     // Absent by default, and anything but a boolean is refused.
     let held = s.hold(serde_json::json!({}));
     let pushed = a.next(|m| m["type"] == "agent_target");
     assert!(pushed.get("hideLiveBar").is_none(), "{pushed}");
     let target_id = pushed["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccde" }));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccde" }),
+    );
     held.join().unwrap();
-    let (status, body) = post_json(s.port, "/agent-target", s.target(serde_json::json!({ "hideLiveBar": "yes" })));
+    let (status, body) = post_json(
+        s.port,
+        "/agent-target",
+        s.target(serde_json::json!({ "hideLiveBar": "yes" })),
+    );
     assert_eq!(status, 400, "{body}");
-    assert_eq!(body["error"], serde_json::json!("agent_target: hideLiveBar must be a boolean"));
+    assert_eq!(
+        body["error"],
+        serde_json::json!("agent_target: hideLiveBar must be a boolean")
+    );
 }
 
 #[test]
 fn live_bar_route_sets_the_helper_wide_preference() {
     let s = Server::start("live-bar");
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
-    assert_eq!(a.next(|m| m["type"] == "connected")["hideLiveBar"], serde_json::json!(false));
-    let (status, body) = post_json(s.port, "/live-bar", serde_json::json!({ "token": s.token, "hidden": true }));
+    assert_eq!(
+        a.next(|m| m["type"] == "connected")["hideLiveBar"],
+        serde_json::json!(false)
+    );
+    let (status, body) = post_json(
+        s.port,
+        "/live-bar",
+        serde_json::json!({ "token": s.token, "hidden": true }),
+    );
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["hidden"], serde_json::json!(true));
-    assert_eq!(a.next(|m| m["type"] == "live_bar")["hidden"], serde_json::json!(true));
-    let (status, body) = post_json(s.port, "/live-bar", serde_json::json!({ "token": s.token, "hidden": "yes" }));
+    assert_eq!(
+        a.next(|m| m["type"] == "live_bar")["hidden"],
+        serde_json::json!(true)
+    );
+    let (status, body) = post_json(
+        s.port,
+        "/live-bar",
+        serde_json::json!({ "token": s.token, "hidden": "yes" }),
+    );
     assert_eq!(status, 400, "{body}");
-    let (status, body) = post_json(s.port, "/live-bar", serde_json::json!({ "token": "nope", "hidden": true }));
+    let (status, body) = post_json(
+        s.port,
+        "/live-bar",
+        serde_json::json!({ "token": "nope", "hidden": true }),
+    );
     assert_eq!(status, 401, "{body}");
     let mut b = Overlay::connect(s.port, &s.token, "tab-b");
-    assert_eq!(b.next(|m| m["type"] == "connected")["hideLiveBar"], serde_json::json!(true));
+    assert_eq!(
+        b.next(|m| m["type"] == "connected")["hideLiveBar"],
+        serde_json::json!(true)
+    );
 }
 
 #[test]
@@ -730,25 +1109,51 @@ fn agent_target_result_is_honored_only_from_the_lease_holder() {
     a.next(|m| m["type"] == "connected");
     b.next(|m| m["type"] == "connected");
     let held = s.hold(serde_json::json!({}));
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // Nobody holds it yet: a result is refused as unclaimed.
-    let (status, body) = post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "b0b0b0b0" }));
+    let (status, body) = post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "b0b0b0b0" }),
+    );
     assert_eq!(status, 409, "{body}");
     assert_eq!(body["reason"], serde_json::json!("unclaimed"));
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
     // A bystander that knows the id and the token still cannot answer.
-    let (status, body) = post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "b0b0b0b0" }));
+    let (status, body) = post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-b", "ok": true, "sessionId": "b0b0b0b0" }),
+    );
     assert_eq!(status, 409, "{body}");
     assert_eq!(body["reason"], serde_json::json!("not_holder"));
     // Without a client id the post is malformed.
-    let (status, _) = post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "ok": true }));
+    let (status, _) = post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "ok": true }),
+    );
     assert_eq!(status, 400);
     // The holder's word lands, and the request was still pending for it.
-    let (status, body) = post_json(s.port, "/agent-target-result", serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }));
+    let (status, body) = post_json(
+        s.port,
+        "/agent-target-result",
+        serde_json::json!({ "token": s.token, "targetId": target_id, "clientId": "tab-a", "ok": true, "sessionId": "aabbccdd" }),
+    );
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["delivered"], serde_json::json!(true));
     let (_, verdict) = held.join().unwrap();
-    assert_eq!(verdict["sessionId"], serde_json::json!("aabbccdd"), "{verdict}");
+    assert_eq!(
+        verdict["sessionId"],
+        serde_json::json!("aabbccdd"),
+        "{verdict}"
+    );
     let _ = &mut b;
 }
 
@@ -780,10 +1185,31 @@ fn live_generate_collects_its_own_generate_event_and_reply_then_poll_returns_the
     let s = Server::start("collect");
     let mut a = Overlay::connect(s.port, &s.token, "tab-a");
     a.next(|m| m["type"] == "connected");
-    let child = spawn_cli(&s, &["live-generate", "--selector", "h1", "--action", "bolder", "--count", "3"]);
-    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"].as_str().unwrap().to_string();
-    assert_eq!(s.claim(&target_id, "tab-a", true)["granted"], serde_json::json!(true));
-    let (status, ack) = post_json(s.port, "/events", generate_event_for(&s, &target_id, "c0ffee11", "tab-a"));
+    let child = spawn_cli(
+        &s,
+        &[
+            "live-generate",
+            "--selector",
+            "h1",
+            "--action",
+            "bolder",
+            "--count",
+            "3",
+        ],
+    );
+    let target_id = a.next(|m| m["type"] == "agent_target")["targetId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        s.claim(&target_id, "tab-a", true)["granted"],
+        serde_json::json!(true)
+    );
+    let (status, ack) = post_json(
+        s.port,
+        "/events",
+        generate_event_for(&s, &target_id, "c0ffee11", "tab-a"),
+    );
     assert_eq!(status, 200, "{ack}");
     let (code, verdict, stderr) = cli_json(child);
     assert_eq!(code, 0, "{verdict}\n{stderr}");
@@ -791,20 +1217,54 @@ fn live_generate_collects_its_own_generate_event_and_reply_then_poll_returns_the
     assert_eq!(verdict["sessionId"], serde_json::json!("c0ffee11"));
     // B: the session's generate event rides along, leased, with the same
     // planning steps a user's Go gets.
-    assert_eq!(verdict["event"]["type"], serde_json::json!("generate"), "{verdict}");
+    assert_eq!(
+        verdict["event"]["type"],
+        serde_json::json!("generate"),
+        "{verdict}"
+    );
     assert_eq!(verdict["event"]["id"], serde_json::json!("c0ffee11"));
     assert_eq!(verdict["event"]["origin"], serde_json::json!("agent"));
     let plan = verdict["event"]["_instructions"].as_str().unwrap();
-    assert!(plan.contains("read reference/bolder.md before planning") && plan.contains("live.md section 4"), "{verdict}");
-    assert!(verdict["_instructions"].as_str().unwrap().contains("--reply c0ffee11 done --file <project-root-relative path you wrote> --then-poll"), "{verdict}");
+    assert!(
+        plan.contains("read reference/bolder.md before planning")
+            && plan.contains("live.md section 4"),
+        "{verdict}"
+    );
+    assert!(
+        verdict["_instructions"].as_str().unwrap().contains(
+            "--reply c0ffee11 done --file <project-root-relative path you wrote> --then-poll"
+        ),
+        "{verdict}"
+    );
     // Leased: a plain poll finds nothing else to hand out.
-    let (_, polled) = http(s.port, "GET", &format!("/poll?token={}&timeout=300", s.token), None);
+    let (_, polled) = http(
+        s.port,
+        "GET",
+        &format!("/poll?token={}&timeout=300", s.token),
+        None,
+    );
     assert!(polled.contains("\"timeout\""), "{polled}");
     // A: reply done and wait for the next event in one call; a steer lands
     // while it waits.
-    let child = spawn_cli(&s, &["live-poll", "--reply", "c0ffee11", "done", "--file", "index.html", "--then-poll", "--timeout=8000"]);
+    let child = spawn_cli(
+        &s,
+        &[
+            "live-poll",
+            "--reply",
+            "c0ffee11",
+            "done",
+            "--file",
+            "index.html",
+            "--then-poll",
+            "--timeout=8000",
+        ],
+    );
     std::thread::sleep(Duration::from_millis(900));
-    let (status, body) = post_json(s.port, "/events", serde_json::json!({ "token": s.token, "type": "steer", "id": "c0ffee11", "message": "warmer" }));
+    let (status, body) = post_json(
+        s.port,
+        "/events",
+        serde_json::json!({ "token": s.token, "type": "steer", "id": "c0ffee11", "message": "warmer" }),
+    );
     assert_eq!(status, 200, "{body}");
     let (code, event, stderr) = cli_json(child);
     assert_eq!(code, 0, "{event}\n{stderr}");
@@ -813,7 +1273,13 @@ fn live_generate_collects_its_own_generate_event_and_reply_then_poll_returns_the
     assert_eq!(event["_replyAck"]["status"], serde_json::json!("done"));
     assert_eq!(event["_replyAck"]["file"], serde_json::json!("index.html"));
     assert!(event["_replyAck"].get("_instructions").is_none(), "{event}");
-    assert!(event["_instructions"].as_str().unwrap().contains("steer_done"), "{event}");
+    assert!(
+        event["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("steer_done"),
+        "{event}"
+    );
 }
 
 /// Unix only: the boot spawns the helper detached, and on Windows that
@@ -825,20 +1291,42 @@ fn live_generate_boot_and_open_run_the_lane_from_a_cold_project() {
     // No helper running: --boot starts one (the lane's flags), --open hands the
     // dev URL to the configured browser, and the overlay that page brings up
     // serves the target.
-    let dir = std::env::temp_dir().join(format!("impeccable-agent-target-cold-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "impeccable-agent-target-cold-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join(".impeccable/live")).unwrap();
-    std::fs::write(dir.join("index.html"), "<html><body><h1>t</h1></body></html>").unwrap();
-    std::fs::write(dir.join(".impeccable/live/config.json"), "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"}").unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        "<html><body><h1>t</h1></body></html>",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(".impeccable/live/config.json"),
+        "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"}",
+    )
+    .unwrap();
     // The "browser": a script that records the URL it was asked to open.
     let opener = dir.join("opener.sh");
-    std::fs::write(&opener, format!("#!/bin/sh\necho \"$1\" > {}\n", dir.join("opened.txt").display())).unwrap();
+    std::fs::write(
+        &opener,
+        format!(
+            "#!/bin/sh\necho \"$1\" > {}\n",
+            dir.join("opened.txt").display()
+        ),
+    )
+    .unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    std::fs::write(dir.join(".impeccable/config.local.json"), format!("{{\"browser\":\"{}\"}}", opener.display())).unwrap();
+    std::fs::write(
+        dir.join(".impeccable/config.local.json"),
+        format!("{{\"browser\":\"{}\"}}", opener.display()),
+    )
+    .unwrap();
     // A stand-in dev server serving the injected page, so --dev-url finds it.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let dev_port = listener.local_addr().unwrap().port();
@@ -854,30 +1342,76 @@ fn live_generate_boot_and_open_run_the_lane_from_a_cold_project() {
         }
     });
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
-        .args(["live-generate", "--selector", "h1", "--action", "bolder", "--boot", "--open", "--wait-for-browser", "1500"])
+        .args([
+            "live-generate",
+            "--selector",
+            "h1",
+            "--action",
+            "bolder",
+            "--boot",
+            "--open",
+            "--wait-for-browser",
+            "1500",
+        ])
         .current_dir(&dir)
         .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
-        .env("IMPECCABLE_DEV_URL_CANDIDATES", format!("http://127.0.0.1:{}/", dev_port))
+        .env(
+            "IMPECCABLE_DEV_URL_CANDIDATES",
+            format!("http://127.0.0.1:{}/", dev_port),
+        )
         .env("IMPECCABLE_AGENT_TARGET_TIMEOUT_MS", "400")
         .output()
         .expect("cli");
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let v: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {stdout}"));
+    let v: serde_json::Value =
+        serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {stdout}"));
     // The boot ran (helper started, page injected, bar hidden, dev URL found).
     assert_eq!(v["boot"]["liveBarHidden"], serde_json::json!(true), "{v}");
-    assert_eq!(v["boot"]["devUrl"], serde_json::json!(format!("http://127.0.0.1:{}/", dev_port)), "{v}");
-    assert_eq!(v["boot"]["contextMissing"], serde_json::json!(["PRODUCT.md", "DESIGN.md"]), "{v}");
-    assert!(v["boot"].get("serverToken").is_none() && v["boot"].get("_instructions").is_none(), "{v}");
+    assert_eq!(
+        v["boot"]["devUrl"],
+        serde_json::json!(format!("http://127.0.0.1:{}/", dev_port)),
+        "{v}"
+    );
+    assert_eq!(
+        v["boot"]["contextMissing"],
+        serde_json::json!(["PRODUCT.md", "DESIGN.md"]),
+        "{v}"
+    );
+    assert!(
+        v["boot"].get("serverToken").is_none() && v["boot"].get("_instructions").is_none(),
+        "{v}"
+    );
     // The page was handed to the configured browser, which never connects an
     // overlay here, so the wait ends in no_browser_connected naming the open.
     let opened = std::fs::read_to_string(dir.join("opened.txt")).unwrap_or_default();
-    assert_eq!(opened.trim(), format!("http://127.0.0.1:{}/", dev_port), "{v}");
+    assert_eq!(
+        opened.trim(),
+        format!("http://127.0.0.1:{}/", dev_port),
+        "{v}"
+    );
     assert_eq!(v["error"], serde_json::json!("no_browser_connected"), "{v}");
-    assert_eq!(v["opened"]["url"], serde_json::json!(format!("http://127.0.0.1:{}/", dev_port)));
-    assert!(v["_instructions"].as_str().unwrap().contains("opened in the browser"), "{v}");
+    assert_eq!(
+        v["opened"]["url"],
+        serde_json::json!(format!("http://127.0.0.1:{}/", dev_port))
+    );
+    assert!(
+        v["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("opened in the browser"),
+        "{v}"
+    );
     // Cleanup: stop the helper the boot started.
-    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".impeccable/live/server.json")).unwrap()).unwrap();
-    let _ = http(info["port"].as_u64().unwrap() as u16, "GET", &format!("/stop?token={}", info["token"].as_str().unwrap()), None);
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join(".impeccable/live/server.json")).unwrap(),
+    )
+    .unwrap();
+    let _ = http(
+        info["port"].as_u64().unwrap() as u16,
+        "GET",
+        &format!("/stop?token={}", info["token"].as_str().unwrap()),
+        None,
+    );
     std::thread::sleep(Duration::from_millis(500));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -888,11 +1422,22 @@ fn live_generate_boot_and_open_run_the_lane_from_a_cold_project() {
 #[cfg(unix)]
 #[test]
 fn live_generate_stops_waiting_when_the_dev_server_dies() {
-    let dir = std::env::temp_dir().join(format!("impeccable-agent-target-devgone-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "impeccable-agent-target-devgone-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join(".impeccable/live")).unwrap();
-    std::fs::write(dir.join("index.html"), "<html><body><h1>t</h1></body></html>").unwrap();
-    std::fs::write(dir.join(".impeccable/live/config.json"), "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"}").unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        "<html><body><h1>t</h1></body></html>",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join(".impeccable/live/config.json"),
+        "{\"files\":[\"index.html\"],\"insertBefore\":\"</body>\",\"commentSyntax\":\"html\"}",
+    )
+    .unwrap();
     // A stand-in dev server that serves the injected page until told to stop,
     // then closes its port: the server a harness reaps mid-session.
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -920,7 +1465,18 @@ fn live_generate_stops_waiting_when_the_dev_server_dies() {
     });
     let started = std::time::Instant::now();
     let child = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
-        .args(["live-generate", "--selector", "h1", "--action", "bolder", "--boot", "--dev-url", &dev_url, "--wait-for-browser", "30000"])
+        .args([
+            "live-generate",
+            "--selector",
+            "h1",
+            "--action",
+            "bolder",
+            "--boot",
+            "--dev-url",
+            &dev_url,
+            "--wait-for-browser",
+            "30000",
+        ])
         .current_dir(&dir)
         .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
         .env("IMPECCABLE_DEV_URL_CANDIDATES", &dev_url)
@@ -936,14 +1492,34 @@ fn live_generate_stops_waiting_when_the_dev_server_dies() {
     let elapsed = started.elapsed();
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let last = stdout.trim().lines().last().unwrap_or("");
-    let v: serde_json::Value = serde_json::from_str(stdout.trim()).or_else(|_| serde_json::from_str(last)).unwrap_or_else(|e| panic!("{e}: {stdout}"));
+    let v: serde_json::Value = serde_json::from_str(stdout.trim())
+        .or_else(|_| serde_json::from_str(last))
+        .unwrap_or_else(|e| panic!("{e}: {stdout}"));
     assert_eq!(v["error"], serde_json::json!("dev_server_gone"), "{v}");
     assert_eq!(v["devUrl"], serde_json::json!(dev_url), "{v}");
-    assert!(v["_instructions"].as_str().unwrap().contains("stopped answering"), "{v}");
-    assert!(elapsed < Duration::from_secs(20), "the wait ran out its budget instead of noticing: {:?}", elapsed);
+    assert!(
+        v["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("stopped answering"),
+        "{v}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(20),
+        "the wait ran out its budget instead of noticing: {:?}",
+        elapsed
+    );
     // Cleanup: stop the helper the boot started.
-    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join(".impeccable/live/server.json")).unwrap()).unwrap();
-    let _ = http(info["port"].as_u64().unwrap() as u16, "GET", &format!("/stop?token={}", info["token"].as_str().unwrap()), None);
+    let info: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join(".impeccable/live/server.json")).unwrap(),
+    )
+    .unwrap();
+    let _ = http(
+        info["port"].as_u64().unwrap() as u16,
+        "GET",
+        &format!("/stop?token={}", info["token"].as_str().unwrap()),
+        None,
+    );
     std::thread::sleep(Duration::from_millis(500));
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -983,65 +1559,152 @@ fn live_generate_asks_the_harness_to_open_the_page_instead_of_a_second_browser()
         serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {stdout}"))
     };
     let cursor = run("cursor", &["--dev-url", &hint]);
-    assert_eq!(cursor["error"], serde_json::json!("browser_needed"), "{cursor}");
+    assert_eq!(
+        cursor["error"],
+        serde_json::json!("browser_needed"),
+        "{cursor}"
+    );
     assert_eq!(cursor["devUrl"], serde_json::json!(hint));
     assert_eq!(cursor["devUrlVerified"], serde_json::json!(false));
     assert_eq!(cursor["harness"], serde_json::json!("cursor"));
     let text = cursor["_instructions"].as_str().unwrap();
-    assert!(text.contains("browser_navigate") && text.contains(&hint) && !text.contains("--open"), "{text}");
+    assert!(
+        text.contains("browser_navigate") && text.contains(&hint) && !text.contains("--open"),
+        "{text}"
+    );
     let claude = run("claude-code", &["--dev-url", &hint]);
-    assert!(claude["_instructions"].as_str().unwrap().contains("Browser pane"), "{claude}");
+    assert!(
+        claude["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Browser pane"),
+        "{claude}"
+    );
     let codex = run("codex", &["--dev-url", &hint]);
-    assert!(codex["_instructions"].as_str().unwrap().contains("--open"), "{codex}");
+    assert!(
+        codex["_instructions"].as_str().unwrap().contains("--open"),
+        "{codex}"
+    );
     // No hint and nothing on the usual ports: no_dev_server, with the
     // harness's way to start one.
     let none = run("claude-code", &[]);
     assert_eq!(none["error"], serde_json::json!("no_dev_server"), "{none}");
-    assert!(none["_instructions"].as_str().unwrap().contains("preview_start"), "{none}");
+    assert!(
+        none["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("preview_start"),
+        "{none}"
+    );
     // `--open` on a harness with its own browser launches nothing: BROWSER
     // names a script that would record the launch, and it never runs. The
     // stand-in opener is a `sh` script, so this part is unix only.
     #[cfg(unix)]
     {
-    let opener = s.dir.join("opener-guard.sh");
-    std::fs::write(&opener, format!("#!/bin/sh\necho \"$1\" > {}\n", s.dir.join("guard-opened.txt").display())).unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
-        .args(["live-generate", "--selector", "h1", "--action", "bolder", "--dev-url", &hint, "--open"])
-        .current_dir(&s.dir)
-        .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
-        .env("IMPECCABLE_PROVIDER_ID", "cursor")
-        .env("IMPECCABLE_DEV_URL_CANDIDATES", "http://127.0.0.1:1/")
-        .env("BROWSER", opener.to_string_lossy().to_string())
-        .output()
-        .expect("cli");
-    let guarded: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
-    assert_eq!(guarded["error"], serde_json::json!("browser_needed"), "{guarded}");
-    assert_eq!(guarded["openIgnored"], serde_json::json!("harness browser"), "{guarded}");
-    assert!(guarded["_instructions"].as_str().unwrap().starts_with("--open was ignored"), "{guarded}");
-    std::thread::sleep(Duration::from_millis(300));
-    assert!(!s.dir.join("guard-opened.txt").exists(), "the harness browser guard must not launch the opener");
-    // The user's explicit choice still wins on that harness.
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
-        .args(["live-generate", "--selector", "h1", "--action", "bolder", "--dev-url", &hint, "--open", "--wait-for-browser", "500"])
-        .current_dir(&s.dir)
-        .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
-        .env("IMPECCABLE_PROVIDER_ID", "cursor")
-        .env("IMPECCABLE_DEV_URL_CANDIDATES", "http://127.0.0.1:1/")
-        .env("IMPECCABLE_BROWSER", opener.to_string_lossy().to_string())
-        .output()
-        .expect("cli");
-    let explicit: serde_json::Value = serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
-    assert_eq!(explicit["opened"]["url"], serde_json::json!(hint), "{explicit}");
-    assert_eq!(std::fs::read_to_string(s.dir.join("guard-opened.txt")).unwrap().trim(), hint);
+        let opener = s.dir.join("opener-guard.sh");
+        std::fs::write(
+            &opener,
+            format!(
+                "#!/bin/sh\necho \"$1\" > {}\n",
+                s.dir.join("guard-opened.txt").display()
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
+            .args([
+                "live-generate",
+                "--selector",
+                "h1",
+                "--action",
+                "bolder",
+                "--dev-url",
+                &hint,
+                "--open",
+            ])
+            .current_dir(&s.dir)
+            .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
+            .env("IMPECCABLE_PROVIDER_ID", "cursor")
+            .env("IMPECCABLE_DEV_URL_CANDIDATES", "http://127.0.0.1:1/")
+            .env("BROWSER", opener.to_string_lossy().to_string())
+            .output()
+            .expect("cli");
+        let guarded: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+        assert_eq!(
+            guarded["error"],
+            serde_json::json!("browser_needed"),
+            "{guarded}"
+        );
+        assert_eq!(
+            guarded["openIgnored"],
+            serde_json::json!("harness browser"),
+            "{guarded}"
+        );
+        assert!(
+            guarded["_instructions"]
+                .as_str()
+                .unwrap()
+                .starts_with("--open was ignored"),
+            "{guarded}"
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(
+            !s.dir.join("guard-opened.txt").exists(),
+            "the harness browser guard must not launch the opener"
+        );
+        // The user's explicit choice still wins on that harness.
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
+            .args([
+                "live-generate",
+                "--selector",
+                "h1",
+                "--action",
+                "bolder",
+                "--dev-url",
+                &hint,
+                "--open",
+                "--wait-for-browser",
+                "500",
+            ])
+            .current_dir(&s.dir)
+            .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
+            .env("IMPECCABLE_PROVIDER_ID", "cursor")
+            .env("IMPECCABLE_DEV_URL_CANDIDATES", "http://127.0.0.1:1/")
+            .env("IMPECCABLE_BROWSER", opener.to_string_lossy().to_string())
+            .output()
+            .expect("cli");
+        let explicit: serde_json::Value =
+            serde_json::from_str(String::from_utf8_lossy(&out.stdout).trim()).unwrap();
+        assert_eq!(
+            explicit["opened"]["url"],
+            serde_json::json!(hint),
+            "{explicit}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(s.dir.join("guard-opened.txt"))
+                .unwrap()
+                .trim(),
+            hint
+        );
     }
     // A wait budget means the caller is opening the page in parallel: the
     // verb waits instead of handing the URL back.
     let waited = run("cursor", &["--dev-url", &hint, "--wait-for-browser", "700"]);
-    assert_eq!(waited["error"], serde_json::json!("no_browser_connected"), "{waited}");
-    assert!(waited["_instructions"].as_str().unwrap().contains("browser_navigate"), "{waited}");
+    assert_eq!(
+        waited["error"],
+        serde_json::json!("no_browser_connected"),
+        "{waited}"
+    );
+    assert!(
+        waited["_instructions"]
+            .as_str()
+            .unwrap()
+            .contains("browser_navigate"),
+        "{waited}"
+    );
 }

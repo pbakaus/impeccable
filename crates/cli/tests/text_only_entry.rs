@@ -2,20 +2,20 @@
 //! browser: native capture, the hero gate's readings, and an accepted review.
 use impeccable::entry_capture::CdpEntryRenderer;
 use impeccable::reviewed_entry::ReviewedEntryRenderer;
-use impeccable_comp::{png_io, raster};
 use impeccable_common::Io;
+use impeccable_comp::{png_io, raster};
 use impeccable_comp_verbs::asset_capture::capture_sha256;
 use impeccable_comp_verbs::build_phase;
 use impeccable_comp_verbs::entry_capture::{EntryRenderer, EntryRequest, EntryStage};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 #[path = "support/capture_service.rs"]
 #[allow(dead_code)]
 mod capture_service;
 use capture_service::CaptureService;
 use std::{
+    collections::HashMap,
     fs,
     path::PathBuf,
-    collections::HashMap,
     sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -37,7 +37,10 @@ impl Fixture {
         let dir = std::env::temp_dir().join(format!(
             "text-only-entry-{}-{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         let project = dir.join("project");
@@ -46,14 +49,19 @@ impl Fixture {
         fs::create_dir_all(project.join(".impeccable/review")).unwrap();
         fs::create_dir_all(&home).unwrap();
         fs::write(project.join("index.html"), PAGE).unwrap();
-        let comp = png_io::encode_png(&raster::create_image(240, 160, [244, 244, 240, 255]), &[]).unwrap();
+        let comp =
+            png_io::encode_png(&raster::create_image(240, 160, [244, 244, 240, 255]), &[]).unwrap();
         fs::write(project.join("comp.png"), comp).unwrap();
         let spec = json!({"comp":"comp.png","compSize":{"width":240,"height":160},"regions":[
             {"id":"topbar","kind":"text","medium":"semantic","note":"dark top bar with the product name","type":{},
              "box":{"x":16./240.,"y":0.1,"w":208./240.,"h":0.15},"px":{"x":16,"y":16,"w":208,"h":24}},
             {"id":"headline","kind":"text","medium":"semantic","note":"blue headline block","type":{},
              "box":{"x":16./240.,"y":0.4,"w":208./240.,"h":0.25},"px":{"x":16,"y":64,"w":208,"h":40}}]});
-        fs::write(project.join(SPEC), serde_json::to_vec_pretty(&spec).unwrap()).unwrap();
+        fs::write(
+            project.join(SPEC),
+            serde_json::to_vec_pretty(&spec).unwrap(),
+        )
+        .unwrap();
         Self { dir, project, home }
     }
     fn request(&self, stage: EntryStage) -> EntryRequest {
@@ -80,7 +88,12 @@ impl Fixture {
         ]);
         let (mut io, captured) = Io::captured("", self.project.clone(), env);
         let argv: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-        let code = build_phase::run_with_renderer(&argv, &mut io, &build_phase::no_organic_scan, Some(renderer));
+        let code = build_phase::run_with_renderer(
+            &argv,
+            &mut io,
+            &build_phase::no_organic_scan,
+            Some(renderer),
+        );
         drop(io);
         let text = format!(
             "{}{}",
@@ -95,10 +108,13 @@ impl Fixture {
     }
     fn record_hero_with(&self, renderer: &dyn EntryRenderer) -> (bool, String, Value) {
         let (code, text) = self.run_with(&["record", "hero", "--min", "0.95"], renderer);
-        let report = fs::read(self.project.join(".impeccable/review/diff/hero/report.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or(Value::Null);
+        let report = fs::read(
+            self.project
+                .join(".impeccable/review/diff/hero/report.json"),
+        )
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
         (code == 0, text, report)
     }
     /// The local review store entry for an approved assembled first viewport,
@@ -110,7 +126,11 @@ impl Fixture {
         self.home.join(".impeccable/component-reviews").join(key)
     }
     fn approve(&self, screenshot: &[u8]) {
-        fs::write(self.project.join(".impeccable/review/hero.json"), br#"{"id":"hero"}"#).unwrap();
+        fs::write(
+            self.project.join(".impeccable/review/hero.json"),
+            br#"{"id":"hero"}"#,
+        )
+        .unwrap();
         let session = self.session();
         fs::create_dir_all(session.join("blobs")).unwrap();
         let png = capture_sha256(screenshot);
@@ -124,7 +144,11 @@ impl Fixture {
             "packet":{"stage":"hero","id":"hero","revision":"rev","comp":{"width":240,"height":160,"url":"/files/rev/comp.png"},
                 "components":[{"box":{"x":0,"y":0,"w":1,"h":1},"preview":{"sourceKind":"page","url":"/files/rev/preview.png"}}]},
             "receipt":{"visualDecision":"approved","captureVerified":true,"capture":capture,"submission":{"requestId":"hero","packetRevision":"rev"}}});
-        fs::write(session.join("current.json"), serde_json::to_vec(&state).unwrap()).unwrap();
+        fs::write(
+            session.join("current.json"),
+            serde_json::to_vec(&state).unwrap(),
+        )
+        .unwrap();
     }
 }
 impl Drop for Fixture {
@@ -167,7 +191,10 @@ fn text_only_entry_captures_every_frame_without_region_receipts() {
                 _ => unreachable!(),
             };
             assert_eq!((image.width, image.height), expected);
-            assert_eq!(evidence.report["frameProofs"][&frame.name]["kind"], "assembled-page");
+            assert_eq!(
+                evidence.report["frameProofs"][&frame.name]["kind"],
+                "assembled-page"
+            );
             if frame.name == "hero" {
                 // The headline block is drawn where the page puts it.
                 let p = (80 * image.width + 120) * 4;
@@ -190,15 +217,34 @@ fn hero_gate_reads_a_text_only_first_viewport_and_honours_an_accepted_review() {
     // Comp and build both set the top bar and headline as lettering, the comp in
     // horizontal strokes and the build in vertical ones, so the build's text
     // regions read as contradicted while no ink is invented.
-    let strokes = |angle: &str| PAGE
-        .replace("background:#181c24", &format!("background:repeating-linear-gradient({angle},#181c24 0 2px,#f4f4f0 2px 4px)"))
-        .replace("background:#1e5ac8", &format!("background:repeating-linear-gradient({angle},#1e5ac8 0 2px,#f4f4f0 2px 4px)"));
+    let strokes = |angle: &str| {
+        PAGE.replace(
+            "background:#181c24",
+            &format!("background:repeating-linear-gradient({angle},#181c24 0 2px,#f4f4f0 2px 4px)"),
+        )
+        .replace(
+            "background:#1e5ac8",
+            &format!("background:repeating-linear-gradient({angle},#1e5ac8 0 2px,#f4f4f0 2px 4px)"),
+        )
+    };
     fs::write(f.project.join("index.html"), strokes("180deg")).unwrap();
-    let comp = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let comp = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     fs::write(f.project.join("comp.png"), comp).unwrap();
     let lettered = strokes("90deg");
     fs::write(f.project.join("index.html"), &lettered).unwrap();
-    let hero = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let hero = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     let (code, text) = f.run(&["start", "--comp", "comp.png", "--artifact", "index.html"]);
     assert_eq!(code, 0, "{text}");
 
@@ -206,22 +252,43 @@ fn hero_gate_reads_a_text_only_first_viewport_and_honours_an_accepted_review() {
     let (ok, text, report) = f.record_hero();
     assert!(!ok, "{text}");
     assert!(!text.contains("capture unavailable"), "{text}");
-    assert!(report["regions"].as_array().is_some_and(|r| r.iter().any(|r| r["id"] == "headline")), "{report}");
-    assert_eq!(report["nativeCapture"]["inputs"]["captureMethod"], "assembled-page-viewport");
+    assert!(
+        report["regions"]
+            .as_array()
+            .is_some_and(|r| r.iter().any(|r| r["id"] == "headline")),
+        "{report}"
+    );
+    assert_eq!(
+        report["nativeCapture"]["inputs"]["captureMethod"],
+        "assembled-page-viewport"
+    );
 
     // The same page accepted by the user in the first-viewport review binds by
     // pixels and ends the numeric fight; the material gates still ran.
     f.approve(&hero);
     let (ok, text, report) = f.record_hero();
     assert!(ok, "{text}");
-    assert_eq!(report["humanHeroReview"]["viewportAccepted"], true, "{report}");
-    assert_eq!(report["nativeCapture"]["inputs"]["humanTextReview"]["schema"], "human-assembled-reference-v1");
+    assert_eq!(
+        report["humanHeroReview"]["viewportAccepted"], true,
+        "{report}"
+    );
+    assert_eq!(
+        report["nativeCapture"]["inputs"]["humanTextReview"]["schema"],
+        "human-assembled-reference-v1"
+    );
 
     // A visible change after acceptance lapses it again.
-    fs::write(f.project.join("index.html"), lettered.replace("top:64px", "top:112px")).unwrap();
+    fs::write(
+        f.project.join("index.html"),
+        lettered.replace("top:64px", "top:112px"),
+    )
+    .unwrap();
     let (ok, text, report) = f.record_hero();
     assert!(!ok, "{text}");
-    assert_eq!(report["humanHeroReview"]["viewportAccepted"], false, "{report}");
+    assert_eq!(
+        report["humanHeroReview"]["viewportAccepted"], false,
+        "{report}"
+    );
 }
 
 #[test]
@@ -230,15 +297,27 @@ fn reviewed_renderer_binds_an_approved_text_only_viewport() {
         return;
     }
     let f = Fixture::new();
-    let hero = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let hero = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     f.approve(&hero);
     let renderer = ReviewedEntryRenderer::local(&f.project, Some(&f.home));
-    let captured = renderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
-    let approved = captured.approved_reference().expect("approved viewport binds");
+    let captured = renderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap();
+    let approved = captured
+        .approved_reference()
+        .expect("approved viewport binds");
     assert_eq!(approved.proof["schema"], "human-assembled-reference-v1");
     // Same capture method, same page: the approved pixels are the current frame's.
     let a = png_io::decode_png(&approved.png).unwrap().image;
-    let b = png_io::decode_png(&captured.evidence().frames[0].png).unwrap().image;
+    let b = png_io::decode_png(&captured.evidence().frames[0].png)
+        .unwrap()
+        .image;
     assert_eq!((a.width, a.height, &a.data), (b.width, b.height, &b.data));
     captured.verify_current().unwrap();
 }
@@ -264,14 +343,25 @@ fn text_only_page_cannot_show_the_comp_instead_of_drawing_it() {
     // A byte copy at another path is refused before the browser opens.
     fs::create_dir_all(f.project.join("assets")).unwrap();
     fs::write(f.project.join("assets/copy.png"), &comp).unwrap();
-    fs::write(f.project.join("index.html"), "<!doctype html><img src=\"assets/copy.png\">").unwrap();
+    fs::write(
+        f.project.join("index.html"),
+        "<!doctype html><img src=\"assets/copy.png\">",
+    )
+    .unwrap();
     let e = refusal(&f);
-    assert!(e.contains("assets/copy.png") && e.contains("copy of the approved reference"), "{e}");
+    assert!(
+        e.contains("assets/copy.png") && e.contains("copy of the approved reference"),
+        "{e}"
+    );
     fs::remove_file(f.project.join("assets/copy.png")).unwrap();
     // So is the comp inlined as a data URI.
     use base64::Engine;
     let uri = base64::engine::general_purpose::STANDARD.encode(&comp);
-    fs::write(f.project.join("index.html"), format!("<!doctype html><img src=\"data:image/png;base64,{uri}\">")).unwrap();
+    fs::write(
+        f.project.join("index.html"),
+        format!("<!doctype html><img src=\"data:image/png;base64,{uri}\">"),
+    )
+    .unwrap();
     let e = refusal(&f);
     assert!(e.contains("index.html") && e.contains("data URI"), "{e}");
 }
@@ -282,7 +372,13 @@ fn text_only_page_cannot_show_the_approved_screenshot() {
         return;
     }
     let f = Fixture::new();
-    let hero = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let hero = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     f.approve(&hero);
     fs::create_dir_all(f.project.join("assets")).unwrap();
     fs::write(f.project.join("assets/shot.png"), &hero).unwrap();
@@ -292,7 +388,10 @@ fn text_only_page_cannot_show_the_approved_screenshot() {
         Ok(_) => panic!("a page showing the approved screenshot must be refused"),
         Err(e) => e,
     };
-    assert!(e.contains("assets/shot.png") && e.contains("approved reference"), "{e}");
+    assert!(
+        e.contains("assets/shot.png") && e.contains("approved reference"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -302,37 +401,78 @@ fn text_only_page_is_served_the_hero_review_dependencies() {
     }
     let f = Fixture::new();
     fs::write(f.project.join("style.css"), "h1{outline:0}").unwrap();
-    fs::write(f.project.join("extra.js"), "document.body.dataset.extra='1';").unwrap();
+    fs::write(
+        f.project.join("extra.js"),
+        "document.body.dataset.extra='1';",
+    )
+    .unwrap();
     let manifest = |deps: &[&str]| {
         json!({"schemaVersion":2,"stage":"hero","id":"hero","title":"Hero","comp":{"path":"comp.png","width":240,"height":160},
             "components":[{"id":"page","name":"Page","box":{"x":0,"y":0,"w":1,"h":1},"preview":{"kind":"page","path":"index.html"},"dependencies":deps}]})
     };
-    fs::write(f.project.join("index.html"), format!("{PAGE}<link rel=stylesheet href=\"style.css\"><script src=\"extra.js\"></script>")).unwrap();
+    fs::write(
+        f.project.join("index.html"),
+        format!("{PAGE}<link rel=stylesheet href=\"style.css\"><script src=\"extra.js\"></script>"),
+    )
+    .unwrap();
     // Before any review names the entry, the static inventory is served.
-    let captured = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
-    assert_eq!(captured.evidence().report["dependencyPolicy"], "static-inventory");
+    let captured = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap();
+    assert_eq!(
+        captured.evidence().report["dependencyPolicy"],
+        "static-inventory"
+    );
     // The review declared only the stylesheet: the script is undeclared, as in the review.
-    fs::write(f.project.join(".impeccable/review/hero.json"), serde_json::to_vec(&manifest(&["style.css"])).unwrap()).unwrap();
+    fs::write(
+        f.project.join(".impeccable/review/hero.json"),
+        serde_json::to_vec(&manifest(&["style.css"])).unwrap(),
+    )
+    .unwrap();
     let e = refusal(&f);
     assert!(e.contains("undeclared dependency: /extra.js"), "{e}");
     // Declared, it loads; the manifest is bound to the capture.
-    fs::write(f.project.join(".impeccable/review/hero.json"), serde_json::to_vec(&manifest(&["style.css", "extra.js"])).unwrap()).unwrap();
-    let captured = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
-    assert_eq!(captured.evidence().report["dependencyPolicy"], "hero-review-manifest");
-    let served: Vec<_> = captured.evidence().report["servedToPage"].as_array().unwrap().iter().filter_map(|f| f["path"].as_str()).collect();
+    fs::write(
+        f.project.join(".impeccable/review/hero.json"),
+        serde_json::to_vec(&manifest(&["style.css", "extra.js"])).unwrap(),
+    )
+    .unwrap();
+    let captured = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap();
+    assert_eq!(
+        captured.evidence().report["dependencyPolicy"],
+        "hero-review-manifest"
+    );
+    let served: Vec<_> = captured.evidence().report["servedToPage"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|f| f["path"].as_str())
+        .collect();
     assert_eq!(served, ["extra.js", "index.html", "style.css"]);
     captured.verify_current().unwrap();
-    fs::write(f.project.join(".impeccable/review/hero.json"), serde_json::to_vec(&manifest(&["style.css"])).unwrap()).unwrap();
+    fs::write(
+        f.project.join(".impeccable/review/hero.json"),
+        serde_json::to_vec(&manifest(&["style.css"])).unwrap(),
+    )
+    .unwrap();
     assert!(captured.verify_current().is_err());
     // A declared dependency outside the static inventory is never served.
-    fs::write(f.project.join(".impeccable/review/hero.json"), serde_json::to_vec(&manifest(&[".env"])).unwrap()).unwrap();
+    fs::write(
+        f.project.join(".impeccable/review/hero.json"),
+        serde_json::to_vec(&manifest(&[".env"])).unwrap(),
+    )
+    .unwrap();
     let e = refusal(&f);
     assert!(e.contains(".env") && e.contains("never served"), "{e}");
 }
 
 fn capture_with(f: &Fixture, html: &str) -> Result<(), String> {
     fs::write(f.project.join("index.html"), html).unwrap();
-    CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).map(|_| ())
+    CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .map(|_| ())
 }
 
 #[test]
@@ -342,11 +482,22 @@ fn unused_backup_of_the_comp_does_not_block_an_honest_page() {
     }
     let f = Fixture::new();
     fs::create_dir_all(f.project.join("backup")).unwrap();
-    fs::copy(f.project.join("comp.png"), f.project.join("backup/comp-old.png")).unwrap();
+    fs::copy(
+        f.project.join("comp.png"),
+        f.project.join("backup/comp-old.png"),
+    )
+    .unwrap();
     capture_with(&f, PAGE).unwrap();
     // Loading that same backup is refused.
-    let e = capture_with(&f, &format!("{PAGE}<img src=\"backup/comp-old.png\" style=\"width:8px\">")).unwrap_err();
-    assert!(e.contains("backup/comp-old.png") && e.contains("copy of the approved reference"), "{e}");
+    let e = capture_with(
+        &f,
+        &format!("{PAGE}<img src=\"backup/comp-old.png\" style=\"width:8px\">"),
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("backup/comp-old.png") && e.contains("copy of the approved reference"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -356,9 +507,21 @@ fn wrapped_data_uri_of_the_comp_is_refused() {
     }
     let f = Fixture::new();
     use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(fs::read(f.project.join("comp.png")).unwrap());
-    let wrapped = encoded.as_bytes().chunks(76).map(|c| std::str::from_utf8(c).unwrap()).collect::<Vec<_>>().join("\n  ");
-    let e = capture_with(&f, &format!("<!doctype html><img style=\"width:8px\" src=\"data:image/png;base64,\n  {wrapped}\">")).unwrap_err();
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(fs::read(f.project.join("comp.png")).unwrap());
+    let wrapped = encoded
+        .as_bytes()
+        .chunks(76)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n  ");
+    let e = capture_with(
+        &f,
+        &format!(
+            "<!doctype html><img style=\"width:8px\" src=\"data:image/png;base64,\n  {wrapped}\">"
+        ),
+    )
+    .unwrap_err();
     assert!(e.contains("index.html") && e.contains("data URI"), "{e}");
 }
 
@@ -371,17 +534,28 @@ fn large_images_contradict_a_spec_without_raster_regions_but_logos_do_not() {
     fs::create_dir_all(f.project.join("assets")).unwrap();
     // The comp re-encoded (same pixels, different bytes) evades every byte check,
     // so the coverage rule is what refuses it.
-    let comp = png_io::decode_png(&fs::read(f.project.join("comp.png")).unwrap()).unwrap().image;
+    let comp = png_io::decode_png(&fs::read(f.project.join("comp.png")).unwrap())
+        .unwrap()
+        .image;
     let reencoded = png_io::encode_png(&comp, &[("Comment".into(), "re-encoded".into())]).unwrap();
     assert_ne!(reencoded, fs::read(f.project.join("comp.png")).unwrap());
     fs::write(f.project.join("assets/reencoded.png"), reencoded).unwrap();
     let e = capture_with(&f, "<!doctype html><style>body{margin:0}img{display:block;width:240px;height:160px}</style><img src=\"assets/reencoded.png\">").unwrap_err();
-    assert!(e.contains("images cover 100% of the viewport") && e.contains("declares no raster region"), "{e}");
+    assert!(
+        e.contains("images cover 100% of the viewport") && e.contains("declares no raster region"),
+        "{e}"
+    );
     // A chart exported as an image is a raster region, not code.
-    let chart = png_io::encode_png(&raster::create_image(120, 80, [30, 90, 200, 255]), &[]).unwrap();
+    let chart =
+        png_io::encode_png(&raster::create_image(120, 80, [30, 90, 200, 255]), &[]).unwrap();
     fs::write(f.project.join("assets/chart.png"), chart).unwrap();
     let e = capture_with(&f, &format!("{PAGE}<img src=\"assets/chart.png\" style=\"position:absolute;left:100px;top:40px;width:120px;height:80px\">")).unwrap_err();
-    assert!(e.contains("img") && e.contains("25%") && e.contains("declare the image as a raster region"), "{e}");
+    assert!(
+        e.contains("img")
+            && e.contains("25%")
+            && e.contains("declare the image as a raster region"),
+        "{e}"
+    );
     // As a CSS background it is the same material.
     let e = capture_with(&f, &format!("{PAGE}<div style=\"position:absolute;left:100px;top:40px;width:120px;height:80px;background:url(assets/chart.png)\"></div>")).unwrap_err();
     assert!(e.contains("background"), "{e}");
@@ -411,7 +585,11 @@ fn coverage_counts_only_the_image_area_that_is_painted() {
     let e = capture_with(&f, &format!("{PAGE}<div style=\"width:10px;height:10px;overflow:hidden\"><img src=\"assets/big.png\" style=\"position:absolute;left:0;top:0;width:240px;height:160px\"></div>")).unwrap_err();
     assert!(e.contains("images cover 100%"), "{e}");
     // Under a transparent ancestor, or hidden, it paints nothing.
-    capture_with(&f, &format!("{PAGE}<div style=\"opacity:0\"><img src=\"assets/big.png\" {full}></div>")).unwrap();
+    capture_with(
+        &f,
+        &format!("{PAGE}<div style=\"opacity:0\"><img src=\"assets/big.png\" {full}></div>"),
+    )
+    .unwrap();
     capture_with(&f, &format!("{PAGE}<img src=\"assets/big.png\" style=\"visibility:hidden;position:absolute;left:0;top:0;width:240px;height:160px\">")).unwrap();
     // Letterboxed: only the picture counts, not its box.
     capture_with(&f, &format!("{PAGE}<img src=\"assets/wide.png\" style=\"position:absolute;left:0;top:0;width:240px;height:160px;object-fit:contain\">")).unwrap();
@@ -469,20 +647,43 @@ fn svg_definitions_holding_raster_content_count_through_their_references() {
         <filter id=\"f\" x=\"0\" y=\"0\" width=\"1\" height=\"1\"><feImage href=\"assets/big.png\" preserveAspectRatio=\"none\"/></filter>\
         <symbol id=\"s\" viewBox=\"0 0 240 160\"><image href=\"assets/big.png\" width=\"240\" height=\"160\"/></symbol></defs></svg>";
     let full = "position:absolute;left:0;top:0;width:240px;height:160px";
-    let svg = |inner: &str| format!("{PAGE}{defs}<svg style=\"position:absolute;left:0;top:0\" width=\"240\" height=\"160\">{inner}</svg>");
+    let svg = |inner: &str| {
+        format!("{PAGE}{defs}<svg style=\"position:absolute;left:0;top:0\" width=\"240\" height=\"160\">{inner}</svg>")
+    };
     // A raster mask over a flat block shows the picture through the mask.
     let e = capture_with(&f, &format!("{PAGE}{defs}<div style=\"{full};background:#181c24;mask-image:url(#m);-webkit-mask-image:url(#m)\"></div>")).unwrap_err();
-    assert!(e.contains("images cover 100% of the viewport") && e.contains("mask"), "{e}");
+    assert!(
+        e.contains("images cover 100% of the viewport") && e.contains("mask"),
+        "{e}"
+    );
     // A pattern holding an image, as fill, through a nested pattern, and as stroke.
-    let e = capture_with(&f, &svg("<rect width=\"240\" height=\"160\" fill=\"url(#p)\"/>")).unwrap_err();
-    assert!(e.contains("images cover 100% of the viewport") && e.contains("rect fill"), "{e}");
-    let e = capture_with(&f, &svg("<rect width=\"240\" height=\"160\" fill=\"url(#nested)\"/>")).unwrap_err();
+    let e = capture_with(
+        &f,
+        &svg("<rect width=\"240\" height=\"160\" fill=\"url(#p)\"/>"),
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("images cover 100% of the viewport") && e.contains("rect fill"),
+        "{e}"
+    );
+    let e = capture_with(
+        &f,
+        &svg("<rect width=\"240\" height=\"160\" fill=\"url(#nested)\"/>"),
+    )
+    .unwrap_err();
     assert!(e.contains("rect fill"), "{e}");
     let e = capture_with(&f, &svg("<line x1=\"0\" y1=\"80\" x2=\"240\" y2=\"80\" stroke=\"url(#p)\" stroke-width=\"160\"/>")).unwrap_err();
     assert!(e.contains("line stroke"), "{e}");
     // An feImage filter paints its image over the filter region of an empty box.
-    let e = capture_with(&f, &format!("{PAGE}{defs}<div style=\"{full};filter:url(#f)\"></div>")).unwrap_err();
-    assert!(e.contains("images cover 100% of the viewport") && e.contains("filter"), "{e}");
+    let e = capture_with(
+        &f,
+        &format!("{PAGE}{defs}<div style=\"{full};filter:url(#f)\"></div>"),
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("images cover 100% of the viewport") && e.contains("filter"),
+        "{e}"
+    );
     // A symbol holding an image, drawn through use.
     let e = capture_with(&f, &svg("<use href=\"#s\" width=\"240\" height=\"160\"/>")).unwrap_err();
     assert!(e.contains("use href"), "{e}");
@@ -496,12 +697,19 @@ fn svg_definitions_holding_raster_content_count_through_their_references() {
     // a pseudo-element's filter counts its region too.
     let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"inch\" filterUnits=\"userSpaceOnUse\" x=\"-1in\" y=\"-1in\" width=\"5in\" height=\"5in\"><feImage href=\"assets/big.png\"/></filter></svg>\
         <div style=\"position:absolute;left:100px;top:60px;width:4px;height:4px;filter:url(#inch)\"></div>")).unwrap_err();
-    assert!(e.contains("images cover 100% of the viewport") && e.contains("div filter"), "{e}");
+    assert!(
+        e.contains("images cover 100% of the viewport") && e.contains("div filter"),
+        "{e}"
+    );
     let e = capture_with(&f, &format!("{PAGE}{defs}<svg width=\"0\" height=\"0\" style=\"position:absolute\"><filter id=\"wide\" x=\"-20\" y=\"-20\" width=\"40\" height=\"40\"><feImage href=\"assets/big.png\"/></filter></svg>\
         <style>.dot::before{{content:'';position:absolute;left:100px;top:60px;width:10px;height:10px;filter:url(#wide)}}</style><div class=\"dot\"></div>")).unwrap_err();
     assert!(e.contains("::before filter"), "{e}");
     // The same raster pattern on a logo-sized shape stays under the limit.
-    capture_with(&f, &svg("<rect width=\"16\" height=\"16\" fill=\"url(#p)\"/>")).unwrap();
+    capture_with(
+        &f,
+        &svg("<rect width=\"16\" height=\"16\" fill=\"url(#p)\"/>"),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -510,14 +718,33 @@ fn host_capture_service_carries_a_text_only_hero_and_binds_its_accepted_review()
         return;
     }
     let f = Fixture::new();
-    let strokes = |angle: &str| PAGE
-        .replace("background:#181c24", &format!("background:repeating-linear-gradient({angle},#181c24 0 2px,#f4f4f0 2px 4px)"))
-        .replace("background:#1e5ac8", &format!("background:repeating-linear-gradient({angle},#1e5ac8 0 2px,#f4f4f0 2px 4px)"));
+    let strokes = |angle: &str| {
+        PAGE.replace(
+            "background:#181c24",
+            &format!("background:repeating-linear-gradient({angle},#181c24 0 2px,#f4f4f0 2px 4px)"),
+        )
+        .replace(
+            "background:#1e5ac8",
+            &format!("background:repeating-linear-gradient({angle},#1e5ac8 0 2px,#f4f4f0 2px 4px)"),
+        )
+    };
     fs::write(f.project.join("index.html"), strokes("180deg")).unwrap();
-    let comp = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let comp = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     fs::write(f.project.join("comp.png"), comp).unwrap();
     fs::write(f.project.join("index.html"), strokes("90deg")).unwrap();
-    let hero = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap().evidence().frames[0].png.clone();
+    let hero = CdpEntryRenderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap()
+        .evidence()
+        .frames[0]
+        .png
+        .clone();
     let (code, text) = f.run(&["start", "--comp", "comp.png", "--artifact", "index.html"]);
     assert_eq!(code, 0, "{text}");
 
@@ -526,17 +753,36 @@ fn host_capture_service_carries_a_text_only_hero_and_binds_its_accepted_review()
     let remote = service.renderer();
 
     // Both stages cross the transport with receipt-free frames.
-    for (stage, names) in [(EntryStage::Hero, &["hero"][..]), (EntryStage::Responsive, &["desktop", "mobile"][..])] {
+    for (stage, names) in [
+        (EntryStage::Hero, &["hero"][..]),
+        (EntryStage::Responsive, &["desktop", "mobile"][..]),
+    ] {
         let captured = remote.capture_entry(&f.request(stage)).unwrap();
         let evidence = captured.evidence();
         assert_eq!(evidence.report["captureMethod"], "assembled-page-viewport");
-        assert_eq!(evidence.report["captureService"]["schema"], "native-capture-service-v1");
+        assert_eq!(
+            evidence.report["captureService"]["schema"],
+            "native-capture-service-v1"
+        );
         assert_eq!(evidence.report["dependencyPolicy"], "static-inventory");
-        assert!(evidence.report["servedToPage"].as_array().is_some_and(|s| !s.is_empty()));
-        assert_eq!(evidence.frames.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), names);
+        assert!(evidence.report["servedToPage"]
+            .as_array()
+            .is_some_and(|s| !s.is_empty()));
+        assert_eq!(
+            evidence
+                .frames
+                .iter()
+                .map(|f| f.name.as_str())
+                .collect::<Vec<_>>(),
+            names
+        );
         for frame in &evidence.frames {
             assert!(frame.regions.is_empty());
-            assert!(evidence.report["frameProofs"][&frame.name]["rasterCoverage"]["share"].as_f64().is_some());
+            assert!(
+                evidence.report["frameProofs"][&frame.name]["rasterCoverage"]["share"]
+                    .as_f64()
+                    .is_some()
+            );
         }
         captured.verify_current().unwrap();
     }
@@ -544,25 +790,61 @@ fn host_capture_service_carries_a_text_only_hero_and_binds_its_accepted_review()
     // record hero reaches the gate's readings instead of failing at capture.
     let (ok, text, report) = f.record_hero_with(&remote);
     assert!(!ok, "{text}");
-    assert!(!text.contains("capture unavailable") && !text.contains("invalid native capture"), "{text}");
-    assert_eq!(report["nativeCapture"]["inputs"]["captureMethod"], "assembled-page-viewport");
-    assert_eq!(report["nativeCapture"]["inputs"]["humanTextReview"]["status"], "not-current");
+    assert!(
+        !text.contains("capture unavailable") && !text.contains("invalid native capture"),
+        "{text}"
+    );
+    assert_eq!(
+        report["nativeCapture"]["inputs"]["captureMethod"],
+        "assembled-page-viewport"
+    );
+    assert_eq!(
+        report["nativeCapture"]["inputs"]["humanTextReview"]["status"],
+        "not-current"
+    );
 
     // The user accepts that first viewport; through the service it binds and passes.
     f.approve(&hero);
     let (ok, text, report) = f.record_hero_with(&remote);
     assert!(ok, "{text}");
-    assert_eq!(report["humanHeroReview"]["viewportAccepted"], true, "{report}");
-    assert_eq!(report["nativeCapture"]["inputs"]["humanTextReview"]["schema"], "human-assembled-reference-v1");
+    assert_eq!(
+        report["humanHeroReview"]["viewportAccepted"], true,
+        "{report}"
+    );
+    assert_eq!(
+        report["nativeCapture"]["inputs"]["humanTextReview"]["schema"],
+        "human-assembled-reference-v1"
+    );
 
     // The host audit matches the saved receipt-free evidence against its own capture.
     let audit = service.post("/audit", &json!({"stage":"hero"}));
     assert_eq!(audit["ok"], true, "{audit}");
-    let saved: Vec<_> = audit["savedEvidence"].as_array().unwrap().iter().filter_map(|e| e["path"].as_str()).collect();
-    for name in ["inputs.json", "human-approved.png", "hero.png", "hero-observations.json"] {
-        assert!(saved.contains(&format!(".impeccable/review/native/hero/{name}").as_str()), "{saved:?}");
+    let saved: Vec<_> = audit["savedEvidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["path"].as_str())
+        .collect();
+    for name in [
+        "inputs.json",
+        "human-approved.png",
+        "hero.png",
+        "hero-observations.json",
+    ] {
+        assert!(
+            saved.contains(&format!(".impeccable/review/native/hero/{name}").as_str()),
+            "{saved:?}"
+        );
     }
-    assert_eq!(fs::read_to_string(f.project.join(".impeccable/review/native/hero/hero-observations.json")).unwrap().trim(), "[]");
+    assert_eq!(
+        fs::read_to_string(
+            f.project
+                .join(".impeccable/review/native/hero/hero-observations.json")
+        )
+        .unwrap()
+        .trim(),
+        "[]"
+    );
 }
 
 #[test]
@@ -575,10 +857,18 @@ fn capture_clock_is_pinned_and_an_approved_review_lends_its_instant() {
     // The bars' widths follow the hour, as a page that prints "open now" does:
     // one through `new Date()`, one through an argument-less Intl format.
     fs::write(f.project.join("index.html"), format!("{PAGE}<script>const h=new Date().getUTCHours();const p=new Intl.DateTimeFormat('en-US',{{timeZone:'UTC',hour:'numeric',hourCycle:'h23'}}).formatToParts().find(x=>x.type==='hour').value;document.querySelector('h1').style.width=(new Date().constructor===Date&&new Date(0) instanceof Date?16+h*8:4)+'px';document.querySelector('header').style.width=(16+Number(p)*8)+'px';</script>")).unwrap();
-    let at = |hour: u64| CaptureClock { epoch_ms: (1_790_000_000_000u64 / 86_400_000 * 86_400_000 + hour * 3_600_000) as f64, from_review: false };
+    let at = |hour: u64| CaptureClock {
+        epoch_ms: (1_790_000_000_000u64 / 86_400_000 * 86_400_000 + hour * 3_600_000) as f64,
+        from_review: false,
+    };
     let frame = |clock: CaptureClock| {
-        let captured = CdpEntryRenderer.capture_at(&f.request(EntryStage::Hero), &[], clock).unwrap();
-        assert_eq!(captured.evidence().report["clock"]["pinnedEpochMs"].as_f64(), Some(clock.epoch_ms));
+        let captured = CdpEntryRenderer
+            .capture_at(&f.request(EntryStage::Hero), &[], clock)
+            .unwrap();
+        assert_eq!(
+            captured.evidence().report["clock"]["pinnedEpochMs"].as_f64(),
+            Some(clock.epoch_ms)
+        );
         captured.evidence().frames[0].png.clone()
     };
     let (two, two_again, nine) = (frame(at(2)), frame(at(2)), frame(at(9)));
@@ -588,14 +878,23 @@ fn capture_clock_is_pinned_and_an_approved_review_lends_its_instant() {
     f.approve(&two);
     let path = f.session().join("current.json");
     let mut state: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    for pointer in ["/capture/components/0/views/preview", "/receipt/capture/components/0/views/preview"] {
-        state.pointer_mut(pointer).unwrap()["clock"] = json!({"pinnedEpochMs": at(2).epoch_ms as i64});
+    for pointer in [
+        "/capture/components/0/views/preview",
+        "/receipt/capture/components/0/views/preview",
+    ] {
+        state.pointer_mut(pointer).unwrap()["clock"] =
+            json!({"pinnedEpochMs": at(2).epoch_ms as i64});
     }
     fs::write(&path, serde_json::to_vec(&state).unwrap()).unwrap();
     let renderer = ReviewedEntryRenderer::local(&f.project, Some(&f.home));
-    let captured = renderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
+    let captured = renderer
+        .capture_entry(&f.request(EntryStage::Hero))
+        .unwrap();
     let report = &captured.evidence().report;
     assert_eq!(report["clock"]["source"], "approved-review", "{report}");
-    assert_eq!(report["clock"]["pinnedEpochMs"].as_f64(), Some(at(2).epoch_ms));
+    assert_eq!(
+        report["clock"]["pinnedEpochMs"].as_f64(),
+        Some(at(2).epoch_ms)
+    );
     assert_eq!(captured.evidence().frames[0].png, two);
 }

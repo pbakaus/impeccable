@@ -12,7 +12,8 @@ use std::path::Path;
 
 fn http(port: u16, method: &str, target: &str, body: Option<&str>) -> (u16, String) {
     let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    s.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+    s.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .unwrap();
     let body = body.unwrap_or("");
     let req = format!(
         "{} {} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -26,10 +27,20 @@ fn http(port: u16, method: &str, target: &str, body: Option<&str>) -> (u16, Stri
     let mut out = Vec::new();
     let _ = s.read_to_end(&mut out);
     let text = String::from_utf8_lossy(&out).into_owned();
-    let status: u16 = text.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
-    let body = text.split_once("\r\n\r\n").map(|(_, b)| b.to_string()).unwrap_or_default();
+    let status: u16 = text
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
+    let body = text
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
     // Dechunk if needed (tiny bodies: concatenate chunk payload lines).
-    let body = if text.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+    let body = if text
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
         let mut rest = body.as_str();
         let mut assembled = String::new();
         while let Some((size_line, after)) = rest.split_once("\r\n") {
@@ -100,44 +111,83 @@ fn live_server_source_ignores_and_poller_fields() {
             serde_json::from_str(&std::fs::read_to_string(&pid_file).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
         let port = info.get("port").and_then(|p| p.as_u64()).ok_or("no port")? as u16;
-        let token = info.get("token").and_then(|t| t.as_str()).ok_or("no token")?.to_string();
+        let token = info
+            .get("token")
+            .and_then(|t| t.as_str())
+            .ok_or("no token")?
+            .to_string();
 
         // /source serves a project file...
-        let (st, body) = http(port, "GET", &format!("/source?token={}&path=prototype/index.html", token), None);
+        let (st, body) = http(
+            port,
+            "GET",
+            &format!("/source?token={}&path=prototype/index.html", token),
+            None,
+        );
         assert_eq!(st, 200, "{}", body);
         assert!(body.contains("<h1>page</h1>"));
 
         // ...but not through a symlink that leaves the workspace (#618).
-        let outside = std::env::temp_dir().join(format!("impeccable-live-outside-{}", std::process::id()));
+        let outside =
+            std::env::temp_dir().join(format!("impeccable-live-outside-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&outside);
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("secret.txt"), "OUTSIDE SECRET").unwrap();
         std::os::unix::fs::symlink(outside.join("secret.txt"), dir.join("linked.txt")).unwrap();
-        let (st, body) = http(port, "GET", &format!("/source?token={}&path=linked.txt", token), None);
+        let (st, body) = http(
+            port,
+            "GET",
+            &format!("/source?token={}&path=linked.txt", token),
+            None,
+        );
         assert_eq!(st, 403, "{}", body);
         let _ = std::fs::remove_dir_all(&outside);
 
         // A symlink whose target stays inside still serves.
-        std::os::unix::fs::symlink(dir.join("prototype/index.html"), dir.join("alias.html")).unwrap();
-        let (st, body) = http(port, "GET", &format!("/source?token={}&path=alias.html", token), None);
+        std::os::unix::fs::symlink(dir.join("prototype/index.html"), dir.join("alias.html"))
+            .unwrap();
+        let (st, body) = http(
+            port,
+            "GET",
+            &format!("/source?token={}&path=alias.html", token),
+            None,
+        );
         assert_eq!(st, 200, "{}", body);
         assert!(body.contains("<h1>page</h1>"));
 
         // A broken symlink is a 404.
         std::os::unix::fs::symlink(dir.join("missing-target.txt"), dir.join("broken.txt")).unwrap();
-        let (st, _) = http(port, "GET", &format!("/source?token={}&path=broken.txt", token), None);
+        let (st, _) = http(
+            port,
+            "GET",
+            &format!("/source?token={}&path=broken.txt", token),
+            None,
+        );
         assert_eq!(st, 404);
 
         // /live.js carries the project detector waivers and the resolver
         // part (#639).
         let (st, live_js) = http(port, "GET", &format!("/live.js?token={}", token), None);
         assert_eq!(st, 200);
-        assert!(live_js.contains("window.__IMPECCABLE_PROJECT_IGNORES__ = "), "prelude field present");
-        assert!(live_js.contains("\"ignoreRules\":[\"ai-color-palette\"]"), "waivers serialized");
-        assert!(live_js.contains("\"roots\":[\"prototype/\"]"), "served roots derived from files globs");
-        assert!(live_js.contains("\"pageFiles\":[\"prototype/index.html\"]"), "page identities expanded");
+        assert!(
+            live_js.contains("window.__IMPECCABLE_PROJECT_IGNORES__ = "),
+            "prelude field present"
+        );
+        assert!(
+            live_js.contains("\"ignoreRules\":[\"ai-color-palette\"]"),
+            "waivers serialized"
+        );
+        assert!(
+            live_js.contains("\"roots\":[\"prototype/\"]"),
+            "served roots derived from files globs"
+        );
+        assert!(
+            live_js.contains("\"pageFiles\":[\"prototype/index.html\"]"),
+            "page identities expanded"
+        );
         assert!(!live_js.contains("\"reason\""), "reason stays local");
-        assert!(live_js.contains("impeccable live script part: project-ignores (live-browser-ignores.js)"));
+        assert!(live_js
+            .contains("impeccable live script part: project-ignores (live-browser-ignores.js)"));
 
         // Page-controlled poller fields are stripped at ingest (#488).
         let event = format!(
@@ -146,9 +196,15 @@ fn live_server_source_ignores_and_poller_fields() {
         );
         let (st, body) = http(port, "POST", "/events", Some(&event));
         assert_eq!(st, 200, "{}", body);
-        let (st, polled) = http(port, "GET", &format!("/poll?token={}&timeout=3000&leaseMs=60000", token), None);
+        let (st, polled) = http(
+            port,
+            "GET",
+            &format!("/poll?token={}&timeout=3000&leaseMs=60000", token),
+            None,
+        );
         assert_eq!(st, 200, "{}", polled);
-        let ev: serde_json::Value = serde_json::from_str(&polled).map_err(|e| format!("{}: {}", e, polled))?;
+        let ev: serde_json::Value =
+            serde_json::from_str(&polled).map_err(|e| format!("{}: {}", e, polled))?;
         assert_eq!(ev["type"], serde_json::json!("generate"));
         assert_eq!(ev["id"], serde_json::json!("c0ffee01"));
         assert!(ev.get("_instructions").is_none(), "{}", polled);
@@ -209,48 +265,89 @@ fn manual_edit_discard_with_ref_keeps_sibling_edits() {
         .stderr(std::process::Stdio::null())
         .spawn()
         .expect("spawn reaper");
-    let _server = Server { child, reaper, dir: dir.clone() };
+    let _server = Server {
+        child,
+        reaper,
+        dir: dir.clone(),
+    };
 
     let pid_file = dir.join(".impeccable/live/server.json");
     assert!(wait_for(&pid_file, 10), "server pid file never appeared");
-    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&pid_file).unwrap()).unwrap();
+    let info: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&pid_file).unwrap()).unwrap();
     let port = info["port"].as_u64().expect("port") as u16;
     let token = info["token"].as_str().expect("token");
 
     let stash = |id: &str, page_url: &str, op: serde_json::Value| {
-        let body = json!({ "token": token, "id": id, "pageUrl": page_url, "element": {}, "ops": [op] });
-        let (st, out) = http(port, "POST", &format!("/manual-edit-stash?token={}", token), Some(&body.to_string()));
+        let body =
+            json!({ "token": token, "id": id, "pageUrl": page_url, "element": {}, "ops": [op] });
+        let (st, out) = http(
+            port,
+            "POST",
+            &format!("/manual-edit-stash?token={}", token),
+            Some(&body.to_string()),
+        );
         assert_eq!(st, 200, "{}", out);
     };
     let discard = |query: &str| -> serde_json::Value {
-        let (st, out) = http(port, "POST", &format!("/manual-edit-discard?token={}&{}", token, query), None);
+        let (st, out) = http(
+            port,
+            "POST",
+            &format!("/manual-edit-discard?token={}&{}", token, query),
+            None,
+        );
         assert_eq!(st, 200, "{}", out);
         serde_json::from_str(&out).unwrap()
     };
     // [pageUrl, ref, newText] per op, in buffer order.
     let rows = |entries: &serde_json::Value| -> serde_json::Value {
         let ops = entries.as_array().unwrap().iter().flat_map(|e| {
-            e["ops"].as_array().unwrap().iter().map(move |o| json!([e["pageUrl"], o["ref"], o["newText"]]))
+            e["ops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(move |o| json!([e["pageUrl"], o["ref"], o["newText"]]))
         });
         ops.collect()
     };
     let pending = || -> serde_json::Value {
         let path = dir.join(".impeccable/live/pending-manual-edits.json");
-        let buffer: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let buffer: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         rows(&buffer["entries"])
     };
 
     // The removal shares an entry with the copy edit, and /docs reuses its ref.
-    stash("a1b2c3d4", "/", json!({ "ref": "main>h1", "tag": "h1", "originalText": "Hello", "newText": "Hi there" }));
-    stash("a1b2c3d4", "/", json!({ "ref": "main>p", "tag": "p", "originalText": "World", "deleted": true, "removeElement": true }));
-    stash("c3d4e5f6", "/docs", json!({ "ref": "main>p", "tag": "p", "originalText": "Docs", "newText": "Guide" }));
+    stash(
+        "a1b2c3d4",
+        "/",
+        json!({ "ref": "main>h1", "tag": "h1", "originalText": "Hello", "newText": "Hi there" }),
+    );
+    stash(
+        "a1b2c3d4",
+        "/",
+        json!({ "ref": "main>p", "tag": "p", "originalText": "World", "deleted": true, "removeElement": true }),
+    );
+    stash(
+        "c3d4e5f6",
+        "/docs",
+        json!({ "ref": "main>p", "tag": "p", "originalText": "Docs", "newText": "Guide" }),
+    );
 
     // Undo for one removed element (#1248): only that ref on that page goes.
     let res = discard("pageUrl=%2F&ref=main%3Ep");
     assert_eq!(res["discarded"], 1, "{}", res);
     assert_eq!(res["totalCount"], 2, "{}", res);
-    assert_eq!(rows(&res["entries"]), json!([["/", "main>p", null]]), "{}", res);
-    assert_eq!(pending(), json!([["/", "main>h1", "Hi there"], ["/docs", "main>p", "Guide"]]));
+    assert_eq!(
+        rows(&res["entries"]),
+        json!([["/", "main>p", null]]),
+        "{}",
+        res
+    );
+    assert_eq!(
+        pending(),
+        json!([["/", "main>h1", "Hi there"], ["/docs", "main>p", "Guide"]])
+    );
 
     // Without a ref the discard stays page-wide.
     let res = discard("pageUrl=%2F");

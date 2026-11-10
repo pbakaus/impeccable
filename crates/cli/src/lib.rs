@@ -17,4 +17,5 @@ mod router;
 pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+mod loop_connect;
 mod loop_install;

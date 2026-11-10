@@ -26,7 +26,9 @@ pub struct CdpFontRenderer {
 
 impl CdpFontRenderer {
     pub fn from_process_env() -> Self {
-        CdpFontRenderer { env: impeccable_common::process_env() }
+        CdpFontRenderer {
+            env: impeccable_common::process_env(),
+        }
     }
 
     fn launch(&self) -> Option<Browser> {
@@ -37,7 +39,11 @@ impl CdpFontRenderer {
             user_args.push("--no-sandbox".into());
             user_args.push("--disable-setuid-sandbox".into());
         }
-        let dangerous = self.env.get("PUPPETEER_DANGEROUS_NO_SANDBOX").map(String::as_str) == Some("true");
+        let dangerous = self
+            .env
+            .get("PUPPETEER_DANGEROUS_NO_SANDBOX")
+            .map(String::as_str)
+            == Some("true");
         let _ = default_chrome_args(&user_args, dangerous); // parity: same flag set the URL engine uses
         Browser::launch(&exe, &user_args, dangerous).ok()
     }
@@ -57,7 +63,9 @@ fn encode_family(fam: &str) -> String {
     for ch in fam.chars() {
         if ch == ' ' {
             out.push('+');
-        } else if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')') {
+        } else if ch.is_ascii_alphanumeric()
+            || matches!(ch, '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')')
+        {
             out.push(ch);
         } else {
             let mut buf = [0u8; 4];
@@ -121,7 +129,11 @@ impl FontRenderer for CdpFontRenderer {
         let mut results: Vec<RenderedCandidate> = Vec::new();
         let outcome = (|| -> Option<()> {
             let mut page = browser.new_page().ok()?;
-            page.set_viewport(Viewport { width: 1600, height: 400 }).ok()?;
+            page.set_viewport(Viewport {
+                width: 1600,
+                height: 400,
+            })
+            .ok()?;
             page.goto(&data_url(&html), "load", NAV_TIMEOUT).ok()?;
             std::thread::sleep(Duration::from_millis(800));
             for c in candidates {
@@ -136,7 +148,10 @@ impl FontRenderer for CdpFontRenderer {
                         size as i64,
                         text
                     );
-                    let set = format!("(() => {{ document.body.innerHTML = {}; }})()", js_string(&div));
+                    let set = format!(
+                        "(() => {{ document.body.innerHTML = {}; }})()",
+                        js_string(&div)
+                    );
                     let _ = page.evaluate(&set);
                     // Loaded means a real face of this family covers the weight.
                     let check = format!(
@@ -152,13 +167,22 @@ impl FontRenderer for CdpFontRenderer {
                     let box_v = eval_value(&mut page, "(() => { const r = document.querySelector('div.s').getBoundingClientRect(); return { w: Math.ceil(r.width) + 8, h: Math.ceil(r.height) + 8 }; })()");
                     let (bw, bh) = box_v
                         .as_ref()
-                        .map(|v| (v.get("w").and_then(|x| x.as_f64()).unwrap_or(0.0), v.get("h").and_then(|x| x.as_f64()).unwrap_or(0.0)))
+                        .map(|v| {
+                            (
+                                v.get("w").and_then(|x| x.as_f64()).unwrap_or(0.0),
+                                v.get("h").and_then(|x| x.as_f64()).unwrap_or(0.0),
+                            )
+                        })
                         .unwrap_or((0.0, 0.0));
                     let clip_w = 1600f64.min(bw);
                     let clip_h = 400f64.min(bh);
                     let shot = page.screenshot_clip(0.0, 0.0, clip_w, clip_h).ok()?;
-                    let png = base64::engine::general_purpose::STANDARD.decode(shot.as_bytes()).ok()?;
-                    fp = png_io::decode_png(&png).ok().and_then(|d| fingerprint(&d.image, &FpOpts::default()));
+                    let png = base64::engine::general_purpose::STANDARD
+                        .decode(shot.as_bytes())
+                        .ok()?;
+                    fp = png_io::decode_png(&png)
+                        .ok()
+                        .and_then(|d| fingerprint(&d.image, &FpOpts::default()));
                     if fp.is_none() || pass == 1 {
                         break;
                     }
@@ -223,17 +247,28 @@ impl FontRenderer for CdpFontRenderer {
         let vw = 1600u32.min(600u32.max(comp_crop.width as u32 + 24));
         let outcome = (|| -> Option<Vec<u8>> {
             let mut page = browser.new_page().ok()?;
-            page.set_viewport(Viewport { width: vw, height: 200 }).ok()?;
+            page.set_viewport(Viewport {
+                width: vw,
+                height: 200,
+            })
+            .ok()?;
             page.goto(&data_url(&html), "load", NAV_TIMEOUT).ok()?;
             let _ = page.evaluate("(async () => { await document.fonts.ready; })()");
             std::thread::sleep(Duration::from_millis(600));
             let size = eval_value(&mut page, "(() => ({ w: Math.ceil(document.documentElement.scrollWidth), h: Math.ceil(document.documentElement.scrollHeight) }))()");
             let (w, h) = size
                 .as_ref()
-                .map(|v| (v.get("w").and_then(|x| x.as_f64()).unwrap_or(vw as f64), v.get("h").and_then(|x| x.as_f64()).unwrap_or(200.0)))
+                .map(|v| {
+                    (
+                        v.get("w").and_then(|x| x.as_f64()).unwrap_or(vw as f64),
+                        v.get("h").and_then(|x| x.as_f64()).unwrap_or(200.0),
+                    )
+                })
                 .unwrap_or((vw as f64, 200.0));
             let shot = page.screenshot_clip(0.0, 0.0, w, h).ok()?;
-            let png = base64::engine::general_purpose::STANDARD.decode(shot.as_bytes()).ok()?;
+            let png = base64::engine::general_purpose::STANDARD
+                .decode(shot.as_bytes())
+                .ok()?;
             page.close();
             Some(png)
         })();

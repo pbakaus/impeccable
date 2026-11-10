@@ -9,7 +9,7 @@ use impeccable_comp_verbs::asset_capture::capture_sha256;
 use impeccable_comp_verbs::entry_capture::{
     CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest, EntryStage, FrameEvidence,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::BTreeMap,
     fs,
@@ -60,7 +60,10 @@ pub struct CaptureClock {
 }
 impl CaptureClock {
     pub fn now() -> Self {
-        Self { epoch_ms: crate::component_capture::now_ms(), from_review: false }
+        Self {
+            epoch_ms: crate::component_capture::now_ms(),
+            from_review: false,
+        }
     }
     fn json(&self) -> Value {
         json!({"pinnedEpochMs": self.epoch_ms.floor() as i64, "source": if self.from_review { "approved-review" } else { "capture-start" },
@@ -140,19 +143,31 @@ impl CdpEntryRenderer {
         if ids.is_empty() {
             return capture_text_only(request, snapshot, &inventory, &frames, forbidden, clock);
         }
-        let comp = snapshot.bytes(&request.reference).ok_or("reference is not bound to snapshot")?;
+        let comp = snapshot
+            .bytes(&request.reference)
+            .ok_or("reference is not bound to snapshot")?;
         let mut forbidden: Vec<&[u8]> = forbidden.to_vec();
         forbidden.push(comp);
         // Each raster region's plate path and its box in comp pixels.
         let mut plates = Vec::new();
         let mut boxes = Vec::new();
-        for region in spec["regions"].as_array().into_iter().flatten().filter(|r| r["medium"] == "raster") {
+        for region in spec["regions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|r| r["medium"] == "raster")
+        {
             let id = region["id"].as_str().unwrap_or("raster");
-            let plate = region["plate"].as_str().ok_or_else(|| format!("raster region {id} has no plate"))?;
+            let plate = region["plate"]
+                .as_str()
+                .ok_or_else(|| format!("raster region {id} has no plate"))?;
             if plate == request.reference || plate == request.spec {
                 return Err(format!("raster region {id} names the approved comp ({plate}) as its plate. A plate is the region's own artwork, never the comp."));
             }
-            if let Some(reason) = snapshot.bytes(plate).and_then(|bytes| forbidden_content(plate, bytes, &forbidden)) {
+            if let Some(reason) = snapshot
+                .bytes(plate)
+                .and_then(|bytes| forbidden_content(plate, bytes, &forbidden))
+            {
                 return Err(format!("raster region {id}'s plate {plate} {reason}. A plate is the region's own artwork, never the comp."));
             }
             plates.push(plate.to_string());
@@ -194,7 +209,9 @@ impl CdpEntryRenderer {
             };
             snapshot.take_requested()?;
             let captured = snapshot.capture_regions_at_viewport(
-                &mut CdpAssetRenderer::from_process_env().pinned_at(clock.epoch_ms).measuring_raster_coverage(exclude),
+                &mut CdpAssetRenderer::from_process_env()
+                    .pinned_at(clock.epoch_ms)
+                    .measuring_raster_coverage(exclude),
                 &request.spec,
                 selected,
                 true,
@@ -235,7 +252,10 @@ impl CdpEntryRenderer {
                 .map(|r| r.receipt["rasterCoverage"].clone())
                 .ok_or("raster coverage was not measured")?;
             if !coverage["share"].is_number() {
-                return Err(format!("{name} raster coverage was not measured: {}", coverage["unavailable"].as_str().unwrap_or("no measurement")));
+                return Err(format!(
+                    "{name} raster coverage was not measured: {}",
+                    coverage["unavailable"].as_str().unwrap_or("no measurement")
+                ));
             }
             for region in &mut regions {
                 if let Some(receipt) = region.receipt.as_object_mut() {
@@ -290,8 +310,9 @@ fn capture_text_only(
     forbidden: &[&[u8]],
     clock: CaptureClock,
 ) -> Result<Box<dyn CapturedEntry>, String> {
-    let spec: Value = serde_json::from_slice(raster.bytes(&request.spec).ok_or("missing bound spec")?)
-        .map_err(|e| e.to_string())?;
+    let spec: Value =
+        serde_json::from_slice(raster.bytes(&request.spec).ok_or("missing bound spec")?)
+            .map_err(|e| e.to_string())?;
     let size = |k: &str| {
         spec["compSize"][k]
             .as_u64()
@@ -300,11 +321,17 @@ fn capture_text_only(
             .ok_or_else(|| format!("missing reference {k}"))
     };
     let (width, height) = (size("width")?, size("height")?);
-    let comp = raster.bytes(&request.reference).ok_or("reference is not bound to snapshot")?;
+    let comp = raster
+        .bytes(&request.reference)
+        .ok_or("reference is not bound to snapshot")?;
     let mut forbidden: Vec<&[u8]> = forbidden.to_vec();
     forbidden.push(comp);
     let (declared, manifest) = declared_dependencies(&request.root, &request.artifact)?;
-    let policy = if declared.is_some() { "hero-review-manifest" } else { "static-inventory" };
+    let policy = if declared.is_some() {
+        "hero-review-manifest"
+    } else {
+        "static-inventory"
+    };
     let names: Vec<String> = match &declared {
         Some(deps) => {
             let mut names = vec![request.artifact.clone()];
@@ -324,7 +351,9 @@ fn capture_text_only(
         if name == request.spec || name == request.reference {
             continue;
         }
-        let bytes = raster.bytes(&name).ok_or_else(|| format!("{name} is not in the frozen inputs"))?;
+        let bytes = raster
+            .bytes(&name)
+            .ok_or_else(|| format!("{name} is not in the frozen inputs"))?;
         // Served files are checked when the page loads them (below), under either
         // policy: a file that never reaches the page cannot show the reference.
         files.insert(name, bytes.to_vec());
@@ -363,8 +392,15 @@ fn capture_text_only(
                     format!("{name} text-only capture failed: {e}")
                 }
             })?;
-            for path in proof["observedDependencies"].as_object().into_iter().flatten().map(|(p, _)| p) {
-                let bytes = page.bytes(path).ok_or("observed dependency is not in the page snapshot")?;
+            for path in proof["observedDependencies"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(p, _)| p)
+            {
+                let bytes = page
+                    .bytes(path)
+                    .ok_or("observed dependency is not in the page snapshot")?;
                 if let Some(reason) = forbidden_content(path, bytes, &forbidden) {
                     return Err(format!("{name} text-only capture refused: the page loads {path}, which {reason}. Draw the first viewport in code."));
                 }
@@ -373,7 +409,9 @@ fn capture_text_only(
             // in this viewport is a raster region and it declares none, so a large
             // image contradicts the spec whatever its bytes are.
             let coverage = &proof["rasterCoverage"];
-            let share = coverage["share"].as_f64().ok_or("raster coverage was not measured")?;
+            let share = coverage["share"]
+                .as_f64()
+                .ok_or("raster coverage was not measured")?;
             if share >= TEXT_ONLY_RASTER_SHARE_MAX {
                 return Err(format!("{name} text-only capture refused: images cover {}% of the viewport (limit {}%): {}. The spec declares no raster region, so a large image contradicts it: declare the image as a raster region in the spec (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32, largest_images(coverage)));
             }
@@ -391,7 +429,11 @@ fn capture_text_only(
     if let Some((_, bytes)) = &manifest {
         evidence.report["reviewManifestSha256"] = json!(capture_sha256(bytes));
     }
-    let entry = FrozenEntry { snapshot: raster, manifest, evidence };
+    let entry = FrozenEntry {
+        snapshot: raster,
+        manifest,
+        evidence,
+    };
     entry.verify_current()?;
     Ok(Box::new(entry))
 }
@@ -422,7 +464,11 @@ fn declared_dependencies(
         .as_array()
         .ok_or("hero review manifest: the page component has no dependencies list")?
         .iter()
-        .map(|d| d.as_str().map(|s| s.replace('\\', "/")).ok_or("hero review manifest: dependencies must be paths"))
+        .map(|d| {
+            d.as_str()
+                .map(|s| s.replace('\\', "/"))
+                .ok_or("hero review manifest: dependencies must be paths")
+        })
         .collect::<Result<Vec<_>, _>>()?;
     Ok((Some(deps), Some((path, bytes))))
 }
@@ -434,7 +480,13 @@ fn largest_images(coverage: &Value) -> String {
         .into_iter()
         .flatten()
         .take(3)
-        .map(|i| format!("{} ({}% of the viewport)", i["what"].as_str().unwrap_or("image"), (i["share"].as_f64().unwrap_or(0.) * 100.).round()))
+        .map(|i| {
+            format!(
+                "{} ({}% of the viewport)",
+                i["what"].as_str().unwrap_or("image"),
+                (i["share"].as_f64().unwrap_or(0.) * 100.).round()
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -449,14 +501,19 @@ fn check_requests(
     request: &EntryRequest,
     forbidden: &[&[u8]],
 ) -> Result<(), String> {
-    for path in snapshot.take_requested().map_err(|e| format!("{name} raster capture refused: {e}"))? {
+    for path in snapshot
+        .take_requested()
+        .map_err(|e| format!("{name} raster capture refused: {e}"))?
+    {
         if path == request.reference || path == request.spec {
             return Err(format!("{name} raster capture refused: the page loads the approved comp ({path}). Show the declared plates and draw the rest of the first viewport in code."));
         }
         if !snapshot.is_served(&path) {
             continue;
         }
-        let bytes = snapshot.bytes(&path).ok_or("requested file is not in the frozen inputs")?;
+        let bytes = snapshot
+            .bytes(&path)
+            .ok_or("requested file is not in the frozen inputs")?;
         if let Some(reason) = forbidden_content(&path, bytes, forbidden) {
             return Err(format!("{name} raster capture refused: the page loads {path}, which {reason}. Show the declared plates and draw the rest of the first viewport in code."));
         }
@@ -468,7 +525,11 @@ fn check_requests(
 fn forbidden_content(name: &str, bytes: &[u8], forbidden: &[&[u8]]) -> Option<&'static str> {
     use base64::Engine;
     let text = matches!(
-        Path::new(name).extension().and_then(|x| x.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        Path::new(name)
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
         Some("html" | "htm" | "css" | "js" | "mjs" | "svg")
     )
     .then(|| String::from_utf8_lossy(bytes));

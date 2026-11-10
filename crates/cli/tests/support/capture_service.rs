@@ -25,7 +25,10 @@ impl CaptureService {
         let nonce = format!(
             "{}-{}",
             std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         );
         let dir = std::env::temp_dir().join(format!("capture-service-{nonce}"));
         std::fs::create_dir_all(&dir).unwrap();
@@ -56,7 +59,9 @@ impl CaptureService {
                 break port as u16;
             }
             let failure = match child.try_wait() {
-                Ok(Some(status)) => Some(format!("capture-server exited before it was ready: {status}")),
+                Ok(Some(status)) => Some(format!(
+                    "capture-server exited before it was ready: {status}"
+                )),
                 Err(e) => Some(format!("capture-server status unavailable: {e}")),
                 Ok(None) if started.elapsed() > Duration::from_secs(60) => {
                     Some("capture-server never wrote its ready file".into())
@@ -71,21 +76,33 @@ impl CaptureService {
             }
             std::thread::sleep(Duration::from_millis(20));
         };
-        Self { child, dir, port, key }
+        Self {
+            child,
+            dir,
+            port,
+            key,
+        }
     }
     /// The client exactly as build-phase builds it from the host's environment.
     pub fn renderer(&self) -> RemoteEntryRenderer {
         let env = HashMap::from([
             ("IMPECCABLE_CAPTURE_PORT".to_string(), self.port.to_string()),
-            ("IMPECCABLE_CAPTURE_CAPABILITY".to_string(), self.key.clone()),
+            (
+                "IMPECCABLE_CAPTURE_CAPABILITY".to_string(),
+                self.key.clone(),
+            ),
         ]);
-        RemoteEntryRenderer::from_env(&env).unwrap().expect("service configured")
+        RemoteEntryRenderer::from_env(&env)
+            .unwrap()
+            .expect("service configured")
     }
     /// A host request (the audit endpoint is the host adapter's, not the client's).
     pub fn post(&self, route: &str, body: &Value) -> Value {
         let body = serde_json::to_vec(body).unwrap();
         let mut stream = TcpStream::connect(("127.0.0.1", self.port)).unwrap();
-        stream.set_read_timeout(Some(Duration::from_secs(150))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(150)))
+            .unwrap();
         write!(
             stream,
             "POST {route} HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Capture-Key: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -96,7 +113,10 @@ impl CaptureService {
         stream.write_all(&body).unwrap();
         let mut bytes = Vec::new();
         stream.read_to_end(&mut bytes).unwrap();
-        let split = bytes.windows(4).position(|w| w == b"\r\n\r\n").expect("HTTP response");
+        let split = bytes
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .expect("HTTP response");
         serde_json::from_slice(&bytes[split + 4..]).unwrap()
     }
 }

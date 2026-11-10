@@ -1,7 +1,7 @@
 #[path = "support/capture_service.rs"]
 #[allow(dead_code)]
 mod capture_service;
-use impeccable::entry_capture::{CdpEntryRenderer, static_inventory};
+use impeccable::entry_capture::{static_inventory, CdpEntryRenderer};
 use impeccable_comp::{png_io, raster};
 use impeccable_comp_verbs::entry_capture::{EntryRenderer, EntryRequest, EntryStage};
 use std::{
@@ -43,11 +43,14 @@ impl Fixture {
         let mut comp = raster::create_image(200, 200, [255, 255, 255, 255]);
         for y in 20..100 {
             for x in 20..100 {
-                comp.data[(y * 200 + x) * 4..(y * 200 + x) * 4 + 4].copy_from_slice(&[231, 60, 30, 255]);
+                comp.data[(y * 200 + x) * 4..(y * 200 + x) * 4 + 4]
+                    .copy_from_slice(&[231, 60, 30, 255]);
             }
         }
         fs::write(p.join(comp_path), png_io::encode_png(&comp, &[]).unwrap()).unwrap();
-        let spec = format!(r#"{{"comp":"{comp_path}","compSize":{{"width":200,"height":200}},"regions":[{{"id":"art","medium":"raster","kind":"plate","plate":"assets/art.png","px":{{"x":20,"y":20,"w":80,"h":80}}}}]}}"#);
+        let spec = format!(
+            r#"{{"comp":"{comp_path}","compSize":{{"width":200,"height":200}},"regions":[{{"id":"art","medium":"raster","kind":"plate","plate":"assets/art.png","px":{{"x":20,"y":20,"w":80,"h":80}}}}]}}"#
+        );
         fs::write(p.join(".impeccable/spec.json"), spec).unwrap();
         fs::write(p.join(".env"), "private").unwrap();
         fs::write(p.join("node_modules/secret.js"), "private").unwrap();
@@ -109,12 +112,10 @@ fn entry_renderer_returns_fresh_hero_and_responsive_pixels_with_live_input_guard
                 _ => panic!("unexpected frame"),
             };
             assert_eq!((image.width, image.height), expected);
-            assert!(
-                frame
-                    .regions
-                    .iter()
-                    .all(|r| r.receipt["stableCapture"] == true)
-            );
+            assert!(frame
+                .regions
+                .iter()
+                .all(|r| r.receipt["stableCapture"] == true));
         }
         let before = fs::read(f.0.join("assets/art.png")).unwrap();
         fs::write(f.0.join("assets/art.png"), b"changed").unwrap();
@@ -148,13 +149,20 @@ fn raster_page_that_requests_the_comp_is_refused() {
     }
     for f in [Fixture::visible(), Fixture::new()] {
         let comp = f.1;
-        f.page(&format!("<img src=\"{comp}\" style=\"left:0;top:0;width:100vw;height:100vh;opacity:.5\">"));
+        f.page(&format!(
+            "<img src=\"{comp}\" style=\"left:0;top:0;width:100vw;height:100vh;opacity:.5\">"
+        ));
         for stage in [EntryStage::Hero, EntryStage::Responsive] {
             let e = refusal(&CdpEntryRenderer, &f, stage);
-            assert!(e.contains(&format!("loads the approved comp ({comp})")), "{e}");
+            assert!(
+                e.contains(&format!("loads the approved comp ({comp})")),
+                "{e}"
+            );
         }
         // A stylesheet background asks for it the same way.
-        f.page(&format!("<div style=\"position:absolute;inset:0;z-index:-1;background:url('{comp}')\"></div>"));
+        f.page(&format!(
+            "<div style=\"position:absolute;inset:0;z-index:-1;background:url('{comp}')\"></div>"
+        ));
         let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
         assert!(e.contains("loads the approved comp"), "{e}");
     }
@@ -171,19 +179,33 @@ fn raster_page_that_loads_a_copy_of_the_comp_is_refused() {
     fs::write(f.0.join("assets/backdrop.png"), &comp).unwrap();
     f.page("<img src=\"assets/backdrop.png\" style=\"left:0;top:0;width:100vw;height:100vh;z-index:-1\">");
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"), "{e}");
+    assert!(
+        e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"),
+        "{e}"
+    );
     f.page("<div style=\"position:absolute;inset:0;z-index:-1;background:url(assets/backdrop.png)\"></div>");
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"), "{e}");
+    assert!(
+        e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"),
+        "{e}"
+    );
     fs::remove_file(f.0.join("assets/backdrop.png")).unwrap();
     // A data URI of it in a stylesheet, wrapped across lines.
     use base64::Engine;
     let encoded = base64::engine::general_purpose::STANDARD.encode(&comp);
-    let wrapped = encoded.as_bytes().chunks(76).map(|c| std::str::from_utf8(c).unwrap()).collect::<Vec<_>>().join("\n  ");
+    let wrapped = encoded
+        .as_bytes()
+        .chunks(76)
+        .map(|c| std::str::from_utf8(c).unwrap())
+        .collect::<Vec<_>>()
+        .join("\n  ");
     fs::write(f.0.join("assets/site.css"), format!(".backdrop{{position:absolute;inset:0;z-index:-1;background:url(\"data:image/png;base64,\n  {wrapped}\")}}")).unwrap();
     f.page("<link rel=stylesheet href=\"assets/site.css\"><div class=backdrop></div>");
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("assets/site.css") && e.contains("data URI"), "{e}");
+    assert!(
+        e.contains("assets/site.css") && e.contains("data URI"),
+        "{e}"
+    );
     fs::remove_file(f.0.join("assets/site.css")).unwrap();
     // Re-encoded, the bytes differ; painted outside the declared region it
     // still contradicts the spec.
@@ -193,7 +215,11 @@ fn raster_page_that_loads_a_copy_of_the_comp_is_refused() {
     fs::write(f.0.join("assets/backdrop.png"), reencoded).unwrap();
     f.page("<img src=\"assets/backdrop.png\" style=\"left:0;top:0;width:100vw;height:100vh;z-index:-1\">");
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("images outside the declared raster regions cover") && e.contains("comp-spec --regions"), "{e}");
+    assert!(
+        e.contains("images outside the declared raster regions cover")
+            && e.contains("comp-spec --regions"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -201,8 +227,13 @@ fn a_plate_that_is_the_comp_is_refused_before_capture() {
     let f = Fixture::visible();
     fs::write(f.0.join("assets/art.png"), f.comp()).unwrap();
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("assets/art.png") && e.contains("never the comp"), "{e}");
-    let spec = fs::read_to_string(f.0.join(".impeccable/spec.json")).unwrap().replace("assets/art.png", "comp.png");
+    assert!(
+        e.contains("assets/art.png") && e.contains("never the comp"),
+        "{e}"
+    );
+    let spec = fs::read_to_string(f.0.join(".impeccable/spec.json"))
+        .unwrap()
+        .replace("assets/art.png", "comp.png");
     fs::write(f.0.join(".impeccable/spec.json"), spec).unwrap();
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
     assert!(e.contains("names the approved comp"), "{e}");
@@ -219,18 +250,39 @@ fn honest_raster_page_with_the_comp_in_the_project_still_passes() {
     fs::write(f.0.join("backup/comp-old.png"), f.comp()).unwrap();
     let logo = png_io::encode_png(&raster::create_image(8, 8, [20, 20, 20, 255]), &[]).unwrap();
     fs::write(f.0.join("assets/logo.png"), logo).unwrap();
-    f.page("<img src=\"assets/logo.png\" style=\"left:auto;right:4px;top:4px;width:8px;height:8px\">");
+    f.page(
+        "<img src=\"assets/logo.png\" style=\"left:auto;right:4px;top:4px;width:8px;height:8px\">",
+    );
     for stage in [EntryStage::Hero, EntryStage::Responsive] {
         let captured = CdpEntryRenderer.capture_entry(&f.request(stage)).unwrap();
         let report = &captured.evidence().report;
-        let served: Vec<_> = report["servedToPage"].as_array().unwrap().iter().filter_map(|f| f["path"].as_str()).collect();
-        assert!(served.contains(&"assets/art.png") && !served.contains(&"comp.png"), "{served:?}");
-        let comp = report["manifest"]["files"].as_array().unwrap().iter().find(|f| f["path"] == "comp.png").unwrap();
+        let served: Vec<_> = report["servedToPage"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|f| f["path"].as_str())
+            .collect();
+        assert!(
+            served.contains(&"assets/art.png") && !served.contains(&"comp.png"),
+            "{served:?}"
+        );
+        let comp = report["manifest"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["path"] == "comp.png")
+            .unwrap();
         assert_eq!(comp["served"], false);
         for frame in &captured.evidence().frames {
-            let share = report["frameProofs"][&frame.name]["rasterCoverage"]["share"].as_f64().unwrap();
+            let share = report["frameProofs"][&frame.name]["rasterCoverage"]["share"]
+                .as_f64()
+                .unwrap();
             assert!(share < 0.05, "{}: {share}", frame.name);
-            assert!(frame.regions.iter().all(|r| r.receipt["stableCapture"] == true && r.receipt.get("rasterCoverage").is_none()));
+            assert!(frame
+                .regions
+                .iter()
+                .all(|r| r.receipt["stableCapture"] == true
+                    && r.receipt.get("rasterCoverage").is_none()));
         }
         captured.verify_current().unwrap();
         // The comp is bound though never served: changing it invalidates the capture.
@@ -251,18 +303,29 @@ fn pseudo_element_images_count_at_their_painted_box() {
     }
     let f = Fixture::visible();
     // The hero frame is 200x200 with the art region at 20..100 on both axes.
-    let host = "<div class=h style='position:absolute;left:20px;top:120px;width:80px;height:60px'></div>";
-    for place in ["left:0;top:-100px", "left:0;top:0;transform:translateY(-100px)"] {
+    let host =
+        "<div class=h style='position:absolute;left:20px;top:120px;width:80px;height:60px'></div>";
+    for place in [
+        "left:0;top:-100px",
+        "left:0;top:0;transform:translateY(-100px)",
+    ] {
         f.page(&format!("{host}<style>.h::before{{content:'';position:absolute;{place};width:80px;height:80px;background:url(assets/art.png) 0 0/100% 100%}}</style>"));
-        let captured = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).unwrap();
-        let share = captured.evidence().report["frameProofs"]["hero"]["rasterCoverage"]["share"].as_f64().unwrap();
+        let captured = CdpEntryRenderer
+            .capture_entry(&f.request(EntryStage::Hero))
+            .unwrap();
+        let share = captured.evidence().report["frameProofs"]["hero"]["rasterCoverage"]["share"]
+            .as_f64()
+            .unwrap();
         assert!(share < 0.01, "{place}: {share}");
     }
     let other = png_io::encode_png(&raster::create_image(32, 32, [20, 90, 200, 255]), &[]).unwrap();
     fs::write(f.0.join("assets/other.png"), other).unwrap();
     f.page("<div class=h style='position:absolute;left:20px;top:20px;width:80px;height:80px'></div><style>.h::before{content:'';position:absolute;left:-20px;top:100px;width:100px;height:80px;background:url(assets/other.png) 0 0/100% 100%}</style>");
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Hero);
-    assert!(e.contains("outside the declared raster regions cover 20%") && e.contains("div.h::before"), "{e}");
+    assert!(
+        e.contains("outside the declared raster regions cover 20%") && e.contains("div.h::before"),
+        "{e}"
+    );
 }
 
 /// Mobile reflows away from the comp, so a declared plate counts nowhere there,
@@ -288,7 +351,11 @@ fn mobile_excludes_declared_plates_however_they_are_referenced() {
     fs::write(f.0.join("assets/other.png"), other).unwrap();
     f.page(&format!("{big}<style>.m{{display:none}}@media (max-width:500px){{.m{{display:block}}}}</style><img class=m src='assets/other.png' style='left:0;top:60vw;width:80vw;height:80vw'>"));
     let e = refusal(&CdpEntryRenderer, &f, EntryStage::Responsive);
-    assert!(e.contains("mobile raster capture refused") && e.contains("outside the declared raster regions"), "{e}");
+    assert!(
+        e.contains("mobile raster capture refused")
+            && e.contains("outside the declared raster regions"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -302,7 +369,11 @@ fn host_capture_service_refuses_a_raster_page_that_shows_the_comp() {
     // Honest: crosses the transport with its coverage proofs.
     for stage in [EntryStage::Hero, EntryStage::Responsive] {
         let captured = remote.capture_entry(&f.request(stage)).unwrap();
-        assert!(captured.evidence().report["servedToPage"].as_array().unwrap().iter().all(|s| s["path"] != "comp.png"));
+        assert!(captured.evidence().report["servedToPage"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["path"] != "comp.png"));
         captured.verify_current().unwrap();
     }
     // Showing the comp by path or by copy is refused by the service.
@@ -312,7 +383,10 @@ fn host_capture_service_refuses_a_raster_page_that_shows_the_comp() {
     fs::write(f.0.join("assets/backdrop.png"), f.comp()).unwrap();
     f.page("<img src=\"assets/backdrop.png\" style=\"left:0;top:0;width:100vw;height:100vh;z-index:-1\">");
     let e = refusal(&remote, &f, EntryStage::Responsive);
-    assert!(e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"), "{e}");
+    assert!(
+        e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"),
+        "{e}"
+    );
 }
 
 #[test]
@@ -329,7 +403,11 @@ fn host_capture_service_keeps_one_receipt_per_raster_region() {
         let evidence = captured.evidence();
         assert!(evidence.report.get("captureMethod").is_none());
         for frame in &evidence.frames {
-            let ids: Vec<_> = frame.regions.iter().map(|r| r.receipt["regionId"].clone()).collect();
+            let ids: Vec<_> = frame
+                .regions
+                .iter()
+                .map(|r| r.receipt["regionId"].clone())
+                .collect();
             assert_eq!(ids, [serde_json::json!("art")], "{}", frame.name);
         }
         captured.verify_current().unwrap();

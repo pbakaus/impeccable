@@ -117,6 +117,26 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
         if m.name.is_empty() || m.name.contains(['/', '\\']) {
             return Err("Invalid MCP server name".into());
         }
+        match &m.url {
+            Some(url) => {
+                if !m.command.is_empty() || !m.args.is_empty() || !m.env.is_empty() {
+                    return Err("A remote MCP server takes a url and nothing else".into());
+                }
+                let parsed =
+                    url::Url::parse(url).map_err(|_| "Invalid MCP server url".to_string())?;
+                if parsed.scheme() != "https"
+                    || !parsed.username().is_empty()
+                    || parsed.password().is_some()
+                    || parsed.host_str().is_none()
+                {
+                    return Err("An MCP server url must be https, with no credentials".into());
+                }
+            }
+            None if m.command.is_empty() => {
+                return Err("An MCP server needs a command or a url".into());
+            }
+            None => {}
+        }
     }
     Ok(())
 }

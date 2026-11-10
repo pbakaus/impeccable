@@ -1,4 +1,5 @@
 use super::*;
+use crate::cli::validate;
 
 #[cfg(unix)]
 #[test]
@@ -20,6 +21,7 @@ fn mcp_name_collision_is_detected_through_injected_cli() {
         command: "ignored".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let err = sync_mcp(&s, None, &root).unwrap_err();
     std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
@@ -48,6 +50,7 @@ fn recover_rolls_back_after_mcp_add_boundary() {
         command: "ignored".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     TEST_FAILPOINT.with(|v| v.set(Some("mcp_synced")));
     let applied = apply(&s, None, &home, &home.join("journal.json"), None);
@@ -77,6 +80,7 @@ fn mcp_identical_server_claims_are_shared_until_last_undo() {
         command: "server".into(),
         args: vec!["--mode".into(), "safe".into()],
         env: Default::default(),
+        url: None,
     });
     let pa = home.join(format!("{}.json", installation_id(&a)));
     let ja = apply(&a, None, &home, &pa, None).unwrap();
@@ -122,6 +126,7 @@ fn shared_mcp_drift_is_reported_even_when_releasing_one_claim() {
         command: "original".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let pa = home.join(format!("{}.json", installation_id(&a)));
     let ja = apply(&a, None, &home, &pa, None).unwrap();
@@ -156,6 +161,7 @@ fn mcp_same_name_different_owner_configuration_is_refused() {
         command: "first".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let pa = home.join(format!("{}.json", installation_id(&a)));
     let ja = apply(&a, None, &home, &pa, None).unwrap();
@@ -188,6 +194,7 @@ fn mcp_undo_reports_drift_and_leaves_server_untouched() {
         command: "original".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let journal_path = home.join(format!("{}.json", installation_id(&s)));
     let journal = apply(&s, None, &home, &journal_path, None).unwrap();
@@ -225,6 +232,7 @@ fn codex_mcp_uses_json_get_and_removes_the_verified_configuration() {
         command: "codex-command".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let journal_path = home.join(format!("{}.json", installation_id(&s)));
     let journal = apply(&s, None, &home, &journal_path, None).unwrap();
@@ -260,8 +268,152 @@ fn codex_mcp_collision_uses_json_get() {
         command: "ours".into(),
         args: vec![],
         env: Default::default(),
+        url: None,
     });
     let error = sync_mcp(&s, None, &root).unwrap_err();
     std::env::remove_var("IMPECCABLE_CODEX_BIN");
     assert_eq!(error.0, "mcp_name_collision");
+}
+
+/// A `claude` that behaves like 2.1.x: `mcp get` takes no `--scope` and prints text, not JSON.
+#[cfg(unix)]
+fn fake_claude_text(root: &Path) -> (PathBuf, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let script = root.join("fake-claude-text");
+    let state = root.join("mcp-text-state.json");
+    fs::write(
+        &script,
+        r#"#!/bin/sh
+case "$2" in
+get)
+  for a in "$@"; do [ "$a" = "--scope" ] && { echo "error: unknown option '--scope'" >&2; exit 1; }; done
+  [ -f "$MCP_STATE" ] || { echo "No MCP server found with name: $3" >&2; exit 1; }
+  url=$(sed -n 's/.*"url":"\([^"]*\)".*/\1/p' "$MCP_STATE")
+  printf '%s:\n  Scope: User config (available in all your projects)\n  Status: ✘ Failed to connect\n  Type: http\n  URL: %s\n\nTo remove this server, run: claude mcp remove %s -s user\n' "$3" "$url" "$3";;
+add-json) printf '%s' "$6" > "$MCP_STATE";;
+remove) rm -f "$MCP_STATE";;
+esac
+exit 0
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    (script, state)
+}
+
+fn url_server(url: &str) -> McpServer {
+    McpServer {
+        name: "impeccable".into(),
+        command: String::new(),
+        args: vec![],
+        env: Default::default(),
+        url: Some(url.into()),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn claude_url_server_is_added_as_http_and_read_back_from_the_real_text_output() {
+    // Catches: no way to add a remote MCP server (Loop journey C2), and `mcp get --scope user`,
+    // which Claude Code 2.1.x rejects, so every server read as absent.
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let (script, state) = fake_claude_text(&root);
+    std::env::set_var("IMPECCABLE_CLAUDE_BIN", &script);
+    std::env::set_var("MCP_STATE", &state);
+    let mut s = spec("claude", root.clone());
+    s.instruction = None;
+    s.mcp_servers
+        .push(url_server("https://api.impeccable.style/mcp"));
+    let journal_path = home.join(format!("{}.json", installation_id(&s)));
+    let journal = apply(&s, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &journal).unwrap();
+    let written: Value = serde_json::from_str(&fs::read_to_string(&state).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        json!({"type":"http","url":"https://api.impeccable.style/mcp"})
+    );
+    assert_eq!(
+        mcp_get(&s, "impeccable").unwrap(),
+        Some(mcp_config(&s.mcp_servers[0]))
+    );
+    let result = undo(&s, Some(&journal), &home).unwrap();
+    assert_eq!(result["conflicts"], json!([]));
+    assert!(!state.exists(), "undo removed exactly the server it added");
+    std::env::remove_var("IMPECCABLE_CLAUDE_BIN");
+    std::env::remove_var("MCP_STATE");
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_url_server_is_added_with_url_and_read_back_from_its_json() {
+    use std::os::unix::fs::PermissionsExt;
+    let _environment = MCP_ENV_LOCK.lock().unwrap();
+    let home = temp();
+    let root = temp();
+    let script = root.join("fake-codex-url");
+    let state = root.join("mcp-url-state.json");
+    fs::write(
+        &script,
+        r#"#!/bin/sh
+case "$2" in
+get) [ "$4" = "--json" ] || exit 3; [ -f "$MCP_STATE" ] || exit 1; cat "$MCP_STATE";;
+add) [ "$4" = "--url" ] || exit 4; printf '{"name":"%s","enabled":true,"transport":{"type":"streamable_http","url":"%s","bearer_token_env_var":null}}' "$3" "$5" > "$MCP_STATE";;
+remove) rm -f "$MCP_STATE";;
+esac
+exit 0
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+    std::env::set_var("IMPECCABLE_CODEX_BIN", &script);
+    std::env::set_var("MCP_STATE", &state);
+    let mut s = spec("codex", root.clone());
+    s.instruction = None;
+    s.mcp_servers
+        .push(url_server("https://api.impeccable.style/mcp"));
+    let journal_path = home.join(format!("{}.json", installation_id(&s)));
+    let journal = apply(&s, None, &home, &journal_path, None).unwrap();
+    write_journal(&journal_path, &journal).unwrap();
+    assert_eq!(
+        mcp_get(&s, "impeccable").unwrap(),
+        Some(mcp_config(&s.mcp_servers[0]))
+    );
+    let result = undo(&s, Some(&journal), &home).unwrap();
+    assert_eq!(result["conflicts"], json!([]));
+    assert!(!state.exists());
+    std::env::remove_var("IMPECCABLE_CODEX_BIN");
+    std::env::remove_var("MCP_STATE");
+}
+
+#[test]
+fn a_url_server_must_be_https_and_carry_nothing_else() {
+    let root = temp();
+    let with = |server: McpServer| {
+        let mut s = spec("claude", root.clone());
+        s.mcp_servers.push(server);
+        validate(&s)
+    };
+    assert!(with(url_server("https://api.impeccable.style/mcp")).is_ok());
+    assert!(with(url_server("http://api.impeccable.style/mcp")).is_err());
+    assert!(with(url_server("https://user@api.impeccable.style/mcp")).is_err());
+    assert!(with(McpServer {
+        command: "x".into(),
+        ..url_server("https://a.example/mcp")
+    })
+    .is_err());
+    assert!(with(McpServer {
+        args: vec!["a".into()],
+        ..url_server("https://a.example/mcp")
+    })
+    .is_err());
+    assert!(
+        with(McpServer {
+            url: None,
+            ..url_server("https://a.example/mcp")
+        })
+        .is_err(),
+        "neither command nor url"
+    );
 }

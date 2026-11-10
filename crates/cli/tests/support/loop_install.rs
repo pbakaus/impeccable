@@ -287,7 +287,9 @@ mod mac {
             .spawn()
             .unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while running_pids(&apps.join(APP)).unwrap().is_empty() && std::time::Instant::now() < deadline {
+        while running_pids(&apps.join(APP)).unwrap().is_empty()
+            && std::time::Instant::now() < deadline
+        {
             thread::yield_now();
         }
         process
@@ -310,9 +312,18 @@ mod mac {
         let result = run_inner(&args("update"), &io(&home.0, &base), &pins, "macos");
         server.join().unwrap();
         let status = process.wait().unwrap();
-        assert!(result.as_deref().unwrap_or_default().contains("Updated Loop 1.1.0"), "{result:?}");
+        assert!(
+            result
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Updated Loop 1.1.0"),
+            "{result:?}"
+        );
         assert!(!status.success(), "the running Loop was asked to quit");
-        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.1.0");
+        assert_eq!(
+            plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(),
+            "1.1.0"
+        );
         clean(&apps);
     }
 
@@ -327,11 +338,17 @@ mod mac {
         let mut process = run_bundle(&apps);
         // Signal 0 delivers nothing: a stand-in for a Loop that doesn't quit when asked.
         let error = quit_running_with(&apps.join(APP), Duration::from_millis(300), 0).unwrap_err();
-        assert!(process.try_wait().unwrap().is_none(), "the Loop that didn't quit is left running");
+        assert!(
+            process.try_wait().unwrap().is_none(),
+            "the Loop that didn't quit is left running"
+        );
         process.kill().unwrap();
         process.wait().unwrap();
         assert!(error.contains("Quit Loop first"), "{error}");
-        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.0.0");
+        assert_eq!(
+            plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(),
+            "1.0.0"
+        );
     }
 
     #[test]
@@ -345,7 +362,10 @@ mod mac {
         fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
         let mut other = Command::new("/bin/sleep").arg("60").spawn().unwrap();
         assert!(quit_running(&apps.join(APP), Duration::from_millis(300)).is_ok());
-        assert!(other.try_wait().unwrap().is_none(), "an unrelated sleep kept running");
+        assert!(
+            other.try_wait().unwrap().is_none(),
+            "an unrelated sleep kept running"
+        );
         other.kill().unwrap();
         other.wait().unwrap();
     }
@@ -357,7 +377,11 @@ mod mac {
         let bytes = fixture("1.0.0", &source.0);
         let apps = home.0.join("Applications");
         fs::create_dir(&apps).unwrap();
-        fs::rename(source.0.join(APP), apps.join(".impeccable-loop-previous.app")).unwrap();
+        fs::rename(
+            source.0.join(APP),
+            apps.join(".impeccable-loop-previous.app"),
+        )
+        .unwrap();
         let result = run_inner(
             &args("update"),
             &io(&home.0, "http://127.0.0.1:1"),
