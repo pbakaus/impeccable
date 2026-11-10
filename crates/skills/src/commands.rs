@@ -505,7 +505,7 @@ fn report_doctor(sys: &Sys, io: &mut Io, root: &str, providers: &[&'static str],
         sys.deduplicate_providers(root, providers, scope).into_iter().map(|(_, dir)| util::jsp::join(&[&dir, "impeccable"])).collect();
     let cwd = io.cwd.to_string_lossy().into_owned();
     if let Some((report, command)) = impeccable_context::doctor::report_for_skills(&skill_dirs, &cwd, &io.env) {
-        out(io, &format!("\n{report}"));
+        out(io, &format!("\n{}", report.trim_end()));
         if updated {
             out(io, &format!("\nNext step: run {command} doctor in your coding agent. It checks this project's setup against the version you just installed and offers the fixes."));
         }
