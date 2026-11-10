@@ -19,6 +19,59 @@ pub fn schedule(io: &Io) {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     impeccable_common::proc::detach(&mut cmd);
+    spawn_worker(&mut cmd);
+}
+
+#[cfg(not(windows))]
+fn spawn_worker(cmd: &mut Command) {
+    let _ = cmd.spawn();
+}
+
+#[cfg(windows)]
+fn spawn_worker(cmd: &mut Command) {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetHandleInformation(handle: *mut c_void, flags: *mut u32) -> i32;
+        fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
+    }
+    const INHERIT: u32 = 1;
+    struct Restore(Vec<(*mut c_void, u32)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            for &(handle, flags) in &self.0 {
+                // SAFETY: borrowed standard handles remain owned by this process.
+                unsafe {
+                    SetHandleInformation(handle, INHERIT, flags & INHERIT);
+                }
+            }
+        }
+    }
+    // Windows inherits *all* inheritable handles, including the command's
+    // original output pipes even with Stdio::null configured for the child.
+    // Such a pipe would hold the caller's output() open until the upload ends.
+    // Temporarily remove inheritance from those originals; the worker gets
+    // only its new null handles. Restore the flags on every exit path.
+    let mut restore = Restore(Vec::new());
+    for handle in [
+        std::io::stdin().as_raw_handle(),
+        std::io::stdout().as_raw_handle(),
+        std::io::stderr().as_raw_handle(),
+    ] {
+        let mut flags = 0;
+        // SAFETY: these are borrowed OS standard handles, never closed here.
+        if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+            continue;
+        }
+        if flags & INHERIT == 0 {
+            continue;
+        }
+        restore.0.push((handle, flags));
+        if unsafe { SetHandleInformation(handle, INHERIT, 0) } == 0 {
+            return;
+        }
+    }
     let _ = cmd.spawn();
 }
 
