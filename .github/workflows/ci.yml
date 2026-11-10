@@ -498,7 +498,7 @@ jobs:
       matrix:
         include:
           - group: platform
-            fixtures: astro-vite7,monorepo-nested-vite,nextjs-app-router,vite7-vue
+            fixtures: astro-vite7,monorepo-nested-vite,nextjs-app-router,nuxt-vite7,vite7-vue
           - group: svelte
             fixtures: vite8-sveltekit,vite8-sveltekit-stateful
           - group: react-a
