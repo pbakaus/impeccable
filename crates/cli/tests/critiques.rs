@@ -261,3 +261,230 @@ fn review_numeric_target_keeps_its_original_spelling() {
     assert_eq!(r.critiques.len(), 1);
     assert_eq!(r.critiques[0]["target"], "00404");
 }
+
+#[test]
+fn unsafe_or_oversized_inputs_are_not_saved_or_uploaded() {
+    let (fake, env) = setup("critique-input-boundary");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    std::fs::write(root.join("report.md"), vec![b'x'; 65537]).unwrap();
+    assert!(!write(&env, root).status.success());
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(root.join("report.md")).unwrap();
+        let outside =
+            std::env::temp_dir().join(format!("critique-outside-{}.md", std::process::id()));
+        std::fs::write(&outside, "External temporary report").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("report.md")).unwrap();
+        assert!(!write(&env, root).status.success());
+        std::fs::remove_file(root.join("report.md")).unwrap();
+        let out = impeccable(
+            &env,
+            root,
+            &[
+                "critique-storage",
+                "write",
+                "pricing",
+                outside.to_str().unwrap(),
+            ],
+        )
+        .env("IMPECCABLE_CRITIQUE_META", META)
+        .output()
+        .unwrap();
+        std::fs::remove_file(outside).unwrap();
+        assert!(out.status.success());
+        assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    }
+}
+
+#[test]
+fn multiline_metadata_never_becomes_report_body() {
+    let (fake, env) = setup("critique-multiline");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+    meta["notes"] = "Internal notes\n---\nprivate context".into();
+    let out = impeccable(
+        &env,
+        root,
+        &["critique-storage", "write", "pricing", "report.md"],
+    )
+    .env("IMPECCABLE_CRITIQUE_META", meta.to_string())
+    .output()
+    .unwrap();
+    assert!(out.status.success());
+    let saved = std::fs::read_to_string(String::from_utf8(out.stdout).unwrap().trim()).unwrap();
+    assert_eq!(
+        impeccable_context::critique_storage::parse_frontmatter(&saved)["notes"],
+        meta["notes"]
+    );
+    assert!(saved.contains(r#"notes: "Internal notes\n---\nprivate context""#));
+    assert_eq!(
+        fake.record.lock().unwrap().critiques[0]["body"],
+        "# Report\nCrowded header.\n"
+    );
+}
+
+#[test]
+fn encoded_requests_over_the_server_limit_are_skipped() {
+    let (fake, env) = setup("critique-json-size");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    std::fs::write(root.join("report.md"), "\\".repeat(50000)).unwrap();
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 0);
+}
+
+#[test]
+fn forget_404_leaves_sync_off_and_reports_unconfirmed_deletion() {
+    let (fake, env) = setup("critique-forget-unconfirmed");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    fake.knobs.lock().unwrap().critiques = false;
+    let out = impeccable(&env, root, &["critiques", "forget"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("deletion couldn't be confirmed"));
+    fake.knobs.lock().unwrap().critiques = true;
+    write(&env, root);
+    assert_eq!(fake.hits("/cli/v1/critiques"), 0);
+}
+
+#[test]
+fn off_and_forget_wait_for_an_admitted_upload_to_finish() {
+    for choice in ["off", "forget"] {
+        let (fake, env) = setup(&format!("critique-{choice}-lock"));
+        let root = Path::new(&env["IMPECCABLE_HOME"]);
+        impeccable(&env, root, &["critiques", "on"])
+            .output()
+            .unwrap();
+        let gate = fake.hold("/cli/v1/critiques");
+        let mut upload = impeccable(
+            &env,
+            root,
+            &["critique-storage", "write", "pricing", "report.md"],
+        )
+        .env("IMPECCABLE_CRITIQUE_META", META)
+        .stdout(Stdio::null())
+        .spawn()
+        .unwrap();
+        fake.wait_for_hits("/cli/v1/critiques", 1);
+        let mut off = impeccable(&env, root, &["critiques", choice])
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        let waited = off.try_wait().unwrap().is_none();
+        gate.open();
+        assert!(upload.wait().unwrap().success());
+        assert!(off.wait().unwrap().success());
+        assert!(
+            waited,
+            "{choice} returned while the uploader still held admission"
+        );
+        write(&env, root);
+        assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    }
+}
+
+#[test]
+fn expired_tokens_are_renewed_without_abandoning_rotation() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.critiques = true;
+        k.access_ttl = 0;
+    }
+    let env = fake.env("critique-renewal");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    std::fs::write(root.join("report.md"), "Report").unwrap();
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    fake.knobs.lock().unwrap().access_ttl = 900;
+    let before = fake.hits("/oauth/token");
+    let gate = fake.hold("/oauth/token");
+    let start = std::time::Instant::now();
+    assert!(write(&env, root).status.success());
+    assert!(start.elapsed() < std::time::Duration::from_secs(4));
+    let refreshed = fake.hits("/oauth/token") > before;
+    gate.open();
+    assert!(refreshed, "the expired token was never renewed");
+    // whoami waits for refresh persistence under the ordinary lifecycle lock.
+    assert!(impeccable(&env, root, &["whoami", "--json"])
+        .output()
+        .unwrap()
+        .status
+        .success());
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+}
+
+#[test]
+fn quick_renewal_uploads_the_same_report_and_a_busy_lifecycle_lock_skips_it() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.critiques = true;
+        k.access_ttl = 0;
+    }
+    let env = fake.env("critique-quick-renewal");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    std::fs::write(root.join("report.md"), "Report").unwrap();
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    fake.knobs.lock().unwrap().access_ttl = 900;
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    let store = impeccable_account::store::Store::new(&account);
+    let held = store.lock_for(std::time::Duration::ZERO).unwrap();
+    let before = fake.hits("/oauth/token");
+    let start = std::time::Instant::now();
+    assert!(write(&env, root).status.success());
+    assert!(start.elapsed() < std::time::Duration::from_secs(4));
+    assert_eq!(fake.hits("/cli/v1/critiques"), 0);
+    assert_eq!(fake.hits("/oauth/token"), before);
+    drop(held);
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+}
+
+#[test]
+fn a_busy_admission_lock_is_bounded_and_never_claims_an_optout() {
+    let (fake, env) = setup("critique-busy-admission");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "on"])
+        .output()
+        .unwrap();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(root.join("critiques.lock"))
+        .unwrap();
+    held.try_lock().unwrap();
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 0);
+    let start = std::time::Instant::now();
+    let out = impeccable(&env, root, &["critiques", "off"])
+        .output()
+        .unwrap();
+    assert!(start.elapsed() < std::time::Duration::from_secs(5));
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("couldn't save the setting"));
+    drop(held);
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+}

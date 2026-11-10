@@ -44,8 +44,17 @@ fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
             Value::Array(_) | Value::Object(_) => (js_string_of(v), false),
             Value::Null => unreachable!(),
         };
-        let needs_quotes = is_string && (s.contains(':') || s.contains('#'));
-        lines.push(format!("{}: {}", k, if needs_quotes { serde_json::to_string(&s).unwrap() } else { s }));
+        let needs_quotes =
+            is_string && (s.contains(':') || s.contains('#') || s.contains(['\n', '\r']));
+        lines.push(format!(
+            "{}: {}",
+            k,
+            if needs_quotes {
+                serde_json::to_string(&s).unwrap()
+            } else {
+                s
+            }
+        ));
     }
     lines.push("---".to_string());
     lines.join("\n")
@@ -188,6 +197,13 @@ pub fn list_snapshots(suffix: &str, cwd: &str, env: &Env) -> Vec<String> {
     let mut names: Vec<String> = names.into_iter().filter(|f| is_snapshot_name(f) && f.ends_with(suffix)).collect();
     names.sort();
     names.into_iter().map(|f| jsp::join(&[&dir, &f])).collect()
+}
+
+/// A newly written report. Body bytes are separate from local frontmatter.
+pub struct SavedReport {
+    pub path: String,
+    pub body: String,
+    pub meta: Map<String, Value>,
 }
 
 pub struct Snapshot {
@@ -464,7 +480,60 @@ pub fn report_settings(cwd: &str, env: &Env) -> ReportSettings {
 
 /// `.impeccable/<kind>/` under the project root.
 fn store_dir(cwd: &str, env: &Env, kind: &str) -> String {
-    jsp::join(&[&resolve_project_root(cwd, &TargetOptions::default(), env), ".impeccable", kind])
+    jsp::join(&[
+        &resolve_project_root(cwd, &TargetOptions::default(), env),
+        ".impeccable",
+        kind,
+    ])
+}
+
+const MAX_REPORT_BYTES: u64 = 64 * 1024;
+
+/// Check the opened handle, not a path that can be swapped after a stat.
+/// Temp reports outside the project are allowed; final symlinks and special
+/// files are refused. The bounded read also catches growth after metadata().
+fn read_report_input(path: &str) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "report input must be a regular file of at most 65536 bytes",
+        )
+    };
+    let before = std::fs::symlink_metadata(path)?;
+    if !before.is_file() || before.len() > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let file = options.open(path)?;
+    let meta = file.metadata()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x400 != 0 {
+            return Err(invalid());
+        } // reparse point
+    }
+    if !meta.is_file() || meta.len() > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_REPORT_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    Ok(bytes)
 }
 
 /// `write <slug-or-target> <body-file>` for any report kind. Prints the path
@@ -475,7 +544,7 @@ fn write_report(
     io: &mut Io,
     cwd: &str,
     env: &Env,
-    mut saved: Option<&mut dyn FnMut(Snapshot)>,
+    mut saved: Option<&mut dyn FnMut(SavedReport)>,
 ) -> i32 {
     let settings = report_settings(cwd, env);
     if !settings.enabled {
@@ -492,7 +561,11 @@ fn write_report(
         io.err("usage: write <slug-or-target> <body-file>\n");
         return 1;
     };
-    let raw = match std::fs::read(body_file) {
+    let raw = match if kind == "critique" {
+        read_report_input(body_file)
+    } else {
+        std::fs::read(body_file)
+    } {
         Ok(b) => String::from_utf8_lossy(&b).into_owned(),
         Err(e) => {
             // JS: uncaught exception -> stack trace on stderr, exit 1
@@ -552,9 +625,9 @@ fn write_report(
                 let complete = f.write_all(contents.as_bytes()).is_ok();
                 if complete {
                     if let Some(callback) = saved.as_mut() {
-                        callback(Snapshot {
+                        callback(SavedReport {
                             path: file_path.clone(),
-                            body: contents.clone(),
+                            body: format!("{}\n", js_trim(&raw)),
                             // Keep the original string types: plain numeric target names
                             // are otherwise coerced by the legacy frontmatter parser.
                             meta: front.clone(),
@@ -605,7 +678,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 }
 
 /// Hands only a newly saved critique to the CLI, never a read or close.
-pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(Snapshot)) -> i32 {
+pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedReport)) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let cmd = args.first().map(String::as_str).unwrap_or("");

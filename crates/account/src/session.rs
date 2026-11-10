@@ -46,6 +46,7 @@ pub struct Session {
     pub client: Client,
     pub state: State,
     secret: Secret,
+    noninteractive: bool,
 }
 
 impl Session {
@@ -65,6 +66,7 @@ impl Session {
             store,
             state,
             secret,
+            noninteractive: false,
         })
     }
 
@@ -84,6 +86,7 @@ impl Session {
                 store,
                 state,
                 secret,
+                noninteractive: true,
             })
         })
         .flatten()
@@ -132,7 +135,14 @@ impl Session {
             .state()
             .filter(|s| s.signed_in)
             .ok_or(SessionError::NotSignedIn)?;
-        let secret = self.store.secret(&state).ok_or(SessionError::NotSignedIn)?;
+        let secret = if self.noninteractive {
+            self.store
+                .try_secret_noninteractive(&state)
+                .map_err(SessionError::Local)?
+        } else {
+            self.store.secret(&state)
+        }
+        .ok_or(SessionError::NotSignedIn)?;
         if state.generation != self.state.generation && secret.access_expires_at > now() + SKEW_SECS
         {
             self.state = state;

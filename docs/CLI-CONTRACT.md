@@ -2220,25 +2220,41 @@ binary, including for npx and PATH installs without an adjacent skill directory.
 `IMPECCABLE_HOME/critiques.json` setting. The default is off
 (`CRITIQUE_SYNC_DEFAULT_ON = false`). `on` opts into uploading saved report
 contents; `off` stops uploads. `forget` first saves off, then posts `{}` to
-`/cli/v1/critiques/forget`. A 404 is quiet and leaves sync off without claiming
-deletion. Other unconfirmed deletions exit 1; confirmed deletions exit 0.
+`/cli/v1/critiques/forget`. A 404 or other unconfirmed deletion leaves sync off,
+prints the existing unconfirmed-deletion message, and exits 1. Only a successful
+response containing a deletion count exits 0 and claims deletion.
 Status reports the saved preference, independent of sign-in or CI.
 
 After a successful `critique-storage write`, the CLI makes at most one
 best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
 the storage verb's output and exit code and emits no upload notices. It never
 uploads from hooks, reads, closes, audit writes or disabled reports. CI,
-telemetry opt-outs, no sign-in, missing `critiques:write`, expired tokens and
-unreadable preferences skip uploads. Credential reads share the two-second
-budget and never prompt for Keychain approval. Expired tokens are left for the ordinary
-account commands to refresh, avoiding refresh-token rotation on a short deadline.
+telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
+preferences skip uploads. Credential reads share the two-second budget and
+never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
+renews expired tokens through `Session::access_token_within`, without waiting
+for a busy lifecycle lock. The parent waits only within its remaining budget;
+if renewal is late, it skips this upload. The renewal process can finish and
+persist token rotation after the parent exits and can never upload a report.
+Connection and read timeouts are capped at the remaining request budget.
+ureq's synchronous DNS lookup remains unbounded.
 Native projects follow the same report-save path.
 
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
 `na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
-`body` is the saved report after removing the local frontmatter.
+`body` is passed separately to the save callback, never recovered from
+frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
+inputs must be regular files, never final symlinks or reparse points, with a
+64 KB size check on the opened handle before reading and a bounded read to
+catch growth. Absolute temporary files outside the project remain valid.
+Encoded upload requests over 80 KB are silently skipped.
+
+The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
+admission and the entire POST with `on`, `off` and `forget`. An uploader
+does not wait for this lock; preference commands wait at most three seconds.
+After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
 Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. No repo label or other local metadata is sent.

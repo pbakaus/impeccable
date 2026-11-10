@@ -1,9 +1,9 @@
 //! Opt-in uploads of newly saved critique reports. No retries, output or hook integration.
 use crate::config::{impeccable_home, Account};
-use crate::http::{ApiError, Client};
+use crate::http::Client;
 use crate::session::{Session, SessionError};
 use impeccable_common::Io;
-use impeccable_context::critique_storage::Snapshot;
+use impeccable_context::critique_storage::SavedReport;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
@@ -24,7 +24,7 @@ fn enabled(io: &Io) -> bool {
 }
 
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
-fn payload(snapshot: &Snapshot) -> Option<Value> {
+fn payload(snapshot: &SavedReport) -> Option<Value> {
     let m = &snapshot.meta;
     let total = m.get("total_score")?.as_u64()?;
     let max = m.get("max_score")?.as_u64()?;
@@ -50,9 +50,7 @@ fn payload(snapshot: &Snapshot) -> Option<Value> {
     let count = |k| m.get(k).and_then(Value::as_u64).filter(|n| *n <= 100);
     let p0 = count("p0_count")?;
     let p1 = count("p1_count")?;
-    // Snapshot.body is the complete saved file, including its local-only frontmatter.
-    let (_, rest) = snapshot.body.split_once("\n---")?;
-    let body = rest.strip_prefix('\n')?;
+    let body = &snapshot.body;
     if body.trim().is_empty() || body.len() > 64 * 1024 || body.contains('\0') {
         return None;
     }
@@ -90,7 +88,7 @@ fn payload(snapshot: &Snapshot) -> Option<Value> {
     }))
 }
 
-pub fn after_save(io: &Io, snapshot: &Snapshot) {
+pub fn after_save(io: &Io, snapshot: &SavedReport) {
     let started = Instant::now();
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
@@ -130,13 +128,35 @@ pub fn after_save(io: &Io, snapshot: &Snapshot) {
             body["repoKey"] = key.into();
         }
     }
+    if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
+        return;
+    }
     let Some(wait) = Duration::from_secs(2).checked_sub(started.elapsed()) else {
         return;
     };
     let Some(session) = Session::load_for_upload(&account, wait) else {
         return;
     };
+    let session = if session.existing_access_token().is_none() {
+        let Some(fresh) = renew_for_upload(io, &account, started) else {
+            return;
+        };
+        fresh
+    } else {
+        session
+    };
+    if !session
+        .state
+        .scopes
+        .split_whitespace()
+        .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+    {
+        return;
+    }
     let Some(token) = session.existing_access_token() else {
+        return;
+    };
+    let Ok(_admission) = session.store.critique_lock_for(Duration::ZERO) else {
         return;
     };
     if !enabled(io) {
@@ -169,6 +189,15 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         });
         return 0;
     }
+    let admission = Account::from_env(&io.env).ok().and_then(|account| {
+        crate::store::Store::new(&account)
+            .critique_lock_for(Duration::from_secs(3))
+            .ok()
+    });
+    let Some(_admission) = admission else {
+        io.err("Critique sync: couldn't save the setting.\n");
+        return 1;
+    };
     let save = impeccable_home(&io.env)
         .ok_or_else(|| "no home directory; set IMPECCABLE_HOME".to_string())
         .and_then(|home| {
@@ -198,14 +227,59 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 .and_then(|mut s| s.call(|c, token| c.post_json(&url, token, json!({}))))
         });
     match result {
-        Ok(_) => {
+        Ok(ref answer) if answer.get("forgot").and_then(Value::as_u64).is_some() => {
             io.out("Critique history deleted; sync is off.\n");
             0
         }
-        Err(SessionError::Api(ApiError::Status { status: 404, .. })) => 0,
-        Err(_) => {
+        _ => {
             io.err("Critique sync is off; deletion couldn't be confirmed. Run `impeccable critiques forget` again after signing in.\n");
             1
         }
     }
+}
+
+/// Only renewal runs independently. No body, upload request, or sync admission
+/// is handed to this process. Once rotation starts it keeps the ordinary client
+/// timeout and persists under the lifecycle lock even if the parent has exited.
+fn renew_for_upload(io: &Io, account: &Account, started: Instant) -> Option<Session> {
+    use std::process::{Command, Stdio};
+    let mut command = Command::new(std::env::current_exe().ok()?);
+    command
+        .arg("critiques-refresh")
+        .env_clear()
+        .envs(&io.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    impeccable_common::proc::detach(&mut command);
+    let mut child = command.spawn().ok()?;
+    loop {
+        if child.try_wait().ok()?.is_some() {
+            let left = Duration::from_secs(2).checked_sub(started.elapsed())?;
+            return Session::load_for_upload(account, left);
+        }
+        if started.elapsed() >= Duration::from_secs(2) {
+            // Reap when possible, but never kill a rotation in flight.
+            let _ = std::thread::Builder::new().spawn(move || {
+                let _ = child.wait();
+            });
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// Hidden renewal-only verb. A busy lifecycle lock skips renewal immediately.
+pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
+    if !args.is_empty() {
+        return 1;
+    }
+    let Ok(account) = Account::from_env(&io.env) else {
+        return 0;
+    };
+    let Some(mut session) = Session::load_for_upload(&account, Duration::from_secs(2)) else {
+        return 0;
+    };
+    let _ = session.access_token_within(Duration::ZERO);
+    0
 }
