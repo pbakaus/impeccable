@@ -672,7 +672,8 @@ pub enum Decision {
 
 pub const WHY_NOT_READY: &str = "Pro rules aren't ready yet; using the open rules.";
 pub const WHY_NOT_ENTITLED: &str = "Pro rules are off: this account doesn't include them.";
-pub const WHY_EXPIRED: &str = "Pro rules are off until the Pro lease renews; using the open rules.";
+pub const WHY_EXPIRED: &str =
+    "Pro rules are off until your Pro access refreshes, on your next scan while online; using the open rules.";
 pub const WHY_UNVERIFIED: &str =
     "Pro rules are off: the Pro build didn't verify; using the open rules.";
 
@@ -886,6 +887,16 @@ pub fn report(io: &mut Io, outcome: &Refreshed) {
 #[cfg(test)]
 mod notice_tests {
     use super::*;
+
+    #[test]
+    fn the_off_lines_carry_no_internal_words() {
+        // Catches: customer lines naming internals ("lease", "manifest", "artifact", "Pro build" jargon in the expired case).
+        for line in [WHY_NOT_READY, WHY_NOT_ENTITLED, WHY_EXPIRED, WHY_UNVERIFIED] {
+            for word in ["lease", "manifest", "artifact"] {
+                assert!(!line.to_lowercase().contains(word), "{line}");
+            }
+        }
+    }
 
     #[test]
     fn an_account_without_pro_hears_it_on_every_detect_but_never_from_hooks_or_machine_output() {
