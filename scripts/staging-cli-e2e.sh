@@ -12,7 +12,11 @@
 #   E2E_IMPECCABLE_BIN      optional: engine binary (default: target/release/impeccable in this repo,
 #                           built with `cargo build --release -p impeccable`)
 #   E2E_ISSUER              optional, default https://api.staging.impeccable.style
-#   E2E_DISPATCH_REQUIRED   optional, default 0; 1 makes Pro dispatch count toward the result
+#   E2E_DISPATCH_REQUIRED   optional, default 0; 1 makes Pro dispatch count toward the result:
+#                           a Pro build installs and a Pro-only rule (pristine/placeholder-copy) fires.
+#                           Needs a staging Pro build for the binary's engine version, and a binary
+#                           that trusts the staging release key (built with --features
+#                           test-release-keys, IMPECCABLE_PRO_RELEASE_KEYS = the staging keyring).
 #
 # Output: "PASS <check>", "FAIL <check>[: reason]" or "INFO ...", then "RESULT PASS|FAIL".
 # Exit: 0 pass, 1 a check failed, 2 staging not ready, 3 bad inputs.
@@ -84,6 +88,7 @@ body{background:#f5f0e6;font-family:Inter,sans-serif}
 .card{border-left:4px solid #6d28d9;border-radius:16px;padding:8px}
 </style></head><body><h1>Pricing</h1><h4>Plans</h4>
 <div class="card"><div class="card"><p style="color:#9ca3af;background:#6d28d9">Grey on purple</p></div></div>
+<p>Lorem ipsum dolor sit amet, our plans start here.</p>
 </body></html>
 HTML
 git -C "$R" init -q && git -C "$R" remote add origin https://github.com/impeccable-e2e/staging-site
@@ -94,8 +99,11 @@ info "pro-refresh: $(tail -1 "$H/refresh.out" | cut -c1-160)"
 check "detect: runs on the repo" '[ $rc = 0 ] || [ $rc = 2 ]'
 installed=$(ls "$IMPECCABLE_HOME"/account/*/pro/*/current.json 2>/dev/null | head -1)
 if [ "${E2E_DISPATCH_REQUIRED:-0}" = 1 ]; then
-  check "dispatch: no 'Pro rules are off' line" '! grep -q "Pro rules are off" "$H/detect.err"'
+  check "dispatch: no 'Pro rules are off' or 'aren't ready' line" '! grep -qE "Pro rules are off|Pro rules aren.t ready" "$H/detect.err"'
   check "dispatch: a Pro build is installed" '[ -n "$installed" ]'
+  # The proof that Pro rules ran: the page's filler text trips a rule only the Pro build has.
+  (cd "$R" && "$BIN" detect --json .) > "$H/pro.json" 2>/dev/null
+  check "dispatch: a Pro rule fired (pristine/placeholder-copy)" 'grep -q "pristine/placeholder-copy" "$H/pro.json"'
 else
   info "dispatch (not required): $([ -n "$installed" ] && echo 'a Pro build is installed' || echo 'no Pro build installed'). $(grep -m1 'Pro rules' "$H/detect.err" | cut -c1-120)"
 fi
