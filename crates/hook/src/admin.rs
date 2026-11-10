@@ -363,7 +363,7 @@ fn hermes_hook_is_wired(rt: &Runtime) -> bool {
 fn target_is_wired(rt: &Runtime, cwd: &str, target: &impeccable_context::hook_wiring::ManifestTarget) -> bool {
     let fresh = (target.manifest)();
     let provider_id = match target.provider {
-        ".claude" => "claude-code", ".agents" => "codex", _ => "",
+        ".claude" => "claude-code", ".agents" => "codex", ".cursor" => "cursor", ".grok" => "grok", _ => "",
     };
     manifest_is_wired(&jsp::join(&[cwd, target.dest_rel]), &fresh)
         || target.shared_dest_rel.is_some_and(|rel| manifest_is_wired(&jsp::join(&[cwd, rel]), &fresh))
