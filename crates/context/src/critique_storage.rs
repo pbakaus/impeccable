@@ -1078,7 +1078,9 @@ mod tests_reports {
         let (code, out, err) = call(run_audit, &cwd, &["write", "src/App.tsx", &body(&cwd)]);
         assert_eq!(code, 0, "{err}");
         let path = out.trim();
-        assert!(path.starts_with(&format!("{cwd}/.impeccable/audit/")) && path.ends_with("__src-app-tsx.md"), "{path}");
+        // Windows joins with `\`; compare in one spelling.
+        let norm = path.replace('\\', "/");
+        assert!(norm.starts_with(&format!("{}/.impeccable/audit/", cwd.replace('\\', "/"))) && norm.ends_with("__src-app-tsx.md"), "{path}");
         assert!(std::fs::read_to_string(path).unwrap().contains("Score 14/20."));
         let ignore = std::fs::read_to_string(format!("{cwd}/.impeccable/audit/.gitignore")).unwrap();
         assert!(ignore.lines().any(|l| l == "*"), "{ignore}");
@@ -1113,7 +1115,7 @@ mod tests_reports {
         std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"enabled":false}}"#).unwrap();
         std::fs::write(format!("{cwd}/.impeccable/config.local.json"), r#"{"reports":{"enabled":true}}"#).unwrap();
         let (_, out, _) = call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
-        assert!(out.contains("/.impeccable/audit/"), "{out}");
+        assert!(out.replace('\\', "/").contains("/.impeccable/audit/"), "{out}");
     }
 
     #[test]

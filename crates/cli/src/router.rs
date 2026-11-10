@@ -238,6 +238,7 @@ const KNOWN_VERBS: &[&str] = &[
     "palette",
     "surface-brief",
     "critique-storage",
+    "audit-storage",
     "embed-prompt",
     "signals",
     "context-signals",
