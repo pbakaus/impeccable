@@ -391,6 +391,13 @@ pub fn reset_holding(_lock: &Lock, account: &Account) {
     remove_installed(&paths);
     clear_refusals(&paths);
     remove_attempts(&paths);
+    if let Ok(d) = std::fs::read_dir(&paths.dir) {
+        for e in d.flatten() {
+            if e.file_name().to_string_lossy().starts_with("pro-on-said-") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
 }
 
 /// One refresh at a time per account: an exclusive OS lock on
@@ -697,6 +704,27 @@ fn say(why: &str, args: &[String]) -> bool {
     !hook && !args.iter().any(|a| MACHINE_OUTPUT.contains(&a.as_str()))
 }
 
+/// Whether this scan says "Pro rules are on." It does once per sign-in, from
+/// a scan a person ran that the Pro build takes: never from the edit hooks or
+/// with machine output, and those don't use it up. The marker is created
+/// atomically, so two scans at once can't both say it.
+fn say_pro_on(paths: &Paths, login: u64, args: &[String]) -> bool {
+    let hook = matches!(args.first().map(String::as_str), Some("hook" | "hook-before-edit"));
+    if hook || args.iter().any(|a| MACHINE_OUTPUT.contains(&a.as_str())) {
+        return false;
+    }
+    if private_dir(&paths.dir).is_err() {
+        return false;
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(paths.dir.join(format!("pro-on-said-{login}")))
+        .is_ok()
+}
+
+pub const PRO_ON: &str = "Pro rules are on.";
+
 /// The offline decision for one scan. No network. The cheap checks come
 /// first; the artifact is hashed only when everything else holds.
 pub fn decide(account: &Account, keys: &Keyring, at: u64) -> Decision {
@@ -799,8 +827,22 @@ pub fn dispatch(args: &[String], io: &mut Io) -> Option<i32> {
     };
     let mut cmd = std::process::Command::new(&exe);
     cmd.args(args).env("IMPECCABLE_PRO_CHILD", "1");
+    // Said before the hand-off: on Unix the Pro build replaces this process.
+    let paths = Paths::new(&account);
+    let login = Store::new(&account).state().map(|s| s.login);
+    let said = login.filter(|&l| say_pro_on(&paths, l, args));
+    if said.is_some() {
+        io.err(&format!("{PRO_ON}\n"));
+    }
     let _ = std::io::Write::flush(&mut io.stderr);
-    match run_child(cmd) {
+    let started = run_child(cmd);
+    if started.is_err() {
+        // It didn't run after all: let the next scan that does say so.
+        if let Some(l) = said {
+            let _ = std::fs::remove_file(paths.dir.join(format!("pro-on-said-{l}")));
+        }
+    }
+    match started {
         Ok(code) => Some(code),
         Err(e) => {
             io.err(&format!(
@@ -899,6 +941,26 @@ mod notice_tests {
                 assert!(!line.to_lowercase().contains(word), "{line}");
             }
         }
+    }
+
+    #[test]
+    fn pro_on_is_said_once_per_sign_in_and_never_from_hooks_or_machine_output() {
+        // Catches: "Pro rules are on." repeating on every scan or edit hook, or landing in --json output.
+        let dir = std::env::temp_dir().join(format!("impeccable-pro-on-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paths = Paths { dir: dir.join("pro"), install: dir.join("pro").join("engine"), artifacts: dir.join("artifacts") };
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // Hooks and machine output never say it, and never use it up.
+        assert!(!say_pro_on(&paths, 7, &args(&["hook"])));
+        assert!(!say_pro_on(&paths, 7, &args(&["hook-before-edit"])));
+        assert!(!say_pro_on(&paths, 7, &args(&["detect", "--json", "."])));
+        // The first scan a person runs says it; later ones don't.
+        assert!(say_pro_on(&paths, 7, &args(&["detect", "."])));
+        assert!(!say_pro_on(&paths, 7, &args(&["detect", "."])));
+        assert!(!say_pro_on(&paths, 7, &args(&["src/"])));
+        // A new sign-in hears it again.
+        assert!(say_pro_on(&paths, 8, &args(&["src/"])));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
