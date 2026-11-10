@@ -93,11 +93,22 @@ goto run
 :no_cache
 
 if defined IMPECCABLE_LAUNCHER_PROBE goto download
-where impeccable >nul 2>nul
-if errorlevel 1 goto download
-call :probe impeccable
+rem The first impeccable on PATH, resolved once so the probe and the run see
+rem the same file. A batch shim (npm writes impeccable.cmd) must run under
+rem call to return here (#1240), and call expands % in the arguments a second
+rem time; a real binary runs directly so a target such as a%20b reaches it intact.
+set "path_bin="
+for /f "delims=" %%p in ('where impeccable 2^>nul') do if not defined path_bin set "path_bin=%%p"
+if not defined path_bin goto download
+call :probe "%path_bin%"
 if not "%probe_ok%"=="1" goto download
-call impeccable %*
+for %%e in ("%path_bin%") do set "path_ext=%%~xe"
+if /I "%path_ext%"==".cmd" goto path_shim
+if /I "%path_ext%"==".bat" goto path_shim
+"%path_bin%" %*
+exit /b %errorlevel%
+:path_shim
+call "%path_bin%" %*
 exit /b %errorlevel%
 
 :download

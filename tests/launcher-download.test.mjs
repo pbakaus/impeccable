@@ -341,8 +341,18 @@ test('cmd launcher calls PATH candidates so a batch shim returns to it', () => {
   // back, so the probe and the verb it was meant to run are lost (#1240).
   const source = fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), 'utf8');
   assert.match(source, /^call "%~1" engine-probe >"%probe_tmp%" 2>nul\r?$/m);
-  assert.match(source, /^call impeccable %\*\r?$/m);
+  assert.match(source, /^call "%path_bin%" %\*\r?$/m, 'a batch shim runs under call');
   assert.doesNotMatch(source, /^"%~1" engine-probe/m);
+});
+
+test('cmd launcher runs a PATH binary directly so % in its arguments survives', () => {
+  // call expands % in its arguments a second time, so `a%20b%20c` would lose
+  // `%20b%`; only a .cmd or .bat candidate needs call to return.
+  const source = fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable.cmd'), 'utf8');
+  assert.match(source, /^if \/I "%path_ext%"==".cmd" goto path_shim\r?$/m);
+  assert.match(source, /^if \/I "%path_ext%"==".bat" goto path_shim\r?$/m);
+  assert.match(source, /^"%path_bin%" %\*\r?$/m, 'a binary runs without call');
+  assert.doesNotMatch(source, /^call impeccable %\*/m);
 });
 
 test('cmd launcher runs a .cmd engine shim found on PATH', { skip: WINDOWS ? false : 'Windows-only cmd launcher PATH probe' }, async t => {
