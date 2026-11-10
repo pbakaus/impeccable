@@ -176,6 +176,23 @@ fn an_important_resting_image_still_paints_under_a_hover_swap() {
 }
 
 #[test]
+fn a_hover_image_from_a_custom_property_still_paints() {
+    // The winning hover image is `var(--photo)`; resolved, it is a url(), so
+    // the implied transparent reset is not the hover surface.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+:root { --photo: url(dark.png); }
+.card { background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { background: url(other.png); background-image: var(--photo); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().all(|f| !f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn a_hover_reset_with_no_image_left_still_counts() {
     // The hover image loses to a resting `!important` `none`: nothing
     // paints, so the implied transparent reset is the hover surface.

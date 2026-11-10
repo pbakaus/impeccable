@@ -656,7 +656,20 @@ fn compute_styles(
                         Some(h) if compare_static_priority(resting_meta, &h.meta) => Some(h),
                         _ => resting_img,
                     };
-                    if effective_img.is_some_and(|d| is_painted_image(&d.value)) {
+                    // Resolve `var()` and `inherit` first; an image that
+                    // still cannot be resolved counts as painting, so the
+                    // reset never invents a surface behind it.
+                    let paints = effective_img.is_some_and(|d| {
+                        let resolved = normalize_static_css_value(
+                            "backgroundImage",
+                            &d.value,
+                            &custom_props,
+                            parent_style.as_deref(),
+                            Some(&values),
+                        );
+                        is_painted_image(&resolved) || js::to_lower_case(&resolved).contains("var(")
+                    });
+                    if paints {
                         continue;
                     }
                 }
