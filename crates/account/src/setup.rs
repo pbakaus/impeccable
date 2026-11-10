@@ -200,7 +200,7 @@ pub fn report(io: &Io, inventory: &Value, cli: &str, skills: &Value) {
         .filter(|s| {
             s.len() == 64
                 && s.bytes()
-                    .all(|c| (c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
         })
         .map(str::to_string)
         .unwrap_or_else(|| {
