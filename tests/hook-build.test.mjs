@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 import {
   buildClaudeSettingsManifest,
@@ -230,18 +231,19 @@ describe('hook manifest builders', () => {
       const handler = manifest.hooks[event][0].hooks[0];
       assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`, `${event} command`);
       assert.equal(handler.windows, windowsForm, `${event} windows`);
+      const codexWindows = 'cmd /c if exist "${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" '
+        + '"${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" hook';
+      assert.equal(handler.commandWindows, codexWindows, `${event} commandWindows`);
       assert.deepEqual(handler.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
     }
   });
 
-  it('emits commandWindows only for Codex-shaped manifests', () => {
-    // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
-    // have no per-platform field, and an unknown key is a risk under a strict
-    // parser, so it stays off everywhere else.
-    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest()];
+  it('emits commandWindows for Codex and the shared Claude plugin manifest', () => {
+    // Codex reads `commandWindows` from both its own manifests and the shared
+    // Claude plugin manifest. Other provider-specific manifests stay unchanged.
+    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest(), buildClaudePluginHooksManifest()];
     const without = [
       buildClaudeSettingsManifest(),
-      buildClaudePluginHooksManifest(),
       buildCursorHooksManifest(),
       buildGitHubHooksManifest(),
       buildGrokHooksManifest(),
@@ -273,6 +275,43 @@ describe('hook manifest builders', () => {
       for (const command of manifestCommands(manifest)) {
         assert.ok(!/node|systemMessage|node-unsupported/.test(command), `Node-era fragment in ${command}`);
       }
+    }
+  });
+
+  it('runs the shared plugin commandWindows from Windows shells with a spaced plugin path', { skip: process.platform !== 'win32' }, () => {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-hook-'));
+    const pluginRoot = path.join(temp, 'plugin with spaces æø');
+    const scripts = path.join(pluginRoot, 'skills', 'impeccable', 'scripts');
+    const launcher = path.join(scripts, 'impeccable.cmd');
+    fs.mkdirSync(scripts, { recursive: true });
+    const template = buildClaudePluginHooksManifest().hooks.PostToolUse[0].hooks[0].commandWindows;
+    const command = template.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginRoot);
+    const shells = [
+      ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command]],
+      ['cmd.exe', ['/d', '/s', '/c', command]],
+    ];
+    if (spawnSync('pwsh.exe', ['-NoProfile', '-Command', 'exit 0']).status === 0) {
+      shells.push(['pwsh.exe', ['-NoProfile', '-NonInteractive', '-Command', command]]);
+    }
+    try {
+      fs.writeFileSync(launcher, '@echo off\r\necho hook-ran-%1\r\nexit /b 0\r\n');
+      for (const [shell, args] of shells) {
+        const result = spawnSync(shell, args, { encoding: 'utf8', windowsVerbatimArguments: shell === 'cmd.exe' });
+        assert.equal(result.status, 0, `${shell}: ${result.stderr}`);
+        assert.match(result.stdout, /hook-ran-hook/, shell);
+      }
+      fs.writeFileSync(launcher, '@echo off\r\nexit /b 7\r\n');
+      for (const [shell, args] of shells) {
+        const result = spawnSync(shell, args, { encoding: 'utf8', windowsVerbatimArguments: shell === 'cmd.exe' });
+        assert.ok(result.status > 0, `${shell}: launcher failure must remain nonzero`);
+      }
+      fs.rmSync(launcher);
+      for (const [shell, args] of shells) {
+        const result = spawnSync(shell, args, { encoding: 'utf8', windowsVerbatimArguments: shell === 'cmd.exe' });
+        assert.equal(result.status, 0, `${shell}: missing launcher should be skipped`);
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
     }
   });
 
