@@ -248,6 +248,10 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd) {
+            last_skip = "plain-script";
+            continue;
+        }
         if is_ignored_file(&rt.proc_cwd, file_path, &project_cwd, &config.ignore_files) {
             last_skip = "config-ignore-file";
             continue;
@@ -875,6 +879,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             let ext = js::to_lower_case(&jsp::extname(file_path));
             let configured = match_configured_extension(file_path, &root_config.extensions);
             if !ALLOWED_EXTS.contains(&ext.as_str()) && configured.is_none() {
+                continue;
+            }
+            if plain_script_out_of_scope(&ext, configured.is_some(), root) {
                 continue;
             }
             if is_ignored_file(&rt.proc_cwd, file_path, root, &root_config.ignore_files) {
