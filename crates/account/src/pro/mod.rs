@@ -36,8 +36,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use verify::{verify_lease, verify_manifest, Jwks, Keyring, LeaseError};
 
-/// Renew once a lease has less than this left.
-pub const RENEW_WITHIN_SECS: u64 = 2 * 86400;
+/// Renew once a lease has less than this left. Leases run 48 hours, so renewal
+/// starts in the last day: about once a day while online, and a day offline is
+/// still covered.
+pub const RENEW_WITHIN_SECS: u64 = 86400;
 /// Least time between background refresh attempts (the service allows ten
 /// leases per grant per hour).
 const RETRY_SECS: u64 = 600;
