@@ -119,10 +119,11 @@ const GROK_PROJECT_SCRIPTS = '.grok/skills/impeccable/scripts';
 // command from (`commandWindows` for Codex, `windows` for VS Code Copilot
 // Chat) and adds that sibling to every handler. It stays opt-in per manifest,
 // so each one carries only the field its own consumers read.
-function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, sessionIdentity = false, guard = guardedLauncher, env } = {}) {
+function buildClaudeCompatibleHooks(matcher, scriptsDir, { windowsKey, codexWindows = false, sessionIdentity = false, guard = guardedLauncher, env } = {}) {
   const command = guard(launcherIn(scriptsDir));
   const handlerFields = {
     ...(windowsKey ? { [windowsKey]: WINDOWS_FORMS[windowsKey](launcherCmdIn(scriptsDir)) } : {}),
+    ...(codexWindows ? { commandWindows: windowsLauncherCommand(launcherCmdIn(scriptsDir)) } : {}),
     ...(env ? { env } : {}),
   };
   return {
@@ -161,7 +162,8 @@ export function buildClaudeSettingsManifest() {
 // than `hooks`, failing the whole manifest (issue #330).
 // VS Code Copilot Chat loads this manifest too. On Windows it takes the `windows`
 // sibling over `command`, because the POSIX guard throws a ParserError under its
-// PowerShell runner (#1249). Claude Code, Grok and Codex ignore the key. The `env`
+// PowerShell runner (#1249). Codex reads `commandWindows` instead; keep both
+// forms because their runners quote substituted plugin roots differently. The `env`
 // tells the hook it runs under VS Code, whose two runners read different output
 // fields; Grok honors `env` too, so the hook checks the event shape first.
 export function buildClaudePluginHooksManifest() {
@@ -169,6 +171,7 @@ export function buildClaudePluginHooksManifest() {
     hooks: buildClaudeCompatibleHooks('Edit|Write', CLAUDE_PLUGIN_SCRIPTS, {
       sessionIdentity: true,
       windowsKey: 'windows',
+      codexWindows: true,
       guard: guardedLauncherViaSh,
       env: { IMPECCABLE_HOOK_HARNESS: 'vscode' },
     }),

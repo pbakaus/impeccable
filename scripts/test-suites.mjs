@@ -83,6 +83,7 @@ export const SUITES = {
           'tests/publish-platform-packages.test.mjs',
           'tests/github-sheriff.test.mjs',
           'tests/hook-build.test.mjs',
+          'tests/hook-build-windows.test.mjs',
           'tests/hermes-plugin.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/cursor-plugin.test.mjs',
