@@ -18,8 +18,11 @@
   over its neighbour by a negative margin.
   Pass: cards that fit their tracks, list cards that share a 1px border, an
   avatar stack, a card that covers only the empty body of the one behind it
-  (its title stays clear), and a carousel's next slide parked over the
-  current one at opacity 0. Browser engine only: these are layout facts.
+  (its title stays clear), a carousel's next slide parked over the
+  current one at opacity 0, a quote raised by its own z-index over the card
+  laid on its static card, and a round card whose bounding box reaches a
+  line only in the empty corner outside its curve. Browser engine only:
+  these are layout facts.
 -->
 <style>
   * { margin: 0; box-sizing: border-box; }
@@ -61,6 +64,16 @@
   .slides { position: relative; height: 96px; }
   .slides .card { position: absolute; left: 0; top: 0; width: 360px; height: 92px; }
   .slides .next { opacity: 0; }
+
+  .raised .card { width: 360px; height: 64px; }
+  .raised .card + .card { position: relative; z-index: 1; margin-top: -30px; padding-top: 40px; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
+  .raised .lifted { position: relative; z-index: 2; }
+
+  .corner { position: relative; height: 150px; }
+  .corner .card { position: absolute; }
+  .corner .note { left: 0; top: 0; width: 260px; height: 60px; }
+  .corner .note p { text-align: justify; text-align-last: justify; }
+  .corner .round { left: 230px; top: 30px; width: 120px; height: 120px; border-radius: 60px; }
 </style>
 </head>
 <body>
@@ -130,6 +143,20 @@
         <div class="slides">
           <article class="card"><b>Slide one</b><p class="pass-current-slide">The slide on screen, with the next one parked over it.</p></article>
           <article class="card next"><b>Slide two</b><p>The next slide, not shown yet.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A quote raised over the card laid on it</h3>
+        <div class="raised">
+          <article class="card"><b>Nia, editor</b><p class="lifted pass-raised-quote">Wrote the summary first, the details after.</p></article>
+          <article class="card"><b>Oto, reviewer</b></article>
+        </div>
+      </section>
+      <section>
+        <h3>A round card's empty corner beside a line</h3>
+        <div class="corner">
+          <article class="card note"><b>Pia, accountant</b><p class="pass-corner-line">Kept every receipt for the audit.</p></article>
+          <article class="card round"><b>Quin</b></article>
         </div>
       </section>
     </div>
