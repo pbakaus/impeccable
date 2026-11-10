@@ -21,6 +21,8 @@ pub struct Knobs {
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
+    pub design: bool,
+    pub design_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -55,6 +57,7 @@ pub struct Record {
     pub scopes: Vec<String>,
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
+    pub designs: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
@@ -283,7 +286,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
-                    "scopes_supported": if knobs.lock().unwrap().health {
+                    "scopes_supported": if knobs.lock().unwrap().design {
+                        serde_json::json!(["account:read", "rules:read", "health:write", "design:write"])
+                    } else if knobs.lock().unwrap().health {
                         serde_json::json!(["account:read", "rules:read", "health:write"])
                     } else {
                         serde_json::json!(["account:read", "rules:read"])
@@ -297,7 +302,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 // The real service refuses a scope it doesn't list.
                 let scope_ok = scope == "account:read rules:read"
                     || (scope == "account:read rules:read health:write"
-                        && knobs.lock().unwrap().health);
+                        && knobs.lock().unwrap().health)
+                    || (scope == "account:read rules:read health:write design:write"
+                        && knobs.lock().unwrap().design);
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
@@ -349,6 +356,34 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     json(
                         200,
                         serde_json::json!({ "pro": false, "reason": "not_entitled" }),
+                    )
+                }
+            }
+            ("POST", "/cli/v1/design") => {
+                let k = knobs.lock().unwrap();
+                if !k.design {
+                    (404, vec![], vec![])
+                } else if k.design_denied {
+                    (403, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(v.as_object().unwrap().len(), 6);
+                    assert_eq!(v["version"], 1);
+                    assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
+                    assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
+                    assert_eq!(v["changedAt"].as_str().unwrap().len(), 24);
+                    let text = v["text"].as_str().unwrap();
+                    assert!(!text.trim().is_empty() && !text.contains('\0') && text.len() <= 65536);
+                    assert!(body.len() <= 160 * 1024);
+                    record.lock().unwrap().designs.push(v);
+                    json(
+                        200,
+                        serde_json::json!({"outcome":"recorded", "masked":false}),
                     )
                 }
             }
@@ -428,6 +463,7 @@ fn token(
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
     let ttl = knobs.lock().unwrap().access_ttl;
+    let design_denied = knobs.lock().unwrap().design_denied;
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
@@ -473,7 +509,7 @@ fn token(
     r.live_refresh.insert(refresh.clone());
     json(
         200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
+        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.scopes.last().cloned().unwrap_or_default().split_whitespace().filter(|s| !design_denied || *s != "design:write").collect::<Vec<_>>().join(" ") }),
     )
 }
 

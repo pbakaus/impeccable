@@ -2213,3 +2213,38 @@ Existing pins cannot be overwritten with a different digest.
 **A new Loop version needs an engine release before `loop update` can see it.**
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
+
+
+## `health design on|off`
+
+`impeccable health design on` opts into uploading DESIGN.md file contents;
+`impeccable health design off` stops those uploads. The setting is `design`
+in `$IMPECCABLE_HOME/health.json`. The single default,
+`DESIGN_SYNC_DEFAULT_ON`, is `false`. Both commands exit 0 after saving,
+or 1 if the setting cannot be saved. Other arguments print
+`Usage: impeccable health design on|off` and exit 1.
+
+After the same full git-root `detect` that triggers design health, this
+sync requires health sync on, a signed-in account with `design:write`, CI
+unset, and no telemetry opt-out in either the invocation or scanned root.
+Sign-in requests `design:write` only when `scopes_supported` advertises it.
+Hooks, partial scans, and non-repos never upload. Uploads are silent in all
+output modes and never change detect's output or exit code. One request
+uses health's five-second deadline, no retries; a busy upload lock skips.
+A 404 is quietly deferred, as are all other failures.
+
+`POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
+text, sidecar}`. Repo keying matches design health. `changedAt` is the
+observation time, so a previously unsynced old file fits the server's clock
+window. DESIGN.md must be nonblank UTF-8, contain no NUL, and fit 64 KiB;
+the JSON body must fit 160 KiB. The optional sidecar copies only
+`colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
+`.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
+64-entry and short-string bounds. Invalid or absent metadata sends null.
+Components and narrative are never copied. Symlink files are skipped.
+
+Only the hash of successfully uploaded text and selected metadata is saved
+under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
+Unchanged content is skipped; failed uploads remain eligible on the next
+scan. A new sign-in can upload the same repo again, including after forget.
+Generated provider output is not involved.

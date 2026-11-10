@@ -121,6 +121,7 @@ impl Session {
             Ok(tokens) => {
                 let generation = state.generation + 1;
                 let next_state = State {
+                    scopes: tokens.scopes.unwrap_or_else(|| state.scopes.clone()),
                     generation,
                     ..state
                 };

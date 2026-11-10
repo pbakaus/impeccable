@@ -22,6 +22,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "design.rs"]
+mod design;
+pub use design::DESIGN_SYNC_DEFAULT_ON;
+
 /// Sync is on for a signed-in person unless they turn it off (decision 1 on
 /// REN-1559 is the decider's; this is the recommended default).
 pub const SYNC_BY_DEFAULT: bool = true;
@@ -102,6 +106,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
         return;
     };
+    design::after_scan(io, scan, &repo, &mut session);
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
         return;
     };
@@ -146,6 +151,9 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
 
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    if args.first().map(String::as_str) == Some("design") {
+        return design::run(&args[1..], io);
+    }
     let env = io.env.clone();
     // An unreadable health.json reads as off.
     let local = Local::read(&env).unwrap_or(Local {
@@ -217,6 +225,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 .and_then(|mut s| s.call(|c, token| c.post_json(&url, token, json!({}))));
             match result {
                 Ok(_) => {
+                    design::forget(io);
                     io.out(&format!(
                         "Design health: deleted everything saved on {}, and turned sync off.\n",
                         account.display_host()
@@ -254,6 +263,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 #[derive(Default, Clone)]
 struct Local {
     sync: Option<bool>,
+    design: Option<bool>,
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
@@ -276,6 +286,7 @@ impl Local {
         let v = v.as_object()?;
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
+            design: v.get("design").and_then(Value::as_bool),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
         })
@@ -326,6 +337,9 @@ impl Local {
         let mut m = Map::new();
         if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
+        }
+        if let Some(d) = local.design {
+            m.insert("design".into(), d.into());
         }
         if let Some(n) = local.noticed {
             m.insert("noticed".into(), n.into());

@@ -444,3 +444,140 @@ fn a_design_root_above_the_repo_keeps_the_ruleset_the_same_on_every_checkout() {
     assert_eq!(all[0]["repoKey"], all[1]["repoKey"]);
     assert_eq!(all[0]["rulesetId"], all[1]["rulesetId"]);
 }
+
+#[test]
+fn design_sync_is_opt_in_changed_only_and_retries_failures() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-sync");
+    login(&env);
+    assert_eq!(
+        fake.record.lock().unwrap().scopes[0],
+        "account:read rules:read health:write design:write"
+    );
+    let root = repo(&env, Some("git@GitHub.com:acme/my-site.git"));
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    let baseline = run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    assert!(run(&env, &root, &["health", "design", "on"])
+        .status
+        .success());
+    let uploaded = run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(baseline.stdout, uploaded.stdout);
+    assert_eq!(baseline.status.code(), uploaded.status.code());
+    assert_eq!(baseline.stderr, uploaded.stderr);
+    run(&env, &root, &["detect", "--quiet", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 1);
+    let doc = fake.record.lock().unwrap().designs[0].clone();
+    assert_eq!(doc["text"], "# Site\n");
+    assert_eq!(doc["repoKey"], scans(&fake)[0]["repoKey"]);
+    std::fs::write(root.join("DESIGN.md"), "# Changed\n").unwrap();
+    fake.knobs.lock().unwrap().design = false;
+    run(&env, &root, &["detect", "--json", "."]);
+    fake.knobs.lock().unwrap().design = true;
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 2);
+    assert!(run(&env, &root, &["health", "forget"]).status.success());
+    assert!(run(&env, &root, &["health", "on"]).status.success());
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 3);
+    assert!(run(&env, &root, &["health", "design", "off"])
+        .status
+        .success());
+    std::fs::write(root.join("DESIGN.md"), "# Off\n").unwrap();
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 3);
+}
+
+#[test]
+fn design_sync_filters_metadata_bounds_files_and_respects_health_gates() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-bounds");
+    login(&env);
+    let root = repo(&env, None);
+    assert!(run(&env, &root, &["health", "design", "on"])
+        .status
+        .success());
+    std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+    std::fs::write(root.join(".impeccable/design.json"), r##"{"extensions":{"colorMeta":{"primary":{"role":"primary","tonalRamp":["#fff"]}},"components":[{"html":"PRIVATE MARKUP"}],"narrative":"PRIVATE NARRATIVE"}}"##).unwrap();
+    for text in [
+        String::new(),
+        " \n".into(),
+        "# Bad\0".into(),
+        "é".repeat(32769),
+        "\u{1}".repeat(30000),
+    ] {
+        std::fs::write(root.join("DESIGN.md"), text).unwrap();
+        run(&env, &root, &["detect", "--json", "."]);
+    }
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    for (key, value) in [
+        ("CI", "1"),
+        ("DO_NOT_TRACK", "1"),
+        ("IMPECCABLE_NO_TELEMETRY", "1"),
+    ] {
+        let mut opted_out = env.clone();
+        opted_out.insert(key.into(), value.into());
+        run(&opted_out, &root, &["detect", "--json", "."]);
+    }
+    run(&env, &root, &["detect", "--json", "sub"]);
+    run(&env, &root, &["health", "off"]);
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    run(&env, &root, &["health", "on"]);
+    run(&env, &root, &["detect", "--json", "."]);
+    let docs = fake.record.lock().unwrap().designs.clone();
+    assert_eq!(docs.len(), 1);
+    assert_eq!(
+        docs[0]["sidecar"],
+        serde_json::json!({"colorMeta":{"primary":{"role":"primary", "tonalRamp":["#fff"]}}})
+    );
+    assert!(!docs[0].to_string().contains("PRIVATE"));
+    // An extension-only change is part of the uploaded content hash.
+    std::fs::write(
+        root.join(".impeccable/design.json"),
+        r#"{"extensions":{"typographyMeta":{"body":{"purpose":"Reading"}}}}"#,
+    )
+    .unwrap();
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 2);
+    let state = Path::new(&env["IMPECCABLE_HOME"]).join("health/repos");
+    for entry in std::fs::read_dir(state).unwrap().flatten() {
+        if entry.path().extension().is_some_and(|e| e == "design") {
+            let saved = std::fs::read_to_string(entry.path()).unwrap();
+            assert_eq!(saved.len(), 64);
+            assert!(saved.bytes().all(|b| b.is_ascii_hexdigit()));
+        }
+    }
+}
+
+#[test]
+fn design_sync_requires_the_granted_scope() {
+    let (fake, env) = signed_in("design-scope-gate");
+    let root = repo(&env, Some("https://github.com/acme/site"));
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    assert!(run(&env, &root, &["health", "design", "on"])
+        .status
+        .success());
+    fake.knobs.lock().unwrap().design = true;
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    fake.knobs.lock().unwrap().design_denied = true;
+    login(&env);
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0, "declined scope");
+    fake.knobs.lock().unwrap().design_denied = false;
+    login(&env);
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.record.lock().unwrap().designs.len(), 1);
+}

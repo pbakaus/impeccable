@@ -78,6 +78,12 @@ pub fn login(
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
+            scopes: tokens.scopes.unwrap_or_else(|| {
+                oauth::scopes(&meta)
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect()
+            }),
             schema: 1,
             issuer: account.issuer.clone(),
             generation,

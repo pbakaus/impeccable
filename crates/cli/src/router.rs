@@ -190,7 +190,9 @@ fn detect(
             engine_version: VERSION.to_string(),
             started,
         };
-        let quiet = args.iter().any(|a| a == "--quiet");
+        let quiet = args
+            .iter()
+            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code
@@ -281,7 +283,9 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }

@@ -34,6 +34,8 @@ pub enum Backend {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct State {
     pub schema: u32,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     pub issuer: String,
     pub generation: u64,
     pub signed_in: bool,
@@ -297,6 +299,7 @@ impl Store {
     ) -> Result<(), String> {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
+            scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),
             generation,
