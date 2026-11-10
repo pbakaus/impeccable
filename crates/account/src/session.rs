@@ -121,6 +121,7 @@ impl Session {
             Ok(tokens) => {
                 let generation = state.generation + 1;
                 let next_state = State {
+                    foundations: tokens.foundations,
                     generation,
                     ..state
                 };

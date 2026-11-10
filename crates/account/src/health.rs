@@ -52,6 +52,8 @@ pub struct Hit {
 
 /// A full scan, from `impeccable_detect::cli::FullScan`.
 pub struct Scan {
+    /// Catalog evidence only. Missing checks are never inferred as passing.
+    pub foundations: std::collections::BTreeMap<String, String>,
     pub root: String,
     pub files_scanned: usize,
     pub hits: Vec<Hit>,
@@ -118,6 +120,23 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // `off` or `forget` may have run while the scan did.
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
         return;
+    }
+    // Its own request and consent: a switched-off route (404) or any other
+    // failure is silent and never prevents the health upload.
+    if session.state.foundations {
+        let foundation_body = json!({
+            "version": 1,
+            "scanId": body["scanId"],
+            "repoKey": repo.key,
+            "scannedAt": body["scannedAt"],
+            "productType": null,
+            "items": scan.foundations,
+        });
+        let _ = Client::with_deadline(&account, Duration::from_secs(2)).post_json(
+            &format!("{}/cli/v1/foundations", account.issuer),
+            &token,
+            foundation_body,
+        );
     }
     // One request, one deadline, no retry: a 401 waits for the next scan.
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
@@ -633,6 +652,7 @@ mod tests {
 
     fn scan(hits: Vec<(&str, &str, &str, bool)>) -> Scan {
         Scan {
+            foundations: Default::default(),
             root: "/w/repo".into(),
             files_scanned: 3,
             hits: hits

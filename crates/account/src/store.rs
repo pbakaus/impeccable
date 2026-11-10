@@ -33,6 +33,8 @@ pub enum Backend {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct State {
+    #[serde(default)]
+    pub foundations: bool,
     pub schema: u32,
     pub issuer: String,
     pub generation: u64,
@@ -297,6 +299,7 @@ impl Store {
     ) -> Result<(), String> {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
+            foundations: false,
             schema: 1,
             issuer: self.account.issuer.clone(),
             generation,

@@ -28,6 +28,7 @@ pub struct Metadata {
     /// only while design health is switched on there. Asking for a scope it
     /// doesn't list fails the sign-in with `invalid_scope`.
     pub health: bool,
+    pub foundations: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -61,12 +62,17 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
         .get("scopes_supported")
         .and_then(|v| v.as_array())
         .is_some_and(|a| a.iter().any(|s| s == HEALTH_SCOPE));
+    let foundations = doc
+        .get("scopes_supported")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| a.iter().any(|s| s == FOUNDATIONS_SCOPE));
     match (authorization_endpoint, token_endpoint) {
         (Some(authorization_endpoint), Some(token_endpoint)) => Ok(Metadata {
             authorization_endpoint,
             token_endpoint,
             revocation_endpoint,
             health,
+            foundations,
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -75,14 +81,22 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
 
-/// What sign-in asks for: the CLI's scopes, plus `health:write` where the
-/// service offers it.
+/// Uploading foundations evidence, separately consented from detector counts.
+pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
+
+/// Request feature scopes only where the service advertises them.
 fn scopes(meta: &Metadata) -> String {
-    if meta.health {
-        format!("{SCOPES} {HEALTH_SCOPE}")
-    } else {
-        SCOPES.to_string()
+    let mut scopes = SCOPES.to_string();
+    for (offered, scope) in [
+        (meta.health, HEALTH_SCOPE),
+        (meta.foundations, FOUNDATIONS_SCOPE),
+    ] {
+        if offered {
+            scopes.push(' ');
+            scopes.push_str(scope);
+        }
     }
+    scopes
 }
 
 pub fn random_b64(len: usize) -> String {
@@ -316,6 +330,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub struct Tokens {
+    pub foundations: bool,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
@@ -343,6 +358,10 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
             access_token,
             refresh_token,
             expires_in,
+            foundations: v
+                .get("scope")
+                .and_then(|s| s.as_str())
+                .is_some_and(|s| s.split_whitespace().any(|s| s == FOUNDATIONS_SCOPE)),
         }),
         _ => Err(ApiError::Network(
             "the account service sent an incomplete token answer".into(),
