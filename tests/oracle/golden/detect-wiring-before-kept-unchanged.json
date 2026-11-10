@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "stdout": "{\n  \"mode\": \"before\",\n  \"targets\": [\n    {\n      \"file\": \"page.html\",\n      \"status\": \"saved\",\n      \"inventory\": \".impeccable/wiring/page-html-84bd515f.json\",\n      \"wiring\": 19,\n      \"content\": 3\n    }\n  ]\n}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "page.html: wiring kept (19 items).\n\nWiring kept in 1 file.\n",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"mode\": \"kept\",\n  \"ok\": true,\n  \"targets\": [\n    {\n      \"file\": \"page.html\",\n      \"status\": \"kept\",\n      \"inventory\": \".impeccable/wiring/page-html-84bd515f.json\",\n      \"wiring\": {\n        \"before\": 19,\n        \"after\": 19\n      },\n      \"missing\": [],\n      \"new\": [],\n      \"content\": {\n        \"gone\": [],\n        \"new\": []\n      }\n    }\n  ]\n}\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {}
+}

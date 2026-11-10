@@ -26,6 +26,7 @@ pub mod project_tokens;
 pub mod regex_matchers;
 pub mod skills;
 pub mod util;
+pub mod wiring;
 
 use impeccable_common::Io;
 

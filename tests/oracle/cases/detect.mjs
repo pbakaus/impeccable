@@ -12,6 +12,14 @@ import path from 'node:path';
 import { REPO_ROOT } from '../lib.mjs';
 
 const FIXTURES = path.join(REPO_ROOT, 'tests', 'fixtures', 'antipatterns');
+const WIRING = path.join(REPO_ROOT, 'tests', 'fixtures', 'wiring', 'before.html');
+const WIRING_AFTER = path.join(REPO_ROOT, 'tests', 'fixtures', 'wiring', 'after.html');
+
+/** A one-page project for detect --before / --kept (package.json marks its root). */
+function stageWiringPage(ws) {
+  fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"wiring"}\n');
+  fs.copyFileSync(WIRING, path.join(ws, 'page.html'));
+}
 
 /**
  * A project whose DESIGN.md declares `primary` and whose pages wear purple:
@@ -322,6 +330,36 @@ function Thumb({ url }: { url?: string }) {
       setup: (ws) => stageBrandProject(ws, hue === 'purple' ? '#5c2d91' : '#1a4d8f'),
       args: mode === 'json' ? ['--json', 'src'] : ['src'],
     }))),
+
+    // detect --before / --kept (#1291): the wiring of a static HTML page,
+    // saved under .impeccable/wiring/ and compared after a rewrite.
+    {
+      id: 'detect-wiring-before-kept-rewrite', verb: 'detect',
+      setup: stageWiringPage,
+      files: ['.impeccable/wiring/**'],
+      steps: [
+        { args: ['--before', 'page.html'] },
+        {
+          setup: (ws) => fs.copyFileSync(WIRING_AFTER, path.join(ws, 'page.html')),
+          args: ['--kept', 'page.html'],
+        },
+        { args: ['--kept', '--json', 'page.html'] },
+      ],
+    },
+    {
+      id: 'detect-wiring-before-kept-unchanged', verb: 'detect',
+      setup: stageWiringPage,
+      steps: [
+        { args: ['--before', '--json', 'page.html'] },
+        { args: ['--kept', './page.html'] },
+        { args: ['--kept', '--json', 'page.html'] },
+      ],
+    },
+    {
+      id: 'detect-wiring-kept-no-inventory', verb: 'detect',
+      setup: stageWiringPage,
+      args: ['--kept', 'page.html'],
+    },
   );
 
   return out;
