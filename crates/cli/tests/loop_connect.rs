@@ -383,7 +383,10 @@ fn one_agent_failing_reports_the_other_and_rolls_itself_back() {
     let said = text(&out);
     assert!(said.contains("Claude Code: connected"), "{said}");
     assert!(
-        said.contains("Codex: not connected") && said.contains("left alone"),
+        said.contains(&format!(
+            "Codex: not connected: {} already has a different MCP server called impeccable; it was left alone. Remove or rename it, then connect again.",
+            b.home().join(".codex/config.toml").display()
+        )),
         "{said}"
     );
     assert!(

@@ -2197,8 +2197,8 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   pinned version. An already current app exits 0. A running Loop is asked to quit
   (SIGTERM to the processes whose executable is exactly this bundle's, never by name)
   once the new build is downloaded and verified, waiting up to 10 s; one still running
-  keeps the refusal `Impeccable Loop is running. Quit Loop first, then run impeccable
-  loop update.` and the old app. The updated Loop reopens unless `--no-open`.
+  keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
+  yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
