@@ -1,5 +1,5 @@
 //! Offline native integration: actual browser pixels and declared dependency failures.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     fs,
     path::PathBuf,

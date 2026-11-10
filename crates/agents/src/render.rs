@@ -124,9 +124,7 @@ pub(super) fn instruction_drift(
         allowed.push(body_of(old)?);
     }
     let path = rule_file(new);
-    let Ok(text) = fs::read_to_string(&path) else {
-        return Ok(None);
-    };
+    let Ok(text) = fs::read_to_string(&path) else { return Ok(None) };
     if !text.contains(&start) {
         return Ok(None);
     }
@@ -136,11 +134,7 @@ pub(super) fn instruction_drift(
 
 /// The harness's rule file for this account root.
 pub(super) fn rule_file(s: &Spec) -> PathBuf {
-    s.root.join(if s.harness == "claude" {
-        "CLAUDE.md"
-    } else {
-        "AGENTS.md"
-    })
+    s.root.join(if s.harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
 }
 
 /// Whether this installation's resources are on disk, judged from the files
@@ -149,19 +143,11 @@ pub(super) fn rule_file(s: &Spec) -> PathBuf {
 /// `features.hooks` prove nothing and are not read.
 pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
     let rules = rule_file(s);
-    if fs::read_to_string(&rules)
-        .is_ok_and(|t| t.contains(&format!("<!-- impeccable:{} start -->", s.owner)))
-    {
+    if fs::read_to_string(&rules).is_ok_and(|t| t.contains(&format!("<!-- impeccable:{} start -->", s.owner))) {
         return Some(rules);
     }
-    let hooks = s.root.join(if s.harness == "claude" {
-        "settings.json"
-    } else {
-        "hooks.json"
-    });
-    let value = fs::read(&hooks)
-        .ok()
-        .and_then(|b| parse_unique_json(&b).ok())?;
+    let hooks = s.root.join(if s.harness == "claude" { "settings.json" } else { "hooks.json" });
+    let value = fs::read(&hooks).ok().and_then(|b| parse_unique_json(&b).ok())?;
     s.hooks
         .iter()
         .any(|h| {
@@ -177,24 +163,17 @@ pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
 /// The spec's hooks still in `settings` (JSON) in a form the engine didn't
 /// write: same command, other fields changed. Undo leaves them, and says so.
 pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) -> Vec<String> {
-    let Ok(value) = parse_unique_json(settings) else {
-        return vec![];
-    };
+    let Ok(value) = parse_unique_json(settings) else { return vec![] };
     let original = original.and_then(|b| parse_unique_json(b).ok());
     let mut out = Vec::new();
     for h in &s.hooks {
-        let Some(entries) = value
-            .get("hooks")
-            .and_then(|v| v.get(&h.event))
-            .and_then(Value::as_array)
-        else {
+        let Some(entries) = value.get("hooks").and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
             continue;
         };
         let ours = h.entry();
         let same_command = |e: &Value| {
             e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
-                hs.iter()
-                    .any(|c| c.get("command").and_then(Value::as_str) == Some(h.command.as_str()))
+                hs.iter().any(|c| c.get("command").and_then(Value::as_str) == Some(h.command.as_str()))
             })
         };
         // An entry that was there before the install is the person's own.
@@ -206,10 +185,7 @@ pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) 
                 .and_then(Value::as_array)
                 .is_some_and(|a| a.contains(e))
         };
-        if entries
-            .iter()
-            .any(|e| e != &ours && same_command(e) && !preexisting(e))
-        {
+        if entries.iter().any(|e| e != &ours && same_command(e) && !preexisting(e)) {
             out.push(format!("hook:{}:{}", h.event, h.command));
         }
     }

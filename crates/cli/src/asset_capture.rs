@@ -7,9 +7,9 @@ use impeccable_browser::{
 };
 use impeccable_comp::{png_io, raster::Image};
 use impeccable_comp_verbs::asset_capture::{
-    capture_sha256 as hash, AssetCapture, AssetCaptureRequest, AssetRenderer, CaptureImage,
+    AssetCapture, AssetCaptureRequest, AssetRenderer, CaptureImage, capture_sha256 as hash,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -77,15 +77,8 @@ impl AssetRenderer for CdpAssetRenderer {
         // round resampled pixels differently after an otherwise identical repaint.
         // Disable partial raster too: reusing invalidated tiles can change antialiasing
         // even with software rasterization. Never substitute a pixel tolerance.
-        let mut browser = Browser::launch(
-            &exe,
-            &[
-                "--disable-gpu-rasterization".into(),
-                "--disable-partial-raster".into(),
-            ],
-            false,
-        )
-        .map_err(|e| e.message)?;
+        let mut browser = Browser::launch(&exe, &["--disable-gpu-rasterization".into(), "--disable-partial-raster".into()], false)
+            .map_err(|e| e.message)?;
         let browser_version = browser.version().map_err(|e| e.message)?;
         let result = (|| {
             let mut page = browser.new_page().map_err(|e| e.message)?;
@@ -103,9 +96,7 @@ impl AssetRenderer for CdpAssetRenderer {
             page.goto(&request.url, "load", Duration::from_secs(30))
                 .map_err(|e| e.message)?;
             let world = page.create_isolated_world().map_err(|e| e.message)?;
-            let stylesheet = page
-                .create_capture_stylesheet(&world)
-                .map_err(|e| e.message)?;
+            let stylesheet = page.create_capture_stylesheet(&world).map_err(|e| e.message)?;
             let mut capture = CapturePage {
                 page: &mut page,
                 world,
@@ -271,29 +262,13 @@ fn coverage_on_baseline(
 /// stands. A pseudo-element has no client rect, so the native layout boxes of
 /// every generated `::before`/`::after` that could paint a `url()` are read
 /// first and handed to the measurement, which places each one there.
-pub(crate) fn measure_raster_coverage(
-    page: &mut Page<'_>,
-    world: &IsolatedWorld,
-    exclude: &Value,
-) -> Result<Value, String> {
+pub(crate) fn measure_raster_coverage(page: &mut Page<'_>, world: &IsolatedWorld, exclude: &Value) -> Result<Value, String> {
     const CANDIDATES: &str = "[...document.querySelectorAll('*')].flatMap((el,index)=>['before','after'].filter(p=>{const s=getComputedStyle(el,'::'+p);return s.content!=='none'&&s.content!=='normal'&&s.display!=='none'&&[s.content,s.backgroundImage,s.borderImageSource,s.maskImage,s.webkitMaskImage,s.clipPath,s.filter].some(v=>typeof v==='string'&&v.includes('url('))}).map(pseudo=>({index,pseudo})))";
-    let candidates = page
-        .evaluate_value_in_world(world, CANDIDATES)
-        .map_err(|e| e.message)?;
-    let candidates = candidates
-        .as_array()
-        .ok_or("pseudo-element candidates unavailable")?;
-    let pseudos = page
-        .native_pseudo_boxes(world, candidates)
-        .map_err(|e| e.message)?;
-    page.evaluate_value_in_world(
-        world,
-        &format!(
-            "({})({exclude},{pseudos})",
-            include_str!("raster_coverage.js")
-        ),
-    )
-    .map_err(|e| e.message)
+    let candidates = page.evaluate_value_in_world(world, CANDIDATES).map_err(|e| e.message)?;
+    let candidates = candidates.as_array().ok_or("pseudo-element candidates unavailable")?;
+    let pseudos = page.native_pseudo_boxes(world, candidates).map_err(|e| e.message)?;
+    page.evaluate_value_in_world(world, &format!("({})({exclude},{pseudos})", include_str!("raster_coverage.js")))
+        .map_err(|e| e.message)
 }
 struct CapturePage<'p, 'b> {
     page: &'p mut Page<'b>,
@@ -316,9 +291,7 @@ impl<'p, 'b> std::ops::DerefMut for CapturePage<'p, 'b> {
 impl CapturePage<'_, '_> {
     fn set_stylesheet(&mut self, text: &str) -> Result<(), String> {
         self.check_budget()?;
-        self.page
-            .set_capture_stylesheet(&self.world, &self.stylesheet, text)
-            .map_err(|e| e.message)
+        self.page.set_capture_stylesheet(&self.world, &self.stylesheet, text).map_err(|e| e.message)
     }
     fn check_budget(&self) -> Result<(), String> {
         if self.started.elapsed() > Duration::from_secs(60) {
@@ -342,19 +315,9 @@ fn eval(page: &mut CapturePage<'_, '_>, js: &str) -> Result<Value, String> {
 }
 fn scan(page: &mut CapturePage<'_, '_>, key: &str) -> Result<Value, String> {
     let retained = eval(page, &format!("(globalThis[{key}].active?.expected||[]).filter(r=>r.pseudo).map(r=>({{index:r.index,pseudo:r.pseudo.slice(2)}}))"))?;
-    let retained = retained
-        .as_array()
-        .ok_or("capture pseudo identities unavailable")?;
-    let pseudos = page
-        .page
-        .capture_pseudo_geometry(&page.world, retained)
-        .map_err(|e| e.message)?;
-    eval(
-        page,
-        &format!(
-            "(()=>{{globalThis[{key}].pseudos={pseudos};return globalThis[{key}].scan();}})()"
-        ),
-    )
+    let retained = retained.as_array().ok_or("capture pseudo identities unavailable")?;
+    let pseudos = page.page.capture_pseudo_geometry(&page.world, retained).map_err(|e| e.message)?;
+    eval(page, &format!("(()=>{{globalThis[{key}].pseudos={pseudos};return globalThis[{key}].scan();}})()"))
 }
 fn screenshot(
     page: &mut CapturePage<'_, '_>,
@@ -598,7 +561,8 @@ fn capture_page(
         .filter(|row| {
             overlaps(&row["box"], r)
                 && network.responses.iter().any(|e| {
-                    Some(e.url.as_str()) == row["url"].as_str() && e.body_matches(&r.asset_bytes)
+                    Some(e.url.as_str()) == row["url"].as_str()
+                        && e.body_matches(&r.asset_bytes)
                 })
         })
         .count();
@@ -797,11 +761,7 @@ fn intervene(
     let suppressed = eval(page, &format!("globalThis[{key}].suppressMany({items})"));
     let intervention: Result<(Vec<u8>, Image), String> = (|| {
         let suppressed = suppressed?;
-        page.set_stylesheet(
-            suppressed["rules"]
-                .as_str()
-                .ok_or("capture suppression rules unavailable")?,
-        )?;
+        page.set_stylesheet(suppressed["rules"].as_str().ok_or("capture suppression rules unavailable")?)?;
         eval(page, &format!("globalThis[{key}].settle()"))?;
         eval(page, &format!("globalThis[{key}].verifySuppression()"))?;
         let (without, without_pixels) = screenshot(page, r)?;
