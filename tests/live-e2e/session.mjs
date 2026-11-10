@@ -262,6 +262,23 @@ export function startDevServer(tmp, runtime) {
   return { child, ready, log: () => bufLog.join('') };
 }
 
+async function waitForHttpOk(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last = 'no response';
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(5_000) });
+      await res.arrayBuffer().catch(() => {});
+      if (res.status < 500) return;
+      last = `HTTP ${res.status}`;
+    } catch (err) {
+      last = err.message;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`dev server at ${url} still failing after ${timeoutMs}ms (${last})`);
+}
+
 function readTimeoutEnv(name, fallback) {
   const raw = process.env[name];
   if (raw == null || raw === '') return fallback;
@@ -414,6 +431,13 @@ export async function bootFixtureSession({
     const { port: devPort } = await dev.ready;
     trace('setup.dev_server.end', { fixture: name, port: devPort });
     log(`dev server ready on ${devPort} in ${formatDuration(Date.now() - devStartedAt)}`);
+    if (runtime.waitForHttpOk) {
+      // Nuxt prints its URL before the first build finishes and serves a
+      // 503 loading page until then; its polling would fail console hygiene.
+      const okStartedAt = Date.now();
+      await waitForHttpOk(`${runtime.scheme || 'http'}://127.0.0.1:${devPort}/`, runtime.readyTimeoutMs ?? 120_000);
+      log(`dev server answered without a 5xx in ${formatDuration(Date.now() - okStartedAt)}`);
+    }
 
     // Agent loop runs concurrently — abort on teardown.
     if (agent) {
