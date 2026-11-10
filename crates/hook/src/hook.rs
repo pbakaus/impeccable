@@ -851,6 +851,17 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ));
             continue;
         }
+        // A plugin hook next to a project hook fires this pass twice at once:
+        // only the first copy scans, as PostToolUse does.
+        let touched_paths: Vec<String> = touched.iter().map(|(f, _)| f.clone()).collect();
+        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths) == crate::hook_claim::Claim::Duplicate {
+            // A duplicate says more than an empty root's skip, so it wins.
+            first_skip = Some(result(
+                &root_audit,
+                vec![("skipped", Value::from("duplicate-event")), ("durationMs", ms_since(started))],
+            ));
+            continue;
+        }
         let mut root_memo = if at_session_cwd { platform_memo.clone() } else { None };
         if let Some(skip) = native_skip(&root_audit, root, &mut root_memo) {
             first_skip.get_or_insert(skip);

@@ -3422,10 +3422,11 @@ fn stop_from_an_umbrella_cwd_finds_the_project_below_it() {
     assert!(stop.audit.get("roots").is_none(), "{:?}", stop.audit);
     // Nothing lands in the umbrella folder itself (#346).
     assert!(!t.exists("work/.impeccable"));
-    // The second Stop has nothing new to say.
+    // The second Stop has nothing new to say. Nothing changed since the first,
+    // so it is the same pass and the claim skips it (D5).
     let again = hook::run_stop_hook(&rt_with(&work, e.clone()), &stop_event(&work, "p1"));
     assert_eq!(again.stdout, "", "{:?}", again.audit);
-    assert_eq!(audit_str(&again.audit, "skipped"), Some("stop-clean"));
+    assert_eq!(audit_str(&again.audit, "skipped"), Some("duplicate-event"));
     // Another session's Stop does not see this session's roots.
     let other = hook::run_stop_hook(&rt_with(&work, e), &stop_event(&work, "p2"));
     assert_eq!(audit_str(&other.audit, "skipped"), Some("no-touched-files"));
@@ -4098,4 +4099,69 @@ fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
     let r = rt(&cwd);
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+// D5: a plugin hook next to a project hook fires the turn-end pass twice too.
+// The copies run at once, both read the cache before either writes it, and
+// both printed the same deep pass. Stop now claims like PostToolUse.
+
+#[test]
+fn concurrent_duplicate_stop_invocations_run_one_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let file = t.write("src/card.css", SIDE_TAB_CSS);
+    // The per-edit pass records the file; side-tab is deferred to Stop.
+    hook::run_hook(&rt_with(&cwd, e.clone()), &edit_event(&cwd, &file, "s-stop"));
+    let stdin = stop_event(&cwd, "s-stop");
+    let results: Vec<hook::RunResult> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let (cwd, e, stdin) = (cwd.clone(), e.clone(), stdin.clone());
+                s.spawn(move || hook::run_stop_hook(&rt_with(&cwd, e), &stdin))
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let printed: Vec<&hook::RunResult> = results.iter().filter(|r| r.stdout.contains("[side-tab]")).collect();
+    assert_eq!(printed.len(), 1, "{:?}", results.iter().map(|r| &r.audit).collect::<Vec<_>>());
+    assert!(results.iter().any(|r| r.audit.get("skipped") == Some(&json!("duplicate-event"))), "the other copies skip as duplicates");
+}
+
+#[test]
+fn a_later_turn_with_a_new_edit_still_runs_its_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let r = rt_with(&cwd, e);
+    let first = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &first, "s-turns"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns")).stdout.contains("a.css"));
+    // Same session, identical Stop payload (Claude sends no turn id), new edit.
+    let second = t.write("src/b.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &second, "s-turns"));
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns"));
+    assert!(again.stdout.contains("b.css"), "{} {:?}", again.stdout, again.audit);
+}
+
+#[test]
+fn concurrent_cache_saves_leave_one_whole_cache_and_no_staging_files() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let files: Vec<String> = (0..8).map(|i| t.write(&format!("src/c{i}.css"), SIDE_TAB_CSS)).collect();
+    std::thread::scope(|s| {
+        for (i, f) in files.iter().enumerate() {
+            let cwd = cwd.clone();
+            s.spawn(move || hook::run_hook(&rt(&cwd), &edit_event(&cwd, f, &format!("s{i}"))));
+        }
+    });
+    let text = t.read(".impeccable/hook.cache.json");
+    assert!(serde_json::from_str::<Value>(&text).is_ok(), "the cache parses: {text}");
+    let leftovers: Vec<String> = std::fs::read_dir(t.0.join(".impeccable")).unwrap()
+        .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp")).collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
 }
