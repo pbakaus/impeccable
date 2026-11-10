@@ -165,10 +165,7 @@ impl Fake {
     pub fn wait_for_hits(&self, path: &str, n: usize) {
         let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while self.hits(path) < n {
-            assert!(
-                std::time::Instant::now() < until,
-                "{path} never reached {n} hits"
-            );
+            assert!(std::time::Instant::now() < until, "{path} never reached {n} hits");
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
