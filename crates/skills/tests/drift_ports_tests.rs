@@ -1277,3 +1277,79 @@ fn update_doctor_report_merges_the_updated_harnesses() {
     assert_eq!(report.matches("product-deprecated-register").count(), 1, "{}", r.stdout);
     std::fs::remove_dir_all(&root).ok();
 }
+
+// `.codex/skills` is not an install target (Codex reads repository skills
+// from `.agents/skills`), so a copy there is reported, never refreshed (#1391).
+fn codex_dir_project(name: &str, with_agents: bool, copy_under_home: bool) -> (String, String, HashMap<String, String>) {
+    let root = temp_root(name);
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let copy_root = if copy_under_home { &home } else { &project };
+    write(&format!("{copy_root}/.codex/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 3.9.1\n---\n");
+    if with_agents {
+        write(&format!("{project}/.agents/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    }
+    let bundle = create_fake_universal_bundle(&root, &[".agents"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+    (root, project, env)
+}
+
+#[test]
+fn update_names_a_codex_skills_copy_it_cannot_find() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-only", false, false);
+    let r = run_cli(&["update", "-y"], &project, &env);
+    assert_eq!(r.code, 1, "{}\n{}", r.stdout, r.stderr);
+    let expected = "No impeccable skill folders found in this project or at the user level.\n\
+        Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run `npx impeccable install --providers=codex` to install it there, then delete .codex/skills/impeccable.\n\
+        Run `npx impeccable install` to install first.\n";
+    assert_eq!(r.stdout, expected);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_names_a_codex_skills_copy_beside_the_agents_install() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-beside", true, false);
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let note = "Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Delete .codex/skills/impeccable.\nDone!\n";
+    assert!(r.stdout.contains(note), "{}", r.stdout);
+    assert!(r.stdout.contains("Updated 1 skill(s)"), "{}", r.stdout);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    assert!(read(&format!("{project}/.agents/skills/impeccable/SKILL.md")).contains("9.9.9-local"));
+    // The up-to-date path says it too, before its closing line.
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Delete .codex/skills/impeccable.\nNothing else to do.\n"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn update_is_silent_about_a_codex_skills_link_onto_the_agents_install() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-link", true, false);
+    std::fs::remove_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink("../.agents/skills", format!("{project}/.codex/skills")).unwrap();
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_user_names_a_codex_skills_copy_under_home() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-home", false, true);
+    let r = run_cli(&["update", "-y", "--user"], &project, &env);
+    assert_eq!(r.code, 1, "{}\n{}", r.stdout, r.stderr);
+    assert!(
+        r.stdout.contains("Found an Impeccable skill at ~/.codex/skills/impeccable, which update does not manage: the user-level install Impeccable maintains is ~/.agents/skills/impeccable. Run `npx impeccable install --providers=codex --scope=global` to install it there, then delete ~/.codex/skills/impeccable so Codex loads one copy.\n"),
+        "{}",
+        r.stdout
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
