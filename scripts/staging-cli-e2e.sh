@@ -60,6 +60,9 @@ pass "login: the CLI printed a sign-in link"
 answer=$(cd "$PRISTINE" && bun run --silent staging-admin cli-login "$url" 2>&1 | grep -E '^(approved|refused:)' | tail -1)
 [ "$answer" = approved ] || { fail "login: consent" "${answer:-no answer from staging-admin cli-login}"; finish; }
 pass "login: consent approved as the seeded test person"
+# The CLI should finish within seconds of the approval; never wait on it forever.
+for _ in $(seq 1 300); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "no code reached its callback within 60 s"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
 
