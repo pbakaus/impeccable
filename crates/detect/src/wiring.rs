@@ -109,132 +109,35 @@ pub fn short_hash(text: &str) -> String {
     fnv8(&normalize_js_ws(text))
 }
 
-/// Whitespace that only formats JavaScript is dropped from the hash input,
-/// and whitespace that can change what runs is kept. Outside string and
-/// template literals, a run of whitespace becomes one newline if it holds a
-/// line break (a line break ends a `//` comment and can end a statement),
-/// else one space; the ends are trimmed. Inside a literal or a comment every
-/// character is kept (a quote in a comment opens no string), so
-/// `save('a  b')` and `save('a b')` differ.
+/// The hash input for JavaScript: each line trimmed of its leading and
+/// trailing whitespace and blank lines dropped, so re-indenting is not a
+/// change. Inside a line, whitespace runs collapse only when the line holds
+/// no quote or slash (so no string, regex or comment); otherwise the line is
+/// kept as written. Indentation is
+/// never meaningful in JavaScript except inside a string that spans lines,
+/// which needs a template literal or a backslash line continuation; a body
+/// holding either is kept byte for byte (line endings aside). No tokenizing,
+/// so comments, regexes and division cannot be misread.
 pub fn normalize_js_ws(text: &str) -> String {
-    #[derive(PartialEq)]
-    enum State {
-        Code,
-        Quote(char),
-        LineComment,
-        BlockComment,
-        // A regular-expression literal; the flag is "inside a [class]".
-        Regex(bool),
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    let multiline_string = text.contains('`') || text.lines().any(|l| l.trim_end_matches([' ', '\t']).ends_with('\\'));
+    if multiline_string {
+        return text.trim().to_string();
     }
-    let mut out = String::with_capacity(text.len());
-    let mut state = State::Code;
-    let mut escaped = false;
-    let mut pending: Option<char> = None;
-    let mut chars = text.chars().peekable();
-    let is_break = |c: char| matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}');
-    while let Some(c) = chars.next() {
-        match state {
-            State::Quote(q) => {
-                out.push(c);
-                if escaped {
-                    escaped = false;
-                } else if c == '\\' {
-                    escaped = true;
-                } else if c == q {
-                    state = State::Code;
-                }
-                continue;
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| {
+            // A line with no quote or slash holds no string, regex or
+            // comment, so spacing inside it is formatting too.
+            if l.contains(['\'', '"', '/']) {
+                l.to_string()
+            } else {
+                collapse_ws(l)
             }
-            // A comment's text is kept as written, so a quote in it never
-            // opens a string. A line comment ends at the line break, which
-            // then normalizes like any other.
-            State::LineComment if !is_break(c) => {
-                out.push(c);
-                continue;
-            }
-            State::LineComment => state = State::Code,
-            State::BlockComment => {
-                out.push(c);
-                if c == '*' && chars.peek() == Some(&'/') {
-                    out.push(chars.next().unwrap());
-                    state = State::Code;
-                }
-                continue;
-            }
-            State::Regex(in_class) => {
-                out.push(c);
-                if escaped {
-                    escaped = false;
-                } else if c == '\\' {
-                    escaped = true;
-                } else if c == '[' {
-                    state = State::Regex(true);
-                } else if c == ']' && in_class {
-                    state = State::Regex(false);
-                } else if c == '/' && !in_class {
-                    state = State::Code;
-                } else if is_break(c) {
-                    // Not a regex after all (they never span lines).
-                    state = State::Code;
-                }
-                continue;
-            }
-            State::Code => {}
-        }
-        if c.is_whitespace() {
-            if is_break(c) {
-                pending = Some('\n');
-            } else if pending.is_none() {
-                pending = Some(' ');
-            }
-            continue;
-        }
-        // Whether a `/` here can open a regex rather than divide: decided,
-        // as JavaScript tokenizers do, by the code before it.
-        let regex_can_start = c == '/' && regex_allowed_after(&out);
-        if let Some(ws) = pending.take() {
-            if !out.is_empty() {
-                out.push(ws);
-            }
-        }
-        out.push(c);
-        if c == '\'' || c == '"' || c == '`' {
-            state = State::Quote(c);
-        } else if c == '/' && chars.peek() == Some(&'/') {
-            out.push(chars.next().unwrap());
-            state = State::LineComment;
-        } else if c == '/' && chars.peek() == Some(&'*') {
-            out.push(chars.next().unwrap());
-            state = State::BlockComment;
-        } else if regex_can_start {
-            state = State::Regex(false);
-        }
-    }
-    out
-}
-
-/// Whether a `/` after `before` (the normalized code so far) opens a regex
-/// literal: at the start, after an operator or opening punctuation, or after
-/// a keyword such as `return`; not after a value (a name, a number, `)` or
-/// `]`), where it divides.
-fn regex_allowed_after(before: &str) -> bool {
-    let trimmed = before.trim_end();
-    let Some(last) = trimmed.chars().last() else { return true };
-    if last.is_alphanumeric() || last == '_' || last == '$' {
-        let word: String = trimmed
-            .chars()
-            .rev()
-            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        return matches!(
-            word.as_str(),
-            "return" | "typeof" | "instanceof" | "in" | "of" | "new" | "delete" | "void" | "throw" | "case" | "do" | "else" | "yield" | "await"
-        );
-    }
-    !matches!(last, ')' | ']' | '}' | '\'' | '"' | '`')
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// 8 hex digits of FNV-1a 64 over `text` exactly as given.
@@ -745,23 +648,22 @@ mod tests {
     fn the_js_hash_keeps_whitespace_that_changes_behavior() {
         assert_ne!(short_hash("save('a  b')"), short_hash("save('a b')"));
         assert_ne!(short_hash("// note\nrun()"), short_hash("// note run()"));
-        assert_ne!(short_hash("x = `a\n b`"), short_hash("x = `a b`"));
-        assert_eq!(short_hash("  if (a) {\n      go()\n  }"), short_hash("if (a) {\n go()\n}"));
-        assert_eq!(short_hash("go( 1,   2 )"), short_hash("go( 1, 2 )"));
-        assert_eq!(normalize_js_ws("say(\"it\\\"s  ok\")  ;"), "say(\"it\\\"s  ok\") ;");
-        // A quote inside a comment opens no string, so later re-indenting
-        // is still formatting.
-        assert_eq!(short_hash("// don't\n    go()"), short_hash("// don't\ngo()"));
-        assert_eq!(short_hash("/* it's */\n    go()"), short_hash("/* it's */\ngo()"));
-        assert_ne!(short_hash("/* a */ go()"), short_hash("/* a */\ngo()"));
-        // A regex literal holding `//` is no comment: a template literal
-        // after it stays a literal, and formatting after it still collapses.
-        let re_a = "const re = /https?:\\/\\//; const text = `a\n  b`;";
-        let re_b = "const re = /https?:\\/\\//; const text = `a\n b`;";
+        // Re-indenting is formatting.
+        assert_eq!(short_hash("  if (a) {\n      go()\n  }"), short_hash("if (a) {\ngo()\n}"));
+        assert_eq!(short_hash("go()\r\n\n   stop()  "), short_hash("go()\nstop()"));
+        assert_eq!(short_hash("a   = b || [];"), short_hash("a = b || [];"));
+        assert_ne!(short_hash("a = 'x  y';"), short_hash("a = 'x y';"));
+        // A template literal or a line continuation can carry indentation
+        // into a string, so that body is kept as written.
+        assert_ne!(short_hash("x = `a\n  b`"), short_hash("x = `a\n b`"));
+        assert_ne!(short_hash("x = 'a\\\n  b'"), short_hash("x = 'a\\\n b'"));
+        // Comments, regexes and division are never tokenized, so none of
+        // them can hide a change inside a string.
+        let re_a = "const re = /https?:\\/\\//; const text = \"a  b\";";
+        let re_b = "const re = /https?:\\/\\//; const text = \"a b\";";
         assert_ne!(short_hash(re_a), short_hash(re_b));
-        assert_eq!(short_hash("x = /[/]/g;   go()"), short_hash("x = /[/]/g; go()"));
-        // Division is not a regex.
-        assert_eq!(short_hash("a = b / c;   d = e / f"), short_hash("a = b / c; d = e / f"));
+        assert_ne!(short_hash("let n = count++ / 2; const t = \"a/  b\";"), short_hash("let n = count++ / 2; const t = \"a/ b\";"));
+        assert_eq!(short_hash("// don't\n    go()"), short_hash("// don't\ngo()"));
     }
 
     /// Review (Greptile): a static site whose only marker is an ancestor
