@@ -1,3 +1,4 @@
 # Loop release SHA-256 pins: <sha256>  impeccable-loop-<version>.zip
 # Recorded with node scripts/check-loop-release.mjs --record <version>.
 # Embedded in the engine binary; new pins require an engine release.
+0c84eacf2673059fa0ef6ec48a057d865e7f88375ceffbafdc3a74a394a5a8f9  impeccable-loop-0.1.0.zip
