@@ -4165,3 +4165,39 @@ fn concurrent_cache_saves_leave_one_whole_cache_and_no_staging_files() {
         .filter(|n| n.ends_with(".tmp")).collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
+
+#[test]
+fn a_turn_that_only_changed_design_md_runs_a_new_deep_pass() {
+    // The claim key carries the design system: changing DESIGN.md alone is a
+    // new pass, not a copy of the previous Stop.
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt_with(&cwd, claim_env(&t, &[]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-design"));
+    hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    t.write("DESIGN.md", "# Design\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_cache_save_keeps_the_file_mode_and_a_symlinked_cache() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    // A cache kept elsewhere, linked in, readable only by its owner.
+    let real = t.write("elsewhere/cache.json", "{}");
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    std::os::unix::fs::symlink(&real, t.0.join(".impeccable/hook.cache.json")).unwrap();
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-mode"));
+    assert!(std::fs::symlink_metadata(t.0.join(".impeccable/hook.cache.json")).unwrap().file_type().is_symlink(), "the link stays");
+    assert!(t.read("elsewhere/cache.json").contains("s-mode"), "the save went through the link");
+    assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o600);
+}

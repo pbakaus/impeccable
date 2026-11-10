@@ -280,7 +280,11 @@ pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String]) -> Opt
         h.update(part.as_bytes());
         h.update([0u8]);
     }
-    for f in files {
+    // What the scan reads besides the files: the design system and the
+    // detector settings. A turn that only edited DESIGN.md or the config is a
+    // new pass, not a copy of the last one.
+    let inputs: Vec<String> = SCAN_INPUTS.iter().map(|rel| format!("{}/{rel}", root.trim_end_matches('/'))).collect();
+    for f in files.iter().copied().chain(inputs.iter().map(String::as_str)) {
         h.update(f.as_bytes());
         h.update([0u8]);
         if let Ok(meta) = std::fs::metadata(f) {
@@ -293,6 +297,15 @@ pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String]) -> Opt
     }
     Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
+
+/// Files under a project root that change what a deep pass reports without
+/// being scan targets themselves.
+const SCAN_INPUTS: &[&str] = &[
+    "DESIGN.md", "Design.md", "design.md",
+    ".agents/context/DESIGN.md", "docs/DESIGN.md",
+    ".impeccable/design.json",
+    ".impeccable/config.json", ".impeccable/config.local.json",
+];
 
 /// Claims the turn-end pass over `root`. No session id: no claim, scan.
 pub fn claim_stop(rt: &Runtime, event: &Map<String, Value>, root: &str, files: &[String]) -> Claim {

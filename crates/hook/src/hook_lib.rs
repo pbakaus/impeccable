@@ -656,22 +656,12 @@ pub fn persist_cache(rt: &Runtime, cwd: &str, cache: &Cache) -> bool {
     if std::fs::create_dir_all(jsp::dirname(&target)).is_err() {
         return false;
     }
-    // Write beside the target and rename: two hook processes that save at
-    // once leave one whole cache, never one interleaved or truncated file.
-    let staging = format!("{target}.{}.{}.tmp", std::process::id(), STAGING_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    // Write beside the target and rename, so two hook processes that save at
+    // once leave one whole cache. The shared helper keeps a symlinked cache's
+    // link and the file's permissions.
     let body = serde_json::to_string(&Value::Object(cache)).unwrap_or_default();
-    if std::fs::write(&staging, body).is_err() {
-        let _ = std::fs::remove_file(&staging);
-        return false;
-    }
-    if std::fs::rename(&staging, &target).is_err() {
-        let _ = std::fs::remove_file(&staging);
-        return false;
-    }
-    true
+    impeccable_common::fsx::write_atomic(&target, body.as_bytes()).is_ok()
 }
-
-static STAGING_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GitExcludeResult {
