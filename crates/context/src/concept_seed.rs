@@ -158,7 +158,7 @@ fn fetch_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, scope: &str, key: &s
     if remaining.is_zero() {
         return None;
     }
-    let mut req = telemetry::agent(remaining).get(&url).set(telemetry::CLIENT_HEADER, &telemetry::client_header(env, cwd));
+    let mut req = telemetry::agent(&url, remaining).get(&url).set(telemetry::CLIENT_HEADER, &telemetry::client_header(env, cwd));
     // Opted out: the roll is still the feature, so it is requested, and the
     // server is told to record nothing for it.
     if telemetry::telemetry_disabled(env, cwd) {

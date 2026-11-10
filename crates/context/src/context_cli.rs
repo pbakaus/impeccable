@@ -683,10 +683,11 @@ fn fetch_latest_skill_version(env: &Env) -> Option<String> {
         .cloned()
         .unwrap_or_else(|| "https://impeccable.style".to_string());
     let host = host.strip_suffix('/').unwrap_or(&host).to_string();
-    let agent = crate::http::agent_builder()
+    let url = format!("{}/api/version", host);
+    let agent = crate::http::agent_builder(&url)
         .timeout(std::time::Duration::from_millis(FETCH_TIMEOUT_MS))
         .build();
-    let res = agent.get(&format!("{}/api/version", host)).call().ok()?;
+    let res = agent.get(&url).call().ok()?;
     if res.status() < 200 || res.status() >= 300 {
         return None;
     }
