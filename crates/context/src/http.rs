@@ -119,6 +119,11 @@ pub(crate) fn bypasses_proxy(url: &str, no_proxy: &str) -> bool {
         if let Ok(entry_ip) = name.parse::<std::net::IpAddr>() {
             return ip == Some(entry_ip);
         }
+        // Names match by suffix, and only a host name: an address host is
+        // matched by address and CIDR entries alone, as curl and Go do.
+        if ip.is_some() {
+            return false;
+        }
         let name = name.trim_start_matches("*.").trim_start_matches('.').trim_end_matches('.');
         !name.is_empty() && (host == name || host.ends_with(&format!(".{name}")))
     })
@@ -331,6 +336,8 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("http://[fd00:0:0:0:0:0:0:5]/", "fd00::5", true),
             ("http://[fd00::6]/", "fd00::5", false),
             ("http://10.1.2.30/", "10.1.2.3", false),
+            ("http://10.1.2.3/", "2.3", false),
+            ("http://10.1.2.3/", ".3", false),
             ("not a url", "*", false),
         ];
         for (url, no_proxy, want) in cases {
@@ -538,6 +545,8 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("HTTPS_PROXY", None),
             ("http_proxy", Some(&proxy_url)),
             ("HTTP_PROXY", Some(&proxy_url)),
+            ("no_proxy", None),
+            ("NO_PROXY", None),
         ]);
 
         let agent = agent_builder("http://proxy-test.invalid/")
@@ -642,6 +651,8 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("HTTPS_PROXY", None),
             ("http_proxy", None),
             ("HTTP_PROXY", None),
+            ("no_proxy", None),
+            ("NO_PROXY", None),
         ]);
 
         let agent = agent_builder("http://proxy-test.invalid/")
