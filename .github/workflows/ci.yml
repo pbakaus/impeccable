@@ -125,7 +125,6 @@ jobs:
         if: needs.changes.outputs.detector == 'true'
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Install wasm-pack
         if: needs.changes.outputs.detector == 'true'
@@ -198,7 +197,6 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build
         run: cargo build --workspace --all-targets
@@ -324,7 +322,6 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine from source
         run: cargo build --release -p impeccable
@@ -414,7 +411,6 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -475,7 +471,6 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -557,7 +552,6 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -637,7 +631,6 @@ jobs:
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -710,7 +703,6 @@ jobs:
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
         with:
           cache: rust
-          path: ${{ github.workspace }}/target
 
       - name: Build the engine
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
