@@ -99,6 +99,58 @@ fn template_content_counts_once() {
     );
 }
 
+/// Review (Greptile): `getByTestId("save")` and `#save` stop matching when
+/// the value gains a space, so exact-lookup values are kept untrimmed.
+#[test]
+fn lookup_values_are_kept_exactly() {
+    for (a, b) in [
+        ("<b data-testid=\"save\"></b>", "<b data-testid=\"save \"></b>"),
+        ("<b id=\"save\"></b>", "<b id=\" save\"></b>"),
+        ("<label for=\"save\"></label>", "<label for=\"save \"></label>"),
+    ] {
+        assert_ne!(wiring_inventory_source(a), wiring_inventory_source(b), "{a} vs {b}");
+    }
+}
+
+/// Review (Greptile): `--kept` dropped the saved `target`, so an inventory
+/// recorded for another page was compared as if it were this one.
+#[test]
+fn an_inventory_for_another_target_is_not_compared() {
+    let dir = project();
+    std::fs::write(dir.join("page.html"), fixture("before.html")).unwrap();
+    assert_eq!(run(&dir, &["--before", "page.html"]).0, 0);
+    let saved = dir.join(inventory_path("page.html"));
+    let text = std::fs::read_to_string(&saved).unwrap();
+    std::fs::write(&saved, text.replace("\"target\": \"page.html\"", "\"target\": \"other.html\"")).unwrap();
+    let (code, out, err) = run(&dir, &["--kept", "page.html"]);
+    assert_eq!(code, 2, "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(err.contains("records other.html, not page.html"), "{err}");
+    let (code, out, _) = run(&dir, &["--kept", "--json", "page.html"]);
+    assert_eq!(code, 2);
+    let v: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["targets"][0]["status"], "bad-inventory");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `--scope` and `--viewport` are validated before the wiring branch (as for
+/// every detect run) but change nothing in the inventory.
+#[test]
+fn scope_and_viewport_are_validated_but_inert() {
+    let dir = project();
+    std::fs::write(dir.join("page.html"), fixture("before.html")).unwrap();
+    let (code, _, err) = run(&dir, &["--before", "--scope=bogus", "page.html"]);
+    assert_eq!(code, 1);
+    assert!(err.starts_with("Error: unknown --scope value(s): bogus."), "{err}");
+    let (code, _, err) = run(&dir, &["--before", "--viewport", "nope", "page.html"]);
+    assert_eq!(code, 1);
+    assert!(err.starts_with("Error: --viewport requires a WxH value"), "{err}");
+    let (code, _, err) = run(&dir, &["--before", "--scope", "type", "--viewport", "390x844", "page.html"]);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains("(19 wiring items, 3 content items)"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn defaults_case_and_whitespace_are_not_changes() {
     let a = wiring_inventory_source("<form><input name=q><button onclick=\"go()\">Go</button></form><script>a();</script>");

@@ -5,7 +5,9 @@
 //! Keys apply the HTML defaults (form method `get`, input type `text`,
 //! button type `submit`) and lowercase enumerated values, so spelling out a
 //! default or changing case is not a change. Attribute values are
-//! JSON-quoted. Handler and inline script bodies are hashed after their
+//! JSON-quoted; `id`, test-hook and `label[for]` values are kept exactly, since
+//! a script or test looks them up exactly (`href` and `src` are trimmed, as
+//! URL parsing trims them). Handler and inline script bodies are hashed after their
 //! whitespace is collapsed.
 
 use impeccable_detect::wiring::{collapse_ws, quote, short_hash, WiringInventory};
@@ -99,7 +101,7 @@ fn collect(el: &ElementRef, inv: &mut WiringInventory) {
         },
         "label" => {
             if let Some(target) = e.attr("for") {
-                w.push(format!("label for={}", quote(target.trim())));
+                w.push(format!("label for={}", quote(target)));
             }
         }
         "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
@@ -118,9 +120,9 @@ fn collect(el: &ElementRef, inv: &mut WiringInventory) {
     for (name, value) in attrs {
         let name_lower = name.to_ascii_lowercase();
         if name_lower == "id" {
-            inv.wiring.push(format!("id {}", quote(value.trim())));
+            inv.wiring.push(format!("id {}", quote(value)));
         } else if TEST_HOOK_ATTRS.contains(&name_lower.as_str()) {
-            inv.wiring.push(format!("test-hook {name_lower}={}", quote(value.trim())));
+            inv.wiring.push(format!("test-hook {name_lower}={}", quote(value)));
         } else if name_lower.len() > 2 && name_lower.starts_with("on") {
             inv.wiring.push(format!("handler {tag} {name_lower} #{}", short_hash(value)));
         }

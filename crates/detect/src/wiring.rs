@@ -106,8 +106,13 @@ pub fn collapse_ws(text: &str) -> String {
 /// `DefaultHasher` may change between Rust releases, and saved inventories
 /// must compare across them.
 pub fn short_hash(text: &str) -> String {
+    fnv8(&collapse_ws(text))
+}
+
+/// 8 hex digits of FNV-1a 64 over `text` exactly as given.
+fn fnv8(text: &str) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in collapse_ws(text).bytes() {
+    for b in text.bytes() {
         h ^= u64::from(b);
         h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
@@ -121,9 +126,12 @@ pub fn short_hash(text: &str) -> String {
 /// inventories and never starts a new `.impeccable/` there, which would
 /// become a design-system boundary for the files under it.
 pub fn project_root(cwd: &str, home: &str) -> String {
+    // Both the logical and the canonical home, as design-system discovery
+    // compares them: a symlinked home never string-matches a physical cwd.
+    let homes = if home.is_empty() { Vec::new() } else { crate::design_system::home_dir_forms(cwd, home) };
     let mut dir = jsp::resolve(cwd, &["."]);
     loop {
-        if !home.is_empty() && dir == jsp::resolve(cwd, &[home]) {
+        if homes.contains(&dir) {
             break;
         }
         if crate::design_system::PROJECT_ROOT_MARKERS
@@ -158,8 +166,9 @@ fn roots(io: &Io) -> (String, String) {
 }
 
 /// The saved file's name for a project-relative path: the path's letters and
-/// digits joined by `-`, plus a hash of the path itself, so `a/b.html` and
-/// `a-b.html` never share a file.
+/// digits joined by `-`, plus a hash of the path exactly as given, so
+/// `a/b.html` and `a-b.html` (or `a b.html` and `a  b.html`) never share a
+/// file.
 pub fn inventory_slug(rel: &str) -> String {
     let mut slug = String::new();
     let mut dash = false;
@@ -180,7 +189,7 @@ pub fn inventory_slug(rel: &str) -> String {
     if slug.is_empty() {
         slug.push_str("page");
     }
-    format!("{slug}-{}", short_hash(rel))
+    format!("{slug}-{}", fnv8(rel))
 }
 
 /// The inventory file for a project-relative path, relative to cwd.
@@ -207,8 +216,10 @@ pub fn serialize_inventory(rel: &str, inventory: &WiringInventory) -> String {
     format!("{}\n", serde_json::to_string_pretty(&saved).unwrap_or_default())
 }
 
-/// Parse a saved file; `Err` says why it cannot be compared.
-pub fn parse_inventory(text: &str) -> Result<WiringInventory, String> {
+/// Parse the saved file for the project-relative path `rel`; `Err` says why
+/// it cannot be compared. A file that records another target (two paths that
+/// share a slug) is refused rather than compared against the wrong page.
+pub fn parse_inventory(text: &str, rel: &str) -> Result<WiringInventory, String> {
     let value: Value = serde_json::from_str(text).map_err(|_| "it is not valid JSON".to_string())?;
     let version = value.get("version").and_then(Value::as_u64);
     if version != Some(INVENTORY_VERSION) {
@@ -219,6 +230,9 @@ pub fn parse_inventory(text: &str) -> Result<WiringInventory, String> {
     }
     let saved: SavedInventory =
         serde_json::from_value(value).map_err(|_| "it does not hold a wiring inventory".to_string())?;
+    if saved.target != rel {
+        return Err(format!("it records {}, not {rel}", saved.target));
+    }
     Ok(WiringInventory { wiring: saved.wiring, content: saved.content }.sorted())
 }
 
@@ -372,7 +386,7 @@ pub fn run_kept(targets: &[String], json_mode: bool, io: &mut Io, engines: &Engi
         let rel = project_relative(&cwd, &root, target);
         let inv_rel = inventory_path(&rel);
         let saved = match std::fs::read_to_string(jsp::resolve(&root, &[&inv_rel])) {
-            Ok(text) => parse_inventory(&text).map_err(|why| {
+            Ok(text) => parse_inventory(&text, &rel).map_err(|why| {
                 (
                     "bad-inventory",
                     format!("the saved wiring in {inv_rel} cannot be compared ({why}); run detect --before {rel} again"),
@@ -564,11 +578,40 @@ mod tests {
         assert_eq!(inventory_slug("a/b.html"), a);
     }
 
+    /// Review (Greptile): the slug hash ran on the whitespace-collapsed
+    /// path, so these two pages shared one inventory file.
+    #[test]
+    fn paths_differing_only_in_whitespace_get_their_own_slug() {
+        assert_ne!(inventory_slug("a b.html"), inventory_slug("a  b.html"));
+        assert_ne!(inventory_slug("a b.html"), inventory_slug("a\tb.html"));
+    }
+
+    /// Review (Cursor): a symlinked home never string-matched the physical
+    /// cwd, so the walk took `~/.impeccable` for a project marker.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_home_is_never_the_project_root() {
+        let base = std::env::temp_dir().join(format!("impeccable-wiring-home-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let real_home = base.join("real/home");
+        std::fs::create_dir_all(real_home.join(".impeccable")).unwrap();
+        std::fs::create_dir_all(real_home.join("site")).unwrap();
+        std::os::unix::fs::symlink(base.join("real"), base.join("link")).unwrap();
+        let cwd = std::fs::canonicalize(real_home.join("site")).unwrap().to_string_lossy().into_owned();
+        let home = base.join("link/home").to_string_lossy().into_owned();
+        assert_eq!(project_root(&cwd, &home), cwd);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn a_saved_inventory_round_trips() {
         let a = inv(&["link href=\"/\"", "id \"x\""], &["image alt=\"Logo\""]);
-        assert_eq!(parse_inventory(&serialize_inventory("p.html", &a)), Ok(a));
-        assert!(parse_inventory("{\"version\": 99, \"wiring\": [], \"content\": []}").is_err());
-        assert!(parse_inventory("nope").is_err());
+        assert_eq!(parse_inventory(&serialize_inventory("p.html", &a), "p.html"), Ok(a.clone()));
+        assert_eq!(
+            parse_inventory(&serialize_inventory("q.html", &a), "p.html"),
+            Err("it records q.html, not p.html".to_string())
+        );
+        assert!(parse_inventory("{\"version\": 99, \"wiring\": [], \"content\": []}", "p.html").is_err());
+        assert!(parse_inventory("nope", "p.html").is_err());
     }
 }
