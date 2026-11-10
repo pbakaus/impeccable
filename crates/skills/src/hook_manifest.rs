@@ -462,7 +462,7 @@ pub fn hook_installed_for_provider_at_scope(sys: &Sys, root: &str, provider: &st
         return user_claude_hook_is_current(root);
     }
     if user_scope && home_provider_id(provider).is_some() {
-        return user_scope_hook_dest(sys, &sys.home, provider).is_some_and(|dest| file_has_impeccable_hook_marker(&dest));
+        return home_hook_is_current(sys, &sys.home, provider);
     }
     if user_scope && provider == ".github" && github_manifest_names_missing_project_skill(root) {
         return false;
@@ -753,8 +753,8 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
 /// Removes Impeccable's entries from that project manifest, keeping every
 /// other entry and key, and only when:
 ///
-/// - the home manifest is wired and names the home skill (a dangling or
-///   partial home hook does not count);
+/// - the home hook is current (`home_hook_is_current`: a dangling, partial or
+///   legacy `.mjs` home hook does not count);
 /// - the project manifest is not the home one (cwd is home, or a relative
 ///   `CODEX_HOME` points into the project);
 /// - every Impeccable command in it names the home skill. A command naming a
@@ -774,7 +774,7 @@ pub fn prune_duplicate_home_hooks(sys: &Sys, home_root: &str, project_root: &str
         }
         let Some(home_dest) = user_scope_hook_dest(sys, home_root, provider) else { continue };
         let skill_dir = jsp::join(&[home_root, provider, "skills", "impeccable"]);
-        if !home_hook_is_wired(&home_dest, provider, &skill_dir) {
+        if !home_hook_is_current(sys, home_root, provider) {
             continue;
         }
         for project_dest in expected_hook_dests(project_root, &[provider]) {
@@ -796,27 +796,62 @@ pub fn prune_duplicate_home_hooks(sys: &Sys, home_root: &str, project_root: &str
     Ok(pruned)
 }
 
-/// The home manifest carries the provider's current Impeccable entries, and
-/// each of its Impeccable commands names the home skill.
-fn home_hook_is_wired(home_dest: &str, provider: &str, skill_dir: &str) -> bool {
+/// The Codex, Cursor or Grok hook in the home manifest is current, the way
+/// `user_claude_hook_is_current` decides it for Claude: the home launcher
+/// exists, the manifest carries every current entry, and each Impeccable
+/// command in it is a launcher command naming the home skill. A legacy
+/// `node .../hook.mjs` entry, a partial manifest, or one naming a launcher
+/// that is gone is a dead hook: it must be rewritten, not counted, and it
+/// never licenses pruning the project copy.
+pub fn home_hook_is_current(sys: &Sys, home_root: &str, provider: &str) -> bool {
+    let Some(home_dest) = user_scope_hook_dest(sys, home_root, provider) else { return false };
+    let Some(launcher) = launcher_path(home_root, provider) else { return false };
+    if !util::exists(&launcher) {
+        return false;
+    }
     let Some(target) = impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider) else {
         return false;
     };
-    if !impeccable_context::hook_wiring::manifest_is_wired(home_dest, &(target.manifest)()) {
+    if !impeccable_context::hook_wiring::manifest_is_wired(&home_dest, &(target.manifest)()) {
         return false;
     }
-    let Some((Value::Object(map), _)) = read_manifest(home_dest) else { return false };
+    let Some((Value::Object(map), _)) = read_manifest(&home_dest) else { return false };
     let Some(hooks @ (Value::Object(_) | Value::Array(_))) = map.get("hooks") else { return false };
     let mut commands = Vec::new();
     collect_impeccable_hook_commands(hooks, &mut commands);
-    !commands.is_empty() && commands.iter().all(|c| command_names_skill_dir(c, skill_dir))
+    let skill_dir = jsp::join(&[home_root, provider, "skills", "impeccable"]);
+    !commands.is_empty()
+        && commands.iter().all(|c| is_launcher_hook_command(c) && command_names_skill_dir(c, &skill_dir))
 }
 
-/// True when a hook command runs a script under `skill_dir`, in either
-/// separator spelling (a Windows `cmd /c` form uses backslashes).
-fn command_names_skill_dir(command: &str, skill_dir: &str) -> bool {
-    let norm = |s: &str| s.replace('\\', "/");
-    norm(command).contains(&format!("{}/", norm(skill_dir)))
+/// True when a hook command runs a script under `skill_dir`, in every
+/// spelling the installer writes: POSIX single quotes (an apostrophe in the
+/// path escaped as `'\''`), double quotes with JSON-doubled backslashes (a
+/// Windows Cursor or Claude guard), and the `cmd /c` shim form with single
+/// backslashes. Separator runs collapse to one `/`, a `\\?\` verbatim prefix
+/// is dropped, and on Windows the comparison ignores case (drive letters).
+pub fn command_names_skill_dir(command: &str, skill_dir: &str) -> bool {
+    command_names_skill_dir_for(command, skill_dir, cfg!(windows))
+}
+
+/// `command_names_skill_dir` with the platform made explicit (tests drive the
+/// Windows form from any host).
+pub fn command_names_skill_dir_for(command: &str, skill_dir: &str, win32: bool) -> bool {
+    let norm = |s: &str| {
+        let s = s.replace("'\\''", "'").replace("\\\\?\\", "");
+        let mut out = String::with_capacity(s.len());
+        for ch in s.chars() {
+            let ch = if ch == '\\' { '/' } else { ch };
+            if ch == '/' && out.ends_with('/') {
+                continue;
+            }
+            out.push(ch);
+        }
+        if win32 { out.to_lowercase() } else { out }
+    };
+    let dir = norm(skill_dir);
+    let dir = dir.trim_end_matches('/');
+    norm(command).contains(&format!("{dir}/"))
 }
 
 fn same_file(a: &str, b: &str) -> bool {

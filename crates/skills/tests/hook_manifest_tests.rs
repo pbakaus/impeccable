@@ -881,6 +881,11 @@ fn home_fixture(name: &str) -> HomeFixture {
     std::fs::create_dir_all(&fx.project).unwrap();
     std::fs::create_dir_all(&fx.home).unwrap();
     write_current_bundle(&fx.bundle, &[".agents", ".cursor", ".grok", ".github"]);
+    // The installed home skills: a home hook is current only when its
+    // launcher exists.
+    for p in [".agents", ".cursor", ".grok"] {
+        write(&skill_launcher(&fx.home, p), "#!/bin/sh\n");
+    }
     fx
 }
 
@@ -891,8 +896,87 @@ fn exists(p: &str) -> bool {
 fn all_commands_name(manifest: &str, skill_dir: &str) -> bool {
     let value: Value = serde_json::from_str(&read(manifest)).unwrap();
     let cmds = commands(&value);
-    let norm = |s: &str| s.replace('\\', "/");
-    !cmds.is_empty() && cmds.iter().all(|c| norm(c).contains(&norm(skill_dir)))
+    !cmds.is_empty() && cmds.iter().all(|c| command_names_skill_dir(c.split_once('=').unwrap().1, skill_dir))
+}
+
+#[test]
+fn skill_dir_match_reads_every_command_spelling_the_installer_writes() {
+    // The exact Windows strings PR #1378's CI wrote: the POSIX guard with
+    // single backslashes, and Cursor's double-quoted guard whose backslashes
+    // JSON-doubling left in the command text.
+    let home = r"D:\a\_temp\tmp\impeccable-home-hooks-e2e-10836-1794278891894509500\home";
+    let dir = format!(r"{home}\.cursor\skills\impeccable");
+    let posix = format!(r"[ ! -f '{dir}\scripts\impeccable' ] || '{dir}\scripts\impeccable' hook");
+    assert!(command_names_skill_dir_for(&posix, &dir, true));
+    let doubled = format!("[ ! -f {q} ] || {q} hook", q = serde_json::to_string(&format!(r"{dir}\scripts\impeccable")).unwrap());
+    assert!(doubled.contains(r"\\"), "{doubled}");
+    assert!(command_names_skill_dir_for(&doubled, &dir, true));
+    // The `cmd /c` shim form (Grok on Windows, Codex `commandWindows`).
+    let shim = format!(r#"cmd /c if exist "{dir}\scripts\impeccable.cmd" "{dir}\scripts\impeccable.cmd" hook"#);
+    assert!(command_names_skill_dir_for(&shim, &dir, true));
+    // A verbatim-prefixed or differently cased skill dir still matches.
+    assert!(command_names_skill_dir_for(&posix, &format!(r"\\?\{dir}"), true));
+    assert!(command_names_skill_dir_for(&posix, &dir.replace("D:", "d:").replace("home", "HOME"), true));
+    // POSIX paths keep their case and stay distinct from a sibling skill.
+    let unix = "[ ! -f '/home/u/.cursor/skills/impeccable/scripts/impeccable' ] || '/home/u/.cursor/skills/impeccable/scripts/impeccable' hook";
+    assert!(command_names_skill_dir_for(unix, "/home/u/.cursor/skills/impeccable", false));
+    assert!(!command_names_skill_dir_for(unix, "/home/U/.cursor/skills/impeccable", false));
+    assert!(!command_names_skill_dir_for(unix, "/home/u/.cursor/skills/impeccable-old", false));
+    assert!(!command_names_skill_dir_for("\".cursor/skills/impeccable/scripts/impeccable\" hook", "/home/u/.cursor/skills/impeccable", false));
+}
+
+#[test]
+fn skill_dir_match_decodes_a_shell_quoted_apostrophe() {
+    // `sh_single_quote` writes `/home/Ann's` as `'/home/Ann'\''s'`.
+    let dir = "/home/Ann's/.cursor/skills/impeccable";
+    let q = sh_single_quote(&format!("{dir}/scripts/impeccable"));
+    assert!(q.contains("'\\''"), "{q}");
+    let command = format!("[ ! -f {q} ] || {q} hook");
+    assert!(command_names_skill_dir_for(&command, dir, false));
+    assert!(command_names_skill_dir_for(&command, dir, true));
+}
+
+#[test]
+fn global_install_prunes_the_project_copy_under_a_home_with_an_apostrophe() {
+    let dir = tmp_dir("home-apostrophe");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let home = jsp::join(&[&root, "Ann's home"]);
+    let project = jsp::join(&[&root, "project"]);
+    write_current_bundle(&bundle, &[".cursor"]);
+    let launcher = skill_launcher(&home, ".cursor");
+    write(&launcher, "#!/bin/sh\n");
+    let q = sh_single_quote(&launcher);
+    let project_cursor = jsp::join(&[&project, ".cursor", "hooks.json"]);
+    write(&project_cursor, &json!({ "version": 1, "hooks": { "postToolUse": [{ "command": format!("[ ! -f {q} ] || {q} hook"), "matcher": "^Write$" }, { "command": "./format.sh" }] } }).to_string());
+    let sys = home_sys(&home, &project, &[]);
+
+    copy_provider_hooks(&sys, &bundle, &project, &[".cursor"], false, Some(&home), Some(&project)).unwrap();
+
+    let after: Value = serde_json::from_str(&read(&project_cursor)).unwrap();
+    assert_eq!(after, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_dead_home_hook_does_not_count_as_installed() {
+    let fx = home_fixture("home-hooks-legacy");
+    let sys = home_sys(&fx.home, &fx.project, &[]);
+    for (provider, rel, legacy) in [
+        (".agents", ".codex/hooks.json", json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|apply_patch", "hooks": [{ "type": "command", "command": format!("node '{}/.agents/skills/impeccable/scripts/hook.mjs'", fx.home) }] }] } })),
+        (".cursor", ".cursor/hooks.json", json!({ "version": 1, "hooks": { "preToolUse": [{ "command": format!("node '{}/.cursor/skills/impeccable/scripts/hook-before-edit.mjs'", fx.home) }] } })),
+        (".grok", ".grok/hooks/impeccable.json", json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": format!("node '{}/.grok/skills/impeccable/scripts/hook.mjs'", fx.home) }] }] } })),
+    ] {
+        let path = jsp::join(&[&fx.home, rel]);
+        write(&path, &legacy.to_string());
+        assert!(file_has_impeccable_hook_marker(&path));
+        assert!(!hook_installed_for_provider_at_scope(&sys, &fx.project, provider, true), "{provider}");
+    }
+    // Current entries, but the home launcher is gone: dead too.
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    assert!(hook_installed_for_provider_at_scope(&sys, &fx.project, ".cursor", true));
+    std::fs::remove_file(skill_launcher(&fx.home, ".cursor")).unwrap();
+    assert!(!hook_installed_for_provider_at_scope(&sys, &fx.project, ".cursor", true));
 }
 
 #[test]
@@ -984,7 +1068,7 @@ fn project_install_still_writes_project_manifests() {
             jsp::join(&[&fx.project, ".grok", "hooks", "impeccable.json"]),
         ]
     );
-    for rel in [".codex", ".cursor", ".grok"] {
+    for rel in [".codex/hooks.json", ".cursor/hooks.json", ".grok/hooks"] {
         assert!(!exists(&jsp::join(&[&fx.home, rel])), "{rel} written under home");
     }
 }

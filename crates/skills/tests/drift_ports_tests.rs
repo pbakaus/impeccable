@@ -822,6 +822,54 @@ fn global_install_moves_project_hooks_home_without_duplicates() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A repeat Global install over a home Codex/Cursor/Grok manifest that still
+/// holds a dead `node .../hook.mjs` entry (PR #1378 review): the marker alone
+/// is not an installed hook, so the home manifest is rewritten to the current
+/// launcher command, and the user's own entries in it stay.
+#[test]
+fn repeat_global_install_rewrites_a_legacy_home_hook() {
+    let root = temp_root("home-hooks-legacy-repeat");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&project, &[".agents", ".cursor", ".grok"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        let rel = match target.provider { ".agents" => ".codex/hooks.json", ".cursor" => ".cursor/hooks.json", ".grok" => ".grok/hooks/impeccable.json", _ => continue };
+        write(&format!("{bundle_root}/{rel}"), &(target.manifest)().to_string());
+    }
+    let env = base_env(&home, &tmpdir, &bundle_root);
+    let args = ["install", "-y", "--providers=codex,cursor,grok", "--scope=global"];
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+
+    // An older install's home manifests: legacy `.mjs` commands only.
+    let legacy = |p: &str, script: &str| format!("node '{}'", jsp::join(&[&home, p, "skills", "impeccable", "scripts", script]));
+    write(&format!("{home}/.codex/hooks.json"), &json!({ "hooks": {
+        "PostToolUse": [{ "matcher": "apply_patch", "hooks": [{ "type": "command", "command": legacy(".agents", "hook.mjs") }] }],
+        "SessionStart": [{ "hooks": [{ "type": "command", "command": "./hello.sh" }] }],
+    } }).to_string());
+    write(&format!("{home}/.cursor/hooks.json"), &json!({ "version": 1, "hooks": { "preToolUse": [{ "command": legacy(".cursor", "hook-before-edit.mjs") }] } }).to_string());
+    write(&format!("{home}/.grok/hooks/impeccable.json"), &json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": legacy(".grok", "hook.mjs") }] }] } }).to_string());
+
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Installed hooks into:"), "{}", r.stdout);
+    for (rel, provider) in [(".codex/hooks.json", ".agents"), (".cursor/hooks.json", ".cursor"), (".grok/hooks/impeccable.json", ".grok")] {
+        let manifest = format!("{home}/{rel}");
+        let text = read(&manifest);
+        assert!(!text.contains(".mjs"), "legacy home hook survived: {text}");
+        assert!(manifest_names_launcher(&manifest, &home, provider), "{text}");
+        assert!(impeccable_skills::hook_manifest::home_hook_is_current(&sys_for(&project, &env), &home, provider), "{text}");
+    }
+    let codex: Value = serde_json::from_str(&read(&format!("{home}/.codex/hooks.json"))).unwrap();
+    assert_eq!(codex["hooks"]["SessionStart"], json!([{ "hooks": [{ "type": "command", "command": "./hello.sh" }] }]));
+    std::fs::remove_dir_all(&root).ok();
+}
+
 #[test]
 fn global_install_rewrites_github_project_hook_to_the_global_skill_path() {
     let root = temp_root("github-global");
