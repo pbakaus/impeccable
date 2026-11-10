@@ -119,7 +119,7 @@ pub(crate) fn bypasses_proxy(url: &str, no_proxy: &str) -> bool {
         if let Ok(entry_ip) = name.parse::<std::net::IpAddr>() {
             return ip == Some(entry_ip);
         }
-        let name = name.trim_start_matches("*.").trim_start_matches('.');
+        let name = name.trim_start_matches("*.").trim_start_matches('.').trim_end_matches('.');
         !name.is_empty() && (host == name || host.ends_with(&format!(".{name}")))
     })
 }
@@ -135,7 +135,8 @@ fn host_and_port(url: &str) -> Option<(String, u16)> {
         _ => return None,
     };
     let (host, port) = split_port(authority);
-    let host = host.trim_start_matches('[').trim_end_matches(']').to_ascii_lowercase();
+    // `localhost.` is the absolute form of `localhost`: drop the final dot.
+    let host = host.trim_start_matches('[').trim_end_matches(']').trim_end_matches('.').to_ascii_lowercase();
     (!host.is_empty()).then(|| (host, port.unwrap_or(default)))
 }
 
@@ -308,6 +309,9 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
             ("http://localhost:3000/", "", true),
             ("http://[::1]:8080/", "", true),
             ("http://app.localhost/", "", true),
+            ("http://localhost.:8790/v1", "", true),
+            ("http://gpu.lan.:9000/", "gpu.lan", true),
+            ("http://gpu.lan:9000/", "gpu.lan.", true),
             ("https://api.openai.com/v1", "", false),
             ("https://api.openai.com/v1", "*", true),
             ("https://api.openai.com/v1", "openai.com", true),
@@ -365,14 +369,14 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
 
         let proxy_url = format!("http://127.0.0.1:{proxy_port}");
         let _env_guard = ProxyEnvGuard::set(&[
-            ("ALL_PROXY", None),
             ("all_proxy", None),
-            ("HTTPS_PROXY", Some(&proxy_url)),
+            ("ALL_PROXY", None),
             ("https_proxy", Some(&proxy_url)),
-            ("HTTP_PROXY", Some(&proxy_url)),
+            ("HTTPS_PROXY", Some(&proxy_url)),
             ("http_proxy", Some(&proxy_url)),
-            ("NO_PROXY", Some("127.0.0.1,localhost")),
+            ("HTTP_PROXY", Some(&proxy_url)),
             ("no_proxy", None),
+            ("NO_PROXY", Some("127.0.0.1,localhost")),
         ]);
 
         let url = format!("http://127.0.0.1:{target_port}/openai/v1/images");
@@ -408,14 +412,14 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
         let url = "http://proxy-test.invalid/";
         for (no_proxy, proxied) in [("proxy-test.invalid", false), ("other.example", true)] {
             let _env_guard = ProxyEnvGuard::set(&[
-                ("ALL_PROXY", None),
                 ("all_proxy", None),
-                ("HTTPS_PROXY", None),
+                ("ALL_PROXY", None),
                 ("https_proxy", None),
-                ("HTTP_PROXY", Some(&proxy_url)),
+                ("HTTPS_PROXY", None),
                 ("http_proxy", Some(&proxy_url)),
-                ("NO_PROXY", Some(no_proxy)),
+                ("HTTP_PROXY", Some(&proxy_url)),
                 ("no_proxy", None),
+                ("NO_PROXY", Some(no_proxy)),
             ]);
             let before = hits.load(std::sync::atomic::Ordering::SeqCst);
             let result = agent_builder(url).timeout(Duration::from_secs(2)).build().get(url).call();
@@ -453,14 +457,14 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
         let origin_thread = serve(origin, b"HTTP/1.1 302 Found\r\nLocation: http://proxy-test.invalid/image.png\r\nContent-Length: 0\r\n\r\n");
         let proxy_thread = serve(proxy, b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\nproxied");
         let _env_guard = ProxyEnvGuard::set(&[
-            ("ALL_PROXY", None),
             ("all_proxy", None),
-            ("HTTPS_PROXY", None),
+            ("ALL_PROXY", None),
             ("https_proxy", None),
-            ("HTTP_PROXY", Some(&proxy_url)),
+            ("HTTPS_PROXY", None),
             ("http_proxy", Some(&proxy_url)),
-            ("NO_PROXY", None),
+            ("HTTP_PROXY", Some(&proxy_url)),
             ("no_proxy", None),
+            ("NO_PROXY", None),
         ]);
         let response = get_following(&origin_url, 3, |b| b.timeout(Duration::from_secs(2))).expect("redirect followed");
         assert_eq!(response.status(), 200);
@@ -528,12 +532,12 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
 
         let proxy_url = format!("http://127.0.0.1:{}", proxy_addr.port());
         let _env_guard = ProxyEnvGuard::set(&[
-            ("ALL_PROXY", None),
             ("all_proxy", None),
-            ("HTTPS_PROXY", None),
+            ("ALL_PROXY", None),
             ("https_proxy", None),
-            ("HTTP_PROXY", Some(&proxy_url)),
+            ("HTTPS_PROXY", None),
             ("http_proxy", Some(&proxy_url)),
+            ("HTTP_PROXY", Some(&proxy_url)),
         ]);
 
         let agent = agent_builder("http://proxy-test.invalid/")
@@ -632,12 +636,12 @@ tB0WGTOG3QIgdJa8gBPU9Y6WsrursItsnUeGTYHKDCZZ6MjlekLFuoc=
 
         let proxy_url = format!("socks5://127.0.0.1:{}", proxy_addr.port());
         let _env_guard = ProxyEnvGuard::set(&[
-            ("ALL_PROXY", Some(&proxy_url)),
             ("all_proxy", Some(&proxy_url)),
-            ("HTTPS_PROXY", None),
+            ("ALL_PROXY", Some(&proxy_url)),
             ("https_proxy", None),
-            ("HTTP_PROXY", None),
+            ("HTTPS_PROXY", None),
             ("http_proxy", None),
+            ("HTTP_PROXY", None),
         ]);
 
         let agent = agent_builder("http://proxy-test.invalid/")
