@@ -31,6 +31,8 @@ cleanup() { if [ -n "$login_pid" ]; then kill "$login_pid" 2>/dev/null; wait "$l
 trap cleanup EXIT
 export IMPECCABLE_HOME="$H/home" IMPECCABLE_ACCOUNT_URL="$ISSUER" IMPECCABLE_TELEMETRY_CHANNEL=test
 export IMPECCABLE_NO_UPDATE_CHECK=1 IMPECCABLE_QUESTION_DISABLED=1
+# The file credential store on every OS, so the sibling section can copy a sign-in.
+export IMPECCABLE_CREDENTIAL_STORE=file
 # Design health is off by design whenever CI is set (GitHub Actions sets CI=true), so
 # the scans below run as a person's terminal would: no CI, no opt-out variables.
 unset CI IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
@@ -113,10 +115,39 @@ check "json: stdout parses as JSON" 'jq -e . "$H/json.out" >/dev/null'
 # Lines that say something is wrong ("not ready", "didn't verify") still print, on stderr.
 check "json: no not-entitled line on stderr" '! grep -q "this account doesn.t include them" "$H/json.err"'
 
-# 5. Sign out.
+# 5. Two sessions on one sign-in (pristine #4576): session B is a copy of A's stored
+#    sign-in. Each forced refresh rotates the refresh token, so B's second refresh
+#    presents a token A already used. Before #4576 that revoked the whole grant.
+#    A refresh is forced by marking the stored access token expired; the CLI's own
+#    refresh then runs. Tokens are never printed: only hashes of the refresh token
+#    are compared.
+creds() { ls "$1"/account/*/credentials.json 2>/dev/null | head -1; }
+expire() { local f; f=$(creds "$1"); jq '.access_expires_at = 0' "$f" > "$f.tmp" && chmod 600 "$f.tmp" && mv "$f.tmp" "$f"; }
+rhash() { jq -r '.refresh_token' "$(creds "$1")" | { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; } | cut -c1-16; }
+as_home() { local home=$1; shift; IMPECCABLE_HOME="$home" "$BIN" "$@"; }
+A=$IMPECCABLE_HOME; B="$H/home-b"
+cp -Rp "$A" "$B"
+check "sibling: session B holds a copy of the sign-in" '[ -n "$(creds "$B")" ]'
+r0=$(rhash "$A")
+expire "$A"; as_home "$A" whoami > "$H/sa1.out" 2>&1; rc=$?
+check "sibling: A refreshes and answers whoami" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/sa1.out"'
+check "sibling: A's refresh rotated its refresh token" '[ "$(rhash "$A")" != "$r0" ]'
+expire "$B"; as_home "$B" whoami > "$H/sb1.out" 2>&1; rc=$?
+check "sibling: B refreshes with the token A already used, and answers whoami" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/sb1.out"'
+check "sibling: B now holds its own refresh token" '[ "$(rhash "$B")" != "$(rhash "$A")" ] && [ "$(rhash "$B")" != "$r0" ]'
+expire "$A"; as_home "$A" whoami > "$H/sa2.out" 2>&1; rc=$?
+check "sibling: A refreshes again after B" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/sa2.out"'
+expire "$B"; as_home "$B" whoami > "$H/sb2.out" 2>&1; rc=$?
+check "sibling: B refreshes again" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/sb2.out"'
+[ $rc = 0 ] || info "sibling B second refresh said: $(head -1 "$H/sb2.out" | cut -c1-160)"
+
+# 6. Sign out (A). That revokes the grant, so B's next refresh must fail too.
 "$BIN" logout > "$H/logout.out" 2>&1; rc=$?
 check "logout: exits 0" '[ $rc = 0 ]'
 "$BIN" whoami > "$H/whoami2.out" 2>&1
 check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.out"'
+expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
+check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ]'
+info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
 
 finish
