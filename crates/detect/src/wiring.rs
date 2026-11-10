@@ -123,6 +123,8 @@ pub fn normalize_js_ws(text: &str) -> String {
         Quote(char),
         LineComment,
         BlockComment,
+        // A regular-expression literal; the flag is "inside a [class]".
+        Regex(bool),
     }
     let mut out = String::with_capacity(text.len());
     let mut state = State::Code;
@@ -159,6 +161,24 @@ pub fn normalize_js_ws(text: &str) -> String {
                 }
                 continue;
             }
+            State::Regex(in_class) => {
+                out.push(c);
+                if escaped {
+                    escaped = false;
+                } else if c == '\\' {
+                    escaped = true;
+                } else if c == '[' {
+                    state = State::Regex(true);
+                } else if c == ']' && in_class {
+                    state = State::Regex(false);
+                } else if c == '/' && !in_class {
+                    state = State::Code;
+                } else if is_break(c) {
+                    // Not a regex after all (they never span lines).
+                    state = State::Code;
+                }
+                continue;
+            }
             State::Code => {}
         }
         if c.is_whitespace() {
@@ -169,6 +189,9 @@ pub fn normalize_js_ws(text: &str) -> String {
             }
             continue;
         }
+        // Whether a `/` here can open a regex rather than divide: decided,
+        // as JavaScript tokenizers do, by the code before it.
+        let regex_can_start = c == '/' && regex_allowed_after(&out);
         if let Some(ws) = pending.take() {
             if !out.is_empty() {
                 out.push(ws);
@@ -183,9 +206,35 @@ pub fn normalize_js_ws(text: &str) -> String {
         } else if c == '/' && chars.peek() == Some(&'*') {
             out.push(chars.next().unwrap());
             state = State::BlockComment;
+        } else if regex_can_start {
+            state = State::Regex(false);
         }
     }
     out
+}
+
+/// Whether a `/` after `before` (the normalized code so far) opens a regex
+/// literal: at the start, after an operator or opening punctuation, or after
+/// a keyword such as `return`; not after a value (a name, a number, `)` or
+/// `]`), where it divides.
+fn regex_allowed_after(before: &str) -> bool {
+    let trimmed = before.trim_end();
+    let Some(last) = trimmed.chars().last() else { return true };
+    if last.is_alphanumeric() || last == '_' || last == '$' {
+        let word: String = trimmed
+            .chars()
+            .rev()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        return matches!(
+            word.as_str(),
+            "return" | "typeof" | "instanceof" | "in" | "of" | "new" | "delete" | "void" | "throw" | "case" | "do" | "else" | "yield" | "await"
+        );
+    }
+    !matches!(last, ')' | ']' | '}' | '\'' | '"' | '`')
 }
 
 /// 8 hex digits of FNV-1a 64 over `text` exactly as given.
@@ -705,6 +754,14 @@ mod tests {
         assert_eq!(short_hash("// don't\n    go()"), short_hash("// don't\ngo()"));
         assert_eq!(short_hash("/* it's */\n    go()"), short_hash("/* it's */\ngo()"));
         assert_ne!(short_hash("/* a */ go()"), short_hash("/* a */\ngo()"));
+        // A regex literal holding `//` is no comment: a template literal
+        // after it stays a literal, and formatting after it still collapses.
+        let re_a = "const re = /https?:\\/\\//; const text = `a\n  b`;";
+        let re_b = "const re = /https?:\\/\\//; const text = `a\n b`;";
+        assert_ne!(short_hash(re_a), short_hash(re_b));
+        assert_eq!(short_hash("x = /[/]/g;   go()"), short_hash("x = /[/]/g; go()"));
+        // Division is not a regex.
+        assert_eq!(short_hash("a = b / c;   d = e / f"), short_hash("a = b / c; d = e / f"));
     }
 
     /// Review (Greptile): a static site whose only marker is an ancestor
