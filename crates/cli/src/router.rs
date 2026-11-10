@@ -46,10 +46,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
-        "detect" => {
-            impeccable_detect::cli::run_detect_with_pack(rest, io, &engines, pack.rule_pack)
-        }
+        "detect" => detect(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
+        // Account sign-in. These never dispatch to the Pro engine.
+        "login" => impeccable_account::run_login(rest, io),
+        "logout" => impeccable_account::run_logout(rest, io),
+        "whoami" => impeccable_account::run_whoami(rest, io),
+        "health" => impeccable_account::health::run(rest, io),
+        // Background Pro renewal (pro dispatch spawns it). Not in --help.
+        "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "loop" => crate::loop_install::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
@@ -131,7 +136,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
         v if impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy()) => {
-            impeccable_detect::cli::run_detect_with_pack(args, io, &engines, pack.rule_pack)
+            detect(args, io, &engines, pack.rule_pack)
         }
         "init" => {
             io.err(impeccable_detect::INIT_MESSAGE);
@@ -146,6 +151,112 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     }
 }
 
+/// `detect`, then design health's upload of a full scan once the output is
+/// out (`impeccable_account::health`: it never changes the output or the
+/// exit code). Hook scans don't come through here.
+fn detect(
+    args: &[String],
+    io: &mut Io,
+    engines: &impeccable_detect::Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
+    use std::io::Write;
+    // Most runs can't upload (not signed in, CI, opted out): those don't
+    // pay for a report.
+    if !impeccable_account::health::wanted(io) {
+        return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
+    }
+    let started = std::time::SystemTime::now();
+    let mut report = None;
+    let code =
+        impeccable_detect::cli::run_detect_reporting(args, io, engines, rule_pack, &mut report);
+    if let Some(full) = report {
+        let _ = io.stdout.flush();
+        let _ = io.stderr.flush();
+        let scan = impeccable_account::health::Scan {
+            root: full.root,
+            files_scanned: full.files_scanned,
+            hits: full
+                .findings
+                .into_iter()
+                .map(|f| impeccable_account::health::Hit {
+                    advisory: f.advisory == Some(true),
+                    rule: f.antipattern,
+                    file: f.file,
+                    snippet: f.snippet,
+                })
+                .collect(),
+            ruleset: full.ruleset,
+            engine_version: VERSION.to_string(),
+            started,
+        };
+        let quiet = args.iter().any(|a| a == "--quiet");
+        impeccable_account::health::after_scan(io, &scan, quiet);
+    }
+    code
+}
+
+/// Whether this invocation is a scan the Pro engine may take over: the
+/// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
+pub fn is_scan(args: &[String], io: &Io) -> bool {
+    match args.first().map(String::as_str) {
+        Some("detect" | "hook" | "hook-before-edit") => true,
+        Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
+            impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy())
+        }
+        _ => false,
+    }
+}
+
+/// The named verbs `run` matches before the detect shorthand (other than the
+/// scan verbs), so a same-named path in the working directory never makes
+/// one of them a scan.
+const KNOWN_VERBS: &[&str] = &[
+    "--help",
+    "-h",
+    "--version",
+    "-v",
+    "engine-probe",
+    "ignores",
+    "ignore",
+    "login",
+    "logout",
+    "whoami",
+    "health",
+    "pro-refresh",
+    "agents",
+    "loop",
+    "skills",
+    "help",
+    "install",
+    "link",
+    "update",
+    "check",
+    "context",
+    "pin",
+    "detect-csp",
+    "palette",
+    "surface-brief",
+    "critique-storage",
+    "embed-prompt",
+    "signals",
+    "context-signals",
+    "doctor",
+    "concept-seed",
+    "telemetry",
+    "generate-image",
+    "serve-question",
+    "component-review",
+    "comp-spec",
+    "comp-diff",
+    "font-match",
+    "capture-server",
+    "build-phase",
+    "hooks",
+    "hook-admin",
+    "init",
+];
+
 // --- browser engine (crates/browser) -------------------------------------
 /// The URL engine, built once from the process environment (browser
 /// discovery reads `IMPECCABLE_BROWSER` / `PUPPETEER_EXECUTABLE_PATH` /
@@ -156,3 +267,31 @@ fn url_engine() -> &'static impeccable_browser::BrowserEngine {
     ENGINE.get_or_init(impeccable_browser::BrowserEngine::from_process_env)
 }
 // -------------------------------------------------------------------------
+
+#[cfg(test)]
+mod verb_tests {
+    /// Catches (review, Greptile and Cursor): a verb `run` handles by name but
+    /// missing from `KNOWN_VERBS`, so a same-named path in the working
+    /// directory sends it through Pro dispatch as if it were a scan.
+    #[test]
+    fn every_named_verb_is_known_or_a_scan() {
+        let src = include_str!("router.rs");
+        let body = &src[src.find("pub fn run(").unwrap()..src.find("pub fn is_scan(").unwrap()];
+        let mut named = Vec::new();
+        for line in body.lines() {
+            let line = line.trim_start();
+            let Some((arm, _)) = line.split_once("=>") else { continue };
+            if !arm.starts_with('"') {
+                continue;
+            }
+            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+        }
+        assert!(named.len() > 30, "parsed {named:?}");
+        let scans = ["detect", "hook", "hook-before-edit"];
+        let missing: Vec<_> = named
+            .iter()
+            .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
+            .collect();
+        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+    }
+}

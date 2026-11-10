@@ -6,7 +6,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.1.21"
+version = "0.1.22"
 edition = "2021"
 license = "Apache-2.0"
 publish = false
@@ -25,6 +25,7 @@ impeccable-comp = { path = "crates/comp" }
 impeccable-comp-verbs = { path = "crates/comp-verbs" }
 impeccable-agents = { path = "crates/agents" }
 impeccable-bundle = { path = "crates/bundle" }
+impeccable-account = { path = "crates/account" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
