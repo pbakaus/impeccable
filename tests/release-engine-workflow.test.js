@@ -103,7 +103,9 @@ describe.skipIf(process.platform === 'win32')('engine release version agreement'
   const bash = (script, cwd, env = {}) => spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    // A tag push unless a case says otherwise: a CI run's own GITHUB_EVENT_NAME (workflow_dispatch on a
+    // manual run) must not leak into the fixtures.
+    env: { ...process.env, GITHUB_EVENT_NAME: 'push', ...env },
   });
   const inTree = (files, script, env) => {
     const dir = mkdtempSync(join(tmpdir(), 'release-engine-'));
