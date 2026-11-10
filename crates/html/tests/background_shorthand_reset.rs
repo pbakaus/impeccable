@@ -193,19 +193,17 @@ fn a_hover_image_from_a_custom_property_still_paints() {
 }
 
 #[test]
-fn a_hover_custom_property_that_removes_the_image_exposes_the_reset() {
-    // On hover `--photo` becomes `none`, so no image paints and the implied
-    // transparent reset leaves white text on the white page.
+fn a_hover_rule_that_sets_custom_properties_is_not_scored_for_the_reset() {
+    // Deliberate limit: `--photo: none` on hover does remove the image, but a
+    // hover rule that sets custom properties is not followed statically, so
+    // its implied reset is never scored (a missed finding, never a false one).
     let findings = scan(
         r#"<!DOCTYPE html><html><head><style>
 .card { --photo: url(dark.png); background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }
 .card:hover { --photo: none; background: url(other.png); background-image: var(--photo); }
 </style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
     );
-    assert!(
-        findings.iter().any(|f| f.snippet.contains(":hover")),
-        "{findings:#?}"
-    );
+    assert!(findings.iter().all(|f| !f.snippet.contains(":hover")), "{findings:#?}");
 }
 
 #[test]
@@ -264,6 +262,34 @@ fn a_hover_custom_property_set_to_unset_takes_the_parents_value() {
 </style></head><body style="background:#ffffff"><div class="wrap"><div class="card">Cancel the trial now</div></div></body></html>"#,
     );
     assert!(findings.iter().all(|f| !f.snippet.contains(":hover")), "{findings:#?}");
+}
+
+#[test]
+fn cyclic_hover_custom_properties_with_a_fallback_image_are_not_scored() {
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { --photo: var(--photo); background: url(other.png); background-image: var(--photo, url(dark.png)); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(findings.iter().all(|f| !f.snippet.contains(":hover")), "{findings:#?}");
+}
+
+#[test]
+fn a_long_hover_custom_property_chain_is_cheap() {
+    let mut chain = String::new();
+    for i in 0..5000 {
+        chain.push_str(&format!("--a{i:05}: var(--a{:05}); ", i + 1));
+    }
+    let html = format!(
+        r#"<!DOCTYPE html><html><head><style>
+.card {{ background-color: #111111; color: #ffffff; font-size: 16px; padding: 12px 16px; }}
+.card:hover {{ background: url(photo.png); {chain} }}
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#
+    );
+    let started = std::time::Instant::now();
+    let _ = scan(&html);
+    assert!(started.elapsed() < std::time::Duration::from_secs(10));
 }
 
 #[test]

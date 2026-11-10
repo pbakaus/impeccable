@@ -656,37 +656,26 @@ fn compute_styles(
                         Some(h) if compare_static_priority(resting_meta, &h.meta) => Some(h),
                         _ => resting_img,
                     };
-                    // Resolve `var()` and `inherit` first, against the
-                    // custom properties as they stand on hover; an image
-                    // that still cannot be resolved counts as painting, so
-                    // the reset never invents a surface behind it.
-                    // Collect every winning hover `--*` first, so declaration
-                    // order never decides what a reference sees. `inherit`,
-                    // `unset` and `revert` take the parent's value (custom
-                    // properties inherit); `initial` is empty.
-                    let winners: HashMap<String, String> = hover_map
-                        .iter()
-                        .filter(|(name, decl)| {
-                            name.starts_with("--")
-                                && compare_static_priority(specified_map.get(*name).map(|d| &d.meta), &decl.meta)
-                        })
-                        .map(|(name, decl)| {
-                            let raw = match js::to_lower_case(js::trim(&decl.value)).as_str() {
-                                "inherit" | "unset" | "revert" | "revert-layer" => {
-                                    parent_custom.get(name).cloned().unwrap_or_default()
-                                }
-                                "initial" => String::new(),
-                                _ => decl.value.clone(),
-                            };
-                            (name.clone(), raw)
-                        })
-                        .collect();
-                    let hover_custom = resolve_hover_custom_props(&custom_props, &winners);
+                    // Resolve `var()` and `inherit` first; an image that
+                    // still cannot be resolved counts as painting, so the
+                    // reset never invents a surface behind it.
+                    // A hover rule that sets its own custom properties can
+                    // change what the image resolves to in ways a static
+                    // read cannot follow (references, cycles, fallbacks), so
+                    // the implied reset is not scored there at all: a missed
+                    // hover finding is safer than a false one.
+                    let hover_sets_custom = hover_map.iter().any(|(name, decl)| {
+                        name.starts_with("--")
+                            && compare_static_priority(specified_map.get(name).map(|d| &d.meta), &decl.meta)
+                    });
+                    if hover_sets_custom {
+                        continue;
+                    }
                     let paints = effective_img.is_some_and(|d| {
                         let resolved = normalize_static_css_value(
                             "backgroundImage",
                             &d.value,
-                            &hover_custom,
+                            &custom_props,
                             parent_style.as_deref(),
                             Some(&values),
                         );
@@ -761,61 +750,6 @@ pub fn default_value(prop: &str) -> Option<&'static str> {
 }
 
 /// A `background-image` value that paints: a `url()` or a gradient.
-/// The custom properties as they stand on hover: `base` overlaid with the
-/// winning hover declarations, resolved in dependency order so a reference
-/// sees the other hover values. A declaration in a reference cycle is
-/// invalid (empty), as CSS computes it, and a resolved value past
-/// `HOVER_CUSTOM_MAX_LEN` is dropped too, so self-referencing values can
-/// never grow without bound.
-fn resolve_hover_custom_props(base: &CustomProps, winners: &HashMap<String, String>) -> CustomProps {
-    const HOVER_CUSTOM_MAX_LEN: usize = 4096;
-    static VAR_NAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"var\(\s*(--[A-Za-z0-9_-]+)").unwrap());
-    #[derive(Clone, Copy, PartialEq)]
-    enum Mark {
-        Visiting,
-        Done,
-    }
-    fn visit(
-        name: &str,
-        winners: &HashMap<String, String>,
-        out: &mut CustomProps,
-        marks: &mut HashMap<String, Mark>,
-    ) -> bool {
-        match marks.get(name) {
-            Some(Mark::Done) => return true,
-            Some(Mark::Visiting) => return false,
-            None => {}
-        }
-        marks.insert(name.to_string(), Mark::Visiting);
-        let raw = &winners[name];
-        let mut valid = true;
-        for cap in VAR_NAME_RE.captures_iter(raw) {
-            let dep = &cap[1];
-            if winners.contains_key(dep) && !visit(dep, winners, out, marks) {
-                valid = false;
-            }
-        }
-        let value = if valid { super::checks_shim::resolve_var_refs(raw, out) } else { String::new() };
-        let value = if value.len() > HOVER_CUSTOM_MAX_LEN { String::new() } else { value };
-        out.insert(name.to_string(), value);
-        marks.insert(name.to_string(), Mark::Done);
-        valid
-    }
-    let mut out = base.clone();
-    // Placeholders keep a reference to a not-yet-visited winner from
-    // reading its resting value.
-    for name in winners.keys() {
-        out.shift_remove(name);
-    }
-    let mut marks: HashMap<String, Mark> = HashMap::new();
-    let mut names: Vec<&String> = winners.keys().collect();
-    names.sort();
-    for name in names {
-        visit(name, winners, &mut out, &mut marks);
-    }
-    out
-}
-
 fn is_painted_image(value: &str) -> bool {
     let v = js::to_lower_case(js::trim(value));
     v.contains("url(") || v.contains("gradient")
