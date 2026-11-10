@@ -182,6 +182,9 @@ pub fn install_engine_binaries(sys: &Sys, io: &mut Io, skill_dirs: &[String]) {
         };
         let cached = cache_binary_path(sys, &version, os);
         if cache_is_verified(&cached, &expected) {
+            // A cache restored without modes would pass the stamp yet be
+            // skipped by the POSIX launcher, so put the bit back.
+            let _ = util::set_executable(&cached);
             continue;
         }
         let url = asset_url(&base, &version, os, arch);
@@ -293,6 +296,36 @@ mod tests {
             assert!(!util::exists(&binary_path(d, os, arch)), "no copy in {d}");
         }
         assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "one download for both dirs and both runs");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_verified_cache_that_lost_its_executable_bit_gets_it_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some((os, arch)) = platform_tag() else { return };
+        const BODY: &[u8] = b"#!/bin/sh\necho engine\n";
+        let digest = hex(&Sha256::digest(BODY));
+        let root = std::env::temp_dir().join(format!("impeccable-cache-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let skill = root.join("skill");
+        std::fs::create_dir_all(skill.join("scripts")).unwrap();
+        std::fs::write(skill.join("scripts/VERSION"), "7.7.8\n").unwrap();
+        std::fs::write(skill.join("scripts/engine-checksums.txt"), format!("7.7.8 {} {digest}\n", asset_name(os, arch))).unwrap();
+        // A refused port: any download attempt would fail and print.
+        let env: util::Env = [
+            ("IMPECCABLE_DOWNLOAD_BASE".to_string(), "http://127.0.0.1:9".to_string()),
+            ("IMPECCABLE_HOME".to_string(), root.join("cache").to_string_lossy().into_owned()),
+        ].into();
+        let cached = cache_binary_path(&Sys::new(env.clone(), String::new()), "7.7.8", os);
+        util::mkdir_p(&jsp::dirname(&cached)).unwrap();
+        std::fs::write(&cached, BODY).unwrap();
+        std::fs::set_permissions(&cached, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::write(format!("{cached}.verified"), format!("{digest} {}\n", BODY.len())).unwrap();
+        let (mut io, captured) = Io::captured("", root.clone(), env.clone());
+        install_engine_binaries(&Sys::new(env, root.to_string_lossy().into_owned()), &mut io, &[skill.to_string_lossy().into_owned()]);
+        assert_eq!(String::from_utf8_lossy(&captured.stderr.borrow()), "", "a cache hit makes no request");
+        assert_eq!(std::fs::metadata(&cached).unwrap().permissions().mode() & 0o111, 0o111);
         let _ = std::fs::remove_dir_all(&root);
     }
 
