@@ -101,12 +101,56 @@ pub fn collapse_ws(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// A short, stable hash of a body of text (an inline handler or script),
-/// whitespace-collapsed first: 8 hex digits of FNV-1a 64. Hand-rolled because
-/// `DefaultHasher` may change between Rust releases, and saved inventories
-/// must compare across them.
+/// A short, stable hash of JavaScript (an inline handler or script),
+/// normalized first by [`normalize_js_ws`]: 8 hex digits of FNV-1a 64.
+/// Hand-rolled because `DefaultHasher` may change between Rust releases, and
+/// saved inventories must compare across them.
 pub fn short_hash(text: &str) -> String {
-    fnv8(&collapse_ws(text))
+    fnv8(&normalize_js_ws(text))
+}
+
+/// Whitespace that only formats JavaScript is dropped from the hash input,
+/// and whitespace that can change what runs is kept. Outside string and
+/// template literals, a run of whitespace becomes one newline if it holds a
+/// line break (a line break ends a `//` comment and can end a statement),
+/// else one space; the ends are trimmed. Inside a literal every character is
+/// kept, so `save('a  b')` and `save('a b')` differ.
+pub fn normalize_js_ws(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut pending: Option<char> = None;
+    for c in text.chars() {
+        if let Some(q) = quote {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        if c.is_whitespace() {
+            if c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}' {
+                pending = Some('\n');
+            } else if pending.is_none() {
+                pending = Some(' ');
+            }
+            continue;
+        }
+        if let Some(ws) = pending.take() {
+            if !out.is_empty() {
+                out.push(ws);
+            }
+        }
+        out.push(c);
+        if c == '\'' || c == '"' || c == '`' {
+            quote = Some(c);
+        }
+    }
+    out
 }
 
 /// 8 hex digits of FNV-1a 64 over `text` exactly as given.
@@ -121,7 +165,7 @@ fn fnv8(text: &str) -> String {
 
 /// The project inventories are kept for: the nearest directory from `cwd` up
 /// that holds `.git`, `package.json` or `.impeccable` (the design-system
-/// discovery markers), never `home` itself (whose `.impeccable` is the
+/// discovery markers) or a DESIGN.md, never `home` itself (whose `.impeccable` is the
 /// user's), else `cwd`. A run from a subdirectory then shares the project's
 /// inventories and never starts a new `.impeccable/` there, which would
 /// become a design-system boundary for the files under it.
@@ -134,9 +178,14 @@ pub fn project_root(cwd: &str, home: &str) -> String {
         if homes.contains(&dir) {
             break;
         }
+        // A DESIGN.md counts too: a static site whose only marker is an
+        // ancestor DESIGN.md keeps its inventories there, so the
+        // `.impeccable/` they create never becomes a boundary that cuts the
+        // files below off from that DESIGN.md.
         if crate::design_system::PROJECT_ROOT_MARKERS
             .iter()
             .any(|m| std::path::Path::new(&jsp::join(&[&dir, m])).exists())
+            || crate::design_system::resolve_design_md_path(&dir).is_some()
         {
             return dir;
         }
@@ -542,8 +591,10 @@ mod tests {
         let d = diff(&before, &after);
         assert_eq!(d.missing.len(), 1);
         assert_eq!(d.added.len(), 1);
-        // Re-indenting the same body is not a change.
-        assert_eq!(short_hash("save( a,\n   b )"), short_hash("  save( a, b )  "));
+        // Re-indenting the same body is not a change; re-wrapping it is,
+        // since a line break can end a statement or a `//` comment.
+        assert_eq!(short_hash("save( a,\n   b )"), short_hash("  save( a,\n b )  "));
+        assert_ne!(short_hash("save( a,\n   b )"), short_hash("save( a, b )"));
     }
 
     #[test]
@@ -600,6 +651,33 @@ mod tests {
         let cwd = std::fs::canonicalize(real_home.join("site")).unwrap().to_string_lossy().into_owned();
         let home = base.join("link/home").to_string_lossy().into_owned();
         assert_eq!(project_root(&cwd, &home), cwd);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Review (Greptile): whitespace inside a literal and a line break that
+    /// can end a `//` comment change behavior, so they change the hash;
+    /// re-indenting does not.
+    #[test]
+    fn the_js_hash_keeps_whitespace_that_changes_behavior() {
+        assert_ne!(short_hash("save('a  b')"), short_hash("save('a b')"));
+        assert_ne!(short_hash("// note\nrun()"), short_hash("// note run()"));
+        assert_ne!(short_hash("x = `a\n b`"), short_hash("x = `a b`"));
+        assert_eq!(short_hash("  if (a) {\n      go()\n  }"), short_hash("if (a) {\n go()\n}"));
+        assert_eq!(short_hash("go( 1,   2 )"), short_hash("go( 1, 2 )"));
+        assert_eq!(normalize_js_ws("say(\"it\\\"s  ok\")  ;"), "say(\"it\\\"s  ok\") ;");
+    }
+
+    /// Review (Greptile): a static site whose only marker is an ancestor
+    /// DESIGN.md keeps its inventories beside that DESIGN.md.
+    #[test]
+    fn an_ancestor_design_md_is_the_project_root() {
+        let base = std::env::temp_dir().join(format!("impeccable-wiring-design-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("site/pages")).unwrap();
+        std::fs::write(base.join("site/DESIGN.md"), "# Design\n").unwrap();
+        let site = std::fs::canonicalize(base.join("site")).unwrap().to_string_lossy().into_owned();
+        let cwd = std::fs::canonicalize(base.join("site/pages")).unwrap().to_string_lossy().into_owned();
+        assert_eq!(project_root(&cwd, ""), site);
         let _ = std::fs::remove_dir_all(&base);
     }
 

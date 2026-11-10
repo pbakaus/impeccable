@@ -190,3 +190,17 @@ fn takes_no_targets() {
     assert_eq!(err, "Error: --changed scans the files git reports as changed and takes no file, URL, or --cdp targets\n");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Review (Greptile): `--changed` with a wiring mode was silently ignored.
+#[test]
+fn wiring_modes_reject_changed() {
+    let dir = repo("wiring");
+    std::fs::write(dir.join("page.html"), "<!DOCTYPE html><html><body><a href=\"/\">Home</a></body></html>\n").unwrap();
+    for mode in ["--before", "--kept"] {
+        let (code, out, err) = run(&dir, &[mode, "--changed", "page.html"]);
+        assert_eq!((code, out.as_str()), (1, ""), "{mode}");
+        assert_eq!(err, format!("Error: {mode} works on local HTML files and cannot be used with --changed\n"));
+    }
+    assert!(!dir.join(".impeccable/wiring").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
