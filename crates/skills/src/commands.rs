@@ -502,9 +502,10 @@ fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, sk
 /// maintains is `~/.agents/skills`, so a copy there (an unzipped bundle, a
 /// hand copy) stays at the version it was. `managed` holds the real paths of
 /// the skills dirs this run updates: an entry that resolves into one of them
-/// (the entry linked, or `.codex/skills` itself linked) is that install, not
-/// a copy, and is skipped without hiding a copy beside it. Returns the first
-/// copy's name.
+/// (the entry linked, or `.codex/skills` itself linked), or to the same place
+/// as its namesake there (both linked onto one checkout), is that install,
+/// not a copy, and is skipped without hiding a copy beside it. Returns the
+/// first copy's name.
 fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
     let skills_dir = util::jsp::join(&[root, ".codex", "skills"]);
     util::read_dir_names(&skills_dir)?.into_iter().find(|n| {
@@ -513,7 +514,11 @@ fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
         }
         let skill_dir = util::jsp::join(&[&skills_dir, n]);
         let real = util::realpath(&skill_dir).unwrap_or(skill_dir);
-        !managed.contains(&util::jsp::dirname(&real))
+        let parent = util::jsp::dirname(&real);
+        !managed.iter().any(|m| {
+            let twin = util::jsp::join(&[m, n]);
+            *m == parent || util::realpath(&twin).unwrap_or(twin) == real
+        })
     })
 }
 

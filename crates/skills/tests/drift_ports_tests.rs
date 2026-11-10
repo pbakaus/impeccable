@@ -1294,7 +1294,7 @@ fn codex_dir_project(name: &str, with_agents: bool, copy_under_home: bool) -> (S
     if with_agents {
         write(&format!("{project}/.agents/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
     }
-    let bundle = create_fake_universal_bundle(&root, &[".agents"]);
+    let bundle = create_fake_universal_bundle(&root, &[".agents", ".claude"]);
     let env = base_env(&home, &tmpdir, &bundle);
     (root, project, env)
 }
@@ -1348,6 +1348,21 @@ fn update_is_silent_about_a_codex_skills_link_onto_the_agents_install() {
     let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
     assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
     assert!(r.stdout.contains("Found an Impeccable skill at .codex/skills/teach-impeccable, which update does not manage"), "{}", r.stdout);
+    // `.agents` and `.codex` both linked onto one checkout (`impeccable link`)
+    // while a copied `.claude` install keeps the update going: the `.codex`
+    // link is the same install as the `.agents` one, not a copy.
+    let checkout = format!("{root}/checkout/impeccable");
+    write(&format!("{checkout}/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    std::fs::remove_dir_all(format!("{project}/.agents/skills/impeccable")).unwrap();
+    std::os::unix::fs::symlink(&checkout, format!("{project}/.agents/skills/impeccable")).unwrap();
+    std::fs::remove_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::fs::create_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink(&checkout, format!("{project}/.codex/skills/impeccable")).unwrap();
+    write(&format!("{project}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Continuing with copied installs in: .claude"), "{}", r.stdout);
+    assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
     std::fs::remove_dir_all(&root).ok();
 }
 
