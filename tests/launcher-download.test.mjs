@@ -615,3 +615,38 @@ test('sh launcher reaches a cached engine starting almost no processes', { skip:
   assert.deepEqual(spawned.filter(s => !['uname', 'wc'].includes(s)), [], `no other tool runs: ${spawned}`);
   assert.ok(count('uname') <= 1 && count('wc') <= 1, `at most one uname and one wc: ${spawned}`);
 });
+
+// The Windows branch reads OS and PROCESSOR_ARCHITECTURE instead of uname.
+// Exercised from a POSIX shell: a uname that runs at all fails the case.
+for (const [arch, manifestAsset] of [['AMD64', 'impeccable-windows-x64.exe'], ['ARM64', 'impeccable-windows-x64.exe'], ['ARM64', 'impeccable-windows-arm64.exe']]) {
+  test(`sh launcher on Windows ${arch} runs the cached engine stamped for ${manifestAsset} without uname`, { skip: WINDOWS ? 'POSIX shell stand-in for Git Bash' : false }, async t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-win-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const scripts = path.join(root, 'scripts');
+    const cacheDir = path.join(root, 'cache', 'bin', '0.0.0-test');
+    const tools = path.join(root, 'tools');
+    for (const dir of [scripts, cacheDir, tools, path.join(root, 'home')]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+    fs.copyFileSync(path.join(ROOT, 'skill/scripts/impeccable'), path.join(scripts, 'impeccable'));
+    const engine = Buffer.from('#!/bin/sh\necho windows-engine\n');
+    const digest = createHash('sha256').update(engine).digest('hex');
+    fs.writeFileSync(path.join(scripts, 'engine-checksums.txt'), `0.0.0-test ${manifestAsset} ${digest}\n`);
+    const cached = path.join(cacheDir, 'impeccable.exe');
+    fs.writeFileSync(cached, engine, { mode: 0o755 });
+    fs.writeFileSync(`${cached}.verified`, `${digest} ${engine.length}\n`);
+    const past = new Date(Date.now() - 60000);
+    fs.utimesSync(cached, past, past);
+    fs.writeFileSync(path.join(tools, 'uname'), `#!/bin/sh\necho uname-ran >&2\nexit 1\n`, { mode: 0o755 });
+    for (const name of ['wc']) {
+      const real = ['/usr/bin', '/bin'].map(d => path.join(d, name)).find(p => fs.existsSync(p));
+      fs.writeFileSync(path.join(tools, name), `#!/bin/sh\nexec '${real}' "$@"\n`, { mode: 0o755 });
+    }
+    const result = spawnSync('/bin/sh', [path.join(scripts, 'impeccable'), 'engine-probe'], {
+      encoding: 'utf8',
+      env: { PATH: tools, HOME: path.join(root, 'home'), IMPECCABLE_HOME: path.join(root, 'cache'), OS: 'Windows_NT', PROCESSOR_ARCHITECTURE: arch },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'windows-engine');
+    assert.doesNotMatch(result.stderr, /uname-ran/);
+  });
+}
