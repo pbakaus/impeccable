@@ -761,7 +761,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // recorded for this session (#1101), which finds projects below a session
     // cwd that sits above them. Without a recorded root this is the walk up
     // alone, as before.
-    let mut roots = vec![resolve_stop_cwd(rt, &session_cwd, &session_id)];
+    // Shell writes never reach the per-edit pass, so Stop also scans UI files
+    // modified since the session started, when the event says when that was.
+    let session_start = crate::stop_discovery::session_start_ms(&event);
+    let home = rt.resolve(&[&rt.homedir()]);
+    let mut first_root = resolve_stop_cwd(rt, &session_cwd, &session_id);
+    // A session started inside a project (`src/`) keys to that project, as the
+    // per-edit pass does, so discovery neither writes a cache into the
+    // subfolder nor walks it outside the project's skip rules.
+    if session_start.is_some() && !looks_like_project_root(&first_root) {
+        if let Some(project) = crate::stop_discovery::owning_project(&first_root, &home) {
+            first_root = project;
+        }
+    }
+    let mut roots = vec![first_root];
     if named_session {
         for root in crate::hook_sessions::recorded_roots(rt, &session_id) {
             if !roots.contains(&root) {
@@ -783,6 +796,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let mut passes: Vec<RootPass> = Vec::new();
     let mut first_skip: Option<RunResult> = None;
     let mut scanned = 0usize;
+    let mut discovered_scanned = 0usize;
     let mut pre_existing = 0usize;
     let mut new_findings = 0usize;
     let mut unknown = 0usize;
@@ -801,7 +815,35 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             continue;
         }
         let mut root_cache = if at_session_cwd { cache.clone() } else { read_cache(root) };
-        let touched = touched_files(&root_cache, &session_id);
+        // Discovery walks a root only when it is a project (a session started
+        // inside one was keyed to it above), so a session cwd above several
+        // projects never scans them under its settings; each recorded project
+        // root walks itself. Discovered files keep their own budget and never
+        // push out files the per-edit pass recorded.
+        let cached = touched_files(&root_cache, &session_id);
+        let discovered: Vec<String> = match session_start {
+            Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
+                root,
+                &home,
+                since,
+                &root_config.extensions,
+                root_config.limits.max_file_bytes,
+            )
+            .into_iter()
+            .filter(|file| !cached.contains(file))
+            .collect(),
+            _ => Vec::new(),
+        };
+        if !discovered.is_empty() {
+            let total = audit.get("discovered").and_then(Value::as_u64).unwrap_or(0) + discovered.len() as u64;
+            audit.insert("discovered".into(), Value::from(total));
+            root_audit.insert("discovered".into(), Value::from(discovered.len()));
+        }
+        let touched: Vec<(String, bool)> = cached
+            .into_iter()
+            .map(|file| (file, false))
+            .chain(discovered.into_iter().map(|file| (file, true)))
+            .collect();
         if touched.is_empty() {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
@@ -817,9 +859,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         let mut scans = HashMap::new();
         let mut groups: Vec<Group> = Vec::new();
         let mut dirty = false;
-        for file_path in &touched {
-            if scanned >= STOP_MAX_FILES {
+        for (file_path, found) in &touched {
+            if *found && discovered_scanned >= STOP_MAX_FILES {
                 break;
+            }
+            if !*found && scanned >= STOP_MAX_FILES {
+                continue;
             }
             if has_path_traversal(file_path)
                 || is_sensitive_path(file_path)
@@ -838,7 +883,11 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             if !exists(file_path) || !is_scan_target_inside_project(rt, file_path, root) {
                 continue;
             }
-            scanned += 1;
+            if *found {
+                discovered_scanned += 1;
+            } else {
+                scanned += 1;
+            }
             let content = match std::fs::read(file_path) {
                 Ok(b) => String::from_utf8_lossy(&b).into_owned(),
                 Err(_) => continue,
@@ -901,7 +950,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     if passes.len() > 1 {
         audit.insert("roots".into(), Value::from(passes.len()));
     }
-    audit.insert("scannedFiles".into(), Value::from(scanned));
+    audit.insert("scannedFiles".into(), Value::from(scanned + discovered_scanned));
     audit.insert("preExistingFindings".into(), Value::from(pre_existing));
     audit.insert("newFindings".into(), Value::from(new_findings));
     audit.insert("unknownFindings".into(), Value::from(unknown));
