@@ -33,13 +33,24 @@ fn fixture_scores_the_shorthand_color_and_not_the_stale_fill() {
     let html = std::fs::read_to_string(&path).expect("fixture");
     let findings = low_contrast(&html, &path);
     let snippets: Vec<&str> = findings.iter().map(|f| f.snippet.as_str()).collect();
-    assert_eq!(snippets.len(), 1, "{snippets:#?}");
-    assert!(
-        snippets[0].ends_with("text #3a3a3a on #222222"),
-        "{snippets:#?}"
-    );
-    assert!(
-        snippets.iter().all(|s| !s.contains("#111111")),
+    // The four should-flag rows, and nothing else: no stale #111111 or
+    // #151515, and no hover verdict on the two image swaps.
+    let expected = [
+        "text #3a3a3a on #222222",
+        "text #404040 on #2a2a2a",
+        "text #404040 on #2b2b2b",
+        "text #ffffff on #ffffff",
+    ];
+    assert_eq!(snippets.len(), expected.len(), "{snippets:#?}");
+    for want in expected {
+        assert!(
+            snippets.iter().any(|s| s.ends_with(want)),
+            "{want}: {snippets:#?}"
+        );
+    }
+    assert_eq!(
+        snippets.iter().filter(|s| s.contains(":hover")).count(),
+        1,
         "{snippets:#?}"
     );
 }
@@ -49,6 +60,7 @@ fn reset_runs_beside_the_recorded_expansion() {
     let transparent = vec![(
         "backgroundColor".to_string(),
         "rgba(0, 0, 0, 0)".to_string(),
+        true,
     )];
     for value in [
         "url(photo.jpg) center / cover no-repeat",
@@ -76,6 +88,24 @@ fn reset_runs_beside_the_recorded_expansion() {
         );
     }
     assert!(expand_background_color_reset("background-image", "url(photo.jpg)").is_empty());
+    // currentColor is a color the recorded color reader does not know: it is
+    // kept for the background reader, not reset.
+    let current = vec![(
+        "backgroundColor".to_string(),
+        "currentColor".to_string(),
+        false,
+    )];
+    for value in [
+        "url(clear.svg) currentColor",
+        "url(a.png), no-repeat url(b.png) CurrentColor",
+        "currentColor",
+    ] {
+        assert_eq!(
+            expand_background_color_reset("background", value),
+            current,
+            "{value}"
+        );
+    }
     // The recorded expansion still returns the image alone.
     assert_eq!(
         expand_static_declaration("background", "url(photo.jpg)"),
@@ -125,6 +155,56 @@ fn an_explicit_hover_transparent_still_counts() {
     );
     assert!(
         findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn an_important_resting_image_still_paints_under_a_hover_swap() {
+    // The hover shorthand's implied reset beats the resting color, but its
+    // image loses to the resting `!important` one, which still paints.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background-color: #111111; background-image: url(dark.png) !important; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { background: url(other.png); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().all(|f| !f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn a_hover_reset_with_no_image_left_still_counts() {
+    // The hover image loses to a resting `!important` `none`: nothing
+    // paints, so the implied transparent reset is the hover surface.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background-color: #111111; background-image: none !important; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { background: url(other.png); }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn a_current_color_shorthand_fills_with_the_box_color() {
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+body { background: #ffffff; }
+.panel { width: 400px; height: 80px; background-color: #ffffff; }
+.panel { color: #2b2b2b; background: url(clear.svg) no-repeat currentColor; }
+.panel p { color: #404040; font-size: 16px; }
+</style></head><body><div class="panel"><p>Dim ink on its box's own color</p></div></body></html>"#,
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.snippet.ends_with("text #404040 on #2b2b2b")),
         "{findings:#?}"
     );
 }

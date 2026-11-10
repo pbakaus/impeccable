@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/low-contrast-shorthand-reset.html\n  [low-contrast] 1.4:1 (need 4.5:1) — text #3a3a3a on #222222\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n1 anti-pattern found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/low-contrast-shorthand-reset.html\n  [low-contrast] 1.4:1 (need 4.5:1) — text #3a3a3a on #222222\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 1.4:1 (need 4.5:1) — text #404040 on #2a2a2a\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] 1.4:1 (need 4.5:1) — text #404040 on #2b2b2b\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [low-contrast] :hover state 1.0:1 (need 4.5:1) — text #ffffff on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n\n4 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

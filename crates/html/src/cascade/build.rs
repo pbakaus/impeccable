@@ -645,14 +645,19 @@ fn compute_styles(
                 }
                 // A `:hover { background: url(...) }` swaps the image; the
                 // transparent reset it implies is not a surface the author
-                // chose, so it is skipped while that rule's image wins. An
-                // explicit `background-color: transparent` always counts.
+                // chose, so it is skipped while an image still paints on
+                // hover: the hover rule's own, or a resting image that
+                // outranks it (`!important`). An explicit
+                // `background-color: transparent` always counts.
                 if hover_decl.shorthand_reset {
-                    if let Some(img_decl) = hover_map.get("backgroundImage") {
-                        let resting_img = specified_map.get("backgroundImage").map(|d| &d.meta);
-                        if compare_static_priority(resting_img, &img_decl.meta) {
-                            continue;
-                        }
+                    let resting_img = specified_map.get("backgroundImage");
+                    let resting_meta = resting_img.map(|d| &d.meta);
+                    let effective_img = match hover_map.get("backgroundImage") {
+                        Some(h) if compare_static_priority(resting_meta, &h.meta) => Some(h),
+                        _ => resting_img,
+                    };
+                    if effective_img.is_some_and(|d| is_painted_image(&d.value)) {
+                        continue;
                     }
                 }
                 let next = normalize_static_css_value(
@@ -717,4 +722,10 @@ fn compute_styles(
 /// `STATIC_DEFAULT_STYLE[prop]` lookup re-exported for the adapters.
 pub fn default_value(prop: &str) -> Option<&'static str> {
     static_default_style(prop)
+}
+
+/// A `background-image` value that paints: a `url()` or a gradient.
+fn is_painted_image(value: &str) -> bool {
+    let v = js::to_lower_case(js::trim(value));
+    v.contains("url(") || v.contains("gradient")
 }

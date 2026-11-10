@@ -408,11 +408,7 @@ pub fn apply_static_declaration<K: Hash + Eq>(
         .chain(extra_specified_expansions(prop, value))
         .map(|(p, v)| (p, v, false))
         .collect();
-    expanded.extend(
-        super::shorthand::expand_background_color_reset(prop, value)
-            .into_iter()
-            .map(|(p, v)| (p, v, true)),
-    );
+    expanded.extend(super::shorthand::expand_background_color_reset(prop, value));
     for (expanded_prop, expanded_value, shorthand_reset) in expanded {
         let existing = map.get(&expanded_prop).map(|d| &d.meta);
         if compare_static_priority(existing, meta) {
