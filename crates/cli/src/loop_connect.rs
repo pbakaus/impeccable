@@ -69,10 +69,7 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     if !helper.is_file() {
-        return Err(
-            "Impeccable Loop isn't installed, or is too old to connect agents. Run impeccable loop install first."
-                .into(),
-        );
+        return Err(missing_loop(&helper));
     }
     // Checked before any agent's configuration changes.
     let support = support_dir(&home)?;
@@ -345,6 +342,20 @@ fn mcp_stays(support: &Path, spec: &Spec) -> String {
             remove_command(&agent)
         ),
         _ => String::new(),
+    }
+}
+
+/// Why connect can't go on without Loop's helper. When agents are already connected,
+/// their hooks call that path and stop waking without an error, so say so.
+fn missing_loop(helper: &Path) -> String {
+    let connected = installed_specs(OWNER).is_ok_and(|found| !found.committed.is_empty());
+    if connected {
+        format!(
+            "Loop's hooks point at a Loop that isn't there: {} is missing, so your agents' sessions won't wake. Loop has to stay in ~/Applications (if you moved it to /Applications, move it back, or run impeccable loop install), then run impeccable loop connect again.",
+            helper.display()
+        )
+    } else {
+        "Impeccable Loop isn't installed in ~/Applications, or is too old to connect agents. Run impeccable loop install first.".into()
     }
 }
 
