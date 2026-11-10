@@ -30,6 +30,7 @@ semver = "1"
 url = "2"
 ureq = { version = "2", default-features = false, features = ["tls"] }
 libc = "0.2"
+toml_edit = "0.22"
 
 [dev-dependencies]
 impeccable-account = { workspace = true, features = ["test-release-keys"] }
