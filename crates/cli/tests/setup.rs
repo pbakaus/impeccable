@@ -15,6 +15,13 @@ fn cmd(env: &HashMap<String, String>, args: &[&str]) -> Command {
         .envs(env)
         .current_dir(Path::new(&env["IMPECCABLE_HOME"]))
         .stdin(Stdio::null());
+    // Keep the OS runtime environment, as the health CLI tests do. Windows
+    // needs SystemRoot for child processes; account state stays isolated.
+    for key in ["PATH", "SystemRoot", "TEMP", "TMP"] {
+        if let Ok(v) = std::env::var(key) {
+            c.env(key, v);
+        }
+    }
     c
 }
 fn signed_in(name: &str) -> (Fake, HashMap<String, String>) {
