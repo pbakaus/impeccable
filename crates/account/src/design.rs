@@ -60,7 +60,9 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
     {
         return;
     }
-    let root = Path::new(&scan.root);
+    let Ok(root) = Path::new(&scan.root).canonicalize() else {
+        return;
+    };
     let Some(bytes) = read(&root.join("DESIGN.md"), TEXT_BYTES) else {
         return;
     };
@@ -76,7 +78,7 @@ pub(super) fn after_scan(io: &Io, scan: &Scan, repo: &Repo, session: &mut Sessio
     let sidecar = sidecar_path
         .canonicalize()
         .ok()
-        .filter(|p| p.starts_with(root))
+        .filter(|p| p.starts_with(&root))
         .and_then(|_| read(&sidecar_path, 256 * 1024))
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|v| metadata(&v["extensions"]))
