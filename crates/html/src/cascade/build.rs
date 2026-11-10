@@ -643,6 +643,18 @@ fn compute_styles(
                 if !compare_static_priority(resting, &hover_decl.meta) {
                     continue;
                 }
+                // A `:hover { background: url(...) }` swaps the image; the
+                // transparent reset it implies is not a surface the author
+                // chose, so it is skipped while that rule's image wins. An
+                // explicit `background-color: transparent` always counts.
+                if hover_decl.shorthand_reset {
+                    if let Some(img_decl) = hover_map.get("backgroundImage") {
+                        let resting_img = specified_map.get("backgroundImage").map(|d| &d.meta);
+                        if compare_static_priority(resting_img, &img_decl.meta) {
+                            continue;
+                        }
+                    }
+                }
                 let next = normalize_static_css_value(
                     prop,
                     &hover_decl.value,

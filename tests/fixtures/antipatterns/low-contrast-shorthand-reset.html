@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Background shorthand reset: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for issue #964. The `background` shorthand resets every
+       longhand it does not name, so `background: url(...)` declared after
+       `background-color: #111` paints the image over transparent, not over
+       #111. The static cascade used to keep the #111 and score the text
+       against a surface the browser never shows.
+
+       - Should flag: a shorthand that names its own color with the image
+         (`background: #222 url(...)`) keeps that color, and dark ink on it
+         still reports.
+       - Should pass: dark ink on a light image or a light gradient, after an
+         earlier `background-color: #111` on the same box. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 20px; color: #111; background: #ffffff; }
+    .grid { display: grid; grid-template-columns: 480px 480px; gap: 40px; }
+    .col h2 { font: 600 15px/1.2 system-ui; margin: 0 0 8px; color: #111; }
+    .panel { width: 440px; height: 96px; padding: 16px; margin: 0 0 18px; }
+    .panel p { margin: 0; font-size: 16px; line-height: 24px; }
+
+    .dark-base { background-color: #111111; }
+    .keeps-color { background: #222222 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") no-repeat; }
+    .photo-over { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23f5f2ea'/%3E%3C/svg%3E") center / cover no-repeat; }
+    .gradient-over { background: linear-gradient(180deg, #f5f5f5, #ececec); }
+    .dim-ink { color: #3a3a3a; }
+    .dark-ink { color: #1f1f1f; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col">
+      <h2>Should flag</h2>
+      <div class="panel dark-base keeps-color">
+        <p id="flag-ink-on-named-color" class="dim-ink">Dim ink on the shorthand's own dark color</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <h2>Should pass</h2>
+      <div class="panel dark-base photo-over">
+        <p id="pass-ink-on-image" class="dark-ink">Dark ink on a light photo laid over an old dark fill</p>
+      </div>
+      <div class="panel dark-base gradient-over">
+        <p id="pass-ink-on-gradient" class="dark-ink">Dark ink on a light gradient laid over an old dark fill</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
