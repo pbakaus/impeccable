@@ -800,8 +800,10 @@ fn global_install_moves_project_hooks_home_without_duplicates() {
     assert_eq!(cursor_after, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
     assert!(!std::path::Path::new(&format!("{project}/.codex/hooks.json")).exists());
     assert!(!std::path::Path::new(&format!("{project}/.grok")).exists());
-    assert!(manifest_names_launcher(&format!("{project}/.github/hooks/impeccable.json"), &home, ".github")
-        || read(&format!("{project}/.github/hooks/impeccable.json")).contains("$HOME/.github/skills/impeccable/scripts/impeccable"));
+    // Copilot's hook stays in the repo, naming the .github skill (each OS
+    // spells the launcher path its own way, so compare with one separator).
+    let copilot = read(&format!("{project}/.github/hooks/impeccable.json")).replace("\\\\", "/").replace('\\', "/");
+    assert!(copilot.contains(".github/skills/impeccable/scripts/impeccable"), "{copilot}");
 
     // Same project again: everything is in place, nothing is rewritten.
     let home_codex = read(&format!("{home}/.codex/hooks.json"));
