@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+
+import { stageStore } from '../scripts/lib/extension-manifests.js';
+
+const SOURCE = fileURLToPath(new URL('../extension/', import.meta.url));
 
 const finding = { selector: '#card', findings: [
   { name: 'Low contrast', type: 'low-contrast', category: 'quality', detail: '2:1' },
@@ -12,8 +19,9 @@ const state = (findings = [finding]) => ({ findings, url: pageUrl, scanComplete:
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 // `account`: what the account worker answers each `{ account }` message with; leave it out for a browser without
-// chrome.identity (Firefox), where the account script must stay out of the way.
-async function popup({ initial = state(), deferState = false, account } = {}) {
+// chrome.identity (Firefox), where the account script must stay out of the way. `root`: the build's folder, whose
+// popup.html says which scripts run.
+async function popup({ initial = state(), deferState = false, account, root = SOURCE } = {}) {
   const nodes = new Map();
   const element = (props = {}) => ({
     textContent: '', hidden: false, dataset: {}, attributes: {}, children: [], value: '', tabIndex: 0,
@@ -62,8 +70,9 @@ async function popup({ initial = state(), deferState = false, account } = {}) {
       },
     },
   });
-  for (const path of ['shared/findings-report.js', 'popup/popup.js', 'popup/account.js']) {
-    vm.runInContext(readFileSync(new URL(`../extension/${path}`, import.meta.url), 'utf8'), context);
+  const html = readFileSync(path.join(root, 'popup/popup.html'), 'utf8');
+  for (const [, src] of html.matchAll(/<script src="([^"]+)"><\/script>/g)) {
+    vm.runInContext(readFileSync(path.join(root, 'popup', src), 'utf8'), context);
   }
   await tick();
   h.broadcast = message => listeners.message(message);
@@ -242,12 +251,20 @@ test('reopening restores scan progress and a failed scan message without old fin
 const signedIn = { ok: true, available: true, signedIn: true, email: 'mira@example.com' };
 const personas = { ok: true, personas: [{ name: 'Ines', role: 'A retired teacher' }, { name: 'Kofi', role: '' }] };
 
-for (const [label, account, asked] of [
+function stagedStore() {
+  const root = path.join(mkdtempSync(path.join(tmpdir(), 'impeccable-store-')), 'extension');
+  stageStore(SOURCE, root);
+  return root;
+}
+
+for (const [label, account, asked, store] of [
   ['a browser without sign-in (Firefox)', undefined, false],
   ['a server that answers 404', { status: { ok: true, available: false } }, true],
+  // The store build has no account: its popup asks nothing, even of a server that takes sign-ins.
+  ['the store build', { status: { ok: true, available: true, signedIn: true, email: 'mira@example.com' } }, false, true],
 ]) {
   test(`the popup is the detector alone in ${label}`, async () => {
-    const h = await popup({ account });
+    const h = await popup({ account, ...(store ? { root: stagedStore() } : {}) });
     assert.equal(h.messages.some((m) => m.account), asked);
     assert.equal(h.node('account-tabs').hidden, true);
     assert.equal(h.node('panel-scan').hidden, false);

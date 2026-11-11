@@ -1,17 +1,25 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
 
 import { readHandoff } from '../extension/walks/handoff.js';
 import { admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
-import { firefoxManifest, isFirefoxFile, storeManifest } from '../scripts/lib/extension-manifests.js';
+import { firefoxManifest, isFirefoxFile, moduleReferences, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8'));
+/** The store build's tree, staged once as scripts/build-extension.js stages it. */
+let staged;
+const STORE = () => (staged ??= (() => {
+  const root = path.join(mkdtempSync(path.join(tmpdir(), 'impeccable-store-')), 'extension');
+  stageStore(path.join(ROOT, 'extension'), root);
+  return root;
+})());
 
 const PAGE = 'https://app.impeccable.style/app/acme/outings/o1';
 const block = (over = {}) => ({
@@ -399,5 +407,15 @@ describe('derived extension manifests', () => {
     assert.ok(matches.length > 0);
     assert.deepEqual(matches.filter((match) => /staging|localhost/.test(match)), []);
     assert.ok(MANIFEST.content_scripts.some((entry) => entry.matches.some((match) => match.includes('localhost'))), 'the source manifest keeps localhost for Load unpacked');
+  });
+
+  it('leaves the account out of the store build, and keeps it in the one loaded unpacked', () => {
+    const store = STORE();
+    const manifest = JSON.parse(readFileSync(path.join(store, 'manifest.json'), 'utf8'));
+    const loads = (root) => moduleReferences(root, MANIFEST.background.service_worker);
+    assert.equal(manifest.permissions.includes('identity'), false);
+    assert.deepEqual(readdirSync(store, { recursive: true }).filter((file) => /^account\b|popup\/account\.js$/.test(file)), []);
+    assert.deepEqual(loads(store).filter((file) => file.startsWith('account/') || !existsSync(path.join(store, file))), [], 'its worker loads no account file, and every file it loads is there');
+    assert.ok(loads(path.join(ROOT, 'extension')).includes('account/worker.js'));
   });
 });

@@ -1,14 +1,17 @@
 /**
- * The manifests scripts/build-extension.js derives from the source
- * `extension/manifest.json`, which is the one Load unpacked reads.
+ * The manifests and the store tree scripts/build-extension.js derives from the
+ * source `extension/`, which is the one Load unpacked reads.
  */
+import fs from 'fs';
+import path from 'path';
 
 /** The hosts a store build's content scripts may run on: the web app's production hosts. */
 const STORE_HOSTS = ['https://impeccable.reviews/', 'https://app.impeccable.style/'];
 
 /**
  * The Chrome Web Store manifest: the source manifest with its content scripts
- * held to the production hosts. Staging and this machine's hosts are for
+ * held to the production hosts, and no `identity`: the store build does not
+ * sign in (see {@link stageStore}). Staging and this machine's hosts are for
  * development builds only.
  */
 export function storeManifest(source) {
@@ -16,7 +19,53 @@ export function storeManifest(source) {
     .map((entry) => ({ ...entry, matches: entry.matches.filter((match) => STORE_HOSTS.some((host) => match.startsWith(host))) }))
     .filter((entry) => entry.matches.length > 0);
   const { content_scripts: _all, ...rest } = source;
-  return contentScripts.length ? { ...rest, content_scripts: contentScripts } : rest;
+  const kept = { ...rest, permissions: (source.permissions || []).filter((permission) => permission !== 'identity') };
+  return contentScripts.length ? { ...kept, content_scripts: contentScripts } : kept;
+}
+
+/**
+ * The store build's switches (extension/shared/build.js), and the lines it
+ * changes so that what it switches off is never loaded: each must be found
+ * exactly as written, or the build stops.
+ */
+const STORE_LINES = {
+  'shared/build.js': ['export const BUILD = { account: true, devHosts: true };', 'export const BUILD = { account: false, devHosts: false };'],
+  'background/chrome-worker.js': ["import '../account/worker.js';\n", ''],
+  'popup/popup.html': ['  <script src="account.js"></script>\n', ''],
+};
+
+/** Whether a path in extension/ goes into the store build: not the account, nor its half of the popup. */
+export const isStoreFile = (rel) => !under(ACCOUNT, rel) && rel !== 'popup/account.js' && !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel));
+
+/** Copies extension/ (`from`) to `to` as the store build has it: its files, its lines, its manifest. */
+export function stageStore(from, to) {
+  fs.rmSync(to, { recursive: true, force: true });
+  fs.cpSync(from, to, { recursive: true, filter: (src) => isStoreFile(path.relative(from, src).split(path.sep).join('/')) });
+  for (const [rel, [line, instead]] of Object.entries(STORE_LINES)) {
+    const text = fs.readFileSync(path.join(to, rel), 'utf-8');
+    if (!text.includes(line)) throw new Error(`extension/${rel}: the store build expects the line ${JSON.stringify(line)}`);
+    fs.writeFileSync(path.join(to, rel), text.replace(line, instead));
+  }
+  const manifest = storeManifest(JSON.parse(fs.readFileSync(path.join(from, 'manifest.json'), 'utf-8')));
+  fs.writeFileSync(path.join(to, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  return manifest;
+}
+
+/** Every file a module worker loads through static imports, itself included, relative to `dir`. */
+export function moduleReferences(dir, entry) {
+  const seen = new Set();
+  const visit = (rel) => {
+    if (seen.has(rel)) return;
+    seen.add(rel);
+    const file = path.join(dir, rel);
+    if (!fs.existsSync(file)) return;
+    const source = fs.readFileSync(file, 'utf-8');
+    for (const spec of source.matchAll(/^\s*import\s+(?:[^'"]*?\s+from\s+)?['"](\.{1,2}\/[^'"]+)['"]/gm)) {
+      visit(path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec[1])));
+    }
+  };
+  visit(entry);
+  return [...seen];
 }
 
 /** The detector's worker: Chrome's module worker imports it, and Firefox loads it alone. */

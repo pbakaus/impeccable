@@ -11,8 +11,9 @@
  *    exists in extension/.
  * 3. Packages extension.zip (Chrome Web Store) and extension-firefox.zip (AMO).
  *    The store zip's manifest holds the walk content scripts to the web app's
- *    production hosts; the source manifest keeps staging and localhost for
- *    Load unpacked.
+ *    production hosts, and the store build leaves the account out and refuses
+ *    staging and this machine's hosts in code (extension/shared/build.js);
+ *    the source keeps all of it for Load unpacked.
  *
  * The source `extension/manifest.json` is the Chrome manifest. The Firefox
  * variant is derived at build time: the detector's background worker is
@@ -36,7 +37,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DETECTOR_WORKER, firefoxManifest as deriveFirefoxManifest, isFirefoxFile, storeManifest } from './lib/extension-manifests.js';
+import { DETECTOR_WORKER, firefoxManifest as deriveFirefoxManifest, isFirefoxFile, moduleReferences, stageStore } from './lib/extension-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -117,23 +118,6 @@ function serviceWorkerReferences(source) {
   return refs;
 }
 
-/** Every file a module worker loads through static imports, itself included. */
-function moduleReferences(dir, entry) {
-  const seen = new Set();
-  const visit = (rel) => {
-    if (seen.has(rel)) return;
-    seen.add(rel);
-    const file = path.join(dir, rel);
-    if (!fs.existsSync(file)) return;
-    const source = fs.readFileSync(file, 'utf-8');
-    for (const spec of source.matchAll(/^\s*import\s+(?:[^'"]*?\s+from\s+)?['"](\.{1,2}\/[^'"]+)['"]/gm)) {
-      visit(path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec[1])));
-    }
-  };
-  visit(entry);
-  return [...seen];
-}
-
 /** Throws unless every path `manifest` and its background reference exists under `dir`. */
 function checkReferences(dir, manifest, label) {
   const background = manifest.background?.service_worker;
@@ -175,13 +159,7 @@ function packZip(zipPath, cwd, excludes = []) {
 // --- 3a. Chrome store zip: the source tree with the store manifest ---
 
 const chromeStageDir = path.join(DIST, 'extension-chrome');
-const chromeStoreManifest = storeManifest(chromeManifest);
-fs.rmSync(chromeStageDir, { recursive: true, force: true });
-fs.cpSync(EXT_DIR, chromeStageDir, {
-  recursive: true,
-  filter: (src) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(src)),
-});
-fs.writeFileSync(path.join(chromeStageDir, 'manifest.json'), JSON.stringify(chromeStoreManifest, null, 2) + '\n');
+const chromeStoreManifest = stageStore(EXT_DIR, chromeStageDir);
 console.log(`Staged ${path.relative(ROOT, chromeStageDir)}/ (Chrome store manifest)`);
 checkReferences(chromeStageDir, chromeStoreManifest, `${path.relative(ROOT, chromeStageDir)}/`);
 packZip(path.join(DIST, 'extension.zip'), chromeStageDir, ['*.DS_Store']);

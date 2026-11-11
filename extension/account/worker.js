@@ -2,12 +2,13 @@
 // is taken only when Chrome itself says it came from one of this extension's popup pages: never from a page, a
 // content script, another extension, or the walk's side panel. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, and the personas' names.
+import { BUILD } from '../shared/build.js';
 import { PRODUCTION, issuerAllowed } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
-/** A build loaded unpacked: the store adds `update_url`. Only such a build may sign in to another server. */
-const UNPACKED = !('update_url' in chrome.runtime.getManifest());
+/** A development build (shared/build.js): only such a build may sign in to another server. */
+const UNPACKED = BUILD.devHosts;
 
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);

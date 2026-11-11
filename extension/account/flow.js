@@ -16,8 +16,8 @@ const LOCAL = /^http:\/\/api\.localhost(:\d{1,5})?$/;
 export const resourceFor = (issuer) => `${issuer}/extension/v1`;
 
 /**
- * Whether `issuer` may be signed in to: production in every build; staging and the local stand-in only in a build
- * loaded unpacked (one with no `update_url`, which the store adds).
+ * Whether `issuer` may be signed in to: production in every build; staging and the local stand-in only in a
+ * development build (extension/shared/build.js `devHosts`).
  */
 export function issuerAllowed(issuer, unpacked) {
   if (issuer === PRODUCTION) return true;

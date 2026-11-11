@@ -4,7 +4,8 @@
  * Three tabs over the popup: Scan (the detector, popup.js, as it always was), Personas (only when signed in) and
  * Settings (who is signed in, Sign in, Sign out). It asks the background worker (account/worker.js) and holds no
  * token itself. The tabs show only when the account server takes extension sign-ins: when it answers 404, or this
- * browser has no `chrome.identity` (Firefox shares this page), the popup is the detector alone, as before.
+ * browser has no `chrome.identity` (Firefox shares this page), the popup is the detector alone, as before. The store
+ * build does not load this script at all, so its popup asks no server anything.
  */
 (() => {
   const WORDS = {
