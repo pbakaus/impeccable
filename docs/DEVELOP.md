@@ -74,6 +74,15 @@ skill/                           -> dist/
 
 Each provider gets its own output directory.
 
+### Try the local build of the Chrome extension
+
+Run `bun run build:extension` once first: it writes the detector into `extension/detector/`. Then:
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top right).
+3. Click **Load unpacked**.
+4. Choose the `extension` folder of this repository.
+
 ## Build System Details
 
 The build system uses a factory pattern under `scripts/`:
