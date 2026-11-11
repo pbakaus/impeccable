@@ -7277,6 +7277,11 @@ New fixture `low-contrast-resting-states.html`: a stepper's inactive item beside
 
 ## Recorded 2026-10-26: DESIGN.md sidecar content provenance (#846)
 
+Merge review, 2026-11-11: the eight `context-full*` / local-over-shared
+expectations that gain a fingerprint finding now include the current main
+staleness notice. The decoded diff changes only that final notice; the
+fingerprint findings and all other output remain unchanged.
+
 The sidecar check uses a versioned SHA-256 fingerprint with CRLF normalized to
 LF. Timestamps no longer establish freshness. Sidecars without a supported
 fingerprint are unverified; only a valid fingerprint mismatch is stale.
