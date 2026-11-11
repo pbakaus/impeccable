@@ -74,9 +74,13 @@ impl Client {
             // host decides the NO_PROXY match for the whole client.
             impeccable_context::http::agent_builder(&account.issuer)
         };
+        // ureq 2 gives timeout_connect precedence over its overall timeout.
+        // DNS remains synchronous and unbounded in ureq; this cap bounds the
+        // connect operation, not resolution. Never move an upload to a detached
+        // worker: it could transmit after the caller's timeout or opt-out.
         let agent = builder
-            .timeout_connect(Duration::from_secs(10))
-            .timeout_read(Duration::from_secs(30))
+            .timeout_connect(deadline.min(Duration::from_secs(10)))
+            .timeout_read(deadline.min(Duration::from_secs(30)))
             .timeout(deadline)
             .redirects(0)
             .build();

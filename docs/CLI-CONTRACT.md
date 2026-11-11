@@ -2213,3 +2213,217 @@ Existing pins cannot be overwritten with a different digest.
 **A new Loop version needs an engine release before `loop update` can see it.**
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
+
+## Setup status
+
+Exact output strings:
+
+- `Usage: impeccable setup status|on|off|forget`
+- `Setup status: on. This machine reports where Impeccable is installed, once a day.`
+- `Setup status: off.`
+- `Setup status: couldn't save the setting.`
+- `Setup status: off, and what this machine reported was deleted.`
+- `Setup status is off, but deleting what this machine reported couldn't be confirmed. Run impeccable setup forget again.`
+
+`impeccable setup [status|on|off|forget]` controls setup reports independently
+of design health. `status` (the default), `on`, and `off` exit 0 after reading
+or saving the local choice; a failed save exits 1. `forget` turns sync off
+first, then posts `{}` to `/cli/v1/setup/forget`. It exits 0 only after the
+service confirms deletion, otherwise 1 with sync still off.
+
+Sign-in requests `setup:write` only when advertised in `scopes_supported`.
+Only a token response granting that scope enables reports. After sign-in,
+and on normal context, detect, doctor, whoami, agents, skills, install,
+update, or check commands, a detached worker reports at most once per day
+per sign-in and service. Hooks and internal verbs never schedule uploads.
+CI, telemetry opt-outs, and `setup off` suppress them. Unreadable local state
+suppresses uploads. Reporting prints nothing, including with `--json`,
+`--quiet`, and `--github`, and never changes a command's exit code or waits
+for the network. The worker makes one upload with a five-second timeout;
+404 and all other failures are silent and wait until the next daily attempt.
+The daily attempt is claimed before inventory collection, including failed
+probes. Inventory has a five-second deadline that terminates its process
+group or tree, including MCP probes. Controls save their choice independently
+of network work and cancel pending claims. Forget turns sync off before
+requesting deletion; the service's forget fence rejects older reports still
+in flight. A claim cannot use a replacement sign-in's token.
+
+Reports contain only payload v1 fields accepted by SETUP_STATUS: an opaque
+random machine key (a persisted SHA-256 digest of random bytes), a
+report UUID, time, OS, release versions, approved harness skill versions,
+approved installation owners and hook events, instruction presence, and
+MCP, resource and transaction counts. Paths, matchers, commands, server
+names, and unknown owner names are excluded. Unknown installations are
+counted. Local choice, machine key and daily attempts live in
+`$IMPECCABLE_HOME/setup.json`; scope consent is bound to the saved sign-in.
+The hidden `setup-report` worker is an implementation entrypoint and prints
+nothing.
+
+## Foundations sync (REN-1581)
+
+After the same full git-repo `detect` that supplies design health, the CLI sends
+`POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
+requests that scope only when OAuth metadata lists it in `scopes_supported`.
+Existing sign-ins without the scope send nothing to this route.
+
+The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
+`productType` and `items`, plus an optional `label`: the repo's name by design
+health's label recipe, sent only when the remote supplies a usable one. Scan
+identity, time, repo key and label match design health.
+`productType` is `null`: the detector does not classify products. Non-advisory
+built-in `slop` findings establish `no-generic-ai-patterns: failing`;
+`low-contrast` findings establish `readable-contrast: failing`. Absent findings
+do not establish a pass: ignores, regex-only files and unresolved styles leave
+coverage incomplete. No item is sent as `checked` or `covered`, and every other
+catalog item is omitted because the scan supplies no corresponding check.
+
+This follows `health off`, CI and telemetry opt-outs, including both the working
+directory and scanned root. Hooks and partial scans never upload. The request
+has a two-second deadline, no retries and no terminal messages. A 404 or any
+other failure leaves the health request, detect output and exit code intact.
+Design health notices are also suppressed for `--json` (including `-json`),
+`--quiet` and `--github`. The saved sync choice is rechecked between requests,
+so `health off` during a foundations upload prevents the health upload.
+
+## `health design on|off`
+
+Exact output strings:
+
+- `Usage: impeccable health design on|off`
+- `DESIGN.md sync: on. Your DESIGN.md uploads to your Impeccable account whenever it changes. To stop: impeccable health design off`
+- `DESIGN.md sync: off.`
+- `DESIGN.md sync: couldn't save the setting: {e}.`
+- `DESIGN.md sync: couldn't save the setting: another impeccable command is using it; try again.`
+- `Design health: couldn't save the setting: another impeccable command is using it; try again.`
+- `Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off`
+
+`impeccable health design on` opts into uploading DESIGN.md file contents;
+`impeccable health design off` stops those uploads. The setting is `design`
+in `$IMPECCABLE_HOME/health.json`. The single default,
+`DESIGN_SYNC_DEFAULT_ON`, is `true`. An explicit off wins, including for existing
+sign-ins once their grant holds the scope. Both commands exit 0 after saving,
+or 1 if the setting cannot be saved. Other arguments print
+`Usage: impeccable health design on|off` and exit 1.
+
+After the same full git-root `detect` that triggers design health, this
+sync requires health sync on, a signed-in account with `design:write`, CI
+unset, and no telemetry opt-out in either the invocation or scanned root.
+Sign-in requests `design:write` only when `scopes_supported` advertises it.
+Hooks, partial scans, and non-repos never upload. The first successful upload
+per sign-in prints N1 to stderr. `--json` (including `-json`), `--quiet` and
+`--github` suppress it without marking it shown. A login-keyed marker in the
+account store prevents repeats; a new sign-in hears it again. If saving the
+marker fails, the notice still prints and the upload is kept. Uploads and
+notices never change detect's exit code. One request
+has a two-second elapsed-time budget, no retries; busy upload or lifecycle
+locks skip it. Credential and file/git preparation run in bounded read workers
+that cannot upload. HTTP connect/read timeouts are capped at the remaining
+budget. DNS resolution remains synchronous and unbounded in ureq.
+A 404 is quietly deferred, as are all other failures.
+
+The upload takes a consistent, generation-matched state/credential snapshot
+under the lifecycle lock without waiting or prompting. An expired token can be
+renewed by the hidden `health-design-refresh` verb: a detached renewal-only
+process receives no file content, finishes any rotation under the ordinary
+lifecycle lock and timeout, and persists credentials even after detect stops
+waiting. If renewal cannot finish within the upload budget, that upload skips.
+The hidden verb accepts no arguments and emits no output.
+
+`health design off`, `health off`, and `health forget` share the uploader's
+advisory `$IMPECCABLE_HOME/design.lock`, waiting at most three seconds for it.
+The uploader holds admission continuously from its final settings/generation
+check through the POST and digest save, and checks the design setting again
+before saving. Once disabling returns success, no earlier upload can start a
+POST or save success. A busy disabling command fails rather than claiming off.
+If the bounded lock wait expires, the existing setting-save error uses the
+cause `another impeccable command is using it; try again`.
+
+`POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
+text, sidecar, label?}`. Repo keying matches design health. Optional `label`
+uses the same repo-name recipe as design health, derived from the normalized
+origin remote, with no folder-name fallback. It is omitted when unavailable;
+backslashes are refused. `changedAt` is the observation time, so a previously
+unsynced old file fits the server's clock window. DESIGN.md must be nonblank
+UTF-8, contain no NUL, and fit 64 KiB;
+the JSON body must fit 160 KiB. The optional sidecar copies only
+`colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
+`.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
+64-entry and short-string bounds. Invalid or absent metadata sends null.
+Components and narrative are never copied. The repo root handle is acquired
+before Git establishes identity and retained while the document is read. The
+pathname must still identify that directory before and after reading, checked
+by device/inode on Unix and volume/file id on Windows; mismatches fail closed.
+Reads use directory handles and refuse symlink files, sidecar directory links,
+symlink roots, and non-regular files without blocking. Windows permits resident
+cloud-backed files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
+
+Only the hash of successfully uploaded text and selected metadata is saved
+under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
+Unchanged content is skipped; failed uploads remain eligible on the next
+scan. A new sign-in can upload the same repo again. Forget advances a local
+`designGeneration` before contacting the service. Both off commands advance it
+as well, so a late or previously prepared upload
+cannot suppress a later upload after sync is turned back on.
+Generated provider output is not involved.
+### Critique history sync
+
+Exact output strings:
+
+- `Usage: impeccable critiques status|on|off|forget`
+- `Critique sync: on.`
+- `Critique sync: on. Each critique report you save uploads to your Impeccable account. To stop: impeccable critiques off`
+- `Critique sync: off.`
+- `Critique sync: couldn't save the setting.`
+- `Critique history deleted; sync is off.`
+- `Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.`
+- `Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off`
+
+`impeccable critiques [status|on|off|forget]` manages the local
+`IMPECCABLE_HOME/critiques.json` setting. The default is on
+(`CRITIQUE_SYNC_DEFAULT_ON = true`); an explicit off wins. This also applies
+to existing sign-ins once their grant holds the scope. `on` enables uploading saved report
+contents; `off` stops uploads. `forget` first saves off, then posts `{}` to
+`/cli/v1/critiques/forget`. A 404 or other unconfirmed deletion leaves sync off,
+prints the unconfirmed-deletion message above, and exits 1. Only a successful
+response containing a deletion count exits 0 and claims deletion.
+Status reports the saved preference, independent of sign-in or CI.
+
+After a successful `critique-storage write`, the CLI makes at most one
+best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
+the storage verb's exit code. The first successful upload per sign-in appends
+N2 to the critique-storage write step's stdout. `--json` (including `-json`),
+`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+marker in the account store prevents repeats; a new sign-in hears it again.
+If saving the marker fails, the notice still prints and the upload is kept. It never
+uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
+preferences skip uploads. Credential reads share the two-second budget and
+never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
+renews expired tokens through `Session::access_token_within`, without waiting
+for a busy lifecycle lock. The parent waits only within its remaining budget;
+if renewal is late, it skips this upload. The renewal process can finish and
+persist token rotation after the parent exits and can never upload a report.
+Connection and read timeouts are capped at the remaining request budget.
+ureq's synchronous DNS lookup remains unbounded.
+Native projects follow the same report-save path.
+
+Sign-in requests `critiques:write` only when advertised in
+`scopes_supported`. Payload v1 maps saved `target`, `total_score`,
+`max_score`, `na_heuristics`, and severity counts to `target`, `score`,
+`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`body` is passed separately to the save callback, never recovered from
+frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
+inputs must be regular files, never final symlinks or reparse points, with a
+64 KB size check on the opened handle before reading and a bounded read to
+catch growth. Absolute temporary files outside the project remain valid.
+Encoded upload requests over 80 KB are silently skipped.
+
+The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
+admission and the entire POST with `on`, `off` and `forget`. An uploader
+does not wait for this lock; preference commands wait at most three seconds.
+After a successful `off` or `forget`, no earlier uploader can start a POST.
+A fresh UUID identifies each saved report; `createdAt` is its save time.
+Optional `repoKey` uses design health's remote normalization and local repo ID,
+including from subdirectories. With that key, a valid remote repository name
+is sent as optional `label`, using design health's label recipe. Local-only
+repos and invalid names omit `label`. No label is sent without a repo key.

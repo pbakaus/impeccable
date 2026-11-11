@@ -23,6 +23,22 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         return 0;
     };
     let rest = &args[1..];
+    // A small allowlist excludes every hook and internal verb. All I/O beyond
+    // the cheap daily gate belongs to a detached process.
+    if matches!(
+        verb,
+        "context"
+            | "detect"
+            | "doctor"
+            | "whoami"
+            | "agents"
+            | "skills"
+            | "install"
+            | "update"
+            | "check"
+    ) {
+        crate::setup_report::schedule(io);
+    }
     match verb {
         "--help" | "-h" => {
             io.out(impeccable_detect::ROOT_USAGE);
@@ -49,10 +65,21 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect" => detect(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
-        "login" => impeccable_account::run_login(rest, io),
+        "login" => {
+            let code = impeccable_account::run_login(rest, io);
+            if code == 0 {
+                crate::setup_report::schedule(io);
+            }
+            code
+        }
+        "setup" => impeccable_account::setup::run(rest, io),
+        "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
+        "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
+        "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
@@ -65,7 +92,19 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
         "surface-brief" => impeccable_context::run_surface_brief(rest, io),
-        "critique-storage" => impeccable_context::run_critique_storage(rest, io),
+        "critique-storage" => {
+            let mut saved = None;
+            let code = impeccable_context::critique_storage::run_with_saved(rest, io, &mut |s| {
+                saved = Some(s)
+            });
+            if let Some(snapshot) = saved {
+                let quiet = rest
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
+                impeccable_account::critiques::after_save(io, &snapshot, quiet);
+            }
+            code
+        }
         "audit-storage" => impeccable_context::run_audit_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
@@ -173,7 +212,29 @@ fn detect(
     if let Some(full) = report {
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();
+        // Source scans can establish failures, but a missing finding cannot
+        // establish a pass (regex-only files, ignores and unresolved styles).
+        let mut foundations = std::collections::BTreeMap::new();
+        for f in &full.findings {
+            if f.advisory == Some(true) {
+                continue;
+            }
+            let id = if f.antipattern == "low-contrast" {
+                Some("readable-contrast")
+            } else if impeccable_core::registry::ANTIPATTERNS
+                .iter()
+                .any(|r| r.id == f.antipattern && r.category == "slop")
+            {
+                Some("no-generic-ai-patterns")
+            } else {
+                None
+            };
+            if let Some(id) = id {
+                foundations.insert(id.to_string(), "failing".to_string());
+            }
+        }
         let scan = impeccable_account::health::Scan {
+            foundations,
             root: full.root,
             files_scanned: full.files_scanned,
             hits: full
@@ -190,7 +251,9 @@ fn detect(
             engine_version: VERSION.to_string(),
             started,
         };
-        let quiet = args.iter().any(|a| a == "--quiet");
+        let quiet = args
+            .iter()
+            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code
@@ -223,6 +286,11 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "setup",
+    "setup-report",
+    "health-design-refresh",
+    "critiques",
+    "critiques-refresh",
     "pro-refresh",
     "agents",
     "loop",
@@ -281,11 +349,16 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }
-            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+            named.extend(
+                arm.split('|')
+                    .map(|v| v.trim().trim_matches('"').to_string()),
+            );
         }
         assert!(named.len() > 30, "parsed {named:?}");
         let scans = ["detect", "hook", "hook-before-edit"];

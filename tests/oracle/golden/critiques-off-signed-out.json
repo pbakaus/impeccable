@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "Critique sync: on. Each critique report you save uploads to your Impeccable account. To stop: impeccable critiques off\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Critique sync: off.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Critique sync: off.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".oracle-home/.impeccable/critiques.json": "{\"sync\":false}"
+  }
+}
