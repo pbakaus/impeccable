@@ -8,6 +8,8 @@ publish.workspace = true
 [features]
 # See crates/account: lets a test or rehearsal build trust its own Pro release key.
 test-release-keys = ["impeccable-account/test-release-keys"]
+# Staging end-to-end only: lets IMPECCABLE_MCP_URL point loop connect at another https MCP server.
+test-mcp-url = []
 
 [dependencies]
 impeccable-account = { workspace = true }
