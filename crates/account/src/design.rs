@@ -123,7 +123,14 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             return;
         };
         if enabled_generation(&io.env, generation) {
-            crate::stale_grant::emit(io, &account, login, Some(crate::oauth::DESIGN_SCOPE), quiet);
+            crate::stale_grant::emit(
+                io,
+                &account,
+                login,
+                Some(crate::oauth::DESIGN_SCOPE),
+                remaining(started).unwrap_or_default(),
+                quiet,
+            );
         }
         return;
     }
@@ -151,7 +158,14 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             return;
         };
         if enabled_generation(&io.env, generation) {
-            crate::stale_grant::emit(io, &account, login, Some(crate::oauth::DESIGN_SCOPE), quiet);
+            crate::stale_grant::emit(
+                io,
+                &account,
+                login,
+                Some(crate::oauth::DESIGN_SCOPE),
+                remaining(started).unwrap_or_default(),
+                quiet,
+            );
         }
         return;
     }

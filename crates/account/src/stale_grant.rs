@@ -11,13 +11,17 @@ use std::time::Duration;
 const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
 const DEADLINE: Duration = Duration::from_secs(2);
 
-pub(crate) fn offers(account: &Account, scope: &str) -> bool {
+/// `within` is what is left of the caller's own wait: the check never extends it.
+pub(crate) fn offers(account: &Account, scope: &str, within: Duration) -> bool {
+    if within.is_zero() {
+        return false;
+    }
     let account = account.clone();
     let scope = scope.to_string();
     // Metadata is a credential-free read. Bound DNS as well as HTTP without
     // leaving an upload running after the caller stops waiting.
-    crate::session::read_within(DEADLINE, move || {
-        oauth::metadata(&Client::with_deadline(&account, DEADLINE), &account).is_ok_and(|m| {
+    crate::session::read_within(within, move || {
+        oauth::metadata(&Client::with_deadline(&account, within), &account).is_ok_and(|m| {
             match scope.as_str() {
                 oauth::HEALTH_SCOPE => m.health,
                 oauth::FOUNDATIONS_SCOPE => m.foundations,
@@ -31,8 +35,22 @@ pub(crate) fn offers(account: &Account, scope: &str) -> bool {
     .unwrap_or(false)
 }
 
+fn denied_path(account: &Account, login: u64) -> std::path::PathBuf {
+    account.dir().join(format!("health-denied-{login}"))
+}
+
+/// The service refused this sign-in's health upload (403). Sign-ins from
+/// before 4.9 stored no scopes, so for health only a refusal is evidence.
+pub(crate) fn note_health_denied(account: &Account, login: u64) {
+    let _ = store::write_private(&denied_path(account, login), b"403");
+}
+
 fn holds(account: &Account, state: &State, scope: &str) -> bool {
     match scope {
+        oauth::HEALTH_SCOPE => store::read_private(&denied_path(account, state.login))
+            .ok()
+            .flatten()
+            .is_none(),
         oauth::FOUNDATIONS_SCOPE => state.foundations,
         "setup:write" => store::read_private(&account.dir().join("setup-grant.json"))
             .ok()
@@ -49,11 +67,21 @@ pub(crate) fn status(io: &Io, scope: &str) -> bool {
     };
     Store::new(&account)
         .state()
-        .is_some_and(|s| s.signed_in && !holds(&account, &s, scope) && offers(&account, scope))
+        .is_some_and(|s| {
+            s.signed_in && !holds(&account, &s, scope) && offers(&account, scope, DEADLINE)
+        })
 }
 
 /// `scope` is absent for a health 403, which is itself enough evidence.
-pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, scope: Option<&str>, quiet: bool) {
+/// `within` is what is left of the upload's wait; with none left the notice stays owed.
+pub(crate) fn emit(
+    io: &mut Io,
+    account: &Account,
+    login: u64,
+    scope: Option<&str>,
+    within: Duration,
+    quiet: bool,
+) {
     if quiet {
         return;
     }
@@ -65,7 +93,7 @@ pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, scope: Option<&st
     }
     // The metadata read happens before the sign-in lock, so a slow service
     // never holds up a concurrent sign-in or token refresh.
-    if scope.is_some_and(|s| !offers(account, s)) {
+    if scope.is_some_and(|s| !offers(account, s, within)) {
         return;
     }
     // Serialize across features and processes, and reject a replaced sign-in.
@@ -117,19 +145,43 @@ mod tests {
         store.write_state(&state(&account, 1)).unwrap();
         drop(lock);
         let (mut io, cap) = Io::captured("", home.clone(), Default::default());
-        emit(&mut io, &account, 1, None, true);
+        emit(&mut io, &account, 1, None, DEADLINE, true);
         assert!(cap.stderr.borrow().is_empty());
-        emit(&mut io, &account, 1, None, false);
+        emit(&mut io, &account, 1, None, DEADLINE, false);
         assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
         // A scope-gated feature shares health's marker, without metadata I/O.
-        emit(&mut io, &account, 1, Some(oauth::CRITIQUES_SCOPE), false);
-        emit(&mut io, &account, 1, None, false);
+        emit(&mut io, &account, 1, Some(oauth::CRITIQUES_SCOPE), DEADLINE, false);
+        emit(&mut io, &account, 1, None, DEADLINE, false);
         assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
         store.write_state(&state(&account, 2)).unwrap();
-        emit(&mut io, &account, 1, None, false);
+        emit(&mut io, &account, 1, None, DEADLINE, false);
         assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
-        emit(&mut io, &account, 2, None, false);
+        emit(&mut io, &account, 2, None, DEADLINE, false);
         assert_eq!(&*cap.stderr.borrow(), NOTICE.repeat(2).as_bytes());
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn no_time_left_skips_the_metadata_read_and_leaves_the_notice_owed() {
+        // Catches (review, Greptile on 44c6aa146): the check starting a fresh
+        // two-second wait after the upload had already spent its own.
+        let home = std::env::temp_dir().join(format!("stale-budget-{}", oauth::random_b64(12)));
+        // A non-routable address: any metadata read here would hang, not fail fast.
+        let account = Account {
+            home: home.clone(),
+            issuer: "http://10.255.255.1".into(),
+        };
+        let store = Store::new(&account);
+        let lock = store.lock().unwrap();
+        store.write_state(&state(&account, 1)).unwrap();
+        drop(lock);
+        let started = std::time::Instant::now();
+        assert!(!offers(&account, oauth::CRITIQUES_SCOPE, Duration::ZERO));
+        let (mut io, cap) = Io::captured("", home.clone(), Default::default());
+        emit(&mut io, &account, 1, Some(oauth::CRITIQUES_SCOPE), Duration::ZERO, false);
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert!(cap.stderr.borrow().is_empty());
+        assert!(!account.dir().join("stale-grant-notice-1").exists());
         std::fs::remove_dir_all(home).unwrap();
     }
 
@@ -152,7 +204,7 @@ mod tests {
                 std::thread::spawn(move || {
                     let (mut io, cap) = Io::captured("", account.home.clone(), Default::default());
                     barrier.wait();
-                    emit(&mut io, &account, 1, None, false);
+                    emit(&mut io, &account, 1, None, DEADLINE, false);
                     let output = cap.stderr.borrow().clone();
                     output
                 })

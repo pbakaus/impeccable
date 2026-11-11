@@ -714,10 +714,6 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
             "Critique sync: on, but this sign-in can't save yet. Run impeccable login.\n",
         ),
         (
-            vec!["health", "status"],
-            "Design health: on, but this sign-in can't save yet. Run impeccable login.\n",
-        ),
-        (
             vec!["setup", "status"],
             "Setup status: on, but this sign-in can't save yet. Run impeccable login.\n",
         ),
@@ -726,6 +722,17 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
         assert!(out.status.success());
         assert_eq!(String::from_utf8_lossy(&out.stdout), expected);
     }
+    // Sign-ins from before 4.9 stored no scopes, so a missing health:write in
+    // the record is not evidence: status stays plain until the service refuses
+    // an upload (review: Cursor and Greptile on 44c6aa146)...
+    let status = impeccable(&env, root, &["health", "status"])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&status.stdout).starts_with("Design health: on. Each full"),
+        "{}",
+        String::from_utf8_lossy(&status.stdout)
+    );
     assert!(Command::new("git")
         .args(["init", "-q"])
         .current_dir(root)
@@ -737,6 +744,14 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
     assert!(fake.hits("/cli/v1/health/scans") > 0);
     assert!(!String::from_utf8_lossy(&out.stderr).contains(STALE_NOTICE));
     assert!(!String::from_utf8_lossy(&out.stderr).contains("can't save scan results"));
+    // ...and the service refusing it (403) is what makes status say so.
+    let status = impeccable(&env, root, &["health", "status"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&status.stdout),
+        "Design health: on, but this sign-in can't save yet. Run impeccable login.\n"
+    );
     login(&env);
     let before = fake.hits(metadata);
     for args in [

@@ -151,6 +151,9 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             &account,
             session.state.login,
             Some(crate::oauth::FOUNDATIONS_SCOPE),
+            // The same bound as the foundations request a granted sign-in
+            // makes here instead, so a stale one never waits longer.
+            Duration::from_secs(2),
             quiet,
         );
     }
@@ -174,7 +177,15 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             }
         }
         Err(ApiError::Status { status: 403, .. }) => {
-            crate::stale_grant::emit(io, &account, session.state.login, None, quiet);
+            crate::stale_grant::note_health_denied(&account, session.state.login);
+            crate::stale_grant::emit(
+                io,
+                &account,
+                session.state.login,
+                None,
+                Duration::ZERO,
+                quiet,
+            );
         }
         Err(_) => {}
     }

@@ -150,6 +150,9 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
                 &account,
                 state.login,
                 Some(crate::oauth::CRITIQUES_SCOPE),
+                Duration::from_secs(2)
+                    .checked_sub(started.elapsed())
+                    .unwrap_or_default(),
                 quiet,
             );
         }
@@ -189,6 +192,9 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
             &account,
             session.state.login,
             Some(crate::oauth::CRITIQUES_SCOPE),
+            Duration::from_secs(2)
+                .checked_sub(started.elapsed())
+                .unwrap_or_default(),
             quiet,
         );
         return;
