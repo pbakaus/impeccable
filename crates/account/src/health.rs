@@ -124,7 +124,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // Its own request and consent: a switched-off route (404) or any other
     // failure is silent and never prevents the health upload.
     if session.state.foundations {
-        let foundation_body = json!({
+        let mut foundation_body = json!({
             "version": 1,
             "scanId": body["scanId"],
             "repoKey": repo.key,
@@ -132,6 +132,9 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             "productType": null,
             "items": scan.foundations,
         });
+        if let Some(label) = &repo.label {
+            foundation_body["label"] = label.clone().into();
+        }
         let _ = Client::with_deadline(&account, Duration::from_secs(2)).post_json(
             &format!("{}/cli/v1/foundations", account.issuer),
             &token,

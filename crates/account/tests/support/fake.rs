@@ -166,7 +166,10 @@ impl Fake {
     pub fn wait_for_hits(&self, path: &str, n: usize) {
         let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while self.hits(path) < n {
-            assert!(std::time::Instant::now() < until, "{path} never reached {n} hits");
+            assert!(
+                std::time::Instant::now() < until,
+                "{path} never reached {n} hits"
+            );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
@@ -186,7 +189,10 @@ impl Fake {
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
             // Windows allows the file backend only inside the user profile.
-            ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
+            (
+                "USERPROFILE".to_string(),
+                home.to_string_lossy().into_owned(),
+            ),
         ])
     }
 }
@@ -394,7 +400,26 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (403, vec![], vec![])
                 } else {
                     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                    assert_eq!(v.as_object().unwrap().len(), 6);
+                    // Exactly the contract's keys; `label` is optional (pristine#4721).
+                    let keys: std::collections::BTreeSet<&str> =
+                        v.as_object().unwrap().keys().map(String::as_str).collect();
+                    let required: std::collections::BTreeSet<&str> = [
+                        "version",
+                        "scanId",
+                        "repoKey",
+                        "scannedAt",
+                        "productType",
+                        "items",
+                    ]
+                    .into();
+                    assert!(
+                        keys.is_superset(&required) && keys.len() <= required.len() + 1,
+                        "{keys:?}"
+                    );
+                    assert!(
+                        keys.iter().all(|k| required.contains(k) || *k == "label"),
+                        "{keys:?}"
+                    );
                     assert_eq!(v["version"], 1);
                     assert_eq!(v["scanId"].as_str().unwrap().len(), 36);
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
@@ -440,11 +465,17 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     match parse_scan(&v) {
                         Ok(()) => {
                             record.lock().unwrap().scans.push(v);
-                            json(200, serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }))
+                            json(
+                                200,
+                                serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }),
+                            )
                         }
                         Err(field) => {
                             record.lock().unwrap().refused.push((field.to_string(), v));
-                            json(400, serde_json::json!({ "error": "invalid_request", "field": field }))
+                            json(
+                                400,
+                                serde_json::json!({ "error": "invalid_request", "field": field }),
+                            )
                         }
                     }
                 }
@@ -651,67 +682,135 @@ impl Fake {
 /// window is left out: tests don't control the CLI's clock.
 pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
     use serde_json::Value;
-    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+    let hex = |s: &str, n: usize| {
+        s.len() == n
+            && s.bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    };
     let count = |v: &Value| v.as_u64().is_some_and(|n| n <= 1_000_000);
     let o = b.as_object().ok_or("not an object")?;
-    const KEYS: &[&str] = &["version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage", "rulesetId",
-        "fingerprintVersion", "engineVersion", "filesScanned", "findings", "advisory", "rules", "fingerprints",
-        "truncated", "label"];
+    const KEYS: &[&str] = &[
+        "version",
+        "scanId",
+        "repoKey",
+        "streamKey",
+        "scannedAt",
+        "coverage",
+        "rulesetId",
+        "fingerprintVersion",
+        "engineVersion",
+        "filesScanned",
+        "findings",
+        "advisory",
+        "rules",
+        "fingerprints",
+        "truncated",
+        "label",
+    ];
     if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
         return Err("unknown field");
     }
-    if b["version"] != 1 { return Err("version"); }
-    if b["coverage"] != "full" { return Err("coverage"); }
+    if b["version"] != 1 {
+        return Err("version");
+    }
+    if b["coverage"] != "full" {
+        return Err("coverage");
+    }
     let id = b["scanId"].as_str().ok_or("scanId")?;
     let parts: Vec<&str> = id.split('-').collect();
-    if parts.iter().map(|p| p.len()).collect::<Vec<_>>() != [8, 4, 4, 4, 12] || !parts.iter().all(|p| hex(p, p.len())) {
+    if parts.iter().map(|p| p.len()).collect::<Vec<_>>() != [8, 4, 4, 4, 12]
+        || !parts.iter().all(|p| hex(p, p.len()))
+    {
         return Err("scanId");
     }
     for k in ["repoKey", "streamKey", "rulesetId"] {
-        if !b[k].as_str().is_some_and(|s| hex(s, 64)) { return Err("key"); }
+        if !b[k].as_str().is_some_and(|s| hex(s, 64)) {
+            return Err("key");
+        }
     }
     let at = b["scannedAt"].as_str().ok_or("scannedAt")?;
-    if at.len() != 24 || !at.ends_with('Z') || &at[10..11] != "T" { return Err("scannedAt"); }
-    if !b["fingerprintVersion"].as_u64().is_some_and(|n| (1..=1000).contains(&n)) { return Err("fingerprintVersion"); }
+    if at.len() != 24 || !at.ends_with('Z') || &at[10..11] != "T" {
+        return Err("scannedAt");
+    }
+    if !b["fingerprintVersion"]
+        .as_u64()
+        .is_some_and(|n| (1..=1000).contains(&n))
+    {
+        return Err("fingerprintVersion");
+    }
     let ev = b["engineVersion"].as_str().ok_or("engineVersion")?;
-    if ev.len() > 64 || ev.split(['-', '+']).next().unwrap().split('.').count() != 3 { return Err("engineVersion"); }
+    if ev.len() > 64 || ev.split(['-', '+']).next().unwrap().split('.').count() != 3 {
+        return Err("engineVersion");
+    }
     for k in ["filesScanned", "findings", "advisory"] {
-        if !count(&b[k]) { return Err("count"); }
+        if !count(&b[k]) {
+            return Err("count");
+        }
     }
     let rules = b["rules"].as_object().ok_or("rules")?;
-    if rules.len() > 300 { return Err("rules"); }
+    if rules.len() > 300 {
+        return Err("rules");
+    }
     let (mut f, mut a) = (0, 0);
     for (id, r) in rules {
-        let ok = !id.is_empty() && id.len() <= 80
-            && id.bytes().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
-            && id.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'/' || c == b'-');
+        let ok = !id.is_empty()
+            && id.len() <= 80
+            && id
+                .bytes()
+                .next()
+                .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && id
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'/' || c == b'-');
         let r = r.as_object().ok_or("rules")?;
-        if !ok || r.keys().any(|k| k != "findings" && k != "advisory") || !count(&r["findings"]) || !count(&r["advisory"]) {
+        if !ok
+            || r.keys().any(|k| k != "findings" && k != "advisory")
+            || !count(&r["findings"])
+            || !count(&r["advisory"])
+        {
             return Err("rules");
         }
         f += r["findings"].as_u64().unwrap();
         a += r["advisory"].as_u64().unwrap();
     }
-    if Some(f) != b["findings"].as_u64() || Some(a) != b["advisory"].as_u64() { return Err("rules do not sum"); }
+    if Some(f) != b["findings"].as_u64() || Some(a) != b["advisory"].as_u64() {
+        return Err("rules do not sum");
+    }
     if b["fingerprints"].is_null() {
-        if b["truncated"] != true { return Err("fingerprints"); }
+        if b["truncated"] != true {
+            return Err("fingerprints");
+        }
     } else {
-        if !(b.get("truncated").is_none() || b["truncated"] == false) { return Err("truncated"); }
+        if !(b.get("truncated").is_none() || b["truncated"] == false) {
+            return Err("truncated");
+        }
         let fps = b["fingerprints"].as_object().ok_or("fingerprints")?;
-        if fps.len() > 5000 { return Err("fingerprints"); }
+        if fps.len() > 5000 {
+            return Err("fingerprints");
+        }
         let mut total = 0;
         for (fp, n) in fps {
-            if !hex(fp, 32) || !count(n) || n == 0 { return Err("fingerprints"); }
+            if !hex(fp, 32) || !count(n) || n == 0 {
+                return Err("fingerprints");
+            }
             total += n.as_u64().unwrap();
         }
-        if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
+        if Some(total) != b["findings"].as_u64() {
+            return Err("fingerprints do not sum");
+        }
     }
     if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
         let l = l.as_str().ok_or("label")?.trim();
-        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
+        if l.is_empty()
+            || l.chars().count() > 100
+            || l.chars()
+                .any(|c| matches!(c, '@' | ':' | '/') || c.is_control())
+        {
             return Err("label");
         }
     }
-    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
+    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 {
+        return Err("too_large");
+    }
     Ok(())
 }
