@@ -4,8 +4,10 @@
 //     no page and no content script can open, and which only the worker writes. Never in chrome.storage, which
 //     content scripts can read.
 //   - The access token lives in the worker's memory only, and is fetched again when it runs out or the worker starts.
-//   - One refresh at a time: the server rotates refresh tokens and revokes the grant when one is used twice.
-//   - Signing out ends the grant on the server, then forgets it here.
+//   - One refresh at a time for each server: the server rotates refresh tokens on every use.
+//   - What it is doing is kept on disk as it does it (see STATES), so a worker Chrome ends at any moment starts again
+//     from where it was: a new refresh token is on disk before it is used or anyone hears of it.
+//   - Signing out is at once, here; the server is asked to end the grant after, and again until it answers.
 // Nothing here hands a token to anyone: worker.js answers the popup with facts (signed in, the email), never tokens.
 import {
   CLIENT_ID, authorizeUrl, challengeFor, codeBody, metadataUrl, randomText, readCallback, readMetadata, readTokens, refreshBody, resourceFor, revokeBody,
@@ -43,6 +45,19 @@ const form = { 'content-type': 'application/x-www-form-urlencoded', accept: 'app
 const sealed = { credentials: 'omit', redirect: 'error' };
 
 /**
+ * STATES. Each server's record on disk says where its sign-in is, and is written before each step it names is taken:
+ *   - `signing-in`: the sign-in window is open for the `pending` sign-in (its `state` only; the verifier stays in
+ *     memory). A worker that starts again finds the window gone with the one before it: signed out.
+ *   - `signed-in`: `refresh` is the refresh token.
+ *   - `refreshing`: `refresh` is being traded. Started again, it is traded again: the server takes a refresh token
+ *     just used once more for a while, so a worker ended between the server's answer and the disk keeps its sign-in.
+ *   - `signing-out`: signed out here; the server has yet to hear it. Signed out is no record at all.
+ * Beside the state, `retire` holds refresh tokens the server is still to be told to end (a sign-out, or tokens that
+ * came back after their sign-in was over): asked on each start and each status, until the server answers.
+ */
+const SIGNED_IN = ['signed-in', 'refreshing'];
+
+/**
  * A session against the server `issuer()` names. `fetch` and `store` are the network and the disk; `launch` opens
  * the sign-in window and resolves to the address it came back on.
  *
@@ -57,6 +72,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
   /** The refresh under way for each issuer: a second caller for the same one waits for the first. */
   const refreshing = new Map();
   const doors = new Map();
+  /** Each server's record is changed one change at a time, so no change is lost to another. */
+  const queues = new Map();
 
   async function server(at) {
     if (!doors.has(at)) {
@@ -68,25 +85,62 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     return doors.get(at);
   }
 
-  /** The grant kept for `at`, if it is whole and its own. */
-  const kept = async (at) => {
-    const grant = await store.get(at);
-    return grant?.issuer === at && grant.client === CLIENT_ID && grant.resource === resourceFor(at) && typeof grant.refresh === 'string' ? grant : null;
+  /** `at`'s record, if it is whole and its own. */
+  const record = async (at) => {
+    const kept = await store.get(at);
+    return kept?.issuer === at && kept.client === CLIENT_ID && kept.resource === resourceFor(at) ? { retire: [], ...kept } : null;
   };
 
-  const forget = async (at) => { if (access?.issuer === at) access = null; await store.clear(at); };
+  /** Changes `at`'s record: `change` gets it (or null) and answers the next one, or null for none. Resolves to it. */
+  function edit(at, change) {
+    const done = (queues.get(at) ?? Promise.resolve()).then(async () => {
+      let next = change(await record(at));
+      // Signed out with something still to end is signing out; with nothing, no record at all.
+      if (next && ['signed-out', 'signing-out'].includes(next.state)) next = next.retire.length ? { state: 'signing-out', retire: next.retire } : null;
+      if (next) {
+        const kept = { ...next, issuer: at, resource: resourceFor(at), client: CLIENT_ID };
+        await store.set(at, kept);
+        return kept;
+      }
+      await store.clear(at);
+      return null;
+    });
+    queues.set(at, done.catch(() => undefined));
+    return done;
+  }
+  /** The record moved to `state`, keeping what it must still tell the server; `extra` fields beside it. */
+  const to = (state, extra = {}) => (was) => ({ state, retire: was?.retire ?? [], ...extra });
 
-  /** Trades a code or a refresh token at `at`'s token door; the tokens it ends in are kept for `at` before anything uses them. */
+  /** The grant kept for `at`, if signed in. */
+  const grantOf = async (at) => {
+    const kept = await record(at);
+    return kept && SIGNED_IN.includes(kept.state) && typeof kept.refresh === 'string' ? kept : null;
+  };
+
+  /** Sends `body` to `at`'s token door: `{ tokens }`, or `{ refused }` when the server ended the grant. */
   async function trade(at, body) {
     const { token } = await server(at);
     const answer = await fetch(token, { method: 'POST', headers: form, body, ...sealed });
     const json = await answer.json().catch(() => null);
     if (!answer.ok) return { refused: json?.error === 'invalid_grant' };
     const tokens = readTokens(json);
-    if (!tokens) return { refused: false };
-    await store.set(at, { issuer: at, resource: resourceFor(at), client: CLIENT_ID, refresh: tokens.refresh });
+    return tokens ? { tokens } : { refused: false };
+  }
+
+  /**
+   * Keeps the tokens a trade for `at` came back with, if the sign-in they are for (`expected`, the state it was in)
+   * is still the one on disk; else they are only kept to be ended. The new refresh token is on disk before anyone
+   * uses the access token.
+   */
+  async function keep(at, expected, tokens) {
+    let current = false;
+    await edit(at, (was) => {
+      current = was?.state === expected;
+      return current ? { state: 'signed-in', retire: was.retire, refresh: tokens.refresh } : { ...(was ?? { state: 'signed-out' }), retire: [...(was?.retire ?? []), tokens.refresh] };
+    });
+    if (!current) { void retire(at); return false; }
     access = { token: tokens.access, until: now() + tokens.expiresIn * 1000 - 30_000, issuer: at };
-    return { tokens };
+    return true;
   }
 
   /** Fresh tokens for `at` from its kept refresh token. One at a time for each server. */
@@ -94,12 +148,14 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     if (!refreshing.has(at)) {
       refreshing.set(at, (async () => {
         try {
-          const grant = await kept(at);
+          const grant = await grantOf(at);
           if (!grant) return null;
+          await edit(at, (was) => (was?.refresh === grant.refresh && SIGNED_IN.includes(was.state) ? { ...was, state: 'refreshing' } : was));
           const traded = await trade(at, refreshBody({ refresh: grant.refresh, issuer: at }));
           // The grant ended (revoked, expired, or a refresh token used too often): signed out.
-          if (traded.refused) await forget(at);
-          return traded.tokens ? traded.tokens.access : null;
+          if (traded.refused) await edit(at, (was) => (was?.refresh === grant.refresh ? to('signed-out')(was) : was));
+          if (!traded.tokens) return null;
+          return (await keep(at, 'refreshing', traded.tokens)) ? traded.tokens.access : null;
         } finally {
           refreshing.delete(at);
         }
@@ -126,6 +182,22 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     return null;
   }
 
+  /** Asks `at`'s server to end each refresh token its record still holds to be ended, and forgets those it answered for. */
+  async function retire(at) {
+    const kept = await record(at).catch(() => null);
+    if (!kept?.retire.length) return;
+    const told = [];
+    try {
+      const { revoke } = await server(at);
+      for (const refresh of kept.retire) {
+        const answer = await fetch(revoke, { method: 'POST', headers: form, body: revokeBody({ refresh }), ...sealed }).catch(() => null);
+        // Any answer but the server's own trouble is final (RFC 7009 answers 200 for a token it no longer knows).
+        if (answer && answer.status < 500) told.push(refresh);
+      }
+    } catch { /* not reached: asked again later */ }
+    if (told.length) await edit(at, (was) => (was ? { ...was, retire: was.retire.filter((refresh) => !told.includes(refresh)) } : was)).catch(() => undefined);
+  }
+
   return {
     /**
      * Whether the server takes extension sign-ins at all: its door asked with no token answers 401. A 404 (the door
@@ -139,6 +211,19 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
         return false;
       }
     },
+
+    /**
+     * Picks up where a worker that was ended left the server in use: a sign-in window that went with it is a sign-in
+     * that did not happen, and what is still to be ended is asked again (not waited for).
+     */
+    async recover() {
+      const at = issuer();
+      await edit(at, (was) => (was?.state === 'signing-in' ? to('signed-out')(was) : was));
+      void retire(at);
+    },
+
+    /** Asks the server in use again to end what it has yet to (not waited for). */
+    retry() { void retire(issuer()); },
 
     /** Who is signed in: `{ email, name }`, or null. */
     async me() {
@@ -159,32 +244,30 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       const { authorize } = await server(at);
       const verifier = randomText();
       const state = randomText();
+      await edit(at, to('signing-in', { pending: { state } }));
       const returned = await launch(authorizeUrl({ endpoint: authorize, issuer: at, redirectUri, state, challenge: await challengeFor(verifier) }));
+      const ours = (was) => was?.state === 'signing-in' && was.pending?.state === state;
+      const over = (why) => edit(at, (was) => (ours(was) ? to('signed-out')(was) : was)).then(() => ({ ok: false, why }));
       // The server in use changed while the window was open: this sign-in was for another one, and is dropped.
-      if (issuer() !== at) return { ok: false, why: 'server' };
+      if (issuer() !== at) return over('server');
       const back = readCallback(returned, { redirectUri, state, issuer: at });
-      if (!back.ok) return back;
+      if (!back.ok) return over(back.why);
+      // Only the sign-in still waiting on disk: a window that comes back after another sign-in began is not it.
+      if (!ours(await record(at))) return { ok: false, why: 'pending' };
       const traded = await trade(at, codeBody({ code: back.code, verifier, redirectUri, issuer: at }));
-      return traded.tokens ? { ok: true } : { ok: false, why: 'token' };
+      if (!traded.tokens) return over('token');
+      return (await keep(at, 'signing-in', traded.tokens)) ? { ok: true } : { ok: false, why: 'pending' };
     },
 
-    /**
-     * Ends the grant on its own server, then forgets it here. Forgotten here even when the server cannot be reached: a
-     * person who signed out is signed out of this browser; the grant then lapses on its own or from Connected apps.
-     */
+    /** Signs this browser out of the server in use at once; the server is asked to end the grant after, not waited for. */
     async signOut() {
       const at = issuer();
-      const grant = await kept(at);
-      if (grant) {
-        try {
-          const { revoke } = await server(grant.issuer);
-          await fetch(revoke, { method: 'POST', headers: form, body: revokeBody({ refresh: grant.refresh }), ...sealed });
-        } catch { /* forgotten here all the same */ }
-      }
-      await forget(at);
+      if (access?.issuer === at) access = null;
+      await edit(at, (was) => (was ? { state: 'signing-out', retire: [...was.retire, ...(SIGNED_IN.includes(was.state) && was.refresh ? [was.refresh] : [])] } : null));
+      void retire(at);
     },
 
     /** Whether a grant is kept for the server in use. */
-    async signedIn() { return (await kept(issuer())) !== null; },
+    async signedIn() { return (await grantOf(issuer())) !== null; },
   };
 }

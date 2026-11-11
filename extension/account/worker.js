@@ -16,7 +16,7 @@ export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof 
 let issuer = PRODUCTION;
 const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }) => {
   if (issuerAllowed(accountServer, UNPACKED)) issuer = accountServer;
-}, () => undefined);
+}, () => undefined).then(() => session.recover()).catch(() => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -29,6 +29,7 @@ const session = createSession({
 /** What the popup is told of the account. */
 async function status() {
   await chosen;
+  session.retry();
   const server = UNPACKED ? { server: issuer } : {};
   if (!(await session.available())) return { ok: true, available: false, ...server };
   if (!(await session.signedIn())) return { ok: true, available: true, signedIn: false, ...server };

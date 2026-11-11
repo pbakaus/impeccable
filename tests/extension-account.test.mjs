@@ -71,34 +71,50 @@ describe('account sign-in flow', () => {
 // `use` is the one in use, which a test may change mid-way.
 const LOCAL = 'http://api.localhost:8787';
 const metaOf = (at) => ({ ...META, issuer: at, authorization_endpoint: `${at.replace('api.', 'app.')}/app/oauth/authorize`, token_endpoint: `${at}/oauth/token`, revocation_endpoint: `${at}/oauth/revoke` });
-function harness({ grant = null, me = 401, launched, issuers = [ISSUER] } = {}) {
+function harness({ grant = null, me = 401, launched, issuers = [ISSUER], gated = true } = {}) {
   const sent = [];
   const disk = new Map(grant ? [[grant.issuer, grant]] : []);
   const gates = [];
+  // The token server's books: refresh tokens it takes (one just used it takes again, as the real one does for a
+  // while), and those it was told to end.
+  const live = new Set(grant ? [grant.refresh] : []);
+  const ended = [];
   let issued = 0;
   const server = {};
   for (const at of issuers) {
     const meta = metaOf(at);
+    const issue = () => { issued += 1; live.add(`refresh-${at}-${issued}`); return json(200, { token_type: 'Bearer', access_token: `access-${at}-${issued}`, refresh_token: `refresh-${at}-${issued}`, expires_in: 900 }); };
     Object.assign(server, {
       [`${at}/.well-known/oauth-authorization-server`]: () => json(200, meta),
-      [meta.token_endpoint]: () => new Promise((resolve) => gates.push(() => { issued += 1; resolve(json(200, { token_type: 'Bearer', access_token: `access-${at}-${issued}`, refresh_token: `refresh-${at}-${issued}`, expires_in: 900 })); })),
-      [meta.revocation_endpoint]: () => json(200, {}),
+      [meta.token_endpoint]: (init) => {
+        const body = new URLSearchParams(String(init.body));
+        if (body.get('grant_type') === 'refresh_token' && !live.has(body.get('refresh_token'))) return json(400, { error: 'invalid_grant' });
+        return gated ? new Promise((resolve) => gates.push(() => resolve(issue()))) : issue();
+      },
+      [meta.revocation_endpoint]: (init) => { const token = new URLSearchParams(String(init.body)).get('token'); live.delete(token); ended.push(token); return json(200, {}); },
       [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira' }) : json(me, {})),
       [`${at}/extension/v1/personas`]: () => json(200, { personas: [] }),
     });
   }
   const state = { use: issuers[0], now: 0 };
-  const fetch = async (url, init = {}) => {
-    sent.push({ url, body: init.body ? String(init.body) : '', auth: init.headers?.authorization ?? '', redirect: init.redirect, at: disk.has(state.use) ? 'kept' : 'none' });
-    if (!server[url]) throw new TypeError('network');
-    return server[url](init);
-  };
   const store = { get: async (key) => disk.get(key) ?? null, set: async (key, value) => { disk.set(key, value); }, clear: async (key) => { disk.delete(key); } };
-  const session = createSession({ fetch, store, issuer: () => state.use, redirectUri: REDIRECT, now: () => state.now, launch: launched ?? (async (url) => `${REDIRECT}?code=code-0123456789&state=${new URL(url).searchParams.get('state')}&iss=${encodeURIComponent(state.use)}`) });
+  const answer = launched ?? (async (url) => `${REDIRECT}?code=code-0123456789&state=${new URL(url).searchParams.get('state')}&iss=${encodeURIComponent(state.use)}`);
+  // A worker: `dies` names the step (a request's address, or `launch`) at which Chrome ends it. A request it dies on
+  // reaches the server; its answer never comes back.
+  const boot = ({ dies = () => false } = {}) => {
+    const never = new Promise(() => {});
+    const fetch = async (url, init = {}) => {
+      sent.push({ url, body: init.body ? String(init.body) : '', auth: init.headers?.authorization ?? '', redirect: init.redirect, at: disk.has(state.use) ? 'kept' : 'none' });
+      if (!server[url]) throw new TypeError('network');
+      const answered = server[url](init);
+      return dies(url) ? never : answered;
+    };
+    return createSession({ fetch, store, issuer: () => state.use, redirectUri: REDIRECT, now: () => state.now, launch: (url) => (dies('launch') ? never : answer(url)) });
+  };
   const open = () => { for (const go of gates.splice(0)) go(); };
-  return { session, sent, disk, open, state };
+  return { session: boot(), boot, sent, disk, open, state, live, ended };
 }
-const kept = (at = ISSUER, refresh = 'refresh-0') => ({ issuer: at, resource: `${at}/extension/v1`, client: CLIENT_ID, refresh });
+const kept = (at = ISSUER, refresh = 'refresh-0') => ({ state: 'signed-in', issuer: at, resource: `${at}/extension/v1`, client: CLIENT_ID, refresh, retire: [] });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe('account session', () => {
@@ -150,13 +166,44 @@ describe('account session', () => {
     assert.deepEqual(sent.filter((r) => (r.auth || /token=|refresh_token=|code=/.test(r.body)) && r.redirect !== 'error'), []);
   });
 
-  it('signs out by revoking on the server, then forgetting the grant here', async () => {
-    const { session, sent, disk } = harness({ grant: kept() });
-    await session.signOut();
-    const revoke = sent.find((r) => r.url === META.revocation_endpoint);
-    assert.equal(new URLSearchParams(revoke.body).get('token'), 'refresh-0');
-    assert.equal(revoke.at, 'kept', 'the grant was still kept when the server was asked to end it');
-    assert.equal(disk.size, 0);
+  // Chrome ends the worker at each step of signing in, refreshing and signing out; the next worker starts from the
+  // disk. `then` is what the next worker finds: signed in or not, and whether the server still takes the grant.
+  const TOKEN = META.token_endpoint;
+  const REVOKE = META.revocation_endpoint;
+  for (const [label, grant, act, dies, after] of [
+    ['with the sign-in window open', null, 'signIn', 'launch', { signedIn: false }],
+    ['as the code is traded for tokens', null, 'signIn', TOKEN, { signedIn: false }],
+    ['as the refresh token is traded', kept(), 'me', TOKEN, { signedIn: true, refreshes: true }],
+    ['once the new refresh token is kept', kept(), 'me', `${ISSUER}/extension/v1/me`, { signedIn: true, refreshes: true }],
+    ['as the server is told of a sign-out', kept(), 'signOut', REVOKE, { signedIn: false, ended: true }],
+    ['before the server is told of a sign-out', kept(), 'signOut', `${ISSUER}/.well-known/oauth-authorization-server`, { signedIn: false, ended: true }],
+  ]) {
+    it(`starts again from the disk when the worker is ended ${label}`, async () => {
+      const h = harness({ grant, gated: false });
+      h.state.now = 3_600_000;
+      const first = h.boot({ dies: (step) => step === dies });
+      void first[act]();
+      await settle();
+      if (act === 'signOut') assert.equal(await first.signedIn(), false, 'signed out at once, before the server answers');
+      const next = h.boot();
+      await next.recover();
+      await settle();
+      assert.equal(await next.signedIn(), after.signedIn);
+      if (after.refreshes) assert.equal((await next.me())?.email, 'mira@example.com', 'the next worker refreshes and reads');
+      if (after.ended) assert.deepEqual(h.ended.filter((token) => token === 'refresh-0').length > 0, true, 'the server was told to end the grant');
+      if (!after.signedIn) assert.equal(h.disk.size, 0, 'and nothing is left on disk');
+    });
+  }
+
+  it('signs out at once offline, and tells the server on a later start', async () => {
+    const h = harness({ grant: kept(), gated: false });
+    const offline = h.boot({ dies: () => true });
+    await offline.signOut();
+    assert.equal(await offline.signedIn(), false);
+    assert.deepEqual(h.ended, []);
+    await h.boot().recover();
+    await settle();
+    assert.deepEqual([h.ended, h.disk.size], [['refresh-0'], 0]);
   });
 
   it('keeps nothing from a sign-in that comes back with the wrong state', async () => {
