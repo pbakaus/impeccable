@@ -13,6 +13,8 @@ const enabled = ws => {
 };
 
 export default [
+  { ...base, id: 'health-design-refresh-signed-out', verb: 'health-design-refresh', args: [] },
+  { ...base, id: 'health-design-refresh-invalid', verb: 'health-design-refresh', args: ['unexpected'] },
   { ...base, id: 'health-design-on', args: ['design', 'on'] },
   { ...base, id: 'health-design-off', args: ['design', 'off'], setup: enabled },
   { ...base, id: 'health-design-invalid', args: ['design', 'invalid'], setup: enabled },

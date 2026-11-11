@@ -2230,8 +2230,27 @@ unset, and no telemetry opt-out in either the invocation or scanned root.
 Sign-in requests `design:write` only when `scopes_supported` advertises it.
 Hooks, partial scans, and non-repos never upload. Uploads are silent in all
 output modes and never change detect's output or exit code. One request
-uses health's five-second deadline, no retries; a busy upload lock skips.
+has a two-second elapsed-time budget, no retries; busy upload or lifecycle
+locks skip it. Credential and file/git preparation run in bounded read workers
+that cannot upload. HTTP connect/read timeouts are capped at the remaining
+budget. DNS resolution remains synchronous and unbounded in ureq.
 A 404 is quietly deferred, as are all other failures.
+
+The upload takes a consistent, generation-matched state/credential snapshot
+under the lifecycle lock without waiting or prompting. An expired token can be
+renewed by the hidden `health-design-refresh` verb: a detached renewal-only
+process receives no file content, finishes any rotation under the ordinary
+lifecycle lock and timeout, and persists credentials even after detect stops
+waiting. If renewal cannot finish within the upload budget, that upload skips.
+The hidden verb accepts no arguments and emits no output.
+
+`health design off`, `health off`, and `health forget` share the uploader's
+advisory `$IMPECCABLE_HOME/design.lock`, waiting at most three seconds for it.
+The uploader holds admission continuously from its final settings/generation
+check through the POST and digest save, and checks the design setting again
+before saving. Once disabling returns success, no earlier upload can start a
+POST or save success. A busy disabling command fails rather than claiming off.
+The minimum new lock-contention error is `design sync lock unavailable`.
 
 `POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
 text, sidecar}`. Repo keying matches design health. `changedAt` is the
@@ -2241,7 +2260,11 @@ the JSON body must fit 160 KiB. The optional sidecar copies only
 `colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
 `.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
 64-entry and short-string bounds. Invalid or absent metadata sends null.
-Components and narrative are never copied. Reads use directory handles and refuse symlink files, sidecar directory links,
+Components and narrative are never copied. The repo root handle is acquired
+before Git establishes identity and retained while the document is read. The
+pathname must still identify that directory before and after reading, checked
+by device/inode on Unix and volume/file id on Windows; mismatches fail closed.
+Reads use directory handles and refuse symlink files, sidecar directory links,
 and non-regular files without blocking. Windows permits resident cloud-backed
 files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
 
@@ -2249,6 +2272,7 @@ Only the hash of successfully uploaded text and selected metadata is saved
 under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
 Unchanged content is skipped; failed uploads remain eligible on the next
 scan. A new sign-in can upload the same repo again. Forget advances a local
-`designGeneration` before contacting the service, so a late upload response
+`designGeneration` before contacting the service. Both off commands advance it
+as well, so a late or previously prepared upload
 cannot suppress a later upload after sync is turned back on.
 Generated provider output is not involved.

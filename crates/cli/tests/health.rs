@@ -635,3 +635,183 @@ fn design_scopes_stay_with_the_grant_when_another_person_signs_in() {
     run(&old, &root, &["detect", "--json", "."]);
     assert_eq!(fake.hits("/cli/v1/design"), 0);
 }
+
+#[test]
+fn design_off_waits_for_an_admitted_upload() {
+    for args in [
+        &["health", "design", "off"][..],
+        &["health", "off"][..],
+        &["health", "forget"][..],
+    ] {
+        let fake = Fake::start();
+        {
+            let mut k = fake.knobs.lock().unwrap();
+            k.health = true;
+            k.design = true;
+        }
+        let env = fake.env(&format!("design-off-admission-{}", args.len()));
+        login(&env);
+        let root = repo(&env, None);
+        std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+        run(&env, &root, &["health", "design", "on"]);
+        let gate = fake.hold("/cli/v1/design");
+        let mut scan = impeccable(&env, &root, &["detect", "--json", "."])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        fake.wait_for_hits("/cli/v1/design", 1);
+        let mut off = impeccable(&env, &root, args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let early = off.try_wait().unwrap();
+        gate.open();
+        scan.wait().unwrap();
+        let done = off.wait().unwrap();
+        assert!(
+            early.is_none(),
+            "off returned while the earlier upload was admitted: {args:?}"
+        );
+        assert!(done.success());
+        let count = fake.hits("/cli/v1/design");
+        run(&env, &root, &["detect", "--json", "."]);
+        assert_eq!(fake.hits("/cli/v1/design"), count);
+    }
+}
+
+#[test]
+fn design_refuses_a_state_secret_generation_mismatch() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-inconsistent-snapshot");
+    login(&env);
+    let root = repo(&env, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    run(&env, &root, &["health", "design", "on"]);
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    let store = impeccable_account::store::Store::new(&account);
+    let lock = store.lock().unwrap();
+    let state = store.state().unwrap();
+    let mut secret = store.secret(&state).unwrap();
+    secret.generation += 1; // The secret-first crash window, without exposing any token.
+    store.save(&lock, &state, &secret).unwrap();
+    drop(lock);
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    assert!(
+        impeccable_account::session::Session::load(&account).is_ok(),
+        "ordinary recovery is unchanged"
+    );
+}
+
+#[test]
+fn design_skips_a_busy_lifecycle_even_with_a_fresh_token() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-fresh-busy-snapshot");
+    login(&env);
+    let root = repo(&env, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    run(&env, &root, &["health", "design", "on"]);
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    let store = impeccable_account::store::Store::new(&account);
+    let lock = store.lock().unwrap();
+    run(&env, &root, &["detect", "--json", "."]);
+    drop(lock);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+}
+
+#[test]
+fn design_has_one_two_second_response_budget() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-response-budget");
+    login(&env);
+    let root = repo(&env, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    let baseline = std::time::Instant::now();
+    run(&env, &root, &["detect", "--json", "."]);
+    let baseline = baseline.elapsed();
+    run(&env, &root, &["health", "design", "on"]);
+    let gate = fake.hold("/cli/v1/design");
+    let start = std::time::Instant::now();
+    run(&env, &root, &["detect", "--json", "."]);
+    let elapsed = start.elapsed();
+    gate.open();
+    assert!(
+        elapsed < baseline + std::time::Duration::from_secs(3),
+        "added latency: {elapsed:?}"
+    );
+}
+
+#[test]
+fn design_refresh_can_finish_safely_after_detect_stops_waiting() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+        k.access_ttl = 0;
+    }
+    let env = fake.env("design-renew-budget");
+    login(&env);
+    fake.knobs.lock().unwrap().access_ttl = 900;
+    let root = repo(&env, None);
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    run(&env, &root, &["health", "design", "on"]);
+    let gate = fake.hold("/oauth/token");
+    let mut scan = impeccable(&env, &root, &["detect", "--json", "."])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    fake.wait_for_hits("/oauth/token", 2);
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let early = loop {
+        if let Some(status) = scan.try_wait().unwrap() {
+            break Some(status);
+        }
+        if std::time::Instant::now() >= until {
+            break None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    gate.open();
+    scan.wait().unwrap();
+    assert!(
+        early.is_some(),
+        "detect waited for a stalled token rotation"
+    );
+    assert!(
+        run(&env, &root, &["whoami", "--json"]).status.success(),
+        "renewal kept the sign-in"
+    );
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    let store = impeccable_account::store::Store::new(&account);
+    let lock = store.lock().unwrap();
+    let state = store.state().unwrap();
+    assert_eq!(state.generation, store.secret(&state).unwrap().generation);
+    drop(lock);
+    assert_eq!(
+        fake.hits("/cli/v1/design"),
+        0,
+        "renewal never receives an upload body"
+    );
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 1);
+}

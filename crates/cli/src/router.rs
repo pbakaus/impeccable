@@ -53,6 +53,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
         "health" => impeccable_account::health::run(rest, io),
+        "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),

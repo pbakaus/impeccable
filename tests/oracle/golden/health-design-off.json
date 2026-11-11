@@ -4,6 +4,6 @@
   "exit": 0,
   "signal": null,
   "files": {
-    ".oracle-home/impeccable/health.json": "{\"design\":false}"
+    ".oracle-home/impeccable/health.json": "{\"designGeneration\":1,\"design\":false}"
   }
 }

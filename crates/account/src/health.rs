@@ -97,6 +97,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
         return;
     }
+    design::after_scan(io, scan);
     let Ok(account) = Account::from_env(&io.env) else {
         return;
     };
@@ -106,7 +107,6 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
         return;
     };
-    design::after_scan(io, scan, &repo, &mut session);
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
         return;
     };
@@ -160,9 +160,23 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         sync: Some(false),
         ..Local::default()
     });
+    let _admission = if args.len() == 1 && matches!(args[0].as_str(), "on" | "off" | "forget") {
+        let result = impeccable_home(&env)
+            .ok_or_else(|| "no home directory; set IMPECCABLE_HOME".to_string())
+            .and_then(|home| crate::store::Store::design_lock_for(&home, Duration::from_secs(3)));
+        match result {
+            Ok(lock) => Some(lock),
+            Err(e) => {
+                io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
     let set = |io: &mut Io, on: bool| match Local::update(&env, |l| {
         l.sync = Some(on);
-        if args.first().map(String::as_str) == Some("forget") {
+        if !on {
             l.design_generation = l.design_generation.wrapping_add(1);
         }
     }) {
@@ -862,4 +876,9 @@ mod tests {
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no staged file left behind");
         std::fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+/// Internal renewal-only entry point. It never receives file contents.
+pub fn run_design_refresh(args: &[String], io: &mut Io) -> i32 {
+    design::run_refresh(args, io)
 }

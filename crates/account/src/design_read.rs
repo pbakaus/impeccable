@@ -21,6 +21,18 @@ impl Reader {
         let file = options.open(root).ok()?;
         plain(&file, true).then_some(Self(file))
     }
+    /// Compare the opened root with the pathname after repo identification and
+    /// again after reading. Ancestor replacements must not change its identity.
+    pub(super) fn matches_root(&self, root: &Path) -> bool {
+        let Some(current) = Self::new(root) else {
+            return false;
+        };
+        match (identity(&self.0), identity(&current.0)) {
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        }
+    }
+
     pub(super) fn read(&self, sidecar: bool, cap: usize) -> Option<Vec<u8>> {
         // Each child is opened relative to an already opened directory, never
         // by reconstructing a pathname that an ancestor rename can redirect.
@@ -39,6 +51,53 @@ impl Reader {
         file.take((cap + 1) as u64).read_to_end(&mut bytes).ok()?;
         (bytes.len() <= cap).then_some(bytes)
     }
+}
+
+#[cfg(unix)]
+fn identity(file: &File) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let meta = file.metadata().ok()?;
+    Some((meta.dev(), meta.ino()))
+}
+
+#[cfg(windows)]
+fn identity(file: &File) -> Option<(u64, [u8; 16])> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    struct FileIdInfo {
+        volume: u64,
+        id: [u8; 16],
+    }
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileInformationByHandleEx(
+            handle: *mut c_void,
+            class: i32,
+            info: *mut c_void,
+            size: u32,
+        ) -> i32;
+    }
+    let mut info = FileIdInfo {
+        volume: 0,
+        id: [0; 16],
+    };
+    // SAFETY: FileIdInfo (18) writes exactly this structure to the supplied
+    // writable storage; file remains live throughout the call.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            18,
+            (&mut info as *mut FileIdInfo).cast(),
+            std::mem::size_of::<FileIdInfo>() as u32,
+        )
+    };
+    (ok != 0 && info.id != [0; 16]).then_some((info.volume, info.id))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn identity(_: &File) -> Option<()> {
+    None
 }
 
 fn plain(file: &File, directory: bool) -> bool {
