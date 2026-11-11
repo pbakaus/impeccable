@@ -18,9 +18,18 @@ pub struct Knobs {
     pub callback_state: Option<String>,
     pub entitled: bool,
     pub access_ttl: u64,
+    pub omit_token_scope: bool,
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
+    pub setup: bool,
+    pub setup_denied: bool,
+    pub foundations: bool,
+    pub foundations_denied: bool,
+    pub design: bool,
+    pub design_denied: bool,
+    pub critiques: bool,
+    pub critiques_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -55,10 +64,15 @@ pub struct Record {
     pub scopes: Vec<String>,
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
+    pub foundations: Vec<serde_json::Value>,
+    pub critiques: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
-    codes: HashMap<String, (String, String)>,
+    pub setups: Vec<serde_json::Value>,
+    pub designs: Vec<serde_json::Value>,
+    codes: HashMap<String, (String, String, String)>,
+    grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
     access: HashSet<String>,
@@ -68,6 +82,13 @@ pub struct Record {
 }
 
 impl Record {
+    fn has_scope(&self, token: Option<&str>, scope: &str) -> bool {
+        token
+            .and_then(|t| self.grant_of.get(t))
+            .and_then(|g| self.grant_scopes.get(g))
+            .is_some_and(|s| s.split_whitespace().any(|s| s == scope))
+    }
+
     /// The refresh tokens the service would still accept.
     pub fn live_refresh_tokens(&self) -> Vec<String> {
         self.live_refresh.iter().cloned().collect()
@@ -182,7 +203,10 @@ impl Fake {
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
             // Windows allows the file backend only inside the user profile.
-            ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
+            (
+                "USERPROFILE".to_string(),
+                home.to_string_lossy().into_owned(),
+            ),
         ])
     }
 }
@@ -283,11 +307,16 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
-                    "scopes_supported": if knobs.lock().unwrap().health {
-                        serde_json::json!(["account:read", "rules:read", "health:write"])
-                    } else {
-                        serde_json::json!(["account:read", "rules:read"])
-                    },
+                    "scopes_supported": ({
+                        let k = knobs.lock().unwrap();
+                        let mut scopes = vec!["account:read", "rules:read"];
+                        if k.health { scopes.push("health:write"); }
+                        if k.setup { scopes.push("setup:write"); }
+                        if k.foundations { scopes.push("foundations:write"); }
+                        if k.design { scopes.push("design:write"); }
+                        if k.critiques { scopes.push("critiques:write"); }
+                        scopes
+                    }),
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -295,9 +324,18 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 let scope = q.get("scope").cloned().unwrap_or_default();
                 record.lock().unwrap().scopes.push(scope.clone());
                 // The real service refuses a scope it doesn't list.
-                let scope_ok = scope == "account:read rules:read"
-                    || (scope == "account:read rules:read health:write"
-                        && knobs.lock().unwrap().health);
+                let scope_ok = {
+                    let k = knobs.lock().unwrap();
+                    scope.split_whitespace().all(|s| match s {
+                        "account:read" | "rules:read" => true,
+                        "health:write" => k.health,
+                        "critiques:write" => k.critiques,
+                        "setup:write" => k.setup,
+                        "foundations:write" => k.foundations,
+                        "design:write" => k.design,
+                        _ => false,
+                    })
+                };
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
@@ -314,7 +352,22 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     let code = format!("code-{}", r.next);
                     r.codes.insert(
                         code.clone(),
-                        (q["code_challenge"].clone(), redirect.clone()),
+                        (
+                            q["code_challenge"].clone(),
+                            redirect.clone(),
+                            scope
+                                .split_whitespace()
+                                .filter(|s| match *s {
+                                    "health:write" => !k.health_denied,
+                                    "setup:write" => !k.setup_denied,
+                                    "foundations:write" => !k.foundations_denied,
+                                    "design:write" => !k.design_denied,
+                                    "critiques:write" => !k.critiques_denied,
+                                    _ => true,
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        ),
                     );
                     let mut loc = url::Url::parse(&redirect).unwrap();
                     loc.query_pairs_mut()
@@ -352,6 +405,207 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     )
                 }
             }
+            ("POST", "/cli/v1/setup/reports" | "/cli/v1/setup/forget") => {
+                let k = knobs.lock().unwrap();
+                if !k.setup {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if k.setup_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "setup:write")
+                {
+                    (403, vec![], vec![])
+                } else {
+                    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    if path.ends_with("reports") {
+                        record.lock().unwrap().setups.push(body);
+                    }
+                    json(200, serde_json::json!({"forgot":true,"outcome":"recorded"}))
+                }
+            }
+            ("POST", "/cli/v1/foundations") => {
+                if !knobs.lock().unwrap().foundations {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .and_then(|t| {
+                        let r = record.lock().unwrap();
+                        r.grant_of
+                            .get(t)
+                            .and_then(|g| r.grant_scopes.get(g))
+                            .cloned()
+                    })
+                    .is_some_and(|s| s.split_whitespace().any(|s| s == "foundations:write"))
+                {
+                    (403, vec![], vec![])
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    // Exactly the contract's keys; `label` is optional (pristine#4721).
+                    let keys: std::collections::BTreeSet<&str> =
+                        v.as_object().unwrap().keys().map(String::as_str).collect();
+                    let required: std::collections::BTreeSet<&str> = [
+                        "version",
+                        "scanId",
+                        "repoKey",
+                        "scannedAt",
+                        "productType",
+                        "items",
+                    ]
+                    .into();
+                    assert!(
+                        keys.is_superset(&required) && keys.len() <= required.len() + 1,
+                        "{keys:?}"
+                    );
+                    assert!(
+                        keys.iter().all(|k| required.contains(k) || *k == "label"),
+                        "{keys:?}"
+                    );
+                    assert_eq!(v["version"], 1);
+                    assert_eq!(v["scanId"].as_str().unwrap().len(), 36);
+                    assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
+                    assert!(v["productType"].is_null());
+                    assert!(v["scannedAt"].as_str().unwrap().ends_with('Z'));
+                    for (id, state) in v["items"].as_object().unwrap() {
+                        assert!(
+                            ["no-generic-ai-patterns", "readable-contrast"].contains(&id.as_str())
+                        );
+                        assert_eq!(state, "failing");
+                    }
+                    record.lock().unwrap().foundations.push(v);
+                    json(
+                        200,
+                        serde_json::json!({"outcome":"recorded", "inPlace":0, "failing":1}),
+                    )
+                }
+            }
+            ("POST", "/cli/v1/design") => {
+                let k = knobs.lock().unwrap();
+                if !k.design {
+                    (404, vec![], vec![])
+                } else if k.design_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "design:write")
+                {
+                    (403, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert!(v.as_object().unwrap().keys().all(|k| [
+                        "version",
+                        "uploadId",
+                        "repoKey",
+                        "changedAt",
+                        "text",
+                        "sidecar",
+                        "label"
+                    ]
+                    .contains(&k.as_str())));
+                    assert_eq!(v["version"], 1);
+                    assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
+                    assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
+                    assert_eq!(v["changedAt"].as_str().unwrap().len(), 24);
+                    if parse_label(v.get("label")).is_err() {
+                        record.lock().unwrap().refused.push(("label".into(), v));
+                        json(
+                            400,
+                            serde_json::json!({"error":"invalid_request", "field":"label"}),
+                        )
+                    } else {
+                        let text = v["text"].as_str().unwrap();
+                        assert!(
+                            !text.trim().is_empty() && !text.contains('\0') && text.len() <= 65536
+                        );
+                        assert!(body.len() <= 160 * 1024);
+                        record.lock().unwrap().designs.push(v);
+                        json(
+                            200,
+                            serde_json::json!({"outcome":"recorded", "masked":false}),
+                        )
+                    }
+                }
+            }
+            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget") => {
+                let k = knobs.lock().unwrap();
+                if !k.critiques {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if k.critiques_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "critiques:write")
+                {
+                    (403, vec![], vec![])
+                } else if path.ends_with("/forget") {
+                    json(200, serde_json::json!({"forgot": 1}))
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let allowed = [
+                        "version",
+                        "critiqueId",
+                        "createdAt",
+                        "target",
+                        "repoKey",
+                        "label",
+                        "score",
+                        "na",
+                        "heuristics",
+                        "counts",
+                        "body",
+                    ];
+                    assert!(v
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|k| allowed.contains(&k.as_str())));
+                    assert_eq!(v["version"], 1);
+                    let na = v["na"].as_array().unwrap();
+                    let max = v["score"]["max"].as_u64().unwrap();
+                    assert_eq!(max, 4 * (10 - na.len() as u64));
+                    assert!(v["score"]["total"].as_u64().unwrap() <= max);
+                    for k in ["p0", "p1"] {
+                        assert!(v["counts"][k].as_u64().unwrap() <= 100);
+                    }
+                    let text = v["body"].as_str().unwrap();
+                    assert!(!text.trim().is_empty() && text.len() <= 65536 && !text.contains('\0'));
+                    let id = v["critiqueId"].as_str().unwrap();
+                    assert_eq!(
+                        id.split('-').map(str::len).collect::<Vec<_>>(),
+                        [8, 4, 4, 4, 12]
+                    );
+                    if let Err(field) = parse_critique_label(&v) {
+                        record.lock().unwrap().refused.push((field.into(), v));
+                        json(
+                            400,
+                            serde_json::json!({"error": "invalid_request", "field": field}),
+                        )
+                    } else {
+                        record.lock().unwrap().critiques.push(v);
+                        json(200, serde_json::json!({"outcome": "recorded"}))
+                    }
+                }
+            }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
                 let k = knobs.lock().unwrap();
                 let authorized = bearer
@@ -361,7 +615,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (404, vec![], vec![])
                 } else if !authorized {
                     (401, vec![], vec![])
-                } else if k.health_denied {
+                } else if k.health_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "health:write")
+                {
                     (
                         403,
                         vec![(
@@ -379,11 +638,17 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     match parse_scan(&v) {
                         Ok(()) => {
                             record.lock().unwrap().scans.push(v);
-                            json(200, serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }))
+                            json(
+                                200,
+                                serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }),
+                            )
                         }
                         Err(field) => {
                             record.lock().unwrap().refused.push((field.to_string(), v));
-                            json(400, serde_json::json!({ "error": "invalid_request", "field": field }))
+                            json(
+                                400,
+                                serde_json::json!({ "error": "invalid_request", "field": field }),
+                            )
                         }
                     }
                 }
@@ -427,11 +692,15 @@ fn token(
     {
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
-    let ttl = knobs.lock().unwrap().access_ttl;
+    let (ttl, omit_scope) = {
+        let k = knobs.lock().unwrap();
+        (k.access_ttl, k.omit_token_scope)
+    };
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
-            let Some((challenge, redirect)) = form.get("code").and_then(|c| r.codes.remove(c))
+            let Some((challenge, redirect, scope)) =
+                form.get("code").and_then(|c| r.codes.remove(c))
             else {
                 return invalid();
             };
@@ -441,7 +710,9 @@ fn token(
             {
                 return invalid();
             }
-            r.next + 1
+            let grant = r.next + 1;
+            r.grant_scopes.insert(grant, scope);
+            grant
         }
         Some("refresh_token") => {
             let t = form.get("refresh_token").cloned().unwrap_or_default();
@@ -471,10 +742,11 @@ fn token(
     r.grant_of.insert(refresh.clone(), grant);
     r.access.insert(access.clone());
     r.live_refresh.insert(refresh.clone());
-    json(
-        200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
-    )
+    let mut answer = serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.grant_scopes.get(&grant).cloned().unwrap_or_default() });
+    if omit_scope {
+        answer.as_object_mut().unwrap().remove("scope");
+    }
+    json(200, answer)
 }
 
 // --- Pro releases and leases -------------------------------------------------
@@ -582,17 +854,53 @@ impl Fake {
     }
 }
 
+fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
+    if let Some(key) = body.get("repoKey").filter(|v| !v.is_null()) {
+        if !key.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        }) {
+            return Err("repoKey");
+        }
+    }
+    if parse_label(body.get("label"))?.is_some() && body.get("repoKey").is_none_or(|v| v.is_null())
+    {
+        return Err("label");
+    }
+    Ok(())
+}
+
 /// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),
 /// ported so a body it would refuse fails a test here first. The clock
 /// window is left out: tests don't control the CLI's clock.
 pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
     use serde_json::Value;
-    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+    let hex = |s: &str, n: usize| {
+        s.len() == n
+            && s.bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    };
     let count = |v: &Value| v.as_u64().is_some_and(|n| n <= 1_000_000);
     let o = b.as_object().ok_or("not an object")?;
-    const KEYS: &[&str] = &["version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage", "rulesetId",
-        "fingerprintVersion", "engineVersion", "filesScanned", "findings", "advisory", "rules", "fingerprints",
-        "truncated", "label"];
+    const KEYS: &[&str] = &[
+        "version",
+        "scanId",
+        "repoKey",
+        "streamKey",
+        "scannedAt",
+        "coverage",
+        "rulesetId",
+        "fingerprintVersion",
+        "engineVersion",
+        "filesScanned",
+        "findings",
+        "advisory",
+        "rules",
+        "fingerprints",
+        "truncated",
+        "label",
+    ];
     if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
         return Err("unknown field");
     }
@@ -640,14 +948,43 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
             if !hex(fp, 32) || !count(n) || n == 0 { return Err("fingerprints"); }
             total += n.as_u64().unwrap();
         }
-        if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
-    }
-    if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
-        let l = l.as_str().ok_or("label")?.trim();
-        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
-            return Err("label");
+        if Some(total) != b["findings"].as_u64() {
+            return Err("fingerprints do not sum");
         }
     }
-    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
+    parse_label(b.get("label"))?;
+    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 {
+        return Err("too_large");
+    }
     Ok(())
+}
+
+/// The service's shared parseLabel (pristine#4721): reject forbidden characters
+/// before trimming, so a tab or BOM is never repaired into a valid name.
+pub fn parse_label(value: Option<&serde_json::Value>) -> Result<Option<String>, &'static str> {
+    let Some(value) = value.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let name = value.as_str().ok_or("label")?;
+    // Unicode Cf, matching the server's property escape. Rust strings cannot
+    // contain lone surrogates (Cs); is_control covers Cc.
+    let format = |c| {
+        matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}'
+        | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+        | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
+        | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+        | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
+        | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+    };
+    if name
+        .chars()
+        .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c))
+    {
+        return Err("label");
+    }
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err("label");
+    }
+    Ok(Some(name.to_string()))
 }

@@ -33,7 +33,11 @@ pub enum Backend {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct State {
+    #[serde(default)]
+    pub foundations: bool,
     pub schema: u32,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     pub issuer: String,
     pub generation: u64,
     pub signed_in: bool,
@@ -214,6 +218,65 @@ impl Store {
         }
     }
 
+    /// Global preference, so this lock is shared across account issuers too.
+    /// Uploads hold it from their final preference check through transmission.
+    pub(crate) fn design_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(home.join("design.lock"))
+            .map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("another impeccable command is using it; try again".into()),
+            }
+        }
+    }
+    pub(crate) fn critique_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(home.join("critiques.lock"))
+            .map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("critique sync lock unavailable".into()),
+            }
+        }
+    }
+
     pub fn state(&self) -> Option<State> {
         self.try_state().ok().flatten()
     }
@@ -247,6 +310,21 @@ impl Store {
             Backend::Keychain => keychain::get(SERVICE, &self.keychain_account())?,
         };
         Ok(bytes.and_then(|b| serde_json::from_slice(&b).ok()))
+    }
+
+    /// Background uploads must never ask for Keychain approval.
+    pub(crate) fn try_secret_noninteractive(
+        &self,
+        state: &State,
+    ) -> Result<Option<Secret>, String> {
+        #[cfg(target_os = "macos")]
+        if state.signed_in && state.backend == Backend::Keychain {
+            return Ok(
+                keychain::get_noninteractive(SERVICE, &self.keychain_account())?
+                    .and_then(|b| serde_json::from_slice(&b).ok()),
+            );
+        }
+        self.try_secret(state)
     }
 
     /// Write a secret and then the state naming it (caller holds the lock).
@@ -297,6 +375,8 @@ impl Store {
     ) -> Result<(), String> {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
+            foundations: false,
+            scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),
             generation,
@@ -445,6 +525,25 @@ mod keychain {
             Err(e) => Err(format!("keychain read failed ({})", e.code())),
         }
     }
+    pub fn get_noninteractive(service: &str, account: &str) -> Result<Option<Vec<u8>>, String> {
+        use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
+        let mut options = ItemSearchOptions::new();
+        options
+            .class(ItemClass::generic_password())
+            .service(service)
+            .account(account)
+            .load_data(true)
+            .skip_authenticated_items(true);
+        match options.search() {
+            Ok(items) => Ok(items.into_iter().find_map(|item| match item {
+                SearchResult::Data(bytes) => Some(bytes),
+                _ => None,
+            })),
+            Err(e) if e.code() == NOT_FOUND => Ok(None),
+            Err(e) => Err(format!("keychain read failed ({})", e.code())),
+        }
+    }
+
     pub fn set(service: &str, account: &str, secret: &[u8]) -> Result<(), String> {
         passwords::set_generic_password(service, account, secret)
             .map_err(|e| format!("keychain write failed ({})", e.code()))

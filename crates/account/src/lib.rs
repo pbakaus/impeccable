@@ -4,13 +4,18 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod critiques;
+mod design_read;
 pub mod health;
 pub mod http;
 pub mod oauth;
 pub mod plans;
 pub mod pro;
 pub mod session;
+pub mod setup;
+mod stale_grant;
 pub mod store;
+mod upload_notice;
 
 use config::Account;
 use impeccable_common::Io;
@@ -63,9 +68,9 @@ pub fn login(
         let previous = store.state();
         // A logout since this attempt started, even one a newer sign-in
         // has followed, ends this attempt: it must not replace that sign-in.
-        let signed_out_since = previous
-            .as_ref()
-            .is_some_and(|s| s.signed_out_at > started || (s.generation != started && !s.signed_in));
+        let signed_out_since = previous.as_ref().is_some_and(|s| {
+            s.signed_out_at > started || (s.generation != started && !s.signed_in)
+        });
         if signed_out_since {
             drop(lock);
             if let Some(endpoint) = &meta.revocation_endpoint {
@@ -78,6 +83,8 @@ pub fn login(
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
+            foundations: tokens.foundations,
+            scopes: tokens.scopes.unwrap_or_default(),
             schema: 1,
             issuer: account.issuer.clone(),
             generation,
@@ -95,6 +102,7 @@ pub fn login(
             access_expires_at: session::now() + tokens.expires_in,
         };
         store.save(&lock, &state, &secret)?;
+        setup::grant(&account, generation, tokens.setup);
         // Nothing Pro from an earlier sign-in carries over to this one. Only
         // once the new sign-in is saved: a failed save leaves the previous
         // sign-in current, with its Pro state intact. Still under the lock.
