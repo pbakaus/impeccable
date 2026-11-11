@@ -16,6 +16,8 @@
 //   - acting elsewhere in this Chrome: the debugger is attached to the one tab this extension opened for the walk,
 //     never to a tab the person already had, and no op may name another tab. Only loopback addresses and the
 //     origins the hand-off allowed may be walked at all; anything else is refused before a tab opens.
+//   - reaching our own account: our app, API and sign-in pages are refused in every build (`isOwnPage`), even when
+//     the hand-off allowed them or they are on this machine.
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
 //     opens; a native dialog is dismissed.
 // And it fails closed: a walked tab seen anywhere it should not be loses the debugger at once, which ends the walk.
@@ -53,6 +55,24 @@ export function isLoopback(hostname) {
   return parts.length === 4 && parts[0] === '127' && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
 }
 
+/**
+ * Our own app, API and sign-in pages, which no walk opens in any build: a walk in a signed-in Chrome must never reach
+ * the account that started it. By name: `impeccable.reviews` and every host under it, every host under
+ * `impeccable.style`, the local stand-ins `app.localhost` and `api.localhost`, and the sign-in dialog's path on any
+ * host. Plain `localhost` stays walkable: it is where a person's own app runs.
+ */
+const OWN_HOSTS = [/^(.+\.)?impeccable\.reviews$/, /^.+\.impeccable\.style$/, /^(app|api)\.localhost$/];
+const OWN_PATHS = ['/app/oauth/authorize'];
+
+/** Whether an address is one of our own app's pages that a walk never opens. */
+export function isOwnPage(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  const path = parsed.pathname.replace(/\/+$/, '');
+  return OWN_HOSTS.some((own) => own.test(host)) || OWN_PATHS.some((own) => path === own || path.startsWith(`${own}/`));
+}
+
 /** The origin of a web address, or null for anything that is not http or https. */
 export function webOrigin(url) {
   try {
@@ -70,6 +90,7 @@ export function webOrigin(url) {
 export function admit(url, allow = []) {
   const origin = webOrigin(url);
   if (!origin) throw refuse('a walk opens http and https addresses only');
+  if (isOwnPage(url)) throw refuse(`a walk never opens ${origin}${new URL(url).pathname}`);
   const listed = allow.filter((entry) => typeof entry === 'string' && webOrigin(entry) === entry);
   if (!listed.includes(origin) && !isLoopback(new URL(url).hostname)) throw refuse(`${origin} is not on this machine and not on the walk's allow-list`);
   return { origin, allowed: [...new Set([origin, ...listed])] };
@@ -80,6 +101,7 @@ export function onSite(url, allowed) {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'blob:') return false;
+    if (isOwnPage(parsed.protocol === 'blob:' ? parsed.origin : url)) return false;
     return allowed.includes(parsed.origin);
   } catch {
     return false;

@@ -83,6 +83,14 @@ describe('walk guard', () => {
     ['https://example.com/', []],
     ['https://example.com/', ['https://other.example.com']],
     ['file:///etc/hosts', []],
+    // Our own app, API and sign-in pages, even when allowed or on this machine.
+    ['https://impeccable.reviews/app', ['https://impeccable.reviews']],
+    ['https://staging.impeccable.reviews/', ['https://staging.impeccable.reviews']],
+    ['https://app.impeccable.style/app/acme', ['https://app.impeccable.style']],
+    ['https://api.staging.impeccable.style/mcp', ['https://api.staging.impeccable.style']],
+    ['http://app.localhost:8794/app', []],
+    ['http://api.localhost:8794/', []],
+    ['http://localhost:8794/app/oauth/authorize?client_id=x', []],
   ]) {
     it(`refuses to walk ${url} with ${allow.length} allowed`, () => { assert.throws(() => admit(url, allow), { name: 'NotAllowed' }); });
   }
@@ -92,6 +100,7 @@ describe('walk guard', () => {
     ['the top document off the site', { resourceType: 'Document', frameId: 'main', request: { url: 'https://example.com/' } }, 'block'],
     ['the top document on the site', { resourceType: 'Document', frameId: 'main', request: { url: 'http://localhost:3000/b' } }, 'continue'],
     ['a frame off the site', { resourceType: 'Document', frameId: 'child', request: { url: 'https://example.com/' } }, 'continue'],
+    ['the top document on our own sign-in dialog', { resourceType: 'Document', frameId: 'main', request: { url: 'http://localhost:3000/app/oauth/authorize' } }, 'block'],
   ]) {
     it(`lets ${label} ${answer}`, () => { assert.equal(verdict(paused, 'main', allowed), answer); });
   }
