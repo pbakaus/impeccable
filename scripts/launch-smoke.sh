@@ -101,8 +101,9 @@ else
   echo "WAIT open this link in your browser and approve (10 minutes):"
   echo "$url"
 fi
-for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
-if kill -0 "$login_pid" 2>/dev/null; then fail "login: finished" "still waiting after 620 s"; finish; fi
+# Up to 10 minutes to approve, then login downloads the Pro build (its own 600 s deadline).
+for _ in $(seq 1 6100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$login_pid" 2>/dev/null; then fail "login: finished" "still running after 1220 s"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: signed in" '[ $rc = 0 ]'
 [ $rc = 0 ] && signed_in=1
