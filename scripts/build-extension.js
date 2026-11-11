@@ -10,6 +10,9 @@
  * 2. Checks that every path the manifest and the service worker reference
  *    exists in extension/.
  * 3. Packages extension.zip (Chrome Web Store) and extension-firefox.zip (AMO).
+ *    The store zip's manifest holds the walk content scripts to the web app's
+ *    production hosts; the source manifest keeps staging and localhost for
+ *    Load unpacked.
  *
  * The source `extension/manifest.json` is the Chrome manifest. The Firefox
  * variant is derived at build time: the detector's background worker is
@@ -33,6 +36,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { storeManifest } from './lib/extension-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -174,9 +178,19 @@ function packZip(zipPath, cwd, excludes = []) {
   console.log(`Packaged ${path.relative(ROOT, zipPath)} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-// --- 3a. Chrome zip (manifest unchanged) ---
+// --- 3a. Chrome store zip: the source tree with the store manifest ---
 
-packZip(path.join(DIST, 'extension.zip'), EXT_DIR, ['STORE_LISTING.md', '*.DS_Store']);
+const chromeStageDir = path.join(DIST, 'extension-chrome');
+const chromeStoreManifest = storeManifest(chromeManifest);
+fs.rmSync(chromeStageDir, { recursive: true, force: true });
+fs.cpSync(EXT_DIR, chromeStageDir, {
+  recursive: true,
+  filter: (src) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(src)),
+});
+fs.writeFileSync(path.join(chromeStageDir, 'manifest.json'), JSON.stringify(chromeStoreManifest, null, 2) + '\n');
+console.log(`Staged ${path.relative(ROOT, chromeStageDir)}/ (Chrome store manifest)`);
+checkReferences(chromeStageDir, chromeStoreManifest, `${path.relative(ROOT, chromeStageDir)}/`);
+packZip(path.join(DIST, 'extension.zip'), chromeStageDir, ['*.DS_Store']);
 
 // --- 3b. Firefox: derive a Gecko-compatible manifest and stage an unpacked
 // build (consumed by `web-ext lint` in CI), then zip it for AMO. ---
