@@ -67,27 +67,39 @@ describe('account sign-in flow', () => {
   }
 });
 
-// A session on a stand-in server and disk: every request it sends, in order.
-function harness({ grant = null, me = 401, launched } = {}) {
+// A session on stand-in servers and disk: every request it sends, in order. `issuers` are the servers that answer;
+// `use` is the one in use, which a test may change mid-way.
+const LOCAL = 'http://api.localhost:8787';
+const metaOf = (at) => ({ ...META, issuer: at, authorization_endpoint: `${at.replace('api.', 'app.')}/app/oauth/authorize`, token_endpoint: `${at}/oauth/token`, revocation_endpoint: `${at}/oauth/revoke` });
+function harness({ grant = null, me = 401, launched, issuers = [ISSUER] } = {}) {
   const sent = [];
-  const disk = { grant };
+  const disk = new Map(grant ? [[grant.issuer, grant]] : []);
   const gates = [];
-  const server = {
-    [`${ISSUER}/.well-known/oauth-authorization-server`]: () => json(200, META),
-    [META.token_endpoint]: () => new Promise((resolve) => gates.push(() => resolve(json(200, { token_type: 'Bearer', access_token: `access-${sent.length}`, refresh_token: `refresh-${sent.length}`, expires_in: 900 })))),
-    [META.revocation_endpoint]: () => json(200, {}),
-    [`${ISSUER}/extension/v1/me`]: (init) => (init.headers.authorization ? json(200, { email: 'mira@example.com', name: 'Mira' }) : json(me, {})),
-  };
+  let issued = 0;
+  const server = {};
+  for (const at of issuers) {
+    const meta = metaOf(at);
+    Object.assign(server, {
+      [`${at}/.well-known/oauth-authorization-server`]: () => json(200, meta),
+      [meta.token_endpoint]: () => new Promise((resolve) => gates.push(() => { issued += 1; resolve(json(200, { token_type: 'Bearer', access_token: `access-${at}-${issued}`, refresh_token: `refresh-${at}-${issued}`, expires_in: 900 })); })),
+      [meta.revocation_endpoint]: () => json(200, {}),
+      [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira' }) : json(me, {})),
+      [`${at}/extension/v1/personas`]: () => json(200, { personas: [] }),
+    });
+  }
+  const state = { use: issuers[0], now: 0 };
   const fetch = async (url, init = {}) => {
-    sent.push({ url, body: init.body ? String(init.body) : '', at: disk.grant ? 'kept' : 'none' });
+    sent.push({ url, body: init.body ? String(init.body) : '', auth: init.headers?.authorization ?? '', redirect: init.redirect, at: disk.has(state.use) ? 'kept' : 'none' });
     if (!server[url]) throw new TypeError('network');
     return server[url](init);
   };
-  const store = { get: async () => disk.grant, set: async (value) => { disk.grant = value; }, clear: async () => { disk.grant = null; } };
-  const session = createSession({ fetch, store, issuer: () => ISSUER, redirectUri: REDIRECT, launch: launched ?? (async () => REDIRECT) });
+  const store = { get: async (key) => disk.get(key) ?? null, set: async (key, value) => { disk.set(key, value); }, clear: async (key) => { disk.delete(key); } };
+  const session = createSession({ fetch, store, issuer: () => state.use, redirectUri: REDIRECT, now: () => state.now, launch: launched ?? (async (url) => `${REDIRECT}?code=code-0123456789&state=${new URL(url).searchParams.get('state')}&iss=${encodeURIComponent(state.use)}`) });
   const open = () => { for (const go of gates.splice(0)) go(); };
-  return { session, sent, disk, open };
+  return { session, sent, disk, open, state };
 }
+const kept = (at = ISSUER, refresh = 'refresh-0') => ({ issuer: at, resource: `${at}/extension/v1`, client: CLIENT_ID, refresh });
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe('account session', () => {
   for (const [label, answer, available] of [['404', 404, false], ['401', 401, true], ['no answer', null, false]]) {
@@ -99,29 +111,59 @@ describe('account session', () => {
   }
 
   it('refreshes once for callers that ask at the same time', async () => {
-    const { session, sent, open } = harness({ grant: { issuer: ISSUER, refresh: 'refresh-0' } });
+    const { session, sent, open } = harness({ grant: kept() });
     const asked = Promise.all([session.me(), session.me(), session.me()]);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await settle();
     open();
     const answers = await asked;
     assert.deepEqual(answers.map((me) => me?.email), ['mira@example.com', 'mira@example.com', 'mira@example.com']);
     assert.equal(sent.filter((r) => r.url === META.token_endpoint).length, 1);
   });
 
+  it('sends nothing of one server’s sign-in to another, even mid-refresh, and never follows a redirect with a token', async () => {
+    const { session, sent, open, state, disk } = harness({ issuers: [ISSUER, LOCAL] });
+    const signingIn = session.signIn();
+    await settle();
+    open();
+    assert.deepEqual(await signingIn, { ok: true });
+    // A refresh for the first server is under way when the server in use changes.
+    state.now = 3_600_000;
+    const late = session.me();
+    await settle();
+    state.use = LOCAL;
+    open();
+    assert.equal(await late, null, 'the first server’s answer is handed to nobody');
+    const meanwhile = Promise.all([session.me(), session.personas(), session.signedIn(), session.signOut(), session.available()]);
+    await settle();
+    assert.deepEqual((await meanwhile).slice(0, 3), [null, null, false]);
+    const second = session.signIn();
+    await settle();
+    open();
+    assert.deepEqual(await second, { ok: true });
+    assert.equal((await session.me())?.email, 'mira@example.com');
+    // Every token the first server gave out (they name it), and everything the second one was sent.
+    const words = (r) => [...new URLSearchParams(r.body).values(), r.auth.replace(/^Bearer /, '')];
+    assert.ok(sent.filter((r) => r.url.startsWith(ISSUER)).flatMap(words).some((word) => word.startsWith(`refresh-${ISSUER}`)), 'the first server’s refresh token was used');
+    assert.ok(sent.some((r) => r.url.startsWith(LOCAL)), 'the second server was asked');
+    assert.deepEqual(sent.filter((r) => r.url.startsWith(LOCAL)).flatMap(words).filter((word) => word.includes(ISSUER)), []);
+    assert.equal(disk.get(ISSUER)?.issuer, ISSUER, 'the first server’s sign-in is kept for it alone');
+    assert.deepEqual(sent.filter((r) => (r.auth || /token=|refresh_token=|code=/.test(r.body)) && r.redirect !== 'error'), []);
+  });
+
   it('signs out by revoking on the server, then forgetting the grant here', async () => {
-    const { session, sent, disk } = harness({ grant: { issuer: ISSUER, refresh: 'refresh-0' } });
+    const { session, sent, disk } = harness({ grant: kept() });
     await session.signOut();
     const revoke = sent.find((r) => r.url === META.revocation_endpoint);
     assert.equal(new URLSearchParams(revoke.body).get('token'), 'refresh-0');
     assert.equal(revoke.at, 'kept', 'the grant was still kept when the server was asked to end it');
-    assert.equal(disk.grant, null);
+    assert.equal(disk.size, 0);
   });
 
   it('keeps nothing from a sign-in that comes back with the wrong state', async () => {
-    const { session, sent, disk } = harness({ launched: async (url) => `${REDIRECT}?code=code-0123456789&state=other&iss=${encodeURIComponent(ISSUER)}` });
+    const { session, sent, disk } = harness({ launched: async () => `${REDIRECT}?code=code-0123456789&state=other&iss=${encodeURIComponent(ISSUER)}` });
     assert.deepEqual(await session.signIn(), { ok: false, why: 'state' });
     assert.equal(sent.some((r) => r.url === META.token_endpoint), false);
-    assert.equal(disk.grant, null);
+    assert.equal(disk.size, 0);
   });
 });
 
