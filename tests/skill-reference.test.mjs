@@ -82,13 +82,12 @@ describe('skill reference authoring contracts', () => {
   it('keeps critique a fresh review that reads the earlier snapshot last', () => {
     const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const assessmentA = critique.match(/### Assessment A: Design Review\n([\s\S]*?)\n### Assessment B/)?.[1] ?? '';
-    const sinceLastRun = critique.match(/#### Since Last Run\n(.*)/)?.[1] ?? '';
+    const sinceLastRun = critique.match(/### Deliver the Report\n[\s\S]*?\n### Since Last Run\n([\s\S]*?)\n### Persist the Snapshot/)?.[1] ?? '';
 
     assert.match(assessmentA, /every defect as its own finding/);
     assert.doesNotMatch(assessmentA, /snapshot|\.impeccable\/critique/);
     assert.match(critique, /#### All Findings\n/);
-    assert.match(sinceLastRun, /`closed: true`/);
-    assert.ok(critique.indexOf('#### Since Last Run') > critique.indexOf('#### Questions to Consider'), 'the earlier snapshot is opened after the scored report');
+    assert.match(sinceLastRun, /`closed: true`/, 'the earlier snapshot is opened after the report is delivered and before this run is saved');
   });
 
   it('keeps reduced-motion guidance on the animation build path', () => {

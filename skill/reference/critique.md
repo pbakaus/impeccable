@@ -65,9 +65,9 @@ Evaluate:
 - **Emotional journey**: peak-end rule, emotional valleys, reassurance at high-stakes moments.
 - **Nielsen heuristics**: consult the [Heuristics Scoring Guide](#heuristics-scoring-guide) section below; score all 10 heuristics 0-4, marking any heuristic the mode-applicability rule allows as `n/a` instead of forcing a number.
 
-Report every defect as its own finding (`F1`, `F2`, ...) with P0-P3 severity, heuristic, location, what is wrong, and the fix. Do **not** cap or bundle them: the next run checks each one. For each heuristic below 4, name the findings that earn each next point (`F3, F7 -> 3; F9 -> 4`), its P0 and P1 findings first.
+Report every defect as its own finding (`F1`, `F2`, ...) with P0-P3 severity, heuristic, location, what is wrong, and the fix. Do **not** cap or bundle them: the next run checks each one. For each heuristic below 4, name the findings whose fixes earn its next point (`F3, F7 -> 3`), its P0 and P1 findings first.
 
-Return: design-specificity verdict, heuristic scores with their next points, cognitive load, emotional journey, 2-3 strengths, every finding, persona red flags, and provocative questions.
+Return: design-specificity verdict, heuristic scores with their next point, cognitive load, emotional journey, 2-3 strengths, every finding, persona red flags, and provocative questions.
 
 ### Assessment B: Detector + Browser Evidence
 
@@ -139,7 +139,7 @@ Present the Nielsen's 10 heuristics scores as a table:
 
 | # | Heuristic | Score | Key Issue |
 |---|-----------|-------|-----------|
-| 1 | Visibility of System Status | ? | [specific finding and its next points, or "n/a" if solid] |
+| 1 | Visibility of System Status | ? | [specific finding and its next point, or "n/a" if solid] |
 | 2 | Match System / Real World | ? | |
 | 3 | User Control and Freedom | ? | |
 | 4 | Consistency and Standards | ? | |
@@ -207,9 +207,6 @@ Provocative questions that might unlock better solutions:
 #### All Findings
 Snapshot only; in chat, give the count in one line. Every finding that survived synthesis, one row each: `| ID | P | H | Where | What | Fix |`.
 
-#### Since Last Run
-Only when an earlier run left a snapshot: the newest `.impeccable/critique/*__<slug>.md`, unless its frontmatter says `closed: true`. Open it only now, with every score and finding above final; this list **never** changes them. Check each row of its `All Findings` table (its Priority Issues when it predates the table) at the place it names in the current code and page, and list it with the earlier ID and what it said as `fixed`, `partly fixed` or `still open`. The verdict comes from that check, not from whether this run found the issue again.
-
 <codex>
 #### Run Notes
 Keep this compact. Include status for target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live server cleanup, and temp-file cleanup. For failed or skipped steps, give the concrete observed reason and the fallback signal used. In the final chat response, also include snapshot write and trend read status after persistence has run.
@@ -233,15 +230,19 @@ Do this first because the alternative is the most common way this command fails:
 
 Persistence is not the end of the run. After it, the response continues with the trend line and the close.
 
+### Since Last Run
+
+Only when an earlier run left a snapshot: the newest `.impeccable/critique/*__<slug>.md`, unless its frontmatter says `closed: true`. Open it only now, with the report delivered; this list **never** changes the report's scores or findings. Check each row of its `All Findings` table (its Priority Issues when it predates the table) at the place it names in the current code and page, then continue the response with a `Since Last Run` list: each earlier ID and what it said, as `fixed`, `partly fixed` or `still open`. The verdict comes from that check, not from whether this run found the issue again.
+
 ### Persist the Snapshot
 
 Once the report above is finalized, write it to `.impeccable/critique/` so the user can refer back, and so `{{command_prefix}}impeccable polish` can pick up the priority issues without a copy-paste.
 
 Skip this step if the Setup slug was null (vague or root-level target).
 
-1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions) with the All Findings table in full, but stop before the "Ask the User" / "Recommended Actions" sections that come later.
+1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions) with the Since Last Run list and the All Findings table in full, but stop before the "Ask the User" / "Recommended Actions" sections that come later.
 
-   This is a copy of the report you already delivered above, for later commands to read. It is not delivery. If you find yourself composing the report for the first time inside this heredoc, you have skipped Deliver the Report; go back and send it.
+   Apart from that table, this is a copy of the report you already delivered above, for later commands to read. It is not delivery. If you find yourself composing the report for the first time inside this heredoc, you have skipped Deliver the Report; go back and send it.
 
    <codex>
    Codex: exclude Run Notes from the temp body file; Run Notes are final-chat only because persistence, trend read, and temp cleanup happen after the snapshot write.
@@ -252,7 +253,7 @@ Skip this step if the Setup slug was null (vague or root-level target).
    IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>}' \
      {{scripts_path}}/impeccable critique-storage write "<resolved target>" <body-file>
    ```
-   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
+   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. `p0_count` and `p1_count` count the All Findings rows. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote. Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
 
 3. **Delete the temp body file** after the write attempt completes, whether the write succeeded or failed. If deletion fails, mention `temp-file cleanup failed: <reason>` briefly in the final output, but do not block the critique.
 
