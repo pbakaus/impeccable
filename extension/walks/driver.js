@@ -469,6 +469,16 @@ function keyOf(name) {
   return { key: name, text: name, ...(code ? { code, windowsVirtualKeyCode: upper.charCodeAt(0) } : {}) };
 }
 
+/** What typing must never reach, by what has focus (signin.js `lookInPage`). */
+const UNTYPABLE = { password: 'a password field', card: 'a payment card field', code: 'a one-time code field', frame: 'a frame on another origin' };
+
+/** Throws `NotAllowed` unless a key may go where focus is now. A page that cannot be read is not typed into. */
+async function typable() {
+  const seen = await look();
+  if (!seen) throw fail('NotAllowed', 'a walk types only where it can see the focus');
+  if (seen.focus) throw fail('NotAllowed', `a walk does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
+}
+
 async function press(name) {
   const key = keyOf(name);
   await cmd('Input.dispatchKeyEvent', { type: key.text ? 'keyDown' : 'rawKeyDown', ...key });
@@ -605,10 +615,14 @@ export const ops = {
     return {};
   },
 
+  // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.
   async keyboard({ action, key, text }) {
-    if (action === 'press') await press(key);
-    else {
+    if (action === 'press') {
+      await typable();
+      await press(key);
+    } else {
       for (const ch of text) {
+        await typable();
         if (ch === '\n' || ch === '\r') await press('Enter');
         // One code point a key where it has one; anything else is put in as text, as an input method would.
         else if (ch.length === 1 && ch >= ' ' && ch <= '~') await press(ch === ' ' ? 'Space' : ch);

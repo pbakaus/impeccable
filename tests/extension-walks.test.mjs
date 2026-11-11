@@ -7,6 +7,7 @@ import vm from 'node:vm';
 
 import { readHandoff } from '../extension/walks/handoff.js';
 import { admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
+import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
 import { firefoxManifest, isFirefoxFile, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,6 +100,41 @@ describe('walk guard', () => {
     assert.throws(() => onlyThisTab({ tabId: 3 }), { name: 'NotAllowed' });
     assert.doesNotThrow(() => onlyThisTab({ selector: '#go' }));
   });
+});
+
+// What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
+describe('walk lookout', () => {
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  const doc = ({ passwords = [], frames = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel.startsWith('iframe') ? frames : passwords) });
+  const frame = (inner) => ({ tagName: 'IFRAME', contentDocument: inner });
+  const seen = (document, status = 200) => JSON.parse(vm.runInNewContext(`JSON.stringify((${lookInPage})())`, { document, performance: { getEntriesByType: () => [{ responseStatus: status }] } }));
+
+  for (const [label, document, expected] of [
+    ['a visible password field', doc({ passwords: [field({ type: 'password' })] }), { password: true, focus: null }],
+    ['a password field of no size', doc({ passwords: [field({ type: 'password' }, 0)] }), { password: false, focus: null }],
+    ['a password field in a frame on its origin', doc({ frames: [frame(doc({ passwords: [field({ type: 'password' })] }))] }), { password: true, focus: null }],
+    ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
+    ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
+    ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
+    ['focus in a frame on another origin', doc({ active: frame(null) }), { password: false, focus: 'frame' }],
+    ['focus on a password field in a frame on its origin', doc({ active: frame(doc({ active: field({ type: 'password' }) })) }), { password: false, focus: 'password' }],
+    ['focus on a plain field', doc({ active: field({ autocomplete: 'email' }) }), { password: false, focus: null }],
+  ]) {
+    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { ...expected, status: 200 }); });
+  }
+
+  it('sees a 401 page', () => { assert.equal(seen(doc(), 401).status, 401); });
+
+  for (const [url, expected] of [
+    ['https://accounts.google.com/o/oauth2/auth', true],
+    ['https://acme.okta.com/login', true],
+    ['https://github.com/login/oauth/authorize', true],
+    ['https://github.com/acme/web', false],
+    ['https://okta.com.example.com/', false],
+    ['http://localhost:3000/login', false],
+  ]) {
+    it(`takes ${url} ${expected ? 'for' : 'not for'} a sign-in page`, () => { assert.equal(isSignInPage(url), expected); });
+  }
 });
 
 describe('walk mark on our pages', () => {
@@ -281,6 +317,20 @@ describe('Chrome background worker', () => {
       assert.equal(await command('resume'), true);
       await asked;
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
+    });
+  }
+
+  for (const focus of ['password', 'card', 'code', 'frame']) {
+    it(`types nothing when focus is a ${focus} field`, async () => {
+      const { ops } = await walked();
+      page.seen = { focus };
+      const before = sent.length;
+      await assert.rejects(ops.keyboard({ action: 'type', text: 'hunter2' }), { name: 'NotAllowed' });
+      await assert.rejects(ops.keyboard({ action: 'press', key: 'Enter' }), { name: 'NotAllowed' });
+      assert.equal(sent.slice(before).filter((m) => m.startsWith('Input.')).length, 0);
+      page.seen = {};
+      await ops.keyboard({ action: 'type', text: 'ok' });
+      assert.equal(sent.slice(before).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
     });
   }
 });
