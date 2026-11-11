@@ -1,7 +1,7 @@
 /*
  * The walk panel: a paper sheet beside the tab being walked.
  *
- * Tokens and their rules live in ../shared/kinpaku.css, copied as it is from the Impeccable extension: paper and
+ * Tokens and their rules live in the extension's own ../../shared/kinpaku.css: paper and
  * ink; gold is the lit dot and the tag and never carries text; patina-deep is the colour that may be read;
  * vermilion is for a walk that failed and nothing else (a walk the person stopped did not fail).
  *
