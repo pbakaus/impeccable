@@ -680,7 +680,10 @@ pub enum Decision {
 }
 
 pub const WHY_NOT_READY: &str = "Pro rules aren't ready yet; using the open rules.";
-pub const WHY_NOT_ENTITLED: &str = "Pro rules are off: this account doesn't include them.";
+/// Where a person without Pro can see the plans: the one live pricing page (launch CTA audit, 11 Nov 2026).
+pub const PRICING: &str = "See impeccable.style/pricing";
+pub const WHY_NOT_ENTITLED: &str =
+    "Pro rules are off: this account doesn't include them. See impeccable.style/pricing";
 pub const WHY_EXPIRED: &str =
     "Pro rules are off until your Pro access refreshes, on your next scan while online; using the open rules.";
 pub const WHY_UNVERIFIED: &str =
