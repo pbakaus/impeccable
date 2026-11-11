@@ -208,8 +208,18 @@ async function cut() {
   await film.done;
 }
 
-/** The walk is paused: from here nothing is taken or told of the page, and the network is not watched, until {@link unhold}. */
-export async function hold() {
+/**
+ * Set while the walk is held at a sign-in (control.js): the walk does nothing then, so what the tab does is the
+ * person signing in, or the page. Only then may the tab go to a sign-in page (signin.js) and send it what it asks.
+ */
+let heldAtSignIn = false;
+
+/**
+ * The walk is paused: from here nothing is taken or told of the page, and the network is not watched, until
+ * {@link unhold}. `signIn` when it is held at a sign-in.
+ */
+export async function hold(signIn = false) {
+  heldAtSignIn = signIn;
   if (hush) return;
   hush = true;
   if (walk) await cmd('Network.disable').catch(() => undefined);
@@ -217,6 +227,7 @@ export async function hold() {
 
 /** The walk goes on: the network is watched again, afresh, and the other end is told where the tab now is. */
 export async function unhold() {
+  heldAtSignIn = false;
   if (!hush) return;
   hush = false;
   const tab = walk;
@@ -316,7 +327,7 @@ function setUrl(url) {
 
 /** Fails closed: a walked tab seen off its site is no longer walked. The guard holds every request, so this is the net under it. */
 function escaped(url) {
-  if (!walk || stillHome(url, walk.allowed)) return;
+  if (!walk || stillHome(url, walk.allowed) || (heldAtSignIn && isSignInPage(url))) return;
   void endWalk({ event: 'stopped', by: 'guard', url: String(url).slice(0, 500) }, 'left-site');
 }
 
@@ -329,9 +340,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   switch (method) {
     case 'Fetch.requestPaused': {
       const tab = walk;
+      // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
+      // page's), never the walk's own doing, and only then may it reach a sign-in page.
+      const allowed = heldAtSignIn && isSignInPage(params.request?.url) ? [...tab.allowed, new URL(params.request.url).origin] : tab.allowed;
       // A sign-in page asked for: paused before the guard answers, whatever it answers.
       if (params.resourceType === 'Document' && params.frameId === tab.mainFrame && isSignInPage(params.request?.url)) spotted();
-      void held(sendTo(tab.tabId), params, tab.mainFrame, tab.allowed, (url) => {
+      void held(sendTo(tab.tabId), params, tab.mainFrame, allowed, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
       }).then((became) => {

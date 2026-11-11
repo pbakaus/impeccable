@@ -138,7 +138,7 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
-  void (hushes(view) ? hold() : unhold());
+  void (hushes(view) ? hold(view.held === 'sign-in') : unhold());
 });
 
 hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });

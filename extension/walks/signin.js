@@ -4,7 +4,8 @@
 //
 // The signs, each enough on its own:
 //   - the top-level document is going to, or is on, one of SIGN_IN_PAGES;
-//   - a password field is visible in the top document or a frame on its origin;
+//   - a password field is visible in the top document, a frame on its origin, or an open shadow root in either (a
+//     closed one is not seen);
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -48,17 +49,21 @@ export function asksForPassword(response) {
  * (`password`, `card`, `code`, or `frame` for a frame on another origin), else null.
  */
 export function lookInPage() {
-  const docs = [document];
-  for (let at = 0; at < docs.length; at++) {
-    for (const frame of docs[at].querySelectorAll('iframe, frame')) {
-      try { if (frame.contentDocument) docs.push(frame.contentDocument); } catch { /* another origin's */ }
+  // The documents and open shadow roots to read, found in one pass over each.
+  const roots = [document];
+  for (let at = 0; at < roots.length; at++) {
+    for (const el of roots[at].querySelectorAll('*')) {
+      if (el.shadowRoot) roots.push(el.shadowRoot);
+      if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+        try { if (el.contentDocument) roots.push(el.contentDocument); } catch { /* another origin's */ }
+      }
     }
   }
   const visible = (field) => {
     const box = field.getBoundingClientRect();
     return box.width > 0 && box.height > 0 && (field.checkVisibility ? field.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : true);
   };
-  const password = docs.some((doc) => [...doc.querySelectorAll('input[type="password" i]')].some(visible));
+  const password = roots.some((root) => [...root.querySelectorAll('input[type="password" i]')].some(visible));
 
   let focus = null;
   let el = document.activeElement;

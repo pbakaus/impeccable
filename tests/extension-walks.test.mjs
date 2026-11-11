@@ -136,7 +136,8 @@ describe('walk guard', () => {
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
   const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
-  const doc = ({ passwords = [], frames = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel.startsWith('iframe') ? frames : passwords) });
+  const doc = ({ passwords = [], frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : passwords) });
+  const host = (root) => ({ tagName: 'DIV', shadowRoot: root });
   const frame = (inner) => ({ tagName: 'IFRAME', contentDocument: inner });
   const seen = (document, status = 200) => JSON.parse(vm.runInNewContext(`JSON.stringify((${lookInPage})())`, { document, performance: { getEntriesByType: () => [{ responseStatus: status }] } }));
 
@@ -144,6 +145,7 @@ describe('walk lookout', () => {
     ['a visible password field', doc({ passwords: [field({ type: 'password' })] }), { password: true, focus: null }],
     ['a password field of no size', doc({ passwords: [field({ type: 'password' }, 0)] }), { password: false, focus: null }],
     ['a password field in a frame on its origin', doc({ frames: [frame(doc({ passwords: [field({ type: 'password' })] }))] }), { password: true, focus: null }],
+    ['a password field in an open shadow root', doc({ hosts: [host(doc({ passwords: [field({ type: 'password' })] }))] }), { password: true, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
@@ -395,6 +397,31 @@ describe('Chrome background worker', () => {
     assert.equal(current().state, 'walking');
     await settle(5);
     assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/callback?code=secret', 'told once it goes on');
+  });
+
+  it('lets the person sign in on a sign-in host while held there, and the walk not go there itself', async () => {
+    const { command, current } = await walked();
+    const ask = (url, extra = {}) => fire('Fetch.requestPaused', { requestId: `r-${url}`, resourceType: 'Document', frameId: 'main', request: { method: 'GET', url }, ...extra });
+    const answered = async (act) => { const at = sent.length; act(); await settle(5); return sent.slice(at).filter((m) => m.startsWith('Fetch.')); };
+    page.seen = { password: true };
+    await command('pause');
+    await command('resume');
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.deepEqual(await answered(() => ask('https://accounts.google.com/signin')), ['Fetch.continueRequest'], 'the person goes to sign in');
+    assert.deepEqual(await answered(() => ask('https://accounts.google.com/signin/v2', { resourceType: 'XHR', request: { method: 'POST', url: 'https://accounts.google.com/signin/v2' } })), ['Fetch.continueRequest'], 'and sends it what it asks');
+    assert.deepEqual(await answered(() => ask('https://example.com/collect', { resourceType: 'XHR', request: { method: 'POST', url: 'https://example.com/collect' } })), ['Fetch.failRequest'], 'but nothing else is let through');
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l4', url: 'https://accounts.google.com/signin' } });
+    await settle(5);
+    assert.equal(current().state, 'paused', 'on the sign-in host the walk is held, not ended');
+    assert.equal(await command('resume'), false, 'nor goes on there');
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l5', url: 'http://localhost:3000/' } });
+    page.seen = {};
+    assert.equal(await command('resume'), true);
+    assert.deepEqual(await answered(() => ask('https://accounts.google.com/signin')), ['Fetch.failRequest'], 'walking, the walk never goes there itself');
+    page.seen = {};
+    await settle(5);
+    await command('resume');
+    assert.equal(current().state, 'walking');
   });
 
   it('takes no picture of a page it cannot read', async () => {
