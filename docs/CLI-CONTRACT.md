@@ -19,7 +19,7 @@ source, including any em dashes inside user-facing messages; do not "fix" them.
 Sections:
 
 1. Detect CLI and misc verbs (`detect`, `ignores`, `skills`, `concept-seed`, `serve-question`, `generate-image`)
-2. Context and utility verbs (`context`, `doctor`, `pin`, `surface-brief`, `critique-storage`, `palette`, `embed-prompt`, `signals`, `detect-csp`)
+2. Context and utility verbs (`context`, `doctor`, `pin`, `surface-brief`, `critique-storage`, `audit-storage`, `palette`, `embed-prompt`, `signals`, `detect-csp`)
 3. Design hook (`hook`, `hook-before-edit`, `hooks`)
 4. Live mode (`live*`)
 
@@ -495,13 +495,13 @@ retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNI
   sorted by `id.localeCompare`.
 - **Flag parsing** (`getFlagValue`): `--name=value` or `--name value` (next arg not starting with `-`). Boolean flags via `includes`.
 - **install flags**: `--force`, `-y|--yes`, `--no-hooks`, `--providers=<list>`, scope: `--user|--home|--global` → user; `--project|--local` → project; `--scope=<v>`/`--install-scope=<v>` normalized (`u|user|home|global`→user, `p|project|local|repo`→project; unknown → error `Unknown install scope: ${v}. Use --scope=project or --scope=global.`). Project root = nearest ancestor with `.git`, else cwd. Detection: project harness dirs present in root, plus `HARNESS_HINTS`: the project-scope `.replit` → `.agents` labeled "Replit Agent" (a project hint stands in for that dir's plain detection, so `.agents` is not also listed as Codex CLI; the detected-only prompts name harnesses, e.g. `replit`) and the user-scope hints under home (`.agent`, `.gemini/antigravity*`→`.agent`, `.claude`, `.codex`→`.agents`, `.cursor`, `.codeium/windsurf`→`.devin`, the Devin config dir (`%APPDATA%\devin` on Windows, else `$XDG_CONFIG_HOME/devin`, else `~/.config/devin`), `.dsh` (resolved `$DSH_HOME`, fallback `~/.dsh`), `.gemini`, `.grok`, `.hermes`, `.kiro`, `.opencode`, opencode config dir, `.pi`, `.qoder`, `.rovodev`, `.vibe`). Targets: explicit list wins (invalid names → `Unknown provider(s): ...`); `-y` → detected project providers, else detected user providers, else DEFAULT_TARGETS; interactive → prints "Detected harnesses:" table then radio/checkbox prompts (raw-mode TTY) or line prompts (`Install target: [1] Detected only (...)  [2] Customize [1]: `, `Select harnesses (comma-separated: ...)`). Scope: explicit; `-y` → project; interactive prompt `Install location` (Project/Global). Hooks: `decideHookInstall` reads `hook.consent` in config(.local).json; declined→false, accepted→true; all targets already have hook markers→true; `-y` or non-TTY→true; else prints HOOK_EXPLAINER and asks `Install the design hook? (Y/n) `, storing consent in `.impeccable/config.local.json`.
-  Bundle: `IMPECCABLE_BUNDLE_PATH` (dir or zip) else download `https://impeccable.style/api/download/bundle/universal` (https only, up to 5 redirects, non-200 → `HTTP ${status}`; 30 s connect timeout and a 60 s idle timeout on every read, with no cap on the whole transfer, so a slow but steady connection finishes (#1115); a stall → `no data received for 60 s downloading <url>; check the network and retry`) to `${tmpdir}/impeccable-update-${Date.now()}.zip`, extracted with `fflate.unzipSync` into `${tmpdir}/impeccable-update-${Date.now()}` (zip-slip guarded: `Refusing to extract entry outside target dir: ${entry}`). Bundle layout `<bundle>/<provider>/skills/<skill>/...`, `<bundle>/<provider>/agents/*.md`, hook manifests `<bundle>/.claude/settings.json`, `.cursor/hooks.json`, `.codex/hooks.json`, `.github/hooks/impeccable.json`, `.grok/hooks/impeccable.json`. A failed remote bundle prints either `Could not download skill bundle: ${msg}` (the release lookup, signature, or ZIP request failed: connect error, HTTP status, stall, size cap), `Could not verify skill bundle: ${msg}` (keyring, release redirect or version check, signature envelope, key, signature, digest or size mismatch), or `Could not unpack skill bundle: ${msg}` (staging, saving, reading back or extracting the bundle on this machine), each followed by `. Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/new`.
+  Bundle: `IMPECCABLE_BUNDLE_PATH` (dir or zip) else download `https://impeccable.style/api/download/bundle/universal` (https only, up to 5 redirects, non-200 → `HTTP ${status}`, except a 5xx, which is the host's outage (below); 30 s connect timeout and a 60 s idle timeout on every read, with no cap on the whole transfer, so a slow but steady connection finishes (#1115); a stall → `no data received for 60 s downloading <url>; check the network and retry`) to `${tmpdir}/impeccable-update-${Date.now()}.zip`, extracted with `fflate.unzipSync` into `${tmpdir}/impeccable-update-${Date.now()}` (zip-slip guarded: `Refusing to extract entry outside target dir: ${entry}`). Bundle layout `<bundle>/<provider>/skills/<skill>/...`, `<bundle>/<provider>/agents/*.md`, hook manifests `<bundle>/.claude/settings.json`, `.cursor/hooks.json`, `.codex/hooks.json`, `.github/hooks/impeccable.json`, `.grok/hooks/impeccable.json`. A failed remote bundle prints either `Could not download skill bundle: ${msg}` (the release lookup, signature, or ZIP request failed: connect error, HTTP status, stall, size cap), `Could not verify skill bundle: ${msg}` (keyring, release redirect or version check, signature envelope, key, signature, digest or size mismatch), or `Could not unpack skill bundle: ${msg}` (staging, saving, reading back or extracting the bundle on this machine), each followed by `. Nothing was installed; retry or update the CLI. If this persists, report it at https://github.com/pbakaus/impeccable/issues/new`. A 5xx from any of those requests is an outage on the host's side and says so instead (#1341): from GitHub (`github.com`, `*.githubusercontent.com`) `Could not download skill bundle: GitHub's downloads are failing right now (HTTP ${status} from ${host}). Nothing was installed. This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`; from impeccable.style, that its download service is failing, that it is on our side, to try again in a few minutes, and where to report it; from any other host, its name and to try again later.
   Fresh install: `stdout> \nDownloading impeccable skills...`; migrate `*-impeccable` prefixed dirs → `impeccable`; copy each skill dir (rm existing dest first; drop an in-project cross-provider symlinked skills dir); copy agents (`.github`→`.github/agents` or `~/.copilot/agents`; `.cursor`→`.cursor/agents` or `~/.cursor/agents`); write hooks (Claude project scope: `.claude/settings.local.json`, skipped when project `.claude/settings.json` already carries the marker; Claude user scope: `~/.claude/settings.json`, with obsolete Impeccable entries pruned from `~/.claude/settings.local.json`; other destinations: `.cursor/hooks.json`, `.codex/hooks.json` for `.agents`, `.github/hooks/impeccable.json`, `.grok/hooks/impeccable.json`); merged with existing JSON (`mergeHookManifests`: strips existing impeccable entries by markers `skills/impeccable/scripts/hook-probe.mjs|hook.mjs|hook-before-edit.mjs|hook-after-edit.mjs|hook-stop.mjs`, then appends fresh); invalid existing JSON → error `Existing hook manifest is not valid JSON: ${dest}. Re-run with --force to replace it.` (with `--force`, `.bak` written). Claude and Gemini user settings are never replaced wholesale when invalid. Hook command rewriting: `[ ! -f '<abs>' ] || node '<abs>'` (POSIX, single-quote-escaped) when absolute (user scope or global skill), else `[ ! -f "<rel>" ] || node "<rel>"` where rel = `${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs` (Claude), `.agents/skills/impeccable/scripts/hook.mjs` (Codex; plus `commandWindows: if exist "<p>" (node "<p>" & exit /b)`), `.cursor/skills/impeccable/scripts/hook-before-edit.mjs`; on win32 for non-Codex: `node -e "<WIN32_HOOK_GUARD_SCRIPT>" "<path>"`. Output: `Installed impeccable into: ${targets.join(', ')} (${'global'|'project'})`, optional `Installed <Provider> agents into: <path>` (+ shadow warning), `Installed hooks into: ...` (each written manifest path, paths under home shown as `~/...` except on Windows), then `\nDone! Now type /impeccable init in your AI coding agent's chat (not in this terminal) to set up design context.\n`. Errors: `Download failed: ...` / `Install failed: ...` / `Nothing was installed: the bundle had no variants for ...` → exit 1.
   A Claude user-scope hook write also prunes obsolete Impeccable entries from the current project's `.claude/settings.local.json`, preventing a stale project hook from firing alongside the user hook.
   GitHub Copilot hook (`.github/hooks/impeccable.json` in the project, `bash` key): a project install keeps the bundle's portable `$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable` command; a user-scope install rewrites it to the home launcher (`$HOME/.github/skills/impeccable/scripts/impeccable` on POSIX, the resolved profile path with forward slashes on Windows), unless the project ships its own `.github/skills/impeccable/scripts/impeccable`, whose committed portable manifest is left as is. In user scope a project manifest that names the portable path while the project has no Copilot skill does not count as installed, so a repeat install rewrites it.
   Every shipped `impeccable.cmd` (provider dirs, `plugin/`, `cursor-plugin/`, the dist zips) has CRLF line endings: `.gitattributes` sets `*.cmd text eol=crlf`, the build writes batch files with CRLF, and `bun run build` fails on any emitted `.cmd` with a bare LF (#1098).
   Already installed (and not `--force`): `Impeccable skills are already installed (found in ${provider}/).`; a provider named by `--providers`, Customize, or the direct picker that has no install of its own is installed fresh in the same run, while Detected only and `-y` leave providers without an install alone; compares tree hashes (`sha256` of file content with `\.(claude|cursor|...)\/skills\/` normalized to `.PROVIDER/skills/`); if differs → refresh + `Updated ${n} skill(s) to v${v}.`; missing hooks repaired; else `Skills are up to date (v${v}).` + `Run with --force to reinstall.`; a bundle that cannot be fetched or unpacked (offline, connect error, HTTP status, stall, size cap, a failed save) → `Could not check for skill updates: Could not download skill bundle: ${msg}` (or `Could not unpack skill bundle: ${msg}`, without the retry advice) + `Existing skills were left unchanged.`, skills untouched, exit 0, unless a selected provider or a hook manifest is missing and needs the bundle, which stays fatal; a bundle that fails verification stays fatal over an existing install too: `Install check failed: Could not verify skill bundle: ${msg}...` → exit 1 (#1138); ends `Done!` or the above; `exit 0`. Version read from `^version:\s*(.+)$` in installed `impeccable/SKILL.md`.
-- **update flags**: `-y|--yes`, `--force`, `--no-hooks`, scope flags as above (unknown → `Unknown update scope: ${v}. Use --project or --user.`). Resolves project vs user installs holding an `impeccable`/`*-impeccable`/`teach-impeccable` skill; none → `No impeccable skill folders found in this project or at the user level.` + `Run \`npx impeccable install\` to install first.`, exit 1; both → prompt `Update which? [project]/user: ` (non-TTY defaults project). Prints `Updating the ${label} install: ${root} (${providers})`, linked providers note, `Checking for updates...`; up to date → `Skills are up to date (vX).` [+hooks] + `Nothing else to do.`, exit 0; else `Found skills in: ...`, prompt `Update skills in N provider folder(s)? (Y/n) ` (n/no → `Aborted.` exit 0), refresh, `Updated N skill(s) to vX.`, `Done!`. Hook manifests follow install's placement: in user scope the Claude hook is `~/.claude/settings.json` and every other provider's manifest (`.cursor/hooks.json`, `.codex/hooks.json`, `.grok/hooks/impeccable.json`, ...) is the current project's, rewritten against the home skill. Hook consent is read from (and a prompt's answer written to) that same project root, so a project that declined hooks gets none from `update --user -y`. The stale-manifest repair (`repair_stale_hook_manifests`, including the retired Cursor gate) runs on those project manifests regardless of hook consent. An older `update --user` wrote non-Claude manifests under home instead; those are repaired in place too, never pruned, because a home manifest is global. When a home and a project hook (or a plugin and a project hook) both fire for one edit, the `hook` verb's event claim lets only one of them scan (see `hook`).
+- **update flags**: `-y|--yes`, `--force`, `--no-hooks`, scope flags as above (unknown → `Unknown update scope: ${v}. Use --project or --user.`). Resolves project vs user installs holding an `impeccable`/`*-impeccable`/`teach-impeccable` skill; none → `No impeccable skill folders found in this project or at the user level.` + `Run \`npx impeccable install\` to install first.`, exit 1 (an Impeccable skill under `.codex/skills`, which is not an install target, gets a line between the two: `Found an Impeccable skill at .codex/skills/<name>, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run \`npx impeccable install --providers=codex\` to install it there, then delete .codex/skills/<name>.`; the home copy reads `~/.codex/skills/<name>`, names `~/.agents/skills/impeccable` as the maintained user install, `--scope=global` on the install, and ends `so Codex loads one copy.`; `--project` and `--user` check only their root); both → prompt `Update which? [project]/user: ` (non-TTY defaults project). Prints `Updating the ${label} install: ${root} (${providers})`, linked providers note, `Checking for updates...`; up to date → `Skills are up to date (vX).` [+hooks] + `Nothing else to do.`, exit 0; else `Found skills in: ...`, prompt `Update skills in N provider folder(s)? (Y/n) ` (n/no → `Aborted.` exit 0), refresh, `Updated N skill(s) to vX.`, `Done!`. Hook manifests follow install's placement: in user scope the Claude hook is `~/.claude/settings.json` and every other provider's manifest (`.cursor/hooks.json`, `.codex/hooks.json`, `.grok/hooks/impeccable.json`, ...) is the current project's, rewritten against the home skill. Hook consent is read from (and a prompt's answer written to) that same project root, so a project that declined hooks gets none from `update --user -y`. The stale-manifest repair (`repair_stale_hook_manifests`, including the retired Cursor gate) runs on those project manifests regardless of hook consent. An older `update --user` wrote non-Claude manifests under home instead; those are repaired in place too, never pruned, because a home manifest is global. When a home and a project hook (or a plugin and a project hook) both fire for one edit, the `hook` verb's event claim lets only one of them scan (see `hook`). On both success paths the same `.codex/skills` line, when it applies to the updated root, comes right before `Done!` or `Nothing else to do.`, with `Delete <path>.` in place of the install step when `.agents` is among the updated providers; an unscoped run that fell back to the user install also checks the project root, with the install wording; a `.codex/skills` entry that resolves into an updated skills dir (the entry linked, or `.codex/skills` itself linked), or to the same place as its namesake there (both linked onto one checkout), is skipped without hiding a copy beside it. Both success paths end with a blank line and the `doctor` text report for the working directory (after `Done!`, or after `Nothing else to do.`), with no fixes applied. `update` usually runs from the npm shim, where the provider detects as `source` and the hook checks are skipped, so the pass runs once per refreshed skill folder with that folder as the skill dir (an exported `IMPECCABLE_PROVIDER_ID` is ignored, so each folder's own hook manifest is checked) and merges the findings into one report (they differ only in the hook findings); the command prefix is the first folder's. After `Done!` the report is followed by a blank line and `Next step: run <prefix>impeccable doctor in your coding agent. It checks this project's setup against the version you just installed and offers the fixes.`, since the fixes it names are the agent's to offer; the up-to-date path prints no such line. A linked-only install, an abort, and a failed update print no report.
 - **link**: `--source=<path>` (default `.impeccable`), `--providers`, `--force`, `-y`. Source must contain `dist/universal/` or provider `*/skills` dirs, else `Could not find compiled skills in ${src}. Expected dist/universal/ or provider skill folders.` Prompts `Link impeccable skills into N folder(s)? (Y/n) `; creates relative dir symlinks; existing non-link skipped with warning unless `--force`; output `Linked impeccable into: ... (N linked, N already linked, N skipped).` + submodule hint.
 - **check**: not installed → `Impeccable is not installed in this project.` + `Run \`npx impeccable install\` to install.` exit 0; else `Checking for updates...\n` then `Skills are up to date (vX).` or `Updates available.` + `Run \`npx impeccable update\` to update.`; failure → `Could not check for updates: ${msg}` exit 1.
 - Prompts: non-TTY `ask()` reads answers line-by-line from stdin (fd 0) after echoing the question; TTY SIGINT → `PromptAbortError` (`code IMPECCABLE_PROMPT_ABORT`) → cli.js prints `\nAborted.` exit 130. ANSI (`\x1b[36m` accent, `\x1b[1m` bold, `\x1b[2m` dim, `\x1b[32m` good) only when stdout is TTY, `NO_COLOR` unset, `TERM !== 'dumb'`.
@@ -789,16 +789,18 @@ Tier 1 `collectBootFindings(ctx, extras)` order:
 5. `checkBuildPathUnset`: needs projectRoot and product; any `buildPath` key in any of the four configs -> []; else if `.impeccable/surfaces` or `.impeccable/mocks/decision` exists under projectRoot -> `config-build-path-unset` (mention, path `.impeccable/config.json`).
 6. `checkSurfaceBriefs({candidates, projectRoot})`: briefs whose primaryTarget is a non-URL, non-`route:` string that does not exist under projectRoot -> one `surface-brief-orphaned` (mention, path = joined brief paths, summary `<n> persisted surface brief(s) name a primary target that no longer exists: <path> → <target>; ...`).
 7. When `extras.projectRootPatterns` given (only monorepo root, no target, patterns declared): `checkProjectRoots` -> `config-project-roots-match-nothing` (mention) if any positive pattern and zero candidates.
+8. `checkHookNotInstalled(ctx, cwd, env, provider)` (appended by `context` after the boot findings, and by `doctor` before `checkHookInstallation`; the two always agree): nothing when the provider has no hook manifest table (`source`, plugin installs, `kiro`, `hermes`, ...), the platform is native, `IMPECCABLE_HOOK_DISABLED` is set, or the active project's `config.json`/`config.local.json` has `hook.enabled === false` or `hook.consent === "declined"`; else every manifest for the provider in the hook-manifest search roots plus its user-level manifest is read (comments allowed, as in `hooks on`), and if none has a truthy `hooks` value naming an Impeccable hook command of either era -> `hook-not-installed` (route, artifact `hook manifest`, path = the provider's first manifest, e.g. `.claude/settings.local.json`, summary `No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.`, fix ``Run `impeccable hooks on` to install it, or `impeccable hooks off` to keep it off and stop this finding.``; `hooks on` installs only beside a skill folder (`.claude`, `.agents`, `.cursor`, `.github`, `.grok` or `.gemini` + `/skills/impeccable`) in the directory it runs in, so the fix names the nearest search root that has one: when that root is not cwd it opens ``Run `impeccable hooks on` from `<that root, relative to cwd>`, where the skill is installed, to install it``; when no search root has one, Claude Code with a user-level launcher (`<Claude config dir>/skills/impeccable/scripts/impeccable`) keeps the plain form, since `hooks on` wires that launcher from any directory, and every other case, as with any other user-level skill or a provider that verb has no target for, opens ``Run `impeccable update` to reinstall it``). A stale or retired entry counts as installed and stays with `hook-script-missing` / `cursor-hook-pre-edit-gate`.
 
 Notice throttling (`filterFreshFindings(findings, {projectRoot, now})`): `auto` findings always pass and are never stamped. Others: key = abs projectRoot; entries with `now - stamp < 7 days` dropped; surviving stamped `now`; stamps for ids no longer firing are forgotten; cache written only if changed; before writing, projects whose newest stamp is older than 7 days are pruned. `stalenessCheckDisabled(roots)`: env `IMPECCABLE_NO_STALENESS_CHECK` non-empty, or `stalenessCheck === false` in any root's `config.json`/`config.local.json` (later wins).
-Directive (`buildStalenessDirective`): null if empty; else one string = lines joined by a single space:
+Directive (`buildStalenessDirective(findings, command)`, `command` = `<prefix>impeccable` for the provider): null if empty; else one string = lines joined by a single space:
 ```
 CONTEXT_STALE:\n<JSON.stringify(findings, null, 2)>
-Impeccable's own project files have drifted from what this version reads. Do not stop, reorder, or expand the requested task for any of this.
-By severity: `auto` is a migration the next write to that file performs anyway, so apply it then and do not raise it with the user. `mention` gets one short line in your reply with the offered fix. `route` names the command that owns the repair; offer it, and run it only if the user asks.
+[only if any non-auto:] End your final reply to the user with this exact sentence as its last line: "Impeccable found setup issues in your project. Run `<command> doctor` to see them. Fixing them lets Impeccable catch design problems as you build." Say it once, do not list the findings, do not run doctor or any repair unless the user asks, and do not raise this again.
+Impeccable's own project files have drifted from what this version reads. Do not stop, reorder, or expand the requested task for any of these findings.
+By severity: `auto` is a migration the next write to that file performs anyway, so apply it then and do not raise it with the user. `mention` and `route` reach the user only through that fixed sentence; doctor owns their details and fixes.
 A finding that reports a deprecated field is binding: treat that field as absent for every decision in this session, whatever value it holds.
-[only if any non-auto:] Surface the reportable findings once, after the task response, in at most two sentences. They are already throttled, so say them plainly rather than hedging about whether they matter.
 ```
+The user-facing sentence is fixed, like `UPDATE_AVAILABLE`'s: the findings themselves are never described at boot, so the line reads the same on every harness apart from the command prefix.
 Any exception in collection -> directive silently omitted.
 
 Tier 2 (`staleness-deep.mjs`, doctor only):
@@ -818,7 +820,7 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 - **CLI args / flags**: `--json`, `--fix`, `--help`/`-h`, `--target <p>` (strict parse of remaining args; combinable). `--help` wins over everything and runs no checks. Malformed `--target` -> stderr message, exit 1.
 - **Env vars read**: everything `loadContext` reads (`IMPECCABLE_CONTEXT_DIR`); no update/staleness caches are touched (doctor does not call the notice layer or the update check).
 - **Inputs**: `loadContext(cwd, targetOptions)`; `resolveTargetSelection(cwd, targetOptions)` for workspace candidates (non-null only at a monorepo root without --target), without its UI-signal filter, so every workspace is swept; `.impeccable/config.json`/`config.local.json` at repoRoot for `projectRoots`; git; hook manifests; the detector registry (`<scripts>/detector/detect-antipatterns.mjs` or `<scripts>/../../cli/engine/detect-antipatterns.mjs`).
-- **Findings order**: checkProduct; checkNativePlatformEvidence (if product); checkDesignSidecar; checkDesignDrift; checkDesignCoverage; checkConfig; checkBuildPathUnset; checkDetectorIgnores; checkSurfaceBriefs; checkHookInstallation (providerId = built provider); checkLegacyLiveState; checkProjectRoots (patterns from repoRoot configs, candidates = workspace candidates); workspace findings.
+- **Findings order**: checkProduct; checkNativePlatformEvidence (if product); checkDesignSidecar; checkDesignDrift; checkDesignCoverage; checkConfig; checkBuildPathUnset; checkDetectorIgnores; checkSurfaceBriefs; checkHookNotInstalled; checkHookInstallation (providerId = built provider); checkLegacyLiveState; checkProjectRoots (patterns from repoRoot configs, candidates = workspace candidates); workspace findings.
 - **Outputs**:
   - `--help`: usage text + `\n`, exit 0:
     ```
@@ -886,6 +888,12 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 - **Outputs**: `slug`: slug + `\n` exit 0, or stderr `no stable slug for input\n` exit 1. `write`: missing args -> stderr `usage: write <slug-or-target> <body-file>\n` exit 1; else absolute path written + `\n`. `latest`: none -> exit 2 (no output); else prints file body verbatim. For explicit path/URL targets, `latest`, `trend`, and `close` probe both the current hashed long slug and the previous suffix-only long slug, but accept a legacy snapshot only when its recorded target identity matches. Identity-less pre-upgrade snapshots remain available by passing their exact legacy slug, which avoids guessing a path/URL owner for a collision-prone key. `trend`: `JSON.stringify(rows, null, 2)` + `\n`, rows = frontmatter objects of the last N matching files oldest->newest (`[]` if none). Unknown -> stderr `usage: critique-storage.mjs <slug|write|latest|trend> [args]\n` exit 1.
 - **Gotchas**: `latest`/`trend` match by suffix `__<slug>.md`; `readLatestSnapshotAcrossTargets` uses suffix `.md`. Main-module guard compares realpaths so symlinked invocation works.
 - **Tests**: `tests/critique-storage.test.mjs` (slug rules, stamp format, round-trip, newest selection, meta cannot override timestamp/slug, quoting `:`/`#`, CLI slug/exit codes/symlink/latest exit 2, trend ordering).
+- **Saved reports (binary only, #1329)**: `write` reads `reports` from `<projectRoot>/.impeccable/config.json`, then `config.local.json` per key: `enabled` (default `true`) and `commit` (default `false`). `enabled: false` writes nothing and prints `REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the <kind> report was not saved. Carry on; nothing else changes.`, exit 0. Unless `commit` is `true`, every write keeps `<dir>/.gitignore` listing `*` and `!ignore.md` (`ensure_dir_ignored`), so reports stay local while `ignore.md` stays shareable. With `commit: true`, a write lifts those two rules from an engine-written `.gitignore` (`release_dir_ignored`: only a file whose first line is the engine header; user lines stay; a file left with nothing else is deleted), so switching on after a default write makes the folder committable. `IMPECCABLE_REPORT_META` is read before `IMPECCABLE_CRITIQUE_META`.
+
+#### `impeccable audit-storage` (binary only, #1329)
+
+- **Invoked from**: `reference/audit.md` (Save the Report): `audit-storage write "<resolved target>" <body-file>`.
+- **CLI args**: `slug <target>` (same as critique-storage); `write <slug-or-target> <body-file>`, the critique-storage write path with dir `<projectRoot>/.impeccable/audit/` (a target with no slug, such as `.` for a project-wide audit, is stored as `project`), the same file names, frontmatter, fingerprint and the saved-reports rules above. Anything else: stderr `usage: audit-storage <slug|write> ...` exit 1. Nothing reads audit history yet, so there is no `latest`, `trend` or `close`.
 
 ---
 
@@ -1226,7 +1234,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
     ```
     `<GUARDED>` = `[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs" ] || ! { node -e "process.exit(Math.min(parseInt(process.versions.node,10),22)===22?0:1)" 2>/dev/null || { D="$HOME/.impeccable"; [ -f "$D/node-unsupported" ] || { mkdir -p "$D" 2>/dev/null && : > "$D/node-unsupported" 2>/dev/null && printf '%s' '{"systemMessage":"The impeccable design hook is not running: no Node 22 or newer on PATH. Install one, or remove the impeccable hook from your harness settings."}'; }; exit 0; }; } || node "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs"` — i.e. missing file → exit 0 silently; node < 22 → one-time `{"systemMessage": ...}` on stdout (marker file `~/.impeccable/node-unsupported`), exit 0; else run hook.mjs with no args, stdin = the harness JSON event.
   - **Claude Code plugin** (`plugin/hooks/hooks.json`, also loaded by Grok Build via `CLAUDE_PLUGIN_ROOT`→`GROK_PLUGIN_ROOT` alias): same shape without `description`, path `${CLAUDE_PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs`. Each handler also carries a `windows` sibling (the `cmd /c if exist` form of `impeccable.cmd` with the path unquoted) that VS Code Copilot Chat runs on Windows, under PowerShell in the Copilot extension and `cmd.exe /c` in the agent host, and `command` runs the launcher through `sh` because the agent host syncs it without its executable bit, and `env` sets `IMPECCABLE_HOOK_HARNESS=vscode`, which ranks below the event-shape checks and makes the output carry `additionalContext` both top-level (agent host) and inside `hookSpecificOutput` (Copilot extension) (#1249).
-  - **Codex** project (`.codex/hooks.json`): matcher `"Edit|Write|apply_patch"`, path `.codex/skills/impeccable/scripts/hook.mjs` (build) or `.agents/skills/impeccable/scripts/hook.mjs` (CLI install / hook-admin), same guarded form with `systemMessage` notice, PostToolUse timeout 5 + Stop timeout 30. The CLI installer adds `commandWindows: if exist "<path>" (node "<path>" & exit /b)` for Codex entries. OpenAI plugin bundle (`dist/openai/impeccable/hooks/hooks.json`) uses `${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs`.
+  - **Codex** project (`.codex/hooks.json`): matcher `"Edit|Write|apply_patch"`, path `.codex/skills/impeccable/scripts/hook.mjs` (build) or `.agents/skills/impeccable/scripts/hook.mjs` (CLI install / hook-admin), same guarded form with `systemMessage` notice, PostToolUse timeout 5 + Stop timeout 30. The CLI installer adds `commandWindows: if exist "<path>" (node "<path>" & exit /b)` for Codex entries. The OpenAI plugin bundle (`dist/openai/impeccable/`) ships no hook, because OpenAI's review rejects plugins that bundle one; `buildCodexPluginHooksManifest` (the `${PLUGIN_ROOT}/skills/impeccable/scripts/hook.mjs` form) is kept for the plugin installing its own hook.
   - **GitHub Copilot** (`.github/hooks/impeccable.json`):
     ```json
     { "version": 1, "hooks": { "postToolUse": [{ "type": "command", "matcher": "edit|create|apply_patch",
@@ -1278,7 +1286,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
   9. Else compute `ack`: not quiet AND pendingWinner AND ack-eligible → `{kind:'pending', text: appendDesignSystemNoteOnce(renderPendingAck(...))}`; else not quiet AND no suppressionWinner AND cleanWinner AND !cleanAckDeduped AND ack-eligible → `{kind:'clean', text: appendDesignSystemNoteOnce(renderCleanAck(...))}`.
   10. Persist cache only if `deferredTotal > 0 || (cacheDirty && exists(<projectCwd>/.impeccable))` (a clean edit in a project with no `.impeccable/` footprint writes nothing to disk). After a persist, a named session records the project root in the session index (#1101, below).
   11. Return precedence: `detectorThrewAny && !pendingWinner && !cleanWinner` → audit `{emitted:false, error:'detector-threw'}`; quiet → `{emitted:false, quiet:true}`; pending ack → stdout payload, audit `{file, emitted:true, kind:'pending', pending:<n>, chars}`; suppressionWinner → stdout `payload(suppressionNotice(relativize(file)))`, audit `{file, suppressed:true, emitted:true}`; clean ack → stdout payload, audit `{file, emitted:true, kind:'clean', chars}`; pendingWinner (non-UI) → `{emitted:false, skipped:'non-ui-ack'}`; cleanWinner → same `'non-ui-ack'`; cleanAckDeduped → `skipped:'clean-ack-deduped'`; suppressedHit → `{suppressed:true, emitted:false}`; else `{skipped:lastSkip, bytes?:skippedBytes (only when 'too-large')}`. Any exception → `{exitCode:0, stdout:'', audit:{..., error}}`.
-- **Stop algorithm (`runStopHook`)**: re-entrancy/disabled/malformed/empty as above; harness `vscode` → `skipped:'vscode-stop'` (no route shows Stop output, and every rule already ran per edit); `event.stop_hook_active === true` → `skipped:'stop-hook-active'` (no scan, no output; prevents Claude Code re-invocation loops, issue #400). `sessionId = event.session_id || 'unknown'`; the config gate, build-completion reminder and shipped-build note use `resolve(event.cwd || cwd)` (`build-phase` writes its state under its own cwd); the touched-file scan then runs over a list of roots: first the nearest directory from there up to (not including) the home dir whose cache lists files touched by this session, else the same cwd (#1088), then every root the session index records for a named session (#1101, below), deduped and sorted. Each root is scanned under its own config, cache and platform; a root other than the session cwd must pass its own config gate. Per root: config disabled → `'config-disabled'`; `touched = keys(cache.sessions[sid].files)`; empty → `'no-touched-files'`; native → `'native-platform'`; a root that stops at one of these adds nothing, and only when every root stopped is the first root's skip returned (so a single root behaves as before); detector missing → `'detector-missing'`. Iterate touched files (max 20 scanned): same skips (sensitive/generated/extension/ignoreFiles/missing/outside-project) silently; read (unreadable → skip; LIVE_PREVIEW_MARKERS in the content → skip); detect with full rule set (no tiering); `filtered = filterFindings`; `keys = findingCacheKeys(filtered)`; `fresh = dedupeAgainstCache` over the findings the Stop baseline keeps, each with its key from `keys` (#1202); `rememberFindings(cache, sid, file, keys)` (replaces the file's set with the whole live scan); if fresh, push group. `audit.scannedFiles`. No groups → `{emitted:false, skipped:'stop-clean'}`. Else render grouped with footer mode + reserve, `appendDesignSystemNoteOnce`, `commitFooterShown`, `persistCache`, stdout `payload(text,'Stop',harness)`, audit `{emitted:true, freshFiles, freshFindings, chars, durationMs}`, `emission:{kind:'stop-deep-pass', groups}`.
+- **Stop algorithm (`runStopHook`)**: re-entrancy/disabled/malformed/empty as above; harness `vscode` → `skipped:'vscode-stop'` (no route shows Stop output, and every rule already ran per edit); `event.stop_hook_active === true` → `skipped:'stop-hook-active'` (no scan, no output; prevents Claude Code re-invocation loops, issue #400). `sessionId = event.session_id || 'unknown'`; the config gate, build-completion reminder and shipped-build note use `resolve(event.cwd || cwd)` (`build-phase` writes its state under its own cwd); the touched-file scan then runs over a list of roots: first the nearest directory from there up to (not including) the home dir whose cache lists files touched by this session, else the same cwd (#1088), then every root the session index records for a named session (#1101, below), deduped and sorted. Each root is scanned under its own config, cache and platform; a root other than the session cwd must pass its own config gate. Per root: config disabled → `'config-disabled'`; `touched = keys(cache.sessions[sid].files)`, plus the files a shell wrote (below); empty → `'no-touched-files'`; native → `'native-platform'`; a root that stops at one of these adds nothing, and only when every root stopped is the first root's skip returned (so a single root behaves as before); detector missing → `'detector-missing'`. Iterate touched files (max 20 scanned): same skips (sensitive/generated/extension/ignoreFiles/missing/outside-project) silently; read (unreadable → skip; LIVE_PREVIEW_MARKERS in the content → skip); detect with full rule set (no tiering); `filtered = filterFindings`; `keys = findingCacheKeys(filtered)`; `fresh = dedupeAgainstCache` over the findings the Stop baseline keeps, each with its key from `keys` (#1202); `rememberFindings(cache, sid, file, keys)` (replaces the file's set with the whole live scan); if fresh, push group. `audit.scannedFiles`. No groups → `{emitted:false, skipped:'stop-clean'}`. Else render grouped with footer mode + reserve, `appendDesignSystemNoteOnce`, `commitFooterShown`, `persistCache`, stdout `payload(text,'Stop',harness)`, audit `{emitted:true, freshFiles, freshFindings, chars, durationMs}`, `emission:{kind:'stop-deep-pass', groups}`.
 - **Outputs**:
   - stdout: exactly one JSON document (no trailing newline) when something is emitted, else nothing. Claude/Codex/Grok: `{"hookSpecificOutput":{"hookEventName":"PostToolUse"|"Stop","additionalContext":"<text>"}}`. Cursor-shaped: `{"additional_context":"<text>"}`. GitHub: `{"additionalContext":"<text>"}`. Codex and Hermes Stop: `{"decision":"block","reason":"<text>"}`.
   - stderr: only `[impeccable-hook] <err>` when `IMPECCABLE_HOOK_DEBUG` and an unexpected top-level error.
@@ -1310,6 +1318,7 @@ A Stop event names no file, so the walk up from the session cwd cannot see a pro
 - **When it is written**: after the per-edit pass persists a project's cache, for an event with a `session_id`, on harnesses that run a Stop pass (not Cursor or GitHub Copilot). The cache persists only after a file passed the sensitive, generated, extension, ignore, missing and outside-project checks; native-platform projects and duplicate events return before it. A root already recorded for the session costs one `lstat`. One file per (session, root) means parallel first edits never rewrite a shared list: the record is `create_new`, and losing that race is success.
 - **Safety**: the index root and each session dir must be a real directory (never a symlink) that, on Unix, the current user owns with no group or other write bit; they are created 0700 one level at a time, and records 0600. Any failure, or an unsafe directory, records nothing and is never an error.
 - **Expiry**: when a session creates its dir, the pass removes session dirs whose mtime is older than 30 days. It looks at no more than 256 entries and removes no more than 16 dirs; it removes only `<64 hex>` dirs, and in them only `<64 hex>` regular files, then the dir if that left it empty. Symlinks are never followed.
+- **Shell writes (D6)**: the per-edit pass sees only the harness's edit tools (Codex `apply_patch`, Claude Edit/Write), so a file written by a shell command never enters the cache. Stop also adds UI files modified since the session started (`crates/hook/src/stop_discovery.rs`). The start comes from the event, never a guess: the timestamp of a UUIDv7 `session_id` (Codex thread ids), else the birth time of `transcript_path`; neither → no discovery, cache only. Per root, and only when the root is a project (`.git`, `package.json` or `.impeccable`, the rule the per-edit pass keys its cache by). With discovery on, a first root that is not a project but sits inside one below the home dir (a session started in `src/`) is replaced by that project, as the per-edit pass keys it, so no cache lands in the subfolder and the walk keeps the project's skips; a session cwd above several projects stays as it is and is not walked, so it never scans them under its own settings: a bounded walk (depth 8, 5,000 entries, 40 files kept, newest first) that skips symlinks, non-regular files, hidden directories and `node_modules`, `dist`, `build`, `out`, `coverage`, `generated`, `target`, `vendor`, `__pycache__`, keeps ALLOWED or configured extensions at or under `limits.maxFileBytes` with an mtime at or after the start (2 s slack), and never walks the home dir or a filesystem root (compared as real paths). Discovered files follow the cached ones through the same skips, have their own 20-file budget (so they never push out cached files), carry no baseline (so attribution stays unknown), and are remembered like any scanned file. The audit adds `discovered: <n>` when any were added.
 - **Stop**: lists the session's dir (same safety checks; a missing or unsafe index means no recorded roots) and keeps a record only when its content is the absolute path of an existing directory whose SHA-256 is the record's name, at most 16 roots. These roots follow the walk-up root in the scan list. Each root keeps its own dedupe, so a second Stop with nothing new is silent per root. Files scanned across all roots share the 20-file cap. When findings come from one root, the output is exactly the single-root output. When they come from several, they render as one grouped list, root by root, with paths relative to the session cwd (so each path names its project); the first root with findings leads, and its config sets `maxFindings` and `maxChars` for the whole list, its cache supplies the footer mode and the design-system note, and every root that showed findings records the footer. The audit `cwd` is the first scanned root, and `roots` counts the scanned roots when there are more than one.
 
 #### Stop finding attribution (#522)
@@ -1430,7 +1439,7 @@ Retired as the installed Cursor hook: new manifests run `hook` on `postToolUse` 
 |---|---|---|---|---|---|
 | Claude Code (project) | `PostToolUse` matcher `Edit\|Write\|MultiEdit` (timeout 5), `Stop` (timeout 30) | `.claude/settings.json` (build) / `.claude/settings.local.json` (CLI install, hook-admin) | `hook.mjs` | `{"hookSpecificOutput":{"hookEventName":..,"additionalContext":..}}` | No (exit 0) |
 | Claude Code plugin / Grok plugin | same | `plugin/hooks/hooks.json` (`${CLAUDE_PLUGIN_ROOT}`) | `hook.mjs` | same | No |
-| Codex | `PostToolUse` matcher `Edit\|Write\|apply_patch`, `Stop` | `.codex/hooks.json` (+ `commandWindows` from CLI); OpenAI plugin `hooks/hooks.json` (`${PLUGIN_ROOT}`) | `hook.mjs` | same as Claude (harness `'claude'`); apply_patch paths parsed from `tool_input.command` | No |
+| Codex | `PostToolUse` matcher `Edit\|Write\|apply_patch`, `Stop` | `.codex/hooks.json` (+ `commandWindows` from CLI); none in the OpenAI plugin bundle | `hook.mjs` | same as Claude (harness `'claude'`); apply_patch paths parsed from `tool_input.command` | No |
 | Cursor | `postToolUse` matcher `^Write$` (timeout 5); no Stop | `.cursor/hooks.json`; Cursor plugin `hooks/hooks.json` (`${CURSOR_PLUGIN_ROOT}`) | launcher `hook` (was `hook-before-edit` on `preToolUse`) | `{"additional_context": ..}` (max 10,000 chars) | No |
 | GitHub Copilot | `postToolUse` matcher `edit\|create\|apply_patch` (`timeoutSec` 5), `bash` key | `.github/hooks/impeccable.json` | `hook.mjs` | `{"additionalContext": ..}` | No |
 | Grok Build (project) | `PostToolUse` `Edit\|Write\|MultiEdit`, `Stop` | `.grok/hooks/impeccable.json` | `hook.mjs` | Claude shape (stdout reportedly ignored by Grok) | No |
@@ -2173,3 +2182,257 @@ After `document` writes or reviews the sidecar, this engine step records the sou
 The fingerprint is `{ "algorithm": "sha256", "normalization": "lf-v1", "digest": "<64 hex digits>" }`. `lf-v1` converts CRLF to LF only; lone CR, BOM, Unicode bytes, whitespace and the final newline remain significant. Checking accepts either hex case. Identical content remains current regardless of file modification times; a content mismatch reports `design-sidecar-stale`. Missing, malformed or unsupported fingerprints (or an unreadable source) report `design-sidecar-unverified`, not stale. Read-only checks never stamp or modify a sidecar. Legacy sidecars must be reviewed against DESIGN.md before this command is run.
 
 Live returns `sidecarStatus` (`missing`, `current`, `stale`, or `unverified`). The legacy `mdNewerThanJson` response key is retained for compatibility, but is true only for a fingerprint mismatch. The edit hook uses the same mismatch rule; context/doctor own the unverified notice.
+
+### Engine download failures in launchers and the npm shim
+
+The POSIX launcher (curl path), Windows launcher (curl.exe), and npm shim
+attribute HTTP 5xx failures to the final effective URL's host. They print
+`impeccable: could not download engine ${version}: GitHub's downloads are failing right now (HTTP ${status} from ${host}). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`
+for `github.com`, `*.github.com`, `githubusercontent.com`, and
+`*.githubusercontent.com`. Other hosts print
+`impeccable: could not download engine ${version}: ${host} is failing right now (HTTP ${status}), a server error on ${host}'s side. Try again later.`
+
+Exit status remains 127. The npm shim still follows that line with its existing
+`impeccable: no binary for ${target}...` diagnostic. Launchers omit setup advice
+for these outages. Other failures retain the existing download and setup
+diagnostics; the POSIX wget fallback retains those diagnostics for every failure.
+
+## Loop macOS app
+
+- `impeccable loop install [--version X.Y.Z] [--no-open]` installs the highest
+  pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
+  An existing installation exits non-zero and directs the user to `update`.
+- `impeccable loop update [--no-open]` replaces an installed app with the highest
+  pinned version. An already current app exits 0. Quit Loop before updating.
+- Both commands open the installed app unless `--no-open` is passed. Other
+  platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
+  only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
+- SHA-256 pins in `crates/cli/loop-checksums.txt` are compiled into the engine.
+  Missing pins or mismatches fail closed before extraction. The initial empty
+  manifest means no Loop release can be installed yet.
+- Downloads stage inside `~/Applications`; update preserves the old app until
+  the rename swap succeeds and restores it on failure. An interrupted swap's
+  backup is recovered on the next invocation. Installation holds an exclusive
+  process lock; a crash releases it automatically.
+
+Loop releases publish `impeccable-loop-<version>.zip` on tag `loop-v<version>`.
+Run `node scripts/check-loop-release.mjs --record <version>` to download and
+record a new pin; run without arguments to verify every recorded release.
+Existing pins cannot be overwritten with a different digest.
+**A new Loop version needs an engine release before `loop update` can see it.**
+That is intended at Loop's cadence: the pins live inside the checksummed engine
+binary, including for npx and PATH installs without an adjacent skill directory.
+
+## Setup status
+
+Exact output strings:
+
+- `Usage: impeccable setup status|on|off|forget`
+- `Setup status: on. This machine reports where Impeccable is installed, once a day.`
+- `Setup status: off.`
+- `Setup status: couldn't save the setting.`
+- `Setup status: off, and what this machine reported was deleted.`
+- `Setup status is off, but deleting what this machine reported couldn't be confirmed. Run impeccable setup forget again.`
+
+`impeccable setup [status|on|off|forget]` controls setup reports independently
+of design health. `status` (the default), `on`, and `off` exit 0 after reading
+or saving the local choice; a failed save exits 1. `forget` turns sync off
+first, then posts `{}` to `/cli/v1/setup/forget`. It exits 0 only after the
+service confirms deletion, otherwise 1 with sync still off.
+
+Sign-in requests `setup:write` only when advertised in `scopes_supported`.
+Only a token response granting that scope enables reports. After sign-in,
+and on normal context, detect, doctor, whoami, agents, skills, install,
+update, or check commands, a detached worker reports at most once per day
+per sign-in and service. Hooks and internal verbs never schedule uploads.
+CI, telemetry opt-outs, and `setup off` suppress them. Unreadable local state
+suppresses uploads. Reporting prints nothing, including with `--json`,
+`--quiet`, and `--github`, and never changes a command's exit code or waits
+for the network. The worker makes one upload with a five-second timeout;
+404 and all other failures are silent and wait until the next daily attempt.
+The daily attempt is claimed before inventory collection, including failed
+probes. Inventory has a five-second deadline that terminates its process
+group or tree, including MCP probes. Controls save their choice independently
+of network work and cancel pending claims. Forget turns sync off before
+requesting deletion; the service's forget fence rejects older reports still
+in flight. A claim cannot use a replacement sign-in's token.
+
+Reports contain only payload v1 fields accepted by SETUP_STATUS: an opaque
+random machine key (a persisted SHA-256 digest of random bytes), a
+report UUID, time, OS, release versions, approved harness skill versions,
+approved installation owners and hook events, instruction presence, and
+MCP, resource and transaction counts. Paths, matchers, commands, server
+names, and unknown owner names are excluded. Unknown installations are
+counted. Local choice, machine key and daily attempts live in
+`$IMPECCABLE_HOME/setup.json`; scope consent is bound to the saved sign-in.
+The hidden `setup-report` worker is an implementation entrypoint and prints
+nothing.
+
+## Foundations sync (REN-1581)
+
+After the same full git-repo `detect` that supplies design health, the CLI sends
+`POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
+requests that scope only when OAuth metadata lists it in `scopes_supported`.
+Existing sign-ins without the scope send nothing to this route.
+
+The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
+`productType` and `items`, plus an optional `label`: the repo's name by design
+health's label recipe, sent only when the remote supplies a usable one. Scan
+identity, time, repo key and label match design health.
+`productType` is `null`: the detector does not classify products. Non-advisory
+built-in `slop` findings establish `no-generic-ai-patterns: failing`;
+`low-contrast` findings establish `readable-contrast: failing`. Absent findings
+do not establish a pass: ignores, regex-only files and unresolved styles leave
+coverage incomplete. No item is sent as `checked` or `covered`, and every other
+catalog item is omitted because the scan supplies no corresponding check.
+
+This follows `health off`, CI and telemetry opt-outs, including both the working
+directory and scanned root. Hooks and partial scans never upload. The request
+has a two-second deadline, no retries and no terminal messages. A 404 or any
+other failure leaves the health request, detect output and exit code intact.
+Design health notices are also suppressed for `--json` (including `-json`),
+`--quiet` and `--github`. The saved sync choice is rechecked between requests,
+so `health off` during a foundations upload prevents the health upload.
+
+## `health design on|off`
+
+Exact output strings:
+
+- `Usage: impeccable health design on|off`
+- `DESIGN.md sync: on. Your DESIGN.md uploads to your Impeccable account whenever it changes. To stop: impeccable health design off`
+- `DESIGN.md sync: off.`
+- `DESIGN.md sync: couldn't save the setting: {e}.`
+- `DESIGN.md sync: couldn't save the setting: another impeccable command is using it; try again.`
+- `Design health: couldn't save the setting: another impeccable command is using it; try again.`
+- `Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off`
+
+`impeccable health design on` opts into uploading DESIGN.md file contents;
+`impeccable health design off` stops those uploads. The setting is `design`
+in `$IMPECCABLE_HOME/health.json`. The single default,
+`DESIGN_SYNC_DEFAULT_ON`, is `true`. An explicit off wins, including for existing
+sign-ins once their grant holds the scope. Both commands exit 0 after saving,
+or 1 if the setting cannot be saved. Other arguments print
+`Usage: impeccable health design on|off` and exit 1.
+
+After the same full git-root `detect` that triggers design health, this
+sync requires health sync on, a signed-in account with `design:write`, CI
+unset, and no telemetry opt-out in either the invocation or scanned root.
+Sign-in requests `design:write` only when `scopes_supported` advertises it.
+Hooks, partial scans, and non-repos never upload. The first successful upload
+per sign-in prints N1 to stderr. `--json` (including `-json`), `--quiet` and
+`--github` suppress it without marking it shown. A login-keyed marker in the
+account store prevents repeats; a new sign-in hears it again. If saving the
+marker fails, the notice still prints and the upload is kept. Uploads and
+notices never change detect's exit code. One request
+has a two-second elapsed-time budget, no retries; busy upload or lifecycle
+locks skip it. Credential and file/git preparation run in bounded read workers
+that cannot upload. HTTP connect/read timeouts are capped at the remaining
+budget. DNS resolution remains synchronous and unbounded in ureq.
+A 404 is quietly deferred, as are all other failures.
+
+The upload takes a consistent, generation-matched state/credential snapshot
+under the lifecycle lock without waiting or prompting. An expired token can be
+renewed by the hidden `health-design-refresh` verb: a detached renewal-only
+process receives no file content, finishes any rotation under the ordinary
+lifecycle lock and timeout, and persists credentials even after detect stops
+waiting. If renewal cannot finish within the upload budget, that upload skips.
+The hidden verb accepts no arguments and emits no output.
+
+`health design off`, `health off`, and `health forget` share the uploader's
+advisory `$IMPECCABLE_HOME/design.lock`, waiting at most three seconds for it.
+The uploader holds admission continuously from its final settings/generation
+check through the POST and digest save, and checks the design setting again
+before saving. Once disabling returns success, no earlier upload can start a
+POST or save success. A busy disabling command fails rather than claiming off.
+If the bounded lock wait expires, the existing setting-save error uses the
+cause `another impeccable command is using it; try again`.
+
+`POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
+text, sidecar, label?}`. Repo keying matches design health. Optional `label`
+uses the same repo-name recipe as design health, derived from the normalized
+origin remote, with no folder-name fallback. It is omitted when unavailable;
+backslashes are refused. `changedAt` is the observation time, so a previously
+unsynced old file fits the server's clock window. DESIGN.md must be nonblank
+UTF-8, contain no NUL, and fit 64 KiB;
+the JSON body must fit 160 KiB. The optional sidecar copies only
+`colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
+`.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
+64-entry and short-string bounds. Invalid or absent metadata sends null.
+Components and narrative are never copied. The repo root handle is acquired
+before Git establishes identity and retained while the document is read. The
+pathname must still identify that directory before and after reading, checked
+by device/inode on Unix and volume/file id on Windows; mismatches fail closed.
+Reads use directory handles and refuse symlink files, sidecar directory links,
+symlink roots, and non-regular files without blocking. Windows permits resident
+cloud-backed files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
+
+Only the hash of successfully uploaded text and selected metadata is saved
+under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.
+Unchanged content is skipped; failed uploads remain eligible on the next
+scan. A new sign-in can upload the same repo again. Forget advances a local
+`designGeneration` before contacting the service. Both off commands advance it
+as well, so a late or previously prepared upload
+cannot suppress a later upload after sync is turned back on.
+Generated provider output is not involved.
+### Critique history sync
+
+Exact output strings:
+
+- `Usage: impeccable critiques status|on|off|forget`
+- `Critique sync: on.`
+- `Critique sync: on. Each critique report you save uploads to your Impeccable account. To stop: impeccable critiques off`
+- `Critique sync: off.`
+- `Critique sync: couldn't save the setting.`
+- `Critique history deleted; sync is off.`
+- `Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.`
+- `Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off`
+
+`impeccable critiques [status|on|off|forget]` manages the local
+`IMPECCABLE_HOME/critiques.json` setting. The default is on
+(`CRITIQUE_SYNC_DEFAULT_ON = true`); an explicit off wins. This also applies
+to existing sign-ins once their grant holds the scope. `on` enables uploading saved report
+contents; `off` stops uploads. `forget` first saves off, then posts `{}` to
+`/cli/v1/critiques/forget`. A 404 or other unconfirmed deletion leaves sync off,
+prints the unconfirmed-deletion message above, and exits 1. Only a successful
+response containing a deletion count exits 0 and claims deletion.
+Status reports the saved preference, independent of sign-in or CI.
+
+After a successful `critique-storage write`, the CLI makes at most one
+best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
+the storage verb's exit code. The first successful upload per sign-in appends
+N2 to the critique-storage write step's stdout. `--json` (including `-json`),
+`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+marker in the account store prevents repeats; a new sign-in hears it again.
+If saving the marker fails, the notice still prints and the upload is kept. It never
+uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
+preferences skip uploads. Credential reads share the two-second budget and
+never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
+renews expired tokens through `Session::access_token_within`, without waiting
+for a busy lifecycle lock. The parent waits only within its remaining budget;
+if renewal is late, it skips this upload. The renewal process can finish and
+persist token rotation after the parent exits and can never upload a report.
+Connection and read timeouts are capped at the remaining request budget.
+ureq's synchronous DNS lookup remains unbounded.
+Native projects follow the same report-save path.
+
+Sign-in requests `critiques:write` only when advertised in
+`scopes_supported`. Payload v1 maps saved `target`, `total_score`,
+`max_score`, `na_heuristics`, and severity counts to `target`, `score`,
+`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`body` is passed separately to the save callback, never recovered from
+frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
+inputs must be regular files, never final symlinks or reparse points, with a
+64 KB size check on the opened handle before reading and a bounded read to
+catch growth. Absolute temporary files outside the project remain valid.
+Encoded upload requests over 80 KB are silently skipped.
+
+The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
+admission and the entire POST with `on`, `off` and `forget`. An uploader
+does not wait for this lock; preference commands wait at most three seconds.
+After a successful `off` or `forget`, no earlier uploader can start a POST.
+A fresh UUID identifies each saved report; `createdAt` is its save time.
+Optional `repoKey` uses design health's remote normalization and local repo ID,
+including from subdirectories. With that key, a valid remote repository name
+is sent as optional `label`, using design health's label recipe. Local-only
+repos and invalid names omit `label`. No label is sent without a repo key.

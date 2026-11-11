@@ -146,7 +146,7 @@ if (cfg.sibling) {
 const ENGINE_SOURCE_PATHS = [
   'crates', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
   'browser-bundle',
-  'scripts/bundle-signing-keys.json',
+  'scripts/bundle-signing-keys.json', 'scripts/cli-pro-release-keys.json',
   'skill/scripts/live-browser*.js', 'skill/scripts/modern-screenshot.umd.js',
   'ui/component-review/theme.css', 'ui/component-review/fonts',
   'ui/component-review/vendor/*.css', 'ui/component-review/vendor/instrument-strip.js',

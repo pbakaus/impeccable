@@ -3947,3 +3947,183 @@ fn status_and_on_recognize_enabled_hermes_plugins() {
         assert_eq!(t.read(&config), disabled);
     }
 }
+
+// Shell writes (D6): Codex reaches PostToolUse only through apply_patch, and
+// Claude only through Edit/Write, so a file written by a shell command never
+// enters the per-edit cache. Stop finds UI files modified since the session
+// started and scans them with the cached ones.
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+/// A UUIDv7 whose timestamp is `ms`, as Codex mints its thread ids.
+fn uuid_v7(ms: u64) -> String {
+    let hex = format!("{ms:012x}");
+    format!("{}-{}-7abc-8def-0123456789ab", &hex[..8], &hex[8..12])
+}
+
+fn codex_stop(cwd: &str, session: &str) -> String {
+    json!({ "session_id": session, "cwd": cwd, "hook_event_name": "Stop", "turn_id": "t-1", "stop_hook_active": false }).to_string()
+}
+
+fn set_mtime(path: &str, ms: u64) {
+    let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms)).unwrap();
+}
+
+#[test]
+fn stop_scans_a_shell_written_file_from_a_codex_session() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("index.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    let out: Value = serde_json::from_str(&deep.stdout).unwrap_or_else(|_| panic!("no Stop output: {:?}", deep.audit));
+    assert_eq!(out["decision"], json!("block"));
+    assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
+    assert_eq!(hook::run_stop_hook(&r, &codex_stop(&cwd, &session)).stdout, "", "a repeat Stop stays silent");
+}
+
+#[test]
+fn stop_skips_files_modified_before_the_session_started() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let started = now_ms() - 60_000;
+    let css = t.write("index.css", SIDE_TAB_CSS);
+    set_mtime(&css, started - 3_600_000);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(started)));
+    assert_eq!(deep.stdout, "");
+    assert_eq!(audit_str(&deep.audit, "skipped"), Some("no-touched-files"));
+}
+
+#[test]
+fn stop_does_not_guess_a_session_start() {
+    // No v7 id and no transcript: today's behavior, cache only.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write("index.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, "s1"));
+    assert_eq!(deep.stdout, "");
+    assert_eq!(audit_str(&deep.audit, "skipped"), Some("no-touched-files"));
+}
+
+#[test]
+fn stop_adds_shell_written_files_to_the_cached_ones() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    let clean = t.write("src/clean.css", ".a { color: #333; }\n");
+    hook::run_hook(&r, &edit_event(&cwd, &clean, &session));
+    t.write("src/shell.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "shell-written file scanned: {}", deep.stdout);
+    assert!(deep.stdout.contains("shell.css"));
+}
+
+#[test]
+fn stop_discovery_skips_dependency_and_hidden_dirs() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("node_modules/pkg/a.css", SIDE_TAB_CSS);
+    t.write(".cache/b.css", SIDE_TAB_CSS);
+    t.write("dist/c.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_takes_the_session_start_from_the_transcript() {
+    // Claude ids are v4, so its Bash writes date from the transcript's birth.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let transcript = t.write(".test-home/transcript.jsonl", "{}\n");
+    if std::fs::metadata(&transcript).and_then(|m| m.created()).is_err() {
+        return; // no birth time on this filesystem: discovery stays off
+    }
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    t.write("page.css", SIDE_TAB_CSS);
+    let stop = json!({ "session_id": "c1", "cwd": cwd, "hook_event_name": "Stop", "transcript_path": transcript, "stop_hook_active": false }).to_string();
+    let deep = hook::run_stop_hook(&r, &stop);
+    assert!(deep.stdout.contains("[side-tab]"), "transcript-anchored discovery: {} {:?}", deep.stdout, deep.audit);
+}
+
+#[test]
+fn stop_discovery_stays_out_of_a_folder_that_is_not_a_project() {
+    // A session cwd above several projects keys each file to its own root in
+    // the per-edit pass; discovery does not walk the parent under its settings.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("app/package.json", "{}");
+    t.write("app/a.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_discovery_skips_files_over_the_size_limit() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"hook":{"limits":{"maxFileBytes":32}}}"#);
+    t.write("big.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+#[cfg(unix)]
+#[test]
+fn stop_discovery_skips_named_pipes() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let fifo = format!("{cwd}/preview.css");
+    assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_discovery_covers_a_session_started_inside_a_project() {
+    // A Codex session started in `src/`: the project marker sits one level up.
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/src");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert!(deep.stdout.contains("[side-tab]"), "{} {:?}", deep.stdout, deep.audit);
+    // Keyed to the project: no cache lands in the subfolder, where its
+    // `.impeccable` would later pass for a project root.
+    assert!(!std::path::Path::new(&format!("{cwd}/.impeccable")).exists());
+    assert!(std::path::Path::new(&format!("{root}/.impeccable")).exists());
+}
+
+#[test]
+fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("vendor/lib/x.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/vendor");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}

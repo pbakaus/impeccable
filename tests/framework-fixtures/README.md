@@ -104,7 +104,7 @@ The `runtime` block is optional. Fixtures without it only run the static checks 
 1. Stages the fixture into a tmp repo.
 2. Runs `runtime.install` to install real deps.
 3. Starts `impeccable live-server --background` and runs `impeccable live-inject --port` against it.
-4. Spawns `runtime.devCommand` and scrapes the port from stdout using `runtime.readyPattern` (the first capture group must be the port).
+4. Spawns `runtime.devCommand` and scrapes the port from stdout using `runtime.readyPattern` (the first capture group must be the port). With `runtime.waitForHttpOk: true` it then polls the dev URL until it answers without a 5xx, for servers that print their URL before the first build is ready (Nuxt serves a 503 loading page until then).
 5. Opens Playwright Chromium at the dev URL and asserts `window.__IMPECCABLE_LIVE_INIT__ === true` (the browser-side handshake oracle) within `runtime.readyTimeoutMs`.
 6. Runs a **Steer smoke** step (unless `runtime.steer === false`): submit a message in the global Steer bar, wait for the fake agent to reply `steer_done`, assert the bar unlocks and a `data-e2e-steer` marker lands in source + DOM. Then continues with pick → Go → cycle → accept.
 7. Tears everything down (Playwright close, dev server SIGTERM, live-server stop, tmp rm).

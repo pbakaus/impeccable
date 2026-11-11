@@ -204,6 +204,8 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 **Build path.** For new landing pages and showcase surfaces, Impeccable can generate a full-fidelity comp first and build to match it (bolder, slower), or build straight in code (leaner, faster). App screens and documents are always built in code. `init` asks once and saves the answer as `buildPath` in `.impeccable/config.json`; the decision page lets you override it for one session. The choice only appears when your harness can generate images. [Image generation](https://impeccable.style/docs/image-generation) · [Configuration](https://impeccable.style/docs/config).
 
+**Native apps.** Set `## Platform` in `PRODUCT.md` to `ios`, `android`, or `adaptive` (one Flutter or React Native codebase that follows each OS), and the design commands work from Apple's HIG or Material 3 instead of web conventions. `init` asks when it can't tell. `audit` and `adapt` switch to native versions, and the native audit reads SwiftUI, Compose, React Native, or Flutter source directly. The detector, live mode with its `generate` shortcut, and the edit hook stay web-only, because they work on HTML and CSS in a browser.
+
 **Hooks run outside model approval.** In Claude Code, installed command hooks run even when you deny the model's own commands, so the first edit can download the engine. Review installed hooks before unattended runs, or pass `--settings '{"disableAllHooks": true}'` to turn them off for a run. The installer leaves hook entries it didn't add alone.
 
 **Something broken?** `/impeccable doctor` finds stale context files, unused settings, and broken hooks. [Fix setup problems](https://impeccable.style/docs/doctor).
@@ -215,6 +217,12 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 - [Issues](https://github.com/pbakaus/impeccable/issues) for bugs, questions, and ideas. Outside contributions start with an issue; see [DEVELOP.md](docs/DEVELOP.md).
 - [Changelog](https://impeccable.style/changelog) for what shipped.
 - Follow [@pbakaus](https://x.com/pbakaus) for release notes and new rules.
+
+## Sponsors
+
+[![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=impeccable)
+
+Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux runners.
 
 ## License
 
