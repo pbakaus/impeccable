@@ -29,12 +29,12 @@ const ID = /^[A-Za-z0-9_-]{1,80}$/;
 const MAX_TEXT = 16 * 1024;
 const MAX_ALLOW = 8;
 const MAX_DONE_WHEN = 6;
-/** The screen sizes a walk runs at (the walk protocol's devices; the server's tests hold the two together). */
+/** The screen sizes a walk runs at. A contract with the web app: change it there and here together. */
 const DEVICES = ['desktop', 'mobile', 'tablet'];
 /**
- * The most each line may hold. `errand`, `goal` and `check` are the server's own limits (the walk
- * protocol's field limits for `name`, `goal`, `check`), copied here because this folder loads with no build step:
- * the server's tests fail when the two differ. A person's name and role have no limit of the API's.
+ * The most each line may hold. `errand`, `goal` and `check` are the web app's own limits, copied here because this
+ * folder loads with no build step. A contract with the web app: change it there and here together
+ * (tests/extension-walks.test.mjs pins this side). A person's name and role have no limit of the API's.
  */
 const MAX = { name: 120, role: 200, errand: 120, goal: 2000, check: 300 };
 

@@ -24,6 +24,22 @@ const block = (over = {}) => ({
   ...over,
 });
 
+// Values the web app holds too. A change here must be made on the web app's side as well: this table fails so the
+// author goes and looks.
+describe('walk contract with the web app', () => {
+  const source = (file) => readFileSync(path.join(ROOT, 'extension/walks', file), 'utf8');
+  for (const [what, file, pattern, expected] of [
+    ['protocol number', 'worker.js', /const PROTOCOL = (.+);/, '2'],
+    ['socket subprotocol', 'worker.js', /const SUBPROTOCOL = (.+);/, "'impeccable-outing'"],
+    ['part size', 'worker.js', /const PART_CHARS = (.+);/, '256 * 1024'],
+    ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came' }"],
+    ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
+    ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
+  ]) {
+    it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
+  }
+});
+
 describe('walk hand-off', () => {
   it('takes a block from our walk page, with the socket on its paired host', () => {
     const read = readHandoff(JSON.stringify(block()), PAGE);

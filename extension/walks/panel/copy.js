@@ -9,7 +9,7 @@ const hostOf = (url) => { try { return new URL(url).host; } catch { return ''; }
 export const COPY = {
   product: 'Impeccable',
 
-  /** How a walk is started: the command as it is published (the server's tests hold the two together). */
+  /** How a walk is started: the command as the web app publishes it. Change it there and here together. */
   command: 'npx @impeccable/reviews walk',
 
   signedOut: {
