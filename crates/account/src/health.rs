@@ -145,6 +145,14 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             &token,
             foundation_body,
         );
+    } else {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::FOUNDATIONS_SCOPE),
+            quiet,
+        );
     }
     // The foundations request may have been in flight when another
     // terminal saved `off` or `forget`. Do not start a second upload then.
@@ -166,11 +174,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             }
         }
         Err(ApiError::Status { status: 403, .. }) => {
-            let fresh = Local::read(&io.env).unwrap_or_default();
-            if !quiet && fresh.hinted.as_deref() != Some(marker.as_str()) {
-                io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
-                let _ = Local::update(&io.env, |l| l.hinted = Some(marker));
-            }
+            crate::stale_grant::emit(io, &account, session.state.login, None, quiet);
         }
         Err(_) => {}
     }
@@ -232,6 +236,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 None
             };
             match why_not {
+                None if crate::stale_grant::status(io, crate::oauth::HEALTH_SCOPE) => {
+                    io.out("Design health: on, but this sign-in can't save yet. Run impeccable login.\n")
+                }
                 None => io.out(&format!(
                     "Design health: on. Each full `impeccable detect` of a git repo saves its counts to {}: findings by rule and opaque fingerprints, never code or file names.\n",
                     account.as_ref().map(|a| a.display_host().to_string()).unwrap_or_default()

@@ -79,39 +79,9 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let Some(session) = Session::load_for_upload(&account, wait) else {
         return;
     };
-    if !session
-        .state
-        .scopes
-        .iter()
-        .any(|s| s == crate::oauth::DESIGN_SCOPE)
-    {
-        return;
-    }
     // State and token came from one locked, generation-checked snapshot.
     let original = session.state.clone();
     let login = original.login;
-    let session = if session.existing_access_token().is_none() {
-        let Some(fresh) =
-            crate::session::renew_for_upload(io, &account, started, "health-design-refresh")
-        else {
-            return;
-        };
-        fresh
-    } else {
-        session
-    };
-    if !session.matches_upload(&original)
-        || !session
-            .state
-            .scopes
-            .iter()
-            .any(|s| s == crate::oauth::DESIGN_SCOPE)
-    {
-        return;
-    }
-    let Some(token) = session.existing_access_token() else {
-        return;
-    };
     let root = scan.root.clone();
     let env = io.env.clone();
     let Some(wait) = remaining(started) else {
@@ -142,6 +112,52 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if serde_json::to_vec(&body).map_or(true, |b| b.len() > BODY_BYTES) {
         return;
     }
+    if !session
+        .state
+        .scopes
+        .iter()
+        .any(|s| s == crate::oauth::DESIGN_SCOPE)
+    {
+        let Ok(_admission) = crate::store::Store::design_lock_for(&account.home, Duration::ZERO)
+        else {
+            return;
+        };
+        if enabled_generation(&io.env, generation) {
+            crate::stale_grant::emit(io, &account, login, Some(crate::oauth::DESIGN_SCOPE), quiet);
+        }
+        return;
+    }
+    let session = if session.existing_access_token().is_none() {
+        let Some(fresh) =
+            crate::session::renew_for_upload(io, &account, started, "health-design-refresh")
+        else {
+            return;
+        };
+        fresh
+    } else {
+        session
+    };
+    if !session.matches_upload(&original) {
+        return;
+    }
+    if !session
+        .state
+        .scopes
+        .iter()
+        .any(|s| s == crate::oauth::DESIGN_SCOPE)
+    {
+        let Ok(_admission) = crate::store::Store::design_lock_for(&account.home, Duration::ZERO)
+        else {
+            return;
+        };
+        if enabled_generation(&io.env, generation) {
+            crate::stale_grant::emit(io, &account, login, Some(crate::oauth::DESIGN_SCOPE), quiet);
+        }
+        return;
+    }
+    let Some(token) = session.existing_access_token() else {
+        return;
+    };
     let home = account.home.clone();
     let env = io.env.clone();
     let expected = digest.clone();

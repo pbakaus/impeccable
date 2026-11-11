@@ -103,12 +103,7 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     let Some(state) = crate::store::Store::new(&account).state() else {
         return;
     };
-    if !state.signed_in
-        || !state
-            .scopes
-            .iter()
-            .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
-    {
+    if !state.signed_in {
         return;
     }
     let Some(mut body) = payload(snapshot) else {
@@ -140,6 +135,26 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     let Some(session) = Session::load_for_upload(&account, wait) else {
         return;
     };
+    if !state
+        .scopes
+        .iter()
+        .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+    {
+        let Ok(_admission) = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO)
+        else {
+            return;
+        };
+        if enabled(io) {
+            crate::stale_grant::emit(
+                io,
+                &account,
+                state.login,
+                Some(crate::oauth::CRITIQUES_SCOPE),
+                quiet,
+            );
+        }
+        return;
+    }
     let session = if session.existing_access_token().is_none() {
         let Some(fresh) =
             crate::session::renew_for_upload(io, &account, started, "critiques-refresh")
@@ -150,13 +165,7 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     } else {
         session
     };
-    if !session.matches_upload(&state)
-        || !session
-            .state
-            .scopes
-            .iter()
-            .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
-    {
+    if !session.matches_upload(&state) {
         return;
     }
     let Some(token) = session.existing_access_token() else {
@@ -167,6 +176,21 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
         return;
     };
     if !enabled(io) {
+        return;
+    }
+    if !session
+        .state
+        .scopes
+        .iter()
+        .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+    {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::CRITIQUES_SCOPE),
+            quiet,
+        );
         return;
     }
     let Some(left) = Duration::from_secs(2)
@@ -202,7 +226,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     if choice == "status" {
         io.out(if enabled(io) {
-            "Critique sync: on.\n"
+            if crate::stale_grant::status(io, crate::oauth::CRITIQUES_SCOPE) {
+                "Critique sync: on, but this sign-in can't save yet. Run impeccable login.\n"
+            } else {
+                "Critique sync: on.\n"
+            }
         } else {
             "Critique sync: off.\n"
         });

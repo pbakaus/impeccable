@@ -658,3 +658,125 @@ fn critique_notice_is_once_after_success_and_again_after_sign_in() {
     login(&env);
     assert!(String::from_utf8_lossy(&write(&env, root).stdout).ends_with(notice));
 }
+
+const STALE_NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
+
+#[test]
+fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
+    let fake = Fake::start();
+    let env = fake.env("stale-shared");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    std::fs::write(root.join("report.md"), "Report").unwrap();
+    let metadata = "/.well-known/oauth-authorization-server";
+    let before = fake.hits(metadata);
+    // A service that does not offer the scope keeps the existing status.
+    assert!(!String::from_utf8_lossy(&write(&env, root).stderr).contains(STALE_NOTICE));
+    let status = impeccable(&env, root, &["critiques", "status"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&status.stdout),
+        "Critique sync: on.\n"
+    );
+    assert!(fake.hits(metadata) > before);
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.critiques = true;
+        k.health = true;
+        k.setup = true;
+    }
+    for flag in ["--quiet", "--json"] {
+        let out = impeccable(
+            &env,
+            root,
+            &["critique-storage", "write", "pricing", "report.md", flag],
+        )
+        .env("IMPECCABLE_CRITIQUE_META", META)
+        .output()
+        .unwrap();
+        assert!(!String::from_utf8_lossy(&out.stderr).contains(STALE_NOTICE));
+    }
+    let hook = impeccable(&env, root, &["hook-before-edit"])
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&hook.stderr).contains(STALE_NOTICE));
+    assert_eq!(
+        String::from_utf8_lossy(&write(&env, root).stderr),
+        STALE_NOTICE
+    );
+    let before = fake.hits(metadata);
+    assert!(write(&env, root).stderr.is_empty());
+    assert_eq!(fake.hits(metadata), before);
+    for (args, expected) in [
+        (
+            vec!["critiques", "status"],
+            "Critique sync: on, but this sign-in can't save yet. Run impeccable login.\n",
+        ),
+        (
+            vec!["health", "status"],
+            "Design health: on, but this sign-in can't save yet. Run impeccable login.\n",
+        ),
+        (
+            vec!["setup", "status"],
+            "Setup status: on, but this sign-in can't save yet. Run impeccable login.\n",
+        ),
+    ] {
+        let out = impeccable(&env, root, &args).output().unwrap();
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), expected);
+    }
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(root)
+        .status()
+        .unwrap()
+        .success());
+    std::fs::write(root.join("page.html"), "<h1>Hello</h1>").unwrap();
+    let out = impeccable(&env, root, &["detect", "."]).output().unwrap();
+    assert!(fake.hits("/cli/v1/health/scans") > 0);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains(STALE_NOTICE));
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("can't save scan results"));
+    login(&env);
+    let before = fake.hits(metadata);
+    for args in [
+        vec!["critiques", "status"],
+        vec!["health", "status"],
+        vec!["setup", "status"],
+    ] {
+        let out = impeccable(&env, root, &args).output().unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains(": on."));
+    }
+    assert!(!String::from_utf8_lossy(&write(&env, root).stderr).contains(STALE_NOTICE));
+    assert_eq!(fake.hits(metadata), before);
+}
+
+#[test]
+fn unavailable_metadata_keeps_plain_status_and_leaves_notice_owed() {
+    let fake = Fake::start();
+    let env = fake.env("stale-metadata-failure");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    std::fs::write(root.join("report.md"), "Report").unwrap();
+    fake.knobs.lock().unwrap().critiques = true;
+    fake.route(
+        "GET",
+        "/.well-known/oauth-authorization-server",
+        500,
+        vec![],
+        "{}",
+    );
+    assert!(!String::from_utf8_lossy(&write(&env, root).stderr).contains(STALE_NOTICE));
+    let out = impeccable(&env, root, &["critiques", "status"])
+        .output()
+        .unwrap();
+    assert_eq!(out.stdout, b"Critique sync: on.\n");
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    let state = impeccable_account::store::Store::new(&account)
+        .state()
+        .unwrap();
+    assert!(!account
+        .dir()
+        .join(format!("stale-grant-notice-{}", state.login))
+        .exists());
+}
