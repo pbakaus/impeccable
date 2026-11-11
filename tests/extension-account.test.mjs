@@ -187,6 +187,7 @@ describe('account session', () => {
       const first = h.boot({ dies: (step) => step === dies });
       void first[act]();
       await settle();
+      if (dies === `${ISSUER}/extension/v1/me`) assert.notEqual(h.disk.get(ISSUER).refresh, 'refresh-0', 'the new refresh token is on disk before it is used');
       if (act === 'signOut') assert.equal(await first.signedIn(), false, 'signed out at once, before the server answers');
       const next = h.boot();
       await next.recover();

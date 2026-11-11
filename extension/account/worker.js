@@ -54,6 +54,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.account !== 'string') return false;
   if (!fromPopup(sender)) { respond({ ok: false, why: 'sender' }); return false; }
   if (!Object.hasOwn(ANSWERS, message.account)) { respond({ ok: false, why: 'unknown' }); return false; }
-  void ANSWERS[message.account](message).then(respond, () => respond({ ok: false, why: 'failed' }));
+  // Every answer is for the server chosen, once it is known: a worker Chrome just started reads it first.
+  void chosen.then(() => ANSWERS[message.account](message)).then(respond, () => respond({ ok: false, why: 'failed' }));
   return true;
 });
