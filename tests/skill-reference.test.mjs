@@ -79,23 +79,16 @@ describe('skill reference authoring contracts', () => {
     assert.match(critique, /write `not applicable \(native platform\)` instead/);
   });
 
-  it('makes the first critique complete and every rerun ledger-driven', () => {
+  it('keeps critique a fresh review that reads the earlier snapshot last', () => {
     const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
-    const rerun = critique.match(/### Rerun\n([\s\S]*?)\n### Generate Combined Critique Report/)?.[1] ?? '';
+    const assessmentA = critique.match(/### Assessment A: Design Review\n([\s\S]*?)\n### Assessment B/)?.[1] ?? '';
+    const sinceLastRun = critique.match(/#### Since Last Run\n(.*)/)?.[1] ?? '';
 
-    assert.doesNotMatch(critique, /3-5 (priority issues|most impactful)/);
-    assert.doesNotMatch(critique, /Most real interfaces score/);
-    assert.match(critique, /#### All Findings/);
-    assert.match(critique, /"base":"<commit>"/);
-    assert.match(rerun, /\*\*Assessment A stays blind to the ledger\.\*\*/);
-    assert.match(rerun, /reports a defect only when a change introduced it/);
-    assert.match(rerun, /skipping `\.impeccable\/`/);
-    assert.match(rerun, /drops a new finding whose named lines are unchanged since `base`/);
-    assert.match(rerun, /\*\*Scores move only by verified rows\.\*\*/);
-    assert.match(rerun, /takes one point from the first heuristic it names/);
-    assert.match(rerun, /numbered on from the ledger's last row/);
-    assert.match(rerun, /`Method: unchanged since <timestamp>`/);
-    assert.match(critique, /leave its rows unread until both assessments are back/);
+    assert.match(assessmentA, /every defect as its own finding/);
+    assert.doesNotMatch(assessmentA, /snapshot|\.impeccable\/critique/);
+    assert.match(critique, /#### All Findings\n/);
+    assert.match(sinceLastRun, /`closed: true`/);
+    assert.ok(critique.indexOf('#### Since Last Run') > critique.indexOf('#### Questions to Consider'), 'the earlier snapshot is opened after the scored report');
   });
 
   it('keeps reduced-motion guidance on the animation build path', () => {
