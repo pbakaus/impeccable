@@ -247,11 +247,23 @@ export async function look() {
 let spotted = () => undefined;
 export function onSignIn(listener) { spotted = listener; }
 
-/** Whether the walked tab is at a sign-in right now: by its address, or by what the page shows. */
+/** How often, and how far apart, a page between documents is read again before it counts as unreadable. */
+const READS = 5;
+const READ_GAP_MS = 100;
+
+/**
+ * Whether the walked tab is at a sign-in right now: by its address, or by what the page shows. Null when the page
+ * could not be read, even after a few tries: nothing is taken of a page the walk cannot check.
+ */
 export async function signInNow() {
-  if (!walk) return false;
-  if (isSignInPage(walk.url)) return true;
-  return signingIn(await look());
+  for (let tries = 0; tries < READS; tries++) {
+    if (!walk) return false;
+    if (isSignInPage(walk.url)) return true;
+    const seen = await look();
+    if (seen) return signingIn(seen);
+    await sleep(READ_GAP_MS);
+  }
+  return null;
 }
 
 /** How long `open` waits for its page to answer before it says the tab is open anyway. */

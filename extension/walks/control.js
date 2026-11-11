@@ -34,20 +34,25 @@ function pauseFor(why) {
 }
 onSignIn(() => { pauseFor('sign-in'); });
 
+/** The ops that take something of the page: none runs on a page the walk could not check. */
+const LOOKING = new Set(['screenshot', 'evaluate']);
+
 /** Returns once the walk may act, and not at a sign-in. Throws while the person has the tab. */
-async function clear() {
+async function clear(name) {
   for (;;) {
     const { state } = current();
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     if (state === 'paused') { await new Promise((go) => { held.push(go); }); continue; }
-    if (!(await signInNow()) || !pauseFor('sign-in')) return;
+    const signIn = await signInNow();
+    if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
+    if (!signIn || !pauseFor('sign-in')) return;
   }
 }
 
 for (const [name, run] of Object.entries(ops)) {
   if (FREE.has(name)) continue;
   const acting = unseen(name, run);
-  ops[name] = async (req) => { await clear(); return acting(req); };
+  ops[name] = async (req) => { await clear(name); return acting(req); };
 }
 const open = ops.open;
 ops.open = (req) => {
@@ -101,7 +106,9 @@ export async function command(name) {
 whenPressed((what) => { void command(what); });
 
 // Paused is paused whoever paused it: the walk takes and tells nothing of the page until it goes on (driver.js `hold`).
-onView((view) => { void (view.state === 'paused' ? hold() : unhold()); });
+// A sign-in pause the person then takes over stays that way: they are signing in.
+const hushes = (view) => view.state === 'paused' || (view.state === 'takeover' && view.held === 'sign-in');
+onView((view) => { void (hushes(view) ? hold() : unhold()); });
 
 hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });
 hooks.closed.push((why) => {

@@ -330,6 +330,34 @@ describe('Chrome background worker', () => {
     });
   }
 
+  it('keeps a sign-in pause the person takes over hushed, and turns a hand back during it into a pause', async () => {
+    const { command, current } = await walked();
+    page.seen = { password: true };
+    await command('pause');
+    await command('resume');
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.equal(await command('takeover'), true);
+    const heard = told.length;
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l3', url: 'http://localhost:3000/callback?code=secret' } });
+    assert.deepEqual(told.slice(heard).filter((m) => m.event !== 'takeover').map((m) => m.event), [], 'nothing of the page is told while they sign in');
+    assert.equal(await command('handback'), false, 'not handed back while the sign-in shows');
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    page.seen = {};
+    assert.equal(await command('resume'), true);
+    assert.equal(current().state, 'walking');
+    await settle(5);
+    assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/callback?code=secret', 'told once it goes on');
+  });
+
+  it('takes no picture of a page it cannot read', async () => {
+    const { ops } = await walked();
+    page.seen = null;
+    const before = sent.length;
+    await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
+    assert.equal(since(before, 'Page.captureScreenshot'), 0);
+    page.seen = {};
+  });
+
   for (const focus of ['password', 'card', 'code', 'frame']) {
     it(`types nothing when focus is a ${focus} field`, async () => {
       const { ops } = await walked();
