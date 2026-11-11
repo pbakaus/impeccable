@@ -1,6 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -20,6 +20,7 @@ const STORE = () => (staged ??= (() => {
   stageStore(path.join(ROOT, 'extension'), root);
   return root;
 })());
+after(() => { if (staged) rmSync(path.dirname(staged), { recursive: true, force: true }); });
 
 const PAGE = 'https://app.impeccable.style/app/acme/outings/o1';
 const block = (over = {}) => ({
@@ -399,7 +400,7 @@ describe('Chrome background worker', () => {
     assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/callback?code=secret', 'told once it goes on');
   });
 
-  it('lets the person sign in on a sign-in host while held there, and the walk not go there itself', async () => {
+  it('lets the person who took over at a sign-in sign in on a sign-in host, and neither the page nor the walk go there', async () => {
     const { command, current } = await walked();
     const ask = (url, extra = {}) => fire('Fetch.requestPaused', { requestId: `r-${url}`, resourceType: 'Document', frameId: 'main', request: { method: 'GET', url }, ...extra });
     const answered = async (act) => { const at = sent.length; act(); await settle(5); return sent.slice(at).filter((m) => m.startsWith('Fetch.')); };
@@ -407,13 +408,15 @@ describe('Chrome background worker', () => {
     await command('pause');
     await command('resume');
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.deepEqual(await answered(() => ask('https://acme.okta.com/login')), ['Fetch.failRequest'], 'a pause a page can fake opens nothing');
+    assert.equal(await command('takeover'), true);
     assert.deepEqual(await answered(() => ask('https://accounts.google.com/signin')), ['Fetch.continueRequest'], 'the person goes to sign in');
     assert.deepEqual(await answered(() => ask('https://accounts.google.com/signin/v2', { resourceType: 'XHR', request: { method: 'POST', url: 'https://accounts.google.com/signin/v2' } })), ['Fetch.continueRequest'], 'and sends it what it asks');
     assert.deepEqual(await answered(() => ask('https://example.com/collect', { resourceType: 'XHR', request: { method: 'POST', url: 'https://example.com/collect' } })), ['Fetch.failRequest'], 'but nothing else is let through');
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l4', url: 'https://accounts.google.com/signin' } });
     await settle(5);
-    assert.equal(current().state, 'paused', 'on the sign-in host the walk is held, not ended');
-    assert.equal(await command('resume'), false, 'nor goes on there');
+    assert.equal(current().state, 'takeover', 'on the sign-in host the walk is held, not ended');
+    assert.equal(await command('handback'), false, 'nor goes on there');
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l5', url: 'http://localhost:3000/' } });
     page.seen = {};
     assert.equal(await command('resume'), true);

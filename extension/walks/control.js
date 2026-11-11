@@ -52,14 +52,15 @@ async function clear(name) {
 
 /**
  * THE PAUSE'S ONE BARRIER. An op that a pause comes before or during (it arrived while paused, or was still under way
- * when the pause landed) never answers with what it found, nor with an error that might carry the page. A click, a
- * key or a navigation is not done after Continue: it was decided on a page the person has since used, so it is
- * refused as `Paused`, and the walk goes on from a fresh look. Anything else (a look, a script, a setting) is asked
- * again once the walk goes on, and answers with what it finds then: the walk protocol has every op that arrives while
- * paused answered after `resumed`, and the engine reads the page with scripts. Letting go of the film passes through
- * a pause, as `open`, `close` and the panel's ops do.
+ * when the pause landed) never answers with what it found, nor with an error that might carry the page. A click or a
+ * key is not done after Continue: it was decided on a page the person has since used, so it is refused as `Paused`,
+ * and the walk goes on from a fresh look. Anything else (a look, a script, a navigation the guard holds to the site)
+ * is asked again once the walk goes on, and answers with what it finds then: the walk protocol has every op that
+ * arrives while paused answered after `resumed`, the engine reads the page with scripts, and it opens its first page
+ * with a navigation, which a sign-in on that page pauses. Letting go of the film passes through a pause, as `open`,
+ * `close` and the panel's ops do.
  */
-const ACTS = new Set(['mouse', 'keyboard', 'goto', 'goBack']);
+const ACTS = new Set(['mouse', 'keyboard']);
 const overtaken = () => fail('Paused', 'the walk was paused before this was done; look again');
 
 for (const [name, run] of Object.entries(ops)) {
@@ -138,7 +139,9 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
-  void (hushes(view) ? hold(view.held === 'sign-in') : unhold());
+  // Only the person's own take-over at a sign-in opens the sign-in pages to the tab: a page can fake a sign-in
+  // and so a pause, never a take-over.
+  void (hushes(view) ? hold(view.state === 'takeover' && view.held === 'sign-in') : unhold());
 });
 
 hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });

@@ -209,8 +209,9 @@ async function cut() {
 }
 
 /**
- * Set while the walk is held at a sign-in (control.js): the walk does nothing then, so what the tab does is the
- * person signing in, or the page. Only then may the tab go to a sign-in page (signin.js) and send it what it asks.
+ * Set while the person has taken the tab over at a sign-in (control.js): the walk does nothing then, so what the tab
+ * does is the person signing in (or the page they are on). Only then may the tab go to a sign-in page (signin.js)
+ * and send it what it asks.
  */
 let heldAtSignIn = false;
 
@@ -343,8 +344,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const allowed = heldAtSignIn && isSignInPage(params.request?.url) ? [...tab.allowed, new URL(params.request.url).origin] : tab.allowed;
-      // A sign-in page asked for: paused before the guard answers, whatever it answers.
-      if (params.resourceType === 'Document' && params.frameId === tab.mainFrame && isSignInPage(params.request?.url)) spotted();
+      // A sign-in page asked for: paused before the guard answers, whatever it answers; unless the person is the one
+      // signing in.
+      if (!heldAtSignIn && params.resourceType === 'Document' && params.frameId === tab.mainFrame && isSignInPage(params.request?.url)) spotted();
       void held(sendTo(tab.tabId), params, tab.mainFrame, allowed, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
