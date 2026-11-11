@@ -3,6 +3,7 @@
 // guard.js says where the tab may be and what it may start.
 import { admit, arm, held, onlyThisTab, popupWatch, refuseDownload, stillHome } from './guard.js';
 import { COPY } from './panel/copy.js';
+import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 
 /** What filming a wait needs, and nothing that closes or steers a target. */
 const CDP_METHODS = new Set(['Page.startScreencast', 'Page.stopScreencast', 'Page.screencastFrameAck']);
@@ -146,6 +147,10 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         }
         const scale = Math.min(1, maxWidth > 0 ? maxWidth / size.width : 1, maxHeight > 0 ? maxHeight / size.height : 1);
         if (hush) continue;
+        // A sign-in on the page is a pause before it is a picture; a page that cannot be read is not filmed.
+        const seen = await look();
+        if (signingIn(seen) || isSignInPage(tab.url)) { spotted(); continue; }
+        if (!seen || hush) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
         asked.catch(() => undefined);
@@ -214,6 +219,41 @@ export async function unhold() {
   say({ event: 'url', url: tab.url });
 }
 
+/** The world the walk reads the page in for itself (signin.js), never the page's own. */
+const LOOKOUT = 'impeccable-walk-lookout';
+
+/**
+ * What the walk's own reading of the top document sees (signin.js `lookInPage`), or null when it could not be read
+ * (the document is between pages). Its world is made once a document.
+ */
+export async function look() {
+  const tab = walk;
+  if (!tab) return null;
+  for (let tries = 0; tries < 2; tries++) {
+    try {
+      if (tab.lookout?.loader !== tab.loader) {
+        const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: LOOKOUT });
+        tab.lookout = { loader: tab.loader, context: executionContextId };
+      }
+      const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: `(${lookInPage})()`, contextId: tab.lookout.context, returnByValue: true });
+      if (!exceptionDetails && result?.value) return result.value;
+    } catch { /* its world went with its document */ }
+    tab.lookout = null;
+  }
+  return null;
+}
+
+/** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
+let spotted = () => undefined;
+export function onSignIn(listener) { spotted = listener; }
+
+/** Whether the walked tab is at a sign-in right now: by its address, or by what the page shows. */
+export async function signInNow() {
+  if (!walk) return false;
+  if (isSignInPage(walk.url)) return true;
+  return signingIn(await look());
+}
+
 /** How long `open` waits for its page to answer before it says the tab is open anyway. */
 const OPEN_MS = 8000;
 
@@ -264,6 +304,8 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   switch (method) {
     case 'Fetch.requestPaused': {
       const tab = walk;
+      // A sign-in page asked for: paused before the guard answers, whatever it answers.
+      if (params.resourceType === 'Document' && params.frameId === tab.mainFrame && isSignInPage(params.request?.url)) spotted();
       void held(sendTo(tab.tabId), params, tab.mainFrame, tab.allowed, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
@@ -310,7 +352,10 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       walk.inflight.set(params.requestId, params.loaderId);
       break;
     case 'Network.responseReceived':
-      if (params.type === 'Document' && params.frameId === walk.mainFrame) walk.statuses.set(params.loaderId, params.response.status);
+      if (params.type === 'Document' && params.frameId === walk.mainFrame) {
+        walk.statuses.set(params.loaderId, params.response.status);
+        if (asksForPassword(params.response)) spotted();
+      }
       break;
     case 'Network.loadingFinished':
     case 'Network.loadingFailed':

@@ -127,12 +127,13 @@ describe('Chrome background worker', () => {
   const sockets = [];
   globalThis.WebSocket = class { static OPEN = 1; constructor(url, protocols) { Object.assign(this, { url, protocols }); sockets.push(this); } close() {} };
   const toolbar = [];
+  const titles = [];
   globalThis.chrome = {
     runtime: {
       id: 'ext', onMessage: event('message'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
       getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => MANIFEST,
     },
-    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setPopup({ popup }) { toolbar.push({ popup }); } },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setPopup({ popup }) { toolbar.push({ popup }); }, async setTitle({ title }) { titles.push(title); } },
     webNavigation: { onCompleted: event('navigation') },
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
@@ -221,14 +222,15 @@ describe('Chrome background worker', () => {
     });
     chrome.tabGroups = { async update() {}, async get() { return { title: 'Impeccable · Mira' }; } };
     chrome.windows = { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; } };
-    chrome.action.setTitle = async ({ title }) => { toolbar.push({ title }); };
     globalThis.createImageBitmap = async () => ({ close() {} });
     globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob([String(sent.length)]); } };
     const driver = await import('../extension/walks/driver.js');
     const control = await import('../extension/walks/control.js');
+    const { current } = await import('../extension/walks/store.js');
+    const { COPY } = await import('../extension/walks/panel/copy.js');
     driver.speak((message) => told.push(message));
     await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
-    return { ...driver, ...control };
+    return { ...driver, ...control, current, COPY };
   })());
 
   after(async () => { if (opened) await (await opened).ops.close(); });
@@ -254,6 +256,33 @@ describe('Chrome background worker', () => {
     assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/next', 'and the other end hears where the tab is now');
     await ops.cdp({ method: 'Page.stopScreencast' });
   });
+
+  // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while it holds.
+  for (const [sign, show] of [
+    ['a visible password field', () => { page.seen = { password: true }; }],
+    ['a move to a sign-in host', () => fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } })],
+    ['a 401 asking for a password', () => { page.seen = { status: 401 }; fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }],
+  ]) {
+    it(`pauses itself at ${sign}, until the sign-in is gone`, async () => {
+      const { ops, command, current, COPY } = await walked();
+      const before = sent.length;
+      show();
+      let answered = false;
+      const asked = ops.evaluate({ fn: '1 + 1' }).then(() => { answered = true; });
+      await settle(20);
+      assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
+      assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
+      if (sign === 'a move to a sign-in host') assert.ok(sent.indexOf('Network.disable', before) < sent.findIndex((m, i) => i >= before && m.startsWith('Fetch.')), 'paused before the guard answered');
+      else {
+        assert.equal(await command('resume'), false, 'Continue while it still shows');
+        assert.equal(current().state, 'paused');
+      }
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      await asked;
+      assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
+    });
+  }
 });
 
 describe('derived extension manifests', () => {

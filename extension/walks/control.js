@@ -1,9 +1,9 @@
 // Who is driving the walked tab: the walk, nobody (paused), or the person (taken over). The person says so from the
-// side panel; Stop also from the badge. Every op the socket asks passes through here first, so the server's engine
+// side panel; Stop, and Continue on a pause, also from the badge. Every op the socket asks passes through here first, so the server's engine
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
-import { unseen, whenStopPressed } from './badge.js';
-import { endWalk, fail, hold, hooks, ops, say, unhold, walk } from './driver.js';
+import { unseen, whenPressed } from './badge.js';
+import { endWalk, fail, hold, hooks, onSignIn, ops, say, signInNow, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -22,13 +22,25 @@ const release = () => { for (const go of held.splice(0)) go(); };
 let stopped = false;
 export function rearm() { stopped = false; }
 
-/** Returns once the walk may act. Throws while the person has the tab. */
+/**
+ * Pauses the walk for a reason of its own (a sign-in). From walking, or from a person's pause or take-over: in every
+ * case the walk is paused, and the other end told once. Synchronous to the pause: nothing is taken after it.
+ */
+function pauseFor(why) {
+  const was = current().state;
+  if (!dispatch({ type: 'pause', why })) return false;
+  if (was !== 'paused') say({ event: 'paused' });
+  return true;
+}
+onSignIn(() => { pauseFor('sign-in'); });
+
+/** Returns once the walk may act, and not at a sign-in. Throws while the person has the tab. */
 async function clear() {
   for (;;) {
     const { state } = current();
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
-    if (state !== 'paused') return;
-    await new Promise((go) => { held.push(go); });
+    if (state === 'paused') { await new Promise((go) => { held.push(go); }); continue; }
+    if (!(await signInNow()) || !pauseFor('sign-in')) return;
   }
 }
 
@@ -63,6 +75,8 @@ ops.finish = async ({ outcome }) => { dispatch({ type: 'finish', outcome, replay
 /* ------------------------------ what the person says ------------------------------ */
 
 const TOLD = { pause: 'paused', resume: 'resumed', takeover: 'takeover', handback: 'handback' };
+/** What gives the walk the tab back, and from where. */
+const GOING_ON = { resume: 'paused', handback: 'takeover' };
 
 /** Does what the person asked, if it is on offer right now. Resolves to whether it was. */
 export async function command(name) {
@@ -76,13 +90,15 @@ export async function command(name) {
     else say({ event: 'stopped', by: 'person' });
     return true;
   }
+  // Going on is checked again: while a sign-in still shows, the walk stays paused.
+  if (GOING_ON[name] === current().state && walk && (await signInNow())) { pauseFor('sign-in'); return false; }
   if (!Object.hasOwn(TOLD, name) || !dispatch({ type: name })) return false;
   say({ event: TOLD[name] });
   release();
   return true;
 }
 
-whenStopPressed(() => { void command('stop'); });
+whenPressed((what) => { void command(what); });
 
 // Paused is paused whoever paused it: the walk takes and tells nothing of the page until it goes on (driver.js `hold`).
 onView((view) => { void (view.state === 'paused' ? hold() : unhold()); });

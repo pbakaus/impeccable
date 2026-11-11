@@ -146,7 +146,7 @@ function driveSwitch() {
 }
 
 function status() {
-  const line = view.state === 'paused' ? COPY.paused.line(name()) : view.state === 'takeover' ? COPY.takeover.line(name()) : null;
+  const line = view.state === 'paused' ? (view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name())) : view.state === 'takeover' ? COPY.takeover.line(name()) : null;
   return line ? el('p', { class: 'status', role: 'status', text: line }) : null;
 }
 
@@ -278,6 +278,7 @@ function render() {
   body.dataset.variant = live ? variant : '';
   body.dataset.steps = String(view.steps.length);
   body.dataset.device = view.who?.device ?? '';
+  body.dataset.held = view.state === 'paused' ? view.held ?? '' : '';
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   body.dataset.issues = view.state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
   app.className = live ? `walk walk-${variant}` : 'screen';

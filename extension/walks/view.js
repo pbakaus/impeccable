@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, steps: [], notes: [], outcome: null, failure: null };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, steps: [], notes: [], outcome: null, failure: null, held: null };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -62,10 +62,16 @@ export function reduce(view, action) {
     case 'blocked':
       if (!onTab) return view;
       return { ...view, notes: [...view.notes, { after: view.steps.at(-1)?.n ?? 0, what: action.what, url: text(action.url, 300) }].slice(-NOTES_KEPT) };
-    case 'pause': return view.state === 'walking' ? { ...view, state: 'paused' } : view;
-    case 'resume': return view.state === 'paused' ? { ...view, state: 'walking' } : view;
+    // A pause with a reason of the walk's own (`why`, a sign-in) also holds a person's pause or take-over to it.
+    case 'pause': {
+      const held = action.why ?? null;
+      if (view.state === 'walking') return { ...view, state: 'paused', held };
+      if (!held || !['paused', 'takeover'].includes(view.state) || (view.state === 'paused' && view.held === held)) return view;
+      return { ...view, state: 'paused', held };
+    }
+    case 'resume': return view.state === 'paused' ? { ...view, state: 'walking', held: null } : view;
     case 'takeover': return view.state === 'walking' || view.state === 'paused' ? { ...view, state: 'takeover' } : view;
-    case 'handback': return view.state === 'takeover' ? { ...view, state: 'walking' } : view;
+    case 'handback': return view.state === 'takeover' ? { ...view, state: 'walking', held: null } : view;
     case 'stop': return live ? { ...view, state: 'stopped' } : view;
     // The server's word on how it went. It may come before or after the tab is let go.
     case 'finish': {

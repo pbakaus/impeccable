@@ -50,6 +50,7 @@ export const STUBS = {
   waiting,
   walking,
   paused: run(walking, [{ type: 'pause' }]),
+  'paused-sign-in': run(walking, [{ type: 'pause', why: 'sign-in' }]),
   takeover: run(walking, [{ type: 'takeover' }]),
   done: run(walking, [finish([])]),
   'done-issues': run(walking, [finish(ISSUES)]),

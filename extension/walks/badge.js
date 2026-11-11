@@ -30,6 +30,8 @@ function badgeInPage(binding, lifeMs) {
     .sub { color: oklch(46% 0 0); font-variant-numeric: tabular-nums; }
     button { all: unset; box-sizing: border-box; min-height: 24px; padding: 0 12px; border-radius: 999px; background: oklch(13% 0 0); color: oklch(99.5% 0 0); font: inherit; line-height: 24px; cursor: pointer; }
     button:hover { background: oklch(22% 0 0); }
+    button.resume { background: oklch(99.5% 0 0); color: oklch(13% 0 0); box-shadow: inset 0 0 0 1px oklch(13% 0 0 / 0.45); }
+    button.resume:hover { background: oklch(96% 0 0); }
     button:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 2px; }
     button[hidden] { display: none; }
   `;
@@ -43,11 +45,14 @@ function badgeInPage(binding, lifeMs) {
   pill.setAttribute('role', 'status');
   const title = el('span', 'title');
   const sub = el('span', 'sub');
+  const resume = el('button', 'resume');
+  resume.type = 'button';
   const stop = el('button', 'stop');
   stop.type = 'button';
-  pill.append(el('span', 'dot'), title, sub, stop);
+  pill.append(el('span', 'dot'), title, sub, resume, stop);
   root.append(pill);
   // Only a press a person or the walk really made: a click the page's script made up is not one.
+  resume.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('resume'); });
   stop.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('stop'); });
 
   let expires = 0;
@@ -76,6 +81,8 @@ function badgeInPage(binding, lifeMs) {
       sub.textContent = state.sub;
       stop.textContent = state.stop;
       stop.hidden = !state.stop;
+      resume.textContent = state.resume;
+      resume.hidden = !state.resume;
       pill.dataset.state = state.state;
       pill.dataset.step = String(state.step);
       host.style.visibility = state.hidden ? 'hidden' : '';
@@ -96,7 +103,7 @@ export function badgeState(view) {
   const name = view.who?.name ?? '';
   const step = view.steps.at(-1)?.n ?? 0;
   const title = view.state === 'paused' ? COPY.badge.paused(name) : view.state === 'takeover' ? COPY.badge.yours : COPY.badge.here(name);
-  return { state: view.state, step, title, sub: COPY.badge.step(step), stop: COPY.badge.stop };
+  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop };
 }
 
 let badge = null;
@@ -105,8 +112,8 @@ const veil = { film: false, shots: 0 };
 /** Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see. */
 const hidden = () => (veil.film || veil.shots > 0) && current().state === 'walking';
 let pressed = () => undefined;
-/** What Stop on the badge does. */
-export function whenStopPressed(act) { pressed = act; }
+/** What a press on the badge does: it names the control, `stop` or `resume`. */
+export function whenPressed(act) { pressed = act; }
 
 async function call(what) {
   if (!badge || badge.context === null) return;
@@ -134,7 +141,7 @@ hooks.event.push((method, params) => {
     badge.context = params.context.id;
     void push();
   }
-  if (method === 'Runtime.bindingCalled' && params.name === BINDING && params.executionContextId === badge.context && params.payload === 'stop') pressed();
+  if (method === 'Runtime.bindingCalled' && params.name === BINDING && params.executionContextId === badge.context && (params.payload === 'stop' || params.payload === 'resume')) pressed(params.payload);
 });
 
 const drop = () => {

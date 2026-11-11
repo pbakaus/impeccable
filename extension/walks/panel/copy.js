@@ -40,11 +40,17 @@ export const COPY = {
     all: (n) => (n === 1 ? 'The 1 step so far' : `All ${n} steps so far`),
   },
 
-  controls: { pause: 'Pause', resume: 'Resume', takeover: 'Take over', handback: 'Hand back', stop: 'Stop' },
+  controls: { pause: 'Pause', resume: 'Continue', takeover: 'Take over', handback: 'Hand back', stop: 'Stop' },
   /** The same three, as one switch: who is driving the tab. */
   drive: { walker: (name) => `${name || 'Walker'} drives`, paused: 'Paused', you: 'You drive' },
 
   paused: { line: (name) => `Paused. ${name || 'Your walker'} waits right here.` },
+  /**
+   * A walk that paused itself at a sign-in: the side panel says it, and so does the toolbar icon's hover text, which
+   * Chrome draws and no page can fake. Exactly three facts: sign in yourself, then continue; we do not look while it
+   * is paused; no screenshots are taken while it is paused.
+   */
+  signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
   takeover: { line: (name) => `Your turn. ${name || 'Your walker'} picks up where you leave off.` },
 
   done: {
