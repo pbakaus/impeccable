@@ -26,15 +26,11 @@ fn impeccable(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Comma
 }
 
 fn login(env: &HashMap<String, String>) {
-    let mut child = impeccable(
-        env,
-        Path::new(&env["IMPECCABLE_HOME"]),
-        &["login", "--no-browser"],
-    )
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .unwrap();
+    let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &["login", "--no-browser"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
     let mut url = String::new();
     BufReader::new(child.stdout.take().unwrap())
         .read_line(&mut url)
@@ -59,23 +55,13 @@ fn git(dir: &Path, args: &[&str]) {
 /// A git repo with two plain findings and one advisory one at the top, and
 /// one more file in `sub/`.
 fn repo(env: &HashMap<String, String>, remote: Option<&str>) -> PathBuf {
-    let root = Path::new(&env["IMPECCABLE_HOME"])
-        .join("work")
-        .join("my-site");
+    let root = Path::new(&env["IMPECCABLE_HOME"]).join("work").join("my-site");
     std::fs::create_dir_all(root.join("sub")).unwrap();
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/antipatterns");
-    for f in [
-        "border-accent-blank-lines.css",
-        "em-dash-prose-list.html",
-        "cream-palette.html",
-    ] {
+    for f in ["border-accent-blank-lines.css", "em-dash-prose-list.html", "cream-palette.html"] {
         std::fs::copy(fixtures.join(f), root.join(f)).unwrap();
     }
-    std::fs::copy(
-        fixtures.join("cream-palette.html"),
-        root.join("sub/cream.html"),
-    )
-    .unwrap();
+    std::fs::copy(fixtures.join("cream-palette.html"), root.join("sub/cream.html")).unwrap();
     git(&root, &["init", "-q", "-b", "main"]);
     if let Some(r) = remote {
         git(&root, &["remote", "add", "origin", r]);
@@ -112,10 +98,7 @@ fn sign_in_asks_for_health_write_only_where_the_service_offers_it() {
     login(&env);
     assert_eq!(
         fake.record.lock().unwrap().scopes,
-        vec![
-            "account:read rules:read",
-            "account:read rules:read health:write"
-        ]
+        vec!["account:read rules:read", "account:read rules:read health:write"]
     );
 }
 
@@ -135,10 +118,7 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     assert!(body["advisory"].as_u64().unwrap() >= 1, "{body}");
     assert_eq!(
         body["repoKey"].as_str().unwrap(),
-        format!(
-            "{:x}",
-            <sha2::Sha256 as sha2::Digest>::digest(b"https://github.com/acme/my-site")
-        )
+        format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(b"https://github.com/acme/my-site"))
     );
     let text = body.to_string();
     for leak in ["sub/", ".html", ".css", "acme", "github", "/my-site"] {
@@ -174,10 +154,7 @@ fn only_a_whole_repo_scan_uploads() {
     for (cwd, args) in [
         (root.clone(), vec!["detect", "--json", "sub"]),
         (root.clone(), vec!["detect", "--json", "cream-palette.html"]),
-        (
-            root.clone(),
-            vec!["detect", "--json", "--scope", "layout", "."],
-        ),
+        (root.clone(), vec!["detect", "--json", "--scope", "layout", "."]),
         (root.clone(), vec!["detect", "--json", ".", "sub"]),
         (root.clone(), vec!["detect", "--json"]),
         (root.join("sub"), vec!["detect", "--json", "."]),
@@ -203,11 +180,7 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
     let (fake, env) = signed_in("health-optout");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
     let quiet = run(&env, &root, &["detect", "."]);
-    for (k, v) in [
-        ("CI", "true"),
-        ("DO_NOT_TRACK", "1"),
-        ("IMPECCABLE_NO_TELEMETRY", "1"),
-    ] {
+    for (k, v) in [("CI", "true"), ("DO_NOT_TRACK", "1"), ("IMPECCABLE_NO_TELEMETRY", "1")] {
         let mut e = env.clone();
         e.insert(k.into(), v.into());
         run(&e, &root, &["detect", "--json", "."]);
@@ -218,8 +191,7 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "sync off");
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health"));
     // The first upload (above) said so once; a second never does.
-    assert!(String::from_utf8_lossy(&quiet.stderr)
-        .contains("Design health: this scan's counts were saved"));
+    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Design health: this scan's counts were saved"));
     assert!(run(&env, &root, &["health", "on"]).status.success());
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 2);
@@ -245,19 +217,11 @@ fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
 
     fake.knobs.lock().unwrap().health_denied = false;
     let out = run(&env, &root, &["health", "forget"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(fake.record.lock().unwrap().forgets, 1);
     let before = fake.hits("/cli/v1/health/scans");
     run(&env, &root, &["detect", "."]);
-    assert_eq!(
-        fake.hits("/cli/v1/health/scans"),
-        before,
-        "sync stays off after forget"
-    );
+    assert_eq!(fake.hits("/cli/v1/health/scans"), before, "sync stays off after forget");
     let status = run(&env, &root, &["health"]);
     assert!(String::from_utf8_lossy(&status.stdout).contains("turned off"));
 }
@@ -284,11 +248,7 @@ fn an_opt_out_where_detect_runs_holds_for_a_scan_of_the_root() {
     let (fake, env) = signed_in("health-cwd-optout");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
     std::fs::create_dir_all(root.join("sub/.impeccable")).unwrap();
-    std::fs::write(
-        root.join("sub/.impeccable/config.json"),
-        r#"{"telemetry": false}"#,
-    )
-    .unwrap();
+    std::fs::write(root.join("sub/.impeccable/config.json"), r#"{"telemetry": false}"#).unwrap();
     run(&env, &root.join("sub"), &["detect", ".."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
 }
@@ -305,10 +265,7 @@ fn an_unsaved_or_unreadable_choice_never_reads_as_on() {
     std::fs::remove_file(&state).unwrap();
     std::fs::create_dir(&state).unwrap();
     let out = run(&env, &root, &["health", "off"]);
-    assert!(
-        !out.status.success(),
-        "off must fail when it can't be saved"
-    );
+    assert!(!out.status.success(), "off must fail when it can't be saved");
 }
 
 #[test]
@@ -326,11 +283,7 @@ fn an_upload_that_needs_a_fresh_token_keeps_the_sign_in() {
     run(&env, &root, &["detect", "."]);
     assert_eq!(scans(&fake).len(), 1);
     let out = run(&env, &root, &["whoami", "--json"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stdout)
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
 }
 
 #[test]
@@ -385,12 +338,7 @@ fn a_busy_sign_in_skips_the_upload_instead_of_holding_detect() {
     login(&env);
     let root = repo(&env, Some("https://github.com/acme/my-site"));
     let accounts = Path::new(&env["IMPECCABLE_HOME"]).join("account");
-    let dir = std::fs::read_dir(&accounts)
-        .unwrap()
-        .next()
-        .unwrap()
-        .unwrap()
-        .path();
+    let dir = std::fs::read_dir(&accounts).unwrap().next().unwrap().unwrap().path();
     let held = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -404,10 +352,7 @@ fn a_busy_sign_in_skips_the_upload_instead_of_holding_detect() {
     let took = started.elapsed();
     drop(held);
     assert_eq!(out.status.code(), Some(2));
-    assert!(
-        took < std::time::Duration::from_secs(10),
-        "detect waited {took:?} on the lock"
-    );
+    assert!(took < std::time::Duration::from_secs(10), "detect waited {took:?} on the lock");
     assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
     // Once the lock is free the next scan refreshes and uploads as usual.
     run(&env, &root, &["detect", "."]);
@@ -419,9 +364,7 @@ fn a_changed_design_system_starts_a_new_ruleset() {
     // Catches (review, Greptile): editing DESIGN.md's allowed colors removing findings that the trend then reports as fixed.
     let (fake, env) = signed_in("health-design-system");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let design = |primary: &str| {
-        format!("---\nname: Site\ncolors:\n  primary: \"{primary}\"\n---\n\n# Design\n")
-    };
+    let design = |primary: &str| format!("---\nname: Site\ncolors:\n  primary: \"{primary}\"\n---\n\n# Design\n");
     std::fs::write(root.join("DESIGN.md"), design("#0ea5e9")).unwrap();
     run(&env, &root, &["detect", "."]);
     std::fs::write(root.join("DESIGN.md"), design("#7c3aed")).unwrap();
@@ -429,14 +372,8 @@ fn a_changed_design_system_starts_a_new_ruleset() {
     run(&env, &root, &["detect", &root.to_string_lossy()]);
     let all = scans(&fake);
     assert_eq!(all.len(), 3);
-    assert_ne!(
-        all[0]["rulesetId"], all[1]["rulesetId"],
-        "a new DESIGN.md is a new ruleset"
-    );
-    assert_eq!(
-        all[1]["rulesetId"], all[2]["rulesetId"],
-        "the same one is the same ruleset"
-    );
+    assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"], "a new DESIGN.md is a new ruleset");
+    assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"], "the same one is the same ruleset");
 }
 
 #[test]
@@ -444,25 +381,12 @@ fn a_touched_design_file_keeps_the_ruleset() {
     // Catches (review, Greptile and Cursor): DESIGN.md's mtime against its sidecar's starting a new baseline with the same settings.
     let (fake, env) = signed_in("health-design-mtime");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    std::fs::write(
-        root.join("DESIGN.md"),
-        "---\nname: Site\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n",
-    )
-    .unwrap();
+    std::fs::write(root.join("DESIGN.md"), "---\nname: Site\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n").unwrap();
     std::fs::create_dir_all(root.join(".impeccable")).unwrap();
-    std::fs::write(
-        root.join(".impeccable/design.json"),
-        r#"{"schemaVersion":1}"#,
-    )
-    .unwrap();
+    std::fs::write(root.join(".impeccable/design.json"), r#"{"schemaVersion":1}"#).unwrap();
     let at = |secs: u64| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs);
     let touch = |file: &str, secs: u64| {
-        std::fs::File::options()
-            .write(true)
-            .open(root.join(file))
-            .unwrap()
-            .set_modified(at(secs))
-            .unwrap();
+        std::fs::File::options().write(true).open(root.join(file)).unwrap().set_modified(at(secs)).unwrap();
     };
     touch(".impeccable/design.json", 1_700_000_000);
     touch("DESIGN.md", 1_600_000_000);
@@ -482,11 +406,7 @@ fn an_ignored_rule_starts_a_new_ruleset_however_it_is_spelled() {
     std::fs::create_dir_all(root.join(".impeccable")).unwrap();
     let config = root.join(".impeccable/config.json");
     run(&env, &root, &["detect", "."]);
-    std::fs::write(
-        &config,
-        r#"{"detector":{"ignoreRules":[" CREAM-PALETTE "]}}"#,
-    )
-    .unwrap();
+    std::fs::write(&config, r#"{"detector":{"ignoreRules":[" CREAM-PALETTE "]}}"#).unwrap();
     run(&env, &root, &["detect", "."]);
     std::fs::write(&config, r#"{"detector":{"ignoreRules":["cream-palette"]}}"#).unwrap();
     run(&env, &root, &["detect", "."]);
@@ -508,27 +428,12 @@ fn a_design_root_above_the_repo_keeps_the_ruleset_the_same_on_every_checkout() {
         let mono = home.join(checkout).join("mono");
         let site = mono.join("packages/site");
         std::fs::create_dir_all(&site).unwrap();
-        std::fs::write(
-            mono.join("package.json"),
-            r#"{"name":"mono","workspaces":["packages/*"]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            mono.join("DESIGN.md"),
-            "---\nname: Mono\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n",
-        )
-        .unwrap();
+        std::fs::write(mono.join("package.json"), r#"{"name":"mono","workspaces":["packages/*"]}"#).unwrap();
+        std::fs::write(mono.join("DESIGN.md"), "---\nname: Mono\ncolors:\n  primary: \"#0ea5e9\"\n---\n\n# Design\n").unwrap();
         std::fs::write(site.join("package.json"), r#"{"name":"site"}"#).unwrap();
-        std::fs::copy(
-            fixtures.join("cream-palette.html"),
-            site.join("cream-palette.html"),
-        )
-        .unwrap();
+        std::fs::copy(fixtures.join("cream-palette.html"), site.join("cream-palette.html")).unwrap();
         git(&site, &["init", "-q", "-b", "main"]);
-        git(
-            &site,
-            &["remote", "add", "origin", "https://github.com/acme/site"],
-        );
+        git(&site, &["remote", "add", "origin", "https://github.com/acme/site"]);
         roots.push(site.canonicalize().unwrap());
     }
     for root in &roots {
