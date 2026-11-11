@@ -1,8 +1,8 @@
 // The badge on the walked tab: who is here, which step, and Stop. Chrome opens a side panel only on a click, so this
 // is what a person sees of a walk before they have opened it.
 //
-// It is put there through the debugger, into a world of its own in the walked tab and no other: no host permission,
-// no content script on anyone's sites. The page's script cannot reach it (a closed shadow root in another world)
+// It is put there through the debugger, into a world of its own in the walked tab and no other: it needs no host
+// permission and no content script on anyone's sites. The page's script cannot reach it (a closed shadow root in another world)
 // and cannot press Stop for it (the binding exists in that world alone). The persona never sees it: it is hidden
 // for every picture and film the engine takes. Chrome refuses to open the side panel from here ("only in response
 // to a user gesture"; a debugger event carries none), so the panel opens from a click on

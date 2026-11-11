@@ -1,7 +1,7 @@
 // Every word a person reads from walks, in one place: the side panel and the badge on the walked tab. The person
 // sees a "workflow" and a "walk"; no internal name appears here.
 //
-// Voice (AGENTS.md): short and plain, a little human where nothing failed, never cute about a failure, said once.
+// Voice: short and plain, a little human where nothing failed, never cute about a failure, said once.
 
 const issues = (n) => (n === 1 ? '1 issue' : `${n} issues`);
 const hostOf = (url) => { try { return new URL(url).host; } catch { return ''; } };
