@@ -444,3 +444,136 @@ fn a_design_root_above_the_repo_keeps_the_ruleset_the_same_on_every_checkout() {
     assert_eq!(all[0]["repoKey"], all[1]["repoKey"]);
     assert_eq!(all[0]["rulesetId"], all[1]["rulesetId"]);
 }
+
+#[test]
+fn foundations_use_scan_evidence_and_the_health_opt_out() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let env = fake.env("foundations-sync");
+    login(&env);
+    fake.knobs.lock().unwrap().foundations = true;
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(
+        fake.hits("/cli/v1/foundations"),
+        0,
+        "an existing grant has no foundations consent"
+    );
+    login(&env);
+    assert_eq!(
+        fake.record.lock().unwrap().scopes,
+        vec![
+            "account:read rules:read health:write",
+            "account:read rules:read health:write foundations:write",
+        ]
+    );
+    std::fs::write(root.join("contrast.html"), "<!doctype html><html><body><p style='color:#eee;background:#fff;font-size:16px'>Readable text</p></body></html>").unwrap();
+    let out = run(&env, &root, &["detect", "--json", "."]);
+    let r = fake.record.lock().unwrap();
+    let body = r.foundations.last().expect("foundations uploaded");
+    assert_eq!(body["repoKey"], r.scans.last().unwrap()["repoKey"]);
+    assert_eq!(body["scanId"], r.scans.last().unwrap()["scanId"]);
+    assert_eq!(body["items"]["no-generic-ai-patterns"], "failing");
+    assert_eq!(body["items"]["readable-contrast"], "failing");
+    assert!(body["items"].get("design-tokens").is_none());
+    // The repo's name, by health's label recipe, so the page needn't show a hash
+    // (pristine#4721 accepts it).
+    assert_eq!(body["label"], r.scans.last().unwrap()["label"]);
+    assert_eq!(body["label"], "my-site");
+    drop(r);
+    for args in [
+        vec!["detect", "--json", "sub"],
+        vec!["detect", "--scope", "layout", "."],
+        vec!["hook-before-edit"],
+    ] {
+        run(&env, &root, &args);
+        assert_eq!(fake.hits("/cli/v1/foundations"), 1);
+    }
+    for key in ["CI", "DO_NOT_TRACK", "IMPECCABLE_NO_TELEMETRY"] {
+        let mut off = env.clone();
+        off.insert(key.into(), "1".into());
+        run(&off, &root, &["detect", "."]);
+    }
+    run(&env, &root, &["health", "off"]);
+    run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/foundations"), 1);
+    run(&env, &root, &["health", "on"]);
+    fake.knobs.lock().unwrap().foundations = false;
+    let switched_off = run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(out.stdout, switched_off.stdout);
+    assert_eq!(out.status.code(), switched_off.status.code());
+    assert_eq!(out.stderr, switched_off.stderr);
+    // A route that stalls is bounded and never changes detect's result.
+    fake.knobs.lock().unwrap().foundations = true;
+    let gate = fake.hold("/cli/v1/foundations");
+    let started = std::time::Instant::now();
+    let stalled = run(&env, &root, &["detect", "--json", "."]);
+    gate.open();
+    assert!(started.elapsed() < std::time::Duration::from_secs(8));
+    assert_eq!(out.stdout, stalled.stdout);
+    assert_eq!(out.stderr, stalled.stderr);
+    assert_eq!(out.status.code(), stalled.status.code());
+    fake.knobs.lock().unwrap().foundations_denied = true;
+    login(&env);
+    let before = fake.hits("/cli/v1/foundations");
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/foundations"), before, "declined scope");
+    fake.knobs.lock().unwrap().foundations_denied = false;
+    login(&env);
+    // With no scan evidence, send an empty items map rather than inventing passes.
+    for file in [
+        "contrast.html",
+        "border-accent-blank-lines.css",
+        "em-dash-prose-list.html",
+        "cream-palette.html",
+        "sub/cream.html",
+    ] {
+        std::fs::remove_file(root.join(file)).unwrap();
+    }
+    std::fs::write(
+        root.join("clean.html"),
+        "<!doctype html><html><body><p>Hello</p></body></html>",
+    )
+    .unwrap();
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(
+        fake.record.lock().unwrap().foundations.last().unwrap()["items"],
+        serde_json::json!({})
+    );
+}
+
+#[test]
+fn foundations_review_off_during_upload_prevents_the_health_request() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.foundations = true;
+    }
+    let env = fake.env("foundations-racing-off");
+    login(&env);
+    let root = repo(&env, Some("https://github.com/acme/site"));
+    let gate = fake.hold("/cli/v1/foundations");
+    let child = impeccable(&env, &root, &["detect", "--json", "."])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    fake.wait_for_hits("/cli/v1/foundations", 1);
+    assert!(run(&env, &root, &["health", "off"]).status.success());
+    gate.open();
+    child.wait_with_output().unwrap();
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn foundations_review_json_alias_preserves_the_health_notice() {
+    let (fake, env) = signed_in("health-json-alias");
+    let root = repo(&env, Some("https://github.com/acme/site"));
+    let out = run(&env, &root, &["detect", "-json", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health:"));
+    let out = run(&env, &root, &["detect", "."]);
+    assert!(String::from_utf8_lossy(&out.stderr)
+        .contains("Design health: this scan's counts were saved"));
+}

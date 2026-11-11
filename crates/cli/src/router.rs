@@ -197,7 +197,29 @@ fn detect(
     if let Some(full) = report {
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();
+        // Source scans can establish failures, but a missing finding cannot
+        // establish a pass (regex-only files, ignores and unresolved styles).
+        let mut foundations = std::collections::BTreeMap::new();
+        for f in &full.findings {
+            if f.advisory == Some(true) {
+                continue;
+            }
+            let id = if f.antipattern == "low-contrast" {
+                Some("readable-contrast")
+            } else if impeccable_core::registry::ANTIPATTERNS
+                .iter()
+                .any(|r| r.id == f.antipattern && r.category == "slop")
+            {
+                Some("no-generic-ai-patterns")
+            } else {
+                None
+            };
+            if let Some(id) = id {
+                foundations.insert(id.to_string(), "failing".to_string());
+            }
+        }
         let scan = impeccable_account::health::Scan {
+            foundations,
             root: full.root,
             files_scanned: full.files_scanned,
             hits: full
@@ -214,7 +236,9 @@ fn detect(
             engine_version: VERSION.to_string(),
             started,
         };
-        let quiet = args.iter().any(|a| a == "--quiet");
+        let quiet = args
+            .iter()
+            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code

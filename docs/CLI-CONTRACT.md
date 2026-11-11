@@ -2249,3 +2249,29 @@ counted. Local choice, machine key and daily attempts live in
 `$IMPECCABLE_HOME/setup.json`; scope consent is bound to the saved sign-in.
 The hidden `setup-report` worker is an implementation entrypoint and prints
 nothing.
+
+## Foundations sync (REN-1581)
+
+After the same full git-repo `detect` that supplies design health, the CLI sends
+`POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
+requests that scope only when OAuth metadata lists it in `scopes_supported`.
+Existing sign-ins without the scope send nothing to this route.
+
+The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
+`productType` and `items`, plus an optional `label`: the repo's name by design
+health's label recipe, sent only when the remote supplies a usable one. Scan
+identity, time, repo key and label match design health.
+`productType` is `null`: the detector does not classify products. Non-advisory
+built-in `slop` findings establish `no-generic-ai-patterns: failing`;
+`low-contrast` findings establish `readable-contrast: failing`. Absent findings
+do not establish a pass: ignores, regex-only files and unresolved styles leave
+coverage incomplete. No item is sent as `checked` or `covered`, and every other
+catalog item is omitted because the scan supplies no corresponding check.
+
+This follows `health off`, CI and telemetry opt-outs, including both the working
+directory and scanned root. Hooks and partial scans never upload. The request
+has a two-second deadline, no retries and no terminal messages. A 404 or any
+other failure leaves the health request, detect output and exit code intact.
+Design health notices are also suppressed for `--json` (including `-json`),
+`--quiet` and `--github`. The saved sync choice is rechecked between requests,
+so `health off` during a foundations upload prevents the health upload.

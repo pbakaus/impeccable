@@ -23,6 +23,8 @@ pub struct Knobs {
     pub health: bool,
     pub setup: bool,
     pub setup_denied: bool,
+    pub foundations: bool,
+    pub foundations_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -57,11 +59,13 @@ pub struct Record {
     pub scopes: Vec<String>,
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
+    pub foundations: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
     pub setups: Vec<serde_json::Value>,
-    codes: HashMap<String, (String, String)>,
+    codes: HashMap<String, (String, String, String)>,
+    grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
     access: HashSet<String>,
@@ -71,6 +75,13 @@ pub struct Record {
 }
 
 impl Record {
+    fn has_scope(&self, token: Option<&str>, scope: &str) -> bool {
+        token
+            .and_then(|t| self.grant_of.get(t))
+            .and_then(|g| self.grant_scopes.get(g))
+            .is_some_and(|s| s.split_whitespace().any(|s| s == scope))
+    }
+
     /// The refresh tokens the service would still accept.
     pub fn live_refresh_tokens(&self) -> Vec<String> {
         self.live_refresh.iter().cloned().collect()
@@ -294,6 +305,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         let mut scopes = vec!["account:read", "rules:read"];
                         if k.health { scopes.push("health:write"); }
                         if k.setup { scopes.push("setup:write"); }
+                        if k.foundations { scopes.push("foundations:write"); }
                         scopes
                     }),
                 }),
@@ -307,6 +319,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "account:read" | "rules:read" => true,
                     "health:write" => knobs.lock().unwrap().health,
                     "setup:write" => knobs.lock().unwrap().setup,
+                    "foundations:write" => knobs.lock().unwrap().foundations,
                     _ => false,
                 });
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
@@ -325,7 +338,20 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     let code = format!("code-{}", r.next);
                     r.codes.insert(
                         code.clone(),
-                        (q["code_challenge"].clone(), redirect.clone()),
+                        (
+                            q["code_challenge"].clone(),
+                            redirect.clone(),
+                            scope
+                                .split_whitespace()
+                                .filter(|s| match *s {
+                                    "health:write" => !k.health_denied,
+                                    "setup:write" => !k.setup_denied,
+                                    "foundations:write" => !k.foundations_denied,
+                                    _ => true,
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        ),
                     );
                     let mut loc = url::Url::parse(&redirect).unwrap();
                     loc.query_pairs_mut()
@@ -367,9 +393,17 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 let k = knobs.lock().unwrap();
                 if !k.setup {
                     (404, vec![], vec![])
-                } else if !bearer.is_some_and(|t| record.lock().unwrap().access.contains(&t)) {
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
                     (401, vec![], vec![])
-                } else if k.setup_denied {
+                } else if k.setup_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "setup:write")
+                {
                     (403, vec![], vec![])
                 } else {
                     let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
@@ -377,6 +411,66 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         record.lock().unwrap().setups.push(body);
                     }
                     json(200, serde_json::json!({"forgot":true,"outcome":"recorded"}))
+                }
+            }
+            ("POST", "/cli/v1/foundations") => {
+                if !knobs.lock().unwrap().foundations {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .and_then(|t| {
+                        let r = record.lock().unwrap();
+                        r.grant_of
+                            .get(t)
+                            .and_then(|g| r.grant_scopes.get(g))
+                            .cloned()
+                    })
+                    .is_some_and(|s| s.split_whitespace().any(|s| s == "foundations:write"))
+                {
+                    (403, vec![], vec![])
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    // Exactly the contract's keys; `label` is optional (pristine#4721).
+                    let keys: std::collections::BTreeSet<&str> =
+                        v.as_object().unwrap().keys().map(String::as_str).collect();
+                    let required: std::collections::BTreeSet<&str> = [
+                        "version",
+                        "scanId",
+                        "repoKey",
+                        "scannedAt",
+                        "productType",
+                        "items",
+                    ]
+                    .into();
+                    assert!(
+                        keys.is_superset(&required) && keys.len() <= required.len() + 1,
+                        "{keys:?}"
+                    );
+                    assert!(
+                        keys.iter().all(|k| required.contains(k) || *k == "label"),
+                        "{keys:?}"
+                    );
+                    assert_eq!(v["version"], 1);
+                    assert_eq!(v["scanId"].as_str().unwrap().len(), 36);
+                    assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
+                    assert!(v["productType"].is_null());
+                    assert!(v["scannedAt"].as_str().unwrap().ends_with('Z'));
+                    for (id, state) in v["items"].as_object().unwrap() {
+                        assert!(
+                            ["no-generic-ai-patterns", "readable-contrast"].contains(&id.as_str())
+                        );
+                        assert_eq!(state, "failing");
+                    }
+                    record.lock().unwrap().foundations.push(v);
+                    json(
+                        200,
+                        serde_json::json!({"outcome":"recorded", "inPlace":0, "failing":1}),
+                    )
                 }
             }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
@@ -388,7 +482,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (404, vec![], vec![])
                 } else if !authorized {
                     (401, vec![], vec![])
-                } else if k.health_denied {
+                } else if k.health_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "health:write")
+                {
                     (
                         403,
                         vec![(
@@ -464,7 +563,8 @@ fn token(
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
-            let Some((challenge, redirect)) = form.get("code").and_then(|c| r.codes.remove(c))
+            let Some((challenge, redirect, scope)) =
+                form.get("code").and_then(|c| r.codes.remove(c))
             else {
                 return invalid();
             };
@@ -474,7 +574,9 @@ fn token(
             {
                 return invalid();
             }
-            r.next + 1
+            let grant = r.next + 1;
+            r.grant_scopes.insert(grant, scope);
+            grant
         }
         Some("refresh_token") => {
             let t = form.get("refresh_token").cloned().unwrap_or_default();
@@ -506,7 +608,7 @@ fn token(
     r.live_refresh.insert(refresh.clone());
     json(
         200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": if { let k = knobs.lock().unwrap(); k.setup && !k.setup_denied } { "account:read rules:read setup:write" } else { "account:read rules:read" } }),
+        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.grant_scopes.get(&grant).cloned().unwrap_or_default() }),
     )
 }
 

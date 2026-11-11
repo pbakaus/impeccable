@@ -79,6 +79,7 @@ pub fn login(
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
+            foundations: tokens.foundations,
             schema: 1,
             issuer: account.issuer.clone(),
             generation,

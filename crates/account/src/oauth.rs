@@ -29,6 +29,7 @@ pub struct Metadata {
     /// doesn't list fails the sign-in with `invalid_scope`.
     pub health: bool,
     pub setup: bool,
+    pub foundations: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -62,6 +63,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
         .get("scopes_supported")
         .and_then(|v| v.as_array())
         .is_some_and(|a| a.iter().any(|s| s == HEALTH_SCOPE));
+    let foundations = doc
+        .get("scopes_supported")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| a.iter().any(|s| s == FOUNDATIONS_SCOPE));
     match (authorization_endpoint, token_endpoint) {
         (Some(authorization_endpoint), Some(token_endpoint)) => Ok(Metadata {
             authorization_endpoint,
@@ -72,6 +77,7 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == "setup:write")),
+            foundations,
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -80,17 +86,23 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
 
-/// What sign-in asks for: the CLI's scopes, plus `health:write` where the
-/// service offers it.
+/// Uploading foundations evidence, separately consented from detector counts.
+pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
+
+/// Request feature scopes only where the service advertises them.
 fn scopes(meta: &Metadata) -> String {
-    let mut s = SCOPES.to_string();
-    if meta.health {
-        s.push_str(" health:write");
+    let mut scopes = SCOPES.to_string();
+    for (offered, scope) in [
+        (meta.health, HEALTH_SCOPE),
+        (meta.setup, "setup:write"),
+        (meta.foundations, FOUNDATIONS_SCOPE),
+    ] {
+        if offered {
+            scopes.push(' ');
+            scopes.push_str(scope);
+        }
     }
-    if meta.setup {
-        s.push_str(" setup:write");
-    }
-    s
+    scopes
 }
 
 pub fn random_b64(len: usize) -> String {
@@ -325,6 +337,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 pub struct Tokens {
     pub setup: bool,
+    pub foundations: bool,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
@@ -355,6 +368,10 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
             access_token,
             refresh_token,
             expires_in,
+            foundations: v
+                .get("scope")
+                .and_then(|s| s.as_str())
+                .is_some_and(|s| s.split_whitespace().any(|s| s == FOUNDATIONS_SCOPE)),
         }),
         _ => Err(ApiError::Network(
             "the account service sent an incomplete token answer".into(),
@@ -406,4 +423,40 @@ pub fn revoke(client: &Client, endpoint: &str, refresh_token: &str) -> Result<()
         ("client_id", CLIENT_ID),
     ];
     client.post_form_empty(endpoint, &form)
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    #[test]
+    fn feature_scopes_compose_only_when_advertised() {
+        for mask in 0..8 {
+            let meta = Metadata {
+                authorization_endpoint: String::new(),
+                token_endpoint: String::new(),
+                revocation_endpoint: None,
+                health: mask & 1 != 0,
+                setup: mask & 2 != 0,
+                foundations: mask & 4 != 0,
+            };
+            let requested = scopes(&meta);
+            let requested: Vec<_> = requested.split_whitespace().collect();
+            assert_eq!(&requested[..2], &["account:read", "rules:read"]);
+            for (bit, scope) in [
+                (1, HEALTH_SCOPE),
+                (2, "setup:write"),
+                (4, FOUNDATIONS_SCOPE),
+            ] {
+                assert_eq!(requested.contains(&scope), mask & bit != 0);
+            }
+            let granted = tokens(serde_json::json!({
+                "access_token": "test-access", "refresh_token": "test-refresh",
+                "expires_in": 900, "token_type": "Bearer", "scope": requested.join(" "),
+            }))
+            .unwrap();
+            assert_eq!(granted.setup, meta.setup);
+            assert_eq!(granted.foundations, meta.foundations);
+        }
+    }
 }
