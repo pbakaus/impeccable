@@ -73,14 +73,16 @@ export function authorizeUrl({ endpoint, issuer, redirectUri, state, challenge }
 const CODE = /^[A-Za-z0-9._~-]{8,512}$/;
 
 /**
- * Checks the address the sign-in came back on: our own callback, our `state`, the issuer it was sent to (RFC 9207),
- * and a code. `{ ok: true, code }`, or `{ ok: false, why }` with `why` one of `callback`, `denied`, `state`, `iss`, `code`.
+ * Checks the address the sign-in came back on: our own callback to the letter (origin and path, nothing before the
+ * host), our `state`, the issuer it was sent to (RFC 9207), and a code, each said once. `{ ok: true, code }`, or
+ * `{ ok: false, why }` with `why` one of `callback`, `repeated`, `denied`, `state`, `iss`, `code`.
  */
 export function readCallback(returned, { redirectUri, state, issuer }) {
   let url;
   try { url = new URL(returned); } catch { return { ok: false, why: 'callback' }; }
-  if (`${url.origin}${url.pathname}` !== redirectUri) return { ok: false, why: 'callback' };
+  if (`${url.origin}${url.pathname}` !== redirectUri || url.username || url.password) return { ok: false, why: 'callback' };
   const query = url.searchParams;
+  if (['code', 'state', 'iss'].some((key) => query.getAll(key).length > 1)) return { ok: false, why: 'repeated' };
   if (query.get('state') !== state) return { ok: false, why: 'state' };
   if (query.get('iss') !== issuer) return { ok: false, why: 'iss' };
   if (query.has('error')) return { ok: false, why: 'denied' };

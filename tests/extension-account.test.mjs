@@ -35,6 +35,9 @@ describe('account sign-in flow', () => {
     ['a malformed code', back({ ...good, code: 'a b' }), 'code'],
     ['a refusal', back({ state: 's1', iss: ISSUER, error: 'access_denied' }), 'denied'],
     ['another callback', `https://evil.chromiumapp.org/callback?${new URLSearchParams(good)}`, 'callback'],
+    ['another path', `${REDIRECT}/more?${new URLSearchParams(good)}`, 'callback'],
+    ['a name before the host', `${REDIRECT.replace('https://', 'https://evil@')}?${new URLSearchParams(good)}`, 'callback'],
+    ...['code', 'state', 'iss'].map((key) => [`${key} twice`, `${back(good)}&${key}=${encodeURIComponent(good[key])}`, 'repeated']),
   ]) {
     it(`refuses a callback with ${label}`, () => {
       assert.deepEqual(readCallback(returned, { redirectUri: REDIRECT, state: 's1', issuer: ISSUER }), { ok: false, why });
@@ -204,6 +207,20 @@ describe('account session', () => {
     await h.boot().recover();
     await settle();
     assert.deepEqual([h.ended, h.disk.size], [['refresh-0'], 0]);
+  });
+
+  it('takes a sign-in window back only for the sign-in still waiting', async () => {
+    const windows = [];
+    const h = harness({ gated: false, launched: (url) => new Promise((resolve) => windows.push(() => resolve(`${REDIRECT}?code=code-0123456789&state=${new URL(url).searchParams.get('state')}&iss=${encodeURIComponent(ISSUER)}`))) });
+    const first = h.session.signIn();
+    await settle();
+    const second = h.session.signIn();
+    await settle();
+    windows[0]();
+    assert.deepEqual(await first, { ok: false, why: 'pending' });
+    assert.equal(h.sent.some((r) => r.url === META.token_endpoint), false, 'its code is never traded');
+    windows[1]();
+    assert.deepEqual(await second, { ok: true });
   });
 
   it('keeps nothing from a sign-in that comes back with the wrong state', async () => {
