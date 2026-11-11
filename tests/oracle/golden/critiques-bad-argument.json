@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "usage: impeccable critiques [status|on|off|forget]\n",
+  "stderr": "Usage: impeccable critiques status|on|off|forget\n",
   "exit": 1,
   "signal": null,
   "files": {}

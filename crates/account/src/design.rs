@@ -1,8 +1,8 @@
-//! Opt-in DESIGN.md contents upload. Only called behind design health's gate.
+//! DESIGN.md contents upload. Only called behind design health's gate.
 use super::*;
 
 /// This is the single default for DESIGN.md contents sync.
-pub const DESIGN_SYNC_DEFAULT_ON: bool = false;
+pub const DESIGN_SYNC_DEFAULT_ON: bool = true;
 const TEXT_BYTES: usize = 64 * 1024;
 const BODY_BYTES: usize = 160 * 1024;
 
@@ -35,7 +35,7 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
     }) {
         Ok(()) => {
             io.out(if on {
-                "DESIGN.md sync: on.\n"
+                "DESIGN.md sync: on. Your DESIGN.md uploads to your Impeccable account whenever it changes. To stop: impeccable health design off\n"
             } else {
                 "DESIGN.md sync: off.\n"
             });
@@ -58,7 +58,7 @@ fn remaining(started: std::time::Instant) -> Option<Duration> {
         .filter(|d| !d.is_zero())
 }
 
-pub(super) fn after_scan(io: &Io, scan: &Scan) {
+pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let started = std::time::Instant::now();
     let env = io.env.clone();
     let Some(local) =
@@ -186,6 +186,13 @@ pub(super) fn after_scan(io: &Io, scan: &Scan) {
     {
         return;
     }
+    crate::upload_notice::emit(
+        io,
+        &account,
+        login,
+        crate::upload_notice::Kind::Design,
+        quiet,
+    );
     let Some(left) = remaining(started) else {
         return;
     };
@@ -371,5 +378,25 @@ mod identity_tests {
     #[test]
     fn an_ancestor_replaced_during_identification_is_refused() {
         replaced(true);
+    }
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::*;
+
+    #[test]
+    fn design_default_is_on_and_explicit_off_wins() {
+        let home =
+            std::env::temp_dir().join(format!("design-default-{}", crate::oauth::random_b64(12)));
+        let env = [(
+            "IMPECCABLE_HOME".into(),
+            home.to_string_lossy().into_owned(),
+        )]
+        .into();
+        assert!(enabled_generation(&env, 0));
+        Local::update(&env, |l| l.design = Some(false)).unwrap();
+        assert!(!enabled_generation(&env, 0));
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

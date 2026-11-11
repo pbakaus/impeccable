@@ -301,12 +301,12 @@ pub fn report(io: &Io, inventory: &Value, cli: &str, skills: &Value) {
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let verb = args.first().map(String::as_str).unwrap_or("status");
     if args.len() > 1 || !["status", "on", "off", "forget"].contains(&verb) {
-        io.err("Usage: impeccable setup [status|on|off|forget]\n");
+        io.err("Usage: impeccable setup status|on|off|forget\n");
         return 1;
     }
     if verb == "status" {
         io.out(if read(io).is_some_and(|v| v["sync"] != false) {
-            "Setup status: on.\n"
+            "Setup status: on. This machine reports where Impeccable is installed, once a day.\n"
         } else {
             "Setup status: off.\n"
         });
@@ -326,7 +326,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     drop(local_lock);
     if verb != "forget" {
         io.out(if verb == "on" {
-            "Setup status: on.\n"
+            "Setup status: on. This machine reports where Impeccable is installed, once a day.\n"
         } else {
             "Setup status: off.\n"
         });
@@ -342,10 +342,10 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             .ok()
     });
     if result.is_some() {
-        io.out("Setup status: deleted saved reports and turned sync off.\n");
+        io.out("Setup status: off, and what this machine reported was deleted.\n");
         0
     } else {
-        io.err("Setup status: sync is off; deleting saved reports couldn't be confirmed.\n");
+        io.err("Setup status is off, but deleting what this machine reported couldn't be confirmed. Run impeccable setup forget again.\n");
         1
     }
 }

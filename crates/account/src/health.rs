@@ -99,7 +99,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
         return;
     }
-    design::after_scan(io, scan);
+    design::after_scan(io, scan, quiet);
     let Ok(account) = Account::from_env(&io.env) else {
         return;
     };

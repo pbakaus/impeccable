@@ -64,9 +64,12 @@ Crowded header.",
     (fake, env)
 }
 #[test]
-fn only_new_reports_upload_after_explicit_opt_in() {
+fn only_new_reports_upload_and_explicit_off_wins() {
     let (fake, env) = setup("critique-flow");
     let root = Path::new(&env["IMPECCABLE_HOME"]);
+    impeccable(&env, root, &["critiques", "off"])
+        .output()
+        .unwrap();
     let first = write(&env, root);
     assert!(first.status.success());
     assert_eq!(fake.hits("/cli/v1/critiques"), 0);
@@ -318,7 +321,14 @@ fn multiline_metadata_never_becomes_report_body() {
     .output()
     .unwrap();
     assert!(out.status.success());
-    let saved = std::fs::read_to_string(String::from_utf8(out.stdout).unwrap().trim()).unwrap();
+    let saved = std::fs::read_to_string(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         impeccable_context::critique_storage::parse_frontmatter(&saved)["notes"],
         meta["notes"]
@@ -358,7 +368,8 @@ fn forget_404_leaves_sync_off_and_reports_unconfirmed_deletion() {
         .output()
         .unwrap();
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("deletion couldn't be confirmed"));
+    assert!(String::from_utf8_lossy(&out.stderr)
+        .contains("deleting your history couldn't be confirmed"));
     fake.knobs.lock().unwrap().critiques = true;
     write(&env, root);
     assert_eq!(fake.hits("/cli/v1/critiques"), 0);
@@ -511,7 +522,8 @@ fn invalid_service_settings_never_prevent_local_optout() {
             assert!(out.status.success());
         } else {
             assert!(!out.status.success());
-            assert!(String::from_utf8_lossy(&out.stderr).contains("deletion couldn't be confirmed"));
+            assert!(String::from_utf8_lossy(&out.stderr)
+                .contains("deleting your history couldn't be confirmed"));
         }
         let status = impeccable(&env, root, &["critiques", "status"])
             .output()
@@ -608,4 +620,41 @@ fn the_service_accepts_optional_labels_only_with_repo_keys() {
             }
         }
     }
+}
+
+#[test]
+fn critique_notice_is_once_after_success_and_again_after_sign_in() {
+    let (fake, env) = setup("critique-notice");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let notice = "Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off\n";
+    let hook = impeccable(&env, root, &["hook-before-edit"])
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&hook.stdout).contains(notice));
+    assert!(!String::from_utf8_lossy(&hook.stderr).contains(notice));
+    assert_eq!(fake.hits("/cli/v1/critiques"), 0);
+    for flag in ["--json", "--quiet", "--github"] {
+        let out = impeccable(
+            &env,
+            root,
+            &["critique-storage", "write", "pricing", "report.md", flag],
+        )
+        .env("IMPECCABLE_CRITIQUE_META", META)
+        .output()
+        .unwrap();
+        assert!(out.status.success());
+        assert!(!String::from_utf8_lossy(&out.stdout).contains(notice));
+        assert!(!String::from_utf8_lossy(&out.stderr).contains(notice));
+    }
+    let before = fake.hits("/cli/v1/critiques");
+    assert_eq!(before, 3);
+    let first = write(&env, root);
+    assert!(first.status.success());
+    assert!(String::from_utf8_lossy(&first.stdout).ends_with(notice));
+    assert!(!String::from_utf8_lossy(&first.stderr).contains(notice));
+    let second = write(&env, root);
+    assert!(!String::from_utf8_lossy(&second.stdout).contains(notice));
+    assert_eq!(fake.hits("/cli/v1/critiques"), before + 2);
+    login(&env);
+    assert!(String::from_utf8_lossy(&write(&env, root).stdout).ends_with(notice));
 }

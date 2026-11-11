@@ -14,6 +14,7 @@ pub mod pro;
 pub mod session;
 pub mod setup;
 pub mod store;
+mod upload_notice;
 
 use config::Account;
 use impeccable_common::Io;

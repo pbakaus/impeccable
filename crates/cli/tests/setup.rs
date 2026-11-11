@@ -43,11 +43,12 @@ fn normal_commands_schedule_silent_reports_and_hooks_never_do() {
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Setup"));
     cmd(&env, &["doctor", "--json"]).output().unwrap();
     assert_eq!(f.hits("/cli/v1/setup/reports"), 1);
-    assert!(cmd(&env, &["setup", "forget"])
-        .output()
-        .unwrap()
-        .status
-        .success());
+    let forgotten = cmd(&env, &["setup", "forget"]).output().unwrap();
+    assert!(forgotten.status.success());
+    assert_eq!(
+        forgotten.stdout,
+        b"Setup status: off, and what this machine reported was deleted.\n"
+    );
     cmd(&env, &["doctor", "--json"]).output().unwrap();
     assert_eq!(f.hits("/cli/v1/setup/reports"), 1);
 }
@@ -78,7 +79,7 @@ fn network_wait_is_detached_and_offline_forget_never_claims_deletion() {
     f.knobs.lock().unwrap().setup = false;
     let out = cmd(&env, &["setup", "forget"]).output().unwrap();
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("couldn't be confirmed"));
+    assert_eq!(out.stderr, b"Setup status is off, but deleting what this machine reported couldn't be confirmed. Run impeccable setup forget again.\n");
     assert!(
         String::from_utf8_lossy(&cmd(&env, &["setup"]).output().unwrap().stdout).contains("off")
     );

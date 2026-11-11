@@ -98,7 +98,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 saved = Some(s)
             });
             if let Some(snapshot) = saved {
-                impeccable_account::critiques::after_save(io, &snapshot);
+                let quiet = rest
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
+                impeccable_account::critiques::after_save(io, &snapshot, quiet);
             }
             code
         }

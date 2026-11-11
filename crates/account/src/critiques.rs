@@ -1,4 +1,4 @@
-//! Opt-in uploads of newly saved critique reports. No retries, output or hook integration.
+//! Uploads of newly saved critique reports. No retries or hook integration.
 use crate::config::{impeccable_home, Account};
 use crate::http::Client;
 use crate::session::{Session, SessionError};
@@ -7,7 +7,7 @@ use impeccable_context::critique_storage::SavedReport;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
-pub const CRITIQUE_SYNC_DEFAULT_ON: bool = false;
+pub const CRITIQUE_SYNC_DEFAULT_ON: bool = true;
 
 fn enabled(io: &Io) -> bool {
     let Some(home) = impeccable_home(&io.env) else {
@@ -88,7 +88,7 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
     }))
 }
 
-pub fn after_save(io: &Io, snapshot: &SavedReport) {
+pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     let started = Instant::now();
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
@@ -174,17 +174,29 @@ pub fn after_save(io: &Io, snapshot: &SavedReport) {
     else {
         return;
     };
-    let _ = Client::with_deadline(&account, left).post_json(
+    let answer = Client::with_deadline(&account, left).post_json(
         &format!("{}/cli/v1/critiques", account.issuer),
         token,
         body,
     );
+    if answer
+        .ok()
+        .is_some_and(|v| matches!(v["outcome"].as_str(), Some("recorded" | "repeat")))
+    {
+        crate::upload_notice::emit(
+            io,
+            &account,
+            session.state.login,
+            crate::upload_notice::Kind::Critique,
+            quiet,
+        );
+    }
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let choice = args.first().map(String::as_str).unwrap_or("status");
     if args.len() > 1 || !["status", "on", "off", "forget"].contains(&choice) {
-        io.err("usage: impeccable critiques [status|on|off|forget]\n");
+        io.err("Usage: impeccable critiques status|on|off|forget\n");
         return 1;
     }
     if choice == "status" {
@@ -217,7 +229,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     if choice != "forget" {
         io.out(if choice == "on" {
-            "Critique sync: on. Saved report contents will be uploaded.\n"
+            "Critique sync: on. Each critique report you save uploads to your Impeccable account. To stop: impeccable critiques off\n"
         } else {
             "Critique sync: off.\n"
         });
@@ -236,7 +248,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         _ => {
-            io.err("Critique sync is off; deletion couldn't be confirmed. Run `impeccable critiques forget` again after signing in.\n");
+            io.err("Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.\n");
             1
         }
     }
@@ -245,4 +257,26 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 /// Hidden renewal-only verb; shared with DESIGN.md uploads.
 pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     crate::session::run_upload_refresh(args, io)
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::*;
+
+    #[test]
+    fn critique_default_is_on_and_explicit_off_wins() {
+        let home =
+            std::env::temp_dir().join(format!("critique-default-{}", crate::oauth::random_b64(12)));
+        let env = [(
+            "IMPECCABLE_HOME".into(),
+            home.to_string_lossy().into_owned(),
+        )]
+        .into();
+        let (io, _) = Io::captured("", home.clone(), env);
+        assert!(enabled(&io));
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("critiques.json"), br#"{"sync":false}"#).unwrap();
+        assert!(!enabled(&io));
+        std::fs::remove_dir_all(home).unwrap();
+    }
 }

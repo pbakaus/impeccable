@@ -1,5 +1,5 @@
 {
-  "stdout": "Setup status: on.\n",
+  "stdout": "Setup status: on. This machine reports where Impeccable is installed, once a day.\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

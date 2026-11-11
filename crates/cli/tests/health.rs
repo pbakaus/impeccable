@@ -579,7 +579,7 @@ fn foundations_review_json_alias_preserves_the_health_notice() {
 }
 
 #[test]
-fn design_sync_is_opt_in_changed_only_and_retries_failures() {
+fn design_sync_defaults_on_changed_only_and_retries_failures() {
     let fake = Fake::start();
     {
         let mut k = fake.knobs.lock().unwrap();
@@ -595,7 +595,7 @@ fn design_sync_is_opt_in_changed_only_and_retries_failures() {
     let root = repo(&env, Some("git@GitHub.com:acme/my-site.git"));
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
     let baseline = run(&env, &root, &["detect", "--json", "."]);
-    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    assert_eq!(fake.hits("/cli/v1/design"), 1);
     assert!(run(&env, &root, &["health", "design", "on"])
         .status
         .success());
@@ -1075,4 +1075,42 @@ fn upload_features_share_one_grant_and_keep_independent_consent() {
     assert_eq!(fake.record.lock().unwrap().designs.len(), 1);
     assert_eq!(fake.record.lock().unwrap().foundations.len(), 2);
     assert_eq!(scans(&fake).len(), 2);
+}
+
+#[test]
+fn design_notice_is_once_after_success_and_again_after_sign_in() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("design-notice");
+    login(&env);
+    let root = repo(&env, None);
+    let notice = "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n";
+    let hook = run(&env, &root, &["hook-before-edit"]);
+    assert!(!String::from_utf8_lossy(&hook.stdout).contains(notice));
+    assert!(!String::from_utf8_lossy(&hook.stderr).contains(notice));
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    for flag in ["--json", "--quiet", "--github"] {
+        std::fs::write(root.join("DESIGN.md"), format!("# {flag}\n")).unwrap();
+        let out = run(&env, &root, &["detect", flag, "."]);
+        assert!(!String::from_utf8_lossy(&out.stderr).contains(notice));
+        assert!(!String::from_utf8_lossy(&out.stdout).contains(notice));
+    }
+    assert_eq!(fake.hits("/cli/v1/design"), 3);
+    for (text, expected) in [("# First", true), ("# Second", false)] {
+        std::fs::write(root.join("DESIGN.md"), text).unwrap();
+        let out = run(&env, &root, &["detect", "."]);
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr).contains(notice),
+            expected
+        );
+        assert!(!String::from_utf8_lossy(&out.stdout).contains(notice));
+    }
+    assert_eq!(fake.hits("/cli/v1/design"), 5);
+    login(&env);
+    let out = run(&env, &root, &["detect", "."]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains(notice));
 }

@@ -2216,6 +2216,15 @@ binary, including for npx and PATH installs without an adjacent skill directory.
 
 ## Setup status
 
+Exact output strings:
+
+- `Usage: impeccable setup status|on|off|forget`
+- `Setup status: on. This machine reports where Impeccable is installed, once a day.`
+- `Setup status: off.`
+- `Setup status: couldn't save the setting.`
+- `Setup status: off, and what this machine reported was deleted.`
+- `Setup status is off, but deleting what this machine reported couldn't be confirmed. Run impeccable setup forget again.`
+
 `impeccable setup [status|on|off|forget]` controls setup reports independently
 of design health. `status` (the default), `on`, and `off` exit 0 after reading
 or saving the local choice; a failed save exits 1. `forget` turns sync off
@@ -2278,10 +2287,21 @@ so `health off` during a foundations upload prevents the health upload.
 
 ## `health design on|off`
 
+Exact output strings:
+
+- `Usage: impeccable health design on|off`
+- `DESIGN.md sync: on. Your DESIGN.md uploads to your Impeccable account whenever it changes. To stop: impeccable health design off`
+- `DESIGN.md sync: off.`
+- `DESIGN.md sync: couldn't save the setting: {e}.`
+- `DESIGN.md sync: couldn't save the setting: another impeccable command is using it; try again.`
+- `Design health: couldn't save the setting: another impeccable command is using it; try again.`
+- `Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off`
+
 `impeccable health design on` opts into uploading DESIGN.md file contents;
 `impeccable health design off` stops those uploads. The setting is `design`
 in `$IMPECCABLE_HOME/health.json`. The single default,
-`DESIGN_SYNC_DEFAULT_ON`, is `false`. Both commands exit 0 after saving,
+`DESIGN_SYNC_DEFAULT_ON`, is `true`. An explicit off wins, including for existing
+sign-ins once their grant holds the scope. Both commands exit 0 after saving,
 or 1 if the setting cannot be saved. Other arguments print
 `Usage: impeccable health design on|off` and exit 1.
 
@@ -2289,8 +2309,12 @@ After the same full git-root `detect` that triggers design health, this
 sync requires health sync on, a signed-in account with `design:write`, CI
 unset, and no telemetry opt-out in either the invocation or scanned root.
 Sign-in requests `design:write` only when `scopes_supported` advertises it.
-Hooks, partial scans, and non-repos never upload. Uploads are silent in all
-output modes and never change detect's output or exit code. One request
+Hooks, partial scans, and non-repos never upload. The first successful upload
+per sign-in prints N1 to stderr. `--json` (including `-json`), `--quiet` and
+`--github` suppress it without marking it shown. A login-keyed marker in the
+account store prevents repeats; a new sign-in hears it again. If saving the
+marker fails, the notice still prints and the upload is kept. Uploads and
+notices never change detect's exit code. One request
 has a two-second elapsed-time budget, no retries; busy upload or lifecycle
 locks skip it. Credential and file/git preparation run in bounded read workers
 that cannot upload. HTTP connect/read timeouts are capped at the remaining
@@ -2343,18 +2367,34 @@ cannot suppress a later upload after sync is turned back on.
 Generated provider output is not involved.
 ### Critique history sync
 
+Exact output strings:
+
+- `Usage: impeccable critiques status|on|off|forget`
+- `Critique sync: on.`
+- `Critique sync: on. Each critique report you save uploads to your Impeccable account. To stop: impeccable critiques off`
+- `Critique sync: off.`
+- `Critique sync: couldn't save the setting.`
+- `Critique history deleted; sync is off.`
+- `Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.`
+- `Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off`
+
 `impeccable critiques [status|on|off|forget]` manages the local
-`IMPECCABLE_HOME/critiques.json` setting. The default is off
-(`CRITIQUE_SYNC_DEFAULT_ON = false`). `on` opts into uploading saved report
+`IMPECCABLE_HOME/critiques.json` setting. The default is on
+(`CRITIQUE_SYNC_DEFAULT_ON = true`); an explicit off wins. This also applies
+to existing sign-ins once their grant holds the scope. `on` enables uploading saved report
 contents; `off` stops uploads. `forget` first saves off, then posts `{}` to
 `/cli/v1/critiques/forget`. A 404 or other unconfirmed deletion leaves sync off,
-prints the existing unconfirmed-deletion message, and exits 1. Only a successful
+prints the unconfirmed-deletion message above, and exits 1. Only a successful
 response containing a deletion count exits 0 and claims deletion.
 Status reports the saved preference, independent of sign-in or CI.
 
 After a successful `critique-storage write`, the CLI makes at most one
 best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
-the storage verb's output and exit code and emits no upload notices. It never
+the storage verb's exit code. The first successful upload per sign-in appends
+N2 to the critique-storage write step's stdout. `--json` (including `-json`),
+`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+marker in the account store prevents repeats; a new sign-in hears it again.
+If saving the marker fails, the notice still prints and the upload is kept. It never
 uploads from hooks, reads, closes, audit writes or disabled reports. CI,
 telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
 preferences skip uploads. Credential reads share the two-second budget and
