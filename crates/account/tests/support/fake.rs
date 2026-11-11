@@ -18,6 +18,7 @@ pub struct Knobs {
     pub callback_state: Option<String>,
     pub entitled: bool,
     pub access_ttl: u64,
+    pub omit_token_scope: bool,
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
@@ -691,7 +692,10 @@ fn token(
     {
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
-    let ttl = knobs.lock().unwrap().access_ttl;
+    let (ttl, omit_scope) = {
+        let k = knobs.lock().unwrap();
+        (k.access_ttl, k.omit_token_scope)
+    };
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
         Some("authorization_code") => {
@@ -738,10 +742,11 @@ fn token(
     r.grant_of.insert(refresh.clone(), grant);
     r.access.insert(access.clone());
     r.live_refresh.insert(refresh.clone());
-    json(
-        200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.grant_scopes.get(&grant).cloned().unwrap_or_default() }),
-    )
+    let mut answer = serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": r.grant_scopes.get(&grant).cloned().unwrap_or_default() });
+    if omit_scope {
+        answer.as_object_mut().unwrap().remove("scope");
+    }
+    json(200, answer)
 }
 
 // --- Pro releases and leases -------------------------------------------------

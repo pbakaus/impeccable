@@ -88,7 +88,8 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         return;
     }
     // State and token came from one locked, generation-checked snapshot.
-    let login = session.state.login;
+    let original = session.state.clone();
+    let login = original.login;
     let session = if session.existing_access_token().is_none() {
         let Some(fresh) =
             crate::session::renew_for_upload(io, &account, started, "health-design-refresh")
@@ -99,7 +100,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     } else {
         session
     };
-    if session.state.login != login
+    if !session.matches_upload(&original)
         || !session
             .state
             .scopes
@@ -147,29 +148,40 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let Some(wait) = remaining(started) else {
         return;
     };
-    let Some((path, cache_lock, admission)) = crate::session::read_within(wait, move || {
-        let path = home.join("health/repos").join(format!("{marker}.design"));
-        std::fs::create_dir_all(path.parent()?).ok()?;
-        let cache_lock = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path.with_extension("design.lock"))
-            .ok()?;
-        cache_lock.try_lock().ok()?;
-        if std::fs::read_to_string(&path).ok().as_deref() == Some(&expected) {
-            return None;
-        }
-        let admission = crate::store::Store::design_lock_for(&home, Duration::ZERO).ok()?;
-        if !enabled_generation(&env, generation) {
-            return None;
-        }
-        Some((path, cache_lock, admission))
-    })
-    .flatten() else {
+    let Some((path, cache_lock, admission, cached)) =
+        crate::session::read_within(wait, move || {
+            let path = home.join("health/repos").join(format!("{marker}.design"));
+            std::fs::create_dir_all(path.parent()?).ok()?;
+            let cache_lock = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path.with_extension("design.lock"))
+                .ok()?;
+            cache_lock.try_lock().ok()?;
+            let cached = std::fs::read_to_string(&path).ok().as_deref() == Some(&expected);
+            let admission = crate::store::Store::design_lock_for(&home, Duration::ZERO).ok()?;
+            if !enabled_generation(&env, generation) {
+                return None;
+            }
+            Some((path, cache_lock, admission, cached))
+        })
+        .flatten()
+    else {
         return;
     };
+    if cached {
+        // A prior successful machine-output upload still owes the human notice.
+        crate::upload_notice::emit(
+            io,
+            &account,
+            login,
+            crate::upload_notice::Kind::Design,
+            quiet,
+        );
+        return;
+    }
     // Admission stays held continuously from the settings check through POST
     // and digest persistence. Off/forget cannot return success in that interval.
     let Some(left) = remaining(started) else {
@@ -397,6 +409,88 @@ mod preference_tests {
         assert!(enabled_generation(&env, 0));
         Local::update(&env, |l| l.design = Some(false)).unwrap();
         assert!(!enabled_generation(&env, 0));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod notice_regressions {
+    use super::*;
+    #[test]
+    fn cached_machine_upload_owes_notice_on_next_human_scan() {
+        let home =
+            std::env::temp_dir().join(format!("design-notice-{}", crate::oauth::random_b64(12)));
+        let root = home.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(Command::new("git")
+            .args(["init", "-q"])
+            .arg(&root)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args([
+                "config",
+                "remote.origin.url",
+                "https://example.com/test/repo.git"
+            ])
+            .status()
+            .unwrap()
+            .success());
+        std::fs::write(root.join("DESIGN.md"), "# Test design\n").unwrap();
+        let env = [(
+            "IMPECCABLE_HOME".into(),
+            home.to_string_lossy().into_owned(),
+        )]
+        .into();
+        let account = Account::from_env(&env).unwrap();
+        let store = crate::store::Store::new(&account);
+        let state = crate::store::State {
+            schema: 1,
+            foundations: false,
+            scopes: vec![crate::oauth::DESIGN_SCOPE.into()],
+            issuer: account.issuer.clone(),
+            generation: 1,
+            signed_in: true,
+            backend: crate::store::Backend::File,
+            token_endpoint: "http://127.0.0.1:1/oauth/token".into(),
+            revocation_endpoint: None,
+            login: 1,
+            signed_out_at: 0,
+        };
+        let secret = crate::store::Secret {
+            generation: 1,
+            refresh_token: "test-refresh".into(),
+            access_token: "test-access".into(),
+            access_expires_at: crate::session::now() + 900,
+        };
+        let lock = store.lock().unwrap();
+        store.save(&lock, &state, &secret).unwrap();
+        drop(lock);
+        let (repo, text, sidecar) = prepare(&root.to_string_lossy(), &env, Repo::of).unwrap();
+        let marker = hex(&hash(&[&account.issuer, "1", &repo.key, "0"]));
+        let path = home.join("health/repos").join(format!("{marker}.design"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, hex(&hash(&[&text, &sidecar.to_string()]))).unwrap();
+        let scan = Scan {
+            foundations: Default::default(),
+            root: root.to_string_lossy().into_owned(),
+            files_scanned: 1,
+            hits: vec![],
+            ruleset: vec![],
+            engine_version: "test".into(),
+            started: SystemTime::now(),
+        };
+        let (mut io, cap) = Io::captured("", root, env);
+        after_scan(&mut io, &scan, true);
+        assert!(cap.stderr.borrow().is_empty());
+        after_scan(&mut io, &scan, false);
+        assert!(String::from_utf8_lossy(&cap.stderr.borrow()).contains("Uploaded your DESIGN.md"));
+        let first = cap.stderr.borrow().clone();
+        after_scan(&mut io, &scan, false);
+        assert_eq!(*cap.stderr.borrow(), first);
         std::fs::remove_dir_all(home).unwrap();
     }
 }

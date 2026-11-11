@@ -150,11 +150,12 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     } else {
         session
     };
-    if !session
-        .state
-        .scopes
-        .iter()
-        .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+    if !session.matches_upload(&state)
+        || !session
+            .state
+            .scopes
+            .iter()
+            .any(|s| s == crate::oauth::CRITIQUES_SCOPE)
     {
         return;
     }

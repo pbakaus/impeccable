@@ -77,25 +77,41 @@ impl Session {
         read_within(wait, move || {
             let store = Store::new(&account);
             let _lock = store.lock_for(std::time::Duration::ZERO).ok()?;
-            let state = store.try_state().ok()??;
-            if !state.signed_in {
-                return None;
-            }
-            let secret = store.try_secret_noninteractive(&state).ok()??;
-            // Login writes secrets first. That crash window is recoverable by
-            // ordinary sessions, but must never authorize a contents upload.
-            if secret.generation != state.generation {
-                return None;
-            }
-            Some(Session {
-                client: Client::new(&account),
-                store,
-                state,
-                secret,
-                noninteractive: true,
-            })
+            Self::load_for_upload_locked(&account)
         })
         .flatten()
+    }
+
+    /// Renewal may advance the generation, but must retain this upload's login lineage.
+    pub(crate) fn matches_upload(&self, original: &State) -> bool {
+        self.state.signed_in
+            && original.signed_in
+            && self.state.issuer == original.issuer
+            && self.state.login == original.login
+            && self.state.signed_out_at == original.signed_out_at
+            && self.state.generation >= original.generation
+            && self.secret.generation == self.state.generation
+    }
+
+    /// Caller already holds the lifecycle lock.
+    pub(crate) fn load_for_upload_locked(account: &Account) -> Option<Session> {
+        let store = Store::new(account);
+        let state = store.try_state().ok()??;
+        if !state.signed_in {
+            return None;
+        }
+        let secret = store.try_secret_noninteractive(&state).ok()??;
+        // Never adopt the secret-first crash window of a replacement login.
+        if secret.generation != state.generation {
+            return None;
+        }
+        Some(Session {
+            client: Client::new(account),
+            store,
+            state,
+            secret,
+            noninteractive: true,
+        })
     }
 
     /// Uploads with a short deadline skip refresh rather than risk losing a rotated token.
@@ -174,6 +190,7 @@ impl Session {
             self.account(),
             &state.token_endpoint,
             &secret.refresh_token,
+            &state.scopes,
         ) {
             Ok(tokens) => {
                 let generation = state.generation + 1;
@@ -443,4 +460,82 @@ fn prevent_refresh_stdio_inheritance() -> Option<()> {
         }
     }
     Some(())
+}
+
+#[cfg(test)]
+mod review_regressions {
+    use super::*;
+    fn fixture() -> (Account, State, Secret) {
+        let account = Account {
+            issuer: "http://127.0.0.1:1".into(),
+            home: std::env::temp_dir().join(format!("review-session-{}", oauth::random_b64(12))),
+        };
+        let state = State {
+            schema: 1,
+            foundations: false,
+            scopes: vec![],
+            issuer: account.issuer.clone(),
+            generation: 3,
+            signed_in: true,
+            backend: Backend::File,
+            token_endpoint: format!("{}/oauth/token", account.issuer),
+            revocation_endpoint: None,
+            login: 1,
+            signed_out_at: 0,
+        };
+        let secret = Secret {
+            generation: 3,
+            access_token: "test-access".into(),
+            refresh_token: "test-refresh".into(),
+            access_expires_at: now() + 900,
+        };
+        (account, state, secret)
+    }
+    #[test]
+    fn upload_cannot_adopt_another_login_or_generation_lineage() {
+        let (account, state, secret) = fixture();
+        let store = Store::new(&account);
+        let lock = store.lock().unwrap();
+        store.save(&lock, &state, &secret).unwrap();
+        drop(lock);
+        let session =
+            Session::load_for_upload(&account, std::time::Duration::from_secs(1)).unwrap();
+        assert!(session.matches_upload(&state));
+        let mut earlier = state.clone();
+        earlier.generation -= 1;
+        assert!(
+            session.matches_upload(&earlier),
+            "ordinary refresh is allowed"
+        );
+        let mut original = state.clone();
+        original.login += 1;
+        assert!(!session.matches_upload(&original));
+        original = state.clone();
+        original.generation += 1;
+        assert!(
+            !session.matches_upload(&original),
+            "generation must not go backwards"
+        );
+        original = state.clone();
+        original.signed_out_at = 2;
+        assert!(!session.matches_upload(&original), "logout lineage changed");
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
+    #[test]
+    fn setup_locked_loader_is_noninteractive_and_rejects_mismatched_generations() {
+        let (account, state, mut secret) = fixture();
+        let store = Store::new(&account);
+        let lock = store.lock().unwrap();
+        store.save(&lock, &state, &secret).unwrap();
+        assert!(
+            Session::load_for_upload_locked(&account)
+                .unwrap()
+                .noninteractive
+        );
+        secret.generation += 1;
+        store.save(&lock, &state, &secret).unwrap();
+        assert!(Session::load_for_upload_locked(&account).is_none());
+        drop(lock);
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
 }

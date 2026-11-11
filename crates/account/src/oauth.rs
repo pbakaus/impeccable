@@ -142,6 +142,7 @@ pub struct Pending {
     pub url: String,
     state: String,
     verifier: String,
+    requested_scopes: Vec<String>,
 }
 
 /// Bind the loopback listener and build the authorization URL.
@@ -168,6 +169,10 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
         url: url.into(),
         state,
         verifier,
+        requested_scopes: scopes(meta)
+            .split_whitespace()
+            .map(str::to_string)
+            .collect(),
     })
 }
 
@@ -360,7 +365,7 @@ pub struct Tokens {
     pub expires_in: u64,
 }
 
-fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
+fn tokens(v: serde_json::Value, fallback: &[String]) -> Result<Tokens, ApiError> {
     // Both tokens are held to RFC 6750 token syntax here, so a token the
     // HTTP layer would reject (and quote in its error) is never stored.
     let s = |k: &str| {
@@ -378,22 +383,28 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
         s("refresh_token"),
         v.get("expires_in").and_then(|e| e.as_u64()),
     ) {
-        (Some(access_token), Some(refresh_token), Some(expires_in)) if bearer => Ok(Tokens {
-            setup: v["scope"]
-                .as_str()
-                .is_some_and(|s| s.split_whitespace().any(|s| s == "setup:write")),
-            scopes: v
-                .get("scope")
-                .and_then(|v| v.as_str())
-                .map(|s| s.split_whitespace().map(str::to_string).collect()),
-            access_token,
-            refresh_token,
-            expires_in,
-            foundations: v
-                .get("scope")
-                .and_then(|s| s.as_str())
-                .is_some_and(|s| s.split_whitespace().any(|s| s == FOUNDATIONS_SCOPE)),
-        }),
+        (Some(access_token), Some(refresh_token), Some(expires_in)) if bearer => {
+            // RFC 6749: omission means the requested (or previously held) scope.
+            let scopes: Vec<String> = match v.get("scope") {
+                None => fallback.to_vec(),
+                Some(serde_json::Value::String(s)) => {
+                    s.split_whitespace().map(str::to_string).collect()
+                }
+                Some(_) => {
+                    return Err(ApiError::Network(
+                        "the account service sent a malformed scope".into(),
+                    ))
+                }
+            };
+            Ok(Tokens {
+                setup: scopes.iter().any(|s| s == "setup:write"),
+                foundations: scopes.iter().any(|s| s == FOUNDATIONS_SCOPE),
+                scopes: Some(scopes),
+                access_token,
+                refresh_token,
+                expires_in,
+            })
+        }
         _ => Err(ApiError::Network(
             "the account service sent an incomplete token answer".into(),
         )),
@@ -416,7 +427,9 @@ pub fn exchange(
         ("client_id", CLIENT_ID),
         ("resource", resource.as_str()),
     ];
-    client.post_form(token_endpoint, &form).and_then(tokens)
+    client
+        .post_form(token_endpoint, &form)
+        .and_then(|v| tokens(v, &pending.requested_scopes))
 }
 
 pub fn refresh(
@@ -424,6 +437,7 @@ pub fn refresh(
     account: &Account,
     token_endpoint: &str,
     refresh_token: &str,
+    held_scopes: &[String],
 ) -> Result<Tokens, ApiError> {
     let resource = account.resource();
     let form = [
@@ -432,7 +446,9 @@ pub fn refresh(
         ("client_id", CLIENT_ID),
         ("resource", resource.as_str()),
     ];
-    client.post_form(token_endpoint, &form).and_then(tokens)
+    client
+        .post_form(token_endpoint, &form)
+        .and_then(|v| tokens(v, held_scopes))
 }
 
 /// RFC 7009: revoking the refresh token ends the grant. Best effort; the
@@ -475,10 +491,13 @@ mod scope_tests {
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }
-            let granted = tokens(serde_json::json!({
-                "access_token": "test-access", "refresh_token": "test-refresh",
-                "expires_in": 900, "token_type": "Bearer", "scope": requested.join(" "),
-            }))
+            let granted = tokens(
+                serde_json::json!({
+                    "access_token": "test-access", "refresh_token": "test-refresh",
+                    "expires_in": 900, "token_type": "Bearer", "scope": requested.join(" "),
+                }),
+                &[],
+            )
             .unwrap();
             assert_eq!(granted.setup, meta.setup);
             assert_eq!(granted.foundations, meta.foundations);
@@ -491,6 +510,30 @@ mod scope_tests {
                     .any(|s| s == DESIGN_SCOPE),
                 meta.design
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod omitted_scope_regressions {
+    use super::*;
+    #[test]
+    fn omitted_scope_preserves_requested_or_held_features() {
+        for scope in [
+            HEALTH_SCOPE,
+            "setup:write",
+            FOUNDATIONS_SCOPE,
+            DESIGN_SCOPE,
+            CRITIQUES_SCOPE,
+        ] {
+            let fallback = vec![scope.to_string()];
+            let grant = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer"}), &fallback).unwrap();
+            assert_eq!(grant.scopes.as_ref(), Some(&fallback), "{scope}");
+            assert_eq!(grant.setup, scope == "setup:write");
+            assert_eq!(grant.foundations, scope == FOUNDATIONS_SCOPE);
+            let narrowed = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer", "scope":""}), &fallback).unwrap();
+            assert_eq!(narrowed.scopes, Some(vec![]));
+            assert!(!narrowed.setup && !narrowed.foundations);
         }
     }
 }

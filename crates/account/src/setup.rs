@@ -266,7 +266,7 @@ impl Attempt {
         };
         // Bind credentials, scope and the daily key under the same lifecycle
         // lock. A replacement sign-in must never lend its token to this claim.
-        let Ok(mut session) = Session::load(&self.account) else {
+        let Some(mut session) = Session::load_for_upload_locked(&self.account) else {
             return;
         };
         if session.state.login != self.login || marker(io).is_none_or(|(_, m)| m != self.marker) {

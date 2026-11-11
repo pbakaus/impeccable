@@ -78,3 +78,53 @@ fn every_offered_scope_combination_survives_refresh() {
         }
     }
 }
+
+#[test]
+fn omitted_scope_keeps_login_grants_and_refresh_features() {
+    for mask in 0..32 {
+        let fake = Fake::start();
+        let mut expected = vec!["account:read", "rules:read"];
+        {
+            let mut k = fake.knobs.lock().unwrap();
+            k.omit_token_scope = true;
+            k.health = mask & 1 != 0;
+            k.setup = mask & 2 != 0;
+            k.foundations = mask & 4 != 0;
+            k.design = mask & 8 != 0;
+            k.critiques = mask & 16 != 0;
+            for (offered, scope) in [
+                (k.health, "health:write"),
+                (k.setup, "setup:write"),
+                (k.foundations, "foundations:write"),
+                (k.design, "design:write"),
+                (k.critiques, "critiques:write"),
+            ] {
+                if offered {
+                    expected.push(scope);
+                }
+            }
+        }
+        let env = fake.env(&format!("omitted-scopes-{mask}"));
+        login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let mut session = Session::load(&account).unwrap();
+        assert_eq!(session.state.scopes, expected);
+        assert_eq!(session.state.foundations, mask & 4 != 0);
+        let grant: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(account.dir().join("setup-grant.json")).unwrap())
+                .unwrap();
+        assert_eq!(grant["allowed"], mask & 2 != 0);
+        // Metadata changes must not enlarge an existing grant on refresh.
+        {
+            let mut k = fake.knobs.lock().unwrap();
+            k.health = true;
+            k.setup = true;
+            k.foundations = true;
+            k.design = true;
+            k.critiques = true;
+        }
+        session.refresh().unwrap();
+        assert_eq!(session.state.scopes, expected);
+        assert_eq!(session.state.foundations, mask & 4 != 0);
+    }
+}
