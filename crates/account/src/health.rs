@@ -22,6 +22,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "design.rs"]
+mod design;
+pub use design::DESIGN_SYNC_DEFAULT_ON;
+
 /// Sync is on for a signed-in person unless they turn it off (decision 1 on
 /// REN-1559 is the decider's; this is the recommended default).
 pub const SYNC_BY_DEFAULT: bool = true;
@@ -95,6 +99,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
         return;
     }
+    design::after_scan(io, scan);
     let Ok(account) = Account::from_env(&io.env) else {
         return;
     };
@@ -173,13 +178,35 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
 
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    if args.first().map(String::as_str) == Some("design") {
+        return design::run(&args[1..], io);
+    }
     let env = io.env.clone();
     // An unreadable health.json reads as off.
     let local = Local::read(&env).unwrap_or(Local {
         sync: Some(false),
         ..Local::default()
     });
-    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| l.sync = Some(on)) {
+    let _admission = if args.len() == 1 && matches!(args[0].as_str(), "on" | "off" | "forget") {
+        let result = impeccable_home(&env)
+            .ok_or_else(|| "no home directory; set IMPECCABLE_HOME".to_string())
+            .and_then(|home| crate::store::Store::design_lock_for(&home, Duration::from_secs(3)));
+        match result {
+            Ok(lock) => Some(lock),
+            Err(e) => {
+                io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
+    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| {
+        l.sync = Some(on);
+        if !on {
+            l.design_generation = l.design_generation.wrapping_add(1);
+        }
+    }) {
         Ok(()) => true,
         Err(e) => {
             io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
@@ -244,6 +271,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 .and_then(|mut s| s.call(|c, token| c.post_json(&url, token, json!({}))));
             match result {
                 Ok(_) => {
+                    design::forget(io);
                     io.out(&format!(
                         "Design health: deleted everything saved on {}, and turned sync off.\n",
                         account.display_host()
@@ -281,6 +309,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 #[derive(Default, Clone)]
 struct Local {
     sync: Option<bool>,
+    design: Option<bool>,
+    design_generation: u64,
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
@@ -303,6 +333,11 @@ impl Local {
         let v = v.as_object()?;
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
+            design: v.get("design").and_then(Value::as_bool),
+            design_generation: v
+                .get("designGeneration")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
         })
@@ -353,6 +388,12 @@ impl Local {
         let mut m = Map::new();
         if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
+        }
+        if local.design_generation != 0 {
+            m.insert("designGeneration".into(), local.design_generation.into());
+        }
+        if let Some(d) = local.design {
+            m.insert("design".into(), d.into());
         }
         if let Some(n) = local.noticed {
             m.insert("noticed".into(), n.into());
@@ -650,7 +691,9 @@ fn label(name: &str) -> Option<String> {
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control() || format(c));
+        && !l
+            .chars()
+            .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
 }
 
@@ -840,6 +883,7 @@ mod tests {
     fn labels_and_versions_follow_the_services_rules() {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
+        assert_eq!(label("repo\\secret"), None);
         assert_eq!(label("a\u{200B}b"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
@@ -863,4 +907,9 @@ mod tests {
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no staged file left behind");
         std::fs::remove_dir_all(&dir).unwrap();
     }
+}
+
+/// Internal renewal-only entry point. It never receives file contents.
+pub fn run_design_refresh(args: &[String], io: &mut Io) -> i32 {
+    design::run_refresh(args, io)
 }

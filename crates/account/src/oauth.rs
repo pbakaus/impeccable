@@ -30,6 +30,7 @@ pub struct Metadata {
     pub health: bool,
     pub setup: bool,
     pub foundations: bool,
+    pub design: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -78,6 +79,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == "setup:write")),
             foundations,
+            design: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == DESIGN_SCOPE)),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -85,17 +90,19 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
 
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
+pub const DESIGN_SCOPE: &str = "design:write";
 
 /// Uploading foundations evidence, separately consented from detector counts.
 pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
 
 /// Request feature scopes only where the service advertises them.
-fn scopes(meta: &Metadata) -> String {
+pub(crate) fn scopes(meta: &Metadata) -> String {
     let mut scopes = SCOPES.to_string();
     for (offered, scope) in [
         (meta.health, HEALTH_SCOPE),
         (meta.setup, "setup:write"),
         (meta.foundations, FOUNDATIONS_SCOPE),
+        (meta.design, DESIGN_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -338,6 +345,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 pub struct Tokens {
     pub setup: bool,
     pub foundations: bool,
+    pub scopes: Option<Vec<String>>,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
@@ -365,6 +373,10 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
             setup: v["scope"]
                 .as_str()
                 .is_some_and(|s| s.split_whitespace().any(|s| s == "setup:write")),
+            scopes: v
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(|s| s.split_whitespace().map(str::to_string).collect()),
             access_token,
             refresh_token,
             expires_in,
@@ -431,7 +443,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..8 {
+        for mask in 0..16 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -439,6 +451,7 @@ mod scope_tests {
                 health: mask & 1 != 0,
                 setup: mask & 2 != 0,
                 foundations: mask & 4 != 0,
+                design: mask & 8 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -447,6 +460,7 @@ mod scope_tests {
                 (1, HEALTH_SCOPE),
                 (2, "setup:write"),
                 (4, FOUNDATIONS_SCOPE),
+                (8, DESIGN_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }
@@ -457,6 +471,15 @@ mod scope_tests {
             .unwrap();
             assert_eq!(granted.setup, meta.setup);
             assert_eq!(granted.foundations, meta.foundations);
+            assert_eq!(
+                granted
+                    .scopes
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s == DESIGN_SCOPE),
+                meta.design
+            );
         }
     }
 }

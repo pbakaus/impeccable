@@ -77,6 +77,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
         "health" => impeccable_account::health::run(rest, io),
+        "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
@@ -273,6 +274,7 @@ const KNOWN_VERBS: &[&str] = &[
     "health",
     "setup",
     "setup-report",
+    "health-design-refresh",
     "pro-refresh",
     "agents",
     "loop",
@@ -331,11 +333,16 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }
-            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+            named.extend(
+                arm.split('|')
+                    .map(|v| v.trim().trim_matches('"').to_string()),
+            );
         }
         assert!(named.len() > 30, "parsed {named:?}");
         let scans = ["detect", "hook", "hook-before-edit"];

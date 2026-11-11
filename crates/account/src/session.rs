@@ -46,6 +46,7 @@ pub struct Session {
     pub client: Client,
     pub state: State,
     secret: Secret,
+    noninteractive: bool,
 }
 
 impl Session {
@@ -65,7 +66,42 @@ impl Session {
             store,
             state,
             secret,
+            noninteractive: false,
         })
+    }
+
+    /// Read existing credentials without prompting, with a caller-owned deadline.
+    /// The worker only reads; timing out cannot rotate tokens or upload later.
+    pub(crate) fn load_for_upload(account: &Account, wait: std::time::Duration) -> Option<Session> {
+        let account = account.clone();
+        read_within(wait, move || {
+            let store = Store::new(&account);
+            let _lock = store.lock_for(std::time::Duration::ZERO).ok()?;
+            let state = store.try_state().ok()??;
+            if !state.signed_in {
+                return None;
+            }
+            let secret = store.try_secret_noninteractive(&state).ok()??;
+            // Login writes secrets first. That crash window is recoverable by
+            // ordinary sessions, but must never authorize a contents upload.
+            if secret.generation != state.generation {
+                return None;
+            }
+            Some(Session {
+                client: Client::new(&account),
+                store,
+                state,
+                secret,
+                noninteractive: true,
+            })
+        })
+        .flatten()
+    }
+
+    /// Uploads with a short deadline skip refresh rather than risk losing a rotated token.
+    pub fn existing_access_token(&self) -> Option<&str> {
+        (self.secret.access_expires_at > now() + SKEW_SECS)
+            .then_some(self.secret.access_token.as_str())
     }
 
     pub fn account(&self) -> &Account {
@@ -83,7 +119,10 @@ impl Session {
 
     /// [`Session::access_token`] for a caller that would rather fail than
     /// wait more than `wait` for another command's sign-in step.
-    pub fn access_token_within(&mut self, wait: std::time::Duration) -> Result<String, SessionError> {
+    pub fn access_token_within(
+        &mut self,
+        wait: std::time::Duration,
+    ) -> Result<String, SessionError> {
         if self.secret.access_expires_at > now() + SKEW_SECS {
             return Ok(self.secret.access_token.clone());
         }
@@ -113,7 +152,17 @@ impl Session {
             .state()
             .filter(|s| s.signed_in)
             .ok_or(SessionError::NotSignedIn)?;
-        let secret = self.store.secret(&state).ok_or(SessionError::NotSignedIn)?;
+        let secret = if self.noninteractive {
+            self.store
+                .try_secret_noninteractive(&state)
+                .map_err(SessionError::Local)?
+        } else {
+            self.store.secret(&state)
+        }
+        .ok_or(SessionError::NotSignedIn)?;
+        if self.noninteractive && secret.generation != state.generation {
+            return Err(SessionError::NotSignedIn);
+        }
         if state.generation != self.state.generation && secret.access_expires_at > now() + SKEW_SECS
         {
             self.state = state;
@@ -130,6 +179,7 @@ impl Session {
                 let generation = state.generation + 1;
                 let next_state = State {
                     foundations: tokens.foundations,
+                    scopes: tokens.scopes.unwrap_or_else(|| state.scopes.clone()),
                     generation,
                     ..state
                 };
@@ -226,4 +276,72 @@ pub fn entitlement(session: &mut Session) -> Result<Entitlement, SessionError> {
         .filter(|p| crate::plans::known(p))
         .map(str::to_string);
     Ok(Entitlement { pro, reason, plan })
+}
+
+pub(crate) fn read_within<T: Send + 'static>(
+    wait: std::time::Duration,
+    read: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    let (send, receive) = std::sync::mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .spawn(move || {
+            let _ = send.send(read());
+        })
+        .ok()?;
+    receive.recv_timeout(wait).ok()
+}
+
+#[cfg(test)]
+mod upload_refresh_tests {
+    use super::*;
+    #[test]
+    fn upload_renewal_rechecks_generations_under_its_lock() {
+        let home = std::env::temp_dir().join(format!(
+            "design-renew-snapshot-{}",
+            crate::oauth::random_b64(12)
+        ));
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(home.clone());
+        let account = Account {
+            issuer: "http://127.0.0.1:1".into(),
+            home,
+        };
+        let store = Store::new(&account);
+        let state = State {
+            schema: 1,
+            foundations: false,
+            scopes: vec![],
+            issuer: account.issuer.clone(),
+            generation: 1,
+            signed_in: true,
+            backend: Backend::File,
+            token_endpoint: format!("{}/oauth/token", account.issuer),
+            revocation_endpoint: None,
+            login: 1,
+            signed_out_at: 0,
+        };
+        let mut secret = Secret {
+            generation: 1,
+            refresh_token: "test-refresh".into(),
+            access_token: "test-access".into(),
+            access_expires_at: 0,
+        };
+        let lock = store.lock().unwrap();
+        store.save(&lock, &state, &secret).unwrap();
+        drop(lock);
+        let mut session =
+            Session::load_for_upload(&account, std::time::Duration::from_secs(1)).unwrap();
+        let lock = session.store.lock().unwrap();
+        secret.generation = 2;
+        session.store.save(&lock, &state, &secret).unwrap();
+        assert_eq!(
+            session.refresh_holding(&lock),
+            Err(SessionError::NotSignedIn)
+        );
+    }
 }

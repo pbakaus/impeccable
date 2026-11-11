@@ -4,6 +4,7 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+mod design_read;
 pub mod health;
 pub mod http;
 pub mod oauth;
@@ -64,9 +65,9 @@ pub fn login(
         let previous = store.state();
         // A logout since this attempt started, even one a newer sign-in
         // has followed, ends this attempt: it must not replace that sign-in.
-        let signed_out_since = previous
-            .as_ref()
-            .is_some_and(|s| s.signed_out_at > started || (s.generation != started && !s.signed_in));
+        let signed_out_since = previous.as_ref().is_some_and(|s| {
+            s.signed_out_at > started || (s.generation != started && !s.signed_in)
+        });
         if signed_out_since {
             drop(lock);
             if let Some(endpoint) = &meta.revocation_endpoint {
@@ -80,6 +81,12 @@ pub fn login(
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
             foundations: tokens.foundations,
+            scopes: tokens.scopes.unwrap_or_else(|| {
+                oauth::scopes(&meta)
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect()
+            }),
             schema: 1,
             issuer: account.issuer.clone(),
             generation,
