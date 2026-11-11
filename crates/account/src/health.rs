@@ -24,6 +24,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[path = "design.rs"]
 mod design;
+#[path = "health_share.rs"]
+mod share;
 pub use design::DESIGN_SYNC_DEFAULT_ON;
 
 /// Sync is on for a signed-in person unless they turn it off (decision 1 on
@@ -196,6 +198,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if args.first().map(String::as_str) == Some("design") {
         return design::run(&args[1..], io);
     }
+    if matches!(args.first().map(String::as_str), Some("share" | "unshare")) {
+        return share::run(args, io);
+    }
     let env = io.env.clone();
     // An unreadable health.json reads as off.
     let local = Local::read(&env).unwrap_or(Local {
@@ -316,7 +321,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
         }
         _ => {
-            io.err("Usage: impeccable health [status|on|off|forget]\n");
+            io.err("Usage: impeccable health status|on|off|forget|share|unshare\n");
             1
         }
     }

@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable health share [--with-rules] [--no-label] [--no-trend]\n       impeccable health unshare\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

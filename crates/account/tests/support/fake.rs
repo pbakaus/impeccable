@@ -22,6 +22,10 @@ pub struct Knobs {
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
+    pub sharing: bool,
+    pub sharing_denied: bool,
+    /// The page link the share answer names (`url`), as the service will once its page exists.
+    pub share_url: Option<String>,
     pub setup: bool,
     pub setup_denied: bool,
     pub foundations: bool,
@@ -64,6 +68,8 @@ pub struct Record {
     pub scopes: Vec<String>,
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
+    pub shares: Vec<serde_json::Value>,
+    pub unshares: Vec<serde_json::Value>,
     pub foundations: Vec<serde_json::Value>,
     pub critiques: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
@@ -311,6 +317,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         let k = knobs.lock().unwrap();
                         let mut scopes = vec!["account:read", "rules:read"];
                         if k.health { scopes.push("health:write"); }
+                        if k.sharing { scopes.push("health:share"); }
                         if k.setup { scopes.push("setup:write"); }
                         if k.foundations { scopes.push("foundations:write"); }
                         if k.design { scopes.push("design:write"); }
@@ -329,6 +336,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     scope.split_whitespace().all(|s| match s {
                         "account:read" | "rules:read" => true,
                         "health:write" => k.health,
+                        "health:share" => k.sharing,
                         "critiques:write" => k.critiques,
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
@@ -359,6 +367,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                                 .split_whitespace()
                                 .filter(|s| match *s {
                                     "health:write" => !k.health_denied,
+                                    "health:share" => !k.sharing_denied,
                                     "setup:write" => !k.setup_denied,
                                     "foundations:write" => !k.foundations_denied,
                                     "design:write" => !k.design_denied,
@@ -604,6 +613,58 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         record.lock().unwrap().critiques.push(v);
                         json(200, serde_json::json!({"outcome": "recorded"}))
                     }
+                }
+            }
+            ("POST", "/cli/v1/health/share" | "/cli/v1/health/unshare") => {
+                let k = knobs.lock().unwrap();
+                let mut r = record.lock().unwrap();
+                let v: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+                let sharing = path.ends_with("/share");
+                let valid_key = |key: &str| {
+                    v[key].as_str().is_some_and(|s| {
+                        s.len() == 64
+                            && s.bytes()
+                                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                    })
+                };
+                let publish = &v["publish"];
+                let valid_publish = publish.as_object().is_some_and(|p| {
+                    p.len() == 3
+                        && ["label", "trend", "rules"]
+                            .iter()
+                            .all(|k| p[*k].is_boolean())
+                        && p.values().any(|v| v == true)
+                });
+                if !k.sharing {
+                    (404, vec![], vec![])
+                } else if !r.has_scope(bearer.as_deref(), "health:share") {
+                    (403, vec![], vec![])
+                } else if !valid_key("repoKey")
+                    || !valid_key("streamKey")
+                    || v.as_object().map(|p| p.len()) != Some(if sharing { 3 } else { 2 })
+                    || (sharing && !valid_publish)
+                {
+                    json(400, serde_json::json!({"error":"invalid_request"}))
+                } else if sharing {
+                    let token =
+                        if r.shares.iter().any(|s| {
+                            s["repoKey"] == v["repoKey"] && s["streamKey"] == v["streamKey"]
+                        }) {
+                            None
+                        } else {
+                            Some("A".repeat(43))
+                        };
+                    r.shares.push(v.clone());
+                    let mut answer =
+                        serde_json::json!({"shared":true,"token":token,"published":v["publish"]});
+                    if let Some(u) = &k.share_url {
+                        answer["url"] = u.clone().into();
+                    }
+                    json(200, answer)
+                } else {
+                    r.shares.retain(|s| s["repoKey"] != v["repoKey"] || s["streamKey"] != v["streamKey"]);
+                    r.unshares.push(v);
+                    json(200, serde_json::json!({"unshared":true}))
                 }
             }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {

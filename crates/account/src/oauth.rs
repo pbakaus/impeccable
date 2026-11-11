@@ -32,6 +32,7 @@ pub struct Metadata {
     pub foundations: bool,
     pub design: bool,
     pub critiques: bool,
+    pub sharing: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -80,6 +81,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == "setup:write")),
             foundations,
+            sharing: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == SHARE_SCOPE)),
             design: doc
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
@@ -95,6 +100,9 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
 
 /// Uploading saved critique reports (`crate::critiques`).
 pub const CRITIQUES_SCOPE: &str = "critiques:write";
+
+/// Explicit publication consent, never requested by ordinary sign-in.
+pub const SHARE_SCOPE: &str = "health:share";
 
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
@@ -147,6 +155,14 @@ pub struct Pending {
 
 /// Bind the loopback listener and build the authorization URL.
 pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
+    start_with_scopes(account, meta, &scopes(meta))
+}
+
+pub(crate) fn start_with_scopes(
+    account: &Account,
+    meta: &Metadata,
+    requested: &str,
+) -> Result<Pending, String> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .map_err(|e| format!("could not open a local port for sign-in: {e}"))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -161,7 +177,7 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
         .append_pair("code_challenge", &challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("resource", &account.resource())
-        .append_pair("scope", &scopes(meta))
+        .append_pair("scope", requested)
         .append_pair("state", &state);
     Ok(Pending {
         listener,
@@ -169,10 +185,7 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
         url: url.into(),
         state,
         verifier,
-        requested_scopes: scopes(meta)
-            .split_whitespace()
-            .map(str::to_string)
-            .collect(),
+        requested_scopes: requested.split_whitespace().map(str::to_string).collect(),
     })
 }
 
@@ -478,8 +491,10 @@ mod scope_tests {
                 foundations: mask & 4 != 0,
                 design: mask & 8 != 0,
                 critiques: mask & 16 != 0,
+                sharing: true,
             };
             let requested = scopes(&meta);
+            assert!(!requested.contains(SHARE_SCOPE));
             let requested: Vec<_> = requested.split_whitespace().collect();
             assert_eq!(&requested[..2], &["account:read", "rules:read"]);
             for (bit, scope) in [

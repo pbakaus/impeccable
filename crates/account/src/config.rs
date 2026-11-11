@@ -76,7 +76,7 @@ pub fn impeccable_home(env: &HashMap<String, String>) -> Option<PathBuf> {
 
 /// Loopback names: `127.0.0.1`, `[::1]`, `localhost` and names under it
 /// (RFC 6761), which a local split-host rehearsal uses (`api.localhost`).
-fn loopback_url(u: &url::Url) -> bool {
+pub(crate) fn loopback_url(u: &url::Url) -> bool {
     matches!(u.host_str(), Some(h) if h == "127.0.0.1" || h == "[::1]" || h == "localhost" || h.ends_with(".localhost"))
 }
 

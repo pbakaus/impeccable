@@ -1,0 +1,7 @@
+{
+  "stdout": "Design health: publish at least one of label, trend or rules.\n",
+  "stderr": "",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}
