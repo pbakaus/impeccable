@@ -6,7 +6,7 @@
 // and cannot press Stop for it (the binding exists in that world alone). The persona never sees it: it is hidden
 // for every picture and film the engine takes. Chrome refuses to open the side panel from here ("only in response
 // to a user gesture"; a debugger event carries none), so the panel opens from a click on
-// the walk's page (handoff-content.js) or from Chrome's side panel menu. The toolbar icon keeps the detector's popup.
+// the walk's page (handoff-content.js) or, while a walk is under way, from the toolbar icon (toolbar.js).
 import { hooks, send, walk } from './driver.js';
 import { COPY } from './panel/copy.js';
 import { current, onView } from './store.js';

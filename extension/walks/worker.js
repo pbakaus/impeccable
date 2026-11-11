@@ -44,6 +44,7 @@ import { fail, ops, speak, walk } from './driver.js';
 import { needsNoTab } from './control.js';
 import { dial, linked, unlinked, whereTo } from './link.js';
 import { isStartPage } from './handoff.js';
+import './toolbar.js';
 
 // What the driver tells of the tab goes out the way a reply does.
 speak((message) => say(message));

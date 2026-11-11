@@ -125,18 +125,19 @@ describe('Chrome background worker', () => {
     };
   };
   const sockets = [];
-  globalThis.WebSocket = class { static OPEN = 1; constructor(url, protocols) { sockets.push({ url, protocols }); } close() {} };
+  globalThis.WebSocket = class { static OPEN = 1; constructor(url, protocols) { Object.assign(this, { url, protocols }); sockets.push(this); } close() {} };
+  const toolbar = [];
   globalThis.chrome = {
     runtime: {
       id: 'ext', onMessage: event('message'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
       getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => MANIFEST,
     },
-    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {} },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setPopup({ popup }) { toolbar.push({ popup }); } },
     webNavigation: { onCompleted: event('navigation') },
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
-    sidePanel: { async open() {} },
+    sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
   };
   const loaded = import('../extension/background/chrome-worker.js');
 
@@ -175,7 +176,20 @@ describe('Chrome background worker', () => {
     await loaded;
     assert.deepEqual(await handOver(fromPage), { ok: true });
     for (let turn = 0; turn < 50 && sockets.length === 0; turn++) await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(sockets.at(-1), { url: block().socket, protocols: ['impeccable-outing', block().ticket] });
+    const { url, protocols } = sockets.at(-1);
+    assert.deepEqual({ url, protocols }, { url: block().socket, protocols: ['impeccable-outing', block().ticket] });
+  });
+
+  it('points the toolbar icon at the walk panel while the walk is live, and back at the popup after', async () => {
+    await loaded;
+    // At start (no walk) the popup; after the hand-off above, the panel.
+    assert.deepEqual(toolbar.slice(0, 4), [
+      { popup: 'popup/popup.html' }, { openPanelOnActionClick: false },
+      { popup: '' }, { openPanelOnActionClick: true },
+    ]);
+    // The server calls the walk off.
+    sockets.at(-1).onclose({ reason: 'cancelled' });
+    assert.deepEqual(toolbar.slice(4), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
   });
 });
 
