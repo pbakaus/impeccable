@@ -1,5 +1,5 @@
-// Every word a person reads from this extension, in one place: the side panel, the badge on the walked tab and the
-// manifest. The person sees a "workflow" and a "walk"; no internal name appears here.
+// Every word a person reads from walks, in one place: the side panel and the badge on the walked tab. The person
+// sees a "workflow" and a "walk"; no internal name appears here.
 //
 // Voice (AGENTS.md): short and plain, a little human where nothing failed, never cute about a failure, said once.
 
@@ -8,13 +8,6 @@ const hostOf = (url) => { try { return new URL(url).host; } catch { return ''; }
 
 export const COPY = {
   product: 'Impeccable',
-
-  // manifest.json carries these three by hand, since a manifest cannot import: change both together.
-  manifest: {
-    name: 'Impeccable Walks',
-    description: 'Watch someone from your cast try a workflow in your app, in a tab of its own.',
-    action: 'Open the walk panel',
-  },
 
   /** How a walk is started: the command as it is published (the server's tests hold the two together). */
   command: 'npx @impeccable/reviews walk',
