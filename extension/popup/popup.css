@@ -196,3 +196,132 @@ footer a:hover {
   color: var(--ks-ink);
   border-bottom-color: var(--ks-kinpaku);
 }
+
+/* Account tabs. Shown only when the account server takes extension sign-ins
+   (popup/account.js); otherwise the popup is the detector alone, as above.
+   The tab row takes over the head's rule; the selected tab is ink over a
+   gold hairline, like the count's rule when it lights. */
+
+body.has-tabs header {
+  padding-bottom: 8px;
+  border-bottom: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 14px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.tabs[hidden],
+.tab[hidden],
+[role="tabpanel"][hidden] {
+  display: none;
+}
+
+.tab {
+  margin-bottom: -1px;
+  padding: 0 0 7px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  font-size: var(--ks-type-micro);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+  cursor: pointer;
+  transition: color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease);
+}
+
+.tab:hover {
+  color: var(--ks-ink);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--ks-ink);
+  border-bottom-color: var(--ks-kinpaku);
+}
+
+.account-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 0;
+}
+
+.account-label {
+  font-size: var(--ks-type-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+}
+
+.account-email {
+  margin-bottom: 8px;
+  color: var(--ks-ink);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.account-note {
+  font-size: var(--ks-type-micro);
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+}
+
+.account-note.is-error {
+  color: var(--ks-vermilion);
+}
+
+.account-note[hidden],
+.account-email[hidden],
+.account-server[hidden],
+.account-panel .btn[hidden] {
+  display: none;
+}
+
+.account-server {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.account-server input {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--ks-edge);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-ink);
+}
+
+.persona-list {
+  list-style: none;
+}
+
+.persona {
+  display: flex;
+  flex-direction: column;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.persona:first-child {
+  padding-top: 0;
+}
+
+.persona-name {
+  color: var(--ks-ink);
+  font-weight: 500;
+}
+
+.persona-role {
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+}

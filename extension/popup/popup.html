@@ -16,20 +16,45 @@
     <h1>Impeccable</h1>
   </header>
 
-  <div class="count-display" id="count-display">
-    <span class="count-number" id="count-number">0</span>
-    <span class="count-label" id="count-label">anti-patterns</span>
-  </div>
+  <nav class="tabs" id="account-tabs" role="tablist" aria-label="Sections" hidden>
+    <button class="tab" id="tab-scan" type="button" role="tab" aria-controls="panel-scan" aria-selected="true">Scan</button>
+    <button class="tab" id="tab-personas" type="button" role="tab" aria-controls="panel-personas" aria-selected="false" tabindex="-1" hidden>Personas</button>
+    <button class="tab" id="tab-settings" type="button" role="tab" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Settings</button>
+  </nav>
 
-  <div class="actions">
-    <button class="btn btn-primary" id="btn-scan">Scan page</button>
-    <button class="btn btn-secondary" id="btn-copy-all" disabled>Copy all findings</button>
-    <button class="btn btn-secondary" id="btn-toggle">Hide overlays</button>
-  </div>
+  <section id="panel-scan" role="tabpanel" aria-labelledby="tab-scan">
+    <div class="count-display" id="count-display">
+      <span class="count-number" id="count-number">0</span>
+      <span class="count-label" id="count-label">anti-patterns</span>
+    </div>
 
-  <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-scan">Scan page</button>
+      <button class="btn btn-secondary" id="btn-copy-all" disabled>Copy all findings</button>
+      <button class="btn btn-secondary" id="btn-toggle">Hide overlays</button>
+    </div>
 
-  <p class="scan-error" id="scan-error" hidden></p>
+    <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+
+    <p class="scan-error" id="scan-error" hidden></p>
+  </section>
+
+  <section class="account-panel" id="panel-personas" role="tabpanel" aria-labelledby="tab-personas" hidden>
+    <ul class="persona-list" id="persona-list"></ul>
+    <p class="account-note" id="personas-note" hidden></p>
+  </section>
+
+  <section class="account-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <p class="account-label" id="account-label"></p>
+    <p class="account-email" id="account-email" hidden></p>
+    <button class="btn btn-primary" id="btn-sign-in" type="button" hidden>Sign in</button>
+    <button class="btn btn-secondary" id="btn-sign-out" type="button" hidden>Sign out</button>
+    <p class="account-note is-error" id="account-error" role="status" hidden></p>
+    <label class="account-server" id="account-server-row" hidden>
+      <span class="account-label">Server</span>
+      <input id="account-server" type="url" spellcheck="false">
+    </label>
+  </section>
 
   <footer>
     <a href="https://impeccable.style" id="link-site">impeccable.style</a>
@@ -37,5 +62,6 @@
 
   <script src="../shared/findings-report.js"></script>
   <script src="popup.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

@@ -11,14 +11,23 @@ const pageUrl = 'https://example.test/page#card';
 const state = (findings = [finding]) => ({ findings, url: pageUrl, scanComplete: true });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function popup({ initial = state(), deferState = false } = {}) {
+// `account`: what the account worker answers each `{ account }` message with; leave it out for a browser without
+// chrome.identity (Firefox), where the account script must stay out of the way.
+async function popup({ initial = state(), deferState = false, account } = {}) {
   const nodes = new Map();
+  const element = (props = {}) => ({
+    textContent: '', hidden: false, dataset: {}, attributes: {}, children: [], value: '', tabIndex: 0,
+    classList: { toggle() {} }, listeners: {},
+    addEventListener(type, callback) { this.listeners[type] = callback; },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getAttribute(name) { return this.attributes[name] ?? null; },
+    focus() {}, append(...kids) { this.children.push(...kids); }, replaceChildren(...kids) { this.children = kids; },
+    ...props,
+  });
+  // The page as popup.html marks it up: everything account.js finds hidden at first is hidden.
+  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error'];
   const node = id => {
-    if (!nodes.has(id)) nodes.set(id, {
-      textContent: '', hidden: false, disabled: id === 'btn-copy-all', dataset: {},
-      classList: { toggle() {} }, listeners: {},
-      addEventListener(type, callback) { this.listeners[type] = callback; },
-    });
+    if (!nodes.has(id)) nodes.set(id, element({ id, disabled: id === 'btn-copy-all', hidden: HIDDEN.includes(id) }));
     return nodes.get(id);
   };
   const listeners = {};
@@ -26,8 +35,9 @@ async function popup({ initial = state(), deferState = false } = {}) {
   const writes = [];
   const messages = [];
   const h = { nodes, node, writes, messages, tab: { id: 7, url: pageUrl, status: 'complete' }, rejectCopy: false };
+  const body = element();
   const context = vm.createContext({
-    document: { getElementById: node },
+    document: { getElementById: node, createElement: () => element(), body },
     navigator: { clipboard: { async writeText(text) {
       if (h.copyGate) await h.copyGate;
       if (h.rejectCopy) throw new Error('Clipboard blocked');
@@ -38,10 +48,12 @@ async function popup({ initial = state(), deferState = false } = {}) {
         if (h.queryGate) await h.queryGate;
         return h.tab ? [h.tab] : [];
       }, onUpdated: event('updated'), onActivated: event('activated') },
+      ...(account ? { identity: {} } : {}),
       runtime: {
         onMessage: event('message'),
         sendMessage(message, callback) {
           messages.push(message);
+          if (message.account) { callback(account[message.account] ?? { ok: false }); return; }
           if (message.action === 'get-state') {
             if (deferState) h.deliverState = callback;
             else callback(initial);
@@ -50,13 +62,14 @@ async function popup({ initial = state(), deferState = false } = {}) {
       },
     },
   });
-  for (const path of ['shared/findings-report.js', 'popup/popup.js']) {
+  for (const path of ['shared/findings-report.js', 'popup/popup.js', 'popup/account.js']) {
     vm.runInContext(readFileSync(new URL(`../extension/${path}`, import.meta.url), 'utf8'), context);
   }
   await tick();
   h.broadcast = message => listeners.message(message);
   h.navigate = change => listeners.updated(7, change);
   h.click = id => node(id).listeners.click();
+  h.body = body;
   return h;
 }
 
@@ -224,4 +237,44 @@ test('reopening restores scan progress and a failed scan message without old fin
   assert.equal(failed.node('scan-error').hidden, false);
   failed.broadcast({ action: 'scan-started', tabId: 7 });
   assert.equal(failed.node('scan-error').hidden, true);
+});
+
+const signedIn = { ok: true, available: true, signedIn: true, email: 'mira@example.com' };
+const personas = { ok: true, personas: [{ name: 'Ines', role: 'A retired teacher' }, { name: 'Kofi', role: '' }] };
+
+for (const [label, account, asked] of [
+  ['a browser without sign-in (Firefox)', undefined, false],
+  ['a server that answers 404', { status: { ok: true, available: false } }, true],
+]) {
+  test(`the popup is the detector alone in ${label}`, async () => {
+    const h = await popup({ account });
+    assert.equal(h.messages.some((m) => m.account), asked);
+    assert.equal(h.node('account-tabs').hidden, true);
+    assert.equal(h.node('panel-scan').hidden, false);
+    // The detector works as it always has.
+    await h.click('btn-copy-all');
+    assert.match(h.writes[0], /Total findings: 2/);
+  });
+}
+
+test('signed out, the popup offers Settings and Sign in, and no Personas', async () => {
+  const h = await popup({ account: { status: { ok: true, available: true, signedIn: false } } });
+  assert.equal(h.node('account-tabs').hidden, false);
+  assert.equal(h.node('tab-personas').hidden, true);
+  assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
+  h.click('tab-settings');
+  assert.deepEqual([h.node('panel-settings').hidden, h.node('panel-scan').hidden, h.node('btn-sign-in').hidden, h.node('btn-sign-out').hidden], [false, true, false, true]);
+  assert.equal(h.body.dataset.account, 'signed-out');
+});
+
+test('signed in, the popup shows the email and lists the personas', async () => {
+  const h = await popup({ account: { status: signedIn, personas } });
+  assert.equal(h.node('tab-personas').hidden, false);
+  h.click('tab-settings');
+  assert.deepEqual([h.node('account-email').textContent, h.node('btn-sign-in').hidden, h.node('btn-sign-out').hidden], ['mira@example.com', true, false]);
+  h.click('tab-personas');
+  await tick();
+  assert.equal(h.node('panel-personas').hidden, false);
+  assert.deepEqual(h.node('persona-list').children.map((row) => row.children[0].textContent), ['Ines', 'Kofi']);
+  assert.equal(h.node('tab-personas').attributes['aria-selected'], 'true');
 });
