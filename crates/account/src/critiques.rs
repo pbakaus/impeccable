@@ -251,6 +251,8 @@ fn renew_for_upload(io: &Io, account: &Account, started: Instant) -> Option<Sess
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     impeccable_common::proc::detach(&mut command);
+    #[cfg(windows)]
+    prevent_refresh_stdio_inheritance()?;
     let mut child = command.spawn().ok()?;
     loop {
         if child.try_wait().ok()?.is_some() {
@@ -281,4 +283,35 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     };
     let _ = session.access_token_within(Duration::ZERO);
     0
+}
+
+/// A detached Windows child can inherit the CLI's original capture-pipe
+/// handles even with its own stdio redirected to NUL. That keeps a harness's
+/// output() waiting for EOF until renewal ends. Clearing only inheritance
+/// leaves the parent's streams usable and keeps renewal independent of them.
+#[cfg(windows)]
+fn prevent_refresh_stdio_inheritance() -> Option<()> {
+    use std::ffi::c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(kind: u32) -> *mut c_void;
+        fn GetFileType(handle: *mut c_void) -> u32;
+        fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
+    }
+    for kind in [-10i32, -11, -12] {
+        // SAFETY: these are the three documented standard-handle selectors.
+        // We change no ownership and clear only HANDLE_FLAG_INHERIT.
+        unsafe {
+            let handle = GetStdHandle(kind as u32);
+            // Only capture pipes need EOF isolation; console handles are left alone.
+            if !handle.is_null()
+                && handle as isize != -1
+                && GetFileType(handle) == 3
+                && SetHandleInformation(handle, 1, 0) == 0
+            {
+                return None;
+            }
+        }
+    }
+    Some(())
 }
