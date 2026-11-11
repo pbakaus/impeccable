@@ -3,7 +3,7 @@
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
-import { endWalk, fail, hold, hooks, onSignIn, ops, say, signInNow, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, onSignIn, ops, say, signInNow, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -37,22 +37,46 @@ onSignIn(() => { pauseFor('sign-in'); });
 /** The ops that take something of the page: none runs on a page the walk could not check. */
 const LOOKING = new Set(['screenshot', 'evaluate']);
 
-/** Returns once the walk may act, and not at a sign-in. Throws while the person has the tab. */
+/** Returns once the walk may act, and not at a sign-in: whether it had to wait for a pause. Throws while the person has the tab. */
 async function clear(name) {
+  let waited = false;
   for (;;) {
     const { state } = current();
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
-    if (state === 'paused') { await new Promise((go) => { held.push(go); }); continue; }
+    if (state === 'paused') { waited = true; await new Promise((go) => { held.push(go); }); continue; }
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
-    if (!signIn || !pauseFor('sign-in')) return;
+    if (!signIn || !pauseFor('sign-in')) return waited;
   }
 }
+
+/**
+ * THE PAUSE'S ONE BARRIER. An op that a pause comes before or during (it arrived while paused, or was still under way
+ * when the pause landed) never answers with what it found, nor with an error that might carry the page. A click, a
+ * key or a navigation is not done after Continue: it was decided on a page the person has since used, so it is
+ * refused as `Paused`, and the walk goes on from a fresh look. Anything else (a look, a script, a setting) is asked
+ * again once the walk goes on, and answers with what it finds then: the walk protocol has every op that arrives while
+ * paused answered after `resumed`, and the engine reads the page with scripts. Letting go of the film passes through
+ * a pause, as `open`, `close` and the panel's ops do.
+ */
+const ACTS = new Set(['mouse', 'keyboard', 'goto', 'goBack']);
+const overtaken = () => fail('Paused', 'the walk was paused before this was done; look again');
 
 for (const [name, run] of Object.entries(ops)) {
   if (FREE.has(name)) continue;
   const acting = unseen(name, run);
-  ops[name] = async (req) => { await clear(name); return acting(req); };
+  ops[name] = async (req) => {
+    if (name === 'cdp' && req?.method === 'Page.stopScreencast') return acting(req);
+    for (;;) {
+      const at = fenced();
+      if (!(await clear(name)) && at === fenced()) {
+        let out;
+        try { out = await acting(req); } catch (err) { if (at === fenced()) throw err; }
+        if (at === fenced()) return out;
+      }
+      if (ACTS.has(name)) throw overtaken();
+    }
+  };
 }
 const open = ops.open;
 ops.open = (req) => {
@@ -108,7 +132,13 @@ whenPressed((what) => { void command(what); });
 // Paused is paused whoever paused it: the walk takes and tells nothing of the page until it goes on (driver.js `hold`).
 // A sign-in pause the person then takes over stays that way: they are signing in.
 const hushes = (view) => view.state === 'paused' || (view.state === 'takeover' && view.held === 'sign-in');
-onView((view) => { void (hushes(view) ? hold() : unhold()); });
+let walking = false;
+onView((view) => {
+  // Before anything else hears of it: every op under way is overtaken from this moment.
+  if (walking && view.state !== 'walking') fence();
+  walking = view.state === 'walking';
+  void (hushes(view) ? hold() : unhold());
+});
 
 hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });
 hooks.closed.push((why) => {

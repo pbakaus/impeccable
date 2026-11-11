@@ -38,6 +38,15 @@ export const hooks = { opened: [], closing: [], closed: [], said: [], event: [] 
  */
 let hush = false;
 export const hushed = () => hush;
+
+/**
+ * Counts each time the walk stops walking (paused, taken over, ended): an op that sees it change while it runs was
+ * overtaken by it (control.js). Typing and clicking look between their keys and presses too.
+ */
+let fences = 0;
+export const fenced = () => fences;
+export function fence() { fences += 1; }
+const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the walk was paused before this was done'); };
 const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached']);
 
 /** Tells the other end, and whoever in here listens. */
@@ -611,16 +620,19 @@ export const ops = {
 
   async mouse({ action, x, y }) {
     const m = walk.mouse;
+    const at = fences;
     if (action === 'move' || action === 'click') {
       m.x = x;
       m.y = y;
       await cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: m.down ? 'left' : 'none', buttons: m.down ? 1 : 0 });
     }
     if (action === 'down' || action === 'click') {
+      overtaken(at);
       m.down = true;
       await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x: m.x, y: m.y, button: 'left', buttons: 1, clickCount: 1 });
     }
     if (action === 'up' || action === 'click') {
+      // A button pressed is let go of whatever came meanwhile: a pause never leaves it held down.
       m.down = false;
       await cmd('Input.dispatchMouseEvent', { type: 'mouseReleased', x: m.x, y: m.y, button: 'left', buttons: 0, clickCount: 1 });
     }
@@ -629,12 +641,15 @@ export const ops = {
 
   // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.
   async keyboard({ action, key, text }) {
+    const at = fences;
     if (action === 'press') {
       await typable();
+      overtaken(at);
       await press(key);
     } else {
       for (const ch of text) {
         await typable();
+        overtaken(at);
         if (ch === '\n' || ch === '\r') await press('Enter');
         // One code point a key where it has one; anything else is put in as text, as an input method would.
         else if (ch.length === 1 && ch >= ' ' && ch <= '~') await press(ch === ' ' ? 'Space' : ch);

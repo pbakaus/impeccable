@@ -331,7 +331,7 @@ describe('Chrome background worker', () => {
       const before = sent.length;
       show();
       let answered = false;
-      const asked = ops.evaluate({ fn: '1 + 1' }).then(() => { answered = true; });
+      const asked = ops.url().then(() => { answered = true; });
       await settle(20);
       assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
@@ -346,6 +346,32 @@ describe('Chrome background worker', () => {
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
+
+  // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it
+  // is done after Continue.
+  it('lets nothing through a pause: a late picture is taken again after Continue, and a click from before is never made', async () => {
+    const { ops, command } = await walked();
+    page.seen = {};
+    let release;
+    answers['Page.captureScreenshot'] = () => new Promise((resolve) => { release = () => resolve({ data: 'before' }); });
+    const shot = ops.screenshot({ format: 'png' });
+    for (let turn = 0; turn < 50 && !release; turn++) await settle(1);
+    assert.equal(await command('pause'), true);
+    const typing = ops.keyboard({ action: 'type', text: 'hello' });
+    const click = ops.mouse({ action: 'click', x: 5, y: 5 });
+    answers['Page.captureScreenshot'] = () => ({ data: 'after' });
+    release();
+    await settle(20);
+    assert.deepEqual(await ops.cdp({ method: 'Page.stopScreencast' }), { value: {} }, 'stopping the film passes through the pause');
+    const atContinue = sent.length;
+    assert.equal(await command('resume'), true);
+    assert.deepEqual((await shot).value, { data: 'after' }, 'the picture from before the pause is never sent');
+    await assert.rejects(click, { name: 'Paused' });
+    await assert.rejects(typing, { name: 'Paused' });
+    assert.deepEqual(sent.slice(atContinue).filter((m) => m.startsWith('Input.')), [], 'no click and no key from before the pause');
+    await ops.mouse({ action: 'click', x: 5, y: 5 });
+    assert.equal(sent.slice(atContinue).filter((m) => m === 'Input.dispatchMouseEvent').length, 3, 'one asked for after Continue is made');
+  });
 
   it('keeps a sign-in pause the person takes over hushed, and turns a hand back during it into a pause', async () => {
     const { command, current } = await walked();
