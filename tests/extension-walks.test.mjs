@@ -118,6 +118,11 @@ describe('walk guard', () => {
     ['the top document on the site', { resourceType: 'Document', frameId: 'main', request: { url: 'http://localhost:3000/b' } }, 'continue'],
     ['a frame off the site', { resourceType: 'Document', frameId: 'child', request: { url: 'https://example.com/' } }, 'continue'],
     ['the top document on our own sign-in dialog', { resourceType: 'Document', frameId: 'main', request: { url: 'http://localhost:3000/app/oauth/authorize' } }, 'block'],
+    // Writes: to the walk's own site, yes; to anywhere else, no, whoever asks; reads go anywhere.
+    ['a write to the site', { resourceType: 'XHR', frameId: 'main', request: { method: 'DELETE', url: 'http://localhost:3000/api/todos/1' } }, 'continue'],
+    ['a write to another origin', { resourceType: 'Fetch', frameId: 'main', request: { method: 'POST', url: 'https://example.com/collect' } }, 'refuse'],
+    ['a frame’s form posted to another origin', { resourceType: 'Document', frameId: 'child', request: { method: 'POST', url: 'https://example.com/form' } }, 'refuse'],
+    ['a read from another origin', { resourceType: 'Script', frameId: 'main', request: { method: 'GET', url: 'https://cdn.example.com/a.js' } }, 'continue'],
   ]) {
     it(`lets ${label} ${answer}`, () => { assert.equal(verdict(paused, 'main', allowed), answer); });
   }

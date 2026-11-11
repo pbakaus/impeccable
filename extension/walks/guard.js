@@ -18,6 +18,8 @@
 //     origins the hand-off allowed may be walked at all; anything else is refused before a tab opens.
 //   - reaching our own account: our app, API and sign-in pages are refused in every build (`isOwnPage`), even when
 //     the hand-off allowed them or they are on this machine.
+//   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
+//     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
 //     opens; a native dialog is dismissed.
 // And it fails closed: a walked tab seen anywhere it should not be loses the debugger at once, which ends the walk.
@@ -31,7 +33,10 @@
 //     requested, with that site's cookies, and its page can begin to run before the tab is gone. The persona never
 //     sees or touches it. How much gets out in a person's Chrome is not measured: the test browser holds new tabs.
 //   - frames inside the page. An embedded frame may be on any origin, as on the open web; only the top-level
-//     document is held to the site.
+//     document is held to the site. A frame Chrome runs in a process of its own (most frames on another site) is
+//     another debugger target, which the walk does not attach to: its requests, writes included, are not held. Nor
+//     are a service worker's, or what an open WebSocket sends.
+//   - a read that changes something: a GET is let through wherever it goes.
 //   - the instant a small download takes: the file can exist for a moment before it is removed.
 //
 // Mechanism, with the evidence (a real Chrome, each attempt against a second local server that counts requests):
@@ -122,10 +127,20 @@ export function onlyThisTab(req) {
   if (key) throw refuse(`an op acts on the walked tab only; this one names a ${key}`);
 }
 
-/** What to do with a request the tab is held on. Only the top-level document is the guard's; a frame's is its own. */
+/** The methods that only read. Any other asks a server to change something. */
+const READS = ['GET', 'HEAD', 'OPTIONS'];
+
+/**
+ * What to do with a request the tab is held on: `continue`; `block` for a top-level document off the site (aborted,
+ * and told); `refuse` for a request that would change something on an origin that is not the walk's own (failed,
+ * untold: pages send these all the time, to counters and the like). The walk's own site may be written to: a walk
+ * exists to add, change and delete there. A frame's documents and reads are its own.
+ */
 export function verdict(paused, mainFrame, allowed) {
-  if (paused.resourceType !== 'Document' || paused.frameId !== mainFrame) return 'continue';
-  return onSite(paused.request?.url, allowed) ? 'continue' : 'block';
+  const url = paused.request?.url;
+  if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed) ? 'continue' : 'block';
+  if (READS.includes(String(paused.request?.method ?? 'GET').toUpperCase())) return 'continue';
+  return allowed.includes(webOrigin(url)) && !isOwnPage(url) ? 'continue' : 'refuse';
 }
 
 /* ------------------------------ on the tab ------------------------------ */
@@ -135,7 +150,8 @@ export function verdict(paused, mainFrame, allowed) {
  * command on that tab. From here every document it asks for waits for {@link held}.
  */
 export async function arm(send) {
-  await send('Fetch.enable', { patterns: [{ urlPattern: '*', resourceType: 'Document', requestStage: 'Request' }] });
+  // Every request, not only documents: a write to another origin is caught as it is asked.
+  await send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
   await send('Page.setInterceptFileChooserDialog', { enabled: true });
 }
 
@@ -145,12 +161,13 @@ export async function arm(send) {
  * Resolves to what became of the request: `continued`, `refused` or `gone`.
  */
 export async function held(send, paused, mainFrame, allowed, refused) {
-  let pass = false;
-  try { pass = verdict(paused, mainFrame, allowed) === 'continue'; } catch { /* unreadable: refused */ }
-  if (!pass) refused(String(paused.request?.url ?? '').slice(0, 500));
+  let answer = 'block';
+  try { answer = verdict(paused, mainFrame, allowed); } catch { /* unreadable: refused */ }
+  const pass = answer === 'continue';
+  if (answer === 'block') refused(String(paused.request?.url ?? '').slice(0, 500));
   try {
     if (pass) await send('Fetch.continueRequest', { requestId: paused.requestId });
-    else await send('Fetch.failRequest', { requestId: paused.requestId, errorReason: 'Aborted' });
+    else await send('Fetch.failRequest', { requestId: paused.requestId, errorReason: answer === 'block' ? 'Aborted' : 'BlockedByClient' });
   } catch {
     // The request is already gone with its page (a newer navigation took its place while it was held).
     return 'gone';
