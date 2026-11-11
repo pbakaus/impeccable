@@ -3,7 +3,7 @@
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
-import { endWalk, fail, fence, fenced, hold, hooks, onSignIn, ops, say, signInNow, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, onSignIn, ops, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -112,6 +112,7 @@ export async function command(name) {
   if (name === 'stop') {
     if (!isLive(current())) return false;
     stopped = true;
+    stopOpening();
     dispatch({ type: 'stop' });
     release();
     // The debugger leaves the tab at once, and the server is told who ended it.

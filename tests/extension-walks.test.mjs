@@ -289,11 +289,11 @@ describe('Chrome background worker', () => {
     globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob([String(sent.length)]); } };
     const driver = await import('../extension/walks/driver.js');
     const control = await import('../extension/walks/control.js');
-    const { current } = await import('../extension/walks/store.js');
+    const { current, dispatch } = await import('../extension/walks/store.js');
     const { COPY } = await import('../extension/walks/panel/copy.js');
     driver.speak((message) => told.push(message));
     await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
-    return { ...driver, ...control, current, COPY };
+    return { ...driver, ...control, current, dispatch, COPY };
   })());
 
   after(async () => { if (opened) await (await opened).ops.close(); });
@@ -412,6 +412,37 @@ describe('Chrome background worker', () => {
       page.seen = {};
       await ops.keyboard({ action: 'type', text: 'ok' });
       assert.equal(sent.slice(before).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
+    });
+  }
+
+  // Last, as it ends the walk: Stop pressed while the walk's tab is still being opened ends the walk and closes it.
+  for (const step of ['create', 'attach']) {
+    it(`ends the walk and closes its tab when Stop comes as the tab is ${step === 'create' ? 'made' : 'taken'}`, async () => {
+      const { ops, command, current, rearm, dispatch } = await walked();
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
+      const removed = [];
+      const attached = [];
+      const { create, remove } = chrome.tabs;
+      const { attach } = chrome.debugger;
+      let go;
+      const gate = new Promise((resolve) => { go = resolve; });
+      chrome.tabs.create = async () => { if (step === 'create') await gate; return { id: 12, windowId: 1 }; };
+      chrome.tabs.remove = async (id) => { removed.push(id); };
+      chrome.debugger.attach = async ({ tabId }) => { attached.push(tabId); if (step === 'attach') await gate; };
+      try {
+        const opening = ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+        await settle(5);
+        assert.equal(await command('stop'), true);
+        go();
+        await assert.rejects(opening, { name: 'Stopped' });
+        assert.deepEqual([removed, current().state], [[12], 'stopped']);
+        if (step === 'create') assert.deepEqual(attached, [], 'the debugger never reaches it');
+      } finally {
+        Object.assign(chrome.tabs, { create, remove });
+        chrome.debugger.attach = attach;
+      }
     });
   }
 });

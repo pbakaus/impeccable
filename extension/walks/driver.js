@@ -278,6 +278,10 @@ export async function signInNow() {
 /** How long `open` waits for its page to answer before it says the tab is open anyway. */
 const OPEN_MS = 8000;
 
+/** The `open` under way, if one is: Stop marks it, and it closes the tab it made and starts no walk. */
+let opening = null;
+export function stopOpening() { if (opening) opening.stopped = true; }
+
 const navigationTimeout = (ms) => `Navigation timeout of ${ms} ms exceeded`;
 
 /** The tab's page events from now on: `wait` resolves on the first one `match` accepts, one already seen included. */
@@ -509,22 +513,30 @@ async function press(name) {
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
   async open({ url, name, allow }) {
-    if (walk) throw fail('NotSupported', 'an outing has one tab');
+    if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
     const site = admit(url, allowedFor(allow));
-    // In the hand-off's window if it is still there, else wherever Chrome puts a new tab.
-    const tab = await chrome.tabs.create({ url: 'about:blank', active: true, ...(home === null ? {} : { windowId: home }) }).catch(() => chrome.tabs.create({ url: 'about:blank', active: true }));
-    let group;
+    const me = { stopped: false };
+    opening = me;
+    // Stop pressed at any point from here: the walk never starts, and the tab made for it goes.
+    const still = () => { if (me.stopped) throw fail('Stopped', 'the person stopped this walk'); };
+    let tab = null;
     try {
-      // In the tab's own window: left to itself, a new group lands in whichever window was last in front, and takes the tab with it.
-      const id = await chrome.tabs.group({ tabIds: [tab.id], createProperties: { windowId: tab.windowId } });
-      await chrome.tabGroups.update(id, { title: COPY.tabGroup(name), color: 'purple' });
-      group = { id, title: (await chrome.tabGroups.get(id)).title };
-    } catch (err) {
-      group = { error: String(err?.message ?? err) };
-    }
-    const before = await chrome.tabs.get(tab.id);
-    try {
+      // In the hand-off's window if it is still there, else wherever Chrome puts a new tab.
+      tab = await chrome.tabs.create({ url: 'about:blank', active: true, ...(home === null ? {} : { windowId: home }) }).catch(() => chrome.tabs.create({ url: 'about:blank', active: true }));
+      still();
+      let group;
+      try {
+        // In the tab's own window: left to itself, a new group lands in whichever window was last in front, and takes the tab with it.
+        const id = await chrome.tabs.group({ tabIds: [tab.id], createProperties: { windowId: tab.windowId } });
+        await chrome.tabGroups.update(id, { title: COPY.tabGroup(name), color: 'purple' });
+        group = { id, title: (await chrome.tabGroups.get(id)).title };
+      } catch (err) {
+        group = { error: String(err?.message ?? err) };
+      }
+      const before = await chrome.tabs.get(tab.id);
+      still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
+      still();
       walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await cmd('Network.enable');
@@ -533,18 +545,23 @@ export const ops = {
       walk.mainFrame = frameTree.frame.id;
       walk.loader = frameTree.frame.loaderId;
       await arm(cmd);
-      for (const hook of hooks.opened) await hook(walk);
+      for (const hook of hooks.opened) { still(); await hook(walk); }
       // Until the page has answered, or for a few seconds: a `goto` that follows at once then starts from a tab at
       // rest, not across a navigation still under way. A page that did not load is the engine's to find, with its own patience.
       await within(cmd('Page.navigate', { url }), OPEN_MS, 'slow').catch(() => undefined);
+      still();
+      return { value: { tabId: tab.id, group, before: { width: before.width, height: before.height } } };
     } catch (err) {
-      // A walk that could not be guarded does not start, and leaves no empty tab behind.
-      walk = null;
-      await chrome.debugger.detach({ tabId: tab.id }).catch(() => undefined);
-      await chrome.tabs.remove(tab.id).catch(() => undefined);
+      // A walk that could not be guarded, or was stopped, does not start, and leaves no tab behind.
+      if (tab) {
+        if (walk?.tabId === tab.id) walk = null;
+        await chrome.debugger.detach({ tabId: tab.id }).catch(() => undefined);
+        await chrome.tabs.remove(tab.id).catch(() => undefined);
+      }
       throw err;
+    } finally {
+      if (opening === me) opening = null;
     }
-    return { value: { tabId: tab.id, group, before: { width: before.width, height: before.height } } };
   },
 
   async goto({ url, waitUntil, timeout }) {
