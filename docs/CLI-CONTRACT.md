@@ -2257,4 +2257,6 @@ does not wait for this lock; preference commands wait at most three seconds.
 After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
 Optional `repoKey` uses design health's remote normalization and local repo ID,
-including from subdirectories. No repo label or other local metadata is sent.
+including from subdirectories. With that key, a valid remote repository name
+is sent as optional `label`, using design health's label recipe. Local-only
+repos and invalid names omit `label`. No label is sent without a repo key.

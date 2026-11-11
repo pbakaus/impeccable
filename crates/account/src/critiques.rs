@@ -124,8 +124,11 @@ pub fn after_save(io: &Io, snapshot: &SavedReport) {
         {
             return;
         }
-        if let Some(key) = crate::health::critique_repo_key(&root.to_string_lossy(), &io.env) {
+        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
             body["repoKey"] = key.into();
+            if let Some(label) = label {
+                body["label"] = label.into();
+            }
         }
     }
     if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {

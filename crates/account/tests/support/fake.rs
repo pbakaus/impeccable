@@ -384,6 +384,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "createdAt",
                         "target",
                         "repoKey",
+                        "label",
                         "score",
                         "na",
                         "heuristics",
@@ -410,8 +411,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         id.split('-').map(str::len).collect::<Vec<_>>(),
                         [8, 4, 4, 4, 12]
                     );
-                    record.lock().unwrap().critiques.push(v);
-                    json(200, serde_json::json!({"outcome": "recorded"}))
+                    if let Err(field) = parse_critique_label(&v) {
+                        record.lock().unwrap().refused.push((field.into(), v));
+                        json(400, serde_json::json!({"error": "invalid_request", "field": field}))
+                    } else {
+                        record.lock().unwrap().critiques.push(v);
+                        json(200, serde_json::json!({"outcome": "recorded"}))
+                    }
                 }
             }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
@@ -652,6 +658,50 @@ impl Fake {
     }
 }
 
+/// The production service's parseLabel (pristine#4721), checked before trimming.
+/// Rust strings cannot contain the lone surrogates its JSON parser also refuses.
+fn parse_label(value: Option<&serde_json::Value>) -> Result<Option<String>, &'static str> {
+    let Some(value) = value.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let raw = value.as_str().ok_or("label")?;
+    let format = |c| {
+        matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}'
+        | '\u{70F}' | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+        | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
+        | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}' | '\u{13430}'..='\u{1343F}'
+        | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+    };
+    if raw
+        .chars()
+        .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c))
+    {
+        return Err("label");
+    }
+    let label = raw.trim();
+    if label.is_empty() || label.chars().count() > 100 {
+        return Err("label");
+    }
+    Ok(Some(label.into()))
+}
+
+fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
+    if let Some(key) = body.get("repoKey").filter(|v| !v.is_null()) {
+        if !key.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        }) {
+            return Err("repoKey");
+        }
+    }
+    if parse_label(body.get("label"))?.is_some() && body.get("repoKey").is_none_or(|v| v.is_null())
+    {
+        return Err("label");
+    }
+    Ok(())
+}
+
 /// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),
 /// ported so a body it would refuse fails a test here first. The clock
 /// window is left out: tests don't control the CLI's clock.
@@ -712,12 +762,7 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         }
         if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
     }
-    if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
-        let l = l.as_str().ok_or("label")?.trim();
-        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
-            return Err("label");
-        }
-    }
+    parse_label(b.get("label"))?;
     if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
     Ok(())
 }

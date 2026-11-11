@@ -519,3 +519,93 @@ fn invalid_service_settings_never_prevent_local_optout() {
         assert_eq!(status.stdout, b"Critique sync: off.\n");
     }
 }
+
+#[test]
+fn repo_labels_use_the_remote_name_and_are_omitted_when_unavailable() {
+    for (name, remote, expected) in [
+        (
+            "named",
+            Some("git@GitHub.com:acme/remote-repo.git"),
+            Some("remote-repo"),
+        ),
+        ("local", None, None),
+        ("invalid", Some("git@github.com:acme/bad\\name.git"), None),
+    ] {
+        let (fake, env) = setup(&format!("critique-label-{name}"));
+        let root = Path::new(&env["IMPECCABLE_HOME"]);
+        assert!(Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(root)
+            .status()
+            .unwrap()
+            .success());
+        if let Some(remote) = remote {
+            assert!(Command::new("git")
+                .args(["remote", "add", "origin", remote])
+                .current_dir(root)
+                .status()
+                .unwrap()
+                .success());
+        }
+        impeccable(&env, root, &["critiques", "on"])
+            .output()
+            .unwrap();
+        assert!(write(&env, root).status.success());
+        let record = fake.record.lock().unwrap();
+        assert_eq!(record.critiques.len(), 1);
+        let body = &record.critiques[0];
+        assert!(body["repoKey"].as_str().is_some());
+        assert_eq!(
+            body.get("label").and_then(serde_json::Value::as_str),
+            expected
+        );
+        if expected.is_none() {
+            assert!(body.get("label").is_none());
+        }
+    }
+}
+
+#[test]
+fn the_service_accepts_optional_labels_only_with_repo_keys() {
+    use impeccable_account::{
+        config::Account,
+        http::ApiError,
+        session::{Session, SessionError},
+    };
+    let (fake, env) = setup("critique-label-contract");
+    let mut session = Session::load(&Account::from_env(&env).unwrap()).unwrap();
+    let url = format!("{}/cli/v1/critiques", fake.url);
+    let mut body = serde_json::json!({
+        "version": 1, "critiqueId": "00000000-0000-4000-8000-000000000001",
+        "createdAt": impeccable_context::util::iso_now(), "target": "Pricing",
+        "score": {"total": 24, "max": 40}, "na": [], "counts": {"p0": 0, "p1": 0}, "body": "Report"
+    });
+    for label in [
+        serde_json::Value::Null,
+        serde_json::json!("repo"),
+        serde_json::json!("  repo  "),
+        serde_json::json!("repo\\secret"),
+        serde_json::json!("\tname"),
+        serde_json::json!("\u{FEFF}name"),
+        serde_json::json!("a\u{E0001}b"),
+        serde_json::json!("x".repeat(101)),
+        serde_json::json!("   "),
+        serde_json::json!(7),
+    ] {
+        for key in [serde_json::Value::Null, serde_json::json!("a".repeat(64))] {
+            body["label"] = label.clone();
+            body["repoKey"] = key.clone();
+            let allowed = label.is_null()
+                || (!key.is_null() && ["repo", "  repo  "].contains(&label.as_str().unwrap_or("")));
+            let result = session.call(|client, token| client.post_json(&url, token, body.clone()));
+            if allowed {
+                assert!(result.is_ok(), "{label:?}: {result:?}");
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(SessionError::Api(ApiError::Status { status: 400, .. }))
+                ));
+            }
+        }
+    }
+}
