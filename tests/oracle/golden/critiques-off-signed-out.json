@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "stdout": "Critique sync: on. Saved report contents will be uploaded.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Critique sync: off.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "Critique sync: off.\n",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".oracle-home/.impeccable/critiques.json": "{\"sync\":false}"
+  }
+}
