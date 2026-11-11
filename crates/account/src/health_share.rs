@@ -92,7 +92,7 @@ fn publish(
             .map(Duration::from_secs)
             .unwrap_or(crate::DEFAULT_LOGIN_TIMEOUT);
         let no_browser = io.env_truthy("IMPECCABLE_NO_BROWSER");
-        crate::login_requested(
+        let done = crate::login_requested(
             &env,
             &mut |url| {
                 io.out(&format!("{url}\n"));
@@ -104,6 +104,18 @@ fn publish(
             timeout,
             Some(&scopes),
         )?;
+        match &done.entitlement {
+            Ok(crate::session::Entitlement { pro: true, .. }) => {
+                let outcome =
+                    crate::pro::refresh(&done.account, &crate::pro::verify::pinned_keys(&env));
+                crate::pro::report(io, &outcome);
+            }
+            Ok(_) => {
+                crate::pro::settle(&done.account, done.login, false);
+                crate::report_entitlement(io, &done.entitlement);
+            }
+            Err(_) => crate::report_entitlement(io, &done.entitlement),
+        }
         session = Session::load(&account).map_err(error)?;
         if !session.state.scopes.iter().any(|s| s == oauth::SHARE_SCOPE) {
             return Err("sharing wasn't allowed".into());
@@ -167,14 +179,93 @@ pub(crate) enum Outcome {
 fn page_url(issuer: &str, u: &str, token: &str) -> Option<String> {
     let page = url::Url::parse(u).ok()?;
     let service = url::Url::parse(issuer).ok()?;
-    let loopback = matches!(service.host_str(), Some("127.0.0.1" | "localhost"));
-    let secure = page.scheme() == "https" || (loopback && page.scheme() == "http");
-    let domain = |h: &str| h.rsplitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+    let loopback = crate::config::loopback_url(&service);
+    let secure = page.scheme() == "https"
+        || (loopback && page.scheme() == "http" && crate::config::loopback_url(&page));
     let same = match (page.host_str(), service.host_str()) {
-        (Some(p), Some(s)) => p == s || domain(p) == domain(s),
+        (Some(p), Some(s)) => {
+            p == s
+                || matches!(service.host(), Some(url::Host::Domain(_)))
+                    && s.split_once('.').is_some_and(|(_, parent)| {
+                        // Never broaden a country-code issuer to a possible public
+                        // suffix (e.g. service.co.uk -> co.uk). Without a suffix
+                        // list, keep country-code services on their exact host.
+                        parent
+                            .rsplit_once('.')
+                            .is_some_and(|(_, tld)| tld.len() > 2)
+                            && (p == parent || p.ends_with(&format!(".{parent}")))
+                    })
+        }
         _ => false,
     };
     let carries = page.query_pairs().any(|(k, v)| k == "t" && v == token);
     (secure && same && carries && page.username().is_empty() && page.password().is_none())
         .then(|| page.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page_url;
+
+    fn allowed(issuer: &str, page: &str) -> bool {
+        page_url(issuer, &format!("{page}/shared?t=token"), "token").is_some()
+    }
+
+    #[test]
+    fn page_domain_is_issuer_or_its_safe_parent() {
+        for host in [
+            "api.impeccable.style",
+            "impeccable.style",
+            "www.impeccable.style",
+            "a.b.impeccable.style",
+        ] {
+            assert!(
+                allowed("https://api.impeccable.style", &format!("https://{host}")),
+                "{host}"
+            );
+        }
+        for host in [
+            "evil.style",
+            "impeccable.style.evil.example",
+            "evilimpeccable.style",
+        ] {
+            assert!(
+                !allowed("https://api.impeccable.style", &format!("https://{host}")),
+                "{host}"
+            );
+        }
+        assert!(allowed("https://service.co.uk", "https://service.co.uk"));
+        for host in ["co.uk", "other.co.uk", "www.service.co.uk"] {
+            assert!(
+                !allowed("https://service.co.uk", &format!("https://{host}")),
+                "{host}"
+            );
+        }
+        assert!(!allowed(
+            "https://impeccable.style",
+            "https://www.impeccable.style"
+        ));
+    }
+
+    #[test]
+    fn loopback_pages_use_accounts_transport_rule() {
+        for host in ["localhost", "api.localhost", "127.0.0.1", "[::1]"] {
+            assert!(
+                allowed(
+                    &format!("http://{host}:8787"),
+                    &format!("http://{host}:3000")
+                ),
+                "{host}"
+            );
+        }
+        assert!(!allowed(
+            "https://api.impeccable.style",
+            "http://api.impeccable.style"
+        ));
+        assert!(!allowed(
+            "http://api.localhost",
+            "http://api.localhost.evil.example"
+        ));
+        assert!(!allowed("http://127.0.0.1", "http://evil.0.1"));
+    }
 }

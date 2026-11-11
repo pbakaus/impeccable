@@ -243,3 +243,43 @@ fn consent_preserves_feature_scopes_without_requesting_new_upload_features() {
         "account:read rules:read health:write health:share"
     );
 }
+
+#[test]
+fn share_consent_refreshes_pro() {
+    let (fake, mut io, _) = setup("share-pro-refresh");
+    assert_eq!(fake.hits("/cli/v1/manifest"), 0);
+    assert_eq!(run(&mut io, &["share"]), 0);
+    assert_eq!(fake.hits("/cli/v1/manifest"), 1);
+}
+
+#[cfg(feature = "test-release-keys")]
+#[test]
+fn installed_pro_still_dispatches_after_share_consent() {
+    use impeccable_account::{config::Account, pro};
+    use support::fake::{keypair, release_keys_json, unix_now};
+    let (fake, mut io, captured) = setup("share-pro-installed");
+    let release = keypair();
+    let lease = keypair();
+    let key_json = release_keys_json("r1", &release);
+    let keys = pro::verify::parse_keyring(&key_json).unwrap();
+    io.env
+        .insert("IMPECCABLE_PRO_RELEASE_KEYS".into(), key_json);
+    let account = Account::from_env(&io.env).unwrap();
+    fake.lease_keys(&[("l1", &lease)]);
+    let sha = fake.publish("r1", &release, b"pro build", 1);
+    fake.lease("l1", &lease, &sha, unix_now() + 86400);
+    assert!(matches!(
+        pro::refresh(&account, &keys),
+        pro::Refreshed::Ready { .. }
+    ));
+    assert!(matches!(
+        pro::decide(&account, &keys, unix_now()),
+        pro::Decision::Pro { .. }
+    ));
+    assert_eq!(run(&mut io, &["share"]), 0);
+    assert!(String::from_utf8_lossy(&captured.stderr.borrow()).contains("Pro rules: ready.\n"));
+    assert!(matches!(
+        pro::decide(&account, &keys, unix_now()),
+        pro::Decision::Pro { .. }
+    ));
+}
