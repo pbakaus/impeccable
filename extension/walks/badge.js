@@ -107,8 +107,8 @@ export function badgeState(view) {
 }
 
 let badge = null;
-/** Why the badge is out of sight right now: a film under way, and pictures being taken. */
-const veil = { film: false, shots: 0 };
+/** Why the badge is out of sight right now: a film under way, and pictures being taken. A new one for each walk. */
+let veil = { film: false, shots: 0 };
 /** Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see. */
 const hidden = () => (veil.film || veil.shots > 0) && current().state === 'walking';
 let pressed = () => undefined;
@@ -148,8 +148,8 @@ const drop = () => {
   if (!badge) return;
   clearInterval(badge.beat);
   badge = null;
-  veil.film = false;
-  veil.shots = 0;
+  // A picture still being taken as the walk ends counts against the old veil, not the next walk's.
+  veil = { film: false, shots: 0 };
 };
 hooks.closing.push(async () => { await call('remove()'); });
 hooks.closed.push(drop);
@@ -163,9 +163,10 @@ export function unseen(name, run) {
   const draw = () => call(`veil(${hidden()})`);
   if (name === 'screenshot') {
     return async (req) => {
-      veil.shots += 1;
+      const mine = veil;
+      mine.shots += 1;
       await draw();
-      try { return await run(req); } finally { veil.shots -= 1; await draw(); }
+      try { return await run(req); } finally { mine.shots -= 1; await draw(); }
     };
   }
   if (name === 'cdp') {
