@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
 
 import { readHandoff } from '../extension/walks/handoff.js';
 import { admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
+import { firefoxManifest, isFirefoxFile, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8'));
@@ -155,16 +156,51 @@ describe('Chrome background worker', () => {
     assert.equal(panel.posted[0]?.action, 'state');
   });
 
+  const handOver = (sender) => new Promise((resolve) => {
+    for (const listener of listeners.message) listener({ handoff: JSON.stringify(block()) }, sender, resolve);
+  });
+  const fromPage = { id: 'ext', frameId: 0, url: PAGE, tab: { id: 4, windowId: 1, url: PAGE } };
+
+  for (const [label, sender] of [
+    ['a frame inside our page', { ...fromPage, frameId: 1 }],
+    ['another extension', { ...fromPage, id: 'other' }],
+  ]) {
+    it(`refuses a hand-off from ${label}`, async () => {
+      await loaded;
+      assert.deepEqual(await handOver(sender), { ok: false, why: 'origin' });
+    });
+  }
+
   it('takes a hand-off from our walk page and opens its socket with the ticket', async () => {
     await loaded;
-    const sender = { id: 'ext', frameId: 0, url: PAGE, tab: { id: 4, windowId: 1, url: PAGE } };
-    const answers = [];
-    const answered = new Promise((resolve) => {
-      for (const listener of listeners.message) listener({ handoff: JSON.stringify(block()) }, sender, (answer) => { answers.push(answer); resolve(); });
-    });
-    await answered;
+    assert.deepEqual(await handOver(fromPage), { ok: true });
     for (let turn = 0; turn < 50 && sockets.length === 0; turn++) await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(answers, [{ ok: true }]);
     assert.deepEqual(sockets.at(-1), { url: block().socket, protocols: ['impeccable-outing', block().ticket] });
+  });
+});
+
+describe('derived extension manifests', () => {
+  it('leaves walks out of Firefox: no walk file, no debugger, no side panel', () => {
+    const firefox = firefoxManifest(MANIFEST);
+    assert.equal(firefox.permissions.includes('debugger'), false);
+    assert.equal('side_panel' in firefox, false);
+    assert.equal(JSON.stringify(firefox).includes('walks/'), false);
+    const walkFiles = readdirSync(path.join(ROOT, 'extension/walks'), { recursive: true }).map((file) => `walks/${file}`);
+    assert.deepEqual(['walks', ...walkFiles].filter((file) => isFirefoxFile(file, MANIFEST)), []);
+    assert.equal(isFirefoxFile(MANIFEST.background.service_worker, MANIFEST), false);
+    assert.equal(isFirefoxFile('background/service-worker.js', MANIFEST), true);
+  });
+
+  it('keeps a content script that is not a walk one in Firefox', () => {
+    const detector = { matches: ['<all_urls>'], js: ['content/content-script.js'] };
+    const firefox = firefoxManifest({ ...MANIFEST, content_scripts: [...MANIFEST.content_scripts, detector] });
+    assert.deepEqual(firefox.content_scripts, [detector]);
+  });
+
+  it('holds the store build to production hosts', () => {
+    const matches = storeManifest(MANIFEST).content_scripts.flatMap((entry) => entry.matches);
+    assert.ok(matches.length > 0);
+    assert.deepEqual(matches.filter((match) => /staging|localhost/.test(match)), []);
+    assert.ok(MANIFEST.content_scripts.some((entry) => entry.matches.some((match) => match.includes('localhost'))), 'the source manifest keeps localhost for Load unpacked');
   });
 });

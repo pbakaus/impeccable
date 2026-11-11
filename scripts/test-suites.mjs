@@ -130,6 +130,7 @@ export const SUITES = {
       ...COMMON_INFRA_PATTERNS,
       /^extension\/(background|content|detector|devtools|offscreen|popup|shared|walks|manifest\.json)/,
       /^scripts\/build-extension\.js$/,
+      /^scripts\/lib\/extension-manifests\.js$/,
       /^tests\/extension-(build|devtools|report|popup|walks)\.test\.mjs$/,
       /^browser-bundle\//,
       // Everything `cargo xtask bundle` reads: the rules and the registry
