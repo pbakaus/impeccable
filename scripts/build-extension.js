@@ -36,7 +36,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { storeManifest } from './lib/extension-manifests.js';
+import { DETECTOR_WORKER, firefoxManifest as deriveFirefoxManifest, isFirefoxFile, storeManifest } from './lib/extension-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -80,12 +80,6 @@ if (!serviceWorker) {
     'extension/manifest.json: expected background.service_worker to derive the Firefox manifest',
   );
 }
-
-/** The detector's worker: Chrome's module worker imports it, and Firefox loads it alone. */
-const DETECTOR_WORKER = 'background/service-worker.js';
-/** What only Chrome's build carries: walks, and the module worker that loads them beside the detector's. */
-const CHROME_ONLY_FILES = ['walks', serviceWorker];
-const CHROME_ONLY_PERMISSIONS = ['offscreen', 'debugger', 'tabs', 'tabGroups', 'sidePanel', 'downloads'];
 
 /** Every extension-relative path the manifest declares. */
 function manifestReferences(manifest) {
@@ -195,31 +189,7 @@ packZip(path.join(DIST, 'extension.zip'), chromeStageDir, ['*.DS_Store']);
 // --- 3b. Firefox: derive a Gecko-compatible manifest and stage an unpacked
 // build (consumed by `web-ext lint` in CI), then zip it for AMO. ---
 
-const { side_panel: _sidePanel, content_scripts: _contentScripts, ...detectorManifest } = chromeManifest;
-const firefoxManifest = {
-  ...detectorManifest,
-  // Gecko supports MV3 via non-persistent event pages. Declaring `scripts`
-  // (rather than `service_worker`) is the path supported across all MV3 Firefox
-  // releases. The shared worker hosts the rule core in a background-page
-  // iframe when Chrome's offscreen API is unavailable.
-  background: { scripts: [DETECTOR_WORKER] },
-  permissions: chromeManifest.permissions.filter(permission => !CHROME_ONLY_PERMISSIONS.includes(permission)),
-  // Required by AMO for signing/distribution. Ignored by Chrome.
-  browser_specific_settings: {
-    gecko: {
-      id: 'impeccable@bakaus.com',
-      // `data_collection_permissions` (below) is required by AMO for new
-      // submissions and is only honored on Firefox 140+. We set the floor to
-      // 140 so the declared min version actually supports every key we ship;
-      // everything else this extension uses (MV3 action, scripting, devtools,
-      // object-form web_accessible_resources, storage.sync) landed long before.
-      strict_min_version: '140.0',
-      // The rules run in the extension's own document; nothing is
-      // transmitted off-device.
-      data_collection_permissions: { required: ['none'] },
-    },
-  },
-};
+const firefoxManifest = deriveFirefoxManifest(chromeManifest);
 
 const ffStageDir = path.join(DIST, 'extension-firefox');
 fs.rmSync(ffStageDir, { recursive: true, force: true });
@@ -228,7 +198,7 @@ fs.cpSync(EXT_DIR, ffStageDir, {
   filter: (src) => {
     const base = path.basename(src);
     const rel = path.relative(EXT_DIR, src).split(path.sep).join('/');
-    return base !== 'STORE_LISTING.md' && base !== '.DS_Store' && !CHROME_ONLY_FILES.includes(rel);
+    return base !== 'STORE_LISTING.md' && base !== '.DS_Store' && isFirefoxFile(rel, chromeManifest);
   },
 });
 fs.writeFileSync(
