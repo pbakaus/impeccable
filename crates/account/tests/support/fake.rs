@@ -381,19 +381,38 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (401, vec![], vec![])
                 } else {
                     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                    assert_eq!(v.as_object().unwrap().len(), 6);
+                    assert!(v.as_object().unwrap().keys().all(|k| [
+                        "version",
+                        "uploadId",
+                        "repoKey",
+                        "changedAt",
+                        "text",
+                        "sidecar",
+                        "label"
+                    ]
+                    .contains(&k.as_str())));
                     assert_eq!(v["version"], 1);
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
                     assert_eq!(v["changedAt"].as_str().unwrap().len(), 24);
-                    let text = v["text"].as_str().unwrap();
-                    assert!(!text.trim().is_empty() && !text.contains('\0') && text.len() <= 65536);
-                    assert!(body.len() <= 160 * 1024);
-                    record.lock().unwrap().designs.push(v);
-                    json(
-                        200,
-                        serde_json::json!({"outcome":"recorded", "masked":false}),
-                    )
+                    if parse_label(v.get("label")).is_err() {
+                        record.lock().unwrap().refused.push(("label".into(), v));
+                        json(
+                            400,
+                            serde_json::json!({"error":"invalid_request", "field":"label"}),
+                        )
+                    } else {
+                        let text = v["text"].as_str().unwrap();
+                        assert!(
+                            !text.trim().is_empty() && !text.contains('\0') && text.len() <= 65536
+                        );
+                        assert!(body.len() <= 160 * 1024);
+                        record.lock().unwrap().designs.push(v);
+                        json(
+                            200,
+                            serde_json::json!({"outcome":"recorded", "masked":false}),
+                        )
+                    }
                 }
             }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
@@ -687,14 +706,43 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
             if !hex(fp, 32) || !count(n) || n == 0 { return Err("fingerprints"); }
             total += n.as_u64().unwrap();
         }
-        if Some(total) != b["findings"].as_u64() { return Err("fingerprints do not sum"); }
-    }
-    if let Some(l) = b.get("label").filter(|l| !l.is_null()) {
-        let l = l.as_str().ok_or("label")?.trim();
-        if l.is_empty() || l.chars().count() > 100 || l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control()) {
-            return Err("label");
+        if Some(total) != b["findings"].as_u64() {
+            return Err("fingerprints do not sum");
         }
     }
-    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 { return Err("too_large"); }
+    parse_label(b.get("label"))?;
+    if serde_json::to_vec(b).unwrap().len() > 256 * 1024 {
+        return Err("too_large");
+    }
     Ok(())
+}
+
+/// The service's shared parseLabel (pristine#4721): reject forbidden characters
+/// before trimming, so a tab or BOM is never repaired into a valid name.
+pub fn parse_label(value: Option<&serde_json::Value>) -> Result<Option<String>, &'static str> {
+    let Some(value) = value.filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let name = value.as_str().ok_or("label")?;
+    // Unicode Cf, matching the server's property escape. Rust strings cannot
+    // contain lone surrogates (Cs); is_control covers Cc.
+    let format = |c| {
+        matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}'
+        | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+        | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
+        | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+        | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
+        | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+    };
+    if name
+        .chars()
+        .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c))
+    {
+        return Err("label");
+    }
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 100 {
+        return Err("label");
+    }
+    Ok(Some(name.to_string()))
 }

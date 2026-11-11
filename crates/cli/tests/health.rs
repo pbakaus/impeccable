@@ -815,3 +815,92 @@ fn design_refresh_can_finish_safely_after_detect_stops_waiting() {
     run(&env, &root, &["detect", "--json", "."]);
     assert_eq!(fake.hits("/cli/v1/design"), 1);
 }
+
+#[test]
+fn design_sync_reuses_health_repo_labels_and_omits_missing_ones() {
+    assert_eq!(fake::parse_label(None), Ok(None));
+    assert_eq!(fake::parse_label(Some(&serde_json::Value::Null)), Ok(None));
+    assert_eq!(
+        fake::parse_label(Some(&serde_json::json!("  acme web "))),
+        Ok(Some("acme web".into()))
+    );
+    for value in [
+        serde_json::json!("git@github.com:acme/web"),
+        serde_json::json!("acme/web"),
+        serde_json::json!("repo\\secret"),
+        serde_json::json!("a\u{7}b"),
+        serde_json::json!("\tacme"),
+        serde_json::json!("\u{FEFF}acme"),
+        serde_json::json!("x".repeat(101)),
+        serde_json::json!("   "),
+        serde_json::json!(7),
+    ] {
+        assert_eq!(fake::parse_label(Some(&value)), Err("label"));
+    }
+    for (i, (remote, expected)) in [
+        (Some("git@GitHub.com:acme/my-site.git"), Some("my-site")),
+        (Some("git@gitlab.com:group/sub/tool.git"), Some("tool")),
+        (None, None),
+        (Some("git@github.com:acme/repo\\secret.git"), None),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let fake = Fake::start();
+        {
+            let mut k = fake.knobs.lock().unwrap();
+            k.health = true;
+            k.design = true;
+        }
+        let env = fake.env(&format!("design-repo-label-{i}"));
+        login(&env);
+        let root = repo(&env, remote);
+        std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+        assert!(run(&env, &root, &["health", "design", "on"])
+            .status
+            .success());
+        run(&env, &root, &["detect", "--json", "."]);
+        let doc = fake
+            .record
+            .lock()
+            .unwrap()
+            .designs
+            .last()
+            .cloned()
+            .expect("design uploaded");
+        let health = scans(&fake).pop().unwrap();
+        assert_eq!(doc.get("label"), health.get("label"));
+        match expected {
+            Some(name) => assert_eq!(doc["label"], name),
+            None => assert!(
+                doc.get("label").is_none(),
+                "omit absent labels, including null"
+            ),
+        }
+    }
+}
+
+#[test]
+fn design_setting_lock_wait_is_bounded_and_reports_a_plain_cause() {
+    let fake = Fake::start();
+    let env = fake.env("design-plain-lock-cause");
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(Path::new(&env["IMPECCABLE_HOME"]).join("design.lock"))
+        .unwrap();
+    held.try_lock().unwrap();
+    for (args, prefix) in [
+        (&["health", "design", "off"][..], "DESIGN.md sync"),
+        (&["health", "off"][..], "Design health"),
+    ] {
+        let started = std::time::Instant::now();
+        let out = run(&env, Path::new(&env["IMPECCABLE_HOME"]), args);
+        assert!(!out.status.success());
+        assert!(started.elapsed() >= std::time::Duration::from_secs(2));
+        assert!(started.elapsed() < std::time::Duration::from_secs(6));
+        assert_eq!(String::from_utf8(out.stderr).unwrap(), format!("{prefix}: couldn't save the setting: another impeccable command is using it; try again.\n"));
+    }
+}

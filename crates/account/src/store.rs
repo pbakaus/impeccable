@@ -242,7 +242,7 @@ impl Store {
                 Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(Duration::from_millis(10))
                 }
-                _ => return Err("design sync lock unavailable".into()),
+                _ => return Err("another impeccable command is using it; try again".into()),
             }
         }
     }

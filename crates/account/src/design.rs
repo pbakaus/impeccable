@@ -128,11 +128,14 @@ pub(super) fn after_scan(io: &Io, scan: &Scan) {
         &repo.key,
         &generation.to_string(),
     ]));
-    let body = json!({
+    let mut body = json!({
         "version": 1, "uploadId": scan_id(), "repoKey": repo.key,
         "changedAt": impeccable_context::util::iso_from_ms(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as f64),
         "text": text, "sidecar": sidecar,
     });
+    if let Some(label) = &repo.label {
+        body["label"] = label.clone().into();
+    }
     if serde_json::to_vec(&body).map_or(true, |b| b.len() > BODY_BYTES) {
         return;
     }

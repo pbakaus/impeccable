@@ -664,7 +664,9 @@ fn label(name: &str) -> Option<String> {
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control() || format(c));
+        && !l
+            .chars()
+            .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
 }
 
@@ -853,6 +855,7 @@ mod tests {
     fn labels_and_versions_follow_the_services_rules() {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
+        assert_eq!(label("repo\\secret"), None);
         assert_eq!(label("a\u{200B}b"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".

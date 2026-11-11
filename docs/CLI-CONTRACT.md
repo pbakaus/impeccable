@@ -2250,12 +2250,16 @@ The uploader holds admission continuously from its final settings/generation
 check through the POST and digest save, and checks the design setting again
 before saving. Once disabling returns success, no earlier upload can start a
 POST or save success. A busy disabling command fails rather than claiming off.
-The minimum new lock-contention error is `design sync lock unavailable`.
+If the bounded lock wait expires, the existing setting-save error uses the
+cause `another impeccable command is using it; try again`.
 
 `POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
-text, sidecar}`. Repo keying matches design health. `changedAt` is the
-observation time, so a previously unsynced old file fits the server's clock
-window. DESIGN.md must be nonblank UTF-8, contain no NUL, and fit 64 KiB;
+text, sidecar, label?}`. Repo keying matches design health. Optional `label`
+uses the same repo-name recipe as design health, derived from the normalized
+origin remote, with no folder-name fallback. It is omitted when unavailable;
+backslashes are refused. `changedAt` is the observation time, so a previously
+unsynced old file fits the server's clock window. DESIGN.md must be nonblank
+UTF-8, contain no NUL, and fit 64 KiB;
 the JSON body must fit 160 KiB. The optional sidecar copies only
 `colorMeta`, `typographyMeta`, `shadows`, `motion`, and `breakpoints` from
 `.impeccable/design.json`'s `extensions`, following the server's 16 KiB,
@@ -2265,8 +2269,8 @@ before Git establishes identity and retained while the document is read. The
 pathname must still identify that directory before and after reading, checked
 by device/inode on Unix and volume/file id on Windows; mismatches fail closed.
 Reads use directory handles and refuse symlink files, sidecar directory links,
-and non-regular files without blocking. Windows permits resident cloud-backed
-files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
+symlink roots, and non-regular files without blocking. Windows permits resident
+cloud-backed files, refuses name-surrogate reparse tags, and skips offline/recall-marked files.
 
 Only the hash of successfully uploaded text and selected metadata is saved
 under `$IMPECCABLE_HOME/health/repos/`, keyed by service, sign-in and repo.

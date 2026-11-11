@@ -226,6 +226,7 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "health-design-refresh",
     "pro-refresh",
     "agents",
     "loop",
