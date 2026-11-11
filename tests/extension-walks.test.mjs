@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -190,6 +190,69 @@ describe('Chrome background worker', () => {
     // The server calls the walk off.
     sockets.at(-1).onclose({ reason: 'cancelled' });
     assert.deepEqual(toolbar.slice(4), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+  });
+
+  // A walked tab on a stubbed debugger, opened after the tests above: every command the walk sends it, in order,
+  // and what the other end is told.
+  const sent = [];
+  const told = [];
+  const page = { seen: {} };
+  const answers = {
+    'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'about:blank' } } }),
+    'Page.navigate': () => ({ loaderId: 'l1' }),
+    'Page.getLayoutMetrics': () => ({ cssLayoutViewport: { clientWidth: 100, clientHeight: 80 } }),
+    'Page.captureScreenshot': () => new Promise((resolve) => setTimeout(() => resolve({ data: btoa(String(sent.length)) }), 5)),
+    'Page.createIsolatedWorld': () => ({ executionContextId: 9 }),
+    'Runtime.evaluate': () => ({ result: { value: page.seen } }),
+  };
+  const fire = (method, params) => { for (const listener of listeners['debugger-event']) listener({ tabId: 11 }, method, params); };
+  const since = (at, method) => sent.slice(at).filter((m) => m === method).length;
+  const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let opened;
+  const walked = () => (opened ??= (async () => {
+    await loaded;
+    Object.assign(chrome.debugger, {
+      async attach() {}, async detach() {},
+      async sendCommand(_target, method) { sent.push(method); return (answers[method] ?? (() => ({})))(); },
+    });
+    Object.assign(chrome.tabs, {
+      async create() { return { id: 11, windowId: 1 }; }, async get() { return { id: 11, windowId: 1, width: 800, height: 600, active: true }; },
+      async group() { return 5; }, async remove() {}, async update() {},
+    });
+    chrome.tabGroups = { async update() {}, async get() { return { title: 'Impeccable · Mira' }; } };
+    chrome.windows = { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; } };
+    chrome.action.setTitle = async ({ title }) => { toolbar.push({ title }); };
+    globalThis.createImageBitmap = async () => ({ close() {} });
+    globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob([String(sent.length)]); } };
+    const driver = await import('../extension/walks/driver.js');
+    const control = await import('../extension/walks/control.js');
+    driver.speak((message) => told.push(message));
+    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+    return { ...driver, ...control };
+  })());
+
+  after(async () => { if (opened) await (await opened).ops.close(); });
+
+  it('takes and tells nothing of the page while paused, and films again once it goes on', async () => {
+    const { ops, command } = await walked();
+    await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
+    await settle(150);
+    assert.ok(since(0, 'Page.captureScreenshot') > 0, 'the film is rolling');
+    assert.equal(await command('pause'), true);
+    const paused = sent.length;
+    const heard = told.length;
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l2', url: 'http://localhost:3000/next' } });
+    fire('Page.javascriptDialogOpening', { type: 'alert', message: 'Hello' });
+    await settle(250);
+    assert.equal(since(paused, 'Page.captureScreenshot'), 0, 'no picture is taken while paused');
+    assert.ok(sent.includes('Network.disable'));
+    assert.deepEqual(told.slice(heard).map((m) => m.event ?? 'reply'), [], 'nothing of the page is told');
+    assert.equal(await command('resume'), true);
+    await settle(150);
+    assert.equal(since(paused, 'Network.enable'), 1);
+    assert.ok(since(paused, 'Page.captureScreenshot') > 0, 'the film rolls again');
+    assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/next', 'and the other end hears where the tab is now');
+    await ops.cdp({ method: 'Page.stopScreencast' });
   });
 });
 

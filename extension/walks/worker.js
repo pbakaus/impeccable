@@ -40,7 +40,7 @@ function say(message) {
   for (const piece of pieces(JSON.stringify(message))) socket.send(piece);
 }
 
-import { fail, ops, speak, walk } from './driver.js';
+import { fail, hushed, ops, speak, walk } from './driver.js';
 import { needsNoTab } from './control.js';
 import { dial, linked, unlinked, whereTo } from './link.js';
 import { isStartPage } from './handoff.js';
@@ -65,7 +65,7 @@ async function handle(data) {
   } catch (err) {
     reply = { id: req.id, ok: false, error: { name: err?.name || 'Error', message: String(err?.message ?? err).slice(0, 500) } };
   }
-  say({ ...reply, ...(walk ? { url: walk.url } : {}), ms: Math.round((performance.now() - started) * 10) / 10, boot: BOOT });
+  say({ ...reply, ...(walk && !hushed() ? { url: walk.url } : {}), ms: Math.round((performance.now() - started) * 10) / 10, boot: BOOT });
 }
 
 async function connect() {

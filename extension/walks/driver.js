@@ -30,9 +30,18 @@ export function speak(to) { through = to; }
  */
 export const hooks = { opened: [], closing: [], closed: [], said: [], event: [] };
 
+/**
+ * Set while the walk is paused, by the person or at a sign-in: no picture is taken and nothing of the page (its
+ * address, a dialog's text, a frame, what the guard stopped) goes to the other end. Only these do: what the person
+ * did, and the walk's own end. The guard keeps holding the tab as ever.
+ */
+let hush = false;
+export const hushed = () => hush;
+const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached']);
+
 /** Tells the other end, and whoever in here listens. */
 export function say(message) {
-  through(message);
+  if (!hush || TOLD_WHILE_HUSHED.has(message.event)) through(hush && message.url !== undefined ? { ...message, url: '' } : message);
   for (const heard of hooks.said) heard(message);
 }
 
@@ -56,6 +65,7 @@ const sendTo = (tabId) => (method, params) => send(tabId, method, params);
 
 /** The walk lets go of the tab, whoever ended it. The debugger is already off, or never coming back. */
 async function letGo(tab, why) {
+  hush = false;
   for (const hook of hooks.closed) { try { await hook(why, tab); } catch { /* a listener's failure is its own */ } }
 }
 
@@ -120,10 +130,13 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   await cut();
   const tab = walk;
   if (!tab) throw fail('OutingClosed', 'no tab is open');
+  if (hush) throw fail('Paused', 'no film starts while the walk is paused');
   const film = { on: true, id: (filmed += 1), done: null, last: '', sentAt: 0 };
   tab.film = film;
   film.done = (async () => {
     while (film.on && walk === tab) {
+      // Paused: the film stands still, taking nothing, until the walk goes on (or the film is cut).
+      if (hush) { await sleep(FILM_RETRY_MS); continue; }
       const started = Date.now();
       try {
         let size = tab.viewport;
@@ -132,6 +145,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
           size = { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
         }
         const scale = Math.min(1, maxWidth > 0 ? maxWidth / size.width : 1, maxHeight > 0 ? maxHeight / size.height : 1);
+        if (hush) continue;
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
         asked.catch(() => undefined);
@@ -139,12 +153,15 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         if (!shot) continue;
         const frame = await smaller(shot.data, Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
+        // Taken as the walk was paused: never sent.
+        if (hush) continue;
         // A page that has not changed is not sent again: a film held open (the walk paused mid-wait) would otherwise send the same picture until it ends.
         if (frame === film.last) continue;
         // Held until the last one sent is `FILM_GAP_MS` old: paced where it is sent, so a picture that took longer or
         // shorter to take does not close the gap. In short sleeps, so a film that is cut is not kept waiting on one.
         while (film.on && walk === tab && Date.now() - film.sentAt < FILM_GAP_MS) await sleep(Math.min(8, FILM_GAP_MS - (Date.now() - film.sentAt)));
         if (!film.on || walk !== tab) break;
+        if (hush) continue;
         film.last = frame;
         film.sentAt = Date.now();
         say({ event: 'cdp', method: 'Page.screencastFrame', params: { data: frame, sessionId: film.id, metadata: { deviceWidth: size.width, deviceHeight: size.height, pageScaleFactor: 1, offsetTop: 0, scrollOffsetX: 0, scrollOffsetY: 0, timestamp: Date.now() / 1000 } } });
@@ -175,6 +192,26 @@ async function cut() {
   film.on = false;
   walk.film = null;
   await film.done;
+}
+
+/** The walk is paused: from here nothing is taken or told of the page, and the network is not watched, until {@link unhold}. */
+export async function hold() {
+  if (hush) return;
+  hush = true;
+  if (walk) await cmd('Network.disable').catch(() => undefined);
+}
+
+/** The walk goes on: the network is watched again, afresh, and the other end is told where the tab now is. */
+export async function unhold() {
+  if (!hush) return;
+  hush = false;
+  const tab = walk;
+  if (!tab) return;
+  // What the network was busy with went unheard while paused: only what it asks from now on counts.
+  tab.inflight.clear();
+  tab.quietSince = Date.now();
+  await cmd('Network.enable').catch(() => undefined);
+  say({ event: 'url', url: tab.url });
 }
 
 /** How long `open` waits for its page to answer before it says the tab is open anyway. */

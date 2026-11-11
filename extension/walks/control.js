@@ -3,8 +3,8 @@
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
 import { unseen, whenStopPressed } from './badge.js';
-import { endWalk, fail, hooks, ops, say, walk } from './driver.js';
-import { current, dispatch } from './store.js';
+import { endWalk, fail, hold, hooks, ops, say, unhold, walk } from './driver.js';
+import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
 /** Ops the hub may always ask: opening and letting go, a look at the tab, and what it tells the panel. */
@@ -83,6 +83,9 @@ export async function command(name) {
 }
 
 whenStopPressed(() => { void command('stop'); });
+
+// Paused is paused whoever paused it: the walk takes and tells nothing of the page until it goes on (driver.js `hold`).
+onView((view) => { void (view.state === 'paused' ? hold() : unhold()); });
 
 hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });
 hooks.closed.push((why) => {
