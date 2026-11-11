@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -251,10 +251,13 @@ test('reopening restores scan progress and a failed scan message without old fin
 const signedIn = { ok: true, available: true, signedIn: true, email: 'mira@example.com' };
 const personas = { ok: true, personas: [{ name: 'Ines', role: 'A retired teacher' }, { name: 'Kofi', role: '' }] };
 
+const stages = [];
+after(() => { for (const dir of stages) rmSync(dir, { recursive: true, force: true }); });
 function stagedStore() {
-  const root = path.join(mkdtempSync(path.join(tmpdir(), 'impeccable-store-')), 'extension');
-  stageStore(SOURCE, root);
-  return root;
+  const dir = mkdtempSync(path.join(tmpdir(), 'impeccable-store-'));
+  stages.push(dir);
+  stageStore(SOURCE, path.join(dir, 'extension'));
+  return path.join(dir, 'extension');
 }
 
 for (const [label, account, asked, store] of [
