@@ -324,6 +324,9 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
                 None if e.pro => io.out("Pro rules: included.\n"),
                 None => io.out("Pro rules: not included with this account.\n"),
             }
+            if !e.pro {
+                io.out(&format!("{}\n", pro::PRICING));
+            }
             0
         }
         Err(SessionError::NotSignedIn) => {
