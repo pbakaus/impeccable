@@ -183,6 +183,7 @@ describe('Chrome background worker', () => {
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
+    identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { throw new Error('no sign-in here'); } },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
   };
   const loaded = import('../extension/background/chrome-worker.js');
@@ -345,9 +346,12 @@ describe('Chrome background worker', () => {
 });
 
 describe('derived extension manifests', () => {
-  it('leaves walks out of Firefox: no walk file, no debugger, no side panel', () => {
+  it('leaves walks and the account out of Firefox: no walk or account file, no debugger, no identity, no side panel', () => {
     const firefox = firefoxManifest(MANIFEST);
     assert.equal(firefox.permissions.includes('debugger'), false);
+    assert.equal(firefox.permissions.includes('identity'), false);
+    const accountFiles = readdirSync(path.join(ROOT, 'extension/account'), { recursive: true }).map((file) => `account/${file}`);
+    assert.deepEqual(['account', ...accountFiles].filter((file) => isFirefoxFile(file, MANIFEST)), []);
     assert.equal('side_panel' in firefox, false);
     assert.equal(JSON.stringify(firefox).includes('walks/'), false);
     const walkFiles = readdirSync(path.join(ROOT, 'extension/walks'), { recursive: true }).map((file) => `walks/${file}`);

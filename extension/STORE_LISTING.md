@@ -101,9 +101,10 @@ Detects and highlights UI anti-patterns (AI-generated design tells and general q
 - **tabGroups**: Puts the walk's tab in a named group of its own so the person can tell it apart from their own tabs.
 - **sidePanel**: Shows the walk as it happens, with Pause, Take over and Stop.
 - **downloads**: Cancels and removes any download the walked tab starts; a walk never saves files.
+- **identity**: Opens the Impeccable account's own sign-in window when the person presses Sign in, and receives the one-time code it ends with. Nothing is read from the person's Google or browser profile.
 
 ## Remote code
 The extension's own code, including the rule engine (WebAssembly), ships inside the package. During a walk, Impeccable's server may send short page scripts that run in the walked tab only (for example to read what is on the page); nothing from the network runs in the extension itself.
 
 ## Data usage
-Scans run locally; no page content, findings, or identifiers leave the browser. During a walk the person started, what the server asks for of the walked tab (screenshots, page content and its address) is sent to Impeccable's server to run the walk and show its results to that person; nothing from any other tab is read or sent. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.
+Scans run locally; no page content, findings, or identifiers leave the browser. During a walk the person started, what the server asks for of the walked tab (screenshots, page content and its address) is sent to Impeccable's server to run the walk and show its results to that person; nothing from any other tab is read or sent. While a walk is paused, no screenshot is taken and nothing of the walked tab is sent. A person who signs the extension in to their Impeccable account sends their sign-in to Impeccable's server, which answers with their email and personas. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.

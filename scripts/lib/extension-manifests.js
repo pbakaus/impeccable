@@ -21,15 +21,20 @@ export function storeManifest(source) {
 
 /** The detector's worker: Chrome's module worker imports it, and Firefox loads it alone. */
 export const DETECTOR_WORKER = 'background/service-worker.js';
-/** Walks are Chrome's alone: Firefox cannot drive a tab through the debugger. */
+/**
+ * Walks are Chrome's alone: Firefox cannot drive a tab through the debugger. So is signing in to an account, which
+ * goes through `chrome.identity` and is loaded by the same module worker.
+ */
 const WALKS = 'walks';
-export const CHROME_ONLY_PERMISSIONS = ['offscreen', 'debugger', 'tabs', 'tabGroups', 'sidePanel', 'downloads'];
+const ACCOUNT = 'account';
+export const CHROME_ONLY_PERMISSIONS = ['offscreen', 'debugger', 'tabs', 'tabGroups', 'sidePanel', 'downloads', 'identity'];
 
-const isWalkFile = (file) => file === WALKS || file.startsWith(`${WALKS}/`);
+const under = (folder, file) => file === folder || file.startsWith(`${folder}/`);
+const isWalkFile = (file) => under(WALKS, file);
 
-/** Whether a path in extension/ goes into the Firefox build: not walks, nor the module worker that loads them. */
+/** Whether a path in extension/ goes into the Firefox build: not walks or the account, nor the module worker that loads them. */
 export function isFirefoxFile(rel, source) {
-  return !isWalkFile(rel) && rel !== source.background?.service_worker;
+  return !isWalkFile(rel) && !under(ACCOUNT, rel) && rel !== source.background?.service_worker;
 }
 
 /**
