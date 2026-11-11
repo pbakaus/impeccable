@@ -1,8 +1,11 @@
 // The extension's one signed-in session, kept by the background worker alone.
 //
-//   - The refresh token outlives a browser restart, so it is kept on disk: in this extension's own IndexedDB, which
-//     no page and no content script can open, and which only the worker writes. Never in chrome.storage, which
-//     content scripts can read.
+//   - The refresh token outlives a browser restart, so it is kept on disk: in this extension's own IndexedDB. No
+//     content script can open it (a content script has its page's storage, never the extension's), and no website.
+//     Every page of this extension could (the popup, the side panel, the DevTools panel, the offscreen document): the
+//     boundary is this extension's own code, and only this file opens it. chrome.storage.local could be held to the
+//     same pages with `setAccessLevel('TRUSTED_CONTEXTS')`, but content scripts can read it until that call has run;
+//     IndexedDB needs no such call.
 //   - The access token lives in the worker's memory only, and is fetched again when it runs out or the worker starts.
 //   - One refresh at a time for each server: the server rotates refresh tokens on every use.
 //   - What it is doing is kept on disk as it does it (see STATES), so a worker Chrome ends at any moment starts again

@@ -1,5 +1,6 @@
 // The worker's copy of the walk's view (view.js), kept where the side panel can read it: chrome.storage.session,
-// which lives in memory, never on disk, and which no page or content script can read.
+// which lives in memory, never on disk, and which Chrome holds to this extension's own pages: no website and no
+// content script can read it.
 import { ON_TAB, emptyView, reduce } from './view.js';
 
 let view = emptyView(false);
