@@ -447,6 +447,24 @@ impl Repo {
 /// One short git question, given at most [`GIT_DEADLINE`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
+    git_with_timeout(dir, args, GIT_DEADLINE)
+}
+
+/// Critiques use the same repo identity, including for native projects and subdirectories.
+pub(crate) fn critique_repo(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    let short = Duration::from_millis(150);
+    let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
+    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
+        .and_then(|r| normalize_remote(&r));
+    let label = remote.as_deref().and_then(repo_label);
+    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    Some((hex(&Sha256::digest(identity.as_bytes())), label))
+}
+
+fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -455,7 +473,7 @@ fn git(dir: &str, args: &[&str]) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    let until = std::time::Instant::now() + GIT_DEADLINE;
+    let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -686,12 +704,14 @@ fn label(name: &str) -> Option<String> {
     let l = name.trim();
     let format = |c: char| {
         matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}' | '\u{180E}'
-            | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+            | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{110BD}' | '\u{110CD}' | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l
+        && !name
             .chars()
             .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
@@ -884,6 +904,8 @@ mod tests {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
         assert_eq!(label("repo\\secret"), None);
+        assert_eq!(label("\tname"), None);
+        assert_eq!(label("a\u{E0001}b"), None);
         assert_eq!(label("a\u{200B}b"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".

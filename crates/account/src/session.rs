@@ -345,3 +345,102 @@ mod upload_refresh_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod upload_budget_tests {
+    #[test]
+    fn a_stalled_credential_backend_does_not_hold_the_caller() {
+        let start = std::time::Instant::now();
+        let result = super::read_within(std::time::Duration::from_millis(20), || {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            7
+        });
+        assert!(start.elapsed() < std::time::Duration::from_millis(500));
+        assert!(result.is_none());
+    }
+}
+
+/// Only renewal runs independently. No body, upload request, or sync admission
+/// is handed to this process. Once rotation starts it keeps the ordinary client
+/// timeout and persists under the lifecycle lock even if the parent has exited.
+pub(crate) fn renew_for_upload(
+    io: &impeccable_common::Io,
+    account: &Account,
+    started: std::time::Instant,
+    verb: &str,
+) -> Option<Session> {
+    use std::process::{Command, Stdio};
+    let mut command = Command::new(std::env::current_exe().ok()?);
+    command
+        .arg(verb)
+        .env_clear()
+        .envs(&io.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    impeccable_common::proc::detach(&mut command);
+    #[cfg(windows)]
+    prevent_refresh_stdio_inheritance()?;
+    let mut child = command.spawn().ok()?;
+    loop {
+        if child.try_wait().ok()?.is_some() {
+            let left = std::time::Duration::from_secs(2).checked_sub(started.elapsed())?;
+            return Session::load_for_upload(account, left);
+        }
+        if started.elapsed() >= std::time::Duration::from_secs(2) {
+            // Reap when possible, but never kill a rotation in flight.
+            let _ = std::thread::Builder::new().spawn(move || {
+                let _ = child.wait();
+            });
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// Hidden renewal-only verb. A busy lifecycle lock skips renewal immediately.
+pub(crate) fn run_upload_refresh(args: &[String], io: &mut impeccable_common::Io) -> i32 {
+    if !args.is_empty() {
+        return 1;
+    }
+    let Ok(account) = Account::from_env(&io.env) else {
+        return 0;
+    };
+    let Some(mut session) = Session::load_for_upload(&account, std::time::Duration::from_secs(2))
+    else {
+        return 0;
+    };
+    let _ = session.access_token_within(std::time::Duration::ZERO);
+    0
+}
+
+/// A detached Windows child can inherit the CLI's original capture-pipe
+/// handles even with its own stdio redirected to NUL. That keeps a harness's
+/// output() waiting for EOF until renewal ends. Clearing only inheritance
+/// leaves the parent's streams usable and keeps renewal independent of them.
+#[cfg(windows)]
+fn prevent_refresh_stdio_inheritance() -> Option<()> {
+    use std::ffi::c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(kind: u32) -> *mut c_void;
+        fn GetFileType(handle: *mut c_void) -> u32;
+        fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
+    }
+    for kind in [-10i32, -11, -12] {
+        // SAFETY: these are the three documented standard-handle selectors.
+        // We change no ownership and clear only HANDLE_FLAG_INHERIT.
+        unsafe {
+            let handle = GetStdHandle(kind as u32);
+            // Only capture pipes need EOF isolation; console handles are left alone.
+            if !handle.is_null()
+                && handle as isize != -1
+                && GetFileType(handle) == 3
+                && SetHandleInformation(handle, 1, 0) == 0
+            {
+                return None;
+            }
+        }
+    }
+    Some(())
+}

@@ -76,6 +76,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
+        "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
         "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
@@ -90,7 +92,16 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
         "surface-brief" => impeccable_context::run_surface_brief(rest, io),
-        "critique-storage" => impeccable_context::run_critique_storage(rest, io),
+        "critique-storage" => {
+            let mut saved = None;
+            let code = impeccable_context::critique_storage::run_with_saved(rest, io, &mut |s| {
+                saved = Some(s)
+            });
+            if let Some(snapshot) = saved {
+                impeccable_account::critiques::after_save(io, &snapshot);
+            }
+            code
+        }
         "audit-storage" => impeccable_context::run_audit_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
@@ -275,6 +286,8 @@ const KNOWN_VERBS: &[&str] = &[
     "setup",
     "setup-report",
     "health-design-refresh",
+    "critiques",
+    "critiques-refresh",
     "pro-refresh",
     "agents",
     "loop",

@@ -4,6 +4,7 @@
 //! whole contract. Tokens are never printed or logged.
 
 pub mod config;
+pub mod critiques;
 mod design_read;
 pub mod health;
 pub mod http;
@@ -81,9 +82,12 @@ pub fn login(
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         let state = State {
             foundations: tokens.foundations,
+            // Omitted scope retains the requested OAuth grant, but critique
+            // contents require the explicit consent reported by its token answer.
             scopes: tokens.scopes.unwrap_or_else(|| {
                 oauth::scopes(&meta)
                     .split_whitespace()
+                    .filter(|s| *s != oauth::CRITIQUES_SCOPE)
                     .map(str::to_string)
                     .collect()
             }),

@@ -7,7 +7,7 @@ use support::fake::{browser, Fake};
 
 #[test]
 fn every_offered_scope_combination_survives_refresh() {
-    for mask in 0..8 {
+    for mask in 0..32 {
         let fake = Fake::start();
         let mut expected = vec!["account:read", "rules:read"];
         {
@@ -15,10 +15,14 @@ fn every_offered_scope_combination_survives_refresh() {
             k.health = mask & 1 != 0;
             k.setup = mask & 2 != 0;
             k.foundations = mask & 4 != 0;
+            k.design = mask & 8 != 0;
+            k.critiques = mask & 16 != 0;
             for (offered, scope) in [
                 (k.health, "health:write"),
                 (k.setup, "setup:write"),
                 (k.foundations, "foundations:write"),
+                (k.design, "design:write"),
+                (k.critiques, "critiques:write"),
             ] {
                 if offered {
                     expected.push(scope);
@@ -39,11 +43,18 @@ fn every_offered_scope_combination_survives_refresh() {
             k.health = true;
             k.setup = true;
             k.foundations = true;
+            k.design = true;
+            k.critiques = true;
         }
         let token = session.access_token().unwrap();
         for (bit, path, body) in [
             (1, "/cli/v1/health/forget", json!({})),
             (2, "/cli/v1/setup/forget", json!({})),
+            (16, "/cli/v1/critiques/forget", json!({})),
+            (8, "/cli/v1/design", json!({
+                "version": 1, "uploadId": "0".repeat(36), "repoKey": "0".repeat(64),
+                "changedAt": "2026-11-10T00:00:00.000Z", "text": "Design", "sidecar": null,
+            })),
             (
                 4,
                 "/cli/v1/foundations",

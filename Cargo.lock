@@ -649,6 +649,7 @@ dependencies = [
  "impeccable-common",
  "impeccable-comp",
  "impeccable-core",
+ "libc",
  "once_cell",
  "regex",
  "rustls-native-certs",

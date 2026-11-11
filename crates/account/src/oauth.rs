@@ -31,6 +31,7 @@ pub struct Metadata {
     pub setup: bool,
     pub foundations: bool,
     pub design: bool,
+    pub critiques: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -83,10 +84,17 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == DESIGN_SCOPE)),
+            critiques: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == CRITIQUES_SCOPE)),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
 }
+
+/// Uploading saved critique reports (`crate::critiques`).
+pub const CRITIQUES_SCOPE: &str = "critiques:write";
 
 /// Uploading design health results (`crate::health`).
 pub const HEALTH_SCOPE: &str = "health:write";
@@ -103,6 +111,7 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.setup, "setup:write"),
         (meta.foundations, FOUNDATIONS_SCOPE),
         (meta.design, DESIGN_SCOPE),
+        (meta.critiques, CRITIQUES_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -443,7 +452,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..16 {
+        for mask in 0..32 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -452,6 +461,7 @@ mod scope_tests {
                 setup: mask & 2 != 0,
                 foundations: mask & 4 != 0,
                 design: mask & 8 != 0,
+                critiques: mask & 16 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -461,6 +471,7 @@ mod scope_tests {
                 (2, "setup:write"),
                 (4, FOUNDATIONS_SCOPE),
                 (8, DESIGN_SCOPE),
+                (16, CRITIQUES_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }

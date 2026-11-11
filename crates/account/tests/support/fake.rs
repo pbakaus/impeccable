@@ -27,6 +27,8 @@ pub struct Knobs {
     pub foundations_denied: bool,
     pub design: bool,
     pub design_denied: bool,
+    pub critiques: bool,
+    pub critiques_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -62,6 +64,7 @@ pub struct Record {
     /// Each health upload that passed the service's checks.
     pub scans: Vec<serde_json::Value>,
     pub foundations: Vec<serde_json::Value>,
+    pub critiques: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
@@ -310,6 +313,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.setup { scopes.push("setup:write"); }
                         if k.foundations { scopes.push("foundations:write"); }
                         if k.design { scopes.push("design:write"); }
+                        if k.critiques { scopes.push("critiques:write"); }
                         scopes
                     }),
                 }),
@@ -319,14 +323,18 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 let scope = q.get("scope").cloned().unwrap_or_default();
                 record.lock().unwrap().scopes.push(scope.clone());
                 // The real service refuses a scope it doesn't list.
-                let scope_ok = scope.split_whitespace().all(|s| match s {
-                    "account:read" | "rules:read" => true,
-                    "health:write" => knobs.lock().unwrap().health,
-                    "setup:write" => knobs.lock().unwrap().setup,
-                    "foundations:write" => knobs.lock().unwrap().foundations,
-                    "design:write" => knobs.lock().unwrap().design,
-                    _ => false,
-                });
+                let scope_ok = {
+                    let k = knobs.lock().unwrap();
+                    scope.split_whitespace().all(|s| match s {
+                        "account:read" | "rules:read" => true,
+                        "health:write" => k.health,
+                        "critiques:write" => k.critiques,
+                        "setup:write" => k.setup,
+                        "foundations:write" => k.foundations,
+                        "design:write" => k.design,
+                        _ => false,
+                    })
+                };
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
@@ -353,6 +361,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                                     "setup:write" => !k.setup_denied,
                                     "foundations:write" => !k.foundations_denied,
                                     "design:write" => !k.design_denied,
+                                    "critiques:write" => !k.critiques_denied,
                                     _ => true,
                                 })
                                 .collect::<Vec<_>>()
@@ -528,6 +537,71 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                             200,
                             serde_json::json!({"outcome":"recorded", "masked":false}),
                         )
+                    }
+                }
+            }
+            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget") => {
+                let k = knobs.lock().unwrap();
+                if !k.critiques {
+                    (404, vec![], vec![])
+                } else if !bearer
+                    .as_ref()
+                    .is_some_and(|t| record.lock().unwrap().access.contains(t))
+                {
+                    (401, vec![], vec![])
+                } else if k.critiques_denied
+                    || !record
+                        .lock()
+                        .unwrap()
+                        .has_scope(bearer.as_deref(), "critiques:write")
+                {
+                    (403, vec![], vec![])
+                } else if path.ends_with("/forget") {
+                    json(200, serde_json::json!({"forgot": 1}))
+                } else {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let allowed = [
+                        "version",
+                        "critiqueId",
+                        "createdAt",
+                        "target",
+                        "repoKey",
+                        "label",
+                        "score",
+                        "na",
+                        "heuristics",
+                        "counts",
+                        "body",
+                    ];
+                    assert!(v
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|k| allowed.contains(&k.as_str())));
+                    assert_eq!(v["version"], 1);
+                    let na = v["na"].as_array().unwrap();
+                    let max = v["score"]["max"].as_u64().unwrap();
+                    assert_eq!(max, 4 * (10 - na.len() as u64));
+                    assert!(v["score"]["total"].as_u64().unwrap() <= max);
+                    for k in ["p0", "p1"] {
+                        assert!(v["counts"][k].as_u64().unwrap() <= 100);
+                    }
+                    let text = v["body"].as_str().unwrap();
+                    assert!(!text.trim().is_empty() && text.len() <= 65536 && !text.contains('\0'));
+                    let id = v["critiqueId"].as_str().unwrap();
+                    assert_eq!(
+                        id.split('-').map(str::len).collect::<Vec<_>>(),
+                        [8, 4, 4, 4, 12]
+                    );
+                    if let Err(field) = parse_critique_label(&v) {
+                        record.lock().unwrap().refused.push((field.into(), v));
+                        json(
+                            400,
+                            serde_json::json!({"error": "invalid_request", "field": field}),
+                        )
+                    } else {
+                        record.lock().unwrap().critiques.push(v);
+                        json(200, serde_json::json!({"outcome": "recorded"}))
                     }
                 }
             }
@@ -773,6 +847,23 @@ impl Fake {
             serde_json::json!({ "keys": keys }).to_string(),
         );
     }
+}
+
+fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
+    if let Some(key) = body.get("repoKey").filter(|v| !v.is_null()) {
+        if !key.as_str().is_some_and(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        }) {
+            return Err("repoKey");
+        }
+    }
+    if parse_label(body.get("label"))?.is_some() && body.get("repoKey").is_none_or(|v| v.is_null())
+    {
+        return Err("label");
+    }
+    Ok(())
 }
 
 /// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),

@@ -90,7 +90,9 @@ pub(super) fn after_scan(io: &Io, scan: &Scan) {
     // State and token came from one locked, generation-checked snapshot.
     let login = session.state.login;
     let session = if session.existing_access_token().is_none() {
-        let Some(fresh) = renew_for_upload(io, &account, started) else {
+        let Some(fresh) =
+            crate::session::renew_for_upload(io, &account, started, "health-design-refresh")
+        else {
             return;
         };
         fresh
@@ -204,48 +206,9 @@ fn enabled_generation(env: &std::collections::HashMap<String, String>, generatio
     })
 }
 
-/// Renewal alone runs independently, never a document or upload request.
-/// A rotation keeps the ordinary timeout and persists under the lifecycle lock
-/// even when detect exhausts its budget. It must never be killed mid-rotation.
-fn renew_for_upload(io: &Io, account: &Account, started: std::time::Instant) -> Option<Session> {
-    use std::process::{Command, Stdio};
-    let mut command = Command::new(std::env::current_exe().ok()?);
-    command
-        .arg("health-design-refresh")
-        .env_clear()
-        .envs(&io.env)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    impeccable_common::proc::detach(&mut command);
-    let mut child = command.spawn().ok()?;
-    loop {
-        if child.try_wait().ok()?.is_some() {
-            return Session::load_for_upload(account, remaining(started)?);
-        }
-        if remaining(started).is_none() {
-            let _ = std::thread::Builder::new().spawn(move || {
-                let _ = child.wait();
-            });
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-}
-
-/// Hidden renewal-only verb, matching the critique-upload renewal shape.
+/// Hidden renewal-only verb, shared with critique uploads.
 pub(super) fn run_refresh(args: &[String], io: &mut Io) -> i32 {
-    if !args.is_empty() {
-        return 1;
-    }
-    let Ok(account) = Account::from_env(&io.env) else {
-        return 0;
-    };
-    let Some(mut session) = Session::load_for_upload(&account, UPLOAD_BUDGET) else {
-        return 0;
-    };
-    let _ = session.access_token_within(Duration::ZERO);
-    0
+    crate::session::run_upload_refresh(args, io)
 }
 
 fn short(v: &Value) -> bool {
