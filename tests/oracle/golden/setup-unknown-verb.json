@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable setup [status|on|off|forget]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

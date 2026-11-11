@@ -2213,3 +2213,39 @@ Existing pins cannot be overwritten with a different digest.
 **A new Loop version needs an engine release before `loop update` can see it.**
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
+
+## Setup status
+
+`impeccable setup [status|on|off|forget]` controls setup reports independently
+of design health. `status` (the default), `on`, and `off` exit 0 after reading
+or saving the local choice; a failed save exits 1. `forget` turns sync off
+first, then posts `{}` to `/cli/v1/setup/forget`. It exits 0 only after the
+service confirms deletion, otherwise 1 with sync still off.
+
+Sign-in requests `setup:write` only when advertised in `scopes_supported`.
+Only a token response granting that scope enables reports. After sign-in,
+and on normal context, detect, doctor, whoami, agents, skills, install,
+update, or check commands, a detached worker reports at most once per day
+per sign-in and service. Hooks and internal verbs never schedule uploads.
+CI, telemetry opt-outs, and `setup off` suppress them. Unreadable local state
+suppresses uploads. Reporting prints nothing, including with `--json`,
+`--quiet`, and `--github`, and never changes a command's exit code or waits
+for the network. The worker makes one upload with a five-second timeout;
+404 and all other failures are silent and wait until the next daily attempt.
+The daily attempt is claimed before inventory collection, including failed
+probes. Inventory has a five-second deadline that terminates its process
+group or tree, including MCP probes. Controls save their choice independently
+of network work and cancel pending claims. Forget turns sync off before
+requesting deletion; the service's forget fence rejects older reports still
+in flight. A claim cannot use a replacement sign-in's token.
+
+Reports contain only payload v1 fields accepted by SETUP_STATUS: an opaque
+random machine key (a persisted SHA-256 digest of random bytes), a
+report UUID, time, OS, release versions, approved harness skill versions,
+approved installation owners and hook events, instruction presence, and
+MCP, resource and transaction counts. Paths, matchers, commands, server
+names, and unknown owner names are excluded. Unknown installations are
+counted. Local choice, machine key and daily attempts live in
+`$IMPECCABLE_HOME/setup.json`; scope consent is bound to the saved sign-in.
+The hidden `setup-report` worker is an implementation entrypoint and prints
+nothing.

@@ -92,6 +92,14 @@ impl Session {
         Ok(self.secret.access_token.clone())
     }
 
+    /// A token for a caller already holding the lifecycle lock.
+    pub fn access_token_locked(&mut self, lock: &Lock) -> Result<String, SessionError> {
+        if self.secret.access_expires_at <= now() + SKEW_SECS {
+            self.refresh_holding(lock)?;
+        }
+        Ok(self.secret.access_token.clone())
+    }
+
     /// Rotate the tokens under the lock (see the module note).
     pub fn refresh(&mut self) -> Result<(), SessionError> {
         let lock = self.store.lock().map_err(SessionError::Local)?;

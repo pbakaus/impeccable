@@ -28,6 +28,7 @@ pub struct Metadata {
     /// only while design health is switched on there. Asking for a scope it
     /// doesn't list fails the sign-in with `invalid_scope`.
     pub health: bool,
+    pub setup: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -67,6 +68,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
             token_endpoint,
             revocation_endpoint,
             health,
+            setup: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == "setup:write")),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -78,11 +83,14 @@ pub const HEALTH_SCOPE: &str = "health:write";
 /// What sign-in asks for: the CLI's scopes, plus `health:write` where the
 /// service offers it.
 fn scopes(meta: &Metadata) -> String {
+    let mut s = SCOPES.to_string();
     if meta.health {
-        format!("{SCOPES} {HEALTH_SCOPE}")
-    } else {
-        SCOPES.to_string()
+        s.push_str(" health:write");
     }
+    if meta.setup {
+        s.push_str(" setup:write");
+    }
+    s
 }
 
 pub fn random_b64(len: usize) -> String {
@@ -316,6 +324,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub struct Tokens {
+    pub setup: bool,
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: u64,
@@ -340,6 +349,9 @@ fn tokens(v: serde_json::Value) -> Result<Tokens, ApiError> {
         v.get("expires_in").and_then(|e| e.as_u64()),
     ) {
         (Some(access_token), Some(refresh_token), Some(expires_in)) if bearer => Ok(Tokens {
+            setup: v["scope"]
+                .as_str()
+                .is_some_and(|s| s.split_whitespace().any(|s| s == "setup:write")),
             access_token,
             refresh_token,
             expires_in,

@@ -10,6 +10,7 @@ pub mod oauth;
 pub mod plans;
 pub mod pro;
 pub mod session;
+pub mod setup;
 pub mod store;
 
 use config::Account;
@@ -95,6 +96,7 @@ pub fn login(
             access_expires_at: session::now() + tokens.expires_in,
         };
         store.save(&lock, &state, &secret)?;
+        setup::grant(&account, generation, tokens.setup);
         // Nothing Pro from an earlier sign-in carries over to this one. Only
         // once the new sign-in is saved: a failed save leaves the previous
         // sign-in current, with its Pro state intact. Still under the lock.

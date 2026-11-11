@@ -18,3 +18,11 @@ pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 mod loop_install;
+
+mod setup_report;
+
+/// Schedule the setup worker after an open binary's Pro scan dispatch.
+#[doc(hidden)]
+pub fn schedule_setup_report(io: &impeccable_common::Io) {
+    setup_report::schedule(io);
+}

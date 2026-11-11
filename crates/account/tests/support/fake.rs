@@ -21,6 +21,8 @@ pub struct Knobs {
     /// Design health switched on: `scopes_supported` lists `health:write`
     /// and the two `/cli/v1/health` routes answer (404 otherwise).
     pub health: bool,
+    pub setup: bool,
+    pub setup_denied: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -58,6 +60,7 @@ pub struct Record {
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
+    pub setups: Vec<serde_json::Value>,
     codes: HashMap<String, (String, String)>,
     live_refresh: HashSet<String>,
     spent_refresh: HashSet<String>,
@@ -182,7 +185,10 @@ impl Fake {
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
             // Windows allows the file backend only inside the user profile.
-            ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
+            (
+                "USERPROFILE".to_string(),
+                home.to_string_lossy().into_owned(),
+            ),
         ])
     }
 }
@@ -283,11 +289,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     "revocation_endpoint": format!("{issuer}/oauth/revoke"),
                     "code_challenge_methods_supported": ["S256"],
                     "authorization_response_iss_parameter_supported": true,
-                    "scopes_supported": if knobs.lock().unwrap().health {
-                        serde_json::json!(["account:read", "rules:read", "health:write"])
-                    } else {
-                        serde_json::json!(["account:read", "rules:read"])
-                    },
+                    "scopes_supported": ({
+                        let k = knobs.lock().unwrap();
+                        let mut scopes = vec!["account:read", "rules:read"];
+                        if k.health { scopes.push("health:write"); }
+                        if k.setup { scopes.push("setup:write"); }
+                        scopes
+                    }),
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -295,9 +303,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                 let scope = q.get("scope").cloned().unwrap_or_default();
                 record.lock().unwrap().scopes.push(scope.clone());
                 // The real service refuses a scope it doesn't list.
-                let scope_ok = scope == "account:read rules:read"
-                    || (scope == "account:read rules:read health:write"
-                        && knobs.lock().unwrap().health);
+                let scope_ok = scope.split_whitespace().all(|s| match s {
+                    "account:read" | "rules:read" => true,
+                    "health:write" => knobs.lock().unwrap().health,
+                    "setup:write" => knobs.lock().unwrap().setup,
+                    _ => false,
+                });
                 let ok = q.get("client_id").map(String::as_str) == Some("impeccable-cli")
                     && q.get("resource") == Some(&format!("{issuer}/cli"))
                     && q.get("code_challenge_method").map(String::as_str) == Some("S256")
@@ -352,6 +363,22 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     )
                 }
             }
+            ("POST", "/cli/v1/setup/reports" | "/cli/v1/setup/forget") => {
+                let k = knobs.lock().unwrap();
+                if !k.setup {
+                    (404, vec![], vec![])
+                } else if !bearer.is_some_and(|t| record.lock().unwrap().access.contains(&t)) {
+                    (401, vec![], vec![])
+                } else if k.setup_denied {
+                    (403, vec![], vec![])
+                } else {
+                    let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    if path.ends_with("reports") {
+                        record.lock().unwrap().setups.push(body);
+                    }
+                    json(200, serde_json::json!({"forgot":true,"outcome":"recorded"}))
+                }
+            }
             ("POST", "/cli/v1/health/scans" | "/cli/v1/health/forget") => {
                 let k = knobs.lock().unwrap();
                 let authorized = bearer
@@ -379,11 +406,17 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     match parse_scan(&v) {
                         Ok(()) => {
                             record.lock().unwrap().scans.push(v);
-                            json(200, serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }))
+                            json(
+                                200,
+                                serde_json::json!({ "outcome": "recorded", "new": null, "fixed": null }),
+                            )
                         }
                         Err(field) => {
                             record.lock().unwrap().refused.push((field.to_string(), v));
-                            json(400, serde_json::json!({ "error": "invalid_request", "field": field }))
+                            json(
+                                400,
+                                serde_json::json!({ "error": "invalid_request", "field": field }),
+                            )
                         }
                     }
                 }
@@ -473,7 +506,7 @@ fn token(
     r.live_refresh.insert(refresh.clone());
     json(
         200,
-        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": "account:read rules:read" }),
+        serde_json::json!({ "access_token": access, "token_type": "Bearer", "expires_in": ttl, "refresh_token": refresh, "scope": if { let k = knobs.lock().unwrap(); k.setup && !k.setup_denied } { "account:read rules:read setup:write" } else { "account:read rules:read" } }),
     )
 }
 
