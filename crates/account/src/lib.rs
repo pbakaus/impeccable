@@ -42,6 +42,16 @@ pub fn login(
     open: &mut dyn FnMut(&str),
     timeout: Duration,
 ) -> Result<LoggedIn, String> {
+    login_requested(env, open, timeout, None)
+}
+
+/// The same lifecycle as ordinary login, with an explicit scope request for publishing.
+fn login_requested(
+    env: &HashMap<String, String>,
+    open: &mut dyn FnMut(&str),
+    timeout: Duration,
+    requested: Option<&[String]>,
+) -> Result<LoggedIn, String> {
     let account = Account::from_env(env)?;
     let backend = store::chosen_backend(env)?;
     let client = http::Client::new(&account);
@@ -55,7 +65,14 @@ pub fn login(
         store.state().map(|s| s.generation).unwrap_or(0)
     };
     let meta = oauth::metadata(&client, &account)?;
-    let pending = oauth::start(&account, &meta)?;
+    let pending = if let Some(scopes) = requested {
+        if !meta.sharing {
+            return Err("sharing isn't available yet".into());
+        }
+        oauth::start_with_scopes(&account, &meta, &scopes.join(" "))?
+    } else {
+        oauth::start(&account, &meta)?
+    };
     open(&pending.url);
     let code = pending
         .wait(&account.issuer, timeout)

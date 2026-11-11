@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable health [status|on|off|forget|share|unshare]\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

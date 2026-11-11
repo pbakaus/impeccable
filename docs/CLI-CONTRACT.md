@@ -2427,3 +2427,60 @@ Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only
 repos and invalid names omit `label`. No label is sent without a repo key.
+
+## `health share|unshare`
+
+`impeccable health share [--with-rules] [--no-label] [--no-trend]` publishes
+this git work tree's current branch report. It reuses design health's repo
+and stream identity recipes, including when invoked from a subdirectory.
+`impeccable health unshare` stops that branch's publication. These explicit
+interactive operations print to stdout and use the ordinary account client's
+60-second request deadline, including its normal refresh/retry lifecycle.
+They do not depend on automatic-upload settings, CI or telemetry opt-outs.
+
+Sharing requires a sign-in. Ordinary login never requests `health:share`.
+When the current grant lacks it, these commands reuse login with exactly
+its current scopes plus `health:share`, only if metadata advertises it.
+The authorization URL is printed and opened unless `IMPECCABLE_NO_BROWSER`
+is true. Login's timeout and credential lifecycle are unchanged. A declined
+scope sends no share request.
+
+`POST /cli/v1/health/share` sends `{repoKey, streamKey, publish}`; default
+`publish` is `{label:true, trend:true, rules:false}`. Flags change only those
+booleans; at least one must remain true. Label reveals the saved repo label,
+trend reveals counts within 30 UTC days, and rules reveals the latest day's
+per-rule counts. `POST /cli/v1/health/unshare` sends only `{repoKey, streamKey}`.
+On `{shared:true, token, published}`, a token prints the issuer's
+`/v1/health/shared?t=<token>` URL. A null token means an existing share was
+updated; the service cannot return the previous token. The CLI does not
+persist it. `{unshared:boolean}` is successful even when already unshared.
+
+Exit 0 on success or help, 1 on invalid arguments, missing sign-in, a non-git
+directory, consent failure or service failure. A bare route 404 or missing
+advertised scope reports unavailability; 404 `not_found` reports a missing
+saved branch report; 429 reports the sharing limit. Other errors (including
+400, 401 and 413) use the account client's sanitized error rendering.
+
+New output (line endings are `\n`; placeholders are substituted):
+
+```text
+Usage: impeccable health share [--with-rules] [--no-label] [--no-trend]
+       impeccable health unshare
+Design health: publish at least one of label, trend or rules.
+Design health: not signed in. Run `impeccable login`.
+Design health: run this in a git work tree.
+Design health: sharing isn't available yet.
+Design health: no saved report for this branch.
+Design health: sharing limit reached.
+Design health: sharing wasn't allowed.
+Design health: sharing updated. Use the existing link.
+Design health: unshared.
+Design health: invalid sharing response.
+Design health: sharing failed: {error}.
+Design health: {login-or-configuration-error}.
+{authorization-url}
+{issuer}/v1/health/shared?t={token}
+```
+
+The parent command's invalid-usage line is now
+`Usage: impeccable health [status|on|off|forget|share|unshare]` (stderr).
