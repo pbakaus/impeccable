@@ -36,14 +36,20 @@ fn mcp_url() -> &'static str {
     MCP_URL
 }
 
-fn init_mcp_url(_io: &Io) {
+/// In a `test-mcp-url` build, a set but unusable `IMPECCABLE_MCP_URL` is refused, never
+/// replaced by production: falling back would send a staging run's agents to production.
+fn init_mcp_url(_io: &Io) -> Result<()> {
     #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = _io
-        .env("IMPECCABLE_MCP_URL")
-        .filter(|u| u.starts_with("https://") && !u.contains(char::is_whitespace))
-    {
+    if let Some(url) = _io.env("IMPECCABLE_MCP_URL") {
+        let usable = url::Url::parse(url)
+            .ok()
+            .filter(|u| u.scheme() == "https" && u.host_str().is_some() && u.as_str() == url);
+        if usable.is_none() || url.contains(char::is_whitespace) {
+            return Err("IMPECCABLE_MCP_URL must be a plain https URL.".into());
+        }
         let _ = MCP_OVERRIDE.set(url.to_string());
     }
+    Ok(())
 }
 const MCP_NAME: &str = "impeccable";
 /// Why an existing entry of that name isn't the one connect would write.
@@ -90,7 +96,7 @@ struct Agent {
 
 /// `loop connect`.
 pub(crate) fn connect(io: &Io) -> Result<String> {
-    init_mcp_url(io);
+    init_mcp_url(io)?;
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     if !helper.is_file() {
@@ -266,7 +272,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
 /// today's environment), each on its own. Waking stops first; the hooks go; MCP servers
 /// stay, with the exact command to remove each.
 pub(crate) fn disconnect(io: &Io) -> Result<String> {
-    init_mcp_url(io);
+    init_mcp_url(io)?;
     let home = home(io)?;
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
@@ -902,10 +908,25 @@ mod mcp_url_tests {
         let mut env = std::collections::HashMap::new();
         env.insert("IMPECCABLE_MCP_URL".to_string(), "https://evil.example/mcp".to_string());
         let (io, _) = Io::captured("", std::env::temp_dir(), env);
-        init_mcp_url(&io);
+        assert!(init_mcp_url(&io).is_ok());
         #[cfg(not(feature = "test-mcp-url"))]
         assert_eq!(mcp_url(), "https://api.impeccable.style/mcp");
         #[cfg(feature = "test-mcp-url")]
         assert_eq!(mcp_url(), "https://evil.example/mcp");
+    }
+
+    #[test]
+    fn a_test_build_refuses_an_unusable_override_instead_of_using_production() {
+        // Catches (#1403 review): an empty, http:// or padded IMPECCABLE_MCP_URL silently
+        // registering production in a staging run.
+        for bad in ["", "http://staging.example/mcp", " https://staging.example/mcp", "https://staging.example/mcp "] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            #[cfg(feature = "test-mcp-url")]
+            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
+            #[cfg(not(feature = "test-mcp-url"))]
+            assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
+        }
     }
 }
