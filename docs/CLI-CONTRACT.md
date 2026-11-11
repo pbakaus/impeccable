@@ -2232,6 +2232,12 @@ suppresses uploads. Reporting prints nothing, including with `--json`,
 `--quiet`, and `--github`, and never changes a command's exit code or waits
 for the network. The worker makes one upload with a five-second timeout;
 404 and all other failures are silent and wait until the next daily attempt.
+The daily attempt is claimed before inventory collection, including failed
+probes. Inventory has a five-second deadline that terminates its process
+group or tree, including MCP probes. Controls save their choice independently
+of network work and cancel pending claims. Forget turns sync off before
+requesting deletion; the service's forget fence rejects older reports still
+in flight. A claim cannot use a replacement sign-in's token.
 
 Reports contain only payload v1 fields accepted by SETUP_STATUS: an opaque
 random machine key (a persisted SHA-256 digest of random bytes), a

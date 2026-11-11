@@ -35,7 +35,7 @@ fn save(io: &Io, v: &Value) -> Result<(), String> {
         v.to_string().as_bytes(),
     )
 }
-fn lock(io: &Io) -> Option<fs::File> {
+fn lock(io: &Io, wait: Duration) -> Option<fs::File> {
     let p = path(io)?.with_extension("lock");
     fs::create_dir_all(p.parent()?).ok()?;
     let f = fs::OpenOptions::new()
@@ -45,8 +45,16 @@ fn lock(io: &Io) -> Option<fs::File> {
         .truncate(false)
         .open(p)
         .ok()?;
-    f.try_lock().ok()?;
-    Some(f)
+    let end = std::time::Instant::now() + wait;
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Some(f),
+            Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < end => {
+                std::thread::sleep(Duration::from_millis(10))
+            }
+            Err(_) => return None,
+        }
+    }
 }
 fn marker(io: &Io) -> Option<(Account, String)> {
     let a = Account::from_env(&io.env).ok()?;
@@ -182,19 +190,31 @@ fn payload(inventory: &Value, cli: &str, skills: &Value, device: &str) -> Option
     (b.to_string().len() <= 16384).then_some(b)
 }
 
-pub fn report(io: &Io, inventory: &Value, cli: &str, skills: &Value) {
-    let Some(_lock) = lock(io) else {
-        return;
-    };
+/// A daily claim bound to one consented sign-in and one preference revision.
+/// Claim before collecting inventory, so failed or hung probes cannot fan out.
+pub struct Attempt {
+    account: Account,
+    marker: String,
+    login: u64,
+    epoch: u64,
+    device: String,
+}
+
+pub fn begin(io: &Io) -> Option<Attempt> {
     if !wanted(io) {
-        return;
+        return None;
     }
-    let Some((account, marker)) = marker(io) else {
-        return;
-    };
-    let Some(mut local) = read(io) else {
-        return;
-    };
+    let account = Account::from_env(&io.env).ok()?;
+    let store = Store::new(&account);
+    let _account_lock = store.lock_for(Duration::ZERO).ok()?;
+    let _local_lock = lock(io, Duration::ZERO)?;
+    if !wanted(io) {
+        return None;
+    }
+    let (_, marker) = marker(io)?;
+    let login = store.state()?.login;
+    let mut local = read(io)?;
+    let epoch = local["epoch"].as_u64().unwrap_or(0);
     let device = local["deviceKey"]
         .as_str()
         .filter(|s| {
@@ -209,28 +229,73 @@ pub fn report(io: &Io, inventory: &Value, cli: &str, skills: &Value) {
                 Sha256::digest(crate::oauth::random_b64(32).as_bytes())
             )
         });
-    let Some(body) = payload(inventory, cli, skills, &device) else {
-        return;
-    };
-    local["deviceKey"] = device.into();
+    local["deviceKey"] = device.clone().into();
     if !local["attempts"].is_object() {
         local["attempts"] = json!({});
     }
     local["attempts"][format!("{:x}", Sha256::digest(marker.as_bytes()))] = now().into();
-    if save(io, &local).is_err() {
-        return;
+    save(io, &local).ok()?;
+    Some(Attempt {
+        account,
+        marker,
+        login,
+        epoch,
+        device,
+    })
+}
+
+impl Attempt {
+    fn enabled(&self, io: &Io) -> bool {
+        read(io)
+            .is_some_and(|l| l["sync"] != false && l["epoch"].as_u64().unwrap_or(0) == self.epoch)
+            && !io.env.get("CI").is_some_and(|v| !v.is_empty())
+            && impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
+                .is_none()
     }
-    let Ok(mut session) = Session::load(&account) else {
-        return;
-    };
-    let Ok(token) = session.access_token_within(Duration::ZERO) else {
-        return;
-    };
-    let _ = Client::with_deadline(&account, Duration::from_secs(5)).post_json(
-        &format!("{}/cli/v1/setup/reports", account.issuer),
-        &token,
-        body,
-    );
+
+    pub fn report(self, io: &Io, inventory: &Value, cli: &str, skills: &Value) {
+        if !self.enabled(io) {
+            return;
+        }
+        let Some(body) = payload(inventory, cli, skills, &self.device) else {
+            return;
+        };
+        let store = Store::new(&self.account);
+        let Ok(account_lock) = store.lock_for(Duration::ZERO) else {
+            return;
+        };
+        // Bind credentials, scope and the daily key under the same lifecycle
+        // lock. A replacement sign-in must never lend its token to this claim.
+        let Ok(mut session) = Session::load(&self.account) else {
+            return;
+        };
+        if session.state.login != self.login || marker(io).is_none_or(|(_, m)| m != self.marker) {
+            return;
+        }
+        let Ok(token) = session.access_token_locked(&account_lock) else {
+            return;
+        };
+        // Keep the approved token immutable, but release the lifecycle lock
+        // before network I/O so the triggering command's account work cannot
+        // wait behind this best-effort upload. A new sign-in cannot lend us
+        // its credentials; the service rechecks this token's original grant.
+        drop(account_lock);
+        // Controls can save immediately even during a token refresh or POST.
+        if !self.enabled(io) || marker(io).is_none_or(|(_, m)| m != self.marker) {
+            return;
+        }
+        let _ = Client::with_deadline(&self.account, Duration::from_secs(5)).post_json(
+            &format!("{}/cli/v1/setup/reports", self.account.issuer),
+            &token,
+            body,
+        );
+    }
+}
+
+pub fn report(io: &Io, inventory: &Value, cli: &str, skills: &Value) {
+    if let Some(attempt) = begin(io) {
+        attempt.report(io, inventory, cli, skills);
+    }
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
@@ -247,16 +312,18 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         });
         return 0;
     }
-    let Some(_lock) = lock(io) else {
+    let Some(local_lock) = lock(io, Duration::from_secs(5)) else {
         io.err("Setup status: couldn't save the setting.\n");
         return 1;
     };
     let mut local = read(io).unwrap_or(json!({}));
     local["sync"] = (verb == "on").into();
+    local["epoch"] = local["epoch"].as_u64().unwrap_or(0).wrapping_add(1).into();
     if save(io, &local).is_err() {
         io.err("Setup status: couldn't save the setting.\n");
         return 1;
     }
+    drop(local_lock);
     if verb != "forget" {
         io.out(if verb == "on" {
             "Setup status: on.\n"
@@ -267,9 +334,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     let result = Account::from_env(&io.env).ok().and_then(|a| {
         let url = format!("{}/cli/v1/setup/forget", a.issuer);
+        let store = Store::new(&a);
+        let account_lock = store.lock().ok()?;
         Session::load(&a)
             .ok()?
-            .call(|c, t| c.post_json(&url, t, json!({})))
+            .call_locked(&account_lock, |c, t| c.post_json(&url, t, json!({})))
             .ok()
     });
     if result.is_some() {

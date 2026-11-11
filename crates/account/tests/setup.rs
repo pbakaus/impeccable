@@ -121,3 +121,77 @@ fn setup_respects_opt_outs_corrupt_state_and_daily_retry_after_404() {
         ]
     );
 }
+
+#[test]
+fn off_succeeds_while_a_report_is_waiting_for_the_service() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().setup = true;
+    let env = fake.env("setup-control-busy");
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    let gate = fake.hold("/cli/v1/setup/reports");
+    let upload = {
+        let env = env.clone();
+        std::thread::spawn(move || {
+            let (io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env);
+            setup::report(
+                &io,
+                &json!({"installations":[],"pendingTransactions":0}),
+                "4.8.1",
+                &json!({}),
+            );
+        })
+    };
+    fake.wait_for_hits("/cli/v1/setup/reports", 1);
+    let (mut io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env);
+    let start = std::time::Instant::now();
+    let result = setup::run(&["off".into()], &mut io);
+    gate.open();
+    upload.join().unwrap();
+    assert_eq!(result, 0, "off must save while the network is busy");
+    assert!(start.elapsed() < Duration::from_secs(2));
+    assert!(!setup::wanted(&io));
+}
+
+#[test]
+fn a_claim_precedes_inventory_and_never_borrows_a_replacement_sign_in() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().setup = true;
+    let env = fake.env("setup-bound-claim");
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    let (mut io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env.clone());
+    let old = setup::begin(&io).expect("claim before inventory");
+    assert!(
+        !setup::wanted(&io),
+        "even a hung inventory cannot spawn more workers"
+    );
+    assert!(setup::begin(&io).is_none());
+    fake.knobs.lock().unwrap().setup_denied = true;
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    old.report(
+        &io,
+        &json!({"installations":[],"pendingTransactions":0}),
+        "4.8.1",
+        &json!({}),
+    );
+    assert_eq!(
+        fake.hits("/cli/v1/setup/reports"),
+        0,
+        "no token from the declined sign-in"
+    );
+    fake.knobs.lock().unwrap().setup_denied = false;
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    let cancelled = setup::begin(&io).unwrap();
+    assert_eq!(setup::run(&["off".into()], &mut io), 0);
+    assert_eq!(setup::run(&["on".into()], &mut io), 0);
+    cancelled.report(
+        &io,
+        &json!({"installations":[],"pendingTransactions":0}),
+        "4.8.1",
+        &json!({}),
+    );
+    assert_eq!(
+        fake.hits("/cli/v1/setup/reports"),
+        0,
+        "an old claim stays cancelled after re-enabling"
+    );
+}
