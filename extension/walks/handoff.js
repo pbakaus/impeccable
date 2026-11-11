@@ -4,6 +4,7 @@
 // window message, an event) is ever read, and no other origin can hand a walk over.
 //
 // Pure: every field is checked here, strictly, and anything unknown is refused.
+import { BUILD } from '../shared/build.js';
 import { admit, webOrigin } from './guard.js';
 
 /** The block's version (the walk protocol's hand-off). */
@@ -38,10 +39,16 @@ const DEVICES = ['desktop', 'mobile', 'tablet'];
  */
 const MAX = { name: 120, role: 200, errand: 120, goal: 2000, check: 300 };
 
-/** The socket's origin for a page of ours, or null for any other page: `wss:` on the paired host, `ws:` on this machine at the page's own port. */
+/** Our staging hosts, which only a development build (shared/build.js) takes a walk from, as it does this machine's. */
+const STAGING = /^(app\.)?staging\./;
+
+/**
+ * The socket's origin for a page of ours, or null for any other page: `wss:` on the paired host, `ws:` on this machine
+ * at the page's own port. The store build knows the production hosts alone.
+ */
 function socketOrigin(page) {
-  if (page.protocol === 'https:' && page.port === '' && Object.hasOwn(SOCKET_HOST, page.hostname)) return `wss://${SOCKET_HOST[page.hostname]}`;
-  if (page.protocol === 'http:' && Object.hasOwn(LOCAL_SOCKET_HOST, page.hostname)) return `ws://${LOCAL_SOCKET_HOST[page.hostname]}${page.port ? `:${page.port}` : ''}`;
+  if (page.protocol === 'https:' && page.port === '' && Object.hasOwn(SOCKET_HOST, page.hostname) && (BUILD.devHosts || !STAGING.test(page.hostname))) return `wss://${SOCKET_HOST[page.hostname]}`;
+  if (BUILD.devHosts && page.protocol === 'http:' && Object.hasOwn(LOCAL_SOCKET_HOST, page.hostname)) return `ws://${LOCAL_SOCKET_HOST[page.hostname]}${page.port ? `:${page.port}` : ''}`;
   return null;
 }
 

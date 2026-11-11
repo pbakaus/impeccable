@@ -17,6 +17,7 @@
 // for its tab the hub's keep-alive is what reaches it, every 20 s, over the open socket. If the worker is ended
 // anyway, nothing of its own wakes it: the outing page's content script holds a port to it, sees the port drop, and
 // opens another, which starts the worker; it finds its ticket spent and asks the page for a fresh one.
+import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
 import { grant, openIn } from './driver.js';
 import { isOutingPage, readHandoff } from './handoff.js';
@@ -33,8 +34,11 @@ let hangUp = () => undefined;
 /** The worker's own connect, and a way to drop the socket it holds. */
 export function dial(dialer, drop) { connect = dialer; hangUp = drop; }
 
-/** A build with an `outing.json` beside the worker (the browser tests write one) walks without a hand-off. */
-let built;
+/**
+ * A development build with an `outing.json` beside the worker (the browser tests write one) walks without a
+ * hand-off. The store build never does.
+ */
+let built = BUILD.devHosts ? undefined : null;
 async function builtIn() {
   if (built === undefined) {
     try { built = await (await fetch(chrome.runtime.getURL('outing.json'))).json(); } catch { built = null; }

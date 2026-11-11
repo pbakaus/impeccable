@@ -55,12 +55,21 @@ describe('walk hand-off', () => {
     const read = readHandoff(JSON.stringify(block()), PAGE);
     assert.equal(read.ok, true);
     assert.equal(read.handoff.site, 'http://localhost:3000');
-    const local = readHandoff(
-      JSON.stringify(block({ socket: 'ws://localhost:8794/api/outings/o1/socket' })),
-      'http://app.localhost:8794/app/acme/outings/o1',
-    );
-    assert.equal(local.ok, true);
   });
+
+  // The store build takes a walk from our production pages alone; the build loaded unpacked, from staging and this machine too.
+  for (const [label, page, socket] of [
+    ['production', PAGE, block().socket],
+    ['staging', 'https://app.staging.impeccable.style/app/acme/outings/o1', 'wss://staging.impeccable.reviews/api/outings/o1/socket'],
+    ['this machine', 'http://app.localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket'],
+    ['this machine without the app host', 'http://localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket'],
+  ]) {
+    it(`takes a hand-off from ${label} in the build loaded unpacked${label === 'production' ? ' and the store build' : ', not the store build'}`, async () => {
+      const store = await import(pathToFileURL(path.join(STORE(), 'walks/handoff.js')).href);
+      const text = JSON.stringify(block({ socket }));
+      assert.deepEqual([readHandoff(text, page).ok, store.readHandoff(text, page).ok], [true, label === 'production']);
+    });
+  }
 
   for (const [label, page, over, why] of [
     ['a page that is not ours', 'https://example.com/app/acme/outings/o1', {}, 'origin'],
