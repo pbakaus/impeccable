@@ -38,9 +38,12 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
         sharing,
         json!({"label":label,"trend":trend,"rules":rules}),
     ) {
-        Ok(Some(url)) => io.out(&format!("{url}\n")),
-        Ok(None) if sharing => io.out("Design health: sharing updated. Use the existing link.\n"),
-        Ok(None) => io.out("Design health: unshared.\n"),
+        Ok(Outcome::Link(url)) => io.out(&format!("{url}\n")),
+        Ok(Outcome::Shared) => io.out("Design health: shared.\n"),
+        Ok(Outcome::Updated) => io.out(
+            "Design health: sharing settings updated. The link you got before still works.\n",
+        ),
+        Ok(Outcome::Unshared) => io.out("Design health: stopped sharing. The link no longer works.\n"),
         Err(message) => {
             io.out(&format!("Design health: {message}.\n"));
             return 1;
@@ -57,7 +60,7 @@ fn error(e: SessionError) -> String {
         SessionError::Api(ApiError::Status { status: 404, code })
             if code.as_deref() == Some("not_found") =>
         {
-            "no saved report for this branch".into()
+            "nothing to share yet. Run a full impeccable detect on this branch first".into()
         }
         SessionError::Api(ApiError::Status { status: 404, .. }) => {
             "sharing isn't available yet".into()
@@ -71,12 +74,12 @@ fn publish(
     io: &mut Io,
     sharing: bool,
     publish: serde_json::Value,
-) -> Result<Option<String>, String> {
+) -> Result<Outcome, String> {
     let account = Account::from_env(&io.env)?;
     let mut session = Session::load(&account).map_err(error)?;
     let root = git(&io.cwd.to_string_lossy(), &["rev-parse", "--show-toplevel"])
-        .ok_or("run this in a git work tree")?;
-    let repo = Repo::of(&root, &io.env).ok_or("run this in a git work tree")?;
+        .ok_or("run this inside a git repository")?;
+    let repo = Repo::of(&root, &io.env).ok_or("run this inside a git repository")?;
     // Refresh before checking scope: renewal can narrow a grant.
     session.access_token().map_err(error)?;
     if !session.state.scopes.iter().any(|s| s == oauth::SHARE_SCOPE) {
@@ -119,25 +122,59 @@ fn publish(
     if !sharing {
         return answer["unshared"]
             .as_bool()
-            .map(|_| None)
+            .map(|_| Outcome::Unshared)
             .ok_or_else(|| "invalid sharing response".into());
     }
     if answer["shared"] != true || answer["published"] != publish {
         return Err("invalid sharing response".into());
     }
     match &answer["token"] {
-        serde_json::Value::Null if answer.get("token").is_some() => Ok(None),
+        serde_json::Value::Null if answer.get("token").is_some() => Ok(Outcome::Updated),
         serde_json::Value::String(token)
             if token.len() == 43
                 && token
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') =>
         {
-            let mut url = url::Url::parse(&format!("{}/v1/health/shared", account.issuer))
-                .map_err(|_| "invalid sharing response")?;
-            url.query_pairs_mut().append_pair("t", token);
-            Ok(Some(url.into()))
+            // The service names the page (its `url`, when it has one), so the address
+            // stays the service's to move. The CLI never builds one itself.
+            match answer.get("url") {
+                None | Some(serde_json::Value::Null) => Ok(Outcome::Shared),
+                Some(serde_json::Value::String(u)) => page_url(&account.issuer, u, token)
+                    .map(Outcome::Link)
+                    .ok_or_else(|| "invalid sharing response".into()),
+                Some(_) => Err("invalid sharing response".into()),
+            }
         }
         _ => Err("invalid sharing response".into()),
     }
+}
+
+/// What `share` reports.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Outcome {
+    /// Shared, and the service named the page.
+    Link(String),
+    /// Shared; the service names no page yet.
+    Shared,
+    /// Already shared: the settings changed and the earlier link still works.
+    Updated,
+    Unshared,
+}
+
+/// The service's page link, only when it is https (http only for a loopback
+/// service), on the service's own domain, and carries this share's token.
+fn page_url(issuer: &str, u: &str, token: &str) -> Option<String> {
+    let page = url::Url::parse(u).ok()?;
+    let service = url::Url::parse(issuer).ok()?;
+    let loopback = matches!(service.host_str(), Some("127.0.0.1" | "localhost"));
+    let secure = page.scheme() == "https" || (loopback && page.scheme() == "http");
+    let domain = |h: &str| h.rsplitn(3, '.').take(2).collect::<Vec<_>>().join(".");
+    let same = match (page.host_str(), service.host_str()) {
+        (Some(p), Some(s)) => p == s || domain(p) == domain(s),
+        _ => false,
+    };
+    let carries = page.query_pairs().any(|(k, v)| k == "t" && v == token);
+    (secure && same && carries && page.username().is_empty() && page.password().is_none())
+        .then(|| page.into())
 }

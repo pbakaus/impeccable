@@ -303,7 +303,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             }
         }
         _ => {
-            io.err("Usage: impeccable health [status|on|off|forget|share|unshare]\n");
+            io.err("Usage: impeccable health status|on|off|forget|share|unshare\n");
             1
         }
     }

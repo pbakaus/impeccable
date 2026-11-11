@@ -24,6 +24,8 @@ pub struct Knobs {
     pub health: bool,
     pub sharing: bool,
     pub sharing_denied: bool,
+    /// The page link the share answer names (`url`), as the service will once its page exists.
+    pub share_url: Option<String>,
     pub setup: bool,
     pub setup_denied: bool,
     pub foundations: bool,
@@ -653,10 +655,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                             Some("A".repeat(43))
                         };
                     r.shares.push(v.clone());
-                    json(
-                        200,
-                        serde_json::json!({"shared":true,"token":token,"published":v["publish"]}),
-                    )
+                    let mut answer =
+                        serde_json::json!({"shared":true,"token":token,"published":v["publish"]});
+                    if let Some(u) = &k.share_url {
+                        answer["url"] = u.clone().into();
+                    }
+                    json(200, answer)
                 } else {
                     r.shares.retain(|s| s["repoKey"] != v["repoKey"] || s["streamKey"] != v["streamKey"]);
                     r.unshares.push(v);

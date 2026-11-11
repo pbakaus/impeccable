@@ -2450,8 +2450,9 @@ scope sends no share request.
 booleans; at least one must remain true. Label reveals the saved repo label,
 trend reveals counts within 30 UTC days, and rules reveals the latest day's
 per-rule counts. `POST /cli/v1/health/unshare` sends only `{repoKey, streamKey}`.
-On `{shared:true, token, published}`, a token prints the issuer's
-`/v1/health/shared?t=<token>` URL. A null token means an existing share was
+On `{shared:true, token, published}`, the CLI prints the answer's `url` when the
+service names one (https on the service's own domain, carrying the token);
+otherwise it prints `Design health: shared.` and never builds an address itself. A null token means an existing share was
 updated; the service cannot return the previous token. The CLI does not
 persist it. `{unshared:boolean}` is successful even when already unshared.
 
@@ -2468,19 +2469,20 @@ Usage: impeccable health share [--with-rules] [--no-label] [--no-trend]
        impeccable health unshare
 Design health: publish at least one of label, trend or rules.
 Design health: not signed in. Run `impeccable login`.
-Design health: run this in a git work tree.
+Design health: run this inside a git repository.
 Design health: sharing isn't available yet.
-Design health: no saved report for this branch.
+Design health: nothing to share yet. Run a full impeccable detect on this branch first.
 Design health: sharing limit reached.
 Design health: sharing wasn't allowed.
-Design health: sharing updated. Use the existing link.
-Design health: unshared.
+Design health: sharing settings updated. The link you got before still works.
+Design health: stopped sharing. The link no longer works.
+Design health: shared.
 Design health: invalid sharing response.
 Design health: sharing failed: {error}.
 Design health: {login-or-configuration-error}.
 {authorization-url}
-{issuer}/v1/health/shared?t={token}
+{url, as the service names it}
 ```
 
 The parent command's invalid-usage line is now
-`Usage: impeccable health [status|on|off|forget|share|unshare]` (stderr).
+`Usage: impeccable health status|on|off|forget|share|unshare` (stderr).

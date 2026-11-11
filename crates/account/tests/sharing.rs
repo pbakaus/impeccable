@@ -92,7 +92,7 @@ fn share_happy_path_flags_identity_and_existing_link() {
         ),
         0
     );
-    assert!(String::from_utf8_lossy(&out.stdout.borrow()).contains("sharing updated"));
+    assert!(String::from_utf8_lossy(&out.stdout.borrow()).contains("sharing settings updated"));
     let second = fake.record.lock().unwrap().shares[1].clone();
     assert_eq!(first["streamKey"], second["streamKey"]);
     assert_eq!(
@@ -114,13 +114,41 @@ fn share_happy_path_flags_identity_and_existing_link() {
         fake.record.lock().unwrap().shares[2]["streamKey"],
         first["streamKey"]
     );
-    assert!(
-        String::from_utf8_lossy(&out.stdout.borrow()).contains(&format!(
-            "{}/v1/health/shared?t={}",
-            fake.url,
-            "A".repeat(43)
-        ))
-    );
+    // No page named by the service yet: no link, never one the CLI builds itself.
+    let printed = String::from_utf8_lossy(&out.stdout.borrow()).to_string();
+    assert!(printed.contains("Design health: shared.\n"), "{printed}");
+    assert!(!printed.contains("/v1/health/shared"), "{printed}");
+}
+
+#[test]
+fn sharing_prints_only_the_page_the_service_names() {
+    // Catches (Designer, 11 Nov 2026): the CLI hardcoding the share address, or printing a
+    // link the service didn't name, on another domain, or without this share's token.
+    let token = "A".repeat(43);
+    for (offered, shown) in [
+        (format!("{{FAKE}}/shared/health?t={token}"), true),
+        (format!("https://evil.example/shared/health?t={token}"), false),
+        ("{FAKE}/shared/health?t=other".to_string(), false),
+    ] {
+        let (fake, mut io, _) = setup("share-url");
+        // First share asks for the consent (answered by the Consent writer); then stop it,
+        // so the next share gets a new token and the page link under test.
+        assert_eq!(run(&mut io, &["share"]), 0);
+        assert_eq!(run(&mut io, &["unshare"]), 0);
+        let offered = offered.replace("{FAKE}", &fake.url);
+        fake.knobs.lock().unwrap().share_url = Some(offered.clone());
+        let (out_io, out) = Io::captured("", io.cwd.clone(), io.env.clone());
+        io.stdout = out_io.stdout;
+        let code = run(&mut io, &["share"]);
+        let printed = String::from_utf8_lossy(&out.stdout.borrow()).to_string();
+        if shown {
+            assert_eq!(code, 0, "{printed}");
+            assert_eq!(printed, format!("{offered}\n"));
+        } else {
+            assert_ne!(code, 0, "{offered}");
+            assert!(!printed.contains(&offered), "{printed}");
+        }
+    }
 }
 #[test]
 fn sharing_404_not_available() {
@@ -143,7 +171,7 @@ fn sharing_route_404_and_429_limited() {
         (
             404,
             r#"{"error":"not_found"}"#,
-            "no saved report for this branch",
+            "nothing to share yet. Run a full impeccable detect on this branch first",
         ),
     ] {
         let (fake, mut io, _) = setup(&format!("share-error-{status}-{}", body.len()));
@@ -190,7 +218,7 @@ fn non_git_directory_is_refused() {
     assert_eq!(run(&mut io, &["share"]), 1);
     assert_eq!(
         String::from_utf8_lossy(&out.stdout.borrow()),
-        "Design health: run this in a git work tree.\n"
+        "Design health: run this inside a git repository.\n"
     );
     assert_eq!(fake.hits("/cli/v1/health/share"), 0);
 }
