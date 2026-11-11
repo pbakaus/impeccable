@@ -3,8 +3,9 @@
 #
 # Everything runs in a fresh scratch HOME: the CLI's sign-in, Loop's install, the agent
 # configuration loop connect writes. Scans and uploads use a throwaway git repository
-# with no remote, never a real one. Server-side data the run uploads is deleted again
-# (health/critiques/setup forget) before sign-out.
+# with no remote, never a real one. What the run uploads stays on the account: the forget
+# commands delete an account's WHOLE history, so they run only with SMOKE_FORGET=1, for a
+# dedicated test account. The run signs out on any exit once signed in.
 #
 # Usage:  scripts/launch-smoke.sh
 # Env:
@@ -13,6 +14,7 @@
 #   SMOKE_BIN        optional: run this engine binary instead of npx (a candidate build)
 #   SMOKE_EXPECT_PRO 1 (default) when the signed-in account has Pro and Pro rules must load
 #   SMOKE_LOOP       1 (default on macOS): also loop install, connect and disconnect
+#   SMOKE_FORGET     1 only for a dedicated test account: delete its health, critique and setup history
 #   PRISTINE_DIR     staging only: pristine checkout whose `bun run staging-admin cli-login` works
 #                    (signs in as Platform's seeded staging person; production needs a person)
 #
@@ -45,8 +47,11 @@ fi
 REAL_PATH=$PATH
 H=$(mktemp -d "${TMPDIR:-/tmp}/impeccable-launch-smoke.XXXXXX")
 login_pid=""
+signed_in=0
 cleanup() {
   if [ -n "$login_pid" ]; then kill "$login_pid" 2>/dev/null; wait "$login_pid" 2>/dev/null; fi
+  # Never leave a live sign-in behind, whatever stopped the run.
+  [ "$signed_in" = 1 ] && "${CLI[@]}" logout > /dev/null 2>&1
   rm -rf "$H"
 }
 trap cleanup EXIT
@@ -54,7 +59,9 @@ mkdir -p "$H/home" "$H/bin" "$H/repo"
 # A clean person: a fresh home, no agent configuration, no opt-outs, no CI.
 export HOME="$H/home" IMPECCABLE_ACCOUNT_URL="$ISSUER" IMPECCABLE_NO_UPDATE_CHECK=1
 export IMPECCABLE_QUESTION_DISABLED=1 IMPECCABLE_TELEMETRY_CHANNEL=test
-unset CI IMPECCABLE_HOME IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
+unset CI IMPECCABLE_HOME IMPECCABLE_AGENTS_HOME IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
+# The CLI's own sign-in wait matches the 10 minutes the prompt promises.
+export IMPECCABLE_LOGIN_TIMEOUT=600
 unset CLAUDE_CONFIG_DIR CODEX_HOME IMPECCABLE_CLAUDE_BIN IMPECCABLE_CODEX_BIN
 [ "$TARGET" = staging ] && export IMPECCABLE_CREDENTIAL_STORE=file
 imp() { "${CLI[@]}" "$@"; }
@@ -98,6 +105,7 @@ for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2;
 if kill -0 "$login_pid" 2>/dev/null; then fail "login: finished" "still waiting after 620 s"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: signed in" '[ $rc = 0 ]'
+[ $rc = 0 ] && signed_in=1
 
 # 2. whoami: the account, the plan, Pro.
 imp whoami > "$H/whoami.out" 2>&1; rc=$?
@@ -119,10 +127,11 @@ git -C "$H/repo" add -A && git -C "$H/repo" -c user.name=smoke -c user.email=smo
 # 4. A full detect: findings, Pro rules when expected, design health and DESIGN.md's first upload.
 (cd "$H/repo" && imp detect . > "$H/detect.out" 2> "$H/detect.err"); rc=$?
 check "detect: runs (exit 0 or 2)" '[ $rc = 0 ] || [ $rc = 2 ]'
-check "detect: finds the AI-pattern fixture" 'grep -qiE "gradient|slop|ai" "$H/detect.out"'
+cat "$H/detect.out" "$H/detect.err" > "$H/detect.all"
+check "detect: finds the AI-pattern fixture" 'grep -qiE "gradient|slop|ai" "$H/detect.all"'
 if [ "$EXPECT_PRO" = 1 ]; then
-  check "detect: Pro rules load (placeholder copy)" 'grep -q "placeholder-copy" "$H/detect.out"'
-  check "detect: no 'Pro rules are off' line" '! grep -q "Pro rules are off\|Pro rules aren" "$H/detect.err"'
+  check "detect: Pro rules load (placeholder copy)" 'grep -q "placeholder-copy" "$H/detect.all"'
+  check "detect: no 'Pro rules are off' line" '! grep -qE "Pro rules are off|Pro rules aren" "$H/detect.err"'
 fi
 if offers design:write; then
   check "DESIGN.md: first-upload notice" 'grep -q "Uploaded your DESIGN.md to your Impeccable account." "$H/detect.err"'
@@ -154,6 +163,8 @@ if [ "$LOOP" = 1 ]; then
   if [ -n "$claude" ]; then
     # Only Claude Code: Codex's MCP add starts its own browser sign-in.
     ln -s "$claude" "$H/bin/claude"
+    # Keep what the CLI and Claude Code's shim need (node, npx), never Codex.
+    for tool in node npx; do t=$(PATH=$REAL_PATH command -v "$tool" || true); [ -n "$t" ] && ln -s "$t" "$H/bin/$tool"; done
     PATH="$H/bin:/usr/bin:/bin" imp loop connect > "$H/connect.out" 2>&1; rc=$?
     check "loop connect: exits 0" '[ $rc = 0 ]'
     check "loop connect: Claude Code connected" 'grep -q "^Claude Code: connected" "$H/connect.out"'
@@ -169,11 +180,17 @@ if [ "$LOOP" = 1 ]; then
 fi
 
 # 8. Delete what this run uploaded, then sign out.
-if offers critiques:write; then imp critiques forget > /dev/null 2>&1; rc=$?; check "cleanup: critique history deleted" '[ $rc = 0 ]'; fi
-if offers setup:write; then imp setup forget > /dev/null 2>&1; rc=$?; check "cleanup: setup reports deleted" '[ $rc = 0 ]'; fi
-(cd "$H/repo" && imp health forget > /dev/null 2>&1); rc=$?; check "cleanup: design health deleted" '[ $rc = 0 ]'
+# The forget commands delete the account's whole history, so only for a dedicated test account.
+if [ "${SMOKE_FORGET:-0}" = 1 ]; then
+  if offers critiques:write; then imp critiques forget > /dev/null 2>&1; rc=$?; check "cleanup: critique history deleted" '[ $rc = 0 ]'; fi
+  if offers setup:write; then imp setup forget > /dev/null 2>&1; rc=$?; check "cleanup: setup reports deleted" '[ $rc = 0 ]'; fi
+  if offers health:write; then (cd "$H/repo" && imp health forget > /dev/null 2>&1); rc=$?; check "cleanup: design health deleted" '[ $rc = 0 ]'; fi
+else
+  info "uploads from this run stay on the account (throwaway repo; SMOKE_FORGET=1 deletes the account's whole history)"
+fi
 imp logout > "$H/logout.out" 2>&1; rc=$?
 check "logout: exits 0" '[ $rc = 0 ]'
+[ $rc = 0 ] && signed_in=0
 imp whoami > "$H/whoami2.out" 2>&1
 check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.out"'
 
