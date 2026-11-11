@@ -8,9 +8,16 @@ name: release-engine
 # ENGINE_VERSION, the npm platform-package pins, and a clean tree, then
 # pushes the tag. Third-party actions are pinned to commit SHAs so a
 # moved tag cannot swap the code this workflow runs.
+#
+# Manual run (workflow_dispatch, no inputs): a build-only rehearsal. It runs the
+# build matrix and smoke checks on the chosen ref and uploads run-scoped
+# artifacts. Signing and publication run only on a tag push, so a manual run
+# never reaches the windows-signing environment, its OIDC identity or
+# contents: write.
 on:
   push:
     tags: ['engine-v*']
+  workflow_dispatch:
 # Same-run artifact transfers use ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN;
 # they do not require actions: read/write. Keep downloads scoped to this run.
 permissions:
@@ -21,28 +28,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,       target: aarch64-apple-darwin,       short: darwin-arm64 }
-          # No Intel runner: GitHub retired macos-13. Apple's toolchain builds
+          - { os: macos-15,       target: aarch64-apple-darwin,       short: darwin-arm64 }
+          # No Intel runner: GitHub retired macos-13 (and macos-14 on 2 Nov 2026). Apple's toolchain builds
           # x86_64 on an arm64 host natively once the target is installed.
-          - { os: macos-14,       target: x86_64-apple-darwin,        short: darwin-x64 }
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl,  short: linux-x64 }
-          - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
+          - { os: macos-15,       target: x86_64-apple-darwin,        short: darwin-x64 }
+          - { os: namespace-profile-impeccable, target: x86_64-unknown-linux-musl,  short: linux-x64 }
+          - { os: namespace-profile-impeccable, target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
           - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check the tag matches ENGINE_VERSION
+      - name: Check the tag and Cargo.toml match ENGINE_VERSION
         shell: bash
         run: |
           set -e
-          want="engine-v$(tr -d '[:space:]' < ENGINE_VERSION)"
-          [ "$GITHUB_REF_NAME" = "$want" ] || { echo "tag $GITHUB_REF_NAME != $want"; exit 1; }
+          version="$(tr -d '[:space:]' < ENGINE_VERSION)"
+          # A manual build-only run has a branch ref, not a tag: skip only this comparison.
+          if [ "${GITHUB_EVENT_NAME:-push}" != workflow_dispatch ]; then
+            [ "$GITHUB_REF_NAME" = "engine-v$version" ] || { echo "tag $GITHUB_REF_NAME != engine-v$version"; exit 1; }
+          fi
+          # The binary reports the workspace version, and the launchers skip a
+          # sibling engine that reports anything but ENGINE_VERSION. Checked here
+          # as well as in the smoke step because that one cannot run the cross target.
+          cargo_version="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\([^"]*\)".*/\1/p' Cargo.toml)"
+          [ "$cargo_version" = "$version" ] || { echo "Cargo.toml workspace version '$cargo_version' != ENGINE_VERSION $version"; exit 1; }
       # rust-toolchain.toml names the channel; `rustup show` installs it.
       # Never override the toolchain here.
       - name: Install the pinned toolchain
         shell: bash
         run: rustup show && rustup target add ${{ matrix.target }}
-      - if: matrix.os == 'ubuntu-latest'
+      - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - if: matrix.cross
         run: cargo install cross --locked
@@ -52,7 +67,11 @@ jobs:
       - name: Smoke the binary
         if: ${{ !matrix.cross }}
         shell: bash
-        run: target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe
+        run: |
+          set -e
+          want="impeccable-engine $(tr -d '[:space:]' < ENGINE_VERSION)"
+          got="$(target/${{ matrix.target }}/release/impeccable${{ runner.os == 'Windows' && '.exe' || '' }} engine-probe)"
+          [ "$got" = "$want" ] || { echo "engine-probe printed '$got', want '$want'"; exit 1; }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Keep unsigned Windows output outside the publish job's pattern.
@@ -61,6 +80,7 @@ jobs:
           if-no-files-found: error
   sign-windows:
     needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')
     runs-on: windows-latest
     timeout-minutes: 15
     environment: windows-signing
@@ -120,7 +140,8 @@ jobs:
           if-no-files-found: error
   publish:
     needs: [build, sign-windows]
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')
+    runs-on: namespace-profile-impeccable
     permissions:
       contents: write
     steps:

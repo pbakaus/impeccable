@@ -19,6 +19,8 @@ const GLOBAL_BAR_ID = '#impeccable-live-global-bar';
 const PICKER_ID = '#impeccable-live-picker';
 const EDIT_BADGE_ID = '#impeccable-live-edit-badge';
 const PENDING_DOCK_ID = '#impeccable-live-pending-dock';
+// The Apply pill is the only dock button carrying data-count; its label copy changes.
+const APPLY_PILL = 'button[data-count]';
 // The configure-row submit button is icon-only; its accessible name is the
 // only stable handle (see buildConfigureSubmitButton in live-browser.js).
 const GO_BUTTON_ARIA_LABEL = 'Generate variants';
@@ -1186,52 +1188,45 @@ async function clickEditBadgeButton(page, label) {
 
 export async function assertApplyDockVisible(page, expectedCount, { timeout = 5_000 } = {}) {
   await page.waitForFunction(
-    ({ dockSel, expected }) => {
+    ({ dockSel, pillSel, expected }) => {
       const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return false;
-      const pill = [...dock.querySelectorAll('button')].find((btn) =>
-        /Apply copy edit/.test(btn.textContent || '')
-      );
+      const pill = dock.querySelector(pillSel);
       if (!pill || pill.style.display === 'none') return false;
       if (expected == null) return true;
       return parseInt(pill.dataset.count || '0', 10) === expected;
     },
-    { dockSel: PENDING_DOCK_ID, expected: expectedCount },
+    { dockSel: PENDING_DOCK_ID, pillSel: APPLY_PILL, expected: expectedCount },
     { timeout },
   );
 }
 
 export async function waitForApplyDockHidden(page, { timeout = 10_000 } = {}) {
   await page.waitForFunction(
-    (dockSel) => {
+    ({ dockSel, pillSel }) => {
       const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return true;
-      const pill = [...dock.querySelectorAll('button')].find((btn) =>
-        /Apply copy edit/.test(btn.textContent || '')
-      );
+      const pill = dock.querySelector(pillSel);
       return !pill || pill.style.display === 'none' || parseInt(pill.dataset.count || '0', 10) === 0;
     },
-    PENDING_DOCK_ID,
+    { dockSel: PENDING_DOCK_ID, pillSel: APPLY_PILL },
     { timeout },
   );
 }
 
 export async function assertApplyDockLoading(page, { timeout = 5_000 } = {}) {
   await page.waitForFunction(
-    (dockSel) => {
+    ({ dockSel, pillSel }) => {
       const dock = window.__impeccableLiveQuery(dockSel);
       if (!dock || dock.style.display === 'none') return false;
-      const pill = [...dock.querySelectorAll('button')].find((btn) =>
-        /Apply copy edit|Applying|Verifying|Fixing apply issue/.test(btn.textContent || '')
-      );
+      const pill = dock.querySelector(pillSel);
       if (!pill) return false;
       const spinner = dock.querySelector('[aria-hidden="true"]');
-      return pill.disabled === true
-        || pill.getAttribute('aria-busy') === 'true'
+      return pill.getAttribute('aria-busy') === 'true'
         || /Applying|Verifying|Fixing apply issue/.test(pill.textContent || '')
         || spinner?.style?.display === 'inline-block';
     },
-    PENDING_DOCK_ID,
+    { dockSel: PENDING_DOCK_ID, pillSel: APPLY_PILL },
     { timeout },
   );
 }
@@ -1240,7 +1235,7 @@ export async function clickApplyEdits(page) {
   const dialog = page.waitForEvent('dialog', { timeout: 5_000 })
     .then((d) => d.accept())
     .catch(() => {});
-  await page.locator(`${PENDING_DOCK_ID} button`, { hasText: /Apply copy edit/ }).click({ timeout: 5_000 });
+  await page.locator(`${PENDING_DOCK_ID} ${APPLY_PILL}`).click({ timeout: 5_000 });
   await dialog;
 }
 

@@ -123,6 +123,8 @@ pub struct SourceTraits {
     pub preview: &'static str,
     pub style_mode: &'static str,
     pub style_tag: &'static str,
+    /// The closing counterpart of `style_tag`.
+    pub style_close: &'static str,
     pub comment_syntax: &'static str,
     pub inject_script_attrs: &'static str,
 }
@@ -137,6 +139,7 @@ pub fn resolve_source_traits(file_path: &str) -> SourceTraits {
         preview: "source",
         style_mode: "scoped",
         style_tag: DEFAULT_STYLE_TAG,
+        style_close: "</style>",
         comment_syntax: "html",
         inject_script_attrs: "",
     };
@@ -148,6 +151,11 @@ pub fn resolve_source_traits(file_path: &str) -> SourceTraits {
         },
         ".vue" => SourceTraits {
             framework: Some(FrameworkName::Nuxt),
+            // Vue's template compiler drops a `<style>` element inside
+            // `<template>` (a hard transform error under plugin-vue 6);
+            // `<component is="style">` renders as the same element.
+            style_tag: "<component is=\"style\" data-impeccable-css=\"SESSION_ID\">",
+            style_close: "</component>",
             ..base
         },
         ".tsx" | ".jsx" => SourceTraits {

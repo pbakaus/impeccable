@@ -1,0 +1,21 @@
+name: Setup Bun
+description: >-
+  Install the Bun pinned in .bun-version. setup-bun downloads from GitHub
+  releases; when that fails (GitHub returned 504 for every release download on
+  8 Nov 2026), the same version comes from the npm registry instead.
+runs:
+  using: composite
+  steps:
+    - id: release
+      continue-on-error: true
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      with:
+        bun-version-file: .bun-version
+
+    - name: Install Bun from npm (fallback)
+      if: steps.release.outcome == 'failure'
+      shell: bash
+      run: |
+        version=$(tr -d '[:space:]' < .bun-version)
+        npm install --global "bun@${version}"
+        test "$(bun --version)" = "${version}"

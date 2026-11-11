@@ -18,15 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arbitrary"
-version = "1.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
-dependencies = [
- "derive_arbitrary",
-]
-
-[[package]]
 name = "ascii"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -106,6 +97,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
+
+[[package]]
 name = "chunked_transfer"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,12 +149,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-utils"
-version = "0.8.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
-
-[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,17 +186,6 @@ name = "data-encoding"
 version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
-
-[[package]]
-name = "derive_arbitrary"
-version = "1.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
 
 [[package]]
 name = "derive_more"
@@ -346,8 +326,21 @@ checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
  "libc",
- "r-efi",
+ "r-efi 5.3.0",
  "wasip2",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+dependencies = [
+ "cfg-if",
+ "js-sys",
+ "libc",
+ "r-efi 6.0.0",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -531,9 +524,11 @@ dependencies = [
 
 [[package]]
 name = "impeccable"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "base64",
+ "impeccable-account",
+ "impeccable-agents",
  "impeccable-browser",
  "impeccable-common",
  "impeccable-comp",
@@ -545,13 +540,46 @@ dependencies = [
  "impeccable-html",
  "impeccable-live",
  "impeccable-skills",
+ "libc",
+ "ring",
+ "semver",
  "serde_json",
  "sha2",
+ "ureq",
+ "url",
+]
+
+[[package]]
+name = "impeccable-account"
+version = "0.1.22"
+dependencies = [
+ "base64",
+ "impeccable-common",
+ "impeccable-context",
+ "libc",
+ "ring",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "url",
+]
+
+[[package]]
+name = "impeccable-agents"
+version = "0.1.22"
+dependencies = [
+ "impeccable-common",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml_edit",
 ]
 
 [[package]]
 name = "impeccable-browser"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "base64",
  "image",
@@ -568,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-bundle"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "base64",
  "impeccable-core",
@@ -577,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-common"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "getrandom 0.2.17",
  "libc",
@@ -587,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-comp"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "image",
  "once_cell",
@@ -599,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-comp-verbs"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "image",
  "impeccable-common",
@@ -615,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-context"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "flate2",
  "impeccable-common",
@@ -630,12 +658,13 @@ dependencies = [
  "tiny_http",
  "unicode-normalization",
  "ureq",
+ "url",
  "webpki-roots 1.0.9",
 ]
 
 [[package]]
 name = "impeccable-core"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "cssparser",
  "impeccable-core",
@@ -648,7 +677,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-detect"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "impeccable-common",
  "impeccable-core",
@@ -660,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-foundation"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "cssparser",
  "once_cell",
@@ -673,7 +702,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-hook"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "impeccable-common",
  "impeccable-comp-verbs",
@@ -689,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-html"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "cssparser",
  "ego-tree",
@@ -710,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-live"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "getrandom 0.2.17",
  "impeccable-common",
@@ -729,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-skills"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "impeccable-common",
  "impeccable-context",
@@ -748,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "impeccable-wasm"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "impeccable-core",
  "impeccable-detect",
@@ -773,6 +802,16 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "js-sys"
+version = "0.3.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e0c1080212aad755ea003d18543e8768dd432c48819efd73a7bf1e39b7a5a3a"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "libc"
@@ -853,6 +892,18 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
 
 [[package]]
 name = "num-traits"
@@ -1031,6 +1082,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
 name = "rand"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1128,9 +1185,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "log",
  "once_cell",
@@ -1502,6 +1559,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
+name = "toml_datetime"
+version = "0.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
+
+[[package]]
+name = "toml_edit"
+version = "0.22.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
+dependencies = [
+ "indexmap",
+ "toml_datetime",
+ "toml_write",
+ "winnow",
+]
+
+[[package]]
+name = "toml_write"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
 name = "tungstenite"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1517,6 +1598,12 @@ dependencies = [
  "thiserror",
  "utf-8",
 ]
+
+[[package]]
+name = "typed-path"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
 name = "typenum"
@@ -1800,6 +1887,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
+name = "winnow"
+version = "0.7.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1813,7 +1909,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.1.18"
+version = "0.1.22"
 dependencies = [
  "impeccable-bundle",
 ]
@@ -1923,18 +2019,19 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.4.2"
+version = "9.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fabe6324e908f85a1c52063ce7aa26b68dcb7eb6dbc83a2d148403c9bc3eba50"
+checksum = "eaeb7f16d2605b49aef586996ded29e65642fab7259a3077e537351df6d80426"
 dependencies = [
- "arbitrary",
  "crc32fast",
- "crossbeam-utils",
- "displaydoc",
  "flate2",
+ "getrandom 0.4.3",
  "indexmap",
+ "libc",
  "memchr",
- "thiserror",
+ "nix",
+ "typed-path",
+ "windows-sys 0.61.2",
  "zopfli",
 ]
 

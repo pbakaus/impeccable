@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\n\nneeds a command (1):\n  hook-not-installed  [.claude/settings.local.json]\n    No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.\n    → Run `impeccable hooks on` to install it, or `impeccable hooks off` to keep it off and stop this finding.\n\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

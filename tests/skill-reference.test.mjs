@@ -43,6 +43,18 @@ describe('skill reference authoring contracts', () => {
     assert.doesNotMatch(newWork, /first child of the document's body/);
   });
 
+  it('defines the FORM seed value for a direction pinned whole', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8');
+    const reviewer = readFileSync(join(ROOT, 'skill/agents/impeccable-finish-reviewer.md'), 'utf-8');
+
+    assert.match(newWork, /pins whole, naming its world and its first-surface experience both in words you can quote/);
+    assert.match(newWork, /a pin that leaves a dimension open, a direction you completed from a partial brief/);
+    assert.match(newWork, /write `seed: none \(pinned\)` in place of both the list position and the reference, followed by the quoted words that pin it/);
+    assert.match(newWork, /`seed: none \(pinned\)` when a direction pinned whole skipped it\) are present/);
+    assert.match(newWork, /build-phase start --direction <seed reference, or none when it was unavailable or a direction pinned whole skipped the roll>/);
+    assert.match(reviewer, /`seed: none \(pinned\)` stands only when the original request or the confirmed user answers pin both/);
+  });
+
   it('collects the existing-DESIGN.md choice before the documenter writes', () => {
     const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const documenter = readFileSync(join(ROOT, 'skill/agents/impeccable-documenter.md'), 'utf-8').replace(/\r\n?/g, '\n');
@@ -178,6 +190,22 @@ describe('skill reference authoring contracts', () => {
     assert.match(edgeCases, /\*\*Interrupted gestures\*\*[\s\S]*works without a reload/);
     assert.match(edgeCases, /clear the dragging state and release capture/);
     assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
+  });
+
+  it('reads project personas from PRODUCT.md, not the retired Design Context section (#985)', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8');
+    assert.doesNotMatch(critique, /Design Context/);
+    assert.match(critique, /PRODUCT\.md has a `## Users` section/);
+  });
+
+  it('scales onboard empty states by type and lists permissive tour libraries (#985)', () => {
+    const onboard = readFileSync(join(ROOT, 'skill/reference/onboard.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    assert.doesNotMatch(onboard, /^Every empty state needs:/m);
+    assert.doesNotMatch(onboard, /Popper\.js/);
+    const tours = onboard.match(/^\*\*Tour libraries\*\*:.*$/m)?.[0] ?? '';
+    assert.match(tours, /Driver\.js/);
+    assert.match(tours, /React Joyride/);
+    assert.doesNotMatch(tours, /Intro\.js|Shepherd\.js/);
   });
 
   it('keeps audit score-table dimensions aligned with their numbered sections', () => {

@@ -3,7 +3,7 @@
 use crate::context::*;
 use crate::jsp;
 use crate::provider::Provider;
-use crate::staleness::{collect_boot_findings, design_sidecar_candidates_for, BootExtras};
+use crate::staleness::{collect_boot_findings, design_sidecar_candidates_for, finding, BootExtras, Finding};
 use crate::staleness_notice::{build_staleness_directive, filter_fresh_findings, staleness_check_disabled};
 use crate::target_args::{has_target_option, parse_target_options, TargetOptions};
 use crate::util::*;
@@ -30,13 +30,37 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     }
 }
 
+/// The project skill folder `impeccable hooks on` needs before it writes this
+/// provider's manifest. `None`: that verb has no target for the provider.
+fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
+    let dir = match provider_id {
+        "claude-code" => ".claude",
+        "codex" | "agents" => ".agents",
+        "cursor" => ".cursor",
+        "github" => ".github",
+        "grok" => ".grok",
+        "gemini" => ".gemini",
+        _ => return None,
+    };
+    crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|target| target.provider == dir).map(|target| target.skill_rel)
+}
+
+/// Claude Code's active user configuration directory. An explicit account is
+/// exclusive; a relative CLAUDE_CONFIG_DIR is resolved against the caller.
+pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
+    match env_nonempty(env, "CLAUDE_CONFIG_DIR") {
+        Some(dir) => jsp::resolve(cwd, &[dir]),
+        None => jsp::join(&[&crate::util::homedir(env), ".claude"]),
+    }
+}
+
 /// The user-level hook manifest this provider's harness loads:
-/// Claude's `~/.claude/settings.json`; Codex and agents `$CODEX_HOME/hooks.json`
+/// Claude's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`); Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
-        "claude-code" => Some(jsp::join(&[&crate::util::homedir(env), ".claude", "settings.json"])),
+        "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
             None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),
@@ -243,15 +267,38 @@ fn append_subagent_authorization_directive(parts: &mut Parts) {
     ].join(" "));
 }
 
+fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
+    let provider_dir = match provider.id.as_str() {
+        "claude-code" => ".claude", "codex" | "agents" => ".agents",
+        "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
+    };
+    let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
+    let expected = (target.manifest)();
+    automatic_hook_mode(ctx, cwd, env, provider) != "none" &&
+        (hook_manifest_search_roots(ctx, cwd, env).iter().any(|root|
+            hook_enabled_at(root, env) && hook_manifests_for(&provider.id).iter().any(|rel|
+                crate::hook_wiring::manifest_is_wired(&jsp::join(&[root, rel]), &expected)))
+        || user_hook_manifest(&provider.id, cwd, env).is_some_and(|path|
+            crate::hook_wiring::manifest_is_wired(&path, &expected)))
+}
+
 fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) {
-    if automatic_hook_mode(ctx, cwd, env, provider) != "none" {
+    if current_hook_wiring(ctx, cwd, env, provider) {
         return;
     }
     if is_native(ctx.platform.as_deref()) {
         return;
     }
+    let manifests = match provider.id.as_str() {
+        "claude-code" | "codex" | "agents" | "cursor" | "grok" | "github" => hook_manifests_for(&provider.id),
+        _ => &[],
+    };
+    let wiring = if manifests.is_empty() { String::new() } else {
+        format!(" Check missing or stale {} wiring with impeccable hooks status; repair with impeccable hooks on.", manifests.join(" or "))
+    };
     parts.push([
-        "MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.".to_string(),
+        format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
         format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
@@ -301,7 +348,79 @@ fn project_roots_diagnostic(ctx: &Ctx, options: &TargetOptions, env: &Env) -> (O
     (Some(patterns), cands)
 }
 
-fn append_staleness_directive(parts: &mut Parts, ctx: &Ctx, options: &TargetOptions, cwd: &str, env: &Env) {
+/// True when the project's config records the design hook as declined at the
+/// install prompt (`hook.consent: "declined"`).
+fn hook_consent_declined_at(root: &str) -> bool {
+    let mut declined = false;
+    for name in [".impeccable/config.json", ".impeccable/config.local.json"] {
+        if let Some(raw) = read_json(&jsp::join(&[root, name])) {
+            if let Some(consent) = raw.get("hook").and_then(|h| h.get("consent")).and_then(|c| c.as_str()) {
+                if consent == "accepted" || consent == "declined" {
+                    declined = consent == "declined";
+                }
+            }
+        }
+    }
+    declined
+}
+
+/// The `hook-not-installed` finding: this harness has a hook surface, the
+/// project is web, nothing has turned the hook off or declined it, and no
+/// manifest in reach (the project walk or the user-level file) carries an
+/// Impeccable hook of any era. A manifest of any era counts as installed so a
+/// stale one stays with `hook-script-missing` and Cursor's retired gate with
+/// `cursor-hook-pre-edit-gate`, each with its own fix. Shared by the boot
+/// directive and doctor so both report the same state.
+pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> Vec<Finding> {
+    let manifests = hook_manifests_for(&provider.id);
+    if manifests.is_empty() || is_native(ctx.platform.as_deref()) {
+        return vec![];
+    }
+    let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
+    if !hook_enabled_at(&active_root, env) || hook_consent_declined_at(&active_root) {
+        return vec![];
+    }
+    let roots = hook_manifest_search_roots(ctx, cwd, env);
+    let mut paths: Vec<String> = roots.iter().flat_map(|root| manifests.iter().map(move |rel| jsp::join(&[root, rel]))).collect();
+    paths.extend(user_hook_manifest(&provider.id, cwd, env));
+    let installed = paths.iter().any(|p| {
+        // Gemini's settings file may carry comments, and `hooks on` reads it the same way.
+        safe_read(p)
+            .and_then(|text| crate::hook_markers::parse_manifest_jsonc(&text))
+            .and_then(|(raw, _)| raw.get("hooks").cloned())
+            .map(|hooks| crate::staleness::js_truthy(&hooks) && crate::hook_markers::value_has_impeccable_hook_marker(&hooks))
+            .unwrap_or(false)
+    });
+    if installed {
+        return vec![];
+    }
+    // `hooks on` writes a manifest only beside a skill folder in the directory
+    // it runs in, so a skill folder further up the selected project's roots
+    // names that directory. With none, it wires a user-level Claude launcher
+    // from any directory; any other user-level skill gets its hook back from
+    // `update`.
+    let abs_cwd = jsp::resolve(cwd, &[]);
+    let skill_root = hooks_on_skill_folder(&provider.id)
+        .and_then(|rel| roots.iter().find(|root| exists(&jsp::join(&[root, rel]))));
+    let user_launcher = provider.id == "claude-code"
+        && exists(&jsp::join(&[&claude_config_dir(cwd, env), "skills", "impeccable", "scripts", "impeccable"]));
+    let install = match skill_root {
+        Some(root) if *root == abs_cwd => "`impeccable hooks on` to install it".to_string(),
+        Some(root) => format!("`impeccable hooks on` from `{}`, where the skill is installed, to install it", jsp::relative(&abs_cwd, &abs_cwd, root)),
+        None if user_launcher => "`impeccable hooks on` to install it".to_string(),
+        None => "`impeccable update` to reinstall it".to_string(),
+    };
+    vec![finding(
+        "hook-not-installed",
+        "hook manifest",
+        Some(manifests[0].to_string()),
+        "route",
+        "No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.".to_string(),
+        format!("Run {install}, or `impeccable hooks off` to keep it off and stop this finding."),
+    )]
+}
+
+fn append_staleness_directive(parts: &mut Parts, ctx: &Ctx, options: &TargetOptions, cwd: &str, env: &Env, provider: &Provider) {
     let project_root = if ctx.project_root.is_empty() { cwd.to_string() } else { ctx.project_root.clone() };
     if staleness_check_disabled(env, &[Some(&project_root), Some(&ctx.repo_root)]) {
         return;
@@ -314,9 +433,10 @@ fn append_staleness_directive(parts: &mut Parts, ctx: &Ctx, options: &TargetOpti
         project_root_patterns: patterns,
         target_candidates: cands,
     };
-    let findings = collect_boot_findings(ctx, cwd, &extras);
+    let mut findings = collect_boot_findings(ctx, cwd, &extras);
+    findings.extend(check_hook_not_installed(ctx, cwd, env, provider));
     let fresh = filter_fresh_findings(env, findings, &project_root, now_ms());
-    if let Some(d) = build_staleness_directive(&fresh) {
+    if let Some(d) = build_staleness_directive(&fresh, &provider.command) {
         parts.push(d);
     }
 }
@@ -563,10 +683,11 @@ fn fetch_latest_skill_version(env: &Env) -> Option<String> {
         .cloned()
         .unwrap_or_else(|| "https://impeccable.style".to_string());
     let host = host.strip_suffix('/').unwrap_or(&host).to_string();
-    let agent = crate::http::agent_builder()
+    let url = format!("{}/api/version", host);
+    let agent = crate::http::agent_builder(&url)
         .timeout(std::time::Duration::from_millis(FETCH_TIMEOUT_MS))
         .build();
-    let res = agent.get(&format!("{}/api/version", host)).call().ok()?;
+    let res = agent.get(&url).call().ok()?;
     if res.status() < 200 || res.status() >= 300 {
         return None;
     }
@@ -666,6 +787,14 @@ fn load_native_platform_references(platform: Option<&str>, provider: &Provider) 
 // ─── cli ───────────────────────────────────────────────────────────────────
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_hook_repair(args, io, &mut |_| Ok(None))
+}
+
+/// The CLI supplies hook maintenance to avoid a context -> hook dependency cycle.
+pub fn run_with_hook_repair(
+    args: &[String], io: &mut Io,
+    repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
+) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -701,6 +830,19 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
+    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+        let mut notices = Vec::new();
+        for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
+            match repair(&root) {
+                Ok(Some(message)) => notices.push(message),
+                Err(error) => notices.push(format!("Impeccable hook wiring repair failed: {error}; run impeccable hooks on.")),
+                _ => {}
+            }
+        }
+        if !notices.is_empty() {
+            io.out(&format!("{}\n", notices.join(" ")));
+        }
+    }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
     let cmd = &provider.command;
 
@@ -733,7 +875,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             parts.push(build_missing_target_directive(&provider));
         }
         append_image_tools_directive(&mut parts, &env);
-        append_staleness_directive(&mut parts, &ctx, &options, &cwd, &env);
+        append_staleness_directive(&mut parts, &ctx, &options, &cwd, &env, &provider);
         if let Some(u) = update_directive {
             parts.push(u);
         }
@@ -766,7 +908,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         parts.doc(format!("# NATIVE PLATFORM REFERENCE: {} (reference/{}.md)", name.to_uppercase(), name), &path, &content);
     }
     append_image_tools_directive(&mut parts, &env);
-    append_staleness_directive(&mut parts, &ctx, &options, &cwd, &env);
+    append_staleness_directive(&mut parts, &ctx, &options, &cwd, &env, &provider);
     if ctx.platform.is_none() {
         if let Some(raw) = extract_section_value(ctx.product.as_deref(), "Platform") {
             if !raw.is_empty() {
@@ -1299,5 +1441,203 @@ mod worktree_hook_tests {
         std::fs::write(&manifest, r#"{"version":1,"hooks":{"preToolUse":[{"command":"\".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit","timeout":5}]}}"#).unwrap();
         assert_eq!(mode(), "per-edit");
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod hook_not_installed_tests {
+    use super::check_hook_not_installed;
+    use crate::context::load_context;
+    use crate::staleness::Finding;
+    use crate::target_args::TargetOptions;
+    use crate::util::Env;
+    use std::path::PathBuf;
+
+    const LAUNCHER_HOOK: &str = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\"/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#;
+    const LEGACY_HOOK: &str = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"node \"/skills/impeccable/scripts/hook.mjs\""}]}]}}"#;
+    const CURSOR_GATE: &str = r#"{"hooks":{"preToolUse":[{"command":"\"/skills/impeccable/scripts/impeccable\" hook-before-edit"}]}}"#;
+
+    struct Fixture {
+        root: PathBuf,
+        project: String,
+        env: Env,
+    }
+
+    impl Fixture {
+        fn new(provider: &str) -> Self {
+            // A counter, not the clock: tests run in parallel and two that
+            // start in the same tick would share a root.
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let root = std::env::temp_dir().join(format!(
+                "impeccable-hook-not-installed-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let project = root.join("project");
+            let home = root.join("home");
+            std::fs::create_dir_all(project.join(".git")).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            let env = Env::from([
+                ("HOME".to_string(), home.to_string_lossy().into_owned()),
+                ("USERPROFILE".to_string(), home.to_string_lossy().into_owned()),
+                ("IMPECCABLE_PROVIDER_ID".to_string(), provider.to_string()),
+            ]);
+            Self { root, project: project.to_string_lossy().into_owned(), env }
+        }
+
+        fn put(&self, path: &str, body: &str) {
+            let path = self.root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+
+        fn findings(&self) -> Vec<Finding> {
+            let ctx = load_context(&self.project, &TargetOptions::default(), &self.env);
+            let provider = crate::provider::detect(&self.env, &self.project);
+            check_hook_not_installed(&ctx, &self.project, &self.env, &provider)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn fires_for_a_hook_surface_with_no_manifest_in_reach() {
+        let fixture = Fixture::new("claude-code");
+        let found = fixture.findings();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, "hook-not-installed");
+        assert_eq!(found[0].severity, "route");
+        assert_eq!(found[0].path.as_deref(), Some(".claude/settings.local.json"));
+        assert!(found[0].fix.contains("`impeccable update`"), "{}", found[0].fix);
+    }
+
+    #[test]
+    fn names_hooks_on_only_where_that_verb_installs() {
+        for (provider, skill, hooks_on) in [
+            ("claude-code", "project/.claude/skills/impeccable/SKILL.md", true),
+            ("codex", "project/.agents/skills/impeccable/SKILL.md", true),
+            ("grok", "project/.grok/skills/impeccable/SKILL.md", true),
+            ("claude-code", "home/.claude/skills/impeccable/scripts/impeccable", true),
+            ("claude-code", "home/.claude/skills/impeccable/SKILL.md", false),
+            ("codex", "home/.agents/skills/impeccable/scripts/impeccable", false),
+        ] {
+            let fixture = Fixture::new(provider);
+            fixture.put(skill, "");
+            let fix = fixture.findings().remove(0).fix;
+            assert_eq!(fix.contains("`impeccable hooks on`"), hooks_on, "{provider} {skill}: {fix}");
+            assert_eq!(fix.contains("`impeccable update`"), !hooks_on, "{provider} {skill}: {fix}");
+        }
+    }
+
+    #[test]
+    fn names_the_folder_to_run_hooks_on_from_when_the_skill_sits_above_cwd() {
+        let fixture = Fixture::new("claude-code");
+        fixture.put("project/.claude/skills/impeccable/SKILL.md", "");
+        let nested = fixture.root.join("project").join("web");
+        std::fs::create_dir_all(&nested).unwrap();
+        let cwd = nested.to_string_lossy().into_owned();
+        let ctx = load_context(&cwd, &TargetOptions::default(), &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, &cwd);
+        let fix = check_hook_not_installed(&ctx, &cwd, &fixture.env, &provider).remove(0).fix;
+        assert!(fix.contains("`impeccable hooks on` from `..`, where the skill is installed"), "{fix}");
+    }
+
+    #[test]
+    fn a_skill_beside_the_caller_is_not_offered_for_another_target() {
+        let fixture = Fixture::new("claude-code");
+        fixture.put("project/.claude/skills/impeccable/SKILL.md", "");
+        fixture.put("other/.git/HEAD", "");
+        let options = TargetOptions { target_path: Some(fixture.root.join("other").to_string_lossy().into_owned()), ..Default::default() };
+        let fix = || {
+            let ctx = load_context(&fixture.project, &options, &fixture.env);
+            let provider = crate::provider::detect(&fixture.env, &fixture.project);
+            check_hook_not_installed(&ctx, &fixture.project, &fixture.env, &provider).remove(0).fix
+        };
+        assert!(fix().contains("`impeccable update`"), "{}", fix());
+        fixture.put("other/.claude/skills/impeccable/SKILL.md", "");
+        // The folder is spelled with the platform's separator.
+        let from = format!("`impeccable hooks on` from `..{}other`, where the skill is installed", std::path::MAIN_SEPARATOR);
+        assert!(fix().contains(&from), "{}", fix());
+    }
+
+    #[test]
+    fn a_commented_manifest_still_counts_as_installed() {
+        let fixture = Fixture::new("gemini");
+        fixture.put("project/.gemini/settings.json", &format!("// my settings\n{LAUNCHER_HOOK}"));
+        assert!(fixture.findings().is_empty());
+    }
+
+    #[test]
+    fn a_manifest_of_either_era_counts_as_installed() {
+        for (provider, path, body) in [
+            ("claude-code", "project/.claude/settings.local.json", LAUNCHER_HOOK),
+            ("claude-code", "project/.claude/settings.json", LEGACY_HOOK),
+            ("cursor", "project/.cursor/hooks.json", CURSOR_GATE),
+            ("gemini", "project/.gemini/settings.json", LAUNCHER_HOOK),
+            ("codex", "home/.codex/hooks.json", LAUNCHER_HOOK),
+            ("claude-code", "home/.claude/settings.json", LAUNCHER_HOOK),
+        ] {
+            let fixture = Fixture::new(provider);
+            fixture.put(path, body);
+            assert!(fixture.findings().is_empty(), "{provider} {path}");
+        }
+    }
+
+    #[test]
+    fn a_manifest_at_an_enclosing_git_root_counts() {
+        let fixture = Fixture::new("claude-code");
+        let nested = fixture.root.join("project").join("web");
+        std::fs::create_dir_all(&nested).unwrap();
+        fixture.put("project/.claude/settings.local.json", LAUNCHER_HOOK);
+        let cwd = nested.to_string_lossy().into_owned();
+        let ctx = load_context(&cwd, &TargetOptions::default(), &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, &cwd);
+        assert!(check_hook_not_installed(&ctx, &cwd, &fixture.env, &provider).is_empty());
+    }
+
+    #[test]
+    fn silent_when_the_hook_is_off_or_declined() {
+        for config in [r#"{"hook":{"enabled":false}}"#, r#"{"hook":{"consent":"declined"}}"#] {
+            let fixture = Fixture::new("claude-code");
+            fixture.put("project/.impeccable/config.local.json", config);
+            assert!(fixture.findings().is_empty(), "{config}");
+        }
+        let mut fixture = Fixture::new("claude-code");
+        fixture.env.insert("IMPECCABLE_HOOK_DISABLED".to_string(), "1".to_string());
+        assert!(fixture.findings().is_empty());
+    }
+
+    #[test]
+    fn silent_where_there_is_nothing_to_install() {
+        // No hook surface for this harness (a plugin or source checkout
+        // resolves to `source`), and native projects have no web hook.
+        for provider in ["source", "kiro", "hermes"] {
+            assert!(Fixture::new(provider).findings().is_empty(), "{provider}");
+        }
+        let fixture = Fixture::new("claude-code");
+        fixture.put("project/PRODUCT.md", "# App\n\n## Platform\n\nios\n");
+        assert!(fixture.findings().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod wiring_fallback_tests {
+    #[test]
+    fn gemini_does_not_offer_to_repair_unsupported_detector_hooks() {
+        let mut parts = super::Parts::default();
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_PROVIDER_ID".to_string(), "gemini".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/missing-project");
+        let ctx = crate::context::load_context("/missing-project", &crate::target_args::TargetOptions::default(), &env);
+        super::append_detector_fallback(&mut parts, &ctx, "/missing-project", &env, &provider);
+        let output = parts.render();
+        assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
+        assert!(!output.contains("repair with impeccable hooks on"));
     }
 }
