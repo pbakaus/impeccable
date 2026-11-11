@@ -37,18 +37,27 @@ export async function challengeFor(verifier) {
 /** The address of the server's own description of itself (RFC 8414). */
 export const metadataUrl = (issuer) => `${issuer}/.well-known/oauth-authorization-server`;
 
-const sameServer = (url, issuer) => {
-  try { return new URL(url).origin === new URL(issuer).origin; } catch { return false; }
-};
+const originOf = (url) => { try { return new URL(url).origin; } catch { return null; } };
+
+/** Where the account server's sign-in dialog is: on the app host paired with its API host (`api.` to `app.`), a fixed pairing. */
+export function dialogOrigin(issuer) {
+  const url = new URL(issuer);
+  url.hostname = url.hostname.replace(/^api\./, 'app.');
+  return url.origin;
+}
 
 /**
- * Reads the server's description of itself. Only one that names `issuer` as itself and keeps its doors on the
- * issuer's own origin is taken: `{ authorize, token, revoke }`, or null.
+ * Reads the server's description of itself. Only one that names `issuer` as itself, keeps its token and revoke
+ * doors on the issuer's own origin and its sign-in dialog there or on the paired app host is taken:
+ * `{ authorize, token, revoke }`, or null.
  */
 export function readMetadata(json, issuer) {
   if (json?.issuer !== issuer) return null;
   const doors = { authorize: json.authorization_endpoint, token: json.token_endpoint, revoke: json.revocation_endpoint ?? `${issuer}/oauth/revoke` };
-  return Object.values(doors).every((url) => typeof url === 'string' && sameServer(url, issuer)) ? doors : null;
+  if (!Object.values(doors).every((url) => typeof url === 'string')) return null;
+  const home = originOf(issuer);
+  if (originOf(doors.token) !== home || originOf(doors.revoke) !== home) return null;
+  return [home, dialogOrigin(issuer)].includes(originOf(doors.authorize)) ? doors : null;
 }
 
 /** Where the person is sent to sign in and consent. */

@@ -8,7 +8,7 @@ const ISSUER = PRODUCTION;
 const REDIRECT = 'https://ext.chromiumapp.org/callback';
 const META = {
   issuer: ISSUER,
-  authorization_endpoint: `${ISSUER}/oauth/authorize`,
+  authorization_endpoint: 'https://app.impeccable.style/app/oauth/authorize',
   token_endpoint: `${ISSUER}/oauth/token`,
   revocation_endpoint: `${ISSUER}/oauth/revoke`,
 };
@@ -45,10 +45,12 @@ describe('account sign-in flow', () => {
     assert.deepEqual(readCallback(back(good), { redirectUri: REDIRECT, state: 's1', issuer: ISSUER }), { ok: true, code: good.code });
   });
 
-  it('takes a server only on its own word and its own origin', () => {
+  it('takes a server only on its own word, its own origin and its paired sign-in dialog', () => {
     assert.ok(readMetadata(META, ISSUER));
     assert.equal(readMetadata({ ...META, issuer: 'https://other.example' }, ISSUER), null);
     assert.equal(readMetadata({ ...META, token_endpoint: 'https://evil.example/token' }, ISSUER), null);
+    assert.equal(readMetadata({ ...META, authorization_endpoint: 'https://evil.example/app/oauth/authorize' }, ISSUER), null);
+    assert.ok(readMetadata({ ...META, issuer: 'http://api.localhost:8787', authorization_endpoint: 'http://app.localhost:8787/app/oauth/authorize', token_endpoint: 'http://api.localhost:8787/oauth/token', revocation_endpoint: 'http://api.localhost:8787/oauth/revoke' }, 'http://api.localhost:8787'));
   });
 
   for (const [issuer, unpacked, allowed] of [
