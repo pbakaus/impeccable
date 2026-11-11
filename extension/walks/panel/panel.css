@@ -1,0 +1,991 @@
+/*
+ * The walk panel: a paper sheet beside the tab being walked.
+ *
+ * Tokens and their rules live in ../shared/kinpaku.css, copied as it is from the Impeccable extension: paper and
+ * ink; gold is the lit dot and the tag and never carries text; patina-deep is the colour that may be read;
+ * vermilion is for a walk that failed and nothing else (a walk the person stopped did not fail).
+ *
+ * How a walk reads here:
+ *   Live     a lit gold dot: on the walker's face while they are at it, and on the step they are on.
+ *   State    patina: a met check, a paused or taken-over walk, something the guard kept from happening.
+ *   Issue    the gold tag, as a finding names itself in the other extension.
+ *   Failure  vermilion, on the one line that says what ended the walk.
+ *
+ * The buttons are the popup's (popup/popup.css), the segmented control and the switch are the DevTools panel's
+ * (devtools/panel.css), and a finished walk's issues are its findings rows. Those blocks are copied, not restyled.
+ */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-width: 280px;
+  font-size: var(--ks-type-ui);
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ks-gray-2) transparent;
+}
+
+::selection {
+  background: var(--ks-patina-pale);
+  color: var(--ks-ink);
+}
+
+p,
+h1,
+h2,
+blockquote {
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   Head of the sheet: the mark and the wordmark, as in the popup
+   ============================================================ */
+.top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+h1 {
+  font-family: var(--ks-font-wordmark);
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ks-ink);
+}
+
+#app {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#app > * {
+  flex: none;
+}
+
+#app > .feed-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.screen {
+  overflow-y: auto;
+}
+
+/* ============================================================
+   Who is walking, and what for
+   ============================================================ */
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 14px 13px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.face {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--ks-edge);
+  border-radius: 50%;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.face-letter {
+  font-family: var(--ks-font-wordmark);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ks-ink);
+}
+
+/* The light: dark at rest, lit gold while they walk, patina while the walk is held. */
+.face-light {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--ks-paper);
+  border-radius: 50%;
+  background: var(--ks-gray-2);
+  box-sizing: content-box;
+}
+
+.face[data-light="walking"] .face-light,
+.face[data-light="waiting"] .face-light {
+  background: var(--ks-kinpaku);
+  animation: lit 1.6s var(--ks-ease) infinite;
+}
+
+.face[data-light="paused"] .face-light,
+.face[data-light="takeover"] .face-light,
+.face[data-light="done"] .face-light {
+  background: var(--ks-patina);
+}
+
+.face[data-light="failed"] .face-light {
+  background: var(--ks-vermilion);
+}
+
+@keyframes lit {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(84% 0.19 80 / 0.55); }
+  60% { box-shadow: 0 0 0 5px oklch(84% 0.19 80 / 0); }
+}
+
+.who-text {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  min-width: 0;
+}
+
+.who-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ks-ink);
+}
+
+.who-role {
+  font-size: var(--ks-type-label);
+  line-height: 1.4;
+  color: var(--ks-text-muted);
+}
+
+.who-facts {
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+}
+
+.who-facts span + span::before {
+  content: "\00b7";
+  margin: 0 6px;
+  color: var(--ks-text-mute-deep);
+}
+
+.who-compact .face {
+  width: 28px;
+  height: 28px;
+}
+
+.who-compact .face-letter {
+  font-size: 15px;
+}
+
+.who-compact .face-light {
+  right: -3px;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+}
+
+.who-compact .who-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.who-compact .who-name {
+  font-size: var(--ks-type-ui);
+}
+
+.workflow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+.workflow-name {
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ks-ink);
+}
+
+.workflow-goal {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text);
+}
+
+/* A walk held: paused, or in the person's hands. A state, so patina. */
+.status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-ink);
+}
+
+.status::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ks-patina);
+  transform: translateY(-1px);
+}
+
+.status[data-busy="yes"]::before {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+/* ============================================================
+   Section names and counts (devtools/panel.css: category header)
+   ============================================================ */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 5px;
+}
+
+.section-name {
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ks-text-muted);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 15px;
+  padding: 0 5px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  color: var(--ks-text-muted);
+  font-family: var(--ks-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.progress {
+  margin-left: auto;
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+}
+
+/* ============================================================
+   The "done when" checks
+   ============================================================ */
+.checks {
+  display: grid;
+  gap: 1px;
+  padding: 2px 14px 10px;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 3px 0;
+  font-size: var(--ks-type-label);
+  line-height: 1.4;
+  color: var(--ks-text-muted);
+}
+
+.check-box {
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border: 1px solid var(--ks-edge);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  transition: background-color var(--ks-settle) var(--ks-ease), border-color var(--ks-settle) var(--ks-ease);
+}
+
+.check-box svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: var(--ks-paper-raised);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.check[data-met="yes"] {
+  color: var(--ks-ink);
+}
+
+.check[data-met="yes"] .check-box {
+  border-color: var(--ks-patina-deep);
+  background: var(--ks-patina-deep);
+}
+
+/* The checks as one line that ticks, open to the list. */
+.checks-line {
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.checks-line summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.checks-line summary::-webkit-details-marker {
+  display: none;
+}
+
+.checks-line summary::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--ks-text-faint);
+  border-bottom: 1.5px solid var(--ks-text-faint);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--ks-quick) var(--ks-ease);
+}
+
+.checks-line[open] summary::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+
+.pips {
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 14px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition: background-color var(--ks-settle) var(--ks-ease);
+}
+
+.pip[data-met="yes"] {
+  background: var(--ks-patina-deep);
+  box-shadow: none;
+}
+
+/* ============================================================
+   The feed: each step as it lands
+   ============================================================ */
+.feed {
+  display: grid;
+  gap: 1px;
+  padding: 0 8px 12px;
+  list-style: none;
+}
+
+.step,
+.note {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 6px;
+  border-radius: var(--ks-radius-sm);
+}
+
+.step:hover {
+  background: var(--ks-paper-deep);
+}
+
+.step-n {
+  position: relative;
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  text-align: right;
+  color: var(--ks-text-faint);
+}
+
+/* The step they are on: its number in ink, its dot lit. */
+.step[data-latest="yes"] .step-n {
+  font-weight: 600;
+  color: var(--ks-ink);
+}
+
+.step[data-latest="yes"] .step-n::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+  transform: translateY(-50%);
+}
+
+.step-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  min-width: 0;
+}
+
+.step-did {
+  font-size: var(--ks-type-ui);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ks-ink);
+}
+
+.step-said,
+.now-said {
+  quotes: "\201c" "\201d";
+}
+
+.step-said {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+}
+
+.step-said::before,
+.now-said::before {
+  content: open-quote;
+}
+
+.step-said::after,
+.now-said::after {
+  content: close-quote;
+}
+
+.step-issue {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-top: 3px;
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text);
+}
+
+.step-issue .ks-tag {
+  flex: none;
+}
+
+/* Something the guard kept from happening: told where it happened, quietly. */
+.note {
+  padding-block: 4px;
+  font-size: var(--ks-type-micro);
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+}
+
+.note-mark {
+  justify-self: end;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ks-patina);
+}
+
+.feed-empty {
+  padding: 10px 14px;
+  font-size: var(--ks-type-label);
+  color: var(--ks-text-muted);
+}
+
+.follow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+  cursor: pointer;
+}
+
+/* The trail of earlier steps: one line each. */
+.feed-brief .step {
+  padding-block: 4px;
+}
+
+.feed-brief .step-did {
+  font-size: var(--ks-type-label);
+  font-weight: 400;
+  color: var(--ks-text);
+}
+
+/* ============================================================
+   Controls
+   ============================================================ */
+.bar {
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--ks-rule);
+  background: var(--ks-paper);
+}
+
+.controls {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
+.foot-checks .checks {
+  padding: 0 0 10px;
+}
+
+/* Buttons (popup/popup.css) */
+.btn {
+  display: block;
+  width: 100%;
+  min-height: 30px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--ks-radius-sm);
+  font-family: inherit;
+  font-size: var(--ks-type-label);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--ks-quick) var(--ks-ease),
+    border-color var(--ks-quick) var(--ks-ease),
+    color var(--ks-quick) var(--ks-ease);
+}
+
+.btn-primary {
+  background: var(--ks-ink);
+  border-color: var(--ks-ink);
+  color: var(--ks-paper-raised);
+}
+
+.btn-primary:hover {
+  background: var(--ks-text);
+  border-color: var(--ks-text);
+}
+
+.btn-primary:active {
+  background: oklch(8% 0 0);
+  border-color: oklch(8% 0 0);
+}
+
+.btn-secondary {
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-edge);
+  color: var(--ks-ink);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.btn-secondary:hover {
+  border-color: var(--ks-ink);
+}
+
+.btn-secondary:active {
+  background: var(--ks-gray);
+  box-shadow: var(--ks-cap-press);
+}
+
+a.btn {
+  width: auto;
+  text-align: center;
+  text-decoration: none;
+  line-height: 14px;
+}
+
+/* Who drives, as one instrument (the checklist arrangement). */
+.instrument {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+}
+
+.instrument .btn {
+  flex: none;
+  width: auto;
+}
+
+.drive {
+  flex: 1;
+  min-width: 0;
+}
+
+.drive button {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.drive button:disabled {
+  color: var(--ks-text-mute-deep);
+  cursor: default;
+}
+
+/* Segmented control: a recessed track carrying raised caps (devtools/panel.css) */
+.setting-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  box-shadow: var(--ks-track-recess);
+}
+
+.setting-segmented button {
+  position: relative;
+  padding: 3px 9px 3px 16px;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ks-text-muted);
+  font-family: inherit;
+  font-size: var(--ks-type-micro);
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background-color var(--ks-quick) var(--ks-ease),
+    color var(--ks-quick) var(--ks-ease),
+    box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+/* The key's indicator: dark at rest, lit gold on the selected cap. */
+.setting-segmented button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.setting-segmented button:hover:not(:disabled) {
+  color: var(--ks-ink);
+}
+
+.setting-segmented button.active {
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  color: var(--ks-ink);
+}
+
+.setting-segmented button.active::before {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+.setting-segmented button:active:not(:disabled) {
+  box-shadow: var(--ks-cap-press);
+  transform: translateY(1px);
+}
+
+/* Switch: a recessed track, a paper knob, a dot that lights when on (devtools/panel.css) */
+.setting-switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.setting-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.setting-switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-gray-2);
+  box-shadow: var(--ks-track-recess);
+}
+
+.setting-switch-track::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ks-paper-raised);
+  box-shadow: var(--ks-cap-lift);
+  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.setting-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ks-gray-2);
+  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
+  transition:
+    transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1),
+    background-color var(--ks-quick) var(--ks-ease),
+    box-shadow var(--ks-quick) var(--ks-ease);
+}
+
+.setting-switch input:checked + .setting-switch-track::before,
+.setting-switch input:checked + .setting-switch-track::after {
+  transform: translateX(12px);
+}
+
+.setting-switch input:checked + .setting-switch-track::after {
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+}
+
+.setting-switch input:focus-visible + .setting-switch-track {
+  outline: 2px solid var(--ks-patina);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   The "now" arrangement: what is happening, large
+   ============================================================ */
+.now {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 14px 14px 16px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.now-did {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ks-ink);
+}
+
+.now-said {
+  font-size: 18px;
+  line-height: 1.35;
+  color: var(--ks-ink);
+  text-wrap: pretty;
+}
+
+/* The steps a look away (the checklist arrangement). */
+.all-steps summary {
+  padding: 8px 14px;
+  font-size: var(--ks-type-label);
+  font-weight: 600;
+  color: var(--ks-patina-deep);
+  cursor: pointer;
+}
+
+/* ============================================================
+   Before a walk, and after one
+   ============================================================ */
+.quiet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  justify-items: start;
+  padding: 22px 14px;
+}
+
+.line {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ks-ink);
+  text-wrap: balance;
+}
+
+.feed-scroll > .line {
+  padding: 16px 14px 10px;
+}
+
+.feed-scroll > .who {
+  padding: 14px 14px 0;
+}
+
+.feed-scroll > .workflow {
+  padding: 12px 14px 0;
+}
+
+.feed-scroll > p:has(.link) {
+  padding: 4px 14px 16px;
+}
+
+/* A walk that failed. The one vermilion here. */
+.failure {
+  color: var(--ks-vermilion);
+}
+
+.command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  justify-items: start;
+  width: 100%;
+}
+
+.how {
+  font-size: var(--ks-type-label);
+  color: var(--ks-text-muted);
+}
+
+.command-line {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-deep);
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-label);
+  color: var(--ks-ink);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.command .btn {
+  width: auto;
+}
+
+.link {
+  font-size: var(--ks-type-ui);
+  font-weight: 600;
+  color: var(--ks-patina-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.link:hover {
+  color: var(--ks-patina-ink);
+}
+
+/* A finished walk's issues (devtools/panel.css: findings rows) */
+.issues {
+  display: grid;
+  gap: 1px;
+  padding: 0 8px 8px;
+  list-style: none;
+}
+
+.finding-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 6px 8px;
+  border-radius: var(--ks-radius-sm);
+  transition: background-color var(--ks-quick) var(--ks-ease);
+}
+
+.finding-item:hover {
+  background: var(--ks-paper-deep);
+}
+
+.finding-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.finding-row .finding-selector {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The one colored text in the list. Patina clears 4.5:1 on paper. */
+.finding-selector {
+  font-family: var(--ks-mono);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-patina-deep);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.finding-detail {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-ink);
+}
+
+.finding-description {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text-muted);
+  quotes: "\201c" "\201d";
+}
+
+.finding-description::before {
+  content: open-quote;
+}
+
+.finding-description::after {
+  content: close-quote;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face-light {
+    animation: none !important;
+  }
+
+  * {
+    transition-duration: 0s !important;
+  }
+}
