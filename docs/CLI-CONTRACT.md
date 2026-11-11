@@ -2223,7 +2223,9 @@ requests that scope only when OAuth metadata lists it in `scopes_supported`.
 Existing sign-ins without the scope send nothing to this route.
 
 The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
-`productType` and `items`. Scan identity, time and repo key match design health.
+`productType` and `items`, plus an optional `label`: the repo's name by design
+health's label recipe, sent only when the remote supplies a usable one. Scan
+identity, time, repo key and label match design health.
 `productType` is `null`: the detector does not classify products. Non-advisory
 built-in `slop` findings establish `no-generic-ai-patterns: failing`;
 `low-contrast` findings establish `readable-contrast: failing`. Absent findings
