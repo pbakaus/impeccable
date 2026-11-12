@@ -140,8 +140,10 @@ export const ASK_AFTER_INPUT_MS = 10_000;
 export function siteOrigins(origin) {
   const { protocol, hostname, port } = new URL(origin);
   const bare = hostname.replace(/^www\./, '');
+  // An address by number has no `www.` form.
+  const hosts = /^[\d.]+$|^\[/.test(bare) ? [bare] : [bare, `www.${bare}`];
   const schemes = protocol === 'https:' ? ['https:'] : [protocol, 'https:'];
-  return schemes.flatMap((scheme) => [bare, `www.${bare}`].map((host) => new URL(`${scheme}//${host}${port ? `:${port}` : ''}`).origin));
+  return schemes.flatMap((scheme) => hosts.map((host) => new URL(`${scheme}//${host}${port ? `:${port}` : ''}`).origin));
 }
 
 /** Whether the top-level document may be at `url`. A blob the site made is the site's; nothing else without an origin is. */
@@ -182,10 +184,14 @@ const READS = ['GET', 'HEAD', 'OPTIONS'];
  */
 export function verdict(paused, mainFrame, allowed, writable = allowed) {
   const url = paused.request?.url;
-  if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed) ? 'continue' : 'block';
-  if (READS.includes(String(paused.request?.method ?? 'GET').toUpperCase())) return 'continue';
-  return writable.includes(webOrigin(url)) && !isOwnPage(url) ? 'continue' : 'refuse';
+  const writes = !reads(paused) && !(writable.includes(webOrigin(url)) && !isOwnPage(url));
+  // A form sent from the top of the page is a write too.
+  if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed) && !writes ? 'continue' : 'block';
+  return writes ? 'refuse' : 'continue';
 }
+
+/** Whether a held request only reads. */
+export const reads = (paused) => READS.includes(String(paused.request?.method ?? 'GET').toUpperCase());
 
 /* ------------------------------ on the tab ------------------------------ */
 

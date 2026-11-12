@@ -683,7 +683,7 @@ describe('walk helper worker', () => {
       return sendCommand(target, method, params);
     };
     try {
-      for (const [url, answer, done] of [['http://news.example.org/a', 'yes', 'Fetch.continueRequest'], ['https://ads.example.net/', 'no', 'Fetch.failRequest']]) {
+      for (const [url, answer, done] of [['http://news.example.org/a', 'yes', 'Fetch.continueRequest'], ['https://ads.example.net/', 'no', 'Fetch.failRequest'], ['http://93.184.216.34/', 'yes', 'Fetch.continueRequest']]) {
         await ops.mouse(click);
         const [at, heard] = [sent.length, told.length];
         move(url);
@@ -776,15 +776,18 @@ describe('walk helper worker', () => {
     const { ops, current } = await ownTab();
     page.seen = {};
     fireOn(21, 'Page.frameNavigated', { frame: { id: 'main', loaderId: 'n1', url: 'https://news.example.org/a' } });
-    for (const [url, method, done] of [
+    for (const [url, method, done, resourceType] of [
       ['https://news.example.org/vote', 'POST', 'Fetch.failRequest'],
+      ['https://news.example.org/subscribe', 'POST', 'Fetch.failRequest', 'Document'],
+      ['https://forms.example.com/send', 'POST', 'Fetch.failRequest', 'Document'],
       ['https://news.example.org/more', 'GET', 'Fetch.continueRequest'],
       [`${SHOP}/api/cart`, 'POST', 'Fetch.continueRequest'],
-    ]) {
+    ].map(([url, method, done, resourceType = 'XHR']) => [url, method, done, resourceType])) {
+      await ops.mouse(click);
       const at = sent.length;
-      move(url, { resourceType: 'XHR', request: { method, url } });
+      move(url, { resourceType, request: { method, url } });
       await settle(5);
-      assert.deepEqual(fetched(at), [done], `${method} ${url}`);
+      assert.deepEqual([current().ask, fetched(at)], [null, [done]], `${method} ${url}`);
     }
     const at = sent.length;
     await assert.rejects(ops.keyboard({ action: 'type', text: 'hi' }), { name: 'NotAllowed' });

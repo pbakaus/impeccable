@@ -1,7 +1,7 @@
 // The walk's driver: the one tab a walk has, and every op the socket may ask of it (the walk protocol). It
 // decides nothing: the session engine on the other end does the thinking. worker.js holds the socket and answers;
 // guard.js says where the tab may be and what it may start.
-import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
+import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 
@@ -103,6 +103,8 @@ async function mayGo(url) {
   if (said === 'no') { for (const one of siteOrigins(origin)) tab.refused.add(one); return false; }
   tab.sites += 1;
   tab.allowed.push(...siteOrigins(origin));
+  // The move goes on from the Yes: a redirect it makes to yet another site may still be asked about.
+  tab.lastInputAt = Date.now();
   return true;
 }
 
@@ -397,7 +399,8 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
       if (!heldAtSignIn && top && isSignInPage(params.request?.url)) spotted();
       // Another site, on a walk of the person's own tab: held until the person says whether it may go there.
-      const asking = top && tab.adopted && !heldAtSignIn && !onSite(params.request?.url, allowed) ? mayGo(params.request.url) : Promise.resolve();
+      // A form sent to it is never asked about; a question that fails leaves the move refused.
+      const asking = top && tab.adopted && !heldAtSignIn && reads(params) && !onSite(params.request?.url, allowed) ? mayGo(params.request.url).catch(() => false) : Promise.resolve();
       void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, writable, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
