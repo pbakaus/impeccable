@@ -2323,11 +2323,11 @@ Project-file evidence for the affected items (comments do not count):
 
 | Item | Checked | Failing or omitted |
 |---|---|---|
-| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Missing CI or checkout/setup alone fails. Unknown commands send nothing. |
+| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Missing CI, checkout/setup alone, or only recognised non-test commands (install, build, lint, format, typecheck, deploy, echo) fails. Any unclassified command sends nothing. |
 | `app-icons` | Favicon and large image files in known public folders, including icons/images subfolders, or local image links/manifest entries anywhere. | Missing either fails in a recognised web layout. Source components are not icons. |
 | `social-previews` | `og:image`, `twitter:image`, Nuxt `ogImage`, Next `openGraph.images` (including `generateMetadata`), or a share-image file. | No image fails; `twitter:card` alone is insufficient. |
 | `reduced-motion` | A real reduced-motion guard, or UI without detected motion. | Motion without a guard fails, including Web Animations, Svelte directives, Motion components and Tailwind animation classes. |
-| `design-tokens` | Three project colour custom properties, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities and third-party variables do not supply evidence. |
+| `design-tokens` | A project colour custom property defined and used through `var()`, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities, unused colour definitions and third-party variables do not supply evidence. |
 | `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Missing commands/scripts fails. Scaffolding and prose do not count. |
 | `infrastructure-as-code` | Hosting config in the project. | Missing config fails, except package libraries without app evidence send nothing. |
 

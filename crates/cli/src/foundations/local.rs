@@ -731,19 +731,19 @@ impl Project {
                     )
             })
             .collect();
-        let mut commands = false;
+        let mut unknown = false;
         for f in ci {
             let text = self.read(f)?;
             let text = evidence_text(f, &text);
             // A custom action may run tests; its contents are unknown.
-            commands |= text.lines().any(|l| {
+            unknown |= text.lines().any(|l| {
                 (l.contains("uses:")
                     && !l.contains("actions/checkout@")
                     && !l.contains("actions/setup-"))
                     || l.trim_start().starts_with("- task:")
             });
             let runs = ci_commands(&text);
-            commands |= !runs.trim().is_empty();
+            unknown |= !ci_known_non_test_commands(&runs);
             if !test.is_match(&runs) {
                 continue;
             }
@@ -756,7 +756,7 @@ impl Project {
             }
             return Some(State::Checked);
         }
-        (!commands).then_some(State::Failing)
+        (!unknown).then_some(State::Failing)
     }
 
     fn dependency_configured(&self) -> bool {
@@ -1432,12 +1432,14 @@ impl Project {
 
     fn design_tokens(&self) -> Option<State> {
         static COLOR_VAR: OnceLock<Regex> = OnceLock::new();
+        static COLOR_USE: OnceLock<Regex> = OnceLock::new();
         static HARD: OnceLock<Regex> = OnceLock::new();
         static THEME: OnceLock<Regex> = OnceLock::new();
         let color_var = re(
             &COLOR_VAR,
             r"(?i)--[\w-]+\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\()",
         );
+        let color_use = re(&COLOR_USE, r"\bvar\(\s*(--[\w-]+)\s*[,)]");
         let hard = re(&HARD, r"(?i)#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|\brgba?\(\s*\d");
         let theme = re(
             &THEME,
@@ -1453,6 +1455,7 @@ impl Project {
             return Some(State::Checked);
         }
         let mut project_colors = BTreeSet::new();
+        let mut used_colors = BTreeSet::new();
         let mut hardcoded = 0usize;
         let mut ui = false;
         for f in &self.files {
@@ -1475,9 +1478,12 @@ impl Project {
                     project_colors.insert(property.trim().to_string());
                 }
             }
+            for c in color_use.captures_iter(&t) {
+                used_colors.insert(c[1].to_string());
+            }
             if (tailwind_config && t.contains("colors"))
                 || (t.contains("@theme") && t.contains("--color-"))
-                || project_colors.len() >= 3
+                || !project_colors.is_disjoint(&used_colors)
                 || theme.is_match(&t)
             {
                 return Some(State::Checked);
@@ -2104,6 +2110,29 @@ fn evidence_text(file: &str, text: &str) -> String {
         .join("\n")
 }
 
+/// A closed list: anything outside these non-test operations may run tests.
+fn ci_known_non_test_commands(text: &str) -> bool {
+    static SEPARATOR: OnceLock<Regex> = OnceLock::new();
+    static KNOWN: OnceLock<Regex> = OnceLock::new();
+    let known = re(
+        &KNOWN,
+        r"(?x)^(?:
+            (?:npm|pnpm|yarn|bun)\s+(?:(?:-r|--filter\s+\S+)\s+)?(?:run\s+)?
+                (?:ci|i|install|build|lint|format|fmt|typecheck|type-check|deploy|setup)(?:[ :\s]|$)
+            |(?:make|just|cargo|go|gradle|gradlew|mvn|mvnw|dotnet|swift|mix)\s+
+                (?:install|build|lint|format|fmt|typecheck|type-check|deploy|setup|check|restore|compile|package)(?:[ :\s]|$)
+            |(?:(?:npx|pnpx|bunx)\s+)?(?:eslint|prettier|tsc|biome|ruff|black|rustfmt)\b
+            |(?:pip3?|poetry|uv|bundle|composer)\s+(?:install|sync|check|update)\b
+            |(?:echo|printf|cd|pwd|true|exit)\b
+        )",
+    );
+    re(&SEPARATOR, r"&&|\|\||[;\n|]")
+        .split(text)
+        .map(|command| command.trim().trim_matches(['\'', '"']))
+        .filter(|command| !command.is_empty())
+        .all(|command| known.is_match(command))
+}
+
 fn ci_commands(text: &str) -> String {
     static STEP: OnceLock<Regex> = OnceLock::new();
     let step = re(
@@ -2118,8 +2147,8 @@ fn ci_commands(text: &str) -> String {
         }
         if let Some(c) = step.captures(line) {
             let command = c[2].trim();
-            block = Some(c[1].len());
-            if !matches!(command, "" | "|" | ">" | "|-" | ">-") {
+            block = matches!(command, "" | "|" | ">" | "|-" | ">-").then_some(c[1].len());
+            if block.is_none() {
                 out.push_str(command);
                 out.push('\n');
             }
