@@ -50,6 +50,8 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go']"],
+    ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
   }
@@ -620,6 +622,7 @@ describe('walk helper worker', () => {
     ['a socket on another host', started({ socket: 'wss://example.com/api/outings/o1/socket' }), 'socket'],
     ['our own app as the tab', started({ url: 'https://app.impeccable.style/app/acme' }), 'url'],
     ['a tab that is on another site now', started({ url: 'https://elsewhere.example.com/' }), 'tab'],
+    ['sites of its own to allow', started({ allow: ['https://api.shop.example.com'] }), 'allow'],
   ]) {
     it(`refuses main's walk of a tab with ${label}`, async () => {
       await ownTab();

@@ -8,8 +8,8 @@ const PROTOCOL = 2;
 const SUBPROTOCOL = 'impeccable-outing';
 /** The most text one socket message carries, in UTF-16 code units (the walk protocol's part size): the hub takes about 1 MiB a message. */
 const PART_CHARS = 256 * 1024;
-/** What this helper can do beyond the protocol: walk the person's own tab, and ask the person before a deed. */
-const CAN = ['tab', 'ask'];
+/** What this helper can do beyond the protocol: walk the person's own tab, ask the person before a deed, and go to another site on their Yes. */
+const CAN = ['tab', 'ask', 'go'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */
 const BOOT = crypto.randomUUID();
 

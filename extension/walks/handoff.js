@@ -116,14 +116,15 @@ function startedSocket(socket, outing) {
 
 /**
  * Reads the block main passes on for a walk of the person's own tab: the same block, its socket on one of our servers.
- * The tab's own origin is walked (never one of our pages); `allow` adds to it.
+ * The tab's own origin is walked (never one of our pages). Its `allow` is empty: only the person's Yes adds a site.
  */
 export function readStartedHandoff(text) {
-  return readBlock(text, startedSocket, (url, allow) => {
+  const read = readBlock(text, startedSocket, (url) => {
     const origin = webOrigin(url);
     if (!origin || isOwnPage(url)) throw new Error('not walkable');
-    return { origin, allowed: [...new Set([origin, ...allow])] };
+    return { origin };
   });
+  return read.ok && read.handoff.allow.length > 0 ? no('allow') : read;
 }
 
 function readBlock(text, socketOk, admitted) {
