@@ -178,9 +178,14 @@ describe('walk lookout', () => {
 describe('walk mark on our pages', () => {
   it('writes the extension version, which the app takes as current (0.2.0 or later)', () => {
     const root = { dataset: {} };
-    const chrome = { runtime: { getManifest: () => MANIFEST } };
+    let heard;
+    const chrome = { runtime: { id: 'ext', getManifest: () => MANIFEST, onMessage: { addListener: (listener) => { heard = listener; } } } };
     vm.runInNewContext(readFileSync(path.join(ROOT, 'extension/walks/present.js'), 'utf8'), { document: { documentElement: root }, chrome });
     assert.equal(root.dataset.impeccableWalks, MANIFEST.version);
+    // It tells the helper it is here (so the page is not reloaded mid-hand-off), and tells nobody else anything.
+    const answers = [];
+    for (const id of ['ext', 'other']) heard({ walks: 'here' }, { id }, (answer) => answers.push([id, answer.here]));
+    assert.deepEqual(answers, [['ext', true]]);
     const [major, minor] = MANIFEST.version.split('.').map(Number);
     assert.ok(major > 0 || minor >= 2, MANIFEST.version);
   });
@@ -258,6 +263,28 @@ describe('walk helper worker', () => {
     // The server calls the walk off.
     sockets.at(-1).onclose({ reason: 'cancelled' });
     assert.deepEqual(toolbar, [{ openPanelOnActionClick: true }]);
+  });
+
+  // A reload mid-hand-off loses the walk: added, the helper reloads only the start pages that cannot have handed one over.
+  it('reloads, once added, only the start pages its content script is not on and no hand-off came from', async () => {
+    await loaded;
+    const outing = (id) => ({ id, url: `http://app.localhost:8794/app/acme/outings/o${id}` });
+    const reloaded = [];
+    const { query, sendMessage, reload } = chrome.tabs;
+    await chrome.storage.session.set({ handoff: { tabId: 2 } });
+    Object.assign(chrome.tabs, {
+      async query() { return [outing(1), outing(2), outing(3), { id: 4, url: 'https://example.com/' }]; },
+      async sendMessage(id, message) { if (id === 3 && message.walks === 'here') return { here: true }; throw new Error('Receiving end does not exist'); },
+      async reload(id) { reloaded.push(id); },
+    });
+    try {
+      for (const listener of listeners.installed) listener({ reason: 'install' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      assert.deepEqual(reloaded, [1]);
+    } finally {
+      Object.assign(chrome.tabs, { query, sendMessage, reload });
+      await chrome.storage.session.remove('handoff');
+    }
   });
 
   // A walked tab on a stubbed debugger, opened after the tests above: every command the walk sends it, in order,

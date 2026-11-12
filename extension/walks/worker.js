@@ -98,13 +98,23 @@ function hangUp() {
 }
 dial(connect, hangUp);
 
-// Added or updated: a page of ours already open and looking for this extension is loaded again, so it finds it.
+/**
+ * Added or updated: a page of ours already open and looking for this extension is loaded again, so it finds it. Never
+ * one this version's content script already runs on (it answers `here`; only such a page can be handing a walk over),
+ * nor the tab a kept hand-off came from: a reload mid-hand-off loses it.
+ */
+async function reloadStartPages() {
+  const kept = (await chrome.storage.session.get('handoff')).handoff;
+  const tabs = await chrome.tabs.query({}).catch(() => []);
+  await Promise.all(tabs.map(async (tab) => {
+    if (typeof tab.id !== 'number' || !isStartPage(tab.url ?? '') || tab.id === kept?.tabId) return;
+    const here = await chrome.tabs.sendMessage(tab.id, { walks: 'here' }, { frameId: 0 }).catch(() => null);
+    if (!here?.here) await chrome.tabs.reload(tab.id).catch(() => undefined);
+  }));
+}
 chrome.runtime.onInstalled.addListener((details) => {
   void connect();
-  if (details.reason !== 'install' && details.reason !== 'update') return;
-  void chrome.tabs.query({}).then((tabs) => {
-    for (const tab of tabs) if (typeof tab.id === 'number' && isStartPage(tab.url ?? '')) void chrome.tabs.reload(tab.id).catch(() => undefined);
-  }, () => undefined);
+  if (details.reason === 'install' || details.reason === 'update') void reloadStartPages().catch(() => undefined);
 });
 chrome.runtime.onStartup.addListener(() => { void connect(); });
 void connect();
