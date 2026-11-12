@@ -59,6 +59,8 @@ const sealed = { credentials: 'omit', redirect: 'error' };
  * came back after their sign-in was over): asked on each start and each status, until the server answers.
  */
 const SIGNED_IN = ['signed-in', 'refreshing'];
+/** A persona's name in the person's own list, as the server gives it. */
+const SLUG = /^[a-z0-9-]{1,80}$/;
 
 /**
  * A session against the server `issuer()` names. `fetch` and `store` are the network and the disk; `launch` opens
@@ -172,18 +174,23 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     return refresh(at);
   }
 
-  /** A GET on `at`'s extension door with its access token: once more after a refresh if the server says it is stale. */
-  async function read(at, path) {
+  /**
+   * A request to `at`'s extension door with its access token (a GET, or `body` posted as JSON): once more after a
+   * refresh if the server says it is stale. Resolves to `{ status, json }`, or null when nothing could be sent.
+   */
+  async function call(at, path, body) {
     for (let tries = 0; tries < 2; tries++) {
       const bearer = tries === 0 ? await token(at) : await refresh(at);
       // No token, or one that came back after the server in use changed: nothing is sent anywhere.
       if (!bearer || issuer() !== at) return null;
-      const answer = await fetch(`${resourceFor(at)}${path}`, { headers: { authorization: `Bearer ${bearer}`, accept: 'application/json' }, ...sealed });
+      const headers = { authorization: `Bearer ${bearer}`, accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) };
+      const answer = await fetch(`${resourceFor(at)}${path}`, { headers, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}), ...sealed });
       if (answer.status === 401) { if (access?.token === bearer) access = null; continue; }
-      return answer.ok ? answer.json().catch(() => null) : null;
+      return { status: answer.status, json: await answer.json().catch(() => null) };
     }
     return null;
   }
+  const read = async (at, path) => { const answer = await call(at, path); return answer && answer.status >= 200 && answer.status < 300 ? answer.json : null; };
 
   /** Asks `at`'s server to end each refresh token its record still holds to be ended, and forgets those it answered for. */
   async function retire(at) {
@@ -238,17 +245,30 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async personas() {
       const list = await read(issuer(), '/personas');
       const rows = Array.isArray(list?.personas) ? list.personas : null;
-      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map((p) => ({ name: p.name, role: typeof p.role === 'string' ? p.role : '' })) ?? null;
+      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map((p) => ({ name: p.name, role: typeof p.role === 'string' ? p.role : '', ...(SLUG.test(p.slug) ? { slug: p.slug } : {}) })) ?? null;
+    },
+
+    /**
+     * Asks the server to start a walk of the person's tab (`{ persona, task, url }`). `{ ok: true, handoff }` with the
+     * block it answered, or `{ ok: false, why }`: `unavailable` (no such door yet), `scope` (signed in before walks
+     * could be started), `failed`.
+     */
+    async startWalk(body) {
+      const answer = await call(issuer(), '/walks', body).catch(() => null);
+      if (answer?.status === 404) return { ok: false, why: 'unavailable' };
+      if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
+      return handoff && typeof handoff === 'object' ? { ok: true, handoff } : { ok: false, why: 'failed' };
     },
 
     /** Opens the sign-in window and keeps the grant it ends in. Resolves to whether it did, or why not. */
     async signIn() {
       const at = issuer();
-      const { authorize } = await server(at);
+      const { authorize, scope } = await server(at);
       const verifier = randomText();
       const state = randomText();
       await edit(at, to('signing-in', { pending: { state } }));
-      const returned = await launch(authorizeUrl({ endpoint: authorize, issuer: at, redirectUri, state, challenge: await challengeFor(verifier) }));
+      const returned = await launch(authorizeUrl({ endpoint: authorize, issuer: at, redirectUri, state, scope, challenge: await challengeFor(verifier) }));
       const ours = (was) => was?.state === 'signing-in' && was.pending?.state === state;
       const over = (why) => edit(at, (was) => (ours(was) ? to('signed-out')(was) : was)).then(() => ({ ok: false, why }));
       // The server in use changed while the window was open: this sign-in was for another one, and is dropped.

@@ -11,7 +11,7 @@ const CONTRACT = 2;
 const WAIT_MS = 1500;
 
 /** Whether the walk helper is here: `ready`, `old`, or `missing` (not added, or switched off). */
-async function helper() {
+export async function helper() {
   if (!HELPER_ID) return 'missing';
   const answer = await Promise.race([
     chrome.runtime.sendMessage(HELPER_ID, { walks: 'hello' }).catch(() => null),
@@ -29,6 +29,11 @@ async function started(tab) {
   if ((await helper()) === 'ready') return;
   if ((await chrome.storage.session.get('onboarded')).onboarded) return;
   await chrome.storage.session.set({ onboarded: true });
+  await onboard(tab);
+}
+
+/** Opens the onboarding beside `tab`. */
+export async function onboard(tab) {
   await chrome.tabs.create({ url: PAGE, windowId: tab.windowId, index: tab.index + 1, openerTabId: tab.id });
 }
 

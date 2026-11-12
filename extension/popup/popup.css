@@ -371,3 +371,58 @@ body.has-tabs header {
   font-size: var(--ks-type-micro);
   color: var(--ks-text-muted);
 }
+
+.preset-label {
+  margin-top: 10px;
+}
+
+.persona-walk {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--ks-type-micro);
+  font-weight: 600;
+  color: var(--ks-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--ks-kinpaku);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.persona-walk:focus-visible,
+.walk-task:focus-visible {
+  outline: 2px solid var(--ks-kinpaku);
+  outline-offset: 2px;
+}
+
+.walk-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.walk-form[hidden] {
+  display: none;
+}
+
+.walk-task {
+  padding: 6px 8px;
+  border: 1px solid var(--ks-edge);
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-raised);
+  font: inherit;
+  font-size: var(--ks-type-micro);
+  line-height: 1.4;
+  color: var(--ks-ink);
+  resize: vertical;
+}
+
+.walk-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}

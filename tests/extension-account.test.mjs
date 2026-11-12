@@ -57,6 +57,11 @@ describe('account sign-in flow', () => {
     assert.ok(readMetadata({ ...META, issuer: 'http://api.localhost:8787', authorization_endpoint: 'http://app.localhost:8787/app/oauth/authorize', token_endpoint: 'http://api.localhost:8787/oauth/token', revocation_endpoint: 'http://api.localhost:8787/oauth/revoke' }, 'http://api.localhost:8787'));
   });
 
+  // An unknown scope fails the sign-in: the one that starts walks is asked for once the server lists it.
+  for (const [listed, scope] of [[undefined, 'account:read personas:read'], [['account:read', 'personas:read', 'outings:start'], 'account:read personas:read outings:start']]) {
+    it(`asks for ${scope}`, () => { assert.equal(readMetadata({ ...META, scopes_supported: listed }, ISSUER).scope, scope); });
+  }
+
   for (const [issuer, unpacked, allowed] of [
     [PRODUCTION, false, true],
     ['https://api.staging.impeccable.style', false, false],
@@ -246,7 +251,7 @@ describe('account worker', () => {
       async sendMessage(id, message) { helper.asked.push({ id, message }); if (!helper.answer) throw new Error('no such extension'); return helper.answer; },
     },
     storage: { local: { async get() { return {}; }, async set() {} }, session: { async get(key) { return { [key]: session[key] }; }, async set(values) { Object.assign(session, values); } } },
-    tabs: { async create(tab) { opened.push(tab); } },
+    tabs: { async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
   const loaded = Promise.all([import('../extension/account/worker.js'), import('../extension/onboarding/contact.js')]);
@@ -291,4 +296,56 @@ describe('account worker', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.deepEqual(opened.map((tab) => [tab.url, tab.openerTabId]), [['chrome-extension://ext/onboarding/onboarding.html', 4]]);
   });
+
+  // "Walk this tab", against a stand-in account server that speaks the start door, signed in on a stand-in disk.
+  const records = new Map([[ISSUER, kept(ISSUER, 'refresh-walk')]]);
+  const done = (value) => { const req = {}; setTimeout(() => { req.result = value; req.onsuccess(); }); return req; };
+  globalThis.indexedDB = { open() {
+    return done({ createObjectStore() {}, close() {}, transaction: () => ({ objectStore: () => ({ get: (key) => done(records.get(key)), put: (value, key) => done(records.set(key, value)), delete: (key) => done(records.delete(key)) }) }) });
+  } };
+  const HANDOFF = { v: 1, outing: 'o9', socket: 'wss://impeccable.reviews/api/outings/o9/socket', ticket: 'ticket-0123456789', persona: { name: 'Ines', role: '' }, errand: { name: '', goal: 'Read the top story.', doneWhen: [] }, url: 'https://news.example.com/', allow: [] };
+  const posted = [];
+  const startServer = (walks) => {
+    globalThis.fetch = async (url, init = {}) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-walk', refresh_token: 'refresh-walk-2', expires_in: 900 });
+      if (url === `${ISSUER}/extension/v1/walks`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
+      return json(404, {});
+    };
+  };
+  const start = (tabId = 7) => ask({ account: 'walk', persona: { preset: 'ines' }, task: ' Read the top story. ', tabId }, fromPopup);
+
+  for (const [label, walks, answer] of [
+    ['hands the server’s block and the tab to the helper, and nothing of the sign-in', () => json(201, { handoff: HANDOFF }), { ok: true, panel: true }],
+    ['says walks are not there yet when the door answers 404', () => json(404, {}), { ok: false, why: 'unavailable' }],
+    ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
+    ['hands nothing over for a socket off the server’s pair', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }],
+  ]) {
+    it(`walks the person’s tab: ${label}`, async () => {
+      await loaded;
+      startServer(walks);
+      helper.answer = { ok: true, contract: 2, panel: true };
+      const before = helper.asked.length;
+      assert.deepEqual(await start(), answer);
+      assert.deepEqual(posted.at(-1), { body: { persona: { preset: 'ines' }, task: 'Read the top story.', url: 'https://news.example.com/' }, auth: 'Bearer access-walk', method: 'POST' });
+      const walked = helper.asked.slice(before).filter((m) => m.message.walks === 'walk');
+      assert.deepEqual(walked, answer.ok ? [{ id: IDS.unpacked.helper, message: { walks: 'walk', handoff: JSON.stringify(HANDOFF), tabId: 7 } }] : []);
+      assert.equal(JSON.stringify(helper.asked).includes('access-walk') || JSON.stringify(helper.asked).includes('refresh-walk'), false, 'no token ever reaches the helper');
+    });
+  }
+
+  for (const [label, tabId, helperAnswer, why] of [
+    ['a tab that is not a web page', 9, { ok: true, contract: 2 }, 'tab'],
+    ['no helper, opening its onboarding', 7, null, 'helper'],
+  ]) {
+    it(`starts no walk on ${label}`, async () => {
+      await loaded;
+      startServer(() => json(201, { handoff: HANDOFF }));
+      helper.answer = helperAnswer;
+      const [sent, tabs] = [posted.length, opened.length];
+      assert.deepEqual(await start(tabId), { ok: false, why });
+      assert.equal(posted.length, sent, 'the server is not asked');
+      assert.equal(opened.length - tabs, why === 'helper' ? 1 : 0);
+    });
+  }
 });

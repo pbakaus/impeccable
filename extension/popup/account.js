@@ -45,30 +45,83 @@
     if (name === 'personas' && !loadedPersonas) void personas();
   }
 
+  const make = (tag, className, text) => {
+    const made = document.createElement(tag);
+    made.className = className;
+    if (text !== undefined) made.textContent = text;
+    return made;
+  };
+
+  /** The one task box: under the row whose Walk this tab was pressed. */
+  const form = make('form', 'walk-form');
+  const taskLabel = make('label', 'account-label', WORDS.task);
+  const taskBox = make('textarea', 'walk-task');
+  taskBox.id = 'walk-task';
+  taskBox.rows = 3;
+  taskBox.maxLength = 2000;
+  taskBox.placeholder = WORDS.taskHint;
+  taskLabel.setAttribute('for', 'walk-task');
+  const startButton = make('button', 'btn btn-primary', WORDS.start);
+  startButton.type = 'submit';
+  const cancelButton = make('button', 'btn btn-secondary', WORDS.cancel);
+  cancelButton.type = 'button';
+  const walkNote = make('p', 'account-note');
+  walkNote.setAttribute('role', 'status');
+  walkNote.hidden = true;
+  const buttons = make('div', 'walk-buttons');
+  buttons.append(cancelButton, startButton);
+  form.append(taskLabel, taskBox, buttons, walkNote);
+  form.hidden = true;
+  let chosen = null;
+
+  function persona(person, ref) {
+    const item = make('li', 'persona');
+    item.append(make('span', 'persona-name', person.name));
+    if (person.role || person.line) item.append(make('span', 'persona-role', person.role || person.line));
+    if (ref) {
+      const go = make('button', 'persona-walk', WORDS.walkThis);
+      go.type = 'button';
+      go.dataset.walk = ref.preset ? `preset:${ref.preset}` : `own:${ref.own}`;
+      go.addEventListener('click', () => {
+        chosen = ref;
+        item.append(form);
+        form.hidden = false;
+        walkNote.hidden = true;
+        taskBox.focus();
+      });
+      item.append(go);
+    }
+    return item;
+  }
+
   async function personas() {
     loadedPersonas = true;
     const answer = await ask('personas');
     const list = $('persona-list');
     const note = $('personas-note');
     const rows = answer?.ok ? answer.personas : null;
-    list.replaceChildren(...(rows ?? []).map((persona) => {
-      const item = document.createElement('li');
-      item.className = 'persona';
-      const name = document.createElement('span');
-      name.className = 'persona-name';
-      name.textContent = persona.name;
-      item.append(name);
-      if (persona.role) {
-        const role = document.createElement('span');
-        role.className = 'persona-role';
-        role.textContent = persona.role;
-        item.append(role);
-      }
-      return item;
-    }));
+    list.replaceChildren(...(rows ?? []).map((person) => persona(person, person.slug ? { own: person.slug } : null)));
     note.textContent = rows === null ? WORDS.personasFailed : rows.length === 0 ? WORDS.noPersonas : '';
     note.hidden = note.textContent === '';
+    $('preset-label').textContent = WORDS.presets;
+    $('preset-list').replaceChildren(...WORDS.presetList.map((preset) => persona(preset, { preset: preset.id })));
   }
+
+  const WHY = { unavailable: WORDS.walkUnavailable, scope: WORDS.walkScope, helper: WORDS.walkHelper, tab: WORDS.walkTab };
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault?.();
+    const task = taskBox.value.trim();
+    if (!task || !chosen) { taskBox.focus(); return; }
+    startButton.disabled = true;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+    const answer = tab ? await ask('walk', { persona: chosen, task, tabId: tab.id }) : { ok: false, why: 'tab' };
+    startButton.disabled = false;
+    walkNote.textContent = answer?.ok ? (answer.panel ? WORDS.startedPanel : WORDS.started) : WHY[answer?.why] ?? WORDS.walkFailed;
+    walkNote.classList.toggle('is-error', !answer?.ok);
+    walkNote.hidden = false;
+    form.dataset.state = answer?.ok ? 'started' : answer?.why ?? 'failed';
+  });
+  cancelButton.addEventListener('click', () => { form.hidden = true; chosen = null; });
 
   function draw(next) {
     status = next;

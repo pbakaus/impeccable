@@ -325,3 +325,26 @@ test('signed in with no personas, the Personas tab shows its note and nothing el
   assert.deepEqual([h.node('persona-list').children.length, h.node('personas-note').hidden], [0, false]);
   assert.equal(h.node('personas-note').textContent, vm.runInNewContext(`${readFileSync(path.join(SOURCE, 'popup/words.js'), 'utf8')}; IMPECCABLE_WORDS.popup.noPersonas`, {}));
 });
+
+// "Walk this tab": each persona with a slug, and every preset, starts a walk of the tab the popup was opened on.
+for (const [label, answer, state] of [
+  ['started', { ok: true }, 'started'],
+  ['before the server has the door', { ok: false, why: 'unavailable' }, 'unavailable'],
+]) {
+  test(`a persona walks this tab from the Personas tab: ${label}`, async () => {
+    const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [{ name: 'Ada', role: '', slug: 'ada' }, { name: 'Bo', role: '' }] }, walk: answer } });
+    h.click('tab-personas');
+    await tick();
+    const walks = (list) => h.node(list).children.map((row) => row.children.find((child) => child.dataset.walk)?.dataset.walk ?? null);
+    assert.deepEqual([...walks('persona-list')], ['own:ada', null], 'a persona the server gave no slug cannot be walked');
+    assert.deepEqual([...walks('preset-list')], ['preset:ines', 'preset:kofi', 'preset:priya', 'preset:tomasz', 'preset:hana', 'preset:noor']);
+    const row = h.node('preset-list').children[0];
+    row.children.find((child) => child.dataset.walk).listeners.click();
+    const form = row.children.find((child) => child.className === 'walk-form');
+    assert.equal(form.hidden, false);
+    form.children.find((child) => child.className === 'walk-task').value = '  Read the top story.  ';
+    await form.listeners.submit({ preventDefault() {} });
+    assert.deepEqual(JSON.parse(JSON.stringify(h.messages.filter((m) => m.account === 'walk'))), [{ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7 }]);
+    assert.equal(form.dataset.state, state);
+  });
+}

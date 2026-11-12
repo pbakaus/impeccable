@@ -4,8 +4,9 @@
 
 /** This extension's name at the account server. */
 export const CLIENT_ID = 'impeccable-extension';
-/** What it asks for: who is signed in, and their personas. */
+/** What it asks for: who is signed in, and their personas; and to start walks, where the server offers that. */
 export const SCOPES = 'account:read personas:read';
+const START_WALKS = 'outings:start';
 /** The account server every build signs in to unless told otherwise. */
 export const PRODUCTION = 'https://api.impeccable.style';
 /** The other servers a build loaded unpacked may sign in to: staging, and this machine's stand-in on any port. */
@@ -57,14 +58,17 @@ export function readMetadata(json, issuer) {
   if (!Object.values(doors).every((url) => typeof url === 'string')) return null;
   const home = originOf(issuer);
   if (originOf(doors.token) !== home || originOf(doors.revoke) !== home) return null;
-  return [home, dialogOrigin(issuer)].includes(originOf(doors.authorize)) ? doors : null;
+  if (![home, dialogOrigin(issuer)].includes(originOf(doors.authorize))) return null;
+  // A scope the server does not list would fail the sign-in: asked for only once it is there.
+  const scope = Array.isArray(json.scopes_supported) && json.scopes_supported.includes(START_WALKS) ? `${SCOPES} ${START_WALKS}` : SCOPES;
+  return { ...doors, scope };
 }
 
 /** Where the person is sent to sign in and consent. */
-export function authorizeUrl({ endpoint, issuer, redirectUri, state, challenge }) {
+export function authorizeUrl({ endpoint, issuer, redirectUri, state, challenge, scope = SCOPES }) {
   const url = new URL(endpoint);
   for (const [key, value] of Object.entries({
-    response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri, scope: SCOPES, state,
+    response_type: 'code', client_id: CLIENT_ID, redirect_uri: redirectUri, scope, state,
     code_challenge: challenge, code_challenge_method: 'S256', resource: resourceFor(issuer),
   })) url.searchParams.set(key, value);
   return url.href;
