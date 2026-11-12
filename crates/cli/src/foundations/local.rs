@@ -1024,7 +1024,7 @@ impl Project {
         };
         let image = |f: &str| {
             matches!(
-                ext(f),
+                ext(f).to_ascii_lowercase().as_str(),
                 "ico" | "svg" | "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif"
             )
         };
@@ -1170,7 +1170,7 @@ impl Project {
                         };
                         self.has(&target)
                             && matches!(
-                                ext(&target),
+                                ext(&target).to_ascii_lowercase().as_str(),
                                 "png" | "svg" | "ico" | "webp" | "jpg" | "jpeg"
                             )
                     })
@@ -1450,7 +1450,9 @@ impl Project {
             if guard.is_match(&t) {
                 return Some(State::Checked);
             }
-            has_motion |= motion.is_match(&t) || tailwind_transition(&t);
+            // `animate-none` turns an animation off; it is not one.
+            has_motion |= motion.find_iter(&t).any(|m| m.as_str() != "animate-none")
+                || tailwind_transition(&t);
         }
         if !has_ui {
             return None;
