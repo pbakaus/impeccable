@@ -283,6 +283,11 @@ fn writes_honor_all_opt_outs_and_silently_ignore_server_failures() {
     std::fs::write(child.join(".impeccable/config.json"), r#"{"telemetry":false}"#).unwrap();
     let (child_io, _) = Io::captured("", child.clone(), io.env.clone());
     for args in &commands { assert_eq!(write_run(&child_io, args), silent); }
+    std::fs::remove_file(child.join(".impeccable/config.json")).unwrap();
+    // And the checkout root's opt-out counts from a subfolder.
+    std::fs::write(io.cwd.join(".impeccable/config.json"), r#"{"telemetry":false}"#).unwrap();
+    for args in &commands { assert_eq!(write_run(&child_io, args), silent); }
+    std::fs::remove_file(io.cwd.join(".impeccable/config.json")).unwrap();
     std::fs::remove_dir_all(io.cwd.join("apps")).unwrap();
     let store = Store::new(&account);
     let original = store.state().unwrap();

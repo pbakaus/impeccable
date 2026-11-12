@@ -200,7 +200,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         Err(error) => { io.err(&format!("Taste: {error}.\n")); return 1; }
     };
     if io.env.contains_key("IMPECCABLE_NO_TASTE")
+        // Either the folder the command runs in or the checkout's root may opt out.
         || impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy()).is_some()
+        || impeccable_context::telemetry::opt_out_reason(&io.env, &root).is_some()
         || (route == "uses" && body["rules"].as_array().is_none_or(|r| r.is_empty()))
     { return 0; }
     let Ok(account) = Account::from_env(&io.env) else { return 0; };
