@@ -2220,7 +2220,7 @@ binary, including for npx and PATH installs without an adjacent skill directory.
 
 ## Walkthrough
 
-`impeccable walkthrough <recording> [--chapter M:SS=Text]... [--out <dir>]`
+`impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
 turns a screen recording (anything the system's ffmpeg reads: WebM, GIF, MOV,
 MP4) into what a Needs you walkthrough card takes. It always prints one JSON
 object on stdout and exits 0 on success, 1 otherwise.
@@ -2233,8 +2233,9 @@ object on stdout and exits 0 on success, 1 otherwise.
 - **Checks before any write.** A missing file is `not_found`; a file ffprobe
   can't read is `unreadable`; a recording over 2:00 is `too_long`; a chapter
   that isn't `M:SS=Text` (also `H:MM:SS` or plain seconds; text 1 to 200
-  characters on one line), more than 12 chapters, or a chapter after the end
-  is `bad_chapter`.
+  characters on one line), more than 12 chapters, two chapters at the same
+  moment, or a chapter after the end is `bad_chapter`. `--ship` is the approve
+  button's label, 1 to 40 characters, `Looks right` by default.
 - **Film.** `<out>/<stem>.mp4`: H.264 (`libx264`, `yuv420p`), no audio,
   `+faststart`, even dimensions, at most 1920 px wide and never upscaled. Over
   50 MB it is encoded again at 1280 px wide with a higher quality factor; still
@@ -2250,7 +2251,7 @@ object on stdout and exits 0 on success, 1 otherwise.
   text}], post:{attachments, interaction}, _instructions}`. `sha256` is
   base64url without padding. Chapters are sorted, in milliseconds. `post` is
   ready to merge into a `needs_you.post` call: attachment ids `film` and
-  `poster`, and `interaction: {kind:"walkthrough", film, shot, chapters}`.
+  `poster`, and `interaction: {kind:"walkthrough", film, shot, ship:{label}, chapters}`.
 
 ## Setup status
 

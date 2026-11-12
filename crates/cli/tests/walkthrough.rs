@@ -143,6 +143,11 @@ fn a_recording_becomes_a_card_ready_walkthrough() {
         serde_json::json!({ "id": "film", "format": "mp4", "bytes": bytes.len(), "sha256": digest })
     );
     assert_eq!(v["post"]["interaction"]["kind"], "walkthrough");
+    // The server refuses a walkthrough without an approve label; a default is always there.
+    assert_eq!(
+        v["post"]["interaction"]["ship"],
+        serde_json::json!({ "label": "Looks right" })
+    );
     // The output folder ignores itself, so a recording never reaches a commit.
     let ignore = std::fs::read_to_string(dir.join(".impeccable/walkthroughs/.gitignore")).unwrap();
     assert!(ignore.lines().any(|l| l.trim() == "*"), "{ignore}");
@@ -196,4 +201,17 @@ fn a_missing_ffmpeg_gets_the_install_line_and_bad_input_a_plain_reason() {
     assert_eq!(v["error"], "not_found");
     let (_, v) = run(&dir, None, &["clip.webm", "--chapter", "soon=Text"]);
     assert_eq!(v["error"], "bad_chapter");
+    // The card wants strictly increasing chapters and a short approve label.
+    let (_, v) = run(
+        &dir,
+        None,
+        &["clip.webm", "--chapter", "0:04=One", "--chapter", "4=Two"],
+    );
+    assert_eq!(
+        v["message"],
+        "Two chapters share 0:04: \"One\" and \"Two\". Give each its own moment."
+    );
+    let long = "x".repeat(41);
+    let (_, v) = run(&dir, None, &["clip.webm", "--ship", &long]);
+    assert_eq!(v["error"], "usage");
 }

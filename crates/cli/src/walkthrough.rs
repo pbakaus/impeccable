@@ -1,4 +1,4 @@
-//! `impeccable walkthrough <recording> [--chapter M:SS=Text]... [--out <dir>]`
+//! `impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
 //!
 //! Turns whatever an agent's browser tool recorded (WebM, GIF, MOV, MP4) into
 //! what a Needs you walkthrough card takes: a faststart H.264 MP4 with no
@@ -17,13 +17,16 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-const USAGE: &str = "Usage: impeccable walkthrough <recording> [--chapter M:SS=Text]... [--out <dir>]\n\nConverts a screen recording (webm, gif, mov, mp4) into a Needs you walkthrough:\nan H.264 MP4 with no audio, a poster still, and the fields needs_you.post wants.\nChapters mark the moments that matter, for example --chapter 0:04=\"Adding to the cart\".\n";
+const USAGE: &str = "Usage: impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]\n\nConverts a screen recording (webm, gif, mov, mp4) into a Needs you walkthrough:\nan H.264 MP4 with no audio, a poster still, and the fields needs_you.post wants.\nChapters mark the moments that matter, for example --chapter 0:04=\"Adding to the cart\".\n";
 
 /// The card's limits (the Needs you server enforces the same ones).
 const MAX_SECONDS: f64 = 120.0;
 const MAX_FILM_BYTES: u64 = 50_000_000;
 const MAX_CHAPTERS: usize = 12;
 const MAX_CHAPTER_TEXT: usize = 200;
+const MAX_SHIP_LABEL: usize = 40;
+/// The approve button's label unless `--ship` names another.
+const DEFAULT_SHIP: &str = "Looks right";
 
 /// One encode attempt: the widest frame it keeps, and x264's quality factor.
 const ATTEMPTS: [(u32, u32); 2] = [(1920, 23), (1280, 30)];
@@ -183,6 +186,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     let mut input = None;
     let mut out_dir = None;
     let mut chapters = Vec::new();
+    let mut ship = DEFAULT_SHIP.to_string();
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
@@ -194,6 +198,18 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 Some(Ok(c)) => chapters.push(c),
                 Some(Err(e)) => return fail(io, "bad_chapter", e),
                 None => return fail(io, "bad_chapter", "--chapter needs M:SS=Text.".into()),
+            },
+            "--ship" => match rest.next().map(|l| l.trim().to_string()) {
+                Some(l) if (1..=MAX_SHIP_LABEL).contains(&l.chars().count()) && !l.chars().any(char::is_control) => {
+                    ship = l
+                }
+                _ => {
+                    return fail(
+                        io,
+                        "usage",
+                        format!("--ship takes the approve button's label, 1 to {MAX_SHIP_LABEL} characters."),
+                    )
+                }
             },
             "--out" => match rest.next() {
                 Some(dir) => out_dir = Some(PathBuf::from(dir)),
@@ -233,6 +249,19 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         );
     }
     chapters.sort_by_key(|c| c.at_ms);
+    // The card wants chapters strictly increasing: two at one moment is a mistake to name.
+    if let Some(pair) = chapters.windows(2).find(|w| w[0].at_ms == w[1].at_ms) {
+        return fail(
+            io,
+            "bad_chapter",
+            format!(
+                "Two chapters share {}: \"{}\" and \"{}\". Give each its own moment.",
+                clock(pair[0].at_ms),
+                pair[0].text,
+                pair[1].text
+            ),
+        );
+    }
 
     let (Some(ffmpeg), Some(ffprobe)) = (tool(io, "ffmpeg"), tool(io, "ffprobe")) else {
         return fail(
@@ -474,6 +503,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 "kind": "walkthrough",
                 "film": { "id": "film" },
                 "shot": { "id": "poster" },
+                "ship": { "label": ship },
                 "chapters": chapter_rows,
             },
         },
