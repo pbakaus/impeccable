@@ -1521,6 +1521,9 @@ impl Project {
                 return Some(State::Checked);
             }
             if UI_EXTS.contains(&e) {
+                // A colour inside a custom property's definition is a
+                // token, used or not, never a hard-coded colour.
+                let t = color_var.replace_all(&t, "");
                 hardcoded += hard
                     .find_iter(&t)
                     .filter(|m| {
@@ -2181,8 +2184,20 @@ fn ci_commands(text: &str) -> String {
             let command = c[2].trim();
             block = matches!(command, "" | "|" | ">" | "|-" | ">-").then_some(c[1].len());
             if block.is_none() {
-                out.push_str(command);
-                out.push('\n');
+                // An inline list, `script: [npm ci, npm test]`, is one
+                // command per entry.
+                match command.strip_prefix('[').and_then(|c| c.strip_suffix(']')) {
+                    Some(list) => {
+                        for entry in list.split(',') {
+                            out.push_str(entry.trim().trim_matches(['"', '\'']));
+                            out.push('\n');
+                        }
+                    }
+                    None => {
+                        out.push_str(command);
+                        out.push('\n');
+                    }
+                }
             }
         } else if let Some(indent) = block {
             if line.len() - line.trim_start().len() > indent {
@@ -2240,6 +2255,10 @@ fn readme_commands(text: &str) -> String {
                 out.push_str(line);
                 out.push('\n');
             }
+        } else if (line.starts_with("    ") || line.starts_with('\t')) && project_command(line) {
+            // An indented code block, Markdown's or reStructuredText's.
+            out.push_str(line);
+            out.push('\n');
         } else {
             for c in re(&INLINE, r"`([^`\n]+)`").captures_iter(line) {
                 if project_command(&c[1]) {
