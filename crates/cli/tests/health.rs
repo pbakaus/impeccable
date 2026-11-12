@@ -471,8 +471,8 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
     // A tracked key: the item fails, and neither the key nor where it sits is sent.
     let key = format!("sk_{}_{}", "live", "4eC39HqLyjWDarjtT1zdp7dcAbCdEf12");
     std::fs::create_dir_all(root.join("src")).unwrap();
-    std::fs::write(root.join("src/billing-keys.ts"), format!("export const k = \"{key}\";\n")).unwrap();
-    git(&root, &["add", "src/billing-keys.ts"]);
+    std::fs::write(root.join("src/billing-keys.json"), format!("{{\"k\": \"{key}\"}}\n")).unwrap();
+    git(&root, &["add", "src/billing-keys.json"]);
     let out = run(&env, &root, &["detect", "--json", "."]);
     let r = fake.record.lock().unwrap();
     let body = r.foundations.last().expect("foundations uploaded");

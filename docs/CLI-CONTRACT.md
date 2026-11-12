@@ -2278,15 +2278,17 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   `no-generic-ai-patterns: failing`; `low-contrast` findings establish
   `readable-contrast: failing`. A pass means "none found by the scan" and is
   sent only where the scan could have found one: `readable-contrast: checked`
-  needs at least one file read by the static HTML engine (low contrast never
-  runs on regex-only files), `no-generic-ai-patterns: checked` at least one
-  markup, style or component file; both need every rule of the class enabled
-  and no advisory finding of it.
+  needs at least one file read by the static HTML engine and no other
+  non-style file (component or script) left to the regex engine, since low
+  contrast never runs on regex-only files; `no-generic-ai-patterns: checked`
+  needs at least one markup, style or component file. Both need every rule of
+  the class enabled, no advisory finding of it, and no `--no-advisory`.
 - Project files (`crates/cli/src/foundations/local.rs`), when the scanned root
   is a git work tree's top: one offline walk, sorted, skipping dependency,
-  build and hidden directories, capped at 20,000 paths, 6,000 file reads and
-  512 KiB per file (files over 2 MiB are never read). Past a cap only `failing`
-  states are sent. `ci-runs-tests`, `dependency-scanning`, `app-icons`,
+  build and hidden directories, capped at 20,000 files, 100,000 directory
+  entries, 6,000 file reads and 512 KiB per file (files over 2 MiB are never
+  read). Past a cap only states a found file proves are sent (a found CI
+  config passes; a missing guard no longer fails). `ci-runs-tests`, `dependency-scanning`, `app-icons`,
   `not-found-page`, `social-previews`, `legal-pages`, `reduced-motion`,
   `design-tokens`, `secrets-out-of-repo`, `error-tracking`,
   `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
@@ -2294,8 +2296,10 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
   `error-tracking` are sent only for a web project (an HTML entry, a web
   framework dependency, or pages/app/routes UI files), and `not-found-page`
-  only for a framework it knows. `secrets-out-of-repo` reads `git ls-files`
-  (a git failure sends nothing) for well-known key formats and tracked env
+  only for a framework it knows; the framework comes from the root's own
+  manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
+  failure in a repository sends nothing) and each tracked text file whole,
+  up to 256 MiB in all, for well-known key formats and tracked env
   files; neither a value nor a path ever leaves the machine.
 - `real-packages` and `current-dependencies` need the network and are never sent.
 

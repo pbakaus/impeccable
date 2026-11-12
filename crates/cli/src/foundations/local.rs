@@ -15,6 +15,12 @@ use std::time::{Duration, Instant};
 
 /// Paths the walk lists before it stops.
 const MAX_FILES: usize = 20_000;
+/// Directory entries the walk looks at, files and directories alike.
+const MAX_ENTRIES: usize = 100_000;
+/// Bytes the read cache keeps; past it, files are read but not kept.
+const MAX_CACHED: usize = 64 * 1024 * 1024;
+/// Bytes the secrets scan reads in all; past it, nothing is proven.
+const MAX_SECRET_BYTES: u64 = 256 * 1024 * 1024;
 /// Files read for their content.
 const MAX_READS: usize = 6_000;
 /// Bytes read from one file.
@@ -103,6 +109,7 @@ struct Project {
     reads: std::cell::Cell<usize>,
     read_capped: std::cell::Cell<bool>,
     cache: std::cell::RefCell<std::collections::HashMap<String, Option<Rc<str>>>>,
+    cached: std::cell::Cell<usize>,
     /// The root package.json's dependencies: they name the framework.
     root_deps: BTreeSet<String>,
     /// Every manifest's, nested ones included: for SDK lookups.
@@ -208,11 +215,21 @@ impl Project {
         let mut files = Vec::new();
         let mut truncated = false;
         let mut stack = vec![String::new()];
+        let mut seen = 0usize;
         'walk: while let Some(dir) = stack.pop() {
             let Ok(entries) = std::fs::read_dir(root.join(&dir)) else {
                 continue;
             };
-            let mut entries: Vec<_> = entries.flatten().collect();
+            let mut listed = Vec::new();
+            for e in entries.flatten() {
+                seen += 1;
+                if seen > MAX_ENTRIES {
+                    truncated = true;
+                    break 'walk;
+                }
+                listed.push(e);
+            }
+            let mut entries = listed;
             entries.sort_by_key(|e| e.file_name());
             let mut subdirs = Vec::new();
             for e in entries {
@@ -250,6 +267,7 @@ impl Project {
             reads: Default::default(),
             read_capped: Default::default(),
             cache: Default::default(),
+            cached: Default::default(),
             root_deps: BTreeSet::new(),
             deps: BTreeSet::new(),
             scripts: BTreeSet::new(),
@@ -278,9 +296,13 @@ impl Project {
         }
         self.reads.set(self.reads.get() + 1);
         let text: Option<Rc<str>> = read_capped(&self.root.join(rel)).map(Rc::from);
-        self.cache
-            .borrow_mut()
-            .insert(rel.to_string(), text.clone());
+        let size = text.as_ref().map_or(0, |t| t.len());
+        if self.cached.get() + size <= MAX_CACHED {
+            self.cached.set(self.cached.get() + size);
+            self.cache
+                .borrow_mut()
+                .insert(rel.to_string(), text.clone());
+        }
         text
     }
 
@@ -921,6 +943,8 @@ impl Project {
             "src/pages/",
             "src/app/",
             "src/routes/",
+            "src/views/",
+            "src/screens/",
             "content/",
             "src/content/",
             "public/",
@@ -1035,7 +1059,7 @@ impl Project {
         static GUARD: OnceLock<Regex> = OnceLock::new();
         let motion = re(
             &MOTION,
-            r"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\.",
+            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\.|(class(Name)?\s*=|@apply)[^>\n]*[\s"'`{]transition(-[a-z]+)?[\s"'`};]"#,
         );
         let guard = re(
             &GUARD,
@@ -1213,6 +1237,7 @@ impl Project {
         };
         let mut hits = Vec::new();
         let mut reads = 0usize;
+        let mut bytes = 0u64;
         for f in &files {
             let n = name(f);
             if is_env_file(n) {
@@ -1232,11 +1257,14 @@ impl Project {
             }
             // Its own budget, so the other checks' reads never cost this one.
             reads += 1;
-            if reads > MAX_SECRET_READS {
+            let size = std::fs::metadata(self.root.join(f)).map_or(0, |m| m.len());
+            bytes += size;
+            if reads > MAX_SECRET_READS || bytes > MAX_SECRET_BYTES {
                 let state = (!hits.is_empty()).then_some(State::Failing);
                 return (hits, state);
             }
-            let Some(t) = read_capped(&self.root.join(f)) else {
+            // The whole file: a key past a read cap would pass unseen.
+            let Some(t) = read_whole(&self.root.join(f)) else {
                 continue;
             };
             // One pass over the file; lines are counted only on a match.
@@ -1400,6 +1428,15 @@ fn secret_kind(matched: &str) -> Option<&'static str> {
         .map(|(_, k)| *k)
 }
 
+/// A whole text file; `None` for binary or unreadable ones.
+fn read_whole(path: &Path) -> Option<String> {
+    let buf = std::fs::read(path).ok()?;
+    if buf.iter().take(8192).any(|b| *b == 0) {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
 fn read_capped(path: &Path) -> Option<String> {
     use std::io::Read;
     let meta = std::fs::metadata(path).ok()?;
@@ -1418,18 +1455,25 @@ fn read_capped(path: &Path) -> Option<String> {
     Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
+/// Whether `root` or a folder above it holds a `.git`.
+fn in_repo(root: &Path) -> bool {
+    root.ancestors().any(|d| d.join(".git").exists())
+}
+
 /// `None` when `root` isn't in a git work tree; `Some(Err)` when git failed
 /// or ran past its deadline.
 fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
-    let mut child = Command::new("git")
+    let child = Command::new("git")
         .arg("-C")
         .arg(root)
         .args(["-c", "core.fsmonitor=false", "ls-files", "-z", "--cached"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+        .spawn();
+    let Ok(mut child) = child else {
+        return in_repo(root).then_some(Err(()));
+    };
     let mut out = child.stdout.take()?;
     let reader = std::thread::spawn(move || {
         use std::io::Read;
@@ -1453,8 +1497,9 @@ fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
     };
     let buf = reader.join().unwrap_or_default();
     if !status.success() {
-        // Not a repository (git exits 128): fall back to the walk.
-        return None;
+        // Not a repository: fall back to the walk. A repository git failed
+        // to read: nothing is proven.
+        return in_repo(root).then_some(Err(()));
     }
     Some(Ok(String::from_utf8_lossy(&buf)
         .split('\0')

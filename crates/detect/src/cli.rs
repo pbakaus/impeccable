@@ -509,8 +509,8 @@ pub struct FullScan {
     /// Scanned files the static HTML engine read, the only local files the
     /// element rules (low contrast among them) run on.
     pub html_files_scanned: usize,
-    /// Scanned markup or component files (JSX, Vue, Svelte, ...) that only
-    /// the regex engine read, so element rules never judged their text.
+    /// Scanned non-style files (components, scripts) that only the regex
+    /// engine read, so element rules never judged any markup in them.
     pub regex_component_files: usize,
     /// What detect reported, after the config, ignores and `--no-advisory`.
     pub findings: Vec<Finding>,
@@ -1257,8 +1257,11 @@ fn scan_targets(
                         if uses_html_engine(file, &ctx.config.extensions) {
                             ctx.html_files_scanned += 1;
                             ctx.ui_files_scanned += 1;
-                        } else if is_ui_file(file) {
-                            ctx.ui_files_scanned += 1;
+                        } else {
+                            if is_ui_file(file) {
+                                ctx.ui_files_scanned += 1;
+                            }
+                            // Plain .js/.ts can hold JSX too.
                             if !is_style_file(file) {
                                 ctx.regex_component_files += 1;
                             }
