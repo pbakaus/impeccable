@@ -7,6 +7,20 @@ import { compileProviderBlocks } from '../scripts/lib/utils.js';
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
+  it('documents live-inject check as read-only unless auto-config is requested', () => {
+    const contract = readFileSync(join(ROOT, 'docs/CLI-CONTRACT.md'), 'utf-8');
+    const inject = contract.split('#### `live-inject.mjs`')[1].split('\n#### ')[0];
+    assert.match(inject, /`--check` \(read-only/);
+    assert.match(inject, /only `--check --auto-config` may create/);
+    assert.match(inject, /configCreated: true/);
+  });
+
+  it('documents the literal auto-config body anchor requirement', () => {
+    const contract = readFileSync(join(ROOT, 'docs/CLI-CONTRACT.md'), 'utf-8');
+    const boot = contract.split('#### `live.mjs`')[1].split('\n#### ')[0];
+    assert.ok(boot.includes('`index.html` file containing the literal, case-sensitive `</body>`'));
+  });
+
   it('keeps setup guidance focused on routing live to its reference', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');

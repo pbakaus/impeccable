@@ -68,6 +68,7 @@ export default [
   { id: 'live-inject-help', verb: 'live-inject', workspace: 'live-html', args: ['--help'] },
   { id: 'live-inject-check-ok', verb: 'live-inject', workspace: 'live-html', args: ['--check'] },
   { id: 'live-inject-check-missing', verb: 'live-inject', workspace: 'live-vite', args: ['--check'], setup: (ws) => rm(ws, CFG) },
+  { id: 'live-inject-check-auto-config-created', verb: 'live-inject', workspace: 'live-html', args: ['--check', '--auto-config'], setup: (ws) => rm(ws, CFG), files: [CFG, 'index.html'] },
   { id: 'live-inject-check-invalid-json', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, '[1') },
   { id: 'live-inject-check-invalid-files', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, JSON.stringify({ files: [], insertBefore: '</body>', commentSyntax: 'html' })) },
   { id: 'live-inject-check-invalid-anchor', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, JSON.stringify({ files: ['index.html'], commentSyntax: 'html' })) },

@@ -55,6 +55,11 @@ fn auto_configure(cwd: &str, path: &str) -> bool {
     {
         return false;
     }
+    let Some(content) = safe_read(&jsp::join(&[cwd, "index.html"])) else { return false };
+    // Match insert_tag's literal, case-sensitive insertBefore lookup.
+    if content.rfind("</body>").is_none() {
+        return false;
+    }
     let path = std::path::Path::new(path);
     let Some(parent) = path.parent() else { return false };
     if std::fs::create_dir_all(parent).is_err() {

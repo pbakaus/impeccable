@@ -574,6 +574,30 @@ mod tests {
     }
 
     #[test]
+    fn auto_config_refuses_uppercase_body_anchor() {
+        let f = Fixture::new();
+        let html = "<html><body>Hello</BODY></html>";
+        f.write("index.html", html);
+        let (_, check) = f.run("check", &["--check", "--auto-config"], None);
+        assert_eq!(check["error"], "config_missing");
+        assert!(check.get("configCreated").is_none());
+        assert!(!f.0.join(".impeccable/live/config.json").exists());
+        assert_eq!(std::fs::read_to_string(f.0.join("index.html")).unwrap(), html);
+    }
+
+    #[test]
+    fn auto_config_refuses_missing_body_anchor() {
+        let f = Fixture::new();
+        let html = "<html><body>Hello</html>";
+        f.write("index.html", html);
+        let (_, check) = f.run("check", &["--check", "--auto-config"], None);
+        assert_eq!(check["error"], "config_missing");
+        assert!(check.get("configCreated").is_none());
+        assert!(!f.0.join(".impeccable/live/config.json").exists());
+        assert_eq!(std::fs::read_to_string(f.0.join("index.html")).unwrap(), html);
+    }
+
+    #[test]
     fn auto_config_refuses_csp_frameworks_and_missing_entry() {
         for marker in ["csp", "svelte.config.js", "nuxt.config.ts", "next.config.js", "astro.config.mjs", "tanstack", "missing"] {
             let f = Fixture::new();
