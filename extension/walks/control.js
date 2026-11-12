@@ -43,6 +43,7 @@ async function clear(name) {
   let waited = false;
   for (;;) {
     const { state } = current();
+    if (stopped) throw fail('Stopped', 'the person stopped this walk');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
     const signIn = await signInNow();

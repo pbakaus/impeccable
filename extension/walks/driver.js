@@ -110,6 +110,7 @@ async function letGo(tab, why) {
 export async function endWalk(told, why, { tidy = false } = {}) {
   const tab = walk;
   if (!tab) return;
+  tab.ending = true;
   if (tidy) for (const hook of hooks.closing) { try { await hook(tab); } catch { /* the tab may be gone */ } }
   if (walk !== tab) return;
   walk = null;
@@ -120,7 +121,8 @@ export async function endWalk(told, why, { tidy = false } = {}) {
 
 /** A debugger command on the walked tab. Chrome rejects with the protocol's error as JSON text: only its message is kept. */
 async function cmd(method, params) {
-  if (!walk) throw fail('OutingClosed', 'no tab is open');
+  // Once the walk is ending, nothing more reaches the tab: not an op a pause held, not the rest of one under way.
+  if (!walk || walk.ending) throw fail('OutingClosed', 'no tab is open');
   try {
     return await chrome.debugger.sendCommand({ tabId: walk.tabId }, method, params);
   } catch (err) {
@@ -801,6 +803,7 @@ export const ops = {
   // The debugger leaves; the tab stays as the walk left it.
   async close() {
     const tab = walk;
+    if (tab) tab.ending = true;
     if (tab) for (const hook of hooks.closing) { try { await hook(tab); } catch { /* the tab may be gone */ } }
     walk = null;
     if (tab) {

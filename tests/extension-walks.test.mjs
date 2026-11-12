@@ -488,6 +488,29 @@ describe('walk helper worker', () => {
     });
   }
 
+  it('lets nothing a pause held reach the tab once Stop is pressed, even while the walk is still letting go', async () => {
+    const { ops, command, hooks } = await walked();
+    page.seen = {};
+    const reached = [];
+    const { sendCommand } = chrome.debugger;
+    chrome.debugger.sendCommand = async (target, method, params) => {
+      if (String(params?.expression).includes('held')) reached.push(method);
+      return sendCommand(target, method, params);
+    };
+    const tidying = async () => { await settle(20); };
+    hooks.closing.push(tidying);
+    try {
+      assert.equal(await command('pause'), true);
+      const looked = ops.evaluate({ fn: '() => "held"', args: [] }).then(() => 'done', (err) => err.name);
+      await settle(5);
+      assert.equal(await command('stop'), true);
+      assert.deepEqual([await looked, reached], ['Stopped', []]);
+    } finally {
+      chrome.debugger.sendCommand = sendCommand;
+      hooks.closing.splice(hooks.closing.indexOf(tidying), 1);
+    }
+  });
+
   // Last, as it ends the walk: Stop pressed while the walk's tab is still being opened ends the walk and closes it.
   for (const step of ['create', 'attach']) {
     it(`ends the walk and closes its tab when Stop comes as the tab is ${step === 'create' ? 'made' : 'taken'}`, async () => {
