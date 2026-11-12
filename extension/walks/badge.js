@@ -173,7 +173,14 @@ hooks.opened.push(async (tab) => {
   badge = { tabId: tab.tabId, adopted: tab.adopted === true, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
   await send(tab.tabId, 'Runtime.enable');
   await send(tab.tabId, 'Runtime.addBinding', { name: BINDING, executionContextName: WORLD });
-  await send(tab.tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3}, ${GLOW_LIFE_MS})`, worldName: WORLD });
+  const source = `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3}, ${GLOW_LIFE_MS})`;
+  await send(tab.tabId, 'Page.addScriptToEvaluateOnNewDocument', { source, worldName: WORLD });
+  // The person's own tab already has its document: the badge goes into it now, in a world made for it.
+  if (tab.adopted) {
+    const { executionContextId } = await send(tab.tabId, 'Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: WORLD });
+    await send(tab.tabId, 'Runtime.evaluate', { expression: source, contextId: executionContextId });
+    if (badge) badge.context = executionContextId;
+  }
 });
 
 hooks.event.push((method, params) => {
