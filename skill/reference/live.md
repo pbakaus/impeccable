@@ -282,7 +282,7 @@ Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already
 
 `carbonize: true` means the accepted variant is stitched into source with helper markers and inline CSS (so the browser renders with no gap). That stitch-in is temporary; rewrite it into permanent form before anything else, or dead `@scope` rules, wrapper divs, and marker comments accumulate across sessions. Five steps, synchronously, before the next poll:
 
-1. **Locate the carbonize block** in `_acceptResult.file`: bracketed by `<!-- impeccable-carbonize-start/end SESSION_ID -->` with a `data-impeccable-css` style element; read the `<!-- impeccable-param-values -->` comment first when present, it drives steps 3 and 4.
+1. **Locate the carbonize block** in `_acceptResult.file`: the `<!-- impeccable-carbonize-start/end SESSION_ID -->` markers bracket only the `data-impeccable-css` style element, and the accepted `data-impeccable-variant` div follows the end marker (on JSX both sit inside an outer `data-impeccable-carbonize` div). `SESSION_ID` here, in `styleTag` and in every `--id` is the event's `id`; read the `<!-- impeccable-param-values -->` comment first when present, it drives steps 3 and 4.
 2. **Move the CSS rules** into the project's real stylesheet (whichever already owns styling for the surrounding element).
 3. **Bake param values while rewriting selectors**: retarget `@scope ([data-impeccable-variant="N"])` to real semantic classes; keep only the `:scope[data-p-<id>="VALUE"]` branch matching the chosen value; substitute `var(--p-<id>)` literals or update the var's default.
 4. **Unwrap the accepted content**: delete the inner variant div (and on JSX the outer `data-impeccable-carbonize` div); drop `data-impeccable-params` and all `data-p-*` attributes.
@@ -326,7 +326,7 @@ The user stops live mode by saying so in chat, closing the tab (SSE drops; poll 
 {{scripts_path}}/impeccable live-server stop
 ```
 
-Stops the helper and runs `impeccable live-inject --remove` to strip the injected script (use `stop --keep-inject` to keep it for a quick restart; `.impeccable/live/config.json` persists as project config). Then search for and remove any leftover `impeccable-variants-start` wrappers and `impeccable-carbonize-start` blocks.
+Stops the helper and runs `impeccable live-inject --remove` to strip the injected script (use `stop --keep-inject` to keep it for a quick restart; `.impeccable/live/config.json` persists as project config). Then search for and remove any leftover `impeccable-variants-start` wrappers and `impeccable-carbonize-start` blocks, stop a dev server this session started (by its own process id), and when the boot's context asked for the detector (`MANUAL_DETECTOR_REQUIRED`), run it once over the files an accept changed.
 
 ## First-time setup
 
