@@ -126,6 +126,37 @@ check "json: stdout parses as JSON" 'jq -e . "$H/json.out" >/dev/null'
 # Lines that say something is wrong ("not ready", "didn't verify") still print, on stderr.
 check "json: no not-entitled line on stderr" '! grep -q "this account doesn.t include them" "$H/json.err"'
 
+# 4b. Taste: the read, the boot block and the two writes, when staging offers them.
+#     Rule texts are the staging seed's; only counts and outcomes are printed.
+case "$scopes" in *" taste:read "*)
+  unset IMPECCABLE_NO_TASTE
+  T="$IMPECCABLE_HOME/taste.json"
+  "$BIN" taste-refresh > /dev/null 2>&1
+  check "taste: the refresh stores a copy" '[ -f "$T" ]'
+  if [ -f "$T" ]; then
+    info "taste: first read state=$(jq -r .state "$T") rules=$(jq '.rules|length' "$T") etag=$([ -n "$(jq -r '.etag // ""' "$T")" ] && echo yes || echo no)"
+    check "taste: the seeded person's taste is ready with rules" '[ "$(jq -r .state "$T")" = ready ] && [ "$(jq ".rules|length" "$T")" -ge 1 ]'
+    (cd "$R" && "$BIN" context) > "$H/ctx.out" 2>/dev/null
+    check "taste: the boot prints YOUR_TASTE with a rule line" 'grep -q "^YOUR_TASTE:" "$H/ctx.out" && grep -qE "^- (Prefer|Avoid): " "$H/ctx.out"'
+    before=$(jq -r .fetchedAt "$T"); sleep 1
+    "$BIN" taste-refresh > /dev/null 2>&1
+    check "taste: a second refresh revalidates and keeps the rules" '[ -f "$T" ] && [ "$(jq ".rules|length" "$T")" -ge 1 ] && [ "$(jq -r .fetchedAt "$T")" -gt "$before" ]'
+    case "$scopes" in *" taste:write "*)
+      rule_id=$(jq -r '.rules[0].id' "$T")
+      (cd "$R" && "$BIN" taste used --where build "$rule_id" --json) > "$H/used.out" 2>/dev/null
+      info "taste: used answered $(cut -c1-80 "$H/used.out")"
+      check "taste: used is answered with a count" 'jq -e ".counted >= 0" "$H/used.out" >/dev/null'
+      ev="e2e-$(date -u +%Y%m%d%H%M%S)-$$"
+      call() { (cd "$R" && "$BIN" taste call --kind agent --chose "One long page" --over "Tabs" --rule "Prefer one long page over tabs for settings." --event "$ev" --json) 2>/dev/null; }
+      call > "$H/call1.out"; call > "$H/call2.out"
+      info "taste: call answered $(cut -c1-80 "$H/call1.out"), repeat $(cut -c1-80 "$H/call2.out")"
+      # The seeded person fills up over many runs: "full" is then the honest answer.
+      check "taste: a call is recorded" 'jq -e ".outcome == \"recorded\" or .outcome == \"full\"" "$H/call1.out" >/dev/null'
+      check "taste: the same event again is a duplicate" 'jq -e ".outcome == \"duplicate\" or .outcome == \"full\"" "$H/call2.out" >/dev/null'
+    ;; *) info "staging does not offer taste:write; the two writes skipped" ;; esac
+  fi
+;; *) info "staging does not offer taste:read; taste skipped" ;; esac
+
 # 5. Two sessions on one sign-in (pristine #4576): session B is a copy of A's stored
 #    sign-in. Each forced refresh rotates the refresh token, so B's second refresh
 #    presents a token A already used. Before #4576 that revoked the whole grant.
