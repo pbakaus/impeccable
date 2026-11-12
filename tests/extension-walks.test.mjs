@@ -207,7 +207,7 @@ describe('walk helper worker', () => {
       id: 'ext', onMessage: event('message'), onMessageExternal: event('external'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
       getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => helperManifest(MANIFEST),
     },
-    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setPopup({ popup }) { toolbar.push({ popup }); }, async setTitle({ title }) { titles.push(title); } },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle({ title }) { titles.push(title); } },
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
@@ -549,7 +549,8 @@ describe('main extension install warnings', () => {
   for (const [label, manifest] of [['loaded unpacked', MANIFEST], ['the store build', storeManifest(MANIFEST)]]) {
     it(`asks for no warning 1.4.0 did not: ${label}`, () => {
       assert.deepEqual(warned(manifest), warned(PUBLISHED));
-      assert.deepEqual(hosts(manifest).filter((host) => !hosts(PUBLISHED).includes('<all_urls>') && !hosts(PUBLISHED).includes(host)), []);
+      // 1.4.0 has every site, so any content script's pages are already in its warning.
+      assert.ok(hosts(PUBLISHED).includes('<all_urls>') || hosts(manifest).every((host) => hosts(PUBLISHED).includes(host)));
       assert.deepEqual(manifest.host_permissions, PUBLISHED.host_permissions);
       assert.equal('optional_permissions' in manifest, false);
     });

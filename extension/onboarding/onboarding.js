@@ -20,7 +20,6 @@ for (const list of document.querySelectorAll('[data-list]')) {
 function show(next) {
   step = next;
   document.body.dataset.step = next;
-  document.body.dataset.helper = helper;
   for (const screen of document.querySelectorAll('[data-screen]')) screen.hidden = screen.dataset.screen !== next;
   const at = STEPS.indexOf(next);
   $('kicker').textContent = at < 0 ? WORDS.title : `${WORDS.title} · ${WORDS.step(at + 1, STEPS.length)}`;

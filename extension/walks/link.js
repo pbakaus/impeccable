@@ -162,7 +162,7 @@ async function take(text, sender) {
 
 // The outing page's content script keeps a port open to this worker, so that it hears when the worker is ended
 // (handoff-content.js). One thing is said on it: that no walk is waiting, so the page need not wake the worker again.
-// Every other port is the detector's (background/service-worker.js) and is left alone.
+// Any other port is left alone.
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'outing-page') return;
   void ready.then(() => { if (current().state !== 'waiting') port.postMessage({ rest: true }); }).catch(() => undefined);
