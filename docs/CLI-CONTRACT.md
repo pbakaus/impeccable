@@ -2199,6 +2199,20 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
+  `impeccable` MCP server, Loop's hooks and an engine-managed instruction block in
+  its rule file (`CLAUDE.md` or `AGENTS.md` in the agent's config folder): "When you
+  need a person's decision or input, use needs_you.post (Impeccable) instead of
+  asking in chat or a built-in question tool. If needs_you says Loop isn't
+  connected, ask normally." For Codex it also sets
+  `default_tools_approval_mode = "approve"` on `[mcp_servers.impeccable]`. When the
+  installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
+  synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
+  session that Loop will wake it. An older or unreadable bundle gets no such hook.
+  An existing `[mcp_servers.impeccable]` that differs only in its approval mode
+  still counts as connect's own. `impeccable loop disconnect` removes the hooks,
+  the block and the approval through the same engine journal, and leaves the MCP
+  server in place, printing the command that removes it.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.

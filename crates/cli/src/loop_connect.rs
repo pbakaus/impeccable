@@ -10,7 +10,7 @@
 //! Disconnect stops Loop waking, then removes the hooks. It never removes an MCP server:
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
-use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, Spec};
+use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -56,6 +56,10 @@ const MCP_NAME: &str = "impeccable";
 const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
+/// The instruction connect keeps in the agent's own rule file (~/.claude/CLAUDE.md,
+/// ~/.codex/AGENTS.md) as an engine-managed block, so agents bring questions to Loop
+/// instead of waiting in a terminal. Disconnect removes the block with the hooks.
+const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
 const APP: &str = "Applications/Impeccable Loop.app";
 const HELPER: &str = "Contents/MacOS/loop-hook";
 /// Where Loop's helper keeps its state (the old name stays until Loop migrates it).
@@ -550,7 +554,13 @@ fn read_entry(agent: &Agent) -> Entry {
     let Some(table) = entry.as_table_like() else {
         return Entry::Other(SETTINGS_DIFFER.into());
     };
-    let keys: Vec<&str> = table.iter().map(|(k, _)| k).collect();
+    // The approval mode is connect's own (through the engine's mcp_approvals), so a
+    // server it already set up still counts as exactly its own.
+    let keys: Vec<&str> = table
+        .iter()
+        .map(|(k, _)| k)
+        .filter(|k| *k != "default_tools_approval_mode")
+        .collect();
     if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(mcp_url()) {
         Entry::Exact
     } else {
@@ -636,6 +646,28 @@ fn quote(path: &Path) -> String {
 }
 
 /// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
+/// Whether the Loop that owns `helper` (…/Contents/MacOS/loop-hook) is 0.1.1 or later,
+/// read from its bundle's CFBundleShortVersionString. Unknown counts as no.
+fn supports_context(helper: &Path) -> bool {
+    let Some(plist) = helper
+        .parent()
+        .and_then(Path::parent)
+        .map(|c| c.join("Info.plist"))
+    else {
+        return false;
+    };
+    Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+        .arg(plist)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| semver::Version::parse(String::from_utf8_lossy(&o.stdout).trim()).ok())
+        .is_some_and(|v| v >= semver::Version::new(0, 1, 1))
+}
+
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let harness = agent.harness;
     let command = |kind: &str| format!("{} {harness} {kind}", quote(helper));
@@ -647,7 +679,7 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         run_async: wake.then_some(true),
         async_rewake: wake.then_some(true),
     };
-    let hooks = if harness == "claude" {
+    let mut hooks = if harness == "claude" {
         vec![
             hook("SessionStart", None, "lifecycle", 86400, true),
             hook("Stop", None, "lifecycle", 86400, true),
@@ -661,6 +693,12 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
             hook("PostToolUse", None, "register", 10, false),
         ]
     };
+    // Tells a new session that Loop will wake it, so it stops polling for answers.
+    // Synchronous: it prints at most one line within its own 400 ms probe and always
+    // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
+    if supports_context(helper) {
+        hooks.push(hook("SessionStart", None, "context", 5, false));
+    }
     Spec {
         version: 1,
         owner: OWNER.into(),
@@ -668,8 +706,17 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         root: agent.root.clone(),
         hooks,
         mcp_servers: vec![],
-        mcp_approvals: vec![],
-        instruction: None,
+        // Codex asks before every tool call of a new server; Loop's questions should
+        // reach the person without a prompt in the terminal first.
+        mcp_approvals: if harness == "codex" {
+            vec![McpApproval {
+                server: MCP_NAME.into(),
+                mode: "approve".into(),
+            }]
+        } else {
+            vec![]
+        },
+        instruction: Some(INSTRUCTION.into()),
     }
 }
 
