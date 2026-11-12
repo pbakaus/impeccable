@@ -2230,8 +2230,11 @@ object on stdout and exits 0 on success, 1 otherwise.
   `/usr/local/bin` and `/usr/bin`. Without them: `{ok:false,
   error:"ffmpeg_missing", message}`, the message naming the install command
   for this OS.
-- **Checks before any write.** A missing file is `not_found`; a file ffprobe
-  can't read is `unreadable`; a recording over 2:00 is `too_long`; a chapter
+- **Checks before any write.** No recording named is `usage`; a missing file
+  is `not_found`; a file ffprobe can't read is `unreadable`; a recording over
+  2:00 is `too_long` (a recording whose container states no length, as a
+  browser's MediaRecorder WebM often doesn't, is converted first and the same
+  limits are then checked on the film); a chapter
   that isn't `M:SS=Text` (also `H:MM:SS` or plain seconds; text 1 to 200
   characters on one line), more than 12 chapters, two chapters at the same
   moment, or a chapter after the end is `bad_chapter`. `--ship` is the approve
@@ -2244,7 +2247,11 @@ object on stdout and exits 0 on success, 1 otherwise.
 - **Poster.** `<out>/<stem>.png`, at most 1280 px wide, cut at the first
   chapter's time, or one second in when there are no chapters.
 - **Output folder.** `--out`, else `.impeccable/walkthroughs/` under the
-  working directory, which gets a self-ignoring `.gitignore`. `<stem>` is the
+  working directory; only that default folder gets a self-ignoring
+  `.gitignore`. Files are built under names private to the run and renamed
+  into place, so a failure removes only what the run made. The recording is
+  never the output: when `<stem>.mp4` or `<stem>.png` would be the recording
+  itself, the stem gains `-walkthrough`. `<stem>` is the
   recording's name with anything but letters, digits, `-` and `_` turned into `-`.
 - **Success.** `{ok:true, film:{path, format:"mp4", bytes, sha256, durationMs,
   width, height}, poster:{path, format:"png", bytes, atMs}, chapters:[{at,

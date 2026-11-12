@@ -133,7 +133,8 @@ fn run_tool(tool: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 /// What ffprobe says about a file: seconds, the first video stream's codec
 /// and size, and whether any audio stream is present.
 struct Probe {
-    seconds: f64,
+    /// None when the container doesn't say (a browser MediaRecorder WebM often doesn't).
+    seconds: Option<f64>,
     codec: String,
     width: u64,
     height: u64,
@@ -163,8 +164,7 @@ fn probe(ffprobe: &Path, file: &Path) -> Result<Probe, String> {
     let seconds = v["format"]["duration"]
         .as_str()
         .and_then(|d| d.parse::<f64>().ok())
-        .filter(|d| d.is_finite() && *d > 0.0)
-        .ok_or("the file's length couldn't be read")?;
+        .filter(|d| d.is_finite() && *d > 0.0);
     Ok(Probe {
         seconds,
         codec: video["codec_name"].as_str().unwrap_or("").to_string(),
@@ -223,8 +223,11 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
     let Some(input) = input else {
-        io.err(USAGE);
-        return 1;
+        return fail(
+            io,
+            "usage",
+            "walkthrough needs a recording: impeccable walkthrough <recording> [--chapter M:SS=Text]...".into(),
+        );
     };
     let input = if input.is_absolute() {
         input
@@ -287,19 +290,18 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             )
         }
     };
-    if source.seconds > MAX_SECONDS + 0.5 {
-        return fail(
+    let too_long = |io: &mut Io, seconds: f64| {
+        fail(
             io,
             "too_long",
             format!(
                 "A walkthrough runs up to 2:00, and this recording is {}. Record a shorter pass of the moments that matter, or trim it first.",
-                clock((source.seconds * 1000.0) as u64)
+                clock((seconds * 1000.0).ceil() as u64)
             ),
-        );
-    }
-    let length_ms = (source.seconds * 1000.0).round() as u64;
-    if let Some(late) = chapters.iter().find(|c| c.at_ms > length_ms) {
-        return fail(
+        )
+    };
+    let late_chapter = |io: &mut Io, late: &Chapter, length_ms: u64| {
+        fail(
             io,
             "bad_chapter",
             format!(
@@ -308,13 +310,29 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 clock(late.at_ms),
                 clock(length_ms)
             ),
-        );
+        )
+    };
+    // A recording that states its length is checked before anything is written. One that
+    // doesn't (a browser's MediaRecorder WebM) is checked on the film made from it.
+    if let Some(seconds) = source.seconds {
+        if seconds > MAX_SECONDS {
+            return too_long(io, seconds);
+        }
+        let length_ms = (seconds * 1000.0).round() as u64;
+        if let Some(late) = chapters.iter().find(|c| c.at_ms > length_ms) {
+            return late_chapter(io, late, length_ms);
+        }
     }
 
-    // Runtime output: ignored by git wherever it lands inside a project.
+    // Only the default folder is made to ignore itself: a folder the person named is theirs.
+    let default_out = out_dir.is_none();
     let out_dir = out_dir
         .map(|d| if d.is_absolute() { d } else { io.cwd.join(d) })
-        .unwrap_or_else(|| io.cwd.join(".impeccable").join("walkthroughs"));
+        .unwrap_or_else(|| io.cwd.join(".impeccable").join("walkthroughs"))
+        // `--out .` reports clean paths, not `/project/./clip.mp4`.
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .collect::<PathBuf>();
     if let Err(e) = std::fs::create_dir_all(&out_dir) {
         return fail(
             io,
@@ -322,8 +340,10 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             format!("Couldn't create {}: {e}.", out_dir.display()),
         );
     }
-    impeccable_common::git::ensure_dir_ignored(&out_dir.to_string_lossy(), &["*"]);
-    let stem: String = input
+    if default_out {
+        impeccable_common::git::ensure_dir_ignored(&out_dir.to_string_lossy(), &["*"]);
+    }
+    let mut stem: String = input
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "walkthrough".into())
@@ -336,8 +356,29 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             }
         })
         .collect();
+    // The recording itself is never the output: converting clip.mp4 into its own folder
+    // writes clip-walkthrough.mp4 beside it.
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    if same(&out_dir.join(format!("{stem}.mp4")), &input)
+        || same(&out_dir.join(format!("{stem}.png")), &input)
+    {
+        stem.push_str("-walkthrough");
+    }
     let film = out_dir.join(format!("{stem}.mp4"));
     let poster = out_dir.join(format!("{stem}.png"));
+    // Everything is built under names only this run uses, then moved into place: a failure
+    // removes what this run made and nothing else, and a finished file is never half-written.
+    let token = std::process::id();
+    let film_tmp = out_dir.join(format!(".{stem}.{token}.tmp.mp4"));
+    let poster_tmp = out_dir.join(format!(".{stem}.{token}.tmp.png"));
+    let discard = |io: &mut Io, error: &str, message: String| {
+        let _ = std::fs::remove_file(&film_tmp);
+        let _ = std::fs::remove_file(&poster_tmp);
+        fail(io, error, message)
+    };
 
     let mut encoded = None;
     let mut last_error = String::new();
@@ -368,7 +409,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 &scale,
                 "-movflags",
                 "+faststart",
-                &film.to_string_lossy(),
+                &film_tmp.to_string_lossy(),
             ],
         );
         match result {
@@ -376,7 +417,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 last_error = e;
                 break;
             }
-            Ok(_) => match std::fs::metadata(&film).map(|m| m.len()) {
+            Ok(_) => match std::fs::metadata(&film_tmp).map(|m| m.len()) {
                 Ok(bytes) if bytes <= MAX_FILM_BYTES => {
                     encoded = Some(bytes);
                     break;
@@ -395,8 +436,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
     let Some(film_bytes) = encoded else {
-        let _ = std::fs::remove_file(&film);
-        return fail(
+        return discard(
             io,
             "convert_failed",
             format!("Couldn't make the video: {last_error}."),
@@ -404,11 +444,13 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     };
 
     // What was made is checked, not assumed: the card refuses anything else.
-    let made = match probe(&ffprobe, &film) {
-        Ok(p) if p.codec == "h264" && !p.audio => p,
+    let (made, made_seconds) = match probe(&ffprobe, &film_tmp) {
+        Ok(p) if p.codec == "h264" && !p.audio && p.seconds.is_some() => {
+            let seconds = p.seconds.unwrap_or(0.0);
+            (p, seconds)
+        }
         Ok(p) => {
-            let _ = std::fs::remove_file(&film);
-            return fail(
+            return discard(
                 io,
                 "convert_failed",
                 format!(
@@ -419,17 +461,25 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             );
         }
         Err(e) => {
-            let _ = std::fs::remove_file(&film);
-            return fail(
+            return discard(
                 io,
                 "convert_failed",
                 format!("Couldn't check the video: {e}."),
             );
         }
     };
+    // The film is what the card plays, so its length is the one that has to fit.
+    if made_seconds > MAX_SECONDS {
+        let _ = std::fs::remove_file(&film_tmp);
+        return too_long(io, made_seconds);
+    }
+    let made_ms = (made_seconds * 1000.0).round() as u64;
+    if let Some(late) = chapters.iter().find(|c| c.at_ms > made_ms) {
+        let _ = std::fs::remove_file(&film_tmp);
+        return late_chapter(io, late, made_ms);
+    }
 
     // The poster is the first chapter's moment, or a second in: past any blank first frame.
-    let made_ms = (made.seconds * 1000.0).round() as u64;
     let poster_ms = chapters
         .first()
         .map(|c| c.at_ms)
@@ -445,24 +495,22 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             "-ss",
             &at,
             "-i",
-            &film.to_string_lossy(),
+            &film_tmp.to_string_lossy(),
             "-frames:v",
             "1",
             "-vf",
             "scale='min(1280,iw)':-2",
-            &poster.to_string_lossy(),
+            &poster_tmp.to_string_lossy(),
         ],
     );
     let poster_bytes = match poster_result.and_then(|_| {
-        std::fs::metadata(&poster)
+        std::fs::metadata(&poster_tmp)
             .map(|m| m.len())
             .map_err(|e| e.to_string())
     }) {
         Ok(b) if b > 0 => b,
         Ok(_) | Err(_) => {
-            let _ = std::fs::remove_file(&film);
-            let _ = std::fs::remove_file(&poster);
-            return fail(
+            return discard(
                 io,
                 "convert_failed",
                 "Couldn't cut the poster still from the video.".into(),
@@ -470,19 +518,31 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         }
     };
 
-    let digest = match std::fs::read(&film) {
+    let digest = match std::fs::read(&film_tmp) {
         Ok(bytes) => B64.encode(Sha256::digest(&bytes)),
         Err(e) => {
-            return fail(
+            return discard(
                 io,
                 "write_failed",
                 format!("Couldn't read back the video: {e}."),
             )
         }
     };
+    if let Err(e) =
+        std::fs::rename(&film_tmp, &film).and_then(|_| std::fs::rename(&poster_tmp, &poster))
+    {
+        return discard(
+            io,
+            "write_failed",
+            format!(
+                "Couldn't save the walkthrough in {}: {e}.",
+                out_dir.display()
+            ),
+        );
+    }
     let chapter_rows: Vec<Value> = chapters
         .iter()
-        .map(|c| json!({ "at": c.at_ms.min(made_ms), "text": c.text }))
+        .map(|c| json!({ "at": c.at_ms, "text": c.text }))
         .collect();
     let payload = json!({
         "ok": true,
@@ -508,7 +568,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             },
         },
         "_instructions": if chapters.is_empty() {
-            "Post this with needs_you.post: merge `post` into the call (title, notes, priority, target, question_key and request_id are yours), then upload film.path as attachment `film` and poster.path as `poster`. A walkthrough reads best with a chapter for each moment that matters: run again with --chapter M:SS=Text for each."
+            "Post this with needs_you.post: merge `post` into the call (title, notes, priority, target, question_key and request_id are yours), then upload film.path as attachment `film` and poster.path as `poster`. A walkthrough reads best with a chapter for each moment that matters: run again on the original recording with --chapter M:SS=Text for each."
         } else {
             "Post this with needs_you.post: merge `post` into the call (title, notes, priority, target, question_key and request_id are yours), then upload film.path as attachment `film` and poster.path as `poster`."
         },

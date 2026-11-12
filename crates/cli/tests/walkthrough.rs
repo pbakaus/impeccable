@@ -199,6 +199,10 @@ fn a_missing_ffmpeg_gets_the_install_line_and_bad_input_a_plain_reason() {
     );
     let (_, v) = run(&dir, None, &["nope.webm"]);
     assert_eq!(v["error"], "not_found");
+    // No recording at all is still one JSON object on stdout.
+    let (out, v) = run(&dir, None, &[]);
+    assert!(!out.status.success());
+    assert_eq!(v["error"], "usage");
     let (_, v) = run(&dir, None, &["clip.webm", "--chapter", "soon=Text"]);
     assert_eq!(v["error"], "bad_chapter");
     // The card wants strictly increasing chapters and a short approve label.
@@ -214,4 +218,128 @@ fn a_missing_ffmpeg_gets_the_install_line_and_bad_input_a_plain_reason() {
     let long = "x".repeat(41);
     let (_, v) = run(&dir, None, &["clip.webm", "--ship", &long]);
     assert_eq!(v["error"], "usage");
+}
+
+#[test]
+fn the_recording_itself_is_never_overwritten_or_deleted() {
+    // Catches: `walkthrough clip.mp4 --out .` pointing the film at its own input, where
+    // ffmpeg -y truncates it and the failure cleanup then deletes the only copy.
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: ffmpeg not installed");
+        return;
+    };
+    let dir = scratch("same-file");
+    let clip = dir.join("clip.mp4");
+    assert!(Command::new(&ffmpeg)
+        .args([
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=2:size=320x240:rate=10"
+        ])
+        .arg(&clip)
+        .status()
+        .unwrap()
+        .success());
+    let before = std::fs::read(&clip).unwrap();
+    let (out, v) = run(&dir, ffmpeg.parent(), &["clip.mp4", "--out", "."]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(
+        std::fs::read(&clip).unwrap(),
+        before,
+        "the recording is untouched"
+    );
+    assert_eq!(
+        v["film"]["path"],
+        dir.join("clip-walkthrough.mp4").to_str().unwrap()
+    );
+    // A folder the person named is theirs: no ignore file is written into it.
+    assert!(!dir.join(".gitignore").exists());
+    // A failing conversion leaves the recording and removes only its own scratch files.
+    std::fs::write(dir.join("broken.mp4"), "not a video").unwrap();
+    let (_, v) = run(&dir, ffmpeg.parent(), &["broken.mp4", "--out", "."]);
+    assert_eq!(v["ok"], false);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("broken.mp4")).unwrap(),
+        "not a video"
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.contains(".tmp."))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn a_browser_recording_without_a_stated_length_still_converts() {
+    // Catches: MediaRecorder-style WebM (no duration in the header) refused as unreadable.
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: ffmpeg not installed");
+        return;
+    };
+    let dir = scratch("no-duration");
+    // Written to a pipe, the muxer can't seek back to record a duration: the same shape.
+    let made = Command::new(&ffmpeg)
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=duration=3:size=320x240:rate=10",
+        ])
+        .args(["-c:v", "libvpx", "-f", "webm", "pipe:1"])
+        .output()
+        .unwrap();
+    if !made.status.success() || made.stdout.is_empty() {
+        eprintln!("skipped: this ffmpeg has no VP8 encoder");
+        return;
+    }
+    std::fs::write(dir.join("live.webm"), &made.stdout).unwrap();
+    let probe = Command::new(ffmpeg.with_file_name("ffprobe"))
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(dir.join("live.webm"))
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&probe.stdout).trim(),
+        "N/A",
+        "the fixture must lack a duration"
+    );
+    let (out, v) = run(
+        &dir,
+        ffmpeg.parent(),
+        &["live.webm", "--chapter", "0:02=Near the end"],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let ms = v["film"]["durationMs"].as_u64().unwrap();
+    assert!((2500..=3500).contains(&ms), "{ms}");
+    // With no stated length, a chapter past the end is still caught, on the film itself.
+    let (_, v) = run(
+        &dir,
+        ffmpeg.parent(),
+        &["live.webm", "--chapter", "0:30=Too late"],
+    );
+    assert_eq!(v["error"], "bad_chapter");
+    assert!(!dir.join(".impeccable/walkthroughs/live.mp4.tmp").exists());
 }
