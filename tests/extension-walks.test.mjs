@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
 
-import { readHandoff } from '../extension/walks/handoff.js';
+import { readHandoff, resultLink } from '../extension/walks/handoff.js';
 import { admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
 import { HELPER_KEY, START_PAGES, WALK_PERMISSIONS, firefoxManifest, helperManifest, isStoreFile, moduleReferences, stageHelper, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
@@ -88,6 +88,24 @@ describe('walk hand-off', () => {
   ]) {
     it(`refuses ${label}`, () => {
       assert.deepEqual(readHandoff(JSON.stringify(block(over)), page), { ok: false, why });
+    });
+  }
+});
+
+describe('walk result link', () => {
+  // The result is on the app host of the walk's own server (the web app links a walk's result there).
+  for (const [label, link, socket, shown] of [
+    ['the app host, production', 'https://app.impeccable.style/app/acme/runs/r1/personas/ines', block().socket, true],
+    ['the public host, production', 'https://impeccable.reviews/app/acme/runs/r1/personas/ines', block().socket, true],
+    ['the app host, staging', 'https://app.staging.impeccable.style/app/acme/runs/r1', 'wss://staging.impeccable.reviews/api/outings/o1/socket', true],
+    ['the app host on this machine, same port', 'http://app.localhost:8794/app/acme/runs/r1', 'ws://localhost:8794/api/outings/o1/socket', true],
+    ['the app host on this machine, another port', 'http://app.localhost:9000/app/acme/runs/r1', 'ws://localhost:8794/api/outings/o1/socket', false],
+    ['staging, for a production walk', 'https://app.staging.impeccable.style/app/acme/runs/r1', block().socket, false],
+    ['another site', 'https://example.com/app/acme/runs/r1', block().socket, false],
+    ['plain http on our host', 'http://app.impeccable.style/app/acme/runs/r1', block().socket, false],
+  ]) {
+    it(`${shown ? 'opens' : 'neither shows nor opens'} a result on ${label}`, () => {
+      assert.equal(resultLink(link, socket), shown ? link : null);
     });
   }
 });

@@ -52,6 +52,19 @@ function socketOrigin(page) {
   return null;
 }
 
+/**
+ * A walk's result link, when it is on the walk's own server: its public host or its app host (the pairing above), and
+ * this machine's on the socket's own port. Null for anything else, which is neither shown nor opened.
+ */
+export function resultLink(url, socket) {
+  try {
+    const link = new URL(url);
+    return socketOrigin(link) !== null && socketOrigin(link) === new URL(socket).origin ? link.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether an address is one of our app's outing pages: the only place a hand-off is taken from. */
 export function isOutingPage(pageUrl) {
   let page;

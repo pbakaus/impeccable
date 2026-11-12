@@ -3,7 +3,7 @@
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
-import { BUILD } from '../shared/build.js';
+import { resultLink } from './handoff.js';
 import { endWalk, fail, fence, fenced, hold, hooks, onAsk, onSignIn, ops, personHas, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
@@ -131,24 +131,14 @@ ops.open = (req) => {
 
 /* ------------------------------ what the hub tells the panel ------------------------------ */
 
-/** A link the panel may show: https, on a host of ours (and a development build's own on this machine). Anything else is not shown. */
-function ourLink(url) {
-  try {
-    const link = new URL(url);
-    if (BUILD.devHosts && link.protocol === 'http:' && /^(app\.)?localhost$/.test(link.hostname)) return link.href;
-    return link.protocol === 'https:' && /^(staging\.)?impeccable\.reviews$/.test(link.hostname) ? link.href : null;
-  } catch {
-    return null;
-  }
-}
-
 ops.brief = async ({ persona, errand }) => { dispatch({ type: 'brief', persona, errand }); return {}; };
 ops.step = async ({ step }) => { dispatch({ type: 'step', step }); return {}; };
 ops.checks = async ({ met }) => { dispatch({ type: 'checks', met }); return {}; };
 /** The person's own tab, while a walk of it has not yet shown its result: the result opens beside it, once. */
 let resultBeside = null;
 ops.finish = async ({ outcome }) => {
-  const replayUrl = ourLink(outcome?.replayUrl);
+  // On the walk's own server only: its public host or its app host (handoff.js).
+  const replayUrl = resultLink(outcome?.replayUrl, (await chrome.storage.session.get('handoff')).handoff?.socket);
   dispatch({ type: 'finish', outcome, replayUrl });
   const beside = resultBeside;
   if (replayUrl && beside !== null) {
