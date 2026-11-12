@@ -92,6 +92,8 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("vue views legal pages", vec![("package.json", r#"{"dependencies":{"vue":"3.5.0"}}"#.into()), ("index.html", "<div id=app></div>\n".into()), ("src/views/Privacy.vue", "<template><h1>Privacy</h1></template>\n".into()), ("src/views/Terms.vue", "<template><h1>Terms</h1></template>\n".into())], false, "legal-pages", Some("checked")),
         ("key past the read cap", vec![("src/data.ts", format!("{}export const key = \"{stripe}\";\n", "// padding\n".repeat(60_000)))], true, "secrets-out-of-repo", Some("failing")),
         ("js component read by regex only", vec![("index.html", "<!doctype html><html><body><div id=root></div></body></html>".into()), ("src/App.js", "export const App = () => <p>Hello</p>;\n".into())], false, "readable-contrast", None),
+        ("tailwind variant transition unguarded", vec![("package.json", REACT.into()), ("src/Card.tsx", "export const C = () => (\n  <div\n    className=\"p-4\n      hover:transition-transform\"\n  />\n);\n".into())], false, "reduced-motion", Some("failing")),
+        ("readme script only in a nested app", vec![("package.json", "{}".into()), ("apps/web/package.json", REACT.into()), ("README.md", "```\nnpm install\nnpm run dev\n```\n".into())], false, "readme-runs", Some("failing")),
         ("motion unguarded", vec![("a.css", "a { transition: color 1s; }\n".into())], false, "reduced-motion", Some("failing")),
         ("tokens", vec![("a.css", ":root { --brand: #3355ff; }\na { color: var(--brand); }\n".into())], false, "design-tokens", Some("checked")),
         ("hard-coded colors", vec![("a.css", many_hex)], false, "design-tokens", Some("failing")),

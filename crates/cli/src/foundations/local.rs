@@ -152,9 +152,6 @@ pub fn scan(root: &Path) -> Report {
     let (giant, giant_state) = p.giant_files();
     put("no-giant-files", giant_state);
     r.giant_files = giant;
-    let (secrets, secret_state) = p.secrets();
-    put("secrets-out-of-repo", secret_state);
-    r.secrets = secrets;
     // Past a cap some file went unread: only states a found file proves
     // stand then, never one that rests on not having found something.
     if p.read_capped.get() || p.truncated {
@@ -179,6 +176,14 @@ pub fn scan(root: &Path) -> Report {
             State::Failing => FOUND_FAIL.contains(id),
         });
     }
+    // Git's file list and its own budget: the walk's caps don't touch it,
+    // unless the walk stood in for git.
+    let (secrets, secret_state, walked) = p.secrets();
+    let incomplete = walked && (p.read_capped.get() || p.truncated);
+    if let Some(s) = secret_state.filter(|s| !incomplete || *s == State::Failing) {
+        r.items.insert("secrets-out-of-repo", s);
+    }
+    r.secrets = secrets;
     r
 }
 
@@ -347,8 +352,11 @@ impl Project {
                     }
                 }
             }
-            if let Some(o) = v.get("scripts").and_then(Value::as_object) {
-                self.scripts.extend(o.keys().cloned());
+            // The root README's commands run at the root.
+            if f == "package.json" {
+                if let Some(o) = v.get("scripts").and_then(Value::as_object) {
+                    self.scripts.extend(o.keys().cloned());
+                }
             }
             self.package_jsons.push(v);
         }
@@ -1059,7 +1067,7 @@ impl Project {
         static GUARD: OnceLock<Regex> = OnceLock::new();
         let motion = re(
             &MOTION,
-            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\.|(class(Name)?\s*=|@apply)[^>\n]*[\s"'`{]transition(-[a-z]+)?[\s"'`};]"#,
+            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\.|(?m)(^|[\s"'`{:])transition(-(all|colors|opacity|shadow|transform))?([\s"'`};]|$)"#,
         );
         let guard = re(
             &GUARD,
@@ -1223,7 +1231,9 @@ impl Project {
 
     /// Key formats in tracked files, and tracked env files. Without git,
     /// the walked files (env files there are expected, so not counted).
-    fn secrets(&self) -> (Vec<SecretHit>, Option<State>) {
+    /// The locations to show (at most five), the state, and whether the
+    /// walk stood in for git.
+    fn secrets(&self) -> (Vec<SecretHit>, Option<State>, bool) {
         let tracked = git_ls_files(&self.root);
         let in_git = tracked.is_some();
         let files: Vec<String> = match tracked {
@@ -1232,12 +1242,19 @@ impl Project {
                 .filter(|f| !f.split('/').any(|s| s == "node_modules"))
                 .collect(),
             // A git that failed or timed out: nothing is proven.
-            Some(Err(())) => return (Vec::new(), None),
+            Some(Err(())) => return (Vec::new(), None, false),
             None => self.files.clone(),
         };
         let mut hits = Vec::new();
+        let mut found = false;
         let mut reads = 0usize;
         let mut bytes = 0u64;
+        let mut hit = |h: SecretHit, found: &mut bool| {
+            *found = true;
+            if hits.len() < 5 {
+                hits.push(h);
+            }
+        };
         for f in &files {
             let n = name(f);
             if is_env_file(n) {
@@ -1245,11 +1262,14 @@ impl Project {
                 if !in_git {
                     continue;
                 }
-                hits.push(SecretHit {
-                    file: f.clone(),
-                    line: 1,
-                    kind: "environment file",
-                });
+                hit(
+                    SecretHit {
+                        file: f.clone(),
+                        line: 1,
+                        kind: "environment file",
+                    },
+                    &mut found,
+                );
                 continue;
             }
             if is_lockfile(n) || is_binary_ext(ext(f)) {
@@ -1259,37 +1279,44 @@ impl Project {
             reads += 1;
             // The whole file, within what's left of the budget: a key past
             // a per-file cap would pass unseen.
-            let left = MAX_SECRET_BYTES - bytes;
-            let read = if reads > MAX_SECRET_READS {
-                Whole::OverBudget
+            let left = MAX_SECRET_BYTES.saturating_sub(bytes);
+            let (read, raw) = if reads > MAX_SECRET_READS {
+                (Whole::OverBudget, 0)
             } else {
                 read_whole(&self.root.join(f), left)
             };
+            // Every byte read counts, skipped binaries included.
+            bytes += raw;
             let t = match read {
                 Whole::Text(t) => t,
                 Whole::Skip => continue,
                 Whole::OverBudget => {
-                    let state = (!hits.is_empty()).then_some(State::Failing);
-                    return (hits, state);
+                    drop(hit);
+                    return (hits, found.then_some(State::Failing), !in_git);
                 }
             };
-            bytes += t.len() as u64;
-            // One pass over the file; lines are counted only on a match.
+            // One pass over the file, counting lines as it goes.
+            let (mut line, mut at) = (1usize, 0usize);
             for m in secrets_regex().find_iter(&t) {
-                let line = t[..m.start()].matches('\n').count() + 1;
-                hits.push(SecretHit {
-                    file: f.clone(),
-                    line,
-                    kind: secret_kind(m.as_str()).unwrap_or("key"),
-                });
+                line += t[at..m.start()].matches('\n').count();
+                at = m.start();
+                hit(
+                    SecretHit {
+                        file: f.clone(),
+                        line,
+                        kind: secret_kind(m.as_str()).unwrap_or("key"),
+                    },
+                    &mut found,
+                );
             }
         }
-        let state = if !hits.is_empty() {
-            Some(State::Failing)
+        drop(hit);
+        let state = Some(if found {
+            State::Failing
         } else {
-            Some(State::Checked)
-        };
-        (hits, state)
+            State::Checked
+        });
+        (hits, state, !in_git)
     }
 }
 
@@ -1443,25 +1470,28 @@ enum Whole {
     OverBudget,
 }
 
-fn read_whole(path: &Path, left: u64) -> Whole {
+/// The file's text (or why not) and the raw bytes read.
+fn read_whole(path: &Path, left: u64) -> (Whole, u64) {
     use std::io::Read;
     if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
-        return Whole::Skip;
+        return (Whole::Skip, 0);
     }
     let Ok(file) = std::fs::File::open(path) else {
-        return Whole::Skip;
+        return (Whole::Skip, 0);
     };
     let mut buf = Vec::new();
-    if file.take(left + 1).read_to_end(&mut buf).is_err() {
-        return Whole::Skip;
+    let read = file.take(left + 1).read_to_end(&mut buf);
+    let raw = buf.len() as u64;
+    if read.is_err() {
+        return (Whole::Skip, raw);
     }
-    if buf.len() as u64 > left {
-        return Whole::OverBudget;
+    if raw > left {
+        return (Whole::OverBudget, raw);
     }
     if buf.iter().take(8192).any(|b| *b == 0) {
-        return Whole::Skip;
+        return (Whole::Skip, raw);
     }
-    Whole::Text(String::from_utf8_lossy(&buf).into_owned())
+    (Whole::Text(String::from_utf8_lossy(&buf).into_owned()), raw)
 }
 
 fn read_capped(path: &Path) -> Option<String> {
