@@ -16,6 +16,7 @@ pub mod setup;
 mod stale_grant;
 pub mod store;
 mod upload_notice;
+pub mod world;
 
 use config::Account;
 use impeccable_common::Io;

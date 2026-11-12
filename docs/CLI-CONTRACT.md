@@ -2218,6 +2218,45 @@ Existing pins cannot be overwritten with a different digest.
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
 
+## World seed
+
+Exact output strings:
+
+- `Usage: impeccable world <id> [--print]`
+- `Seeded DESIGN.md from the world <name> (<id>). Next: ask your agent to build your next page with /impeccable. It reads DESIGN.md first.`
+- `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
+- `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
+- `Using a world needs your Impeccable account. Run impeccable login, then try again.`
+- `Your sign-in expired. Run impeccable login, then try again.`
+- `Using a world needs a fresh sign-in. Run impeccable login, then try again.`
+- `The world <id> needs Pro. See impeccable.style/pricing`
+- `No world has the id <id>. Copy the id from the world in the Impeccable worlds catalog.`
+- `Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.`
+
+`impeccable world <id>` seeds the current directory's design system from a
+catalog world. An id is 1 to 64 lowercase letters, digits and single inner
+dashes; anything else exits 1 without a request. When `DESIGN.md`,
+`DESIGN.json` or `.impeccable/design.json` exists (a symlink counts), it
+writes nothing, makes no request, prints the merge line on stdout and exits 0.
+
+Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
+token (scope `worlds:read`; plan-gated by the service). A 200 answer must be
+`{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
+to 120 characters without control characters, a non-blank `design_md` and an
+object `sidecar`, each at most 256 KiB; anything else is the "can't read"
+line. It writes `.impeccable/design.json` (the sidecar plus
+`seededFrom: {world, name}`) and then `DESIGN.md`, each create-new, so an
+existing file or symlink is never followed or replaced; if `DESIGN.md` loses
+that race the sidecar it wrote is removed and the merge line is printed.
+401 after a refresh is the expired line, 403 `insufficient_scope` the fresh
+sign-in line, any other 403 the Pro line, 404 the unknown-id line; network
+failures say the account couldn't be reached. Every failure exits 1 and
+writes nothing.
+
+`--print` skips the existence check and the writes and prints the answer as
+one JSON line `{id, name, design_md, sidecar}` on stdout, for an agent to
+merge into an existing design system.
+
 ## Setup status
 
 Exact output strings:
