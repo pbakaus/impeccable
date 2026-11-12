@@ -55,11 +55,11 @@ Output `{ shape, signals }`; the shape names the *patch mechanism*, so one templ
 - **`null`**: no CSP; write the config with `cspChecked: true` and stop here.
 - **`append-arrays`**: CSP as structured directive arrays; auto-patchable (monorepo helpers with `additionalScriptSrc`/`additionalConnectSrc`, SvelteKit `kit.csp.directives`, Nuxt `nuxt-security`).
 - **`append-string`**: CSP as a literal value string; auto-patchable (inline `next.config.*` `headers()`, Nuxt `routeRules`).
-- **`middleware`** / **`meta-tag`**: detected but not auto-patched. Show the user the detected files, ask them to add `http://localhost:8400` to `script-src` and `connect-src` manually, then mark `cspChecked: true` and proceed.
+- **`middleware`** / **`meta-tag`**: detected but not auto-patched. Show the user the detected files, ask them to add the helper's origin (`http://localhost:<serverPort>` from the boot; 8400 unless another project's helper holds it) to `script-src` and `connect-src` manually, then mark `cspChecked: true` and proceed.
 
 ### Consent prompt (use this phrasing)
 
-> **CSP patch needed.** I detected a Content Security Policy in your project that blocks `http://localhost:8400`: the live picker won't load without an allowance. Here's the change I'd make:
+> **CSP patch needed.** I detected a Content Security Policy in your project that blocks the live helper (`http://localhost:<serverPort>`): the live picker won't load without an allowance. Here's the change I'd make:
 >
 > ```diff
 > [file: <patchTarget>]
@@ -68,7 +68,7 @@ Output `{ shape, signals }`; the shape names the *patch mechanism*, so one templ
 >
 > It's guarded by `NODE_ENV === "development"` so the extra entry only appears in dev and never reaches production. You can remove it any time by reverting this file. Apply? [y/n]
 
-On "no": skip the patch, note that live will not work until the allowance is added manually, and still write `cspChecked: true` (the question has been asked). On "yes": apply the shape's patch below, then write `cspChecked: true`.
+On "no": skip the patch, note that live will not work until the allowance is added manually, and still write `cspChecked: true` (the question has been asked). On "yes": apply the shape's patch below, then write `cspChecked: true`. The snippets below show port 8400; write the boot's `serverPort` instead.
 
 ### append-arrays
 
@@ -99,6 +99,6 @@ Per-framework: Next.js inline `headers()` in `next.config.*`; Nuxt `routeRules['
 
 ## Troubleshooting
 
-If the user said "no" to the CSP patch and later reports live not working: their dev CSP blocks `http://localhost:8400`. Delete `cspChecked` from `.impeccable/live/config.json` and re-run `impeccable live`; setup asks again.
+If the user said "no" to the CSP patch and later reports live not working: their dev CSP blocks the helper's origin (`http://localhost:<serverPort>`). Delete `cspChecked` from `.impeccable/live/config.json` and re-run `impeccable live`; setup asks again.
 
 After setup, re-run `impeccable live`.
