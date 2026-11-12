@@ -273,7 +273,8 @@ describe('account worker', () => {
   ]) {
     it(`refuses ${label}`, async () => {
       await loaded;
-      for (const account of ['status', 'create', 'remove']) assert.deepEqual(await ask({ account, description: 'A night-shift nurse.', slug: 'ada' }, sender), { ok: false, why: 'sender' });
+      for (const account of ['status', 'create', 'remove', 'walk']) assert.deepEqual(await ask({ account, description: 'A night-shift nurse.', slug: 'ada', tabId: 7 }, sender), { ok: false, why: 'sender' });
+      assert.equal(panels.length, 0, 'no side panel opens for anyone but the popup');
     });
   }
 

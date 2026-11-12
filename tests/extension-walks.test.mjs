@@ -9,11 +9,11 @@ import vm from 'node:vm';
 import { readHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
-import { WALK_PERMISSIONS, firefoxManifest, isStoreFile, moduleReferences, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
+import { WALK_PERMISSIONS, firefoxManifest, isStoreFile, moduleReferences, stageFirefox, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8'));
-/** The store builds' trees, main's and the helper's, each staged once as scripts/build-extension.js stages it. */
+/** The store and Firefox trees, each staged once as scripts/build-extension.js stages it. */
 const staged = {};
 const stageOnce = (name, make) => () => (staged[name] ??= (() => {
   const root = path.join(mkdtempSync(path.join(tmpdir(), 'impeccable-store-')), 'extension');
@@ -21,6 +21,7 @@ const stageOnce = (name, make) => () => (staged[name] ??= (() => {
   return root;
 })());
 const STORE = stageOnce('main', stageStore);
+const FIREFOX = stageOnce('firefox', stageFirefox);
 after(() => { for (const root of Object.values(staged)) rmSync(path.dirname(root), { recursive: true, force: true }); });
 
 const PAGE = 'https://app.impeccable.style/app/acme/outings/o1';
@@ -199,7 +200,7 @@ describe('walk mark on our pages', () => {
     const chrome = { runtime: { id: 'ext', getManifest: () => MANIFEST, onMessage: { addListener: (listener) => { heard = listener; } } } };
     vm.runInNewContext(readFileSync(path.join(ROOT, 'extension/walks/present.js'), 'utf8'), { document: { documentElement: root }, chrome });
     assert.equal(root.dataset.impeccableWalks, MANIFEST.version);
-    // It tells the helper it is here (so the page is not reloaded mid-hand-off), and tells nobody else anything.
+    // It tells the worker it is here (so the page is not reloaded mid-hand-off), and tells nobody else anything.
     const answers = [];
     for (const id of ['ext', 'other']) heard({ walks: 'here' }, { id }, (answer) => answers.push([id, answer.here]));
     assert.deepEqual(answers, [['ext', true]]);
@@ -281,7 +282,7 @@ describe('walk worker', () => {
     assert.equal(titles.filter((title) => title === COPY.failed['switched-off']).length, 1);
   });
 
-  // A reload mid-hand-off loses the walk: added, the helper reloads only the start pages that cannot have handed one over.
+  // A reload mid-hand-off loses the walk: added, the extension reloads only the start pages that cannot have handed one over.
   it('reloads, once added, only the start pages its content script is not on and no hand-off came from', async () => {
     await loaded;
     const outing = (id) => ({ id, url: `http://app.localhost:8794/app/acme/outings/o${id}` });
@@ -896,6 +897,7 @@ describe('derived extension manifests', () => {
     const firefox = firefoxManifest(MANIFEST);
     assert.deepEqual(firefox.permissions.filter((permission) => [...WALK_PERMISSIONS, 'identity'].includes(permission)), []);
     for (const key of ['side_panel', 'content_scripts', 'externally_connectable', 'key']) assert.equal(key in firefox, false, key);
+    assert.deepEqual(readdirSync(FIREFOX(), { recursive: true }).filter((file) => /^(walks|account|onboarding)\b|^background\/chrome-worker\.js$|popup\/(account|words)\.js$/.test(file)), []);
   });
 
   it('ships walks in the store build, held to production hosts with its switches off, and the account and the onboarding out', () => {
