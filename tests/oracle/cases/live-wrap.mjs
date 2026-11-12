@@ -72,6 +72,22 @@ const BARE = {
 };
 
 export default [
+  ...[
+    ['page', 'index.html', '<!doctype html><html><head><title>Coffee</title></head><body><header><h1>Harbor Coffee</h1><p>Small-batch beans.</p><a class="cta" href="#">See</a></header></body></html>', 'h1', 'Harbor Coffee'],
+    ['nested-div', 'index.html', '<div><div>a</div></div><div>b</div>', 'div', 'b'],
+    ['text-inline', 'index.html', 'Hello <b>world</b>!', 'b', 'world'],
+    ['inline-spans', 'index.html', '<div class="row"><span class="price">9</span><span class="unit">/mo</span></div>', 'span', '/mo'],
+    ['jsx', 'src/Inline.jsx', '<div><h1>Get started</h1><p>x</p></div>', 'h1', 'Get started'],
+  ].flatMap(([name, file, source, tag, text]) => [false, true].map(insert =>
+    (insert ? I : W)(`live-${insert ? 'insert' : 'wrap'}-same-line-${name}`, 'live-html',
+      ['--id', 'ab12cd34', '--count', '3', '--file', file, '--tag', tag, '--text', text,
+        ...(insert ? ['--position', 'after'] : [])],
+      { snap: [file], setup: ws => write(ws, file, source) }))),
+  ...[false, true].map(insert => (insert ? I : W)(`live-${insert ? 'insert' : 'wrap'}-same-line-deferred`, 'live-html',
+    ['--id', 'ab12cd34', '--file', 'index.html', '--tag', 'h1', '--defer-source-write',
+      ...(insert ? ['--position', 'before'] : [])],
+    { snap: ['index.html'], setup: ws => write(ws, 'index.html', '<main><h1>Title</h1><p>x</p></main>') })),
+
   // --- argument / usage paths ---
   W('live-wrap-help', 'live-html', ['--help']),
   W('live-wrap-missing-id', 'live-html', ['--classes', 'hero-title']),

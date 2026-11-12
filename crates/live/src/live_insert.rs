@@ -154,6 +154,10 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
         resolve_in_project(&queries, &cwd, tag.as_deref(), text.as_deref())
     };
     let (file, m) = match resolved {
+        Resolution::Inline(path) => {
+            eprintln(io, &json_compact(&element_inline_error(&path)));
+            return 1;
+        }
         Resolution::Match(file, m) => (file, m),
         // Preserve the legacy fallback for stronger locators, but never guess by tag.
         Resolution::TextNotInFile(file, candidates)
@@ -235,6 +239,11 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
+    if file.isolation.is_some() && should_use_svelte_component_injection(&file.path, &env) {
+        eprintln(io, &json_compact(&element_inline_error(&file.path)));
+        return 1;
+    }
+    let isolation = file.isolation;
     let target_file = file.path;
     let target_abs = jsp::resolve(&cwd, &[&target_file]);
     let lines = file.lines;
@@ -319,7 +328,14 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
 
     let mut deferred: Option<(String, usize, usize)> = None;
     if defer_source_write {
-        deferred = Some((wrapper_lines.join("\n"), splice_index + 1, splice_index));
+        deferred = Some(if let Some((rs, re, split_end)) = isolation {
+            let mut block = lines[rs..splice_index].to_vec();
+            block.extend(wrapper_lines.iter().cloned());
+            block.extend_from_slice(&lines[splice_index..split_end + 1]);
+            (block.join("\n"), rs + 1, re + 1)
+        } else {
+            (wrapper_lines.join("\n"), splice_index + 1, splice_index)
+        });
     } else {
         let mut new_lines: Vec<String> = Vec::new();
         new_lines.extend_from_slice(&lines[..splice_index.min(lines.len())]);

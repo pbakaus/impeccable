@@ -1783,6 +1783,32 @@ Reducer per event type (`updatedAt = entry.ts`):
 
 #### 7. Wrap / scaffold contract (source-preview path)
 
+When a unique locator match shares its opening or closing line with other
+markup, wrap and insert first isolate its exact byte range in memory. The
+range ends at the matching same-name closing tag (nested tags counted), or
+at the opening tag's end for void and self-closing elements. Existing source
+extension selection is unchanged. Prefix content, with trailing whitespace
+trimmed, gets its own line; the element uses the original indent plus two
+spaces when a prefix precedes it; suffix content gets its own line. Only the
+selected element or anchor is isolated. The normal line-based scaffold then
+uses those lines.
+
+HTML-like sources refuse splitting in pre, textarea, script and style, or
+next to non-whitespace text. Otherwise splitting requires a block-level tag,
+a direct body child, or block-level neighboring tags. The fixed block list is
+address, article, aside, blockquote, details, dialog, div, dl, fieldset,
+figcaption, figure, footer, form, h1-h6, header, hgroup, hr, li, main, nav,
+ol, p, section, table, ul. JSX/TSX allow shared-line isolation regardless of
+inline formatting. Unsafe boundaries return stderr JSON with
+`error:'element_inline', fallback:'agent-driven', file, hint` and exit 1,
+without writing source. With `--defer-source-write`, `wrapperBlock` includes
+the isolated prefix and suffix as well as the scaffold, and replacement line
+numbers refer to the original unsplit source. Applying that single replacement
+produces the same content as an immediate write; scaffold line numbers refer
+to that resulting content. Svelte component preview refuses a split with
+`element_inline` because its retained anchor line numbers describe unchanged
+source. Ordinary deferred scaffolds keep their existing contract.
+
 Wrapper block for HTML-comment files (indent = picked element's leading whitespace; original reindented under `indent+'    '` preserving relative depth):
 ```
 <indent><!-- impeccable-variants-start ID -->
@@ -1857,6 +1883,16 @@ Revision dirs: on every `done` reply for a component session the server copies a
 Sweeps: shutdown/exit removes whole `node_modules/.impeccable-live` and legacy `.impeccable/live/previews`; startup removes session dirs (not `__*`) not in active snapshot list, and the root when nothing kept.
 
 #### 9. Accept pipeline (`live-accept.mjs`, `live/accept-css.mjs`, `live/accept-verify.mjs`)
+
+Before any source range replacement or removal, accept and discard require
+variant and carbonize marker comments for the session to occupy their own
+lines, with only surrounding whitespace. HTML and JSX comments are accepted.
+A shared marker line returns stdout
+`{"handled":false,"error":"markers_share_line","file":...,"hint":"Put each marker comment on its own line, then accept again."}`
+and exits 1 without changing source or recording success. This is checked
+again on the source reread under the mutation lock. Carbonize markers are
+also searched when no variant start marker exists. Normal standalone-marker
+wrappers keep the existing behavior.
 
 Order in `live-accept.mjs`: receipt check → find `impeccable-variants-start <id>` in a template file (skip node_modules/.git/.impeccable/dist/build) → else find svelte manifest → neither: stdout `{"handled":false,"error":"Session markers not found for id: <id>"}` exit 0.
 

@@ -3,6 +3,9 @@
 //! comment syntax and style mode from the framework registry, and the
 //! cssAuthoring contracts.
 
+#[path = "inline_isolation.rs"]
+mod inline_isolation;
+
 use crate::inject::{resolve_source_traits, SourceTraits};
 use crate::source_search::{
     find_source_file, is_generated_file, resolve_live_template_extensions, visit_source_files,
@@ -179,6 +182,11 @@ pub fn element_unclosed_error(file: &str, start_line: usize) -> Value {
         "startLine": start_line + 1,
         "hint": "Found the element's opening tag at startLine but not where it closes. Find its end and write the scaffold manually. See \"Handle fallback\" in live.md.",
     })
+}
+
+pub fn element_inline_error(file: &str) -> Value {
+    json!({ "error": "element_inline", "fallback": "agent-driven", "file": file,
+        "hint": "Cannot safely isolate this element without changing whitespace or unpersisted source line numbers. Use a manual wrapper with each marker on its own line." })
 }
 
 fn skip_line(line: &str) -> bool {
@@ -549,6 +557,8 @@ pub fn find_file_with_query(
 /// A source file read once for element resolution: the path as the caller
 /// spelled it (absolute from the search, verbatim from `--file`) and its lines.
 pub struct SourceFile {
+    /// Original boundary lines and the last boundary line after isolation.
+    pub isolation: Option<(usize, usize, usize)>,
     pub path: String,
     pub lines: Vec<String>,
 }
@@ -561,6 +571,7 @@ impl SourceFile {
 
     fn from_content(path: &str, content: &str) -> Self {
         SourceFile {
+            isolation: None,
             path: path.to_string(),
             lines: content.split('\n').map(String::from).collect(),
         }
@@ -570,6 +581,7 @@ impl SourceFile {
 /// JS: resolveElementMatch, grown across files. How the locator queries, and
 /// the picked text when it has at least 8 normalized chars, resolved.
 pub enum Resolution {
+    Inline(String),
     /// One element: the first the locator finds, or the one the text picks.
     Match(SourceFile, ElementMatch),
     /// Several elements in the file carry the text.
@@ -594,6 +606,10 @@ pub fn resolve_in_file(
     tag: Option<&str>,
     text: Option<&str>,
 ) -> Resolution {
+    let file = match inline_isolation::resolve(vec![file], queries, tag, text) {
+        Ok(resolved) => return resolved,
+        Err(mut files) => files.remove(0),
+    };
     // A bare element with short text: its whole text may still single it out.
     if is_tag_only_search(queries, tag) {
         if let Some(short) = text.filter(|t| !text_disambiguates(t)) {
@@ -654,6 +670,16 @@ pub fn resolve_in_project(
     tag: Option<&str>,
     text: Option<&str>,
 ) -> Resolution {
+    let extensions = resolve_live_template_extensions(cwd);
+    let mut files = Vec::new();
+    visit_source_files("<", cwd, &extensions, &NEVER_SOURCE_DIRS,
+        &|p| !is_generated_file(p, cwd), &mut |path, content| {
+            files.push(SourceFile::from_content(path, content));
+            false
+        });
+    if let Ok(resolved) = inline_isolation::resolve(files, queries, tag, text) {
+        return resolved;
+    }
     if is_tag_only_search(queries, tag) {
         return resolve_tag_in_project(queries, cwd, tag, text);
     }
@@ -884,6 +910,158 @@ mod tests {
     impl Drop for TagProject {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn compact(source: &str) -> String {
+        source.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    #[test]
+    fn same_line_wrap_and_insert_preserve_neighbours() {
+        let page = "<!doctype html><html><head><title>Coffee</title></head><body><header><h1>Harbor Coffee</h1><p>Small-batch beans.</p><a class=\"cta\" href=\"#\">See</a></header></body></html>";
+        for insert in [false, true] {
+            for explicit in [false, true] {
+                let project = TagProject::new("index.html", page);
+                let mut args = vec!["--tag", "h1", "--text", "Harbor Coffee"];
+                if explicit { args.extend(["--file", "index.html"]); }
+                let (code, out, err) = project.run(insert, &args);
+                assert_eq!(code, 0, "{out} {err}");
+                let result = project.source("index.html");
+                // Removing the scaffold recovers every non-whitespace source byte.
+                let start = result.find("<!-- impeccable-variants-start").unwrap();
+                let end = result.find("<!-- impeccable-variants-end ab12cd34 -->").unwrap()
+                    + "<!-- impeccable-variants-end ab12cd34 -->".len();
+                let restored = format!("{}{}{}", &result[..start],
+                    if insert { "" } else { "<h1>Harbor Coffee</h1>" }, &result[end..]);
+                assert_eq!(compact(&restored), compact(page));
+                let wrapper = &result[start..end];
+                assert!(!wrapper.contains("<p>"));
+                assert!(!wrapper.contains("<header>"));
+                if !insert { assert!(wrapper.contains("<h1>Harbor Coffee</h1>")); }
+            }
+        }
+    }
+
+    #[test]
+    fn same_line_nested_div_ranges_and_short_text_are_exact() {
+        for text in ["a", "b"] {
+            let source = "<div><div>a</div></div><div>b</div>";
+            let project = TagProject::new("index.html", source);
+            let (code, out, err) = project.run(false, &["--tag", "div", "--text", text]);
+            if text == "a" {
+                // Both nested divs carry a, so uniqueness must be retained.
+                assert_eq!(code, 1, "{out} {err}");
+                assert_eq!(project.source("index.html"), source);
+            } else {
+                assert_eq!(code, 0, "{out} {err}");
+                assert!(project.source("index.html").starts_with("<div><div>a</div></div>\n"));
+            }
+        }
+        let project = TagProject::new("index.html", "<section><div id=\"outer\"><div>a</div></div><div>b</div></section>");
+        let (code, out, err) = project.run(false, &["--element-id", "outer", "--tag", "div"]);
+        assert_eq!(code, 0, "{out} {err}");
+        let result = project.source("index.html");
+        assert!(result.contains("<div id=\"outer\"><div>a</div></div>"));
+        assert!(result.find("impeccable-variants-end").unwrap() < result.find("<div>b</div>").unwrap());
+    }
+
+    #[test]
+    fn same_line_html_refuses_visible_whitespace_changes_and_raw_contexts() {
+        for (source, tag, text) in [
+            ("Hello <b>world</b>!", "b", "world"),
+            ("<div><span>9</span><span>/mo</span></div>", "span", "/mo"),
+            ("<pre><div>raw</div></pre>", "div", "raw"),
+            ("<textarea><div>raw</div></textarea>", "div", "raw"),
+            ("<script><div>raw</div></script>", "div", "raw"),
+            ("<style><div>raw</div></style>", "div", "raw"),
+        ] {
+            for insert in [false, true] {
+                let project = TagProject::new("index.html", source);
+                let (code, _, err) = project.run(insert, &["--tag", tag, "--text", text]);
+                assert_eq!(code, 1, "{err}");
+                assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline");
+                assert_eq!(project.source("index.html"), source);
+            }
+        }
+    }
+
+    #[test]
+    fn same_line_jsx_and_html_locators_isolate_the_target() {
+        for (file, source, locator) in [
+            ("App.jsx", "<div><h1>Get started</h1><p>x</p></div>", vec!["--tag", "h1"]),
+            ("App.jsx", "<div>{/* <h1>Fake</h1> */}<h1>Title</h1><p>x</p></div>", vec!["--tag", "h1"]),
+            ("App.tsx", "<div><span>A</span><span id=\"picked\">B</span></div>", vec!["--element-id", "picked"]),
+            ("index.html", "<main><h1 class=\"picked\">Title</h1><p>x</p></main>", vec!["--classes", "picked"]),
+            ("index.html", "<main><h1>Unique text</h1><p>x</p></main>", vec!["--query", "Unique text"]),
+            ("index.html", "<body><img id=\"picked\" src=\"a>b\"><p>x</p></body>", vec!["--element-id", "picked"]),
+            ("index.html", "<main><hr id=\"picked\"/><p>x</p></main>", vec!["--element-id", "picked"]),
+        ] {
+            let project = TagProject::new(file, source);
+            let (code, out, err) = project.run(false, &locator);
+            assert_eq!(code, 0, "{out} {err}");
+            assert!(!project.source(file).split("Variants: insert below").next().unwrap().contains("<p>x</p>"));
+        }
+    }
+
+    #[test]
+    fn same_line_template_regions_and_multiline_boundaries_are_preserved() {
+        for (file, source) in [
+            ("Page.astro", "---\nconst fake = '<h1>Ignored</h1>';\n---\n<main><h1>Title</h1><p>x</p></main>"),
+            ("Page.vue", "<template><main><h1>Title</h1><p>x</p></main></template>"),
+            ("Page.heex", "<main><h1>Title</h1><p>x</p></main>"),
+            ("index.html", "<main><h1 title=\"a>b\">Title\nMore</h1><p>x</p></main>"),
+            ("index.html", "<main><h1>Title<script>const fake = '<h1>';</script></h1><p>x</p></main>"),
+            ("index.html", "<body><span>Title</span><span>x</span></body>"),
+            ("index.html", "<main><span>Title</span><p>x</p></main>"),
+        ] {
+            let project = TagProject::new(file, source);
+            let tag = if source.contains("<span>") { "span" } else { "h1" };
+            let (code, out, err) = project.run(false, &["--tag", tag, "--text", "Title"]);
+            assert_eq!(code, 0, "{out} {err}");
+            let result = project.source(file);
+            assert_eq!(result.matches("<p>x</p>").count(), source.matches("<p>x</p>").count());
+            assert!(!result.split("Variants: insert below").next().unwrap().contains("<p>x</p>"));
+        }
+    }
+
+    #[test]
+    fn same_line_deferred_replaces_original_lines_atomically() {
+        for insert in [false, true] {
+            for source in ["<main><h1>Title</h1><p>x</p></main>", "<main><h1>Title\nMore</h1><p>x</p></main>"] {
+                let written = TagProject::new("index.html", source);
+                let (code, out, err) = written.run(insert, &["--tag", "h1"]);
+                assert_eq!(code, 0, "{out} {err}");
+                let written_scaffold: Value = serde_json::from_str(&out).unwrap();
+                let project = TagProject::new("index.html", source);
+                let (code, out, err) = project.run(insert, &["--tag", "h1", "--defer-source-write"]);
+                assert_eq!(code, 0, "{out} {err}");
+                let scaffold: Value = serde_json::from_str(&out).unwrap();
+                assert_eq!(scaffold["sourceWritten"], false);
+                assert_eq!(project.source("index.html"), source);
+                let rs = scaffold["replaceStartLine"].as_u64().unwrap() as usize - 1;
+                let re = scaffold["replaceEndLine"].as_u64().unwrap() as usize;
+                let mut lines: Vec<String> = source.split('\n').map(String::from).collect();
+                lines.splice(rs..re, scaffold["wrapperBlock"].as_str().unwrap().split('\n').map(String::from));
+                assert_eq!(lines.join("\n"), written.source("index.html"));
+                assert_eq!(scaffold["insertLine"], written_scaffold["insertLine"]);
+                if !insert {
+                    assert_eq!(scaffold["startLine"], written_scaffold["startLine"]);
+                    assert_eq!(scaffold["endLine"], written_scaffold["endLine"]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn same_line_svelte_component_refuses_unpersisted_anchor_lines() {
+        for insert in [false, true] {
+            let source = "<main><h1>Title</h1><p>x</p></main>";
+            let project = TagProject::new("Page.svelte", source);
+            let (code, _, err) = project.run(insert, &["--tag", "h1"]);
+            assert_eq!(code, 1, "{err}");
+            assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline");
+            assert_eq!(project.source("Page.svelte"), source);
         }
     }
 

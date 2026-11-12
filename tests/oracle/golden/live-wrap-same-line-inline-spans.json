@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_inline\",\"fallback\":\"agent-driven\",\"file\":\"index.html\",\"hint\":\"Cannot safely isolate this element without changing whitespace or unpersisted source line numbers. Use a manual wrapper with each marker on its own line.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "index.html": "<div class=\"row\"><span class=\"price\">9</span><span class=\"unit\">/mo</span></div>"
+  }
+}
