@@ -32,7 +32,7 @@ On success, prints a JSON blob with:
     projectRoot, repoRoot, targetPath, roots, hasProduct, product, productPath,
     hasDesign, design, designPath, hasSurfaceBrief, surfaceBrief, surfaceBriefPath, _instructions }
   Optional: configCreated (only when created), devUrl (--dev-url),
-    pageUrls (--dev-url, no server or dev script: existing HTML file URLs),
+    pageUrls (--dev-url, no server or package.json: existing HTML file URLs),
     devCommand (--dev-url, no server: dev/start/serve script command),
     liveBarHidden (--no-live-bar), contextMissing and contextNote (--allow-missing-context)
 
@@ -313,7 +313,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     } else {
         None
     };
-    let page_urls = if want_dev_url && dev_url.is_none() && dev_command.is_none() {
+    let page_urls = if want_dev_url && dev_url.is_none()
+        && !exists(&jsp::join(&[&roots.app_root, "package.json"]))
+    {
         page_urls(&roots.app_root, &resolved_files)
     } else {
         Vec::new()
@@ -421,6 +423,16 @@ fn file_url(path: &str) -> String {
     }
 }
 
+/// Resolved page names use POSIX separators, including on Windows. Verbatim
+/// Windows roots require each component to be joined separately.
+fn join_page_path(root: &std::path::Path, file: &str) -> std::path::PathBuf {
+    let mut path = root.to_path_buf();
+    for component in file.split('/') {
+        path.push(component);
+    }
+    path
+}
+
 fn page_urls(app_root: &str, files: &[String]) -> Vec<String> {
     let Ok(root) = std::fs::canonicalize(app_root) else { return Vec::new() };
     files.iter().filter_map(|file| {
@@ -428,7 +440,7 @@ fn page_urls(app_root: &str, files: &[String]) -> Vec<String> {
         if !ext.eq_ignore_ascii_case("html") && !ext.eq_ignore_ascii_case("htm") {
             return None;
         }
-        let path = std::fs::canonicalize(root.join(file)).ok()?;
+        let path = std::fs::canonicalize(join_page_path(&root, file)).ok()?;
         if !path.starts_with(&root) || !path.is_file() {
             return None;
         }
@@ -651,6 +663,21 @@ mod tests {
     }
 
     #[test]
+    fn page_path_joins_posix_components() {
+        let f = Fixture::new();
+        // canonicalize supplies a verbatim root on Windows.
+        let root = std::fs::canonicalize(&f.0).unwrap();
+        let joined = join_page_path(&root, "pages/team/about.html");
+        assert_eq!(joined, root.join("pages").join("team").join("about.html"));
+        assert_eq!(
+            joined.strip_prefix(&root).unwrap().components().collect::<Vec<_>>(),
+            ["pages", "team", "about.html"].iter()
+                .map(|part| std::path::Component::Normal(std::ffi::OsStr::new(part)))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn page_urls_include_only_existing_html_files_under_app_root() {
         let f = Fixture::new();
         f.write("app/index with space.htm", "<body>Hi</body>");
@@ -664,7 +691,7 @@ mod tests {
         let canonical = std::fs::canonicalize(&root).unwrap();
         assert_eq!(urls, vec![
             file_url(canonical.join("index with space.htm").to_str().unwrap()),
-            file_url(canonical.join("pages/about.html").to_str().unwrap()),
+            file_url(canonical.join("pages").join("about.html").to_str().unwrap()),
         ]);
         assert!(urls[0].ends_with("/index%20with%20space.htm"));
         assert!(urls[1].ends_with("/pages/about.html"));
@@ -688,6 +715,37 @@ mod tests {
         assert_eq!(dev_boot["devCommand"], "npm run dev");
         assert!(dev_boot.get("pageUrls").is_none());
         assert!(dev_boot["_instructions"].as_str().unwrap().contains("run this boot again"));
+    }
+
+    #[test]
+    fn boot_package_without_startup_script_keeps_generic_instructions() {
+        let f = Fixture::new();
+        f.write("index.html", "<body><script type=\"module\" src=\"/src/main.jsx\"></script></body>");
+        let (_, plain) = f.run("live", &["--allow-missing-context", "--auto-config"], None);
+        for package in [
+            r#"{"scripts":{"build":"vite build"}}"#,
+            r#"{"name":"app"}"#,
+            r#"{"scripts":{"dev":false,"start":null,"serve":42}}"#,
+            "invalid json",
+        ] {
+            f.write("package.json", package);
+            let (_, boot) = f.run("live", &["--allow-missing-context", "--dev-url"], None);
+            assert_eq!(boot["ok"], true);
+            assert_eq!(boot["devUrl"], Value::Null);
+            assert!(boot.get("pageUrls").is_none(), "{}", package);
+            assert!(boot.get("devCommand").is_none(), "{}", package);
+            assert_eq!(boot["_instructions"], plain["_instructions"]);
+        }
+    }
+
+    #[test]
+    fn help_lists_dev_url_fallback_fields_on_separate_lines() {
+        let optional = HELP.split("Optional:").nth(1).unwrap()
+            .split("On target_selection_required").next().unwrap();
+        assert!(optional.lines().any(|line| line.trim() ==
+            "pageUrls (--dev-url, no server or package.json: existing HTML file URLs),"));
+        assert!(optional.lines().any(|line| line.trim() ==
+            "devCommand (--dev-url, no server: dev/start/serve script command),"));
     }
 
     #[test]
