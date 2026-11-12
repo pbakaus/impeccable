@@ -76,12 +76,12 @@ Each provider gets its own output directory.
 
 ### Try the local build of the Chrome extension
 
-Run `bun run build:extension` once first: it writes the detector into `extension/detector/` and the walk helper into `dist/extension-walks/`. Then:
+Run `bun run build:extension` once first: it writes the detector into `extension/detector/`. Then:
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and choose the `extension` folder of this repository: the main extension, Impeccable.
-4. For walks, click **Load unpacked** again and choose `dist/extension-walks`: the walk helper, Impeccable Walks. Run the build again after changing anything under `extension/walks/`, then reload it.
+3. Click **Load unpacked**.
+4. Choose the `extension` folder of this repository.
 
 ## Build System Details
 

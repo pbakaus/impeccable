@@ -39,8 +39,7 @@ body {
 }
 
 .screen[hidden],
-.btn[hidden],
-.steps[hidden] {
+.btn[hidden] {
   display: none;
 }
 
@@ -62,8 +61,7 @@ p {
   line-height: 1.55;
 }
 
-.points,
-.steps {
+.points {
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -94,25 +92,6 @@ p {
   height: 2px;
   border-radius: 0;
   background: var(--ks-ink);
-}
-
-.steps {
-  counter-reset: step;
-  padding: 10px 12px;
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-paper-deep);
-}
-
-.steps li {
-  counter-increment: step;
-  font-family: var(--ks-font);
-}
-
-.steps li::before {
-  content: counter(step) ".";
-  display: inline-block;
-  width: 18px;
-  color: var(--ks-text-muted);
 }
 
 /* The walk's tab, in a group of its own beside yours. */
@@ -155,41 +134,6 @@ p {
 .tab-walk {
   background: var(--ks-paper-raised);
   color: var(--ks-ink);
-}
-
-.waiting {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  color: var(--ks-text-muted);
-}
-
-body[data-step="add"] .waiting {
-  display: flex;
-}
-
-.waiting::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
-  animation: wait 1.4s var(--ks-ease) infinite alternate;
-}
-
-@keyframes wait {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .waiting::before { animation: none; }
-}
-
-.fine {
-  font-size: var(--ks-type-micro);
-  color: var(--ks-text-muted);
 }
 
 .nav {
