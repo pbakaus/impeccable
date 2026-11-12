@@ -119,9 +119,19 @@ pub fn is_tag_only_search(queries: &[String], tag: Option<&str>) -> bool {
 }
 
 fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
-    if tag.map_or(false, |tag| query == format!("<{}", tag)) {
-        return line.match_indices(query).any(|(start, _)| {
-            line[start + query.len()..]
+    if let Some(tag) = tag.filter(|tag| query == format!("<{}", tag)) {
+        // Lowercase ASCII names are HTML tags; component names retain their case.
+        let html_tag = tag.is_ascii() && !tag.bytes().any(|b| b.is_ascii_uppercase());
+        return line.match_indices('<').any(|(start, _)| {
+            let Some(prefix) = line[start..].get(..query.len()) else {
+                return false;
+            };
+            let matches = if html_tag {
+                prefix.eq_ignore_ascii_case(query)
+            } else {
+                prefix == query
+            };
+            matches && line[start + query.len()..]
                 .chars()
                 .next()
                 .map_or(true, |c| c.is_whitespace() || c == '>' || c == '/')
@@ -515,10 +525,11 @@ pub fn find_file_with_query(
     if !tag.map_or(false, |tag| query == format!("<{}", tag)) {
         return find_source_file(query, cwd, &extensions, &NEVER_SOURCE_DIRS, &filter);
     }
-    // A generated-file hint must obey the same tag boundary as source resolution.
+    // The walker prefilter must allow uppercase HTML tags. Element matching
+    // enforces the tag's case policy and boundary for generated-file hints too.
     let mut found = None;
     visit_source_files(
-        query,
+        "<",
         cwd,
         &extensions,
         &NEVER_SOURCE_DIRS,
@@ -643,10 +654,10 @@ pub fn resolve_in_project(
     tag: Option<&str>,
     text: Option<&str>,
 ) -> Resolution {
-    let text = text.filter(|t| text_disambiguates(t));
     if is_tag_only_search(queries, tag) {
         return resolve_tag_in_project(queries, cwd, tag, text);
     }
+    let text = text.filter(|t| text_disambiguates(t));
     let extensions = resolve_live_template_extensions(cwd);
     let filter = |p: &str| !is_generated_file(p, cwd);
     for q in queries {
@@ -713,7 +724,7 @@ fn resolve_tag_in_project(
     let filter = |p: &str| !is_generated_file(p, cwd);
     let mut files = Vec::new();
     visit_source_files(
-        &queries[0],
+        "<",
         cwd,
         &extensions,
         &NEVER_SOURCE_DIRS,
@@ -746,6 +757,7 @@ fn resolve_tag_in_project(
             return Resolution::Match(files.remove(index).0, m);
         }
     }
+    let text = text.filter(|t| text_disambiguates(t));
     if let Some(text) = text {
         let matching: Vec<_> = files
             .iter()
@@ -882,6 +894,68 @@ mod tests {
             let (code, _, err) = project.run(insert, &["--element-id", "", "--classes", "", "--tag", "", "--query", ""]);
             assert_eq!(code, 1);
             assert_eq!(err.trim(), "Need at least one of: --element-id, --classes, --tag, --query");
+        }
+    }
+
+    #[test]
+    fn tag_only_html_matching_ignores_ascii_case_in_files_and_projects() {
+        let project = TagProject::new("index.html", "<H1>Title</H1>\n");
+        let cwd = project.0.to_str().unwrap();
+        let queries = build_search_queries(None, None, Some("h1"), None);
+        assert!(matches_query("<H1>Title</H1>", &queries[0], Some("h1")));
+        assert!(!matches_query("<H10>Other</H10>", &queries[0], Some("h1")));
+        assert!(find_element(&lines(&["<H1>Title</H1>"]), &queries[0], Some("h1")).is_some());
+        assert!(matches!(
+            resolve_in_project(&queries, cwd, Some("h1"), None),
+            Resolution::Match(_, ElementMatch { start_line: 0, end_line: Some(0) })
+        ));
+        assert_eq!(
+            find_file_with_query(&queries[0], cwd, true, Some("h1")),
+            Some(project.0.join("index.html").to_string_lossy().into_owned())
+        );
+    }
+
+    #[test]
+    fn tag_only_component_matching_preserves_case() {
+        let project = TagProject::new("App.jsx", "<card>Title</card>\n");
+        let cwd = project.0.to_str().unwrap();
+        let queries = build_search_queries(None, None, Some("Card"), None);
+        assert!(!matches_query("<card>Title</card>", &queries[0], Some("Card")));
+        assert!(matches_query("<Card>Title</Card>", &queries[0], Some("Card")));
+        assert!(matches!(
+            resolve_in_project(&queries, cwd, Some("Card"), None),
+            Resolution::NotFound
+        ));
+        assert!(find_file_with_query(&queries[0], cwd, true, Some("Card")).is_none());
+    }
+
+    #[test]
+    fn tag_only_project_short_text_selects_a_unique_whole_heading() {
+        let project = TagProject::new("index.html", "<h2>First</h2>\n<h2>Second</h2>\n");
+        let queries = build_search_queries(None, None, Some("h2"), None);
+        assert!(matches!(
+            resolve_in_project(&queries, project.0.to_str().unwrap(), Some("h2"), Some("Second")),
+            Resolution::Match(_, ElementMatch { start_line: 1, end_line: Some(1) })
+        ));
+    }
+
+    #[test]
+    fn tag_only_project_short_text_keeps_duplicate_headings_ambiguous() {
+        let project = TagProject::new("index.html", "<h2>Same</h2>\n<h2>Same</h2>\n");
+        let queries = build_search_queries(None, None, Some("h2"), None);
+        match resolve_in_project(&queries, project.0.to_str().unwrap(), Some("h2"), Some("Same")) {
+            Resolution::Ambiguous(_, candidates) => assert_eq!(candidates.len(), 2),
+            _ => panic!("duplicate whole text must remain ambiguous"),
+        }
+    }
+
+    #[test]
+    fn tag_only_project_short_text_does_not_select_a_substring() {
+        let project = TagProject::new("index.html", "<h2>First heading</h2>\n<h2>Second heading</h2>\n");
+        let queries = build_search_queries(None, None, Some("h2"), None);
+        match resolve_in_project(&queries, project.0.to_str().unwrap(), Some("h2"), Some("Second")) {
+            Resolution::Ambiguous(_, candidates) => assert_eq!(candidates.len(), 2),
+            _ => panic!("short text must only disambiguate a whole-text match"),
         }
     }
 
