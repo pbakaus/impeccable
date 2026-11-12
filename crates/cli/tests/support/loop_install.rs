@@ -369,3 +369,27 @@ mod mac {
         clean(&apps);
     }
 }
+
+#[test]
+fn after_install_never_connects_unasked_when_no_person_is_there() {
+    // Catches: an agent or script running `loop install` having its agents' config
+    // rewritten without being asked. Only --connect or a person's yes connects.
+    let home = std::env::temp_dir().join(format!("impeccable-loop-after-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    fs::create_dir_all(&home).unwrap();
+    let env = std::collections::HashMap::from([(
+        "HOME".to_string(),
+        home.to_string_lossy().into_owned(),
+    )]);
+    let (mut io, cap) = Io::captured("", home.clone(), env);
+    assert_eq!(after_install(&mut io, false), 0);
+    assert_eq!(
+        String::from_utf8_lossy(&cap.stdout.borrow()),
+        "Next: impeccable loop connect, so your agents bring their questions to Loop.\n"
+    );
+    assert!(!home.join(".claude").exists() && !home.join(".codex").exists());
+    // --connect tries at once, and a failure names how to finish (no Loop app in this home).
+    assert_eq!(after_install(&mut io, true), 1);
+    let err = String::from_utf8_lossy(&cap.stderr.borrow()).into_owned();
+    assert!(err.ends_with("Loop is installed. Run impeccable loop connect again once that is sorted.\n"), "{err}");
+}

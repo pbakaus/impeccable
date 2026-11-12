@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -279,13 +279,59 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             return code;
         }
     }
-    match run_inner(args, io, PINS, std::env::consts::OS) {
+    // `--connect` / `--no-connect` belong to this wrapper: install itself never changes.
+    let wants = |flag: &str| args.iter().any(|a| a == flag);
+    let (connect, no_connect) = (wants("--connect"), wants("--no-connect"));
+    let install = args.first().is_some_and(|a| a == "install");
+    if (connect || no_connect) && (!install || (connect && no_connect)) {
+        io.err(&format!("--connect and --no-connect go with loop install, one at a time.\n{USAGE}"));
+        return 1;
+    }
+    let inner: Vec<String> = args
+        .iter()
+        .filter(|a| *a != "--connect" && *a != "--no-connect")
+        .cloned()
+        .collect();
+    match run_inner(&inner, io, PINS, std::env::consts::OS) {
+        Ok(message) => {
+            io.out(&message);
+            if install && !no_connect {
+                return after_install(io, connect);
+            }
+            0
+        }
+        Err(e) => {
+            io.err(&format!("{e}\n"));
+            1
+        }
+    }
+}
+
+/// The step after a fresh install: connect the agents. `--connect` does it outright; a
+/// person at a terminal is asked once (Enter means yes); anything else (an agent, a
+/// script, a pipe) gets the one command to run next and nothing is changed.
+fn after_install(io: &mut Io, connect: bool) -> i32 {
+    use std::io::IsTerminal;
+    let ask = !connect && io.stdin_is_tty && std::io::stdout().is_terminal();
+    let yes = connect || (ask && {
+        io.out("Connect Claude Code and Codex to Loop now? [Y/n] ");
+        let _ = std::io::Write::flush(&mut io.stdout);
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).is_ok()
+            && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+    });
+    if !yes {
+        io.out("Next: impeccable loop connect, so your agents bring their questions to Loop.\n");
+        return 0;
+    }
+    match crate::loop_connect::connect(io) {
         Ok(message) => {
             io.out(&message);
             0
         }
         Err(e) => {
-            io.err(&format!("{e}\n"));
+            // Loop itself is installed; say how to finish rather than failing the install.
+            io.err(&format!("{e}\nLoop is installed. Run impeccable loop connect again once that is sorted.\n"));
             1
         }
     }

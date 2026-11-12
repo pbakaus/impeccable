@@ -776,3 +776,20 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
         "{v}"
     );
 }
+
+#[test]
+fn connect_flags_only_go_with_install() {
+    let b = Box::new("install-flags");
+    for args in [
+        vec!["loop", "update", "--connect"],
+        vec!["loop", "install", "--connect", "--no-connect"],
+    ] {
+        let out = b.run(&args);
+        assert!(!out.status.success(), "{args:?}");
+        assert!(
+            text(&out).contains("--connect and --no-connect go with loop install, one at a time."),
+            "{}",
+            text(&out)
+        );
+    }
+}

@@ -2213,6 +2213,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   still counts as connect's own. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
   server in place, printing the command that removes it.
+- After a successful `impeccable loop install`, the agents are connected only
+  when asked: `--connect` runs `loop connect` at once; a person at a terminal
+  (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
+  Loop now? [Y/n]`, where Enter means yes; otherwise, and with `--no-connect`
+  never, nothing is changed and install prints `Next: impeccable loop connect,
+  so your agents bring their questions to Loop.` A connect that fails after
+  the install exits 1 and says Loop is installed and to run `loop connect`
+  again. The two flags go with `install` only, one at a time.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
   (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
