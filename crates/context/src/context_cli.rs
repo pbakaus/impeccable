@@ -879,6 +879,7 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
+        append_taste(&mut parts, &env);
         io.out(&parts.render());
         return 0;
     }
@@ -919,8 +920,19 @@ pub fn run_with_hook_repair(
     if let Some(u) = update_directive {
         parts.push(u);
     }
+    append_taste(&mut parts, &env);
     io.out(&parts.render());
     0
+}
+
+fn append_taste(parts: &mut Parts, env: &Env) {
+    if let Some(block) = crate::taste::block(env) {
+        let (mut directives, documents): (Vec<_>, Vec<_>) = std::mem::take(&mut parts.0)
+            .into_iter().partition(|p| matches!(p, Part::Text(_)));
+        directives.push(Part::Text(block));
+        directives.extend(documents);
+        parts.0 = directives;
+    }
 }
 
 /// One part of the context output.

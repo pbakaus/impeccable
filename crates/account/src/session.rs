@@ -196,6 +196,7 @@ impl Session {
                 let generation = state.generation + 1;
                 let next_state = State {
                     foundations: tokens.foundations,
+                    taste: tokens.taste,
                     scopes: tokens.scopes.unwrap_or_else(|| state.scopes.clone()),
                     generation,
                     ..state
@@ -332,6 +333,7 @@ mod upload_refresh_tests {
         let state = State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: 1,
@@ -473,6 +475,7 @@ mod review_regressions {
         let state = State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: 3,

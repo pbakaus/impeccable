@@ -7350,3 +7350,7 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-03: comp-diff regions record the offset they were read at (#1273)
 
 `comp-diff` fitted one whole-page shift and cropped every region from the shifted build, so a header that stayed put while the body moved was read from blank paper and scored `missing`. Each region is now read at the whole-page shift or at its own box, whichever scores higher, and its report entry records that choice as `offset` (`dx`, `dy`) (`docs/CLI-CONTRACT.md`, `comp-diff`). `comp-diff-json` and `comp-diff-no-spec` were re-recorded from the binary and reviewed by hand: no shift fits either fixture, so the only change is `"offset": {"dx": 0, "dy": 0}` after each region's `inkBox`. Scores, verdicts, ink boxes, stderr and exit codes are byte-identical. The goldens enforce these exact results; this is not an open-ended accepted delta.
+
+## Recorded 2026-11-12: `impeccable context` prints the person's taste from a local copy
+
+A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the context cases pin `IMPECCABLE_NO_TASTE` so a developer's own copy never reaches a golden. New case: `context-taste-ready`.

@@ -15,6 +15,7 @@ pub mod session;
 pub mod setup;
 mod stale_grant;
 pub mod store;
+pub mod taste;
 mod upload_notice;
 
 use config::Account;
@@ -82,8 +83,11 @@ pub fn login(
             .as_ref()
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
+        // A new sign-in may be another person: their taste is never the last one's.
+        let _ = std::fs::remove_file(account.home.join("taste.json"));
         let state = State {
             foundations: tokens.foundations,
+            taste: tokens.taste,
             scopes: tokens.scopes.unwrap_or_default(),
             schema: 1,
             issuer: account.issuer.clone(),

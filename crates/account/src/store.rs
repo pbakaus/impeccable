@@ -35,6 +35,8 @@ pub enum Backend {
 pub struct State {
     #[serde(default)]
     pub foundations: bool,
+    #[serde(default)]
+    pub taste: bool,
     pub schema: u32,
     #[serde(default)]
     pub scopes: Vec<String>,
@@ -376,6 +378,7 @@ impl Store {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
             foundations: false,
+            taste: false,
             scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),
@@ -390,6 +393,7 @@ impl Store {
             login: 0,
         };
         self.write_state(&tomb)?;
+        let _ = fs::remove_file(self.account.home.join("taste.json"));
         self.remove_secret(None)
     }
 }

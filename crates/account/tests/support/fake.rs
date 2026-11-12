@@ -24,6 +24,8 @@ pub struct Knobs {
     pub health: bool,
     pub setup: bool,
     pub setup_denied: bool,
+    pub taste: bool,
+    pub taste_denied: bool,
     pub foundations: bool,
     pub foundations_denied: bool,
     pub design: bool,
@@ -59,6 +61,7 @@ impl Gate {
 #[derive(Default)]
 pub struct Record {
     pub hits: HashMap<String, usize>,
+    pub taste_reads: Vec<(String, Option<String>)>,
     pub revoked: Vec<String>,
     /// The `scope` of each authorize request.
     pub scopes: Vec<String>,
@@ -272,6 +275,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .hits
         .entry(path.to_string())
         .or_default() += 1;
+    if path == "/cli/v1/taste" {
+        record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
+    }
     let q: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
@@ -313,6 +319,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.health { scopes.push("health:write"); }
                         if k.setup { scopes.push("setup:write"); }
                         if k.foundations { scopes.push("foundations:write"); }
+                        if k.taste { scopes.push("taste:read"); }
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         scopes
@@ -332,6 +339,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiques:write" => k.critiques,
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
+                        "taste:read" => k.taste,
                         "design:write" => k.design,
                         _ => false,
                     })
@@ -361,6 +369,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                                     "health:write" => !k.health_denied,
                                     "setup:write" => !k.setup_denied,
                                     "foundations:write" => !k.foundations_denied,
+                                    "taste:read" => !k.taste_denied,
                                     "design:write" => !k.design_denied,
                                     "critiques:write" => !k.critiques_denied,
                                     _ => true,
@@ -656,6 +665,8 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
             _ => (404, vec![], vec![]),
         }
     };
+    // Status zero on a custom route simulates a connection closed without an answer.
+    if status == 0 { return; }
     let mut head = format!(
         "HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n",
         out.len()
