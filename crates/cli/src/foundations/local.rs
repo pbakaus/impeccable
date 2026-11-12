@@ -1465,7 +1465,7 @@ fn tailwind_transition(text: &str) -> bool {
     }
     let classes = re(
         &CLASSES,
-        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{.{0,2000}?\}(?:\s*/?>|\s+[A-Za-z][\w:-]*(?:=|\s|/?>)|\s+\{\.\.\.)|"[^"]{0,2000}"|'[^']{0,2000}'|`[^`]{0,2000}`)|@apply\b[^;]{0,300};"#,
+        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{.{0,2000}?\}(?:\s*/?>|\s+[:@#A-Za-z][\w:.-]*(?:=|\s|/?>)|\s+\{\.\.\.)|"[^"]{0,2000}"|'[^']{0,2000}'|`[^`]{0,2000}`)|@apply\b[^;]{0,300};"#,
     );
     let bare = re(&BARE, r#"(?:^|[\s"'`{])transition(?:$|[\s"'`};])"#);
     classes.find_iter(text).any(|m| bare.is_match(m.as_str()))
