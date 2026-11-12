@@ -90,7 +90,7 @@ backend, ask the keychain, or replace the CLI itself.
 |---|---|---|
 | `IMPECCABLE_ACCOUNT_URL` | The account service origin (the OAuth issuer). `https`, or `http` for a loopback host only. | `https://api.impeccable.style` |
 | `IMPECCABLE_HOME` | Root for account state (and the engine cache). | `~/.impeccable` |
-| `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. | `keychain` on macOS and Windows, `file` elsewhere |
+| `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. A sign-in remembers its store, so set it once for `login`. Use `file` where the session has no usable macOS keychain (SSH, a changed `HOME`): `login` names this way out when the keychain refuses. | `keychain` on macOS and Windows, `file` elsewhere |
 | `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
 | `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
 
