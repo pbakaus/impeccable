@@ -137,6 +137,7 @@ fn service_answers_map_to_one_actionable_line_each() {
         (403, r#"{"error":"insufficient_scope"}"#, "Using a world needs a fresh sign-in. Run impeccable login, then try again.\n"),
         (403, r#"{"error":"forbidden","reason":"pro_required"}"#, "The world kinpaku needs Pro. See impeccable.style/pricing\n"),
         (404, r#"{"error":"not_found"}"#, "No world has the id kinpaku. Copy the id from the world in the Impeccable worlds catalog.\n"),
+        (200, "<html>maintenance</html>", "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
         (200, r##"{"id":"other","name":"X","design_md":"# X","sidecar":{}}"##, "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
     ];
     for (status, body, line) in cases {

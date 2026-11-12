@@ -2244,10 +2244,14 @@ token (scope `worlds:read`, which `login` requests whenever the service lists
 it in `scopes_supported`; plan-gated by the service). A 200 answer must be
 `{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
 to 120 characters without control characters, a non-blank `design_md` and an
-object `sidecar`, each at most 256 KiB; anything else is the "can't read"
-line. It writes `.impeccable/design.json` (the sidecar plus
+object `sidecar`, each at most 256 KiB; anything else, a 200 body that is
+not JSON included, is the "can't read" line. It writes `.impeccable/design.json` (the sidecar plus
 `seededFrom: {world, name}`) and then `DESIGN.md`, each create-new, so an
-existing file or symlink is never followed or replaced; if `DESIGN.md` loses
+existing file or symlink is never followed or replaced. Both are created
+relative to directory handles held open (on Unix), so a `.impeccable` that
+is a symlink is refused and one swapped after the check cannot redirect a
+write or a rollback. A file this run created but could not fill (a full
+disk) is removed again; if `DESIGN.md` loses
 that race the sidecar it wrote is removed and the merge line is printed.
 401 after a refresh is the expired line, 403 `insufficient_scope` the fresh
 sign-in line, any other 403 the Pro line, 404 the unknown-id line; network

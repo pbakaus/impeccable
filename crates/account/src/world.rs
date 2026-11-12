@@ -17,6 +17,8 @@ use std::path::Path;
 const MAX_DESIGN_MD: usize = 256 * 1024;
 const MAX_SIDECAR: usize = 256 * 1024;
 
+const UNREADABLE: &str = "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n";
+
 const USAGE: &str = "Usage: impeccable world <id> [--print]\n";
 
 /// A catalog id: lowercase letters, digits and single dashes. It goes into a
@@ -126,7 +128,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         Ok(v) => match parse(&id, &v) {
             Some(seed) => seed,
             None => {
-                io.err("Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n");
+                io.err(UNREADABLE);
                 return 1;
             }
         },
@@ -293,6 +295,9 @@ fn failure(id: &str, e: &SessionError) -> String {
         SessionError::Api(ApiError::Status { status: 404, .. }) => format!(
             "No world has the id {id}. Copy the id from the world in the Impeccable worlds catalog.\n"
         ),
+        // The service answered, but not with JSON: the same advice as a seed
+        // whose shape this CLI can't read, never "couldn't reach".
+        SessionError::Api(ApiError::Network(m)) if m == crate::http::NOT_JSON => UNREADABLE.into(),
         e => format!("Couldn't reach your Impeccable account: {e}.\n"),
     }
 }
@@ -303,19 +308,148 @@ enum WriteError {
 }
 use WriteError::{Exists, Failed};
 
-/// Writes the sidecar, then DESIGN.md, each with create-new so a file that
-/// appeared since the check (or a symlink planted in its place) is never
-/// followed or replaced. A DESIGN.md that loses that race takes the sidecar
-/// this run wrote back out.
+/// A directory held open, so every create and remove below is relative to the
+/// folder that was checked: renaming it away or swapping in a symlink afterwards
+/// cannot redirect a write or a rollback outside the project.
+struct Dir {
+    #[cfg(unix)]
+    handle: std::fs::File,
+    #[cfg(not(unix))]
+    path: std::path::PathBuf,
+}
+
+impl Dir {
+    /// The project root itself.
+    fn root(path: &Path) -> Result<Dir, WriteError> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let handle = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_DIRECTORY)
+                .open(path)
+                .map_err(|e| Failed(e.to_string()))?;
+            Ok(Dir { handle })
+        }
+        #[cfg(not(unix))]
+        Ok(Dir {
+            path: path.to_path_buf(),
+        })
+    }
+
+    /// A real child folder, created when absent. A symlink or a file of that
+    /// name is refused, never followed.
+    fn child(&self, name: &str) -> Result<Dir, WriteError> {
+        let not_folder = || Failed(format!("{name} is not a folder"));
+        #[cfg(unix)]
+        {
+            use std::os::fd::{AsRawFd, FromRawFd};
+            let c = std::ffi::CString::new(name).map_err(|e| Failed(e.to_string()))?;
+            // SAFETY: a live directory descriptor and a NUL-terminated name.
+            unsafe { libc::mkdirat(self.handle.as_raw_fd(), c.as_ptr(), 0o777) };
+            // SAFETY: as above; the descriptor returned is owned by the File.
+            let fd = unsafe {
+                libc::openat(
+                    self.handle.as_raw_fd(),
+                    c.as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+            if fd < 0 {
+                return Err(not_folder());
+            }
+            // SAFETY: fd was just opened and is owned by nothing else.
+            Ok(Dir {
+                handle: unsafe { std::fs::File::from_raw_fd(fd) },
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let path = self.path.join(name);
+            match path.symlink_metadata() {
+                Ok(m) if !m.is_dir() => return Err(not_folder()),
+                Ok(_) => {}
+                Err(_) => std::fs::create_dir(&path).map_err(|e| Failed(e.to_string()))?,
+            }
+            Ok(Dir { path })
+        }
+    }
+
+    /// Creates `name` here, new only (an existing file or symlink is `Exists`),
+    /// and fills it. A file this call created but could not fill is removed, so
+    /// a full disk never leaves a stub that blocks the next run.
+    fn create(
+        &self,
+        name: &str,
+        label: &'static str,
+        fill: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+    ) -> Result<(), WriteError> {
+        let exists = |e: &std::io::Error| e.kind() == std::io::ErrorKind::AlreadyExists;
+        #[cfg(unix)]
+        let opened = {
+            use std::os::fd::{AsRawFd, FromRawFd};
+            let c = std::ffi::CString::new(name).map_err(|e| Failed(e.to_string()))?;
+            // SAFETY: a live directory descriptor and a NUL-terminated name.
+            let fd = unsafe {
+                libc::openat(
+                    self.handle.as_raw_fd(),
+                    c.as_ptr(),
+                    libc::O_WRONLY
+                        | libc::O_CREAT
+                        | libc::O_EXCL
+                        | libc::O_NOFOLLOW
+                        | libc::O_CLOEXEC,
+                    0o644 as libc::c_uint,
+                )
+            };
+            if fd < 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                // SAFETY: fd was just opened and is owned by nothing else.
+                Ok(unsafe { std::fs::File::from_raw_fd(fd) })
+            }
+        };
+        #[cfg(not(unix))]
+        let opened = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(self.path.join(name));
+        let mut file = match opened {
+            Ok(f) => f,
+            Err(e) if exists(&e) => return Err(Exists(label)),
+            Err(e) => return Err(Failed(e.to_string())),
+        };
+        if let Err(e) = fill(&mut file) {
+            drop(file);
+            self.remove(name);
+            return Err(Failed(e.to_string()));
+        }
+        Ok(())
+    }
+
+    /// Removes a file this run created here.
+    fn remove(&self, name: &str) {
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            if let Ok(c) = std::ffi::CString::new(name) {
+                // SAFETY: a live directory descriptor and a NUL-terminated name.
+                unsafe { libc::unlinkat(self.handle.as_raw_fd(), c.as_ptr(), 0) };
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = std::fs::remove_file(self.path.join(name));
+    }
+}
+
+/// Writes the sidecar, then DESIGN.md, each create-new inside a held
+/// directory handle, so a file that appeared since the check (or a symlink
+/// planted in its place, or a swapped `.impeccable`) is never followed or
+/// replaced. Whatever this run created is removed again when a later step
+/// fails; nothing that was there before is ever touched.
 fn write(root: &Path, seed: &Seed) -> Result<(), WriteError> {
     if let Some(found) = existing(root) {
         return Err(Exists(found));
-    }
-    let dir = root.join(".impeccable");
-    match dir.symlink_metadata() {
-        Ok(m) if !m.is_dir() => return Err(Failed(".impeccable is not a folder".into())),
-        Ok(_) => {}
-        Err(_) => std::fs::create_dir(&dir).map_err(|e| Failed(e.to_string()))?,
     }
     let mut sidecar = seed.sidecar.clone();
     sidecar.insert(
@@ -325,35 +459,67 @@ fn write(root: &Path, seed: &Seed) -> Result<(), WriteError> {
     let mut sidecar_bytes =
         serde_json::to_vec_pretty(&sidecar).map_err(|e| Failed(e.to_string()))?;
     sidecar_bytes.push(b'\n');
-    let sidecar_path = dir.join("design.json");
-    create_new(&sidecar_path, &sidecar_bytes, ".impeccable/design.json")?;
-    if let Err(e) = create_new(
-        &root.join("DESIGN.md"),
-        seed.design_md.as_bytes(),
-        "DESIGN.md",
-    ) {
-        let _ = std::fs::remove_file(&sidecar_path);
+    let top = Dir::root(root)?;
+    let dir = top.child(".impeccable")?;
+    dir.create("design.json", ".impeccable/design.json", |f| {
+        f.write_all(&sidecar_bytes)
+    })?;
+    if let Err(e) = top.create("DESIGN.md", "DESIGN.md", |f| {
+        f.write_all(seed.design_md.as_bytes())
+    }) {
+        dir.remove("design.json");
         return Err(e);
     }
     Ok(())
 }
 
-fn create_new(path: &Path, bytes: &[u8], label: &'static str) -> Result<(), WriteError> {
-    let mut f = match std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-    {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(Exists(label)),
-        Err(e) => return Err(Failed(e.to_string())),
-    };
-    f.write_all(bytes).map_err(|e| Failed(e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_it_could_not_fill_is_removed_and_nothing_else_is() {
+        // Catches: a full disk leaving an empty DESIGN.md or design.json behind,
+        // which the next run reads as an existing design system and refuses to seed.
+        let root =
+            std::env::temp_dir().join(format!("world-write-{}", crate::oauth::random_b64(9)));
+        std::fs::create_dir_all(&root).unwrap();
+        let top = Dir::root(&root).ok().unwrap();
+        let full = |_: &mut std::fs::File| Err(std::io::Error::other("disk full"));
+        assert!(matches!(
+            top.create("DESIGN.md", "DESIGN.md", full),
+            Err(Failed(_))
+        ));
+        assert!(!root.join("DESIGN.md").exists());
+        // A file that was already there is reported, and left exactly as it was.
+        std::fs::write(root.join("DESIGN.md"), "mine").unwrap();
+        assert!(matches!(
+            top.create("DESIGN.md", "DESIGN.md", |f| f.write_all(b"x")),
+            Err(Exists("DESIGN.md"))
+        ));
+        assert_eq!(
+            std::fs::read_to_string(root.join("DESIGN.md")).unwrap(),
+            "mine"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_symlinked_impeccable_folder_is_refused_not_followed() {
+        // Catches: design.json created (or rolled back) through a symlink, outside the project.
+        let base = std::env::temp_dir().join(format!("world-swap-{}", crate::oauth::random_b64(9)));
+        let (root, outside) = (base.join("project"), base.join("outside"));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("design.json"), "theirs").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join(".impeccable")).unwrap();
+        let top = Dir::root(&root).ok().unwrap();
+        assert!(matches!(top.child(".impeccable"), Err(Failed(_))));
+        assert_eq!(
+            std::fs::read_to_string(outside.join("design.json")).unwrap(),
+            "theirs"
+        );
+    }
 
     #[test]
     fn ids_are_url_safe_slugs_only() {

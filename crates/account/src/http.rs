@@ -172,6 +172,9 @@ impl Client {
     }
 }
 
+/// What a 2xx answer that is not JSON reads as: the service did answer.
+pub const NOT_JSON: &str = "the service sent an answer that is not JSON";
+
 fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Value, ApiError> {
     let resp = result.map_err(classify)?;
     let mut buf = Vec::new();
@@ -180,7 +183,7 @@ fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::
         .read_to_end(&mut buf)
         .map_err(read_error)?;
     serde_json::from_slice(&buf)
-        .map_err(|_| ApiError::Network("the service sent an answer that is not JSON".into()))
+        .map_err(|_| ApiError::Network(NOT_JSON.into()))
 }
 
 fn classify(e: ureq::Error) -> ApiError {
