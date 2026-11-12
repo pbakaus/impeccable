@@ -426,6 +426,10 @@ fn file_url(path: &str) -> String {
 /// Resolved page names use POSIX separators, including on Windows. Verbatim
 /// Windows roots require each component to be joined separately.
 fn join_page_path(root: &std::path::Path, file: &str) -> std::path::PathBuf {
+    // An absolute entry in the config's files is used as it stands.
+    if std::path::Path::new(file).is_absolute() {
+        return std::path::PathBuf::from(file);
+    }
     let mut path = root.to_path_buf();
     for component in file.split('/') {
         path.push(component);
@@ -684,14 +688,20 @@ mod tests {
         f.write("app/pages/about.html", "<body>About</body>");
         f.write("app/src/App.tsx", "export default null;");
         std::fs::create_dir(f.0.join("app/directory.html")).unwrap();
-        let files = ["index with space.htm", "pages/about.html", "missing.html", "src/App.tsx", "directory.html", "../index.html"]
-            .map(String::from);
+        f.write("app/abs.html", "<body>Abs</body>");
+        f.write("outside.html", "<body>Out</body>");
         let root = f.0.join("app");
+        // Absolute entries: one inside the app root is kept, one outside is dropped.
+        let inside = root.join("abs.html").to_string_lossy().into_owned();
+        let outside = f.0.join("outside.html").to_string_lossy().into_owned();
+        let files = ["index with space.htm", "pages/about.html", "missing.html", "src/App.tsx", "directory.html", "../index.html", inside.as_str(), outside.as_str()]
+            .map(String::from);
         let urls = page_urls(root.to_str().unwrap(), &files);
         let canonical = std::fs::canonicalize(&root).unwrap();
         assert_eq!(urls, vec![
             file_url(canonical.join("index with space.htm").to_str().unwrap()),
             file_url(canonical.join("pages").join("about.html").to_str().unwrap()),
+            file_url(canonical.join("abs.html").to_str().unwrap()),
         ]);
         assert!(urls[0].ends_with("/index%20with%20space.htm"));
         assert!(urls[1].ends_with("/pages/about.html"));
