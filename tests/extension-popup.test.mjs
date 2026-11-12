@@ -61,7 +61,8 @@ async function popup({ initial = state(), deferState = false, account, root = SO
         onMessage: event('message'),
         sendMessage(message, callback) {
           messages.push(message);
-          if (message.account) { callback(account[message.account] ?? { ok: false }); return; }
+          // An answer may be worked out from the message, and come later.
+          if (message.account) { const answer = account[message.account]; void Promise.resolve(typeof answer === 'function' ? answer(message) : answer ?? { ok: false }).then(callback); return; }
           if (message.walks) { callback(account?.walks ?? null); return; }
           if (message.action === 'get-state') {
             if (deferState) h.deliverState = callback;
@@ -348,3 +349,85 @@ for (const [label, answer, state] of [
     assert.equal(form.dataset.state, state);
   });
 }
+
+// Create a persona, at the top of the Personas tab: each state the form can be in, as the worker answers.
+const ROSA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
+async function personasTab(account) {
+  const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [] }, ...account } });
+  h.click('tab-personas');
+  await tick();
+  const [button, form] = h.node('persona-create').children;
+  const [, box, buttons, note] = form.children;
+  return { h, button, form, box, go: buttons.children[1], note };
+}
+for (const [label, typed, answer, state] of [
+  ['empty', '  ', null, 'empty'],
+  ['too short', 'Nurse', null, 'short'],
+  ['at the limit', 'A night-shift nurse.', { ok: false, why: 'limit' }, 'limit'],
+  ['out of today’s quota', 'A night-shift nurse.', { ok: false, why: 'quota' }, 'quota'],
+  ['signed in before creating could be asked for', 'A night-shift nurse.', { ok: false, why: 'scope' }, 'scope'],
+  ['not available yet', 'A night-shift nurse.', { ok: false, why: 'unavailable' }, 'unavailable'],
+  ['failed', 'A night-shift nurse.', { ok: false, why: 'failed' }, 'failed'],
+]) {
+  test(`Create a persona: ${label}`, async () => {
+    const { h, button, form, box, note } = await personasTab({ create: answer });
+    button.listeners.click();
+    assert.deepEqual([form.hidden, button.hidden], [false, true]);
+    box.value = typed;
+    await form.listeners.submit({ preventDefault() {} });
+    await tick();
+    assert.equal(form.dataset.state, state);
+    assert.equal(h.messages.some((m) => m.account === 'create'), answer !== null, 'a description under eight characters is never sent');
+    assert.equal(note.hidden, false, 'it says why');
+  });
+}
+
+test('Create a persona: working, then done, with the new row first and its task box open', async () => {
+  let release;
+  let made = false;
+  const { h, form, box, go, button } = await personasTab({
+    create: () => new Promise((done) => { release = () => { made = true; done({ ok: true, persona: ROSA }); }; }),
+    personas: () => ({ ok: true, personas: [{ name: 'Ada', role: '', slug: 'ada', mine: true }, ...(made ? [ROSA] : []), { name: 'Mira', role: '', slug: 'mira' }] }),
+  });
+  button.listeners.click();
+  box.value = '  A night-shift nurse checking opening hours.  ';
+  await form.listeners.submit({ preventDefault() {} });
+  assert.deepEqual([form.dataset.state, go.disabled, box.disabled], ['working', true, true]);
+  assert.deepEqual(h.messages.filter((m) => m.account === 'create').map((m) => m.description), ['A night-shift nurse checking opening hours.']);
+  release();
+  await tick(); await tick();
+  assert.deepEqual([form.dataset.state, form.hidden, button.hidden], ['done', true, false]);
+  const rows = h.node('persona-list').children;
+  const walkOf = (row) => row.children.find((child) => child.dataset?.walk)?.dataset.walk;
+  assert.deepEqual(rows.map(walkOf), ['mine:rosa', 'mine:ada', 'own:mira']);
+  assert.equal(rows[0].children.find((child) => child.className === 'walk-form')?.hidden, false, 'the task box is open under it');
+  const task = rows[0].children.find((child) => child.className === 'walk-form');
+  task.children.find((child) => child.className === 'walk-task').value = 'Find the opening hours.';
+  await task.listeners.submit({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(JSON.stringify(h.messages.filter((m) => m.account === 'walk').map((m) => m.persona))), [{ mine: 'rosa' }]);
+});
+
+test('a popup opened while a persona is being made waits for it', async () => {
+  const { h, form, box } = await personasTab({ personas: { ok: true, personas: [], creating: 'A night-shift nurse.' }, create: new Promise(() => {}) });
+  assert.deepEqual([form.dataset.state, box.value], ['working', 'A night-shift nurse.']);
+  assert.deepEqual(h.messages.filter((m) => m.account === 'create').map((m) => m.description), ['A night-shift nurse.']);
+});
+
+test('Remove asks first, and Keep keeps them', async () => {
+  let gone = false;
+  const { h } = await personasTab({ personas: () => ({ ok: true, personas: gone ? [] : [ROSA, { name: 'Mira', role: '', slug: 'mira' }] }), remove: () => { gone = true; return { ok: true }; } });
+  const [mine, app] = h.node('persona-list').children;
+  assert.equal(app.children.some((child) => child.className === 'persona-remove'), false, 'only the person’s own can be removed');
+  const remove = mine.children.find((child) => child.className === 'persona-remove');
+  const confirm = mine.children.find((child) => child.className === 'persona-confirm');
+  const act = (name) => confirm.children[1].children.find((child) => child.dataset.act === name);
+  remove.listeners.click();
+  assert.deepEqual([confirm.hidden, remove.hidden], [false, true]);
+  act('keep').listeners.click();
+  assert.deepEqual([confirm.hidden, h.messages.some((m) => m.account === 'remove')], [true, false]);
+  remove.listeners.click();
+  await act('remove').listeners.click();
+  await tick();
+  assert.deepEqual(h.messages.filter((m) => m.account === 'remove').map((m) => m.slug), ['rosa']);
+  assert.equal(h.node('persona-list').children.length, 0, 'the list is read again');
+});

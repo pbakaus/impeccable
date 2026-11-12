@@ -74,6 +74,47 @@
   form.hidden = true;
   let chosen = null;
 
+  /** Opens the task box under `item`, for `ref`. */
+  function openWalk(item, ref) {
+    chosen = ref;
+    item.append(form);
+    form.hidden = false;
+    walkNote.hidden = true;
+    taskBox.focus();
+  }
+
+  /** Remove on one of the person's own: it asks first, in the row. */
+  function removable(item, person) {
+    const remove = make('button', 'persona-remove', WORDS.remove);
+    remove.type = 'button';
+    remove.dataset.remove = person.slug;
+    const confirm = make('div', 'persona-confirm');
+    const asked = make('p', 'account-note', WORDS.removeAsk(person.name));
+    asked.setAttribute('role', 'status');
+    const yes = make('button', 'btn btn-secondary', WORDS.remove);
+    yes.type = 'button';
+    yes.dataset.act = 'remove';
+    const keep = make('button', 'btn btn-secondary', WORDS.keep);
+    keep.type = 'button';
+    keep.dataset.act = 'keep';
+    const buttons = make('div', 'walk-buttons');
+    buttons.append(keep, yes);
+    confirm.append(asked, buttons);
+    confirm.hidden = true;
+    const asking = (on) => { confirm.hidden = !on; remove.hidden = on; (on ? keep : remove).focus(); };
+    remove.addEventListener('click', () => asking(true));
+    keep.addEventListener('click', () => asking(false));
+    yes.addEventListener('click', async () => {
+      yes.disabled = true;
+      const answer = await ask('remove', { slug: person.slug });
+      yes.disabled = false;
+      if (answer?.ok) { await personas(); return; }
+      asked.textContent = WORDS.removeFailed;
+      asked.classList.toggle('is-error', true);
+    });
+    item.append(remove, confirm);
+  }
+
   function persona(person, ref) {
     // A preset's row is styled as a persona's and named apart: the person's own personas are `.persona`.
     const item = make('li', ref?.preset ? 'preset' : 'persona');
@@ -82,31 +123,94 @@
     if (ref) {
       const go = make('button', 'persona-walk', WORDS.walkThis);
       go.type = 'button';
-      go.dataset.walk = ref.preset ? `preset:${ref.preset}` : `own:${ref.own}`;
-      go.addEventListener('click', () => {
-        chosen = ref;
-        item.append(form);
-        form.hidden = false;
-        walkNote.hidden = true;
-        taskBox.focus();
-      });
+      go.dataset.walk = Object.entries(ref)[0].join(':');
+      go.addEventListener('click', () => openWalk(item, ref));
       item.append(go);
     }
+    if (ref?.mine) removable(item, person);
     return item;
   }
 
-  async function personas() {
+  /** The person's own first (`opened`, just made, at the top with its task box open), then the apps', then the presets. */
+  async function personas({ opened } = {}) {
     loadedPersonas = true;
     const answer = await ask('personas');
     const list = $('persona-list');
     const note = $('personas-note');
     const rows = answer?.ok ? answer.personas : null;
-    list.replaceChildren(...(rows ?? []).map((person) => persona(person, person.slug ? { own: person.slug } : null)));
+    const order = (person) => (person.slug === opened && person.mine ? 0 : person.mine ? 1 : 2);
+    const items = [...(rows ?? [])].sort((a, b) => order(a) - order(b)).map((person) => {
+      const ref = person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null;
+      const item = persona(person, ref);
+      if (opened && ref?.mine === opened) openWalk(item, ref);
+      return item;
+    });
+    list.replaceChildren(...items);
     note.textContent = rows === null ? WORDS.personasFailed : rows.length === 0 ? WORDS.noPersonas : '';
     note.hidden = note.textContent === '';
     $('preset-label').textContent = WORDS.presets;
     $('preset-list').replaceChildren(...WORDS.presetList.map((preset) => persona(preset, { preset: preset.id })));
+    // One being made when this popup opened (or sent and never answered): it waits for it here too.
+    if (answer?.creating && createForm.dataset.state !== 'working') void create(answer.creating);
   }
+
+  /** Create a persona: a quiet button, then the form in its place. The worker makes it; the popup may close meanwhile. */
+  const createButton = make('button', 'btn btn-secondary', WORDS.create);
+  createButton.type = 'button';
+  const createForm = make('form', 'create-form');
+  const createLabel = make('label', 'account-label', WORDS.createLabel);
+  const createBox = make('textarea', 'create-task');
+  createBox.id = 'create-task';
+  createBox.rows = 3;
+  createBox.maxLength = 1500;
+  createBox.placeholder = WORDS.createHint;
+  createLabel.setAttribute('for', 'create-task');
+  const createGo = make('button', 'btn btn-primary', WORDS.createGo);
+  createGo.type = 'submit';
+  const createCancel = make('button', 'btn btn-secondary', WORDS.cancel);
+  createCancel.type = 'button';
+  const createNote = make('p', 'account-note');
+  createNote.setAttribute('role', 'status');
+  const createButtons = make('div', 'walk-buttons');
+  createButtons.append(createCancel, createGo);
+  createForm.append(createLabel, createBox, createButtons, createNote);
+  createForm.hidden = true;
+  $('persona-create').append(createButton, createForm);
+
+  const CREATE_WHY = { short: WORDS.createShort, limit: WORDS.createLimit, quota: WORDS.createQuota, scope: WORDS.createScope, unavailable: WORDS.createUnavailable };
+  /** The form in `state`: `working`, or why it did not (`empty`, `short`, `limit`, `quota`, `scope`, `unavailable`, `failed`). */
+  function creatingState(state, text = '') {
+    const working = state === 'working';
+    createForm.dataset.state = state;
+    createForm.hidden = false;
+    createButton.hidden = true;
+    createGo.disabled = working;
+    createBox.disabled = working;
+    createGo.textContent = working ? WORDS.creating : WORDS.createGo;
+    createNote.textContent = text;
+    createNote.hidden = text === '';
+    createNote.classList.toggle('is-error', !working);
+  }
+  async function create(description) {
+    createBox.value = description;
+    creatingState('working', WORDS.creatingNote);
+    const answer = await ask('create', { description });
+    if (!answer?.ok) { creatingState(answer?.why ?? 'failed', CREATE_WHY[answer?.why] ?? WORDS.createFailed); return; }
+    createBox.value = '';
+    createBox.disabled = false;
+    createForm.dataset.state = 'done';
+    createForm.hidden = true;
+    createButton.hidden = false;
+    await personas({ opened: answer.persona.slug });
+  }
+  createButton.addEventListener('click', () => { creatingState('ready'); createBox.focus(); });
+  createCancel.addEventListener('click', () => { createForm.hidden = true; createButton.hidden = false; createButton.focus(); });
+  createForm.addEventListener('submit', (event) => {
+    event.preventDefault?.();
+    const description = createBox.value.trim();
+    if (description.length < 8) { creatingState(description ? 'short' : 'empty', WORDS.createShort); createBox.focus(); return; }
+    void create(description);
+  });
 
   const WHY = { unavailable: WORDS.walkUnavailable, scope: WORDS.walkScope, helper: WORDS.walkHelper, tab: WORDS.walkTab };
   form.addEventListener('submit', async (event) => {

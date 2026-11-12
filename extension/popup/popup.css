@@ -359,6 +359,24 @@ body.has-tabs header {
   border-bottom: 1px solid var(--ks-rule);
 }
 
+/* The person's own: Walk this tab and Remove share a line; the rest of the row is full width. */
+.persona:has(.persona-remove) {
+  flex-flow: row wrap;
+  column-gap: 12px;
+}
+
+.persona:has(.persona-remove) > :not(.persona-walk, .persona-remove) {
+  flex-basis: 100%;
+}
+
+.persona-create {
+  margin-bottom: 8px;
+}
+
+.persona-create > .btn {
+  width: 100%;
+}
+
 .persona:first-child,
 .preset:first-child {
   padding-top: 0;
@@ -394,24 +412,57 @@ body.has-tabs header {
   cursor: pointer;
 }
 
+.persona-remove {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+  cursor: pointer;
+}
+
+.persona-remove:hover {
+  color: var(--ks-vermilion);
+}
+
+.persona-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 .persona-walk:focus-visible,
-.walk-task:focus-visible {
+.persona-remove:focus-visible,
+.walk-task:focus-visible,
+.create-task:focus-visible {
   outline: 2px solid var(--ks-kinpaku);
   outline-offset: 2px;
 }
 
-.walk-form {
+.walk-form,
+.create-form {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-top: 8px;
 }
 
-.walk-form[hidden] {
+.create-form {
+  margin-top: 0;
+}
+
+.walk-form[hidden],
+.create-form[hidden],
+.persona-confirm[hidden],
+.persona-remove[hidden] {
   display: none;
 }
 
-.walk-task {
+.walk-task,
+.create-task {
   padding: 6px 8px;
   border: 1px solid var(--ks-edge);
   border-radius: var(--ks-radius-sm);
