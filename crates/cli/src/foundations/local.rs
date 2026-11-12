@@ -1067,7 +1067,7 @@ impl Project {
         static GUARD: OnceLock<Regex> = OnceLock::new();
         let motion = re(
             &MOTION,
-            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\.|(?m)(^|[\s"'`{:])transition(-(all|colors|opacity|shadow|transform))?([\s"'`};]|$)"#,
+            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\."#,
         );
         let guard = re(
             &GUARD,
@@ -1099,7 +1099,7 @@ impl Project {
             if guard.is_match(&t) {
                 return Some(State::Checked);
             }
-            has_motion |= motion.is_match(&t);
+            has_motion |= motion.is_match(&t) || tailwind_transition(&t);
         }
         if !has_ui {
             return None;
@@ -1446,6 +1446,24 @@ fn secrets_regex() -> &'static Regex {
             .collect();
         Regex::new(&alt.join("|")).expect("valid pattern")
     })
+}
+
+/// A Tailwind `transition` utility inside a class value or `@apply`
+/// (variant prefixes and wrapped class lists included), never prose.
+fn tailwind_transition(text: &str) -> bool {
+    static CLASSES: OnceLock<Regex> = OnceLock::new();
+    static UTILITY: OnceLock<Regex> = OnceLock::new();
+    let classes = re(
+        &CLASSES,
+        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{[^}]{0,600}\}|"[^"]{0,600}"|'[^']{0,600}'|`[^`]{0,600}`)|@apply\b[^;]{0,300};"#,
+    );
+    let utility = re(
+        &UTILITY,
+        r#"(?:^|[\s"'`{:])transition(?:-(?:all|colors|opacity|shadow|transform))?(?:$|[\s"'`};])"#,
+    );
+    classes
+        .find_iter(text)
+        .any(|m| utility.is_match(m.as_str()))
 }
 
 /// The kind of a matched key. Never returns the value.
