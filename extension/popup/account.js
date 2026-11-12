@@ -139,13 +139,11 @@
     const note = $('personas-note');
     const rows = answer?.ok ? answer.personas : null;
     const order = (person) => (person.slug === opened && person.mine ? 0 : person.mine ? 1 : 2);
-    const items = [...(rows ?? [])].sort((a, b) => order(a) - order(b)).map((person) => {
-      const ref = person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null;
-      const item = persona(person, ref);
-      if (opened && ref?.mine === opened) openWalk(item, ref);
-      return item;
-    });
-    list.replaceChildren(...items);
+    const shown = [...(rows ?? [])].sort((a, b) => order(a) - order(b));
+    const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
+    list.replaceChildren(...shown.map((person) => persona(person, refOf(person))));
+    // Opened once the row is on the page, so its task box takes the focus.
+    if (opened && shown[0]?.mine && shown[0].slug === opened) openWalk(list.children[0], refOf(shown[0]));
     note.textContent = rows === null ? WORDS.personasFailed : rows.length === 0 ? WORDS.noPersonas : '';
     note.hidden = note.textContent === '';
     $('preset-label').textContent = WORDS.presets;
@@ -185,6 +183,7 @@
     createForm.hidden = false;
     createButton.hidden = true;
     createGo.disabled = working;
+    createCancel.disabled = working;
     createBox.disabled = working;
     createGo.textContent = working ? WORDS.creating : WORDS.createGo;
     createNote.textContent = text;
