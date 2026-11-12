@@ -351,14 +351,16 @@ body.has-tabs header {
   list-style: none;
 }
 
-.persona {
+.persona,
+.preset {
   display: flex;
   flex-direction: column;
   padding: 7px 0;
   border-bottom: 1px solid var(--ks-rule);
 }
 
-.persona:first-child {
+.persona:first-child,
+.preset:first-child {
   padding-top: 0;
 }
 

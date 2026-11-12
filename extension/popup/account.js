@@ -75,7 +75,8 @@
   let chosen = null;
 
   function persona(person, ref) {
-    const item = make('li', 'persona');
+    // A preset's row is styled as a persona's and named apart: the person's own personas are `.persona`.
+    const item = make('li', ref?.preset ? 'preset' : 'persona');
     item.append(make('span', 'persona-name', person.name));
     if (person.role || person.line) item.append(make('span', 'persona-role', person.role || person.line));
     if (ref) {
