@@ -11,6 +11,25 @@ pub fn disabled(env: &HashMap<String, String>) -> bool {
         .is_some_and(|v| !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false"))
 }
 
+/// Keep in step with account::config::Account::from_env without credentials.
+pub fn expected_issuer(env: &HashMap<String, String>) -> Option<String> {
+    let raw = env.get("IMPECCABLE_ACCOUNT_URL").map(|s| s.trim())
+        .filter(|s| !s.is_empty()).unwrap_or("https://api.impeccable.style");
+    let u = url::Url::parse(raw).ok()?;
+    let loopback = matches!(u.host_str(), Some(h) if h == "127.0.0.1" || h == "[::1]" || h == "localhost" || h.ends_with(".localhost"));
+    if !(u.scheme() == "https" || (u.scheme() == "http" && loopback))
+        || !u.username().is_empty() || u.password().is_some()
+        || u.query().is_some() || u.fragment().is_some() || u.path() != "/"
+    {
+        return None;
+    }
+    let host = u.host_str()?;
+    Some(match u.port() {
+        Some(p) => format!("{}://{host}:{p}", u.scheme()),
+        None => format!("{}://{host}", u.scheme()),
+    })
+}
+
 pub fn sanitize(text: &str) -> String {
     let stripped: String = text.chars().filter(|c| !c.is_control()).collect();
     stripped.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -61,6 +80,7 @@ pub fn block(env: &HashMap<String, String>) -> Option<String> {
                 .map(|h| std::path::PathBuf::from(h).join(".impeccable"))
         })?;
     let v = read(&home.join("taste.json"))?;
+    if v["issuer"].as_str() != Some(expected_issuer(env)?.as_str()) { return None; }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     let fetched = v["fetchedAt"].as_u64()?;
     if v["state"] != "ready" || fetched > now || now - fetched > 86400 { return None; }
@@ -94,7 +114,7 @@ mod tests {
         let path = home.join("taste.json");
         assert!(block(&env).is_none());
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-        let ready = json!({"version":1,"fetchedAt":now,"state":"ready","rules":[
+        let ready = json!({"version":1,"issuer":expected_issuer(&env),"fetchedAt":now,"state":"ready","rules":[
             {"id":"one","text":"Keep corners square.","direction":"prefer"},
             {"id":"two","text":"Small uppercase kicker labels.","direction":"avoid"},
             {"id":"three","text":"line\n \x60\x60\x60heavy\x60\x60\x60\u{0000}  text","direction":"prefer"}
@@ -102,6 +122,9 @@ mod tests {
         std::fs::write(&path, ready.to_string()).unwrap();
         let expected = format!("{INTRO}\n- Prefer: Keep corners square.\n- Avoid: Small uppercase kicker labels.\n- Prefer: line \x60\x60\x60heavy\x60\x60\x60 text");
         assert_eq!(block(&env).as_deref(), Some(expected.as_str()));
+        env.insert("IMPECCABLE_ACCOUNT_URL".into(), "http://127.0.0.1:8787".into());
+        assert!(block(&env).is_none());
+        env.remove("IMPECCABLE_ACCOUNT_URL");
         // Exercise both CLI branches, including a native project.
         for product in [None, Some("# Product\n\n## Platform\n\nios\n")] {
             if let Some(product) = product { std::fs::write(home.join("PRODUCT.md"), product).unwrap(); }

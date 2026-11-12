@@ -236,7 +236,7 @@ const cases = [
   // ======================================================================
   {
     id: 'context-taste-ready', verb: 'context', workspace: 'ctx-empty',
-    env: env({ IMPECCABLE_HOME: '<WS>/.oracle-taste', IMPECCABLE_NO_TASTE: null }),
+    env: env({ IMPECCABLE_HOME: '<WS>/.oracle-taste', IMPECCABLE_ACCOUNT_URL: 'https://api.impeccable.style', IMPECCABLE_NO_TASTE: null }),
     setup: (ws) => write(ws, '.oracle-taste/taste.json', JSON.stringify({
       version: 1, fetchedAt: Math.floor(Date.now() / 1000), etag: '"taste-1"',
       issuer: 'https://api.impeccable.style', state: 'ready',

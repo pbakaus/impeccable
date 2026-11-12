@@ -2441,8 +2441,9 @@ advertises it. The saved sign-in state records the granted scope as taste.
 There is no taste write path. The CLI ignores the response's say and page.
 
 The hidden taste-refresh verb accepts no arguments, prints nothing and exits
-0. It uses the ordinary authenticated request helper, including token renewal
-and request timeouts. A version 1 response in ready, empty, paused or plan
+0. It loads credentials through the non-interactive worker session path,
+including during token renewal, and silently skips credentials needing approval.
+It uses the ordinary authenticated request helper and request timeouts. A version 1 response in ready, empty, paused or plan
 state is cached at <impeccable home>/taste.json, honoring IMPECCABLE_HOME.
 Only ready responses retain rules. The cache contains version, fetchedAt
 (Unix seconds), etag, issuer, state and at most 12 rules with id, text and
@@ -2460,7 +2461,8 @@ state replaces the cache at once, so the next boot prints none of the old
 rules. Logout removes taste.json, and so does every new sign-in (it may be
 another person);
 a late refresh cannot restore it after logout or replace a newer sign-in's
-cache.
+cache. Under the write lock, every reply is discarded if the cache differs
+from the snapshot taken before fetching, including a deletion or pause.
 
 The router's ordinary entrypoint allowlist, including context, schedules
 taste-refresh detached when saved state says signed in with taste and the
@@ -2472,9 +2474,14 @@ taste-refresh still runs). A telemetry opt-out does not stop the read: it
 fetches only the person's own preferences.
 
 Context reads just the cache, bounded to 64 KiB. An unreadable, malformed,
-oversized, unsupported-version, non-ready or empty cache prints nothing, and
+oversized, unsupported-version, wrong-issuer, non-ready or empty cache prints nothing, and
 neither does one whose last successful revalidation is more than 24 hours
 old. Rules are validated and sanitized again on read.
+Older sign-ins missing taste:read receive the shared fresh-sign-in notice
+from foreground detect health reporting when metadata advertises the scope.
+Like foundations, this check has a two-second bound, honors quiet, and shares
+the at-most-once marker per issuer and login. Context makes no metadata call.
+
 Taste applies on native platforms too. After directives and before documents,
 a usable cache adds exactly this block, with one Prefer or Avoid line per rule:
 

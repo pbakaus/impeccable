@@ -126,6 +126,16 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
         return;
     }
+    if !session.state.taste && !impeccable_context::taste::disabled(&io.env) {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::TASTE_READ_SCOPE),
+            Duration::from_secs(2),
+            quiet,
+        );
+    }
     // Its own request and consent: a switched-off route (404) or any other
     // failure is silent and never prevents the health upload.
     if session.state.foundations {
@@ -954,4 +964,41 @@ mod tests {
 /// Internal renewal-only entry point. It never receives file contents.
 pub fn run_design_refresh(args: &[String], io: &mut Io) -> i32 {
     design::run_refresh(args, io)
+}
+
+#[cfg(test)]
+mod taste_notice_tests {
+    use super::*;
+    use crate::test_fake::{browser, Fake};
+
+    #[test]
+    fn foreground_scan_notices_an_old_taste_grant_once_and_honors_quiet() {
+        let fake = Fake::start();
+        {
+            let mut knobs = fake.knobs.lock().unwrap();
+            knobs.health = true;
+            knobs.foundations = true;
+        }
+        let env = fake.env("taste-foreground-notice");
+        crate::login(&env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let root = account.home.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(Command::new("git").arg("init").arg(&root).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success());
+        // Only the fake issuer changes its advertised scopes after sign-in.
+        fake.knobs.lock().unwrap().taste = true;
+        let scan = Scan {
+            foundations: Default::default(), root: root.to_string_lossy().into_owned(),
+            files_scanned: 1, hits: vec![], ruleset: vec![], engine_version: "1.2.3".into(),
+            started: SystemTime::now(),
+        };
+        let (mut io, cap) = Io::captured("", root, env);
+        after_scan(&mut io, &scan, true);
+        assert!(cap.stderr.borrow().is_empty());
+        after_scan(&mut io, &scan, false);
+        after_scan(&mut io, &scan, false);
+        let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+        assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
 }

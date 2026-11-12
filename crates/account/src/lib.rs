@@ -3,6 +3,13 @@
 //! (storage, lock, generation, logout tombstone). docs/RUNTIME-ENV.md (Account sign-in) has the
 //! whole contract. Tokens are never printed or logged.
 
+// Reuse the integration fake issuer in unit tests, including its Pro helpers.
+#[cfg(test)]
+extern crate self as impeccable_account;
+#[cfg(test)]
+#[path = "../tests/support/fake.rs"]
+mod test_fake;
+
 pub mod config;
 pub mod critiques;
 mod design_read;
