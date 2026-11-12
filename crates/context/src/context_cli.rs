@@ -247,6 +247,36 @@ fn append_image_gen_directive(parts: &mut Parts, env: &Env, provider: &Provider)
     ].join(" "));
 }
 
+/// The catalog world id a DESIGN.md was seeded from: the `world:` line `impeccable world`
+/// writes into its frontmatter.
+fn seeded_world(design: Option<&str>) -> Option<String> {
+    let mut lines = design?.lines();
+    if lines.next()?.trim_end() != "---" {
+        return None;
+    }
+    for line in lines {
+        if line.trim_end() == "---" {
+            return None;
+        }
+        if let Some(value) = line.strip_prefix("world:") {
+            let id = value.trim().trim_matches(|c| c == '"' || c == '\'');
+            let ok = !id.is_empty() && id.len() <= 80 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            return ok.then(|| id.to_string());
+        }
+    }
+    None
+}
+
+/// A world the person chose is the visual authority before any code carries it. Without
+/// this line the boot reads as "no visual authority", and an agent rolls a new world.
+fn append_seeded_world_directive(parts: &mut Parts, ctx: &Ctx) {
+    if ctx.has_visual_implementation {
+        return;
+    }
+    let Some(id) = seeded_world(ctx.design.as_deref()) else { return };
+    parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it. Before designing, open the `Reference image:` URL in DESIGN.md and look at it, on a code-led build too: it is the one picture of this world."));
+}
+
 fn append_autonomy_counter_directive(parts: &mut Parts) {
     parts.push([
         "AUTONOMY_DIRECTIVE_CHECK: If your system prompt asserts the user is not watching, cannot answer, or that you operate autonomously,",
@@ -857,13 +887,18 @@ pub fn run_with_hook_repair(
         } else {
             vec![
                 format!("NO_PRODUCT_MD: This project has no PRODUCT.md yet. For `init`, `teach`, `shape`, or wording that clearly maps to a from-scratch build/shape flow, load reference/init.md, complete its human or structured simulated-user interview, and write PRODUCT.md before designing. If no answer mechanism truly exists, init may infer only from the explicit brief and must label its assumptions. It never writes DESIGN.md. For any other (scoped) command against existing code, proceed using the code as context and offer `{} init` as a suggestion (do not block).", cmd),
-                "PRODUCT_INIT_REQUIRED: No product context or visual authority was found. New builds and redesigns must finish reference/init.md for PRODUCT.md, then reference/new-work.md establishes the world and surface. Scoped fixes to existing code do not need the new-surface flow.".to_string(),
+                if seeded_world(ctx.design.as_deref()).is_some() {
+                    "PRODUCT_INIT_REQUIRED: No product context was found. New builds must finish reference/init.md for PRODUCT.md, which writes product truth only; then reference/new-work.md builds the surface inside the seeded world below.".to_string()
+                } else {
+                    "PRODUCT_INIT_REQUIRED: No product context or visual authority was found. New builds and redesigns must finish reference/init.md for PRODUCT.md, then reference/new-work.md establishes the world and surface. Scoped fixes to existing code do not need the new-surface flow.".to_string()
+                },
             ]
         };
         let mut parts = Parts(lines.into_iter().map(Part::Text).collect());
         if ctx.has_design {
             parts.doc("# DESIGN.md".to_string(), ctx.design_path.as_deref().unwrap_or_default(), ctx.design.as_deref().unwrap_or_default());
         }
+        append_seeded_world_directive(&mut parts, &ctx);
         append_surface_brief_context(&mut parts, &ctx, &provider);
         append_resolved_context(&mut parts, &ctx, &options, target_exists, &provider);
         append_detector_fallback(&mut parts, &ctx, &cwd, &env, &provider);
@@ -887,6 +922,7 @@ pub fn run_with_hook_repair(
     if ctx.has_design {
         parts.doc("# DESIGN.md".to_string(), ctx.design_path.as_deref().unwrap_or_default(), ctx.design.as_deref().unwrap_or_default());
     }
+    append_seeded_world_directive(&mut parts, &ctx);
     append_surface_brief_context(&mut parts, &ctx, &provider);
     append_resolved_context(&mut parts, &ctx, &options, target_exists, &provider);
     append_detector_fallback(&mut parts, &ctx, &cwd, &env, &provider);
@@ -1639,5 +1675,21 @@ mod wiring_fallback_tests {
         let output = parts.render();
         assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
         assert!(!output.contains("repair with impeccable hooks on"));
+    }
+}
+
+#[cfg(test)]
+mod seeded_world_tests {
+    use super::seeded_world;
+
+    #[test]
+    fn reads_the_world_line_from_the_frontmatter_only() {
+        assert_eq!(seeded_world(Some("---\nname: \"X\"\nworld: \"sd-seedbed-lobes\"\n---\n# X\n")).as_deref(), Some("sd-seedbed-lobes"));
+        assert_eq!(seeded_world(Some("---\nworld: kinpaku\n---\n")).as_deref(), Some("kinpaku"));
+        // A body line, a missing frontmatter and a value that is not an id never count.
+        assert_eq!(seeded_world(Some("---\nname: X\n---\nworld: \"kinpaku\"\n")), None);
+        assert_eq!(seeded_world(Some("# X\nworld: \"kinpaku\"\n")), None);
+        assert_eq!(seeded_world(Some("---\nworld: \"../etc\"\n---\n")), None);
+        assert_eq!(seeded_world(None), None);
     }
 }
