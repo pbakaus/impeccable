@@ -530,7 +530,7 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
     assert_eq!(fake.hits("/cli/v1/foundations"), before, "declined scope");
     fake.knobs.lock().unwrap().foundations_denied = false;
     login(&env);
-    // With no scan evidence, send an empty items map rather than inventing passes.
+    // Only a clean page left: the detector's classes pass as "none found".
     for file in [
         "contrast.html",
         "border-accent-blank-lines.css",

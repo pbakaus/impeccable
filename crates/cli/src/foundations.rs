@@ -153,8 +153,14 @@ fn detector(full: &impeccable_detect::cli::FullScan) -> BTreeMap<&'static str, &
         }
     }
     let enabled = |id: &str| full.ruleset.iter().any(|r| r == id);
-    // Low contrast runs only where the static HTML engine reads the page.
+    // `--no-advisory` hides the uncertain findings a pass must not ignore.
+    if full.ruleset.iter().any(|r| r == "no-advisory=true") {
+        return out;
+    }
+    // Low contrast runs only where the static HTML engine reads the page, so
+    // a component the regex engine read leaves the pass unproven.
     if full.html_files_scanned > 0
+        && full.regex_component_files == 0
         && enabled("low-contrast")
         && !advisory.contains(&"readable-contrast")
     {

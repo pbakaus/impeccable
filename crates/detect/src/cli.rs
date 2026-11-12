@@ -311,6 +311,7 @@ struct Ctx<'a> {
     /// static HTML engine read, for foundations.
     ui_files_scanned: usize,
     html_files_scanned: usize,
+    regex_component_files: usize,
     /// Their extensions, lowercased and sorted, for the note.
     regex_only_exts: BTreeSet<String>,
     /// Each scanned directory's framework dev-server port, deduplicated, so
@@ -508,6 +509,9 @@ pub struct FullScan {
     /// Scanned files the static HTML engine read, the only local files the
     /// element rules (low contrast among them) run on.
     pub html_files_scanned: usize,
+    /// Scanned markup or component files (JSX, Vue, Svelte, ...) that only
+    /// the regex engine read, so element rules never judged their text.
+    pub regex_component_files: usize,
     /// What detect reported, after the config, ignores and `--no-advisory`.
     pub findings: Vec<Finding>,
     /// Everything besides the engine that decides which findings can exist:
@@ -525,6 +529,11 @@ fn is_ui_file(file: &str) -> bool {
     ]
     .iter()
     .any(|ext| lower.ends_with(ext))
+}
+
+fn is_style_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [".css", ".scss", ".sass", ".less"].iter().any(|ext| lower.ends_with(ext))
 }
 
 /// [`run_detect_with_pack`] that also hands back a [`FullScan`] when the run
@@ -781,6 +790,7 @@ fn detect_cli(
         files_scanned: 0,
         ui_files_scanned: 0,
         html_files_scanned: 0,
+        regex_component_files: 0,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
@@ -949,6 +959,7 @@ fn detect_cli(
                 files_scanned: ctx.files_scanned,
                 ui_files_scanned: ctx.ui_files_scanned,
                 html_files_scanned: ctx.html_files_scanned,
+                regex_component_files: ctx.regex_component_files,
                 findings: all.clone(),
                 ruleset,
             });
@@ -1248,6 +1259,9 @@ fn scan_targets(
                             ctx.ui_files_scanned += 1;
                         } else if is_ui_file(file) {
                             ctx.ui_files_scanned += 1;
+                            if !is_style_file(file) {
+                                ctx.regex_component_files += 1;
+                            }
                         }
                         f
                     }

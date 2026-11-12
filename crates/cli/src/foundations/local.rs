@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -101,6 +102,10 @@ struct Project {
     truncated: bool,
     reads: std::cell::Cell<usize>,
     read_capped: std::cell::Cell<bool>,
+    cache: std::cell::RefCell<std::collections::HashMap<String, Option<Rc<str>>>>,
+    /// The root package.json's dependencies: they name the framework.
+    root_deps: BTreeSet<String>,
+    /// Every manifest's, nested ones included: for SDK lookups.
     deps: BTreeSet<String>,
     scripts: BTreeSet<String>,
     package_jsons: Vec<Value>,
@@ -143,9 +148,29 @@ pub fn scan(root: &Path) -> Report {
     let (secrets, secret_state) = p.secrets();
     put("secrets-out-of-repo", secret_state);
     r.secrets = secrets;
-    // A read cap means some file went unread: only failures stand then.
+    // Past a cap some file went unread: only states a found file proves
+    // stand then, never one that rests on not having found something.
     if p.read_capped.get() || p.truncated {
-        r.items.retain(|_, s| *s == State::Failing);
+        const FOUND_PASS: &[&str] = &[
+            "ci-runs-tests",
+            "dependency-scanning",
+            "infrastructure-as-code",
+            "design-tokens",
+            "app-icons",
+            "not-found-page",
+            "social-previews",
+            "legal-pages",
+            "error-tracking",
+        ];
+        const FOUND_FAIL: &[&str] = &[
+            "secrets-out-of-repo",
+            "no-giant-files",
+            "reversible-migrations",
+        ];
+        r.items.retain(|id, s| match s {
+            State::Checked => FOUND_PASS.contains(id),
+            State::Failing => FOUND_FAIL.contains(id),
+        });
     }
     r
 }
@@ -224,6 +249,8 @@ impl Project {
             truncated,
             reads: Default::default(),
             read_capped: Default::default(),
+            cache: Default::default(),
+            root_deps: BTreeSet::new(),
             deps: BTreeSet::new(),
             scripts: BTreeSet::new(),
             package_jsons: Vec::new(),
@@ -241,13 +268,20 @@ impl Project {
 
     /// A file's text, up to [`MAX_BYTES`]; `None` for binary, oversize or
     /// unreadable files, and once [`MAX_READS`] is spent (noted).
-    fn read(&self, rel: &str) -> Option<String> {
+    fn read(&self, rel: &str) -> Option<Rc<str>> {
+        if let Some(hit) = self.cache.borrow().get(rel) {
+            return hit.clone();
+        }
         if self.reads.get() >= MAX_READS {
             self.read_capped.set(true);
             return None;
         }
         self.reads.set(self.reads.get() + 1);
-        read_capped(&self.root.join(rel))
+        let text: Option<Rc<str>> = read_capped(&self.root.join(rel)).map(Rc::from);
+        self.cache
+            .borrow_mut()
+            .insert(rel.to_string(), text.clone());
+        text
     }
 
     fn load_manifests(&mut self) {
@@ -286,6 +320,9 @@ impl Project {
             for key in ["dependencies", "devDependencies", "peerDependencies"] {
                 if let Some(o) = v.get(key).and_then(Value::as_object) {
                     self.deps.extend(o.keys().cloned());
+                    if f == "package.json" {
+                        self.root_deps.extend(o.keys().cloned());
+                    }
                 }
             }
             if let Some(o) = v.get("scripts").and_then(Value::as_object) {
@@ -318,7 +355,13 @@ impl Project {
         }
     }
 
+    /// A root dependency: what the project at this root is built with.
     fn dep(&self, name: &str) -> bool {
+        self.root_deps.contains(name)
+    }
+
+    /// A dependency of any package in the repo.
+    fn any_dep(&self, name: &str) -> bool {
         self.deps.contains(name)
     }
 
@@ -330,29 +373,37 @@ impl Project {
         self.deps.contains(&format!("{manifest}:{word}"))
     }
 
+    /// A web project at this root: an app framework or its config, an HTML
+    /// entry, a server-side web framework, or UI files in page directories.
+    /// Nested apps in a monorepo are judged by running on their own folder.
     fn is_web(&self) -> bool {
-        const WEB_DEPS: &[&str] = &[
+        const APP_FRAMEWORKS: &[&str] = &[
             "next",
-            "react",
-            "react-dom",
-            "vue",
-            "svelte",
-            "@sveltejs/kit",
             "nuxt",
+            "@sveltejs/kit",
             "astro",
-            "@remix-run/react",
-            "react-router",
-            "react-router-dom",
-            "@react-router/dev",
             "gatsby",
-            "solid-js",
-            "preact",
+            "@remix-run/react",
+            "@react-router/dev",
             "@angular/core",
-            "vite",
             "@builder.io/qwik",
             "ember-source",
         ];
-        if WEB_DEPS.iter().any(|d| self.dep(d)) {
+        const CONFIGS: &[&str] = &[
+            "next.config.",
+            "nuxt.config.",
+            "svelte.config.",
+            "astro.config.",
+            "vite.config.",
+            "gatsby-config.",
+            "remix.config.",
+            "react-router.config.",
+            "vue.config.",
+            "angular.json",
+        ];
+        if APP_FRAMEWORKS.iter().any(|d| self.dep(d))
+            || self.any(|f| !f.contains('/') && CONFIGS.iter().any(|c| f.starts_with(c)))
+        {
             return true;
         }
         if [
@@ -704,11 +755,16 @@ impl Project {
                             | "icon.ts"
                     ))
         });
+        static SIZE: OnceLock<Regex> = OnceLock::new();
+        let size = re(&SIZE, r"(^|[^0-9])(180|192|512)([^0-9]|$)");
         let large_name = |n: &str| {
             n.starts_with("apple-touch-icon")
                 || n.starts_with("apple-icon")
-                || ((n.contains("180") || n.contains("192") || n.contains("512"))
-                    && n.ends_with(".png"))
+                || (n.ends_with(".png")
+                    && size.is_match(n)
+                    && ["icon", "android-chrome", "logo", "touch"]
+                        .iter()
+                        .any(|w| n.contains(w)))
         };
         let mut large = self.any(|f| in_dirs(f) && large_name(&name(f).to_ascii_lowercase()));
         // A web manifest with icons, and `<link rel="icon">` in an HTML entry.
@@ -855,25 +911,67 @@ impl Project {
         }
     }
 
+    /// Pages, routes or content named privacy and terms, at the root or in
+    /// the directories pages live in.
     fn legal_pages(&self) -> State {
-        let page = |f: &str| PAGE_EXTS.contains(&ext(f)) && !is_test_path(f);
-        let segment = |f: &str, pred: &dyn Fn(&str) -> bool| {
-            f.split('/').any(|s| {
-                let s = s.to_ascii_lowercase();
-                let stem = s.split('.').next().unwrap_or("");
-                pred(stem)
-            })
-        };
-        let privacy = self.any(|f| page(f) && segment(f, &|s| s.starts_with("privacy")));
-        let terms = self.any(|f| {
-            page(f)
-                && segment(f, &|s| {
-                    s == "tos"
-                        || s == "terms"
-                        || s.starts_with("terms-")
-                        || s.starts_with("terms_")
-                        || s == "legal-terms"
+        const DIRS: &[&str] = &[
+            "pages/",
+            "app/",
+            "routes/",
+            "src/pages/",
+            "src/app/",
+            "src/routes/",
+            "content/",
+            "src/content/",
+            "public/",
+            "static/",
+            "legal/",
+            "src/legal/",
+            "templates/",
+            "views/",
+            "app/views/",
+            "resources/views/",
+            "_pages/",
+            "site/",
+        ];
+        let named = |f: &str, names: &[&str]| {
+            let in_place = !f.contains('/') || DIRS.iter().any(|d| f.starts_with(d));
+            in_place
+                && PAGE_EXTS.contains(&ext(f))
+                && !is_test_path(f)
+                && f.split('/').any(|seg| {
+                    let seg = seg.to_ascii_lowercase();
+                    let stem = seg.split('.').next().unwrap_or("");
+                    names.contains(&stem.trim_start_matches('(').trim_end_matches(')'))
                 })
+        };
+        let privacy = self.any(|f| {
+            named(
+                f,
+                &[
+                    "privacy",
+                    "privacy-policy",
+                    "privacy_policy",
+                    "privacypolicy",
+                    "datenschutz",
+                ],
+            )
+        });
+        let terms = self.any(|f| {
+            named(
+                f,
+                &[
+                    "terms",
+                    "tos",
+                    "terms-of-service",
+                    "terms_of_service",
+                    "terms-of-use",
+                    "terms_of_use",
+                    "terms-and-conditions",
+                    "terms_and_conditions",
+                    "termsofservice",
+                ],
+            )
         });
         if privacy && terms {
             State::Checked
@@ -922,7 +1020,7 @@ impl Project {
             ("composer.json", "sentry/sentry"),
             ("composer.json", "bugsnag/bugsnag-laravel"),
         ];
-        let found = js.iter().any(|d| self.dep(d))
+        let found = js.iter().any(|d| self.any_dep(d))
             || js_prefixes.iter().any(|p| self.dep_prefix(p))
             || other.iter().any(|(m, w)| self.other_dep(m, w));
         if found {
@@ -954,7 +1052,7 @@ impl Project {
             "@formkit/auto-animate",
         ]
         .iter()
-        .any(|d| self.dep(d));
+        .any(|d| self.any_dep(d));
         let mut has_ui = false;
         let mut has_motion = motion_dep;
         for f in self
@@ -1117,7 +1215,11 @@ impl Project {
         let mut reads = 0usize;
         for f in &files {
             let n = name(f);
-            if in_git && is_env_file(n) {
+            if is_env_file(n) {
+                // Outside git an env file is where keys belong.
+                if !in_git {
+                    continue;
+                }
                 hits.push(SecretHit {
                     file: f.clone(),
                     line: 1,

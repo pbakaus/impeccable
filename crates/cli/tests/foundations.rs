@@ -14,7 +14,11 @@ fn foundations(dir: &Path) -> Value {
         .args(["foundations", "--json"])
         .current_dir(dir)
         .env_clear()
-        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .envs(
+            ["PATH", "SystemRoot", "TEMP", "TMP"]
+                .iter()
+                .filter_map(|k| std::env::var(k).ok().map(|v| (*k, v))),
+        )
         .env("IMPECCABLE_HOME", &home)
         .env("HOME", &home)
         .env("CI", "1")
@@ -70,6 +74,11 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("no dependabot", vec![("package.json", REACT.into())], false, "dependency-scanning", Some("failing")),
         ("no manifest", vec![("README.md", "# Notes\n".into())], false, "dependency-scanning", None),
         ("icons", vec![("package.json", NEXT.into()), ("app/favicon.ico", "x".into()), ("app/apple-icon.png", "x".into())], false, "app-icons", Some("checked")),
+        ("screenshot is no icon", vec![("package.json", NEXT.into()), ("app/favicon.ico", "x".into()), ("public/screenshot-1920x1080.png", "x".into())], false, "app-icons", Some("failing")),
+        ("component names are no legal pages", vec![("package.json", NEXT.into()), ("components/PrivacyToggle.tsx", "x\n".into()), ("lib/terms.ts", "x\n".into())], false, "legal-pages", Some("failing")),
+        ("nested app is judged in its own folder", vec![("package.json", "{}".into()), ("apps/web/package.json", NEXT.into())], false, "not-found-page", None),
+        ("page read by the html engine", vec![("index.html", "<!doctype html><html><body><p>Hello</p></body></html>".into())], false, "readable-contrast", Some("checked")),
+        ("component read by regex only", vec![("index.html", "<!doctype html><html><body><div id=root></div></body></html>".into()), ("src/App.tsx", "export const App = () => <p>Hello</p>;\n".into())], false, "readable-contrast", None),
         ("favicon only", vec![("package.json", NEXT.into()), ("app/favicon.ico", "x".into())], false, "app-icons", Some("failing")),
         ("not web", vec![("Cargo.toml", "[package]\nname = \"x\"\n".into()), ("src/main.rs", "fn main() {}\n".into())], false, "app-icons", None),
         ("next 404", vec![("package.json", NEXT.into()), ("app/not-found.tsx", "export default function N() {}\n".into())], false, "not-found-page", Some("checked")),
@@ -85,8 +94,8 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("tracked key", vec![("src/config.ts", format!("export const key = \"{stripe}\";\n"))], true, "secrets-out-of-repo", Some("failing")),
         ("tracked env", vec![(".env", "TOKEN=1\n".into()), (".env.example", "TOKEN=\n".into())], true, "secrets-out-of-repo", Some("failing")),
         ("clean repo", vec![(".env.example", "TOKEN=\n".into()), ("src/a.ts", "export {};\n".into())], true, "secrets-out-of-repo", Some("checked")),
-        ("sentry", vec![("package.json", r#"{"dependencies":{"react":"19.0.0","@sentry/react":"9.0.0"}}"#.into())], false, "error-tracking", Some("checked")),
-        ("no sentry", vec![("package.json", REACT.into())], false, "error-tracking", Some("failing")),
+        ("sentry", vec![("index.html", "<div id=root></div>\n".into()), ("package.json", r#"{"dependencies":{"react":"19.0.0","@sentry/react":"9.0.0"}}"#.into())], false, "error-tracking", Some("checked")),
+        ("no sentry", vec![("index.html", "<div id=root></div>\n".into()), ("package.json", REACT.into())], false, "error-tracking", Some("failing")),
         ("wrangler", vec![("wrangler.toml", "name = \"x\"\n".into())], false, "infrastructure-as-code", Some("checked")),
         ("no iac", vec![("package.json", REACT.into())], false, "infrastructure-as-code", Some("failing")),
         ("readme runs", vec![("package.json", REACT.into()), ("README.md", "```\nnpm install\nnpm run dev\n```\n".into())], false, "readme-runs", Some("checked")),
