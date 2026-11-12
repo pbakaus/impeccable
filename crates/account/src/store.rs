@@ -37,6 +37,8 @@ pub struct State {
     pub foundations: bool,
     #[serde(default)]
     pub taste: bool,
+    #[serde(default)]
+    pub taste_write: bool,
     pub schema: u32,
     #[serde(default)]
     pub scopes: Vec<String>,
@@ -379,6 +381,7 @@ impl Store {
         let tomb = State {
             foundations: false,
             taste: false,
+            taste_write: false,
             scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),

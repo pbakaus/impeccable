@@ -1,4 +1,4 @@
-//! Read-only account taste refresh. Context itself never loads credentials.
+//! Account taste refresh and best-effort foreground writes. Context itself never loads credentials.
 use crate::config::Account;
 use crate::http::ApiError;
 use crate::session::{now, Session, SessionError};
@@ -106,4 +106,137 @@ mod tests {
             assert!(!reply_is_current(Some(&ready), Some(&newer)), "{key}");
         }
     }
+}
+
+const USAGE: &str = "Usage: impeccable taste call --kind variant|agent --chose <text> [--over <text>] [--rule <sentence>] [--event <id>] [--json]\n       impeccable taste used --where build|critique <rule id>... [--json]\n";
+
+fn digest_id(prefix: &str, parts: &[&str]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    for part in parts {
+        hash.update((part.len() as u64).to_be_bytes());
+        hash.update(part.as_bytes());
+    }
+    let hex: String = hash.finalize()[..16].iter().map(|b| format!("{b:02x}")).collect();
+    format!("{prefix}-{hex}")
+}
+
+fn project_root(io: &Io) -> String {
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    // Read git boundaries directly, including linked worktrees, without spawning git.
+    for dir in io.cwd.ancestors() {
+        if impeccable_common::git::git_dir(&dir.to_string_lossy()).is_some() {
+            return dir.to_string_lossy().into_owned();
+        }
+    }
+    cwd
+}
+
+fn valid_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn parse_write(args: &[String], root: &str) -> Result<(&'static str, Value, bool), &'static str> {
+    let command = args.first().map(String::as_str).ok_or("choose call or used")?;
+    if !matches!(command, "call" | "used") { return Err("choose call or used"); }
+    let mut flags = std::collections::HashMap::new();
+    let mut ids = Vec::new();
+    let mut json_output = false;
+    let mut i = 1;
+    while i < args.len() {
+        let key = args[i].as_str();
+        if key == "--json" { json_output = true; i += 1; continue; }
+        let allowed = if command == "call" {
+            matches!(key, "--kind" | "--chose" | "--over" | "--rule" | "--event")
+        } else { key == "--where" };
+        if allowed {
+            let value = args.get(i + 1).filter(|v| !v.starts_with("--"))
+                .ok_or("missing flag value")?;
+            flags.insert(key, value.as_str());
+            i += 2;
+        } else if command == "used" {
+            if valid_id(key) { ids.push(key); }
+            i += 1;
+        } else { return Err("unknown argument"); }
+    }
+    if command == "used" {
+        let where_ = flags.get("--where").copied().unwrap_or("");
+        if !matches!(where_, "build" | "critique") { return Err("--where must be build or critique"); }
+        ids.truncate(40);
+        return Ok(("uses", json!({"where":where_,"rules":ids}), json_output));
+    }
+    let kind = flags.get("--kind").copied().unwrap_or("");
+    if !matches!(kind, "variant" | "agent") { return Err("--kind must be variant or agent"); }
+    let text = |key: &str, max: usize| taste::sanitize(flags.get(key).copied().unwrap_or(""))
+        .chars().take(max).collect::<String>().trim().to_string();
+    let chose = text("--chose", 200);
+    let over = text("--over", 200);
+    let rule = text("--rule", 240);
+    if chose.is_empty() { return Err("--chose is required"); }
+    if kind == "agent" && rule.is_empty() { return Err("--rule is required for agent calls"); }
+    let event = if flags.contains_key("--event") {
+        let event = text("--event", 120);
+        if event.is_empty() { return Err("--event must not be empty"); }
+        event
+    } else { digest_id("call", &[kind, &chose, &over, &rule, root]) };
+    let mut body = json!({"event":event,"kind":kind,"chose":chose});
+    if flags.contains_key("--over") { body["over"] = over.into(); }
+    if flags.contains_key("--rule") { body["rule"] = rule.into(); }
+    Ok(("calls", body, json_output))
+}
+
+/// Foreground, best-effort taste writes. No upload outlives this command.
+pub fn run(args: &[String], io: &mut Io) -> i32 {
+    use std::time::{Duration, Instant};
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        io.out(USAGE);
+        return 0;
+    }
+    let started = Instant::now();
+    let root = project_root(io);
+    let (route, mut body, json_output) = match parse_write(args, &root) {
+        Ok(parsed) => parsed,
+        Err(error) => { io.err(&format!("Taste: {error}.\n")); return 1; }
+    };
+    if io.env.contains_key("IMPECCABLE_NO_TASTE")
+        || impeccable_context::telemetry::opt_out_reason(&io.env, &root).is_some()
+        || (route == "uses" && body["rules"].as_array().is_none_or(|r| r.is_empty()))
+    { return 0; }
+    let Ok(account) = Account::from_env(&io.env) else { return 0; };
+    if !Store::new(&account).state().is_some_and(|s| s.signed_in && s.taste_write) { return 0; }
+    // Foreground commands may read the ordinary credential backend, just as health does.
+    let read_account = account.clone();
+    let Some(Ok(session)) = crate::session::read_within(Duration::from_secs(1), move || Session::load(&read_account))
+        else { return 0; };
+    if !session.state.taste_write { return 0; }
+    // Short best-effort writes never risk a token rotation with a truncated deadline.
+    let Some(token) = session.existing_access_token() else { return 0; };
+    if route == "uses" {
+        let home = impeccable_context::util::homedir(&io.env);
+        let Some(salt) = impeccable_common::seed::salt(&home, Some(&root), io.env.get("IMPECCABLE_SEED_SALT").map(String::as_str))
+            else { return 0; };
+        let date = impeccable_context::util::iso_now();
+        body["session"] = digest_id("use", &[&root, &date[..10], &salt]).into();
+    }
+    let Some(left) = Duration::from_secs(3).checked_sub(started.elapsed()).filter(|d| !d.is_zero())
+        else { return 0; };
+    let client = crate::http::Client::with_deadline(&account, left);
+    let Ok(reply) = client.post_taste(&format!("{}/cli/v1/taste/{route}", account.issuer), token, body)
+        else { return 0; };
+    let line = if route == "calls" {
+        match reply["outcome"].as_str() {
+            Some("recorded") => "Taste: recorded.".to_string(),
+            Some("duplicate") => "Taste: already recorded.".to_string(),
+            Some("paused") => "Taste: learning is paused, nothing stored.".to_string(),
+            Some("full") => "Taste: today's limit is reached, nothing stored.".to_string(),
+            _ => return 0,
+        }
+    } else {
+        let Some(count) = reply["counted"].as_u64() else { return 0; };
+        if count == 0 && !json_output { return 0; }
+        format!("Taste: noted {count} rule(s) applied.")
+    };
+    io.out(&format!("{}\n", if json_output { reply.to_string() } else { line }));
+    0
 }

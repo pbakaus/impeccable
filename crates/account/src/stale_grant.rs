@@ -26,6 +26,7 @@ pub(crate) fn offers(account: &Account, scope: &str, within: Duration) -> bool {
                 oauth::HEALTH_SCOPE => m.health,
                 oauth::FOUNDATIONS_SCOPE => m.foundations,
                 oauth::TASTE_READ_SCOPE => m.taste,
+                oauth::TASTE_WRITE_SCOPE => m.taste_write,
                 oauth::DESIGN_SCOPE => m.design,
                 oauth::CRITIQUES_SCOPE => m.critiques,
                 "setup:write" => m.setup,
@@ -54,6 +55,7 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
             .is_none(),
         oauth::FOUNDATIONS_SCOPE => state.foundations,
         oauth::TASTE_READ_SCOPE => state.taste,
+        oauth::TASTE_WRITE_SCOPE => state.taste_write,
         "setup:write" => store::read_private(&account.dir().join("setup-grant.json"))
             .ok()
             .flatten()
@@ -124,6 +126,7 @@ mod tests {
             schema: 1,
             foundations: false,
             taste: false,
+            taste_write: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: login,
@@ -138,40 +141,45 @@ mod tests {
 
     #[test]
     fn taste_is_offered_and_noticed_once_for_an_older_sign_in() {
-        use crate::http::Client;
-        use std::io::{Read, Write};
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let issuer = format!("http://{}", listener.local_addr().unwrap());
-        let home = std::env::temp_dir().join(format!("taste-stale-{}", oauth::random_b64(12)));
-        let account = Account { home: home.clone(), issuer: issuer.clone() };
-        let server = std::thread::spawn(move || {
-            // One explicit offers check, then the first notice's metadata check.
-            for _ in 0..2 {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut buf = [0; 8192];
-                let _ = stream.read(&mut buf);
-                let body = serde_json::json!({
-                    "issuer":issuer, "authorization_endpoint":format!("{issuer}/authorize"),
-                    "token_endpoint":format!("{issuer}/token"),
-                    "code_challenge_methods_supported":["S256"],
-                    "authorization_response_iss_parameter_supported":true,
-                    "scopes_supported":["taste:read"]
-                }).to_string();
-                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
-            }
-        });
-        let store = Store::new(&account);
-        store.write_state(&state(&account, 1)).unwrap();
-        assert!(oauth::metadata(&Client::new(&account), &account).unwrap().taste);
-        let (mut io, cap) = Io::captured("", home.clone(), Default::default());
-        emit(&mut io, &account, 1, Some(oauth::TASTE_READ_SCOPE), DEADLINE, false);
-        emit(&mut io, &account, 1, Some(oauth::TASTE_READ_SCOPE), DEADLINE, false);
-        assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
-        let mut granted = state(&account, 1);
-        granted.taste = true;
-        assert!(holds(&account, &granted, oauth::TASTE_READ_SCOPE));
-        server.join().unwrap();
-        std::fs::remove_dir_all(home).unwrap();
+        for scope in [oauth::TASTE_READ_SCOPE, oauth::TASTE_WRITE_SCOPE] {
+            use crate::http::Client;
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let issuer = format!("http://{}", listener.local_addr().unwrap());
+            let home = std::env::temp_dir().join(format!("taste-stale-{}", oauth::random_b64(12)));
+            let account = Account { home: home.clone(), issuer: issuer.clone() };
+            let server = std::thread::spawn(move || {
+                // One explicit offers check, then the first notice's metadata check.
+                for _ in 0..2 {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let mut buf = [0; 8192];
+                    let _ = stream.read(&mut buf);
+                    let body = serde_json::json!({
+                        "issuer":issuer, "authorization_endpoint":format!("{issuer}/authorize"),
+                        "token_endpoint":format!("{issuer}/token"),
+                        "code_challenge_methods_supported":["S256"],
+                        "authorization_response_iss_parameter_supported":true,
+                        "scopes_supported":[scope]
+                    }).to_string();
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+                }
+            });
+            let store = Store::new(&account);
+            store.write_state(&state(&account, 1)).unwrap();
+            let metadata = oauth::metadata(&Client::new(&account), &account).unwrap();
+            assert_eq!(metadata.taste, scope == oauth::TASTE_READ_SCOPE);
+            assert_eq!(metadata.taste_write, scope == oauth::TASTE_WRITE_SCOPE);
+            let (mut io, cap) = Io::captured("", home.clone(), Default::default());
+            emit(&mut io, &account, 1, Some(scope), DEADLINE, false);
+            emit(&mut io, &account, 1, Some(scope), DEADLINE, false);
+            assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
+            let mut granted = state(&account, 1);
+            granted.taste = true;
+            granted.taste_write = true;
+            assert!(holds(&account, &granted, scope));
+            server.join().unwrap();
+            std::fs::remove_dir_all(home).unwrap();
+        }
     }
 
     #[test]

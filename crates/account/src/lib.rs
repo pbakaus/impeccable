@@ -95,6 +95,7 @@ pub fn login(
         let state = State {
             foundations: tokens.foundations,
             taste: tokens.taste,
+            taste_write: tokens.taste_write,
             scopes: tokens.scopes.unwrap_or_default(),
             schema: 1,
             issuer: account.issuer.clone(),

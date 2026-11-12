@@ -136,6 +136,12 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             quiet,
         );
     }
+    if !session.state.taste_write && !io.env.contains_key("IMPECCABLE_NO_TASTE") {
+        crate::stale_grant::emit(
+            io, &account, session.state.login, Some(crate::oauth::TASTE_WRITE_SCOPE),
+            Duration::from_secs(2), quiet,
+        );
+    }
     // Its own request and consent: a switched-off route (404) or any other
     // failure is silent and never prevents the health upload.
     if session.state.foundations {

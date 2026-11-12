@@ -259,7 +259,7 @@ fn render_text(report: &Report, fixes: Option<&Fixes>, cwd: &str, command: &str,
 
 /// The printed fix command spells the launcher when the launcher exported
 /// IMPECCABLE_SELF, and the plain `impeccable` verb otherwise.
-fn self_cmd(env: &Env) -> String {
+pub(crate) fn self_cmd(env: &Env) -> String {
     env.get("IMPECCABLE_SELF")
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())

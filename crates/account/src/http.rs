@@ -125,6 +125,18 @@ impl Client {
         Ok((status, etag, body))
     }
 
+    /// Taste writes accept exactly 200, including when another 2xx contains JSON.
+    pub fn post_taste(&self, url: &str, bearer: &str, body: serde_json::Value) -> Result<serde_json::Value, ApiError> {
+        self.checked(url)?;
+        let response = self.agent.post(url).set("accept", "application/json")
+            .set("authorization", &bearer_header(bearer)?)
+            .send_json(body).map_err(classify)?;
+        if response.status() != 200 {
+            return Err(ApiError::Status { status: response.status(), code: None });
+        }
+        json_body(Ok(response))
+    }
+
     pub fn post_form(
         &self,
         url: &str,

@@ -25,7 +25,9 @@ pub struct Knobs {
     pub setup: bool,
     pub setup_denied: bool,
     pub taste: bool,
+    pub taste_write: bool,
     pub taste_denied: bool,
+    pub taste_write_denied: bool,
     pub foundations: bool,
     pub foundations_denied: bool,
     pub design: bool,
@@ -62,6 +64,8 @@ impl Gate {
 pub struct Record {
     pub hits: HashMap<String, usize>,
     pub taste_reads: Vec<(String, Option<String>)>,
+    pub taste_calls: Vec<serde_json::Value>,
+    pub taste_uses: Vec<serde_json::Value>,
     pub revoked: Vec<String>,
     /// The `scope` of each authorize request.
     pub scopes: Vec<String>,
@@ -278,6 +282,15 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
     }
+    if method == "POST" {
+        if let Ok(value) = serde_json::from_slice(&body) {
+            match path {
+                "/cli/v1/taste/calls" => record.lock().unwrap().taste_calls.push(value),
+                "/cli/v1/taste/uses" => record.lock().unwrap().taste_uses.push(value),
+                _ => {},
+            }
+        }
+    }
     let q: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
@@ -320,6 +333,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.setup { scopes.push("setup:write"); }
                         if k.foundations { scopes.push("foundations:write"); }
                         if k.taste { scopes.push("taste:read"); }
+                        if k.taste_write { scopes.push("taste:write"); }
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         scopes
@@ -340,6 +354,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
                         "taste:read" => k.taste,
+                        "taste:write" => k.taste_write,
                         "design:write" => k.design,
                         _ => false,
                     })
@@ -370,6 +385,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                                     "setup:write" => !k.setup_denied,
                                     "foundations:write" => !k.foundations_denied,
                                     "taste:read" => !k.taste_denied,
+                                    "taste:write" => !k.taste_write_denied,
                                     "design:write" => !k.design_denied,
                                     "critiques:write" => !k.critiques_denied,
                                     _ => true,

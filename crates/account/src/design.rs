@@ -481,6 +481,7 @@ mod notice_regressions {
             schema: 1,
             foundations: false,
             taste: false,
+            taste_write: false,
             scopes: vec![crate::oauth::DESIGN_SCOPE.into()],
             issuer: account.issuer.clone(),
             generation: 1,

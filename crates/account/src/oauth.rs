@@ -31,6 +31,7 @@ pub struct Metadata {
     pub setup: bool,
     pub foundations: bool,
     pub taste: bool,
+    pub taste_write: bool,
     pub design: bool,
     pub critiques: bool,
 }
@@ -83,6 +84,8 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
             foundations,
             taste: doc.get("scopes_supported").and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == TASTE_READ_SCOPE)),
+            taste_write: doc.get("scopes_supported").and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == TASTE_WRITE_SCOPE)),
             design: doc
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
@@ -103,6 +106,8 @@ pub const CRITIQUES_SCOPE: &str = "critiques:write";
 pub const HEALTH_SCOPE: &str = "health:write";
 pub const DESIGN_SCOPE: &str = "design:write";
 
+/// Recording taste choices and applied rules.
+pub const TASTE_WRITE_SCOPE: &str = "taste:write";
 /// Reading standing design preferences.
 pub const TASTE_READ_SCOPE: &str = "taste:read";
 
@@ -119,6 +124,7 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.design, DESIGN_SCOPE),
         (meta.critiques, CRITIQUES_SCOPE),
         (meta.taste, TASTE_READ_SCOPE),
+        (meta.taste_write, TASTE_WRITE_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -367,6 +373,7 @@ pub struct Tokens {
     pub setup: bool,
     pub foundations: bool,
     pub taste: bool,
+    pub taste_write: bool,
     pub scopes: Option<Vec<String>>,
     pub access_token: String,
     pub refresh_token: String,
@@ -408,6 +415,7 @@ fn tokens(v: serde_json::Value, fallback: &[String]) -> Result<Tokens, ApiError>
                 setup: scopes.iter().any(|s| s == "setup:write"),
                 foundations: scopes.iter().any(|s| s == FOUNDATIONS_SCOPE),
                 taste: scopes.iter().any(|s| s == TASTE_READ_SCOPE),
+                taste_write: scopes.iter().any(|s| s == TASTE_WRITE_SCOPE),
                 scopes: Some(scopes),
                 access_token,
                 refresh_token,
@@ -477,7 +485,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..64 {
+        for mask in 0..128 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -488,6 +496,7 @@ mod scope_tests {
                 design: mask & 8 != 0,
                 critiques: mask & 16 != 0,
                 taste: mask & 32 != 0,
+                taste_write: mask & 64 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -499,6 +508,7 @@ mod scope_tests {
                 (8, DESIGN_SCOPE),
                 (16, CRITIQUES_SCOPE),
                 (32, TASTE_READ_SCOPE),
+                (64, TASTE_WRITE_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }
@@ -513,6 +523,7 @@ mod scope_tests {
             assert_eq!(granted.setup, meta.setup);
             assert_eq!(granted.foundations, meta.foundations);
             assert_eq!(granted.taste, meta.taste);
+            assert_eq!(granted.taste_write, meta.taste_write);
             assert_eq!(
                 granted
                     .scopes
@@ -538,6 +549,7 @@ mod omitted_scope_regressions {
             DESIGN_SCOPE,
             CRITIQUES_SCOPE,
             TASTE_READ_SCOPE,
+            TASTE_WRITE_SCOPE,
         ] {
             let fallback = vec![scope.to_string()];
             let grant = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer"}), &fallback).unwrap();
@@ -545,9 +557,10 @@ mod omitted_scope_regressions {
             assert_eq!(grant.setup, scope == "setup:write");
             assert_eq!(grant.foundations, scope == FOUNDATIONS_SCOPE);
             assert_eq!(grant.taste, scope == TASTE_READ_SCOPE);
+            assert_eq!(grant.taste_write, scope == TASTE_WRITE_SCOPE);
             let narrowed = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer", "scope":""}), &fallback).unwrap();
             assert_eq!(narrowed.scopes, Some(vec![]));
-            assert!(!narrowed.setup && !narrowed.foundations && !narrowed.taste);
+            assert!(!narrowed.setup && !narrowed.foundations && !narrowed.taste && !narrowed.taste_write);
         }
     }
 }
