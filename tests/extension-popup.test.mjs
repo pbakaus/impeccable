@@ -317,3 +317,11 @@ test('signed in, the popup shows the email and lists the personas', async () => 
   assert.deepEqual(h.node('persona-list').children.map((row) => row.children[0].textContent), ['Ines', 'Kofi']);
   assert.equal(h.node('tab-personas').attributes['aria-selected'], 'true');
 });
+
+test('signed in with no personas, the Personas tab shows its note and nothing else', async () => {
+  const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [] } } });
+  h.click('tab-personas');
+  await tick();
+  assert.deepEqual([h.node('persona-list').children.length, h.node('personas-note').hidden], [0, false]);
+  assert.equal(h.node('personas-note').textContent, vm.runInNewContext(`${readFileSync(path.join(SOURCE, 'popup/words.js'), 'utf8')}; IMPECCABLE_WORDS.popup.noPersonas`, {}));
+});
