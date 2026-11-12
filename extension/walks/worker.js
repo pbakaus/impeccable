@@ -52,7 +52,8 @@ import './contact.js';
 // What the driver tells of the tab goes out the way a reply does.
 speak((message) => say(message));
 
-async function handle(data) {
+/** Answers one request on the socket it came in on: a reply that settles after that socket is gone is dropped, never sent on the next walk's. */
+async function handle(data, from) {
   let req;
   try { req = JSON.parse(data); } catch { return; }
   // The hub's keep-alive (protocol 2): its arrival is what keeps this worker awake while a walk waits for its tab. It
@@ -68,6 +69,7 @@ async function handle(data) {
   } catch (err) {
     reply = { id: req.id, ok: false, error: { name: err?.name || 'Error', message: String(err?.message ?? err).slice(0, 500) } };
   }
+  if (socket !== from) return;
   say({ ...reply, ...(walk && !hushed() ? { url: walk.url } : {}), ms: Math.round((performance.now() - started) * 10) / 10, boot: BOOT });
 }
 
@@ -81,7 +83,7 @@ async function connect() {
   socket = ws;
   let opened = false;
   ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN } }); void linked(); };
-  ws.onmessage = (event) => { void handle(event.data); };
+  ws.onmessage = (event) => { void handle(event.data, ws); };
   ws.onclose = (event) => {
     if (socket !== ws) return;
     socket = null;

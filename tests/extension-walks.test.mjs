@@ -618,6 +618,32 @@ describe('walk helper worker', () => {
     await ops.close();
     assert.deepEqual([tabs.made, tabs.removed, tabs.ungrouped, current().state], [[], [], [21], 'done']);
   });
+
+  it('drops a reply that settles after its socket is gone, never sending it on the next one', async () => {
+    const { ops } = await ownTab();
+    const open = (ws) => { ws.readyState = 1; ws.sent = []; ws.send = (text) => ws.sent.push(JSON.parse(text)); return ws; };
+    const next = async (sender, ticket) => {
+      const before = sockets.length;
+      await new Promise((resolve) => { for (const listener of listeners.message) listener({ handoff: JSON.stringify(block({ ticket })) }, sender, resolve); });
+      for (let turn = 0; turn < 50 && sockets.length === before; turn++) await settle(1);
+      return open(sockets.at(-1));
+    };
+    const first = await next(fromPage, 'ticket-first-000000');
+    let go;
+    const { create } = chrome.tabs;
+    chrome.tabs.create = async () => { await new Promise((resolve) => { go = resolve; }); return { id: 40, windowId: 1 }; };
+    try {
+      first.onmessage({ data: JSON.stringify({ op: 'open', id: 7, url: 'http://localhost:3000/', name: 'Mira' }) });
+      for (let turn = 0; turn < 50 && !go; turn++) await settle(1);
+      const second = await next(fromPage, 'ticket-second-00000');
+      go();
+      await settle(20);
+      assert.deepEqual([first.sent.filter((m) => m.id === 7), second.sent.filter((m) => m.id === 7)], [[], []]);
+    } finally {
+      chrome.tabs.create = create;
+      await ops.close();
+    }
+  });
 });
 
 // The badge's own script, on a stand-in page: the glow on a walk of the person's own tab, and when it goes.
