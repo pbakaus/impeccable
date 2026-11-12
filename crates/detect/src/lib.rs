@@ -76,6 +76,7 @@ Commands:
   logout                           Sign out on this machine
   whoami                           Show the signed-in account and whether it includes Pro rules
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  foundations [path]               Check which product foundations this project has in place
 
 Options:
   --help       Show this help message
