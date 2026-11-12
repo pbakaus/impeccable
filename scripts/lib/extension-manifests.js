@@ -2,8 +2,7 @@
  * The builds scripts/build-extension.js derives from the one source `extension/`, whose manifest is the one Load
  * unpacked reads:
  *
- * - Chrome Web Store: the detector and walks, held to the web app's production hosts, with the account and the
- *   first-walk onboarding left out.
+ * - Chrome Web Store: the detector and walks, held to the web app's production hosts, with the account left out.
  * - Firefox: the detector alone. Firefox cannot drive a tab through the debugger.
  */
 import fs from 'fs';
@@ -18,21 +17,21 @@ export const WALK_PERMISSIONS = ['debugger', 'tabs', 'tabGroups', 'sidePanel', '
 
 const under = (folder, file) => file === folder || file.startsWith(`${folder}/`);
 const isWalkFile = (file) => under('walks', file);
-/** Main's parts its store build and Firefox leave out: the account, its half of the popup, the onboarding. */
-const isAccountFile = (file) => under('account', file) || under('onboarding', file) || ['popup/account.js', 'popup/words.js'].includes(file);
+/** Main's parts its store build and Firefox leave out: the account and its half of the popup. */
+const isAccountFile = (file) => under('account', file) || ['popup/account.js', 'popup/words.js'].includes(file);
 const notListing = (rel) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel));
 const onlyStoreHosts = (entries) => entries
   .map((entry) => ({ ...entry, matches: entry.matches.filter((match) => STORE_HOSTS.some((host) => match.startsWith(host))) }))
   .filter((entry) => entry.matches.length > 0);
 
-/** The store manifest: no key, no `identity` (the store build does not sign in), content scripts on production hosts only, and none of the onboarding's. */
+/** The store manifest: no key, no `identity` (the store build does not sign in), content scripts on production hosts only. */
 export function storeManifest(source) {
   const { key: _key, content_scripts: scripts = [], ...rest } = source;
   const kept = onlyStoreHosts(scripts.filter((entry) => !entry.js.some(isAccountFile)));
   return { ...rest, permissions: source.permissions.filter((permission) => permission !== 'identity'), ...(kept.length ? { content_scripts: kept } : {}) };
 }
 
-/** Whether a path in extension/ goes into the store build: everything but the account and the onboarding. */
+/** Whether a path in extension/ goes into the store build: everything but the account. */
 export const isStoreFile = (rel) => notListing(rel) && !isAccountFile(rel);
 
 /** Whether a path in extension/ goes into the Firefox build: the store's files without walks or the module worker that loads them. */
@@ -44,7 +43,7 @@ const POPUP_ACCOUNT = '  <script src="words.js"></script>\n  <script src="accoun
 const STORE_LINES = {
   'popup/popup.html': [POPUP_ACCOUNT, ''],
   'shared/build.js': ['export const BUILD = { account: true, devHosts: true };', 'export const BUILD = { account: false, devHosts: false };'],
-  'background/chrome-worker.js': ["import '../account/worker.js';\nimport '../onboarding/contact.js';\n", ''],
+  'background/chrome-worker.js': ["import '../account/worker.js';\n", ''],
 };
 
 /** Replaces `line` in `file` with `instead`; a line not found exactly as written stops the build. */

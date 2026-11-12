@@ -1,6 +1,7 @@
-// The account's half of the background worker: it answers the popup (popup/account.js), and nobody else. A message
-// is taken only when Chrome itself says it came from one of this extension's popup pages: never from a page, a
-// content script, another extension, or the walk's side panel. No answer ever carries a token: only whether the
+// The account's half of the background worker: it answers the popup (popup/account.js), and nobody else, but for
+// the walk's side panel, which may ask only whether this browser is signed in and to sign in. A message is taken only
+// when Chrome itself says it came from one of this extension's popup pages (or its panel): never from a page, a
+// content script or another extension. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
 // and how making or removing a persona went. A walk the person starts on their tab goes to the walks (walks/link.js)
 // as the server's block and the tab's id alone.
@@ -15,6 +16,10 @@ const UNPACKED = BUILD.devHosts;
 
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
+const PANEL = chrome.runtime.getURL('walks/panel/');
+/** What the side panel may ask: its empty state offers Sign in, or points at the popup's Personas. */
+const PANEL_ASKS = ['status', 'sign-in'];
+const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;
 const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }) => {
@@ -124,7 +129,7 @@ const ANSWERS = {
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.account !== 'string') return false;
-  if (!fromPopup(sender)) { respond({ ok: false, why: 'sender' }); return false; }
+  if (!fromPopup(sender) && !fromPanel(sender, message.account)) { respond({ ok: false, why: 'sender' }); return false; }
   if (!Object.hasOwn(ANSWERS, message.account)) { respond({ ok: false, why: 'unknown' }); return false; }
   // At once, while Chrome still counts the popup's click: whether the side panel opened is said in the answer.
   if (message.account === 'walk' && Number.isInteger(message.tabId)) {

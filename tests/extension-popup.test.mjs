@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 
 import { stageStore } from '../scripts/lib/extension-manifests.js';
@@ -21,7 +21,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 // `account`: what the account worker answers each `{ account }` message with; leave it out for a browser without
 // chrome.identity (Firefox), where the account script must stay out of the way. `root`: the build's folder, whose
 // popup.html says which scripts run.
-async function popup({ initial = state(), deferState = false, account, root = SOURCE } = {}) {
+async function popup({ initial = state(), deferState = false, account, root = SOURCE, session } = {}) {
   const nodes = new Map();
   const element = (props = {}) => ({
     textContent: '', hidden: false, dataset: {}, attributes: {}, children: [], value: '', tabIndex: 0,
@@ -57,6 +57,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
         return h.tab ? [h.tab] : [];
       }, onUpdated: event('updated'), onActivated: event('activated') },
       ...(account ? { identity: {} } : {}),
+      ...(session ? { storage: { session: { async get(key) { return { [key]: session[key] }; }, async remove(key) { delete session[key]; } } } } : {}),
       runtime: {
         onMessage: event('message'),
         sendMessage(message, callback) {
@@ -301,6 +302,7 @@ for (const [label, status, asks] of [
 test('signed in, the popup shows the email and lists the personas', async () => {
   const h = await popup({ account: { status: signedIn, personas } });
   assert.equal(h.node('tab-personas').hidden, false);
+  assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
   h.click('tab-settings');
   assert.deepEqual([h.node('account-email').textContent, h.node('sign-in').hidden, h.node('btn-sign-out').hidden], ['mira@example.com', true, false]);
   h.click('tab-personas');
@@ -308,6 +310,13 @@ test('signed in, the popup shows the email and lists the personas', async () => 
   assert.equal(h.node('panel-personas').hidden, false);
   assert.deepEqual(h.node('persona-list').children.map((row) => row.children[0].textContent), ['Ines', 'Kofi']);
   assert.equal(h.node('tab-personas').attributes['aria-selected'], 'true');
+});
+
+test('the side panel’s Open personas opens the popup on Personas, once', async () => {
+  const session = { popupTab: 'personas' };
+  const h = await popup({ account: { status: signedIn, personas }, session });
+  await tick();
+  assert.deepEqual([h.node('panel-personas').hidden, h.node('panel-scan').hidden, session.popupTab], [false, true, undefined]);
 });
 
 test('signed in with no personas, the Personas tab shows its note and nothing else', async () => {
@@ -423,4 +432,90 @@ test('Remove asks first, and Keep keeps them', async () => {
   await tick();
   assert.deepEqual(h.messages.filter((m) => m.account === 'remove').map((m) => m.slug), ['rosa']);
   assert.equal(h.node('persona-list').children.length, 0, 'the list is read again');
+});
+
+// The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
+const { STUBS } = await import('../extension/walks/panel/stub.js');
+let panels = 0;
+async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE } = {}) {
+  const make = (tag) => ({
+    tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getAttribute(name) { return this.attributes[name] ?? null; },
+    addEventListener(type, callback) { (this.listeners[type] ??= []).push(callback); },
+    append(...kids) { this.children.push(...kids.filter((kid) => typeof kid === 'object')); },
+    replaceChildren(...kids) { this.children = []; this.append(...kids); },
+    focus() { document.activeElement = this; },
+    *nodes() { for (const kid of this.children) { yield kid; yield* kid.nodes(); } },
+    // Enough of a selector for the panel: `tag`, `.class` and `[attr]` / `[attr="value"]`, one of each at most.
+    querySelectorAll(selector) {
+      const [, tag, cls, attr, value] = selector.match(/^([a-z]*)(?:\.([\w-]+))?(?:\[([\w-]+)(?:="([^"]*)")?\])?$/);
+      return [...this.nodes()].filter((node) => (!tag || node.tagName === tag.toUpperCase()) && (!cls || node.className.split(' ').includes(cls))
+        && (!attr || (value === undefined ? attr in node.attributes : node.attributes[attr] === value)));
+    },
+    querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; },
+  });
+  const app = make('main');
+  const document = { body: make('body'), activeElement: null, getElementById: () => app, createElement: make, createElementNS: (_, tag) => make(tag) };
+  const sent = [];
+  const opened = [];
+  const local = { onboarded };
+  const session = { view };
+  const changed = [];
+  const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
+  Object.assign(globalThis, {
+    document, location: { search: '' }, addEventListener() {},
+    chrome: {
+      runtime: { async sendMessage(message) { sent.push(message); return message.account === 'status' ? status : message.account === 'sign-in' ? signIn : undefined; } },
+      storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
+      action: { async openPopup() { opened.push('popup'); } },
+      tabs: { async create(tab) { opened.push(tab); } },
+    },
+  });
+  await import(`${pathToFileURL(path.join(root, 'walks/panel/panel.js')).href}?n=${panels += 1}`);
+  for (let n = 0; n < 5; n += 1) await tick();
+  const acts = () => app.querySelectorAll('[data-act]').map((node) => node.attributes['data-act']);
+  const show = async (next) => { for (const listener of changed) listener({ view: { newValue: next } }); await tick(); };
+  const press = async (act) => { for (const listener of app.querySelector(`[data-act="${act}"]`).listeners.click) listener({}); for (let n = 0; n < 3; n += 1) await tick(); };
+  return { app, body: document.body, sent, opened, local, session, acts, show, press, intro: () => app.querySelector('.intro') !== null };
+}
+
+test('the first walk ever shows its intro in the side panel, once, and opens no tab', async () => {
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn });
+  assert.equal(h.intro(), false);
+  await h.show(STUBS.walking);
+  assert.deepEqual([h.intro(), h.local.onboarded, h.opened], [true, true, []]);
+  await h.press('intro-ok');
+  assert.equal(h.intro(), false);
+  await h.show(STUBS.done);
+  await h.show(STUBS.walking);
+  assert.equal(h.intro(), false, 'not on the next walk');
+  const later = await sidePanel({ view: STUBS.walking, status: signedIn, onboarded: true });
+  assert.equal(later.intro(), false, 'not in a panel opened later');
+});
+
+// No walk running: never a dead end. With the account the popup uses, the panel signs in or points at Personas.
+for (const [label, status, offers] of [
+  ['signed out', { ok: true, available: true, signedIn: false }, 'sign-in'],
+  ['signed in', signedIn, 'personas'],
+  ['a server that takes no sign-ins', { ok: true, available: false }, null],
+]) {
+  test(`with no walk running, the side panel offers the terminal and ${offers ?? 'nothing else'}: ${label}`, async () => {
+    const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true } });
+    assert.deepEqual(h.acts().filter((act) => act !== 'copy'), offers ? [offers] : []);
+    assert.ok(h.acts().includes('copy'));
+    if (!offers) return;
+    await h.press(offers);
+    if (offers === 'sign-in') {
+      assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');
+      assert.deepEqual([h.body.dataset.account, h.acts().includes('personas')], ['signed-in', true]);
+    } else {
+      assert.deepEqual([h.opened, h.session.popupTab], [['popup'], 'personas']);
+    }
+  });
+}
+
+test('the store build’s side panel asks nothing of an account and offers only the terminal', async () => {
+  const h = await sidePanel({ view: STUBS['signed-out'], status: signedIn, root: stagedStore() });
+  assert.deepEqual([h.sent.filter((m) => m.account), h.acts(), h.body.dataset.account], [[], ['copy'], 'off']);
 });

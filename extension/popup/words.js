@@ -1,4 +1,4 @@
-// Every line the account's half of the popup (account.js) and the first-walk onboarding (../onboarding/) show:
+// Every line the account's half of the popup (account.js) shows:
 // the one place to edit them. The store build and Firefox ship neither, nor this file.
 globalThis.IMPECCABLE_WORDS = {
   popup: {
@@ -49,23 +49,5 @@ globalThis.IMPECCABLE_WORDS = {
     removeAsk: (name) => `Remove ${name}?`,
     keep: 'Keep',
     removeFailed: 'Couldn’t remove them. Try again.',
-  },
-  onboarding: {
-    title: 'Your first walk',
-    step: (n, of) => `${n} of ${of}`,
-    next: 'Next',
-    back: 'Back',
-    doesTitle: 'A persona walks your site',
-    doesBody: 'It opens your site in a tab of its own and clicks, scrolls and types the way a visitor would.',
-    doesPoints: ['You watch it in the side panel.', 'Pause, take over or stop it any time.'],
-    neverTitle: 'What it never does',
-    neverPoints: [
-      'Type into password or card boxes.',
-      'Open sign-in pages. It pauses and waits for you.',
-      'Delete, pay or send without asking you first.',
-      'Touch your other tabs.',
-    ],
-    readyTitle: 'You’re set',
-    readyBody: 'Go back to your walk’s tab to watch it.',
   },
 };

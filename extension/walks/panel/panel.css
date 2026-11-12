@@ -286,6 +286,31 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* The first-walk intro, once: the question's box in patina, with one button to put it away. */
+.intro {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+  box-shadow: inset 3px 0 0 var(--ks-patina);
+}
+.intro-line {
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ks-ink);
+}
+.intro-more {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text);
+}
+.intro .btn {
+  width: auto;
+  margin-top: 4px;
+}
+
 /* ============================================================
    Section names and counts (devtools/panel.css: category header)
    ============================================================ */
@@ -921,7 +946,8 @@ a.btn {
   user-select: all;
 }
 
-.command .btn {
+.command .btn,
+.quiet > .btn {
   width: auto;
 }
 

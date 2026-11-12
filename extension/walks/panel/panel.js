@@ -6,7 +6,8 @@
 //   panel.html?stub=<name>          a stand-in state (stub.js), for looking at each one
 //   panel.html?variant=<name>       how a walk under way is arranged: feed (the default), checklist or now
 import { COPY } from './copy.js';
-import { emptyView, reduce } from '../view.js';
+import { emptyView, isLive, reduce } from '../view.js';
+import { BUILD } from '../../shared/build.js';
 
 const VARIANTS = ['feed', 'checklist', 'now'];
 const params = new URLSearchParams(location.search);
@@ -18,6 +19,13 @@ let view = emptyView(false);
 let follow = true;
 /** What a control does: asks the worker, or, on a stand-in, walks the same state machine here. */
 let act = () => undefined;
+/** The account as the popup sees it (account/worker.js `status`), for the empty state: null when there is none to offer. */
+let account = null;
+/** Whether the panel's last sign-in did not finish: said until one does, whatever redraws the panel meanwhile. */
+let signInFailed = false;
+/** The first-walk intro: whether it was ever shown (chrome.storage.local `onboarded`), and whether it is up now. */
+let seen = true;
+let intro = false;
 
 /* ------------------------------ building blocks ------------------------------ */
 
@@ -233,7 +241,44 @@ const ARRANGED = {
   },
 };
 
+/** Once, on the first walk ever: what the walker does, and that the person can stop it. Got it puts it away. */
+function introNote() {
+  return el('div', { class: 'intro', role: 'note' },
+    el('p', { class: 'intro-line', text: COPY.intro.line(name()) }),
+    el('p', { class: 'intro-more', text: COPY.intro.more }),
+    el('button', { class: 'btn btn-secondary', type: 'button', 'data-act': 'intro-ok', text: COPY.intro.ok, onclick: () => { intro = false; render(); } }),
+  );
+}
+
 /* ------------------------------ every other state ------------------------------ */
+
+/** Opens the popup on Personas; where Chrome will not, the words above the button still say how. */
+function openPersonas(button) {
+  void chrome.storage.session.set({ popupTab: 'personas' }).catch(() => undefined);
+  chrome.action.openPopup().catch(() => {
+    button.hidden = true;
+    void chrome.storage.session.remove('popupTab').catch(() => undefined);
+  });
+}
+
+/** The extension's own sign-in, as the popup's Sign in does it. */
+async function signIn(button) {
+  button.disabled = true;
+  const answer = await chrome.runtime.sendMessage({ account: 'sign-in' }).catch(() => null);
+  signInFailed = answer?.ok !== true;
+  if (!signInFailed) account = answer.available === true ? answer : null;
+  render();
+}
+
+/** No walk running: the two ways to start one, the popup's Personas (signed in, or Sign in first) and the terminal. */
+function idle() {
+  if (!account) return [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.idle.line }), command(COPY.idle.how))];
+  const signedIn = account.signedIn === true;
+  const note = el('p', { class: 'how', text: signedIn ? COPY.idle.personas : signInFailed ? COPY.idle.signInFailed : COPY.idle.signIn });
+  const go = el('button', { class: 'btn btn-primary', type: 'button', 'data-act': signedIn ? 'personas' : 'sign-in', text: signedIn ? COPY.idle.open : COPY.idle.signInAction });
+  go.addEventListener('click', () => (signedIn ? openPersonas(go) : signIn(go)));
+  return [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.idle.line }), note, go, command(COPY.idle.also))];
+}
 
 function doneLine() {
   const outcome = view.outcome;
@@ -254,8 +299,8 @@ function issues() {
 }
 
 const SCREENS = {
-  'signed-out': () => [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.signedOut.line }), el('a', { class: 'btn btn-primary', 'data-act': 'sign-in', href: COPY.signedOut.href, target: '_blank', rel: 'noreferrer', text: COPY.signedOut.action }))],
-  idle: () => [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.idle.line }), command(COPY.idle.how))],
+  'signed-out': idle,
+  idle,
   waiting: () => [el('div', { class: 'head' }, who(), workflow()), el('p', { class: 'status', role: 'status', 'data-busy': 'yes', text: COPY.waiting.line(name()) }), el('footer', { class: 'bar' }, el('div', { class: 'controls' }, button('stop', 'primary')))],
   done: () => [
     el('div', { class: 'head' }, who({ compact: true }), view.workflow?.name ? el('p', { class: 'workflow-name', text: view.workflow.name }) : null),
@@ -291,7 +336,14 @@ function render() {
   const open = [...app.querySelectorAll('details[open]')].map((details) => details.className);
   const at = scroller()?.scrollTop ?? 0;
   const body = document.body;
+  if (live && !seen) {
+    seen = true;
+    intro = true;
+    void chrome.storage.local.set({ onboarded: true }).catch(() => undefined);
+  }
+  if (!live) intro = false;
   body.dataset.state = view.state;
+  body.dataset.account = account ? (account.signedIn === true ? 'signed-in' : 'signed-out') : 'off';
   body.dataset.variant = live ? variant : '';
   body.dataset.steps = String(view.steps.length);
   body.dataset.device = view.who?.device ?? '';
@@ -300,10 +352,16 @@ function render() {
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   body.dataset.issues = view.state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
   app.className = live ? `walk walk-${variant}` : 'screen';
-  app.replaceChildren(...(live ? ARRANGED[variant]() : (SCREENS[view.state] ?? SCREENS.idle)()).filter(Boolean));
+  app.replaceChildren(...(live ? [intro ? introNote() : null, ...ARRANGED[variant]()] : (SCREENS[view.state] ?? SCREENS.idle)()).filter(Boolean));
   for (const details of app.querySelectorAll('details')) if (open.includes(details.className)) details.open = true;
   if (focused) (app.querySelector(`[data-act="${focused}"]`) ?? acts()[place])?.focus();
   if (live && follow) toNewest(); else if (scroller()) scroller().scrollTop = at;
+}
+
+async function knowAccount() {
+  const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
+  account = answer?.ok === true && answer.available === true ? answer : null;
+  if (!isLive(view)) render();
 }
 
 async function start() {
@@ -319,8 +377,11 @@ async function start() {
       view = changes.view.newValue ?? emptyView(false);
       render();
     });
-    const { view: kept } = await chrome.storage.session.get('view');
+    const [{ view: kept }, { onboarded }] = await Promise.all([chrome.storage.session.get('view'), chrome.storage.local.get('onboarded')]);
     if (kept?.v === 1) view = kept;
+    seen = onboarded === true;
+    // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
+    if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.
     act('hello');
   }

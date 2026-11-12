@@ -79,26 +79,6 @@
         "walks/present.js"
       ],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "https://impeccable.reviews/app/*/outings/*",
-        "https://app.impeccable.style/app/*/outings/*",
-        "https://staging.impeccable.reviews/app/*/outings/*",
-        "https://app.staging.impeccable.style/app/*/outings/*",
-        "http://localhost/app/*/outings/*",
-        "http://app.localhost/app/*/outings/*",
-        "https://impeccable.reviews/app/cli/authorize*",
-        "https://app.impeccable.style/app/cli/authorize*",
-        "https://staging.impeccable.reviews/app/cli/authorize*",
-        "https://app.staging.impeccable.style/app/cli/authorize*",
-        "http://localhost/app/cli/authorize*",
-        "http://app.localhost/app/cli/authorize*"
-      ],
-      "js": [
-        "onboarding/start.js"
-      ],
-      "run_at": "document_idle"
     }
   ]
 }

@@ -893,20 +893,20 @@ describe('walk glow', () => {
 describe('derived extension manifests', () => {
   const files = (folder) => [folder, ...readdirSync(path.join(ROOT, 'extension', folder), { recursive: true }).map((file) => `${folder}/${file}`)];
 
-  it('leaves walks, the account and the onboarding out of Firefox', () => {
+  it('leaves walks and the account out of Firefox', () => {
     const firefox = firefoxManifest(MANIFEST);
     assert.deepEqual(firefox.permissions.filter((permission) => [...WALK_PERMISSIONS, 'identity'].includes(permission)), []);
     for (const key of ['side_panel', 'content_scripts', 'externally_connectable', 'key']) assert.equal(key in firefox, false, key);
-    assert.deepEqual(readdirSync(FIREFOX(), { recursive: true }).filter((file) => /^(walks|account|onboarding)\b|^background\/chrome-worker\.js$|popup\/(account|words)\.js$/.test(file)), []);
+    assert.deepEqual(readdirSync(FIREFOX(), { recursive: true }).filter((file) => /^(walks|account)\b|^background\/chrome-worker\.js$|popup\/(account|words)\.js$/.test(file)), []);
   });
 
-  it('ships walks in the store build, held to production hosts with its switches off, and the account and the onboarding out', () => {
+  it('ships walks in the store build, held to production hosts with its switches off, and the account out', () => {
     const store = STORE();
     const manifest = JSON.parse(readFileSync(path.join(store, 'manifest.json'), 'utf8'));
     const shipped = readdirSync(store, { recursive: true });
     assert.deepEqual(files('walks').filter((file) => !shipped.includes(file)), [], 'every walk file');
-    assert.deepEqual(shipped.filter((file) => /^(account|onboarding)\b|popup\/(account|words)\.js$/.test(file)), []);
-    assert.deepEqual(['account', 'onboarding'].flatMap(files).filter((file) => isStoreFile(file)), []);
+    assert.deepEqual(shipped.filter((file) => /^account\b|popup\/(account|words)\.js$/.test(file)), []);
+    assert.deepEqual(files('account').filter((file) => isStoreFile(file)), []);
     assert.deepEqual(moduleReferences(store, manifest.background.service_worker).filter((file) => !existsSync(path.join(store, file))), []);
     assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js).sort(), ['walks/handoff-content.js', 'walks/present.js']);
     const matches = manifest.content_scripts.flatMap((entry) => entry.matches);
@@ -914,7 +914,7 @@ describe('derived extension manifests', () => {
     assert.equal('key' in manifest, false);
     assert.match(readFileSync(path.join(store, 'shared/build.js'), 'utf8'), /account: false, devHosts: false/);
     assert.doesNotMatch(readFileSync(path.join(store, 'popup/popup.html'), 'utf8'), /account\.js|words\.js/);
-    assert.deepEqual(['account/worker.js', 'onboarding/contact.js', 'walks/worker.js'].filter((file) => !moduleReferences(path.join(ROOT, 'extension'), MANIFEST.background.service_worker).includes(file)), []);
+    assert.deepEqual(['account/worker.js', 'walks/worker.js'].filter((file) => !moduleReferences(path.join(ROOT, 'extension'), MANIFEST.background.service_worker).includes(file)), []);
   });
 });
 

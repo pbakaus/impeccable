@@ -12,13 +12,23 @@ export const COPY = {
   /** How a walk is started: the command as the web app publishes it. Change it there and here together. */
   command: 'npx @impeccable/reviews walk',
 
-  signedOut: {
-    line: 'Sign in to Impeccable, then start a walk from your terminal.',
-    action: 'Sign in',
-    href: 'https://impeccable.reviews/app',
+  /** No walk running. With an account, it points at the popup's Personas, or signs in first. */
+  idle: {
+    line: 'No walk running.',
+    how: 'Start one from your terminal:',
+    also: 'Or start one from your terminal:',
+    personas: 'Pick a persona from the Impeccable icon, then press Walk this tab.',
+    open: 'Open personas',
+    signIn: 'Sign in to walk a tab with a persona.',
+    signInAction: 'Sign in',
+    signInFailed: 'Sign-in didn’t finish. Try again.',
   },
-
-  idle: { line: 'No walk running.', how: 'Start one from your terminal:' },
+  /** Once, on the first walk ever. */
+  intro: {
+    line: (name) => `${name || 'Your walker'} clicks, scrolls and types on your site, like a visitor.`,
+    more: 'Pause, take over or stop it any time, right here.',
+    ok: 'Got it',
+  },
   copy: { action: 'Copy command', done: 'Copied' },
 
   waiting: { line: (name) => `${name || 'Your walker'} is on the way.` },

@@ -128,7 +128,7 @@ export const SUITES = {
     description: 'Extension packaging, DevTools report and walk checks (the rule logic itself is covered by the crate tests and the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^extension\/(background|content|detector|devtools|offscreen|onboarding|popup|shared|walks|manifest\.json)/,
+      /^extension\/(background|content|detector|devtools|offscreen|popup|shared|walks|manifest\.json)/,
       /^scripts\/build-extension\.js$/,
       /^scripts\/lib\/extension-manifests\.js$/,
       /^tests\/extension-(account|build|devtools|report|popup|walks)\.test\.mjs$/,

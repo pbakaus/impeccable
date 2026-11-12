@@ -11,8 +11,8 @@
  *    exists in extension/.
  * 3. Packages, from the one source (scripts/lib/extension-manifests.js):
  *    - extension.zip: "Impeccable" for the Chrome Web Store: the detector and
- *      walks, held to the web app's production hosts, with the account and the
- *      first-walk onboarding left out. Unpacked, it is extension/ itself.
+ *      walks, held to the web app's production hosts, with the account left
+ *      out. Unpacked, it is extension/ itself.
  *    - extension-firefox.zip: the detector for AMO. Firefox cannot drive a
  *      tab through the debugger, so it has no walks.
  *

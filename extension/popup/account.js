@@ -279,5 +279,13 @@
   });
 
   $('btn-sign-in').textContent = WORDS.signIn;
-  void ask('status').then(draw);
+  // The side panel's "Open personas" opens this popup on Personas, once (walks/panel/panel.js).
+  const hint = (chrome.storage?.session?.get('popupTab') ?? Promise.resolve({})).then(({ popupTab }) => {
+    if (popupTab) void chrome.storage.session.remove('popupTab');
+    return popupTab;
+  }, () => null);
+  void Promise.all([ask('status'), hint]).then(([answer, tab]) => {
+    if (tab === 'personas') selected = 'personas';
+    draw(answer);
+  });
 })();

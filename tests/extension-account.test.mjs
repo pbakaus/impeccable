@@ -263,17 +263,19 @@ describe('account worker', () => {
     sidePanel: { async open(where) { panels.push(where); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
-  const loaded = Promise.all([import('../extension/account/worker.js'), import('../extension/onboarding/contact.js')]);
+  const loaded = import('../extension/account/worker.js');
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
-  for (const [label, sender] of [
-    ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }],
-    ['the walk side panel', { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' }],
-    ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }],
+  const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
+  // The side panel may ask only whether this browser is signed in, and to sign in.
+  for (const [label, sender, asks] of [
+    ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }, ['status', 'sign-in', 'create', 'remove', 'walk']],
+    ['the walk side panel, but for the account’s status and sign-in', fromPanel, ['personas', 'create', 'remove', 'walk']],
+    ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }, ['status', 'sign-in', 'create', 'remove', 'walk']],
   ]) {
     it(`refuses ${label}`, async () => {
       await loaded;
-      for (const account of ['status', 'create', 'remove', 'walk']) assert.deepEqual(await ask({ account, description: 'A night-shift nurse.', slug: 'ada', tabId: 7 }, sender), { ok: false, why: 'sender' });
+      for (const account of asks) assert.deepEqual(await ask({ account, description: 'A night-shift nurse.', slug: 'ada', tabId: 7 }, sender), { ok: false, why: 'sender' });
       assert.equal(panels.length, 0, 'no side panel opens for anyone but the popup');
     });
   }
@@ -281,20 +283,14 @@ describe('account worker', () => {
   it('tells the popup sign-in is off when the server answers 404, and nothing else', async () => {
     await loaded;
     globalThis.fetch = async () => json(404, {});
-    const answer = await ask({ account: 'status' }, { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' });
-    assert.equal(answer.ok, true);
-    assert.equal(answer.available, false);
+    for (const sender of [{ id: 'ext', url: 'chrome-extension://ext/popup/popup.html' }, fromPanel]) {
+      const answer = await ask({ account: 'status' }, sender);
+      assert.equal(answer.ok, true);
+      assert.equal(answer.available, false);
+    }
   });
 
   const fromPopup = { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' };
-  it('opens the onboarding once, the first time a walk starts', async () => {
-    await loaded;
-    const fromPage = { id: 'ext', frameId: 0, url: 'http://app.localhost/app/acme/outings/o1', tab: { id: 4, index: 2, windowId: 1 } };
-    for (let n = 0; n < 2; n += 1) for (const listener of listeners) listener({ walks: 'start' }, fromPage, () => undefined);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(opened.map((tab) => [tab.url, tab.openerTabId]), [['chrome-extension://ext/onboarding/onboarding.html', 4]]);
-  });
-
   // "Walk this tab", against a stand-in account server that speaks the start door, signed in on a stand-in disk.
   const records = new Map([[ISSUER, kept(ISSUER, 'refresh-walk')]]);
   const done = (value) => { const req = {}; setTimeout(() => { req.result = value; req.onsuccess(); }); return req; };
