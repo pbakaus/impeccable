@@ -1465,10 +1465,39 @@ fn tailwind_transition(text: &str) -> bool {
     }
     let classes = re(
         &CLASSES,
-        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{.{0,2000}?\}(?:\s*/?>|\s+[:@#A-Za-z][\w:.-]*(?:=|\s|/?>)|\s+\{\.\.\.)|"[^"]{0,2000}"|'[^']{0,2000}'|`[^`]{0,2000}`)|@apply\b[^;]{0,300};"#,
+        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:"[^"]{0,2000}"|'[^']{0,2000}'|`[^`]{0,2000}`)|@apply\b[^;]{0,300};"#,
     );
     let bare = re(&BARE, r#"(?:^|[\s"'`{])transition(?:$|[\s"'`};])"#);
-    classes.find_iter(text).any(|m| bare.is_match(m.as_str()))
+    if classes.find_iter(text).any(|m| bare.is_match(m.as_str())) {
+        return true;
+    }
+    // A braced value (`className={...}`) runs to its matching brace, so
+    // template interpolations and nested objects stay inside it.
+    static OPEN: OnceLock<Regex> = OnceLock::new();
+    let open = re(&OPEN, r#"(?:\bclass(?:Name)?|:class)\s*=\s*\{"#);
+    open.find_iter(text).any(|m| {
+        let mut depth = 1usize;
+        let rest = &text[m.end()..];
+        let mut end = rest.len();
+        for (i, c) in rest.char_indices().take(4000) {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let end = rest
+            .char_indices()
+            .nth(4000)
+            .map_or(end, |(i, _)| end.min(i));
+        bare.is_match(&rest[..end])
+    })
 }
 
 /// The kind of a matched key. Never returns the value.
