@@ -122,7 +122,7 @@ struct Project {
 pub fn scan(root: &Path) -> Report {
     let mut p = Project::walk(root);
     let mut r = Report {
-        empty: p.files.is_empty(),
+        empty: p.files.is_empty() && !p.truncated,
         ..Report::default()
     };
     if r.empty {
@@ -1257,16 +1257,23 @@ impl Project {
             }
             // Its own budget, so the other checks' reads never cost this one.
             reads += 1;
-            let size = std::fs::metadata(self.root.join(f)).map_or(0, |m| m.len());
-            bytes += size;
-            if reads > MAX_SECRET_READS || bytes > MAX_SECRET_BYTES {
-                let state = (!hits.is_empty()).then_some(State::Failing);
-                return (hits, state);
-            }
-            // The whole file: a key past a read cap would pass unseen.
-            let Some(t) = read_whole(&self.root.join(f)) else {
-                continue;
+            // The whole file, within what's left of the budget: a key past
+            // a per-file cap would pass unseen.
+            let left = MAX_SECRET_BYTES - bytes;
+            let read = if reads > MAX_SECRET_READS {
+                Whole::OverBudget
+            } else {
+                read_whole(&self.root.join(f), left)
             };
+            let t = match read {
+                Whole::Text(t) => t,
+                Whole::Skip => continue,
+                Whole::OverBudget => {
+                    let state = (!hits.is_empty()).then_some(State::Failing);
+                    return (hits, state);
+                }
+            };
+            bytes += t.len() as u64;
             // One pass over the file; lines are counted only on a match.
             for m in secrets_regex().find_iter(&t) {
                 let line = t[..m.start()].matches('\n').count() + 1;
@@ -1429,18 +1436,38 @@ fn secret_kind(matched: &str) -> Option<&'static str> {
 }
 
 /// A whole text file; `None` for binary or unreadable ones.
-fn read_whole(path: &Path) -> Option<String> {
-    let buf = std::fs::read(path).ok()?;
-    if buf.iter().take(8192).any(|b| *b == 0) {
-        return None;
+enum Whole {
+    Text(String),
+    /// Binary, unreadable, or not a regular file (a symlink, a device).
+    Skip,
+    OverBudget,
+}
+
+fn read_whole(path: &Path, left: u64) -> Whole {
+    use std::io::Read;
+    if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
+        return Whole::Skip;
     }
-    Some(String::from_utf8_lossy(&buf).into_owned())
+    let Ok(file) = std::fs::File::open(path) else {
+        return Whole::Skip;
+    };
+    let mut buf = Vec::new();
+    if file.take(left + 1).read_to_end(&mut buf).is_err() {
+        return Whole::Skip;
+    }
+    if buf.len() as u64 > left {
+        return Whole::OverBudget;
+    }
+    if buf.iter().take(8192).any(|b| *b == 0) {
+        return Whole::Skip;
+    }
+    Whole::Text(String::from_utf8_lossy(&buf).into_owned())
 }
 
 fn read_capped(path: &Path) -> Option<String> {
     use std::io::Read;
-    let meta = std::fs::metadata(path).ok()?;
-    if meta.len() > MAX_FILE {
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_FILE {
         return None;
     }
     let mut buf = Vec::new();
