@@ -57,5 +57,6 @@ export const STUBS = {
   stopped: run(walking, [{ type: 'stop' }]),
   'failed-tab-closed': run(walking, [{ type: 'fail', reason: 'tab-closed' }]),
   'failed-connection': run(walking, [{ type: 'fail', reason: 'connection' }]),
+  'failed-switched-off': run(walking, [{ type: 'fail', reason: 'switched-off' }]),
   'failed-left-site': run(walking, [{ type: 'fail', reason: 'left-site' }]),
 };

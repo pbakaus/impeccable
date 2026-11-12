@@ -10,7 +10,7 @@ export const LIVE = ['waiting', 'walking', 'paused', 'takeover'];
 /** The debugger is on the tab. */
 export const ON_TAB = ['walking', 'paused', 'takeover'];
 /** Why a walk failed, as the panel shows it. */
-export const FAILURES = ['tab-closed', 'connection', 'left-site'];
+export const FAILURES = ['tab-closed', 'connection', 'left-site', 'switched-off'];
 
 const STEPS_KEPT = 200;
 const NOTES_KEPT = 20;

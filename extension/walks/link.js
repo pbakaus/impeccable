@@ -106,7 +106,7 @@ export async function linked() {
 }
 
 /** Why the hub closed the socket, as its close says it (the server's close reasons). */
-const CLOSED = { replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came' };
+const CLOSED = { replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' };
 
 /**
  * The socket closed. A walk on its tab has lost whoever was driving it, unless the server said the outing was called
@@ -116,6 +116,8 @@ export function unlinked({ opened = false, reason = '' } = {}) {
   const { state } = current();
   // The person called it off somewhere else (the command): that is a stop, not a failure.
   if (reason === CLOSED.cancelled) { dispatch({ type: 'stop' }); void chrome.storage.session.remove('handoff'); return; }
+  // Walks were switched off on the server: said once, waiting or on the tab, and nothing tries again.
+  if (reason === CLOSED.switchedOff) { dispatch({ type: 'fail', reason: 'switched-off' }); void chrome.storage.session.remove('handoff'); return; }
   if (ON_TAB.includes(state)) { dispatch({ type: 'fail', reason: 'connection' }); return; }
   if (state !== 'waiting') return;
   // Another socket of this walk took this one's place: that one is the walk's now.

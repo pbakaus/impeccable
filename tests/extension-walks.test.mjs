@@ -47,7 +47,7 @@ describe('walk contract with the web app', () => {
     ['protocol number', 'worker.js', /const PROTOCOL = (.+);/, '2'],
     ['socket subprotocol', 'worker.js', /const SUBPROTOCOL = (.+);/, "'impeccable-outing'"],
     ['part size', 'worker.js', /const PART_CHARS = (.+);/, '256 * 1024'],
-    ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came' }"],
+    ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
   ]) {
@@ -263,6 +263,20 @@ describe('walk helper worker', () => {
     // The server calls the walk off.
     sockets.at(-1).onclose({ reason: 'cancelled' });
     assert.deepEqual(toolbar, [{ openPanelOnActionClick: true }]);
+  });
+
+  it('ends a walk the server switched off as failed, said once in the panel and the toolbar', async () => {
+    await loaded;
+    const { current } = await import('../extension/walks/store.js');
+    const { COPY } = await import('../extension/walks/panel/copy.js');
+    const before = sockets.length;
+    assert.deepEqual(await handOver(fromPage), { ok: true });
+    for (let turn = 0; turn < 50 && sockets.length === before; turn++) await new Promise((resolve) => setImmediate(resolve));
+    sockets.at(-1).onclose({ reason: 'switched off' });
+    sockets.at(-1).onclose({ reason: 'switched off' });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual([current().state, current().failure.reason, titles.at(-1)], ['failed', 'switched-off', COPY.failed['switched-off']]);
+    assert.equal(titles.filter((title) => title === COPY.failed['switched-off']).length, 1);
   });
 
   // A reload mid-hand-off loses the walk: added, the helper reloads only the start pages that cannot have handed one over.

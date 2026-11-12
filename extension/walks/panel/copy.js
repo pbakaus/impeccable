@@ -67,6 +67,7 @@ export const COPY = {
   failed: {
     'tab-closed': 'The tab was closed, so the walk ended.',
     connection: 'The connection dropped, so the walk ended.',
+    'switched-off': 'Walks were switched off, so this one stopped.',
     'left-site': (site) => `The page left ${hostOf(site) || 'the allowed address'}, so the walk ended.`,
     how: 'Start it again from your terminal:',
   },
