@@ -1044,8 +1044,18 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /hasProjectContext = !!msg\.hasProjectContext;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
       'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /return \{ pickActive: true, insertActive: false, firstRun: true \};/,
+      'a browser with no stored prefs starts its first Live session with Pick on',
+    );
+    assert.match(
+      SOURCE,
+      /liveFirstRun = false;\s*saveInteractionPrefs\(\);\s*showToast\('Click anything on the page to restyle it\.'/,
+      'the first-session hint shows once: the prefs are saved before it shows',
     );
     assert.match(
       SOURCE,
