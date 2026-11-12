@@ -217,6 +217,7 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("a palette of unused tokens is not hard-coded colour", vec![("a.css", format!(":root {{\n{}}}\n", (0..24).map(|i| format!("  --c{i}: #{:06x};\n", i * 4369)).collect::<String>()))], false, "design-tokens", None),
         ("animate-none is no motion", vec![("package.json", REACT.into()), ("src/A.tsx", "export const A = () => <div className=\"animate-none\">Hi</div>;\n".into())], false, "reduced-motion", Some("checked")),
         ("icon extensions in capitals", vec![("package.json", NEXT.into()), ("public/favicon.ICO", "x".into()), ("public/apple-touch-icon.PNG", "x".into())], false, "app-icons", Some("checked")),
+        ("a comma inside a quoted list entry", vec![("package.json", REACT.into()), (".gitlab-ci.yml", "notes:\n  script: ['echo \"Next steps, npm test\"']\n".into())], false, "ci-runs-tests", Some("failing")),
         ("readme names a missing script", vec![("package.json", REACT.into()), ("README.md", "```\nnpm install\nnpm run start:prod\n```\n".into())], false, "readme-runs", Some("failing")),
         ("giant file", vec![("src/big.ts", big.clone())], false, "no-giant-files", Some("failing")),
         ("giant fixture", vec![("tests/fixtures/big.ts", big), ("src/a.ts", "export {};\n".into())], false, "no-giant-files", Some("checked")),

@@ -2190,9 +2190,20 @@ fn ci_commands(text: &str) -> String {
                 // command per entry.
                 match command.strip_prefix('[').and_then(|c| c.strip_suffix(']')) {
                     Some(list) => {
-                        for entry in list.split(',') {
-                            out.push_str(entry.trim().trim_matches(['"', '\'']));
-                            out.push('\n');
+                        // Split on the commas between entries, never on
+                        // one inside a quoted entry.
+                        let (mut quote, mut entry) = (None, String::new());
+                        for ch in list.chars().chain([',']) {
+                            match (quote, ch) {
+                                (None, '"' | '\'') => quote = Some(ch),
+                                (Some(q), c) if c == q => quote = None,
+                                (None, ',') => {
+                                    out.push_str(entry.trim());
+                                    out.push('\n');
+                                    entry.clear();
+                                }
+                                _ => entry.push(ch),
+                            }
                         }
                     }
                     None => {
