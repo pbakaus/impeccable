@@ -216,15 +216,19 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             Some(v) if truthy(Some(v)) => js_str(Some(v)),
             _ => String::new(),
         };
+        let mut locator = String::new();
+        for (flag, value) in [("--element-id", el_id), ("--classes", classes), ("--tag", tag)] {
+            if !value.is_empty() {
+                locator.push_str(&format!(" {} \"{}\"", flag, value));
+            }
+        }
         steps.push(format!(
-            "Preflight could not scaffold{}. Run {} --id {} --count {} --element-id \"{}\" --classes \"{}\" --tag \"{}\" --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
+            "Preflight could not scaffold{}. Run {} --id {} --count {}{} --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
             err,
             script_cmd(self_cmd, "live-wrap"),
             id,
             count,
-            el_id,
-            classes,
-            tag
+            locator
         ));
     }
     // A Go the generate verb fired (`origin: "agent"`) plans exactly like a
@@ -446,6 +450,21 @@ mod tests {
             m.insert("origin".into(), json!(o));
         }
         m
+    }
+
+    #[test]
+    fn bare_element_fallback_omits_empty_locator_flags() {
+        for element in [
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee" }),
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee", "id": "", "classes": [] }),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("element".into(), element);
+            let instructions = generate_instructions(&event, "impeccable");
+            assert!(instructions.contains("live-wrap --id ab12cd34 --count 3 --tag \"h1\""), "{instructions}");
+            assert!(!instructions.contains("--element-id \"\""), "{instructions}");
+            assert!(!instructions.contains("--classes \"\""), "{instructions}");
+        }
     }
 
     #[test]

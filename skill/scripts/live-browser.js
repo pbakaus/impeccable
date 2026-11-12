@@ -7819,7 +7819,13 @@
           hasProjectContext = !!msg.hasProjectContext;
           // The generate lane runs without PRODUCT.md by design and never
           // sends the user to init, so its quiet chrome skips this notice.
-          if (!hasProjectContext && !liveBarHiddenByHelper) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
+          // A first session gets the first move instead: what to click
+          // matters more than a missing file, and it shows once.
+          if (liveFirstRun && !liveBarHiddenByHelper) {
+            liveFirstRun = false;
+            saveInteractionPrefs();
+            showToast('Click anything on the page to restyle it.', 8000);
+          } else if (!hasProjectContext && !liveBarHiddenByHelper) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
@@ -10543,7 +10549,9 @@ void main() {
         return { pickActive: !!prefs.pickActive, insertActive: false };
       }
     } catch { /* ignore */ }
-    return { pickActive: false, insertActive: false };
+    // Nothing stored: this browser's first Live session here. Pick starts on,
+    // so the first click on the page already does something.
+    return { pickActive: true, insertActive: false, firstRun: true };
   }
 
   function saveInteractionPrefs() {
@@ -10561,6 +10569,7 @@ void main() {
   }
 
   let pickActive = loadInteractionPrefs().pickActive;
+  let liveFirstRun = loadInteractionPrefs().firstRun === true;
   let insertActive = loadInteractionPrefs().insertActive;
   let configureKind = 'replace';
   let insertLineEl = null;

@@ -105,7 +105,29 @@ pub fn build_search_queries(
     if let Some(q) = query {
         queries.push(q.to_string());
     }
+    if queries.is_empty() {
+        if let Some(tag) = tag {
+            queries.push(format!("<{}", tag));
+        }
+    }
     queries
+}
+
+/// A tag fallback uses one prefix query; element matching checks its boundary.
+pub fn is_tag_only_search(queries: &[String], tag: Option<&str>) -> bool {
+    tag.map_or(false, |tag| queries.len() == 1 && queries[0] == format!("<{}", tag))
+}
+
+fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
+    if tag.map_or(false, |tag| query == format!("<{}", tag)) {
+        return line.match_indices(query).any(|(start, _)| {
+            line[start + query.len()..]
+                .chars()
+                .next()
+                .map_or(true, |c| c.is_whitespace() || c == '>' || c == '/')
+        });
+    }
+    line.contains(query)
 }
 
 /// JS: OPENER_RE = /<([A-Za-z][A-Za-z0-9]*)(?=[\s/>]|$)/  (first match's tag)
@@ -157,7 +179,7 @@ fn skip_line(line: &str) -> bool {
 /// JS: findElement(lines, query, tag)
 pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<ElementMatch> {
     for (i, line) in lines.iter().enumerate() {
-        if !line.contains(query) {
+        if !matches_query(line, query, tag) {
             continue;
         }
         if skip_line(line) {
@@ -182,7 +204,7 @@ pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Ve
     let mut out = Vec::new();
     let mut seen: Vec<usize> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
-        if !line.contains(query) {
+        if !matches_query(line, query, tag) {
             continue;
         }
         if skip_line(line) {
@@ -454,10 +476,35 @@ pub fn build_css_authoring(traits: &SourceTraits, count: i64) -> Value {
 }
 
 /// JS: findFileWithQuery(query, cwd, genOpts)
-pub fn find_file_with_query(query: &str, cwd: &str, include_generated: bool) -> Option<String> {
+pub fn find_file_with_query(
+    query: &str,
+    cwd: &str,
+    include_generated: bool,
+    tag: Option<&str>,
+) -> Option<String> {
     let extensions = resolve_live_template_extensions(cwd);
     let filter = |p: &str| include_generated || !is_generated_file(p, cwd);
-    find_source_file(query, cwd, &extensions, &NEVER_SOURCE_DIRS, &filter)
+    if !tag.map_or(false, |tag| query == format!("<{}", tag)) {
+        return find_source_file(query, cwd, &extensions, &NEVER_SOURCE_DIRS, &filter);
+    }
+    // A generated-file hint must obey the same tag boundary as source resolution.
+    let mut found = None;
+    visit_source_files(
+        query,
+        cwd,
+        &extensions,
+        &NEVER_SOURCE_DIRS,
+        &filter,
+        &mut |path, content| {
+            let file = SourceFile::from_content(path, content);
+            if find_all_elements(&file.lines, query, tag).is_empty() {
+                return false;
+            }
+            found = Some(path.to_string());
+            true
+        },
+    );
+    found
 }
 
 /// A source file read once for element resolution: the path as the caller
@@ -497,6 +544,8 @@ pub enum Resolution {
     NotLocated(String),
     /// No source file contains the locator.
     NotFound,
+    /// Tag-only targeting leaves candidates in several source files.
+    AmbiguousFiles(Vec<(String, Vec<ElementMatch>)>),
 }
 
 /// Resolve the locator inside one file.
@@ -517,6 +566,14 @@ fn resolve_lines(
     text: Option<&str>,
 ) -> Resolution {
     let Some(text) = text else {
+        if is_tag_only_search(queries, tag) {
+            let candidates = collect_candidates(&file.lines, queries, tag);
+            return match candidates.len() {
+                0 => Resolution::NotLocated(file.path),
+                1 => Resolution::Match(file, candidates[0]),
+                _ => Resolution::Ambiguous(file, candidates),
+            };
+        }
         for q in queries {
             if let Some(m) = find_element(&file.lines, q, tag) {
                 return Resolution::Match(file, m);
@@ -549,6 +606,9 @@ pub fn resolve_in_project(
     text: Option<&str>,
 ) -> Resolution {
     let text = text.filter(|t| text_disambiguates(t));
+    if is_tag_only_search(queries, tag) {
+        return resolve_tag_in_project(queries, cwd, tag, text);
+    }
     let extensions = resolve_live_template_extensions(cwd);
     let filter = |p: &str| !is_generated_file(p, cwd);
     for q in queries {
@@ -602,6 +662,62 @@ pub fn resolve_in_project(
         }
     }
     Resolution::NotFound
+}
+
+/// Tag-only locators must consider every source candidate, including across files.
+fn resolve_tag_in_project(
+    queries: &[String],
+    cwd: &str,
+    tag: Option<&str>,
+    text: Option<&str>,
+) -> Resolution {
+    let extensions = resolve_live_template_extensions(cwd);
+    let filter = |p: &str| !is_generated_file(p, cwd);
+    let mut files = Vec::new();
+    visit_source_files(
+        &queries[0],
+        cwd,
+        &extensions,
+        &NEVER_SOURCE_DIRS,
+        &filter,
+        &mut |path, content| {
+            let file = SourceFile::from_content(path, content);
+            let candidates = collect_candidates(&file.lines, queries, tag);
+            if !candidates.is_empty() {
+                files.push((file, candidates));
+            }
+            false
+        },
+    );
+    if files.is_empty() {
+        return Resolution::NotFound;
+    }
+    if let Some(text) = text {
+        let matching: Vec<_> = files
+            .iter()
+            .filter_map(|(file, candidates)| {
+                let filtered = filter_by_text(candidates, &file.lines, text);
+                if filtered.is_empty() {
+                    None
+                } else {
+                    Some((file.path.clone(), filtered))
+                }
+            })
+            .collect();
+        if matching.len() > 1 {
+            return Resolution::AmbiguousFiles(matching);
+        }
+        if let Some((path, _)) = matching.first() {
+            let index = files.iter().position(|(file, _)| &file.path == path).unwrap();
+            return resolve_lines(files.remove(index).0, queries, tag, Some(text));
+        }
+        if files.len() > 1 {
+            return Resolution::TextInNoFile(files.into_iter().map(|(f, c)| (f.path, c)).collect());
+        }
+    } else if files.len() > 1 {
+        return Resolution::AmbiguousFiles(files.into_iter().map(|(f, c)| (f.path, c)).collect());
+    }
+    resolve_lines(files.remove(0).0, queries, tag, text)
 }
 
 /// Candidate ranges in the JS shape `{ startLine, endLine }` (1-indexed).
@@ -662,6 +778,157 @@ mod tests {
 
     fn lines(src: &[&str]) -> Vec<String> {
         src.iter().map(|l| l.to_string()).collect()
+    }
+
+    struct TagProject(std::path::PathBuf);
+
+    impl TagProject {
+        fn new(file: &str, source: &str) -> Self {
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("impeccable-tag-only-{}-{}", std::process::id(), serial));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("package.json"), "{}").unwrap();
+            std::fs::write(dir.join(file), source).unwrap();
+            Self(dir)
+        }
+
+        fn run(&self, insert: bool, extra: &[&str]) -> (i32, String, String) {
+            let (mut io, captured) = impeccable_common::Io::captured("", self.0.clone(), Default::default());
+            let mut args: Vec<String> = ["--id", "ab12cd34", "--count", "3"]
+                .iter().map(|s| s.to_string()).collect();
+            args.extend(extra.iter().map(|s| s.to_string()));
+            let code = if insert {
+                args.extend(["--position".to_string(), "after".to_string()]);
+                crate::live_insert::run(&args, &mut io)
+            } else {
+                crate::live_wrap::run(&args, &mut io)
+            };
+            drop(io);
+            let out = String::from_utf8(captured.stdout.borrow().clone()).unwrap();
+            let err = String::from_utf8(captured.stderr.borrow().clone()).unwrap();
+            (code, out, err)
+        }
+
+        fn source(&self, file: &str) -> String {
+            std::fs::read_to_string(self.0.join(file)).unwrap()
+        }
+    }
+
+    impl Drop for TagProject {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn empty_locator_error_lists_tag_for_wrap_and_insert() {
+        for insert in [false, true] {
+            let project = TagProject::new("index.html", "<h1>Harbor Coffee</h1>\n");
+            let (code, _, err) = project.run(insert, &["--element-id", "", "--classes", "", "--tag", "", "--query", ""]);
+            assert_eq!(code, 1);
+            assert_eq!(err.trim(), "Need at least one of: --element-id, --classes, --tag, --query");
+        }
+    }
+
+    #[test]
+    fn tag_only_wrap_surrounds_a_bare_heading_in_html_and_jsx() {
+        for (file, source, heading) in [
+            ("index.html", "<h1>Harbor Coffee</h1>\n", "<h1>Harbor Coffee</h1>"),
+            ("App.jsx", "export default function App() {\n  return (\n    <h1>Get started</h1>\n  );\n}\n", "<h1>Get started</h1>"),
+        ] {
+            let project = TagProject::new(file, source);
+            // Auto-detection, including explicitly empty legacy locator flags.
+            let (code, out, err) = project.run(false, &["--tag", "h1", "--element-id", "", "--classes", "", "--query", ""]);
+            assert_eq!(code, 0, "{out} {err}");
+            let result = project.source(file);
+            let wrapper = result.find("data-impeccable-variant=\"original\"").unwrap();
+            let target = result.find(heading).unwrap();
+            let variants = result.find("Variants: insert below").unwrap();
+            assert!(wrapper < target && target < variants, "{result}");
+            assert_eq!(result.matches(heading).count(), 1);
+        }
+    }
+
+    #[test]
+    fn tag_only_text_selects_the_second_heading_for_wrap_and_insert() {
+        for insert in [false, true] {
+            let source = "<h2>First heading</h2>\n<h2>Second heading</h2>\n";
+            let project = TagProject::new("index.html", source);
+            let (code, out, err) = project.run(insert, &["--file", "index.html", "--tag", "h2", "--text", "Second heading"]);
+            assert_eq!(code, 0, "{out} {err}");
+            let result = project.source("index.html");
+            assert!(result.starts_with("<h2>First heading</h2>\n"), "{result}");
+            let wrapper = result.find("data-impeccable-variants=").unwrap();
+            let second = result.find("<h2>Second heading</h2>").unwrap();
+            assert_eq!(wrapper > second, insert, "{result}");
+        }
+    }
+
+    #[test]
+    fn tag_only_never_guesses_between_headings() {
+        for insert in [false, true] {
+            for text in [None, Some("Same heading"), Some("Missing rendered heading"), Some("short")] {
+                let source = "<h2>Same heading</h2>\n<h2>Same heading</h2>\n";
+                let project = TagProject::new("index.html", source);
+                let mut args = vec!["--tag", "h2"];
+                if let Some(text) = text {
+                    args.extend(["--text", text]);
+                }
+                let (code, out, err) = project.run(insert, &args);
+                assert_eq!(code, 1, "{out} {err}");
+                let error: Value = serde_json::from_str(err.trim()).unwrap();
+                assert_eq!(error["error"], "element_ambiguous");
+                assert_eq!(error["fallback"], "agent-driven");
+                assert_eq!(project.source("index.html"), source);
+            }
+        }
+    }
+
+    #[test]
+    fn tag_only_checks_the_opening_tag_boundary() {
+        for tag in ["h1", "h"] {
+            let project = TagProject::new("index.html", "<header>Header</header>\n<h10>Other heading</h10>\n");
+            let (code, _, err) = project.run(false, &["--tag", tag]);
+            assert_eq!(code, 1, "{err}");
+            let error: Value = serde_json::from_str(err.trim()).unwrap();
+            assert_eq!(error["error"], "element_not_found");
+        }
+        for heading in ["<h1>Harbor Coffee</h1>", "<h1 title=\"Coffee\">Harbor Coffee</h1>", "<h1\n title=\"Coffee\">Harbor Coffee</h1>"] {
+            let project = TagProject::new("index.html", &format!("<header>Header</header>\n<h10>Other</h10>\n{heading}\n"));
+            let (code, out, err) = project.run(false, &["--tag", "h1"]);
+            assert_eq!(code, 0, "{out} {err}");
+            assert!(project.source("index.html").starts_with("<header>Header</header>\n<h10>Other</h10>\n"));
+        }
+    }
+
+    #[test]
+    fn tag_only_does_not_stop_at_one_bare_heading_before_attributed_siblings() {
+        let source = "<h2>Same heading</h2>\n<h2 title=\"Other\">Same heading</h2>\n";
+        let project = TagProject::new("index.html", source);
+        let (code, _, err) = project.run(false, &["--tag", "h2", "--text", "Same heading"]);
+        assert_eq!(code, 1, "{err}");
+        let error: Value = serde_json::from_str(err.trim()).unwrap();
+        assert_eq!(error["error"], "element_ambiguous");
+        assert_eq!(project.source("index.html"), source);
+    }
+
+    #[test]
+    fn tag_only_considers_candidates_across_files() {
+        for insert in [false, true] {
+            let project = TagProject::new("index.html", "<h2>First heading</h2>\n");
+            std::fs::write(project.0.join("other.html"), "<h2>Second heading</h2>\n").unwrap();
+            let (code, _, err) = project.run(insert, &["--tag", "h2"]);
+            assert_eq!(code, 1, "{err}");
+            let error: Value = serde_json::from_str(err.trim()).unwrap();
+            assert_eq!(error["error"], "element_ambiguous");
+            assert_eq!(error["fallback"], "agent-driven");
+            assert_eq!(error["candidates"].as_array().unwrap().len(), 2);
+            let (code, out, err) = project.run(insert, &["--tag", "h2", "--text", "Second heading"]);
+            assert_eq!(code, 0, "{out} {err}");
+            assert!(project.source("other.html").contains("data-impeccable-variants="));
+            assert_eq!(project.source("index.html"), "<h2>First heading</h2>\n");
+        }
     }
 
     #[test]
