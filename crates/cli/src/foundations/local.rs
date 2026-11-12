@@ -2210,9 +2210,9 @@ fn ci_commands(text: &str) -> String {
                         // A quote that never closed: keep what's left as one
                         // command nobody can classify, so nothing is claimed.
                         if quote.is_some() {
-                            out.push_str("unreadable-list-entry ");
-                            out.push_str(entry.trim());
-                            out.push('\n');
+                            // The marker alone: the entry's own words
+                            // must not reach the test matcher.
+                            out.push_str("unreadable-list-entry\n");
                         }
                     }
                     None => {
