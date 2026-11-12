@@ -2240,7 +2240,8 @@ dashes; anything else exits 1 without a request. When `DESIGN.md`,
 writes nothing, makes no request, prints the merge line on stdout and exits 0.
 
 Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
-token (scope `worlds:read`; plan-gated by the service). A 200 answer must be
+token (scope `worlds:read`, which `login` requests whenever the service lists
+it in `scopes_supported`; plan-gated by the service). A 200 answer must be
 `{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
 to 120 characters without control characters, a non-blank `design_md` and an
 object `sidecar`, each at most 256 KiB; anything else is the "can't read"

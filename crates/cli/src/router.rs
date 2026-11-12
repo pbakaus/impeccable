@@ -286,6 +286,7 @@ const KNOWN_VERBS: &[&str] = &[
     "login",
     "logout",
     "whoami",
+    "world",
     "health",
     "setup",
     "setup-report",
