@@ -2338,7 +2338,7 @@ Project-file evidence for the affected items (comments do not count):
 | `reduced-motion` | A real reduced-motion guard, or UI without detected motion. | Motion without a guard fails, including Web Animations, Svelte directives, Motion components and Tailwind animation classes. |
 | `design-tokens` | A project colour custom property defined and used through `var()`, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities, unused colour definitions and third-party variables do not supply evidence. |
 | `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Notes-only repos send nothing. Missing commands/scripts fails otherwise. Scaffolding and prose do not count. |
-| `infrastructure-as-code` | Hosting config in the project; `eas.json` for Expo/React Native. | Notes-only repos, package libraries without app evidence and Expo/React Native without hosting config send nothing. Missing config fails otherwise. |
+| `infrastructure-as-code` | Hosting config in the project; `eas.json` for Expo/React Native. | Notes-only repos, package libraries without app evidence and a bare React Native app without `eas.json` send nothing. Missing config fails otherwise, an Expo app without `eas.json` included. |
 
 
 

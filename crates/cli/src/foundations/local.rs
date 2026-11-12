@@ -827,8 +827,14 @@ impl Project {
         if self.notes_only() {
             return None;
         }
+        // Expo builds and ships through EAS, set up in `eas.json`. A bare
+        // React Native app has no one place for it, so nothing is claimed.
         if self.dep("expo") || self.dep("react-native") {
-            return self.has("eas.json").then_some(State::Checked);
+            return if self.has("eas.json") {
+                Some(State::Checked)
+            } else {
+                self.dep("expo").then_some(State::Failing)
+            };
         }
         let named = [
             "wrangler.toml",
