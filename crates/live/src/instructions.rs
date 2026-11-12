@@ -9,8 +9,16 @@ pub fn poll_cmd(self_cmd: &str) -> String {
 }
 
 /// JS: bootInstructions({ scriptsPath })
-pub fn boot_instructions(self_cmd: &str) -> String {
-    format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd))
+pub fn boot_instructions(self_cmd: &str, dev_url: Option<&str>) -> String {
+    let origin = dev_url.map(|url| format!("Open {} as the page origin that serves a pageFiles entry (never serverPort; that is the helper).", url));
+    let instructions = format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd));
+    match origin {
+        Some(origin) => instructions.replacen(
+            "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper).",
+            &origin, 1,
+        ),
+        None => instructions,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -486,5 +494,20 @@ mod tests {
         assert!(locked.contains("impeccable live-complete --id ab12cd34 --discarded"), "{locked}");
         let restored = instructions_for_event(&event(json!({ "handled": true, "file": "src/App.tsx" })), "impeccable").unwrap();
         assert!(restored.starts_with("Original restored"), "{restored}");
+    }
+}
+
+#[cfg(test)]
+mod boot_tests {
+    use super::*;
+
+    #[test]
+    fn boot_url_names_page_origin_and_preserves_default() {
+        let default = boot_instructions("impeccable", None);
+        assert!(default.starts_with("Open the app URL that serves a pageFiles entry"));
+        let url = "http://localhost:5173";
+        let named = boot_instructions("impeccable", Some(url));
+        assert!(named.starts_with(&format!("Open {} as the page origin", url)));
+        assert_eq!(named.split_once(" Then ").unwrap().1, default.split_once(" Then ").unwrap().1);
     }
 }

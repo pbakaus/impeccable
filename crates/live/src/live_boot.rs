@@ -20,7 +20,7 @@ use serde_json::{json, Map, Value};
 const HELP: &str = "Usage: impeccable live
 
 Prepare everything for live variant mode in a single command:
-  - Checks .impeccable/live/config.json (required, created once per project)
+  - Checks .impeccable/live/config.json (with --auto-config, created for a plain HTML or Vite page without CSP)
   - Starts (or reuses) the live server in the background
   - Injects the browser script tag
   - Reads PRODUCT.md / DESIGN.md for project context
@@ -28,18 +28,22 @@ Prepare everything for live variant mode in a single command:
   - In monorepos, choose a child app first; --target <path> is the fallback/manual path
 
 On success, prints a JSON blob with:
-  { ok, serverPort, serverToken, pageFiles, projectRoot, repoRoot, targetPath, productPath, designPath }
+  { ok, serverPort, serverToken, pageFiles, liveConfigPath, configDrift,
+    projectRoot, repoRoot, targetPath, roots, hasProduct, product, productPath,
+    hasDesign, design, designPath, hasSurfaceBrief, surfaceBrief, surfaceBriefPath, _instructions }
+  Optional: configCreated (only when created), devUrl (--dev-url),
+    liveBarHidden (--no-live-bar), contextMissing and contextNote (--allow-missing-context)
 
 On target_selection_required, prints:
   { ok: false, error: \"target_selection_required\", targetCandidates }
 
 On config_missing, prints:
-  { ok: false, error: \"config_missing\", configPath, hint }
+  { ok: false, error: \"config_missing\", path, targetPath, projectRoot, repoRoot }
 
 The agent should then:
   1. If target_selection_required, ask which app to use and rerun from that child cwd
   2. If config_missing, create the config and re-run this script
-  3. Optionally open the project's dev/preview URL in the browser (see reference/live.md—not serverPort)
+  3. Optionally open the project's dev/preview URL in the browser (see reference/live.md; not serverPort)
   4. Enter the poll loop: impeccable live-poll";
 
 fn rel_or_null(base: &str, p: Option<&str>) -> Value {
@@ -145,7 +149,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     write_roots_manifest(&roots);
 
     // 1. Check config (in-process `live-inject --check` with cwd = appRoot).
-    let check_out = run_inject(&["--check".to_string()], &active_cwd, io);
+    // `--auto-config`: the common single-page case writes its own config (see
+    // live_inject::auto_configure); a plain boot still reports config_missing.
+    let mut check_args = vec!["--check".to_string()];
+    if args.iter().any(|a| a == "--auto-config") {
+        check_args.push("--auto-config".to_string());
+    }
+    let check_out = run_inject(&check_args, &active_cwd, io);
     let check_result: Option<Value> = serde_json::from_str(check_out.trim()).ok();
     let check_ok = check_result
         .as_ref()
@@ -324,9 +334,12 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         "hasSurfaceBrief": surface_brief.is_some(),
         "surfaceBrief": surface_brief,
         "surfaceBriefPath": surface_brief_path,
-        "_instructions": boot_instructions(&self_cmd),
+        "_instructions": boot_instructions(&self_cmd, dev_url.as_deref()),
     });
     if let Some(obj) = payload.as_object_mut() {
+        if check_result.get("configCreated") == Some(&Value::Bool(true)) {
+            obj.insert("configCreated".into(), json!(true));
+        }
         if no_live_bar {
             obj.insert("liveBarHidden".into(), json!(live_bar_hidden));
         }
@@ -455,4 +468,133 @@ fn scan_for_drift(root_dir: &str, resolved_files: &[String], config: &LiveConfig
         "orphanCount": count,
         "hint": format!("{} HTML file(s) exist but aren't in config.files. Consider adding them, or use a glob pattern like \"public/**/*.html\".", count),
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    const CONFIG: &str = r#"{"files":["index.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}"#;
+
+    struct Fixture(PathBuf);
+    impl Fixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "impeccable-auto-config-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            std::fs::create_dir(&root).unwrap();
+            let f = Self(root);
+            f.write("index.html", "<html><body>Hello</body></html>");
+            // Reuse a record for this test process; no server is spawned or needed.
+            f.write(".impeccable/live/server.json", &json!({
+                "pid": std::process::id(), "port": 19876, "token": "fixture"
+            }).to_string());
+            f
+        }
+        fn write(&self, path: &str, text: &str) {
+            let p = self.0.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        fn run(&self, verb: &str, args: &[&str], override_path: Option<&str>) -> (String, Value) {
+            let mut env = crate::util::Env::new();
+            if let Some(p) = override_path {
+                env.insert("IMPECCABLE_LIVE_CONFIG".into(), p.into());
+            }
+            let (mut io, captured) = Io::captured("", self.0.clone(), env);
+            let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            let code = if verb == "live" { run(&args, &mut io) } else {
+                crate::live_inject::run(&args, &mut io)
+            };
+            assert_eq!(code, 0);
+            let out = String::from_utf8(captured.stdout.borrow().clone()).unwrap();
+            let value = serde_json::from_str(&out).unwrap();
+            (out, value)
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    }
+
+    #[test]
+    fn without_the_flag_a_missing_config_is_reported_and_nothing_is_written() {
+        let f = Fixture::new();
+        let (_, boot) = f.run("live", &["--allow-missing-context"], None);
+        assert_eq!(boot["error"], "config_missing");
+        let (_, check) = f.run("check", &["--check"], None);
+        assert_eq!(check["error"], "config_missing");
+        assert!(!f.0.join(".impeccable/live/config.json").exists());
+    }
+
+    #[test]
+    fn auto_config_static_boot_and_existing_config() {
+        let f = Fixture::new();
+        let (_, first) = f.run("live", &["--allow-missing-context", "--auto-config"], None);
+        assert_eq!(first["ok"], true);
+        assert_eq!(first["configCreated"], true);
+        assert_eq!(first["pageFiles"], json!(["index.html"]));
+        assert_eq!(std::fs::read_to_string(f.0.join(".impeccable/live/config.json")).unwrap(), CONFIG);
+        assert!(std::fs::read_to_string(f.0.join("index.html")).unwrap().contains("live.js"));
+        let (_, second) = f.run("live", &["--allow-missing-context", "--auto-config"], None);
+        assert_eq!(second["ok"], true);
+        assert!(second.get("configCreated").is_none());
+    }
+
+    #[test]
+    fn auto_config_check_honours_override_and_vite() {
+        for absolute in [false, true] {
+            let f = Fixture::new();
+            f.write("vite.config.js", "export default {}");
+            let path = if absolute { f.0.join("custom/live.json").to_string_lossy().into_owned() }
+                else { "custom/live.json".into() };
+            let (_, first) = f.run("check", &["--check", "--auto-config"], Some(&path));
+            assert_eq!(first["ok"], true);
+            assert_eq!(first["configCreated"], true);
+            assert_eq!(std::fs::read_to_string(f.0.join("custom/live.json")).unwrap(), CONFIG);
+            assert!(!f.0.join(".impeccable/live/config.json").exists());
+            let (_, second) = f.run("check", &["--check", "--auto-config"], Some(&path));
+            assert!(second.get("configCreated").is_none());
+        }
+    }
+
+    #[test]
+    fn auto_config_target_uses_child_app() {
+        let f = Fixture::new();
+        f.write("child/vite.config.js", "export default {}");
+        f.write("child/index.html", "<body>Child</body>");
+        let (_, result) = f.run("check", &["--check", "--auto-config", "--target", "child"], Some("custom/config.json"));
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["configCreated"], true);
+        assert_eq!(std::fs::read_to_string(f.0.join("child/custom/config.json")).unwrap(), CONFIG);
+        assert!(!f.0.join("custom/config.json").exists());
+    }
+
+    #[test]
+    fn auto_config_refuses_csp_frameworks_and_missing_entry() {
+        for marker in ["csp", "svelte.config.js", "nuxt.config.ts", "next.config.js", "astro.config.mjs", "tanstack", "missing"] {
+            let f = Fixture::new();
+            if marker == "csp" {
+                f.write("index.html", "<meta http-equiv='Content-Security-Policy' content=\"script-src 'self'\"><body></body>");
+            } else if marker == "missing" {
+                std::fs::remove_file(f.0.join("index.html")).unwrap();
+            } else if marker == "tanstack" {
+                f.write("package.json", r#"{"dependencies":{"@tanstack/react-start":"1"}}"#);
+                f.write("src/routes/__root.tsx", "export const Route = {};");
+            } else {
+                f.write(marker, "export default {}");
+                if marker == "svelte.config.js" { f.write("src/app.html", "<body>%sveltekit.body%</body>"); }
+            }
+            let path = f.0.join(".impeccable/live/config.json").to_string_lossy().into_owned();
+            let (out, _) = f.run("check", &["--check", "--auto-config"], None);
+            assert_eq!(out, format!("{}\n", json!({"ok":false,"error":"config_missing","path":path})), "{marker}");
+            assert!(!std::path::Path::new(&path).exists());
+            let (_, boot) = f.run("live", &["--allow-missing-context", "--auto-config"], None);
+            assert_eq!(boot["error"], "config_missing", "{marker}");
+            assert!(boot.get("configCreated").is_none());
+        }
+    }
 }
