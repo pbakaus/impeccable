@@ -97,6 +97,7 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("the word transition in copy", vec![("package.json", REACT.into()), ("src/About.tsx", "const transition = 1;\nexport const A = () => <p className=\"text-lg\">We help teams transition to new tools.</p>;\n".into())], false, "reduced-motion", Some("checked")),
         ("transition in a shared class string", vec![("package.json", REACT.into()), ("src/Card.tsx", "const card = \"hover:scale-110 transition duration-200\";\nexport const C = () => <div className={cn(card, { [`${x}`]: y })} />;\n".into())], false, "reduced-motion", Some("failing")),
         ("arbitrary variant transition", vec![("package.json", REACT.into()), ("src/Menu.tsx", "export const M = () => <div className=\"data-[state=open]:transition-all\" />;\n".into())], false, "reduced-motion", Some("failing")),
+        ("bare transition after a template interpolation", vec![("package.json", REACT.into()), ("src/Tab.tsx", "export const T = ({ x }) => <div className={`p-4 ${x} transition`} disabled />;\n".into())], false, "reduced-motion", Some("failing")),
         ("motion unguarded", vec![("a.css", "a { transition: color 1s; }\n".into())], false, "reduced-motion", Some("failing")),
         ("tokens", vec![("a.css", ":root { --brand: #3355ff; }\na { color: var(--brand); }\n".into())], false, "design-tokens", Some("checked")),
         ("hard-coded colors", vec![("a.css", many_hex)], false, "design-tokens", Some("failing")),
