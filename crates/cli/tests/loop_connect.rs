@@ -331,6 +331,46 @@ fn an_agent_without_its_cli_is_skipped_not_failed() {
 }
 
 #[test]
+fn missing_named_agent_reports_only_that_agent_in_text_and_json() {
+    // Catches: a missing requested agent claiming no agents exist when the other does.
+    for (missing, other, label) in [
+        ("claude", "codex", "Claude Code"),
+        ("codex", "claude", "Codex"),
+    ] {
+        let b = Box::new(&format!("missing-named-{missing}"));
+        b.install_loop();
+        fs::remove_file(b.root.join("bin").join(missing)).unwrap();
+        assert!(b.root.join("bin").join(other).is_file());
+
+        let out = b.run(&["loop", "connect", "--agent", missing]);
+        assert!(!out.status.success());
+        assert!(out.stdout.is_empty(), "{}", text(&out));
+        assert_eq!(
+            String::from_utf8_lossy(&out.stderr),
+            format!("{label}: not found.\n")
+        );
+
+        let out = b.run(&["loop", "connect", "--agent", missing, "--json"]);
+        assert!(!out.status.success());
+        assert!(out.stderr.is_empty(), "{}", text(&out));
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({
+                "ok": false,
+                "agents": [{ "agent": missing, "label": label, "result": "not_found" }],
+            })
+        );
+        for harness in [missing, other] {
+            assert!(!b.support().join(format!("{harness}-install.json")).exists());
+        }
+        assert!(!b.home().join(".claude/settings.json").exists());
+        assert!(claude_entry(&b.home().join(".claude.json")).is_null());
+        assert!(codex_config(&b).is_empty());
+    }
+}
+
+#[test]
 fn disconnect_undoes_the_account_connect_used_not_todays() {
     // Catches (adversarial review, #1389): disconnect from a shell without CLAUDE_CONFIG_DIR
     // missing the work account connect configured.

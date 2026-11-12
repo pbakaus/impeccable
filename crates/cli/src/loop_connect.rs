@@ -108,6 +108,9 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
 pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
     let (out, connected, failed, _) = connect_agents(io, only)?;
     if connected == 0 && failed == 0 {
+        if let Some(harness) = only {
+            return Err(format!("{}: not found.", label(harness)));
+        }
         return Err(format!(
             "{out}No coding agent found to connect (Claude Code or Codex)."
         ));

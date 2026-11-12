@@ -317,8 +317,8 @@ fn after_install(io: &mut Io, connect: bool) -> i32 {
         io.out("Connect Claude Code and Codex to Loop now? [Y/n] ");
         let _ = std::io::Write::flush(&mut io.stdout);
         let mut line = String::new();
-        std::io::stdin().read_line(&mut line).is_ok()
-            && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+        std::io::stdin().read_line(&mut line)
+            .is_ok_and(|n| connect_answer(n, &line))
     });
     if !yes {
         io.out("Next: impeccable loop connect, so your agents bring their questions to Loop.\n");
@@ -335,6 +335,11 @@ fn after_install(io: &mut Io, connect: bool) -> i32 {
             1
         }
     }
+}
+
+fn connect_answer(bytes_read: usize, line: &str) -> bool {
+    bytes_read > 0
+        && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
 }
 
 /// `loop status --json` and `loop connect [--agent claude|codex] --json`. `None` when

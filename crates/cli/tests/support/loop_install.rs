@@ -1,6 +1,14 @@
 use super::*;
 
 #[test]
+fn connect_answer_requires_input_but_defaults_enter_to_yes() {
+    assert!(!connect_answer(0, ""), "EOF is not an answer");
+    assert!(connect_answer(1, "\n"), "Enter accepts the default");
+    assert!(connect_answer(2, "y\n"));
+    assert!(!connect_answer(2, "n\n"));
+}
+
+#[test]
 fn platform_refuses_non_macos() {
     assert_eq!(
         check_platform("linux").unwrap_err(),
