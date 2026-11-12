@@ -2245,7 +2245,8 @@ object on stdout and exits 0 on success, 1 otherwise.
   over is `convert_failed`. The result is probed and must be H.264 without
   audio.
 - **Poster.** `<out>/<stem>.png`, at most 1280 px wide, cut at the first
-  chapter's time, or one second in when there are no chapters.
+  chapter's time, and never earlier than one second in (a first frame is
+  usually blank); one second in when there are no chapters.
 - **Output folder.** `--out`, else `.impeccable/walkthroughs/` under the
   working directory; only that default folder gets a self-ignoring
   `.gitignore`. Files are built under names private to the run and renamed

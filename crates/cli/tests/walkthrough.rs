@@ -343,3 +343,116 @@ fn a_browser_recording_without_a_stated_length_still_converts() {
     assert_eq!(v["error"], "bad_chapter");
     assert!(!dir.join(".impeccable/walkthroughs/live.mp4.tmp").exists());
 }
+
+#[test]
+fn a_chapter_at_the_exact_end_is_clamped_to_the_last_millisecond() {
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: ffmpeg not installed");
+        return;
+    };
+    let dir = scratch("end-chapter");
+    let clip = dir.join("clip.mp4");
+    assert!(Command::new(&ffmpeg)
+        .args([
+            "-y", "-v", "error", "-f", "lavfi", "-i",
+            "testsrc=duration=2:size=320x240:rate=10",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        ])
+        .arg(&clip)
+        .status()
+        .unwrap()
+        .success());
+    let (out, v) = run(
+        &dir,
+        ffmpeg.parent(),
+        &["clip.mp4", "--chapter", "0:01=Middle", "--chapter", "0:02=End"],
+    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let last_ms = v["film"]["durationMs"].as_u64().unwrap() - 1;
+    assert_eq!(v["chapters"][1]["at"], last_ms);
+    assert_eq!(v["post"]["interaction"]["chapters"][1]["at"], last_ms);
+    assert_eq!(v["chapters"][0]["at"], 1000);
+    // The source probe also permits small container drift before the encode.
+    let (out, v) = run(
+        &dir,
+        ffmpeg.parent(),
+        &["clip.mp4", "--chapter", "0:02.2=End"],
+    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(v["chapters"][0]["at"], last_ms);
+    // Clamping two distinct timestamps to the same moment must still fail.
+    let (out, v) = run(
+        &dir,
+        ffmpeg.parent(),
+        &["clip.mp4", "--chapter", "0:01.999=Before end", "--chapter", "0:02=End"],
+    );
+    assert!(!out.status.success());
+    assert_eq!(v["error"], "bad_chapter");
+    // A first chapter at 0:00 keeps its time, but the poster skips the usually blank first frame.
+    let (out, v) = run(&dir, ffmpeg.parent(), &["clip.mp4", "--chapter", "0:00=Start"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(v["chapters"][0]["at"], 0);
+    assert_eq!(v["poster"]["atMs"], 1000);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_overlong_browser_recording_is_bounded_and_rejected_without_trimming() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: ffmpeg not installed");
+        return;
+    };
+    let dir = scratch("bounded-no-duration");
+    // Tiny frames keep the real encode cheap, while the piped WebM has no duration.
+    let made = Command::new(&ffmpeg)
+        .args([
+            "-v", "error", "-f", "lavfi", "-i",
+            "testsrc=duration=125:size=16x16:rate=10",
+            "-c:v", "libvpx", "-f", "webm", "pipe:1",
+        ])
+        .output()
+        .unwrap();
+    if !made.status.success() || made.stdout.is_empty() {
+        eprintln!("skipped: this ffmpeg has no VP8 encoder");
+        return;
+    }
+    let input = dir.join("long.webm");
+    std::fs::write(&input, &made.stdout).unwrap();
+    let probe = Command::new(ffmpeg.with_file_name("ffprobe"))
+        .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
+        .arg(&input)
+        .output()
+        .unwrap();
+    assert!(probe.status.success());
+    assert_eq!(String::from_utf8_lossy(&probe.stdout).trim(), "N/A");
+
+    // Record the invocation and delegate to real ffmpeg. Rejection alone would not
+    // catch the regression: the old implementation also rejected after encoding all 125s.
+    let tools = dir.join("tools");
+    std::fs::create_dir(&tools).unwrap();
+    symlink(&ffmpeg, tools.join("real-ffmpeg")).unwrap();
+    symlink(ffmpeg.with_file_name("ffprobe"), tools.join("ffprobe")).unwrap();
+    let wrapper = tools.join("ffmpeg");
+    std::fs::write(
+        &wrapper,
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/args\"\nexec \"$(dirname \"$0\")/real-ffmpeg\" \"$@\"\n",
+    ).unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (out, v) = run(&dir, Some(&tools), &["long.webm"]);
+    assert!(!out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(v["error"], "too_long");
+    let args = std::fs::read_to_string(tools.join("args")).unwrap();
+    let args: Vec<_> = args.lines().collect();
+    let limit = args.windows(2).find(|w| w[0] == "-t").expect("encode must be bounded");
+    assert_eq!(limit[1].parse::<f64>().unwrap(), 121.0);
+    let input_arg = args.iter().position(|a| *a == "-i").unwrap();
+    let limit_arg = args.iter().position(|a| *a == "-t").unwrap();
+    assert!(limit_arg > input_arg + 1, "-t must be an output option");
+    let output = dir.join(".impeccable/walkthroughs");
+    assert!(std::fs::read_dir(output).unwrap().flatten().all(|e| {
+        let name = e.file_name().to_string_lossy().into_owned();
+        !name.contains(".tmp.") && !name.ends_with(".mp4") && !name.ends_with(".png")
+    }));
+}

@@ -21,6 +21,9 @@ const USAGE: &str = "Usage: impeccable walkthrough <recording> [--chapter M:SS=T
 
 /// The card's limits (the Needs you server enforces the same ones).
 const MAX_SECONDS: f64 = 120.0;
+const MAX_CHAPTER_MS: u64 = 120_000;
+/// Container duration rounding must not reject an otherwise valid recording.
+const DURATION_TOLERANCE_MS: u64 = 250;
 const MAX_FILM_BYTES: u64 = 50_000_000;
 const MAX_CHAPTERS: usize = 12;
 const MAX_CHAPTER_TEXT: usize = 200;
@@ -72,6 +75,22 @@ fn parse_chapter(raw: &str) -> Result<Chapter, String> {
         at_ms: (seconds * 1000.0).round() as u64,
         text: text.to_string(),
     })
+}
+
+fn duration_fits(seconds: f64) -> bool {
+    seconds <= MAX_SECONDS + DURATION_TOLERANCE_MS as f64 / 1000.0
+}
+
+/// Keep end markers playable and within the server's limit, without merging chapters.
+fn chapter_at(at_ms: u64, film_ms: u64, previous: Option<u64>) -> Option<u64> {
+    if at_ms > film_ms.saturating_add(DURATION_TOLERANCE_MS) {
+        return None;
+    }
+    let at_ms = at_ms.min(film_ms.saturating_sub(1)).min(MAX_CHAPTER_MS);
+    if previous.is_some_and(|p| at_ms <= p) {
+        return None;
+    }
+    Some(at_ms)
 }
 
 fn clock(ms: u64) -> String {
@@ -315,11 +334,14 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     // A recording that states its length is checked before anything is written. One that
     // doesn't (a browser's MediaRecorder WebM) is checked on the film made from it.
     if let Some(seconds) = source.seconds {
-        if seconds > MAX_SECONDS {
+        if !duration_fits(seconds) {
             return too_long(io, seconds);
         }
         let length_ms = (seconds * 1000.0).round() as u64;
-        if let Some(late) = chapters.iter().find(|c| c.at_ms > length_ms) {
+        if let Some(late) = chapters
+            .iter()
+            .find(|c| c.at_ms > length_ms.saturating_add(DURATION_TOLERANCE_MS))
+        {
             return late_chapter(io, late, length_ms);
         }
     }
@@ -380,6 +402,9 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         fail(io, error, message)
     };
 
+    // A missing duration must not make us encode an arbitrarily long recording.
+    // Leave enough beyond the tolerance to detect oversize input, never silently trim it.
+    let encode_seconds = (MAX_SECONDS + 1.0).to_string();
     let mut encoded = None;
     let mut last_error = String::new();
     for (max_width, crf) in ATTEMPTS {
@@ -394,6 +419,8 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
                 "error",
                 "-i",
                 &input.to_string_lossy(),
+                "-t",
+                &encode_seconds,
                 "-an",
                 "-map",
                 "0:v:0",
@@ -469,20 +496,26 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         }
     };
     // The film is what the card plays, so its length is the one that has to fit.
-    if made_seconds > MAX_SECONDS {
+    if !duration_fits(made_seconds) {
         let _ = std::fs::remove_file(&film_tmp);
         return too_long(io, made_seconds);
     }
     let made_ms = (made_seconds * 1000.0).round() as u64;
-    if let Some(late) = chapters.iter().find(|c| c.at_ms > made_ms) {
-        let _ = std::fs::remove_file(&film_tmp);
-        return late_chapter(io, late, made_ms);
+    let mut previous = None;
+    for chapter in &mut chapters {
+        let Some(at_ms) = chapter_at(chapter.at_ms, made_ms, previous) else {
+            let _ = std::fs::remove_file(&film_tmp);
+            return late_chapter(io, chapter, made_ms);
+        };
+        chapter.at_ms = at_ms;
+        previous = Some(at_ms);
     }
 
-    // The poster is the first chapter's moment, or a second in: past any blank first frame.
+    // The poster is the first chapter's moment, never earlier than a second in: a chapter at
+    // 0:00 is the usual first one, and a recording's first frame is usually blank.
     let poster_ms = chapters
         .first()
-        .map(|c| c.at_ms)
+        .map(|c| c.at_ms.max(1000))
         .unwrap_or(1000)
         .min(made_ms.saturating_sub(100));
     let at = format!("{:.3}", poster_ms as f64 / 1000.0);
@@ -608,6 +641,22 @@ mod tests {
             assert!(parse_chapter(bad).is_err(), "{bad}");
         }
         assert!(parse_chapter(&format!("0:01={}", "x".repeat(201))).is_err());
+    }
+
+    #[test]
+    fn duration_tolerance_clamps_end_chapters_without_merging_them() {
+        assert!(duration_fits(120.0));
+        assert!(duration_fits(120.250));
+        assert!(!duration_fits(120.251));
+        assert!(!duration_fits(121.0));
+        assert_eq!(chapter_at(3000, 3000, None), Some(2999));
+        assert_eq!(chapter_at(3000, 2950, Some(1000)), Some(2949));
+        assert_eq!(chapter_at(3250, 3000, None), Some(2999));
+        assert_eq!(chapter_at(3251, 3000, None), None);
+        assert_eq!(chapter_at(3000, 3000, Some(2999)), None);
+        assert_eq!(chapter_at(3000, 2950, Some(2949)), None);
+        assert_eq!(chapter_at(120_200, 120_250, None), Some(120_000));
+        assert_eq!(chapter_at(120_201, 120_250, Some(120_000)), None);
     }
 
     #[test]
