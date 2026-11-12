@@ -167,13 +167,18 @@ fn detector(
     // Element rules run only where the static HTML engine reads the page,
     // so a component the regex engine read leaves a pass unproven; so do
     // ignores (inline or configured values), which can hide a finding, and
-    // pages styled from outside (a CDN stylesheet or a script).
+    // pages styled from outside (a remote stylesheet, linked or imported,
+    // or any script).
     let ignores = local.inline_ignores
         || full
             .ruleset
             .iter()
             .any(|r| r.starts_with("ignore-values=") && r != "ignore-values=[]");
-    let judged = full.html_files_scanned > 0 && full.regex_component_files == 0 && !ignores;
+    // A capped walk leaves pages unseen: nothing proves "none found".
+    let judged = full.html_files_scanned > 0
+        && full.regex_component_files == 0
+        && !ignores
+        && !local.incomplete;
     if judged
         && !local.unresolved_pages
         && enabled("low-contrast")

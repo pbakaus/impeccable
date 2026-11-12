@@ -101,9 +101,12 @@ pub struct Report {
     pub empty: bool,
     /// A UI file carries an inline detector ignore, which can hide a finding.
     pub inline_ignores: bool,
-    /// An HTML page loads a remote stylesheet or any script, so its styles
-    /// aren't all in the files the detector read.
+    /// A page runs a script or takes styles from another host (a linked or
+    /// imported stylesheet), so its styles aren't all in the files the
+    /// detector read.
     pub unresolved_pages: bool,
+    /// The walk or the reads hit a cap: some file went unseen.
+    pub incomplete: bool,
 }
 
 struct Project {
@@ -221,6 +224,7 @@ pub fn scan(root: &Path) -> Report {
         r.items.insert("secrets-out-of-repo", s);
     }
     r.secrets = secrets;
+    r.incomplete = p.read_capped.get() || p.truncated;
     r
 }
 
@@ -492,18 +496,34 @@ impl Project {
     /// Unread files count as both, so a pass is never assumed.
     fn page_hints(&self) -> (bool, bool) {
         static OUTSIDE: OnceLock<Regex> = OnceLock::new();
+        static SCRIPT: OnceLock<Regex> = OnceLock::new();
+        static IMPORT: OnceLock<Regex> = OnceLock::new();
         let outside = re(
             &OUTSIDE,
-            r#"(?is)<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
+            r#"(?is)<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
         );
+        // Any script can restyle the page, inline or loaded; data blocks
+        // (JSON-LD, import maps) run nothing.
+        let script = re(&SCRIPT, r"(?is)<script\b[^>]*>");
+        let import = re(&IMPORT, r#"(?i)@import\s+(?:url\(\s*)?["']?(?:https?:)?//"#);
+        let runs = |t: &str| {
+            script.find_iter(t).any(|m| {
+                let tag = m.as_str().to_ascii_lowercase();
+                !(tag.contains("json") || tag.contains("importmap"))
+            })
+        };
         let (mut ignores, mut unresolved) = (false, false);
         for f in self.files.iter().filter(|f| UI_EXTS.contains(&ext(f))) {
             let Some(t) = self.read(f) else {
                 return (true, true);
             };
             ignores |= t.contains("impeccable-disable") || t.contains("impeccable-ignore");
-            if matches!(ext(f), "html" | "htm") {
-                unresolved |= outside.is_match(&t);
+            match ext(f) {
+                "html" | "htm" => {
+                    unresolved |= outside.is_match(&t) || runs(&t) || import.is_match(&t);
+                }
+                "css" | "scss" | "sass" | "less" => unresolved |= import.is_match(&t),
+                _ => {}
             }
         }
         (ignores, unresolved)
