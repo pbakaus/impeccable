@@ -6,7 +6,6 @@
 // as the server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
 import { adopt } from '../walks/link.js';
-import { firstWalk } from '../onboarding/contact.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
@@ -70,7 +69,6 @@ async function walk({ persona, task, tabId }, panel = Promise.resolve(false)) {
   if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };
   const taken = await adopt(JSON.stringify(started.handoff), tabId).catch(() => null);
   if (!taken?.ok) return { ok: false, why: 'failed' };
-  void firstWalk(tab).catch(() => undefined);
   return { ok: true, panel: await panel };
 }
 
