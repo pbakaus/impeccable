@@ -51,6 +51,13 @@ export const COPY = {
    * is paused; no screenshots are taken while it is paused.
    */
   signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
+  /** Before a deed the server marked (delete, pay, send), or before another site: nothing is done until Yes. */
+  ask: {
+    title: 'Are you sure?',
+    go: (name, host) => `Let ${name || 'your walker'} go to ${host}?`,
+    yes: 'Yes',
+    no: 'No',
+  },
   takeover: { line: (name) => `Your turn. ${name || 'Your walker'} picks up where you leave off.` },
 
   done: {

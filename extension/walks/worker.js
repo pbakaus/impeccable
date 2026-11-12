@@ -8,6 +8,8 @@ const PROTOCOL = 2;
 const SUBPROTOCOL = 'impeccable-outing';
 /** The most text one socket message carries, in UTF-16 code units (the walk protocol's part size): the hub takes about 1 MiB a message. */
 const PART_CHARS = 256 * 1024;
+/** What this helper can do beyond the protocol: walk the person's own tab, and ask the person before a deed. */
+const CAN = ['tab', 'ask'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */
 const BOOT = crypto.randomUUID();
 
@@ -78,7 +80,7 @@ async function connect() {
   const ws = new WebSocket(to.socket, to.ticket ? [SUBPROTOCOL, to.ticket] : []);
   socket = ws;
   let opened = false;
-  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent } }); void linked(); };
+  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN } }); void linked(); };
   ws.onmessage = (event) => { void handle(event.data); };
   ws.onclose = (event) => {
     if (socket !== ws) return;

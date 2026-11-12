@@ -5,7 +5,7 @@
 //
 // Pure: every field is checked here, strictly, and anything unknown is refused.
 import { BUILD } from '../shared/build.js';
-import { admit, webOrigin } from './guard.js';
+import { admit, isOwnPage, webOrigin } from './guard.js';
 
 /** The block's version (the walk protocol's hand-off). */
 const HANDOFF_VERSION = 1;
@@ -89,13 +89,38 @@ function ownSocket(socket, page, outing) {
  */
 export function readHandoff(text, pageUrl) {
   if (!isOutingPage(pageUrl)) return no('origin');
+  return readBlock(text, (socket, outing) => ownSocket(socket, new URL(pageUrl), outing), admit);
+}
+
+/** The sockets a walk main started may be on: our servers' (the pairing main signed in to), never another host. */
+function startedSocket(socket, outing) {
+  let url;
+  try { url = new URL(socket); } catch { return false; }
+  const origins = [...new Set(Object.values(SOCKET_HOST))].filter((host) => BUILD.devHosts || !STAGING.test(host)).map((host) => `wss://${host}`);
+  const local = BUILD.devHosts && url.protocol === 'ws:' && url.hostname === 'localhost' ? [url.origin] : [];
+  return [...origins, ...local].some((origin) => url.href === new URL(`${origin}/api/outings/${outing}/socket`).href);
+}
+
+/**
+ * Reads the block main passes on for a walk of the person's own tab: the same block, its socket on one of our servers.
+ * The tab's own origin is walked (never one of our pages); `allow` adds to it.
+ */
+export function readStartedHandoff(text) {
+  return readBlock(text, startedSocket, (url, allow) => {
+    const origin = webOrigin(url);
+    if (!origin || isOwnPage(url)) throw new Error('not walkable');
+    return { origin, allowed: [...new Set([origin, ...allow])] };
+  });
+}
+
+function readBlock(text, socketOk, admitted) {
   if (typeof text !== 'string' || text.length > MAX_TEXT) return no('malformed');
   let block;
   try { block = JSON.parse(text); } catch { return no('malformed'); }
   if (!only(block, ['v', 'outing', 'socket', 'ticket', 'persona', 'errand', 'url', 'allow'])) return no('malformed');
   if (block.v !== HANDOFF_VERSION) return no('v');
   if (typeof block.outing !== 'string' || !ID.test(block.outing)) return no('outing');
-  if (typeof block.socket !== 'string' || !ownSocket(block.socket, new URL(pageUrl), block.outing)) return no('socket');
+  if (typeof block.socket !== 'string' || !socketOk(block.socket, block.outing)) return no('socket');
   if (typeof block.ticket !== 'string' || !TICKET.test(block.ticket)) return no('ticket');
   const { persona, errand } = block;
   // A role may be empty (a cast's person need not have one), and an errand's name is, for a goal given for the occasion.
@@ -106,7 +131,7 @@ export function readHandoff(text, pageUrl) {
   if (!Array.isArray(errand.doneWhen) || errand.doneWhen.length > MAX_DONE_WHEN || !errand.doneWhen.every((check) => line(check, MAX.check))) return no('errand');
   if (!Array.isArray(block.allow) || block.allow.length > MAX_ALLOW || !block.allow.every((origin) => typeof origin === 'string' && webOrigin(origin) === origin)) return no('allow');
   let site;
-  try { site = admit(block.url, block.allow); } catch { return no('url'); }
+  try { site = admitted(block.url, block.allow); } catch { return no('url'); }
   return {
     ok: true,
     handoff: {

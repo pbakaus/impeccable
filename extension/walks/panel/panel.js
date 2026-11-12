@@ -150,6 +150,20 @@ function status() {
   return line ? el('p', { class: 'status', role: 'status', text: line }) : null;
 }
 
+/** The walk's question, and the only two answers: nothing is done until Yes. */
+function question() {
+  if (!view.ask) return null;
+  const line = view.ask.kind === 'go' ? COPY.ask.go(name(), view.ask.what) : view.ask.what;
+  return el('div', { class: 'ask', role: 'alertdialog', 'aria-label': COPY.ask.title, 'data-kind': view.ask.kind },
+    el('p', { class: 'ask-title', text: COPY.ask.title }),
+    el('p', { class: 'ask-what', text: line }),
+    el('div', { class: 'controls' },
+      el('button', { class: 'btn btn-secondary', type: 'button', 'data-act': 'no', text: COPY.ask.no, onclick: () => act('no') }),
+      el('button', { class: 'btn btn-primary', type: 'button', 'data-act': 'yes', text: COPY.ask.yes, onclick: () => act('yes') }),
+    ),
+  );
+}
+
 function followSwitch() {
   return el('label', { class: 'follow' },
     el('span', { text: COPY.walking.follow }),
@@ -181,6 +195,7 @@ const ARRANGED = {
   feed: () => [
     el('div', { class: 'head' }, who(), workflow()),
     status(),
+    question(),
     checksLine(),
     sectionHead(COPY.walking.steps, el('span', { class: 'count', text: String(view.steps.length) }), followSwitch()),
     el('div', { class: 'feed-scroll' }, view.steps.length > 0 || view.notes.length > 0 ? feed() : emptyFeed()),
@@ -192,6 +207,7 @@ const ARRANGED = {
     el('div', { class: 'feed-scroll' },
       who({ compact: true }),
       status(),
+      question(),
       workflow(),
       view.workflow?.doneWhen.length ? sectionHead(COPY.walking.checks, progress()) : null,
       checks(),
@@ -206,6 +222,7 @@ const ARRANGED = {
     return [
       el('div', { class: 'head' }, who()),
       status(),
+      question(),
       el('div', { class: 'now', 'data-issue': latest?.issue ? 'yes' : undefined },
         latest ? [el('p', { class: 'now-did', 'data-n': latest.n }, el('span', { class: 'step-n', text: String(latest.n) }), el('span', { text: latest.did })), latest.said ? el('blockquote', { class: 'now-said', text: latest.said }) : null, latest.issue ? el('p', { class: 'step-issue' }, issueTag(), el('span', { text: latest.issue })) : null] : emptyFeed(),
       ),
@@ -279,6 +296,7 @@ function render() {
   body.dataset.steps = String(view.steps.length);
   body.dataset.device = view.who?.device ?? '';
   body.dataset.held = view.state === 'paused' ? view.held ?? '' : '';
+  body.dataset.ask = view.ask?.kind ?? '';
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   body.dataset.issues = view.state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
   app.className = live ? `walk walk-${variant}` : 'screen';

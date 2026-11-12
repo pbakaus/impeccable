@@ -13,9 +13,12 @@
 //     answers, and the tab is opened empty with that already on, so there is no first request to race. A refused
 //     navigation is aborted (the tab stays on the page it was on) and told as `blocked`.
 //   - opening other tabs: a tab or window the walked tab opens is closed as soon as it starts to load, and told.
-//   - acting elsewhere in this Chrome: the debugger is attached to the one tab this extension opened for the walk,
-//     never to a tab the person already had, and no op may name another tab. Only loopback addresses and the
-//     origins the hand-off allowed may be walked at all; anything else is refused before a tab opens.
+//   - acting elsewhere in this Chrome: the debugger is attached to one tab, and no op may name another. It is the tab
+//     this extension opened for the walk, or, for a walk the person started from main's popup on the tab they were on,
+//     that tab and no other (driver.js `adopt`). Only loopback addresses and the origins the hand-off allowed may be
+//     walked from a new tab; the person's own tab is walked on its own site, and refused before anything if it is ours.
+//   - wandering off on the person's own tab: another site is gone to only once the person says yes to it, and never
+//     to our own pages, this machine or a private network address (`askable`).
 //   - reaching our own account: our app, API and sign-in pages are refused in every build (`isOwnPage`), even when
 //     the hand-off allowed them or they are on this machine.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
@@ -99,6 +102,25 @@ export function admit(url, allow = []) {
   const listed = allow.filter((entry) => typeof entry === 'string' && webOrigin(entry) === entry);
   if (!listed.includes(origin) && !isLoopback(new URL(url).hostname)) throw refuse(`${origin} is not on this machine and not on the walk's allow-list`);
   return { origin, allowed: [...new Set([origin, ...listed])] };
+}
+
+/** Whether a host is a private-network address by name (10/8, 172.16/12, 192.168/16, 169.254/16, fc00::/7, fe80::/10). */
+function isPrivate(hostname) {
+  const host = String(hostname).toLowerCase();
+  if (/^\[(f[cd]|fe[89ab])[0-9a-f]*:/.test(host)) return true;
+  const [a, b] = host.split('.').map(Number);
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) && (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254));
+}
+
+/**
+ * Whether the person may be asked to let a walk of their own tab go to `url`: a web address on another origin, not
+ * one of our own pages, and not on this machine or a private network (unless it is already allowed).
+ */
+export function askable(url, allowed) {
+  const origin = webOrigin(url);
+  if (!origin || allowed.includes(origin) || isOwnPage(url)) return false;
+  const { hostname } = new URL(url);
+  return !isLoopback(hostname) && !isPrivate(hostname);
 }
 
 /** Whether the top-level document may be at `url`. A blob the site made is the site's; nothing else without an origin is. */

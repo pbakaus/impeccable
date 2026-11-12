@@ -3,7 +3,8 @@
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
-import { endWalk, fail, fence, fenced, hold, hooks, onSignIn, ops, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { BUILD } from '../shared/build.js';
+import { endWalk, fail, fence, fenced, hold, hooks, onAsk, onSignIn, ops, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -43,7 +44,7 @@ async function clear(name) {
   for (;;) {
     const { state } = current();
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
-    if (state === 'paused') { waited = true; await new Promise((go) => { held.push(go); }); continue; }
+    if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
     if (!signIn || !pauseFor('sign-in')) return waited;
@@ -63,14 +64,56 @@ async function clear(name) {
 const ACTS = new Set(['mouse', 'keyboard']);
 const overtaken = () => fail('Paused', 'the walk was paused before this was done; look again');
 
+/* ------------------------------ asking the person first ------------------------------ */
+
+/** How long a question waits for the person: no answer is a No. */
+const ASK_MS = 120_000;
+/** The question standing, if one is: its answer. */
+let answering = null;
+
+/**
+ * Asks the person, in the side panel and on the badge, and waits: `yes`, `no`, or `void` when the walk stopped
+ * walking first (paused, taken over, ended). Nothing else the walk asks is done meanwhile (`clear`).
+ */
+function consent(ask) {
+  if (!dispatch({ type: 'ask', ask })) return Promise.resolve('void');
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => settle('no'), ASK_MS);
+    answering = (said) => { clearTimeout(timer); resolve(said); };
+  });
+}
+/** The question is over: answered, or gone with the walking. */
+function settle(said) {
+  const done = answering;
+  if (!done) return;
+  answering = null;
+  dispatch({ type: 'answer' });
+  done(said);
+  release();
+}
+onAsk(consent);
+
+/** A click or key the server marked (`ask`: delete, pay or send) is done only once the person says yes to it. */
+const askOf = (name, req) => (ACTS.has(name) && req?.ask && typeof req.ask === 'object' && req.action !== 'up' && req.action !== 'move' ? { kind: req.ask.kind, what: req.ask.what } : null);
+
 for (const [name, run] of Object.entries(ops)) {
   if (FREE.has(name)) continue;
   const acting = unseen(name, run);
   ops[name] = async (req) => {
     if (name === 'cdp' && req?.method === 'Page.stopScreencast') return acting(req);
+    const ask = askOf(name, req);
+    let agreed = ask === null;
     for (;;) {
       const at = fenced();
       if (!(await clear(name)) && at === fenced()) {
+        if (!agreed) {
+          const said = await consent(ask);
+          if (said === 'no') throw fail('Declined', 'the person said no');
+          if (said !== 'yes' || at !== fenced()) throw overtaken();
+          // Looked at afresh before it is done: a sign-in that showed meanwhile still pauses it.
+          agreed = true;
+          continue;
+        }
         let out;
         try { out = await acting(req); } catch (err) { if (at === fenced()) throw err; }
         if (at === fenced()) return out;
@@ -87,10 +130,11 @@ ops.open = (req) => {
 
 /* ------------------------------ what the hub tells the panel ------------------------------ */
 
-/** A link the panel may show: https, on a host of ours. Anything else is not shown. */
+/** A link the panel may show: https, on a host of ours (and a development build's own on this machine). Anything else is not shown. */
 function ourLink(url) {
   try {
     const link = new URL(url);
+    if (BUILD.devHosts && link.protocol === 'http:' && /^(app\.)?localhost$/.test(link.hostname)) return link.href;
     return link.protocol === 'https:' && /^(staging\.)?impeccable\.reviews$/.test(link.hostname) ? link.href : null;
   } catch {
     return null;
@@ -100,7 +144,19 @@ function ourLink(url) {
 ops.brief = async ({ persona, errand }) => { dispatch({ type: 'brief', persona, errand }); return {}; };
 ops.step = async ({ step }) => { dispatch({ type: 'step', step }); return {}; };
 ops.checks = async ({ met }) => { dispatch({ type: 'checks', met }); return {}; };
-ops.finish = async ({ outcome }) => { dispatch({ type: 'finish', outcome, replayUrl: ourLink(outcome?.replayUrl) }); return {}; };
+/** The person's own tab, while a walk of it has not yet shown its result: the result opens beside it, once. */
+let resultBeside = null;
+ops.finish = async ({ outcome }) => {
+  const replayUrl = ourLink(outcome?.replayUrl);
+  dispatch({ type: 'finish', outcome, replayUrl });
+  const beside = resultBeside;
+  if (replayUrl && beside !== null) {
+    resultBeside = null;
+    const tab = await chrome.tabs.get(beside).catch(() => null);
+    await chrome.tabs.create({ url: replayUrl, active: true, ...(tab ? { windowId: tab.windowId, index: tab.index + 1, openerTabId: beside } : {}) }).catch(() => undefined);
+  }
+  return {};
+};
 
 /* ------------------------------ what the person says ------------------------------ */
 
@@ -110,6 +166,11 @@ const GOING_ON = { resume: 'paused', handback: 'takeover' };
 
 /** Does what the person asked, if it is on offer right now. Resolves to whether it was. */
 export async function command(name) {
+  if (name === 'yes' || name === 'no') {
+    if (!answering) return false;
+    settle(name);
+    return true;
+  }
   if (name === 'stop') {
     if (!isLive(current())) return false;
     stopped = true;
@@ -139,12 +200,17 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
+  // A question the walk no longer stands behind is over, unanswered.
+  if (answering && !view.ask) settle('void');
   // Only the person's own take-over at a sign-in opens the sign-in pages to the tab: a page can fake a sign-in
   // and so a pause, never a take-over.
   void (hushes(view) ? hold(view.state === 'takeover' && view.held === 'sign-in') : unhold());
 });
 
-hooks.opened.push((tab) => { dispatch({ type: 'opened', name: tab.name, site: tab.origin }); });
+hooks.opened.push((tab) => {
+  resultBeside = tab.adopted ? tab.tabId : null;
+  dispatch({ type: 'opened', name: tab.name, site: tab.origin });
+});
 hooks.closed.push((why) => {
   dispatch(why === 'stopped' ? { type: 'stop' } : detachAction(why));
   release();

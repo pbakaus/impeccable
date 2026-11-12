@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, steps: [], notes: [], outcome: null, failure: null, held: null };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -34,7 +34,16 @@ function whoOf(persona, before) {
   return { name: text(persona?.name, 120) || before?.name || '', role: text(persona?.role, 200) || before?.role || '', visit: persona?.visit ?? before?.visit ?? null, device: persona?.device ?? before?.device ?? 'desktop' };
 }
 
+/** Kinds of question a walk asks the person: a deed the server marked (delete, pay, send), or another site (go). */
+const ASKS = ['delete', 'pay', 'send', 'go'];
+
+/** A question stands only while the walk is walking: a pause, a take-over or an end takes it away unanswered. */
 export function reduce(view, action) {
+  const next = step(view, action);
+  return next.ask && next.state !== 'walking' ? { ...next, ask: null } : next;
+}
+
+function step(view, action) {
   const live = isLive(view);
   const onTab = ON_TAB.includes(view.state);
   switch (action.type) {
@@ -69,6 +78,11 @@ export function reduce(view, action) {
       if (!held || !['paused', 'takeover'].includes(view.state) || (view.state === 'paused' && view.held === held)) return view;
       return { ...view, state: 'paused', held };
     }
+    // The walk asks the person before it goes on: one question at a time.
+    case 'ask':
+      if (view.state !== 'walking' || view.ask || !ASKS.includes(action.ask?.kind)) return view;
+      return { ...view, ask: { kind: action.ask.kind, what: text(action.ask.what, 200) } };
+    case 'answer': return view.ask ? { ...view, ask: null } : view;
     case 'resume': return view.state === 'paused' ? { ...view, state: 'walking', held: null } : view;
     case 'takeover': return view.state === 'walking' || view.state === 'paused' ? { ...view, state: 'takeover' } : view;
     case 'handback': return view.state === 'takeover' ? { ...view, state: 'walking', held: null } : view;

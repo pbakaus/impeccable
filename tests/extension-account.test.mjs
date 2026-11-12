@@ -273,7 +273,7 @@ describe('account worker', () => {
 
   // Main's side of the walk helper's door: it asks the helper by its id, and only its own pages may ask it.
   const fromPopup = { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' };
-  for (const [answer, state] of [[{ ok: true, contract: 1, version: '1.4.0' }, 'ready'], [{ ok: true, contract: 2 }, 'old'], [null, 'missing']]) {
+  for (const [answer, state] of [[{ ok: true, contract: 2, version: '1.4.0' }, 'ready'], [{ ok: true, contract: 1 }, 'old'], [null, 'missing']]) {
     it(`calls the walk helper ${state}`, async () => {
       await loaded;
       helper.answer = answer;

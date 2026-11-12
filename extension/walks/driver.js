@@ -1,7 +1,7 @@
 // The walk's driver: the one tab a walk has, and every op the socket may ask of it (the walk protocol). It
 // decides nothing: the session engine on the other end does the thinking. worker.js holds the socket and answers;
 // guard.js says where the tab may be and what it may start.
-import { admit, arm, held, onlyThisTab, popupWatch, refuseDownload, stillHome } from './guard.js';
+import { admit, arm, askable, held, onSite, onlyThisTab, popupWatch, refuseDownload, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 
@@ -69,6 +69,32 @@ const allowedFor = (allow) => (Array.isArray(allow) ? granted.filter((origin) =>
 let home = null;
 export function openIn(windowId) { home = typeof windowId === 'number' ? windowId : null; }
 
+/**
+ * The person's own tab a walk main started is to walk (`{ tabId, site }`), or null: the walk opens a tab of its own.
+ * Such a walk opens and closes no tab, starts where the tab is, keeps its size, takes stills only, and may go to
+ * another site when the person says yes (guard.js `askable`).
+ */
+let adopted = null;
+export function adoptIn(tab) { adopted = tab; }
+
+/** Whom to ask before a deed or another site (control.js): resolves to `yes`, `no`, or `void` when the walk stopped walking. */
+let asker = async () => 'no';
+export function onAsk(listener) { asker = listener; }
+
+/**
+ * Whether the walked tab may go to `url`: on its site already, or, on a walk of the person's own tab, to another site
+ * the person said yes to, which is then the walk's for the rest of it.
+ */
+async function mayGo(url) {
+  const tab = walk;
+  if (!tab) return false;
+  if (stillHome(url, tab.allowed)) return true;
+  if (!tab.adopted || !askable(url, tab.allowed)) return false;
+  if ((await asker({ kind: 'go', what: new URL(url).host })) !== 'yes' || walk !== tab) return false;
+  tab.allowed.push(webOrigin(url));
+  return true;
+}
+
 /** A debugger command on a tab, as Chrome answers it. */
 export const send = (tabId, method, params) => chrome.debugger.sendCommand({ tabId }, method, params);
 const sendTo = (tabId) => (method, params) => send(tabId, method, params);
@@ -76,6 +102,7 @@ const sendTo = (tabId) => (method, params) => send(tabId, method, params);
 /** The walk lets go of the tab, whoever ended it. The debugger is already off, or never coming back. */
 async function letGo(tab, why) {
   hush = false;
+  if (tab.grouped) await chrome.tabs.ungroup(tab.tabId).catch(() => undefined);
   for (const hook of hooks.closed) { try { await hook(why, tab); } catch { /* a listener's failure is its own */ } }
 }
 
@@ -346,15 +373,18 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       const allowed = heldAtSignIn && isSignInPage(params.request?.url) ? [...tab.allowed, new URL(params.request.url).origin] : tab.allowed;
       // A sign-in page asked for: paused before the guard answers, whatever it answers; unless the person is the one
       // signing in.
-      if (!heldAtSignIn && params.resourceType === 'Document' && params.frameId === tab.mainFrame && isSignInPage(params.request?.url)) spotted();
-      void held(sendTo(tab.tabId), params, tab.mainFrame, allowed, (url) => {
+      const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
+      if (!heldAtSignIn && top && isSignInPage(params.request?.url)) spotted();
+      // Another site, on a walk of the person's own tab: held until the person says whether it may go there.
+      const asking = top && tab.adopted && !heldAtSignIn && !onSite(params.request?.url, allowed) ? mayGo(params.request.url) : Promise.resolve();
+      void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
       }).then((became) => {
         // A request that never went out never finishes either: it is not something the network is busy with.
         if (became === 'continued' || !params.networkId || !tab.inflight.delete(params.networkId)) return;
         if (tab.inflight.size === 0) tab.quietSince = Date.now();
-      });
+      }));
       break;
     }
     case 'Page.fileChooserOpened':
@@ -526,10 +556,62 @@ async function press(name) {
   await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, ...(key.code ? { code: key.code, windowsVirtualKeyCode: key.windowsVirtualKeyCode } : {}) });
 }
 
+/**
+ * `open` for a walk of the person's own tab: the debugger goes on the tab main named, where it is now. It must still
+ * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
+ */
+async function adopt(name, allow) {
+  const { tabId, site } = adopted;
+  const me = { stopped: false };
+  opening = me;
+  const still = () => { if (me.stopped) throw fail('Stopped', 'the person stopped this walk'); };
+  let attached = false;
+  let grouped = false;
+  try {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || webOrigin(tab.url) !== site || !onSite(tab.url, [site])) throw fail('NotAllowed', 'the tab moved off the site it was started on');
+    let group = { id: tab.groupId };
+    if (tab.groupId === -1) {
+      try {
+        const id = await chrome.tabs.group({ tabIds: [tabId], createProperties: { windowId: tab.windowId } });
+        grouped = true;
+        await chrome.tabGroups.update(id, { title: COPY.tabGroup(name), color: 'purple' });
+        group = { id, title: (await chrome.tabGroups.get(id)).title };
+      } catch (err) {
+        group = { error: String(err?.message ?? err) };
+      }
+    }
+    still();
+    await chrome.debugger.attach({ tabId }, '1.3');
+    attached = true;
+    still();
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...new Set([site, ...allowedFor(allow)])], adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    await cmd('Page.enable');
+    await cmd('Network.enable');
+    await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
+    const { frameTree } = await cmd('Page.getFrameTree');
+    walk.mainFrame = frameTree.frame.id;
+    walk.loader = frameTree.frame.loaderId;
+    await arm(cmd);
+    for (const hook of hooks.opened) { still(); await hook(walk); }
+    still();
+    return { value: { tabId, group, before: { width: tab.width, height: tab.height } } };
+  } catch (err) {
+    // A walk that could not be guarded, or was stopped, does not start; the tab is left as it was.
+    if (walk?.tabId === tabId) walk = null;
+    if (attached) await chrome.debugger.detach({ tabId }).catch(() => undefined);
+    if (grouped) await chrome.tabs.ungroup(tabId).catch(() => undefined);
+    throw err;
+  } finally {
+    if (opening === me) opening = null;
+  }
+}
+
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
   async open({ url, name, allow }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
+    if (adopted) return adopt(name, allow);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -581,7 +663,7 @@ export const ops = {
   },
 
   async goto({ url, waitUntil, timeout }) {
-    if (!stillHome(url, walk.allowed)) {
+    if (!(await mayGo(url))) {
       say({ event: 'blocked', what: 'navigation', url: String(url).slice(0, 500) });
       throw fail('NotAllowed', `a walk stays on ${walk.origin}`);
     }
@@ -640,6 +722,8 @@ export const ops = {
   },
 
   async setViewport({ width, height, deviceScaleFactor, mobile }) {
+    // The person's own tab keeps its size.
+    if (walk.adopted) return {};
     await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile });
     walk.viewport = { width, height };
     return {};
@@ -700,6 +784,7 @@ export const ops = {
   // Filming a wait (the server asks in the protocol's own words, and hears its frames in them).
   async cdp({ method, params }) {
     if (!CDP_METHODS.has(method)) throw fail('NotAllowed', `${method} is not passed to the tab`);
+    if (method === 'Page.startScreencast' && walk.adopted) throw fail('NotSupported', 'a walk of your own tab takes stills only');
     if (method === 'Page.startScreencast') await roll(params ?? {});
     else if (method === 'Page.stopScreencast') await cut();
     // An acknowledgement asks for the next frame of Chrome's own screencast; these frames wait for none.

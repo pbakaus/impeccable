@@ -6,7 +6,7 @@ import { HELPER_ID } from '../shared/ids.js';
 const PAGE = chrome.runtime.getURL('onboarding/onboarding.html');
 const OWN_PAGES = ['popup/', 'onboarding/'].map((folder) => chrome.runtime.getURL(folder));
 /** The helper's door this side speaks. A helper that answers another one is old. */
-const CONTRACT = 1;
+const CONTRACT = 2;
 /** How long a helper that is here takes at most to answer; a missing or switched-off one never does. */
 const WAIT_MS = 1500;
 

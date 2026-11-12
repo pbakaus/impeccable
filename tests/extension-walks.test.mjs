@@ -231,7 +231,7 @@ describe('walk helper worker', () => {
       await loaded;
       const answers = [];
       for (const listener of listeners.external) listener(message, { id }, (answer) => answers.push(answer));
-      assert.deepEqual(answers, answered ? [{ ok: true, contract: 1, version: MANIFEST.version }] : []);
+      assert.deepEqual(answers, answered ? [{ ok: true, contract: 2, version: MANIFEST.version }] : []);
     });
   }
 
@@ -314,7 +314,8 @@ describe('walk helper worker', () => {
     'Page.createIsolatedWorld': () => ({ executionContextId: 9 }),
     'Runtime.evaluate': () => ({ result: { value: page.seen } }),
   };
-  const fire = (method, params) => { for (const listener of listeners['debugger-event']) listener({ tabId: 11 }, method, params); };
+  const fireOn = (tabId, method, params) => { for (const listener of listeners['debugger-event']) listener({ tabId }, method, params); };
+  const fire = (method, params) => fireOn(11, method, params);
   const since = (at, method) => sent.slice(at).filter((m) => m === method).length;
   const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let opened;
@@ -516,6 +517,167 @@ describe('walk helper worker', () => {
         chrome.debugger.attach = attach;
       }
     });
+  }
+
+  // A walk of the person's own tab, handed over by main: after the walks above, as it takes the one walk there is.
+  const SHOP = 'https://shop.example.com';
+  const started = (over = {}) => JSON.stringify(block({ socket: 'wss://impeccable.reviews/api/outings/o1/socket', url: `${SHOP}/cart`, ...over }));
+  const fromMain = (message, id = IDS.unpacked.main) => new Promise((resolve) => {
+    let answered = false;
+    for (const listener of listeners.external) if (listener(message, { id }, (answer) => { answered = true; resolve(answer); }) !== true && !answered) resolve(null);
+  });
+  const tabs = { made: [], removed: [], ungrouped: [], groupId: -1, url: `${SHOP}/cart` };
+  let own;
+  const ownTab = () => (own ??= (async () => {
+    const walk = await walked();
+    await walk.ops.close();
+    Object.assign(chrome.tabs, {
+      async create(tab) { tabs.made.push(tab); return { id: 30, windowId: 1 }; },
+      async remove(id) { tabs.removed.push(id); },
+      async get(id) { return { id, windowId: 1, index: 3, url: tabs.url, groupId: tabs.groupId, width: 1280, height: 800, active: true }; },
+      async ungroup(id) { tabs.ungrouped.push(id); },
+    });
+    return walk;
+  })());
+
+  for (const [label, message, id] of [
+    ['another extension', { walks: 'walk', handoff: started(), tabId: 21 }, 'other'],
+    ['main with a field too many', { walks: 'walk', handoff: started(), tabId: 21, token: 'x' }, IDS.unpacked.main],
+  ]) {
+    it(`takes no walk of a tab from ${label}`, async () => {
+      await ownTab();
+      assert.equal(await fromMain(message, id), null);
+    });
+  }
+
+  for (const [label, handoff, why] of [
+    ['a socket on another host', started({ socket: 'wss://example.com/api/outings/o1/socket' }), 'socket'],
+    ['our own app as the tab', started({ url: 'https://app.impeccable.style/app/acme' }), 'url'],
+    ['a tab that is on another site now', started({ url: 'https://elsewhere.example.com/' }), 'tab'],
+  ]) {
+    it(`refuses main's walk of a tab with ${label}`, async () => {
+      await ownTab();
+      assert.deepEqual(await fromMain({ walks: 'walk', handoff, tabId: 21 }), { ok: false, why });
+    });
+  }
+
+  it('walks the person’s own tab where it is: no tab opened or closed, no move, no resize, no film', async () => {
+    const { ops, current } = await ownTab();
+    const before = sockets.length;
+    assert.equal((await fromMain({ walks: 'walk', handoff: started(), tabId: 21 })).ok, true);
+    for (let turn = 0; turn < 50 && sockets.length === before; turn++) await settle(1);
+    assert.equal(current().state, 'waiting');
+    const at = sent.length;
+    const opened = await ops.open({ url: `${SHOP}/`, name: 'Ines' });
+    assert.equal(opened.value.tabId, 21);
+    assert.equal(current().state, 'walking');
+    await ops.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
+    await assert.rejects(ops.cdp({ method: 'Page.startScreencast', params: {} }), { name: 'NotSupported' });
+    assert.deepEqual(sent.slice(at).filter((m) => ['Page.navigate', 'Emulation.setDeviceMetricsOverride', 'Page.startScreencast'].includes(m)), []);
+    assert.deepEqual([tabs.made, tabs.removed], [[], []]);
+  });
+
+  it('asks the person before a deed the server marked: no click before Yes, and none at all on No', async () => {
+    const { ops, command, current } = await ownTab();
+    page.seen = {};
+    const clicks = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchMouseEvent').length;
+    for (const [answer, done] of [['yes', 3], ['no', 0]]) {
+      const at = sent.length;
+      const click = ops.mouse({ action: 'click', x: 5, y: 5, ask: { kind: 'delete', what: 'Delete “Buy oat milk”' } });
+      await settle(20);
+      let looked = false;
+      const meanwhile = ops.url().then(() => { looked = true; });
+      await settle(20);
+      assert.deepEqual([current().ask?.kind, clicks(at), looked], ['delete', 0, false], 'it waits, and so does everything after it');
+      assert.equal(await command(answer), true);
+      if (answer === 'yes') await click; else await assert.rejects(click, { name: 'Declined' });
+      await meanwhile;
+      assert.deepEqual([clicks(at), current().ask], [done, null]);
+    }
+  });
+
+  it('asks before another site, and goes there only on Yes', async () => {
+    const { command, current } = await ownTab();
+    for (const [url, answer, fetched] of [['https://news.example.org/a', 'yes', 'Fetch.continueRequest'], ['https://ads.example.net/', 'no', 'Fetch.failRequest']]) {
+      const at = sent.length;
+      fireOn(21, 'Fetch.requestPaused', { requestId: `go-${url}`, resourceType: 'Document', frameId: 'main', request: { method: 'GET', url } });
+      await settle(5);
+      assert.deepEqual([current().ask, sent.slice(at).filter((m) => m.startsWith('Fetch.'))], [{ kind: 'go', what: new URL(url).host }, []]);
+      await command(answer);
+      await settle(5);
+      assert.deepEqual(sent.slice(at).filter((m) => m.startsWith('Fetch.')), [fetched]);
+    }
+    const at = sent.length;
+    fireOn(21, 'Fetch.requestPaused', { requestId: 'go-local', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'http://192.168.1.1/' } });
+    await settle(5);
+    assert.deepEqual([current().ask, sent.slice(at).filter((m) => m.startsWith('Fetch.'))], [null, ['Fetch.failRequest']], 'a private address is never asked for');
+  });
+
+  it('lets go of the person’s tab at the end and leaves it open, out of the group it was put in', async () => {
+    const { ops, current } = await ownTab();
+    await ops.close();
+    assert.deepEqual([tabs.made, tabs.removed, tabs.ungrouped, current().state], [[], [], [21], 'done']);
+  });
+});
+
+// The badge's own script, on a stand-in page: the glow on a walk of the person's own tab, and when it goes.
+describe('walk glow', () => {
+  // After the worker's tests have put a stand-in Chrome in place: the badge's module hangs on the driver's.
+  const badge = () => import('../extension/walks/badge.js');
+  const page = async () => {
+    const { badgeInPage } = await badge();
+    const clock = { now: 0 };
+    const ticks = [];
+    const node = (tag) => ({
+      tag, style: {}, dataset: {}, isConnected: false, children: [],
+      append(...kids) { for (const kid of kids) { kid.isConnected = true; this.children.push(kid); } },
+      remove() { this.isConnected = false; }, setAttribute() {}, addEventListener() {},
+      attachShadow() { return node('#shadow'); }, getBoundingClientRect: () => ({ width: 100, height: 30 }),
+    });
+    const root = node('html');
+    const context = {
+      document: { createElement: node, documentElement: root }, CSSStyleSheet: class { replaceSync() {} },
+      Date: { now: () => clock.now }, setInterval: (fn) => { ticks.push(fn); return 1; }, clearInterval() {}, innerWidth: 800, innerHeight: 600, addEventListener() {},
+    };
+    vm.runInNewContext(`(${badgeInPage})('bind', 3000, 1500)`, context);
+    const glow = () => root.children.find((child) => child.tag === 'impeccable-walk-glow');
+    const shows = () => Boolean(glow()?.isConnected && glow().style.visibility !== 'hidden');
+    return { api: context.__impeccableWalkBadge, clock, tick: () => ticks.forEach((fn) => fn()), shows };
+  };
+  const walking = { title: '', sub: '', stop: 'Stop', resume: '', state: 'walking', step: 1, glow: true };
+
+  it('shows while walking, takes no clicks, and is out of every picture', async () => {
+    const { api, shows } = await page();
+    api.set(walking);
+    assert.equal(shows(), true);
+    api.veil(true);
+    assert.equal(shows(), false, 'hidden for a picture');
+    api.veil(false);
+    assert.equal(shows(), true);
+  });
+
+  for (const [label, end] of [
+    ['the person takes over', ({ api }) => api.set({ ...walking, state: 'takeover', glow: false })],
+    ['the walk ends', ({ api }) => api.remove()],
+    ['the debugger leaves without a word', ({ clock, tick }) => { clock.now += 1600; tick(); }],
+  ]) {
+    it(`goes when ${label}`, async () => {
+      const at = await page();
+      at.api.set(walking);
+      end(at);
+      assert.equal(at.shows(), false);
+    });
+  }
+
+  const view = (state, extra = {}) => ({ state, who: { name: 'Ines' }, steps: [], ask: null, ...extra });
+  for (const [label, shown, adopted, glow] of [
+    ['walking the person’s tab', view('walking'), true, true],
+    ['asking on it', view('walking', { ask: { kind: 'pay', what: 'Pay $12' } }), true, true],
+    ['paused', view('paused'), true, false],
+    ['taken over', view('takeover'), true, false],
+    ['walking a tab of its own', view('walking'), false, false],
+  ]) {
+    it(`${glow ? 'glows' : 'does not glow'} ${label}`, async () => { assert.equal((await badge()).badgeState(shown, adopted).glow, glow); });
   }
 });
 

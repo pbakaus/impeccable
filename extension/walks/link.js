@@ -19,8 +19,8 @@
 // opens another, which starts the worker; it finds its ticket spent and asks the page for a fresh one.
 import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
-import { grant, openIn } from './driver.js';
-import { isOutingPage, readHandoff } from './handoff.js';
+import { adoptIn, grant, openIn } from './driver.js';
+import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
 
@@ -89,12 +89,14 @@ export async function whereTo() {
     if (handoff.spent) { void refresh(); return null; }
     grant(handoff.allow);
     openIn(handoff.windowId);
+    adoptIn(typeof handoff.adopt === 'number' ? { tabId: handoff.adopt, site: handoff.site } : null);
     return { socket: handoff.socket, ticket: handoff.ticket };
   }
   const own = await builtIn();
   if (typeof own?.socket !== 'string') return null;
   grant(own.allow);
   openIn(null);
+  adoptIn(null);
   return { socket: own.socket };
 }
 
@@ -157,6 +159,29 @@ async function take(text, sender) {
   dispatch({ type: 'handoff', handoff: read.handoff });
   tries = 0;
   // A socket left open by an earlier walk is not this one's.
+  hangUp();
+  void connect();
+  return { ok: true };
+}
+
+/**
+ * A walk of the person's own tab, which main started (contact.js): its block, and the tab. Kept as `adopt`, never as
+ * `tabId`: there is no page of ours to reload for a fresh ticket, so a spent one ends the walk.
+ */
+export async function adopt(text, tabId) {
+  await ready;
+  const read = readStartedHandoff(text);
+  if (!read.ok) return read;
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  let at = null;
+  try { at = new URL(tab?.url ?? '').origin; } catch { /* no address */ }
+  if (at !== read.handoff.site) return { ok: false, why: 'tab' };
+  if (isLive(current())) return { ok: false, why: 'busy' };
+  await chrome.storage.session.set({ handoff: { ...read.handoff, adopt: tabId, windowId: tab.windowId } });
+  await chrome.storage.local.set({ linked: true });
+  rearm();
+  dispatch({ type: 'handoff', handoff: read.handoff });
+  tries = 0;
   hangUp();
   void connect();
   return { ok: true };

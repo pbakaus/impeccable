@@ -264,6 +264,28 @@ h1 {
   box-shadow: var(--ks-led);
 }
 
+/* The walk's question: nothing is done until Yes. Gold, as it waits on the person. */
+.ask {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ks-rule);
+  background: var(--ks-paper-deep);
+  box-shadow: inset 3px 0 0 var(--ks-kinpaku);
+}
+
+.ask-title {
+  font-weight: 600;
+  color: var(--ks-ink);
+}
+
+.ask-what {
+  font-size: var(--ks-type-label);
+  line-height: 1.45;
+  color: var(--ks-text);
+  overflow-wrap: anywhere;
+}
+
 /* ============================================================
    Section names and counts (devtools/panel.css: category header)
    ============================================================ */

@@ -6,7 +6,13 @@
 // and cannot press Stop for it (the binding exists in that world alone). The persona never sees it: it is hidden
 // for every picture and film the engine takes. Chrome refuses to open the side panel from here ("only in response
 // to a user gesture"; a debugger event carries none), so the panel opens from a click on
-// the walk's page (handoff-content.js) or, while a walk is under way, from the toolbar icon (toolbar.js).
+// the walk's page (handoff-content.js) or, while a walk is under way, from the toolbar icon (toolbar.js). So a
+// question the walk asks (delete, pay, send, another site) is asked here too, with Yes and No.
+//
+// On a walk of the person's own tab it also draws the glow: a soft moving border inside the page, in the same world,
+// that takes no clicks. It is out of every picture the way the badge is (the veil), shows only while the walk is
+// walking, and goes with the badge at the end. Should the debugger leave without a word (nothing can reach the page
+// then), it goes by itself when its heartbeat stops: within GLOW_LIFE_MS.
 import { hooks, send, walk } from './driver.js';
 import { COPY } from './panel/copy.js';
 import { current, onView } from './store.js';
@@ -14,10 +20,12 @@ import { ON_TAB } from './view.js';
 
 const WORLD = 'impeccable-walk-badge';
 const BINDING = '__impeccableWalkStop';
-const BEAT_MS = 2000;
+const BEAT_MS = 1000;
+/** How long the glow stays without a heartbeat. */
+const GLOW_LIFE_MS = 1500;
 
 /** Runs in the walked tab, in the badge's own world, at the start of every document. Self-contained: it is sent as text. */
-function badgeInPage(binding, lifeMs) {
+export function badgeInPage(binding, lifeMs, glowLifeMs) {
   if (globalThis.__impeccableWalkBadge) return;
   const CSS = `
     :host { all: initial; position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; }
@@ -35,6 +43,22 @@ function badgeInPage(binding, lifeMs) {
     button:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 2px; }
     button[hidden] { display: none; }
   `;
+  const GLOW = `
+    :host { all: initial; position: fixed; inset: 0; z-index: 2147483646; pointer-events: none; }
+    .glow { position: absolute; inset: 0; border-radius: 2px; pointer-events: none;
+      box-shadow: inset 0 0 0 2px oklch(68% 0.17 300 / 0.85), inset 0 0 18px 4px oklch(68% 0.17 300 / 0.45);
+      animation: breathe 2.4s ease-in-out infinite; }
+    @keyframes breathe { 50% { box-shadow: inset 0 0 0 2px oklch(68% 0.17 300 / 0.55), inset 0 0 28px 8px oklch(68% 0.17 300 / 0.25); } }
+    @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
+  `;
+  const glowHost = document.createElement('impeccable-walk-glow');
+  const glowRoot = glowHost.attachShadow({ mode: 'closed' });
+  const glowSheet = new CSSStyleSheet();
+  glowSheet.replaceSync(GLOW);
+  glowRoot.adoptedStyleSheets = [glowSheet];
+  const glow = document.createElement('div');
+  glow.className = 'glow';
+  glowRoot.append(glow);
   const host = document.createElement('impeccable-walk');
   const root = host.attachShadow({ mode: 'closed' });
   const sheet = new CSSStyleSheet();
@@ -47,17 +71,25 @@ function badgeInPage(binding, lifeMs) {
   const sub = el('span', 'sub');
   const resume = el('button', 'resume');
   resume.type = 'button';
+  const no = el('button', 'resume');
+  no.type = 'button';
   const stop = el('button', 'stop');
   stop.type = 'button';
-  pill.append(el('span', 'dot'), title, sub, resume, stop);
+  pill.append(el('span', 'dot'), title, sub, no, resume, stop);
   root.append(pill);
-  // Only a press a person or the walk really made: a click the page's script made up is not one.
-  resume.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('resume'); });
+  // Only a press a person or the walk really made: a click the page's script made up is not one. While the walk asks,
+  // it makes none: every op waits on the answer.
+  let go = 'resume';
+  resume.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding](go); });
+  no.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('no'); });
   stop.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('stop'); });
 
   let expires = 0;
+  let glowing = 0;
   let fit = null;
   let gone = false;
+  let veiled = false;
+  const showGlow = () => { glowHost.style.visibility = veiled || !glowing || Date.now() > glowing ? 'hidden' : ''; };
   const place = () => {
     // The walk lays the page out at its own size, which can be larger than the window: keep to the part on screen.
     if (!fit || !host.isConnected) return;
@@ -69,11 +101,11 @@ function badgeInPage(binding, lifeMs) {
   };
   const mount = () => {
     if (host.isConnected || !document.documentElement) return;
-    document.documentElement.append(host);
+    document.documentElement.append(glowHost, host);
     place();
   };
   // Nobody has said the walk is still on: it is over, however it ended, and this goes with it.
-  const timer = setInterval(() => { if (expires && Date.now() > expires) api.remove(); }, 1000);
+  const timer = setInterval(() => { if (expires && Date.now() > expires) api.remove(); else showGlow(); }, 250);
   const api = {
     set(state) {
       if (gone) return;
@@ -83,27 +115,37 @@ function badgeInPage(binding, lifeMs) {
       stop.hidden = !state.stop;
       resume.textContent = state.resume;
       resume.hidden = !state.resume;
+      go = state.go ?? 'resume';
+      no.textContent = state.no ?? '';
+      no.hidden = !state.no;
       pill.dataset.state = state.state;
       pill.dataset.step = String(state.step);
-      host.style.visibility = state.hidden ? 'hidden' : '';
+      veiled = state.hidden === true;
+      host.style.visibility = veiled ? 'hidden' : '';
       fit = state.fit ?? fit;
       expires = Date.now() + lifeMs;
+      glowing = state.glow ? Date.now() + glowLifeMs : 0;
+      showGlow();
       if (document.documentElement) mount(); else addEventListener('DOMContentLoaded', mount, { once: true });
       place();
     },
-    beat() { expires = Date.now() + lifeMs; },
-    veil(on) { host.style.visibility = on ? 'hidden' : ''; },
-    remove() { gone = true; clearInterval(timer); host.remove(); },
+    beat() { expires = Date.now() + lifeMs; if (glowing) glowing = Date.now() + glowLifeMs; },
+    veil(on) { veiled = on; host.style.visibility = on ? 'hidden' : ''; showGlow(); },
+    remove() { gone = true; clearInterval(timer); host.remove(); glowHost.remove(); },
   };
   globalThis.__impeccableWalkBadge = api;
 }
 
 /** What the badge says for a view. */
-export function badgeState(view) {
+export function badgeState(view, adopted = false) {
   const name = view.who?.name ?? '';
   const step = view.steps.at(-1)?.n ?? 0;
+  if (view.ask) {
+    const what = view.ask.kind === 'go' ? COPY.ask.go(name, view.ask.what) : view.ask.what;
+    return { state: 'asking', step, title: COPY.ask.title, sub: what, resume: COPY.ask.yes, go: 'yes', no: COPY.ask.no, stop: COPY.badge.stop, glow: adopted };
+  }
   const title = view.state === 'paused' ? COPY.badge.paused(name) : view.state === 'takeover' ? COPY.badge.yours : COPY.badge.here(name);
-  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop };
+  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop, glow: adopted && view.state === 'walking' };
 }
 
 let badge = null;
@@ -124,14 +166,14 @@ async function push() {
   if (!badge || !ON_TAB.includes(current().state)) return;
   const tab = await chrome.tabs.get(badge.tabId).catch(() => null);
   // Said with every state, so a document that begins mid-film starts out hidden too.
-  await call(`set(${JSON.stringify({ ...badgeState(current()), hidden: hidden(), ...(tab?.width ? { fit: { w: tab.width, h: tab.height } } : {}) })})`);
+  await call(`set(${JSON.stringify({ ...badgeState(current(), badge.adopted), hidden: hidden(), ...(tab?.width ? { fit: { w: tab.width, h: tab.height } } : {}) })})`);
 }
 
 hooks.opened.push(async (tab) => {
-  badge = { tabId: tab.tabId, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
+  badge = { tabId: tab.tabId, adopted: tab.adopted === true, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
   await send(tab.tabId, 'Runtime.enable');
   await send(tab.tabId, 'Runtime.addBinding', { name: BINDING, executionContextName: WORLD });
-  await send(tab.tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3})`, worldName: WORLD });
+  await send(tab.tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3}, ${GLOW_LIFE_MS})`, worldName: WORLD });
 });
 
 hooks.event.push((method, params) => {
@@ -141,7 +183,7 @@ hooks.event.push((method, params) => {
     badge.context = params.context.id;
     void push();
   }
-  if (method === 'Runtime.bindingCalled' && params.name === BINDING && params.executionContextId === badge.context && (params.payload === 'stop' || params.payload === 'resume')) pressed(params.payload);
+  if (method === 'Runtime.bindingCalled' && params.name === BINDING && params.executionContextId === badge.context && ['stop', 'resume', 'yes', 'no'].includes(params.payload)) pressed(params.payload);
 });
 
 const drop = () => {
