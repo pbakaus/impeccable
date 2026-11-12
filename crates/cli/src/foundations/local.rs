@@ -149,7 +149,7 @@ pub fn scan(root: &Path) -> Report {
         Some(t) if t.ci_runs_tests() != Some(State::Failing) => t.ci_runs_tests(),
         _ => p.ci_runs_tests(),
     };
-    put("ci-runs-tests", ci);
+    put("ci-runs-tests", ci.filter(|_| !p.notes_only()));
     let configured = p.dependency_configured()
         || top_config
             .as_ref()
@@ -608,6 +608,45 @@ impl Project {
         }
     }
 
+    fn notes_only(&self) -> bool {
+        !self.has_manifest
+            && !self.files.is_empty()
+            && self.files.iter().all(|f| {
+                matches!(ext(f), "md" | "markdown" | "txt" | "text" | "rst")
+                    || name(f).eq_ignore_ascii_case("readme")
+            })
+    }
+
+    fn has_templates(&self) -> bool {
+        self.any(|f| {
+            !is_test_path(f)
+                && matches!(
+                    ext(f),
+                    "html"
+                        | "htm"
+                        | "erb"
+                        | "php"
+                        | "ejs"
+                        | "pug"
+                        | "haml"
+                        | "slim"
+                        | "twig"
+                        | "njk"
+                        | "jinja"
+                        | "jinja2"
+                        | "j2"
+                        | "liquid"
+                        | "hbs"
+                )
+                && (f.split('/').any(|p| p == "templates")
+                    || f.starts_with("app/views/")
+                    || f.starts_with("resources/views/")
+                    || f.starts_with("views/")
+                    || f.starts_with("public/")
+                    || f.starts_with("static/"))
+        })
+    }
+
     /// A root dependency: what the project at this root is built with.
     fn dep(&self, name: &str) -> bool {
         self.root_deps.contains(name)
@@ -627,11 +666,21 @@ impl Project {
     }
 
     /// A web project at this root: an app framework or its config, an HTML
-    /// entry, a server-side web framework, or UI files in page directories.
+    /// entry, markup templates, or UI files in page directories.
     /// Nested apps in a monorepo are judged by running on their own folder.
     fn is_web(&self) -> bool {
         // A native app (React Native, Expo) is not a website.
         if self.dep("react-native") || self.dep("expo") {
+            return false;
+        }
+        // Rails API applications may still carry scaffolded HTML views.
+        static API_ONLY: OnceLock<Regex> = OnceLock::new();
+        if self.other_dep("Gemfile", "rails")
+            && self.read("config/application.rb").is_some_and(|t| {
+                re(&API_ONLY, r"\bconfig\.api_only\s*=\s*true\b")
+                    .is_match(&evidence_text("config/application.rb", &t))
+            })
+        {
             return false;
         }
         const APP_FRAMEWORKS: &[&str] = &[
@@ -674,16 +723,7 @@ impl Project {
         {
             return true;
         }
-        if self.other_dep("Gemfile", "rails")
-            || self.other_dep("Gemfile", "jekyll")
-            || self.other_dep("requirements.txt", "django")
-            || self.other_dep("pyproject.toml", "django")
-            || self.other_dep("requirements.txt", "flask")
-            || self.other_dep("pyproject.toml", "flask")
-            || self.other_dep("composer.json", "laravel/framework")
-            || self.hugo()
-            || self.jekyll()
-        {
+        if self.has_templates() || self.hugo() || self.jekyll() {
             return true;
         }
         self.any(|f| {
@@ -710,6 +750,9 @@ impl Project {
     // --- checks ---------------------------------------------------------
 
     fn ci_runs_tests(&self) -> Option<State> {
+        if self.notes_only() {
+            return None;
+        }
         static TEST: OnceLock<Regex> = OnceLock::new();
         static TRIGGER: OnceLock<Regex> = OnceLock::new();
         let test = re(
@@ -781,6 +824,12 @@ impl Project {
     }
 
     fn infrastructure_as_code(&self) -> Option<State> {
+        if self.notes_only() {
+            return None;
+        }
+        if self.dep("expo") || self.dep("react-native") {
+            return self.has("eas.json").then_some(State::Checked);
+        }
         let named = [
             "wrangler.toml",
             "wrangler.jsonc",
@@ -858,6 +907,9 @@ impl Project {
     }
 
     fn readme_runs(&self) -> Option<State> {
+        if self.notes_only() {
+            return None;
+        }
         Some(self.readme_runs_state())
     }
 
@@ -1679,9 +1731,16 @@ impl Project {
                     );
                 }
             }
+            let firebase = matches!(n, "google-services.json" | "GoogleService-Info.plist")
+                || ["authDomain", "firebaseapp.com", "messagingSenderId"]
+                    .iter()
+                    .any(|m| t.contains(m));
             for m in secrets_regex().find_iter(&t) {
                 line += t[at..m.start()].matches('\n').count();
                 at = m.start();
+                if firebase && m.as_str().starts_with("AIza") {
+                    continue;
+                }
                 // Redaction tests and docs use obvious stand-ins.
                 // (A private key's body has long fixed runs: never a stand-in.)
                 if !m.as_str().starts_with("-----") && is_placeholder(m.as_str()) {
@@ -2015,7 +2074,7 @@ fn is_placeholder(key: &str) -> bool {
 }
 
 /// Lines of an env file that hold a non-empty value under a secret-looking
-/// name (or a URL with a password), skipping names public by convention.
+/// name segment (or a URL with a password), skipping public names and stand-ins.
 /// Only line numbers leave this function, never names or values.
 fn secret_env_lines(text: &str) -> Vec<usize> {
     const PUBLIC: &[&str] = &[
@@ -2036,7 +2095,6 @@ fn secret_env_lines(text: &str) -> Vec<usize> {
         "PWD",
         "CREDENTIAL",
         "PRIVATE",
-        "DSN",
     ];
     static URL_PASSWORD: OnceLock<Regex> = OnceLock::new();
     let url_password = re(&URL_PASSWORD, r"://[^/\s:@]+:[^@\s]+@");
@@ -2052,14 +2110,36 @@ fn secret_env_lines(text: &str) -> Vec<usize> {
         };
         let name = name.trim().to_ascii_uppercase();
         let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
-        if value.is_empty() || PUBLIC.iter().any(|p| name.starts_with(p)) {
+        if env_placeholder(value) || PUBLIC.iter().any(|p| name.starts_with(p)) {
             continue;
         }
-        if SECRET.iter().any(|s| name.contains(s)) || url_password.is_match(value) {
+        let password = url_password.is_match(value);
+        let secret_name = name.split('_').any(|part| SECRET.contains(&part));
+        if password || (secret_name && !value.contains("://")) {
             out.push(i + 1);
         }
     }
     out
+}
+
+/// Environment examples and references are not literal credentials.
+fn env_placeholder(value: &str) -> bool {
+    static REFERENCE: OnceLock<Regex> = OnceLock::new();
+    let lower = value.to_ascii_lowercase();
+    value.is_empty()
+        || re(
+            &REFERENCE,
+            r"^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})$",
+        )
+        .is_match(value)
+        || matches!(
+            lower.as_str(),
+            "changeme" | "change-me" | "example" | "placeholder" | "todo" | "dummy" | "test"
+        )
+        || lower.starts_with("your-")
+        || lower.starts_with("your_")
+        || (lower.len() >= 3 && lower.bytes().all(|b| b == b'x'))
+        || (value.starts_with('<') && value.ends_with('>'))
 }
 
 /// The nearest folder at or above `root` that holds a `.git`.

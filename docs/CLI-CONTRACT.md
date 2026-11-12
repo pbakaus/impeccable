@@ -2300,8 +2300,9 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
   `reversible-migrations`; the checks are documented in that file.
   `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
-  `error-tracking` are sent only for a web project (an app framework or its config, an HTML entry, a server-side web
-  framework, or pages/routes UI files; never React Native or Expo), and `not-found-page`
+  `error-tracking` are sent only for a web project (an app framework or its config, an HTML entry, markup templates/served pages, or pages/routes UI files;
+  server dependencies alone do not count, and Rails `config.api_only = true`,
+  React Native and Expo are never web), and `not-found-page`
   only for a framework it knows; the framework comes from the root's own
   manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
   failure in a repository sends nothing) and each tracked text file whole,
@@ -2309,8 +2310,16 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   body; obvious placeholders with EXAMPLE, a six-character ascending run or
   six repeats don't count) and, in tracked env files other than
   `.env.example`/`.sample`/`.template`, a non-empty value under a
-  secret-looking name that isn't public by convention (`PUBLIC_`,
-  `NEXT_PUBLIC_`, `VITE_`, ...); neither a value nor a path ever leaves the
+  secret name segment separated by `_` (KEY, SECRET, TOKEN, PASSWORD,
+  PASSWD, PWD, CREDENTIAL, PRIVATE), or a URL carrying a password. DSN is
+  not a secret name segment; URLs without passwords do not count. Public
+  prefixes (`PUBLIC_`, `NEXT_PUBLIC_`, `VITE_`, ...), `$VAR`/`${VAR}`
+  references and placeholders (empty, changeme/change-me, your-/your_,
+  xxx, <...>, example, placeholder, todo, dummy, test) do not count.
+  Google API matches are skipped in Firebase client config (authDomain,
+  firebaseapp.com or messagingSenderId in the same file) and files named
+  google-services.json or GoogleService-Info.plist; other key formats still
+  count. Neither a value nor a path ever leaves the
   machine. Run on a folder inside a repository, `ci-runs-tests` and
   `dependency-scanning` also read the top's config, and `readme-runs` is
   sent only when the folder has its own README. Web items look where the
@@ -2323,13 +2332,13 @@ Project-file evidence for the affected items (comments do not count):
 
 | Item | Checked | Failing or omitted |
 |---|---|---|
-| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Missing CI, checkout/setup alone, or only recognised non-test commands (install, build, lint, format, typecheck, deploy, echo) fails. Any unclassified command sends nothing. |
+| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Notes-only repos send nothing. Missing CI, checkout/setup alone, or only recognised non-test commands (install, build, lint, format, typecheck, deploy, echo) fails. Any unclassified command sends nothing. |
 | `app-icons` | Favicon and large image files in known public folders, including icons/images subfolders, or local image links/manifest entries anywhere. | Missing either fails in a recognised web layout. Source components are not icons. |
 | `social-previews` | `og:image`, `twitter:image`, Nuxt `ogImage`, Next `openGraph.images` (including `generateMetadata`), or a share-image file. | No image fails; `twitter:card` alone is insufficient. |
 | `reduced-motion` | A real reduced-motion guard, or UI without detected motion. | Motion without a guard fails, including Web Animations, Svelte directives, Motion components and Tailwind animation classes. |
 | `design-tokens` | A project colour custom property defined and used through `var()`, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities, unused colour definitions and third-party variables do not supply evidence. |
-| `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Missing commands/scripts fails. Scaffolding and prose do not count. |
-| `infrastructure-as-code` | Hosting config in the project. | Missing config fails, except package libraries without app evidence send nothing. |
+| `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Notes-only repos send nothing. Missing commands/scripts fails otherwise. Scaffolding and prose do not count. |
+| `infrastructure-as-code` | Hosting config in the project; `eas.json` for Expo/React Native. | Notes-only repos, package libraries without app evidence and Expo/React Native without hosting config send nothing. Missing config fails otherwise. |
 
 
 
