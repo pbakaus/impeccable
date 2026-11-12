@@ -177,7 +177,7 @@
   createForm.hidden = true;
   $('persona-create').append(createButton, createForm);
 
-  const CREATE_WHY = { short: WORDS.createShort, limit: WORDS.createLimit, quota: WORDS.createQuota, scope: WORDS.createScope, unavailable: WORDS.createUnavailable };
+  const CREATE_WHY = { short: WORDS.createShort, quota: WORDS.createQuota, scope: WORDS.createScope, unavailable: WORDS.createUnavailable };
   /** The form in `state`: `working`, or why it did not (`empty`, `short`, `limit`, `quota`, `scope`, `unavailable`, `failed`). */
   function creatingState(state, text = '') {
     const working = state === 'working';
@@ -195,7 +195,7 @@
     createBox.value = description;
     creatingState('working', WORDS.creatingNote);
     const answer = await ask('create', { description });
-    if (!answer?.ok) { creatingState(answer?.why ?? 'failed', CREATE_WHY[answer?.why] ?? WORDS.createFailed); return; }
+    if (!answer?.ok) { creatingState(answer?.why ?? 'failed', answer?.why === 'limit' ? WORDS.createLimit(answer.max) : CREATE_WHY[answer?.why] ?? WORDS.createFailed); return; }
     createBox.value = '';
     createBox.disabled = false;
     createForm.dataset.state = 'done';

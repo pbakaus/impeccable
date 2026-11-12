@@ -363,7 +363,7 @@ async function personasTab(account) {
 for (const [label, typed, answer, state] of [
   ['empty', '  ', null, 'empty'],
   ['too short', 'Nurse', null, 'short'],
-  ['at the limit', 'A night-shift nurse.', { ok: false, why: 'limit' }, 'limit'],
+  ['at the limit', 'A night-shift nurse.', { ok: false, why: 'limit', max: 3 }, 'limit'],
   ['out of today’s quota', 'A night-shift nurse.', { ok: false, why: 'quota' }, 'quota'],
   ['signed in before creating could be asked for', 'A night-shift nurse.', { ok: false, why: 'scope' }, 'scope'],
   ['not available yet', 'A night-shift nurse.', { ok: false, why: 'unavailable' }, 'unavailable'],
@@ -379,6 +379,8 @@ for (const [label, typed, answer, state] of [
     assert.equal(form.dataset.state, state);
     assert.equal(h.messages.some((m) => m.account === 'create'), answer !== null, 'a description under eight characters is never sent');
     assert.equal(note.hidden, false, 'it says why');
+    // The limit is the server's, never the popup's own number.
+    if (answer?.max) assert.match(note.textContent, /three/);
   });
 }
 

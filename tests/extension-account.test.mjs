@@ -373,7 +373,7 @@ describe('account worker', () => {
     [400, { error: 'invalid', field: 'description' }, { ok: false, why: 'short' }],
     [403, { error: 'insufficient_scope' }, { ok: false, why: 'scope' }],
     [404, {}, { ok: false, why: 'unavailable' }],
-    [409, { error: 'limit', max: 5 }, { ok: false, why: 'limit' }],
+    [409, { error: 'limit', max: 3 }, { ok: false, why: 'limit', max: 3 }],
     [429, { error: 'quota', retryAt: 0 }, { ok: false, why: 'quota' }],
     [502, { error: 'draft' }, { ok: false, why: 'failed' }],
   ]) {

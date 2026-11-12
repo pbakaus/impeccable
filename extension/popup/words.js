@@ -44,7 +44,10 @@ globalThis.IMPECCABLE_WORDS = {
     creating: 'Creating…',
     creatingNote: 'This takes a few seconds. You can close this; they’ll be here when you’re back.',
     createShort: 'Describe them in a sentence or two.',
-    createLimit: 'You have five personas. Remove one to make another.',
+    /** `max`: how many the server keeps per person, as its answer says. */
+    createLimit: (max) => (Number.isInteger(max) && max > 0
+      ? `You have ${['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][max] ?? max} persona${max === 1 ? '' : 's'}. Remove one to make another.`
+      : 'You have all the personas you can. Remove one to make another.'),
     createQuota: 'That’s today’s personas. Try again tomorrow.',
     createScope: 'Sign in again to create personas.',
     createUnavailable: 'Creating personas isn’t available yet.',

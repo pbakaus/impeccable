@@ -258,7 +258,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     /**
      * Asks the server to make the person a persona of their own from `description`. The same `requestId` sent again
      * is answered with the persona it made, never a second. `{ ok: true, persona }`, or `{ ok: false, why }`: `short`,
-     * `scope` (signed in before personas could be created), `unavailable`, `limit`, `quota`, `failed`.
+     * `scope` (signed in before personas could be created), `unavailable`, `limit` (with the server's `max`), `quota`,
+     * `failed`.
      */
     async createPersona({ description, requestId }) {
       const answer = await call(issuer(), '/personas', { description, requestId }).catch(() => null);
@@ -266,6 +267,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (typeof made?.name === 'string' && SLUG.test(made.slug)) return { ok: true, persona: personaOf({ ...made, mine: true }) };
       if (answer?.status === 400 && answer.json?.field === 'description') return { ok: false, why: 'short' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      if (answer?.status === 409 && Number.isInteger(answer.json?.max)) return { ok: false, why: 'limit', max: answer.json.max };
       return { ok: false, why: CREATE_WHY[answer?.status] ?? 'failed' };
     },
 
@@ -285,6 +287,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       const answer = await call(issuer(), '/walks', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      if (answer?.status === 409 && Number.isInteger(answer.json?.max)) return { ok: false, why: 'limit', max: answer.json.max };
       const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
       return handoff && typeof handoff === 'object' ? { ok: true, handoff } : { ok: false, why: 'failed' };
     },
