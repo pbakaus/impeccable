@@ -322,7 +322,7 @@ export async function signInNow() {
 /** How long `open` waits for its page to answer before it says the tab is open anyway. */
 const OPEN_MS = 8000;
 
-/** The `open` under way, if one is: Stop marks it, and it closes the tab it made and starts no walk. */
+/** The `open` under way, if one is: Stop or `close` (the socket going calls it) marks it, and it starts no walk. */
 let opening = null;
 export function stopOpening() { if (opening) opening.stopped = true; }
 
@@ -569,7 +569,7 @@ async function adopt(name, allow) {
   const { tabId, site } = adopted;
   const me = { stopped: false };
   opening = me;
-  const still = () => { if (me.stopped) throw fail('Stopped', 'the person stopped this walk'); };
+  const still = () => { if (me.stopped) throw fail('Stopped', 'the walk ended before its tab opened'); };
   let attached = false;
   let grouped = false;
   try {
@@ -620,8 +620,8 @@ export const ops = {
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
-    // Stop pressed at any point from here: the walk never starts, and the tab made for it goes.
-    const still = () => { if (me.stopped) throw fail('Stopped', 'the person stopped this walk'); };
+    // Stopped or let go at any point from here: the walk never starts, and the tab made for it goes.
+    const still = () => { if (me.stopped) throw fail('Stopped', 'the walk ended before its tab opened'); };
     let tab = null;
     try {
       // In the hand-off's window if it is still there, else wherever Chrome puts a new tab.
@@ -805,6 +805,7 @@ export const ops = {
 
   // The debugger leaves; the tab stays as the walk left it.
   async close() {
+    stopOpening();
     const tab = walk;
     if (tab) tab.ending = true;
     if (tab) for (const hook of hooks.closing) { try { await hook(tab); } catch { /* the tab may be gone */ } }

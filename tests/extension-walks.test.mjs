@@ -528,9 +528,10 @@ describe('walk helper worker', () => {
     }
   });
 
-  // Last, as it ends the walk: Stop pressed while the walk's tab is still being opened ends the walk and closes it.
-  for (const step of ['create', 'attach']) {
-    it(`ends the walk and closes its tab when Stop comes as the tab is ${step === 'create' ? 'made' : 'taken'}`, async () => {
+  // Last, as it ends the walk: Stop, or the socket going (it closes the walk), while the walk's tab is still being
+  // opened ends the walk and closes it.
+  for (const [step, by] of [['create', 'stop'], ['attach', 'stop'], ['create', 'close'], ['attach', 'close']]) {
+    it(`ends the walk and closes its tab when ${by === 'stop' ? 'Stop' : 'the socket going'} comes as the tab is ${step === 'create' ? 'made' : 'taken'}`, async () => {
       const { ops, command, current, rearm, dispatch } = await walked();
       await ops.close();
       rearm();
@@ -547,10 +548,14 @@ describe('walk helper worker', () => {
       try {
         const opening = ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
         await settle(5);
-        assert.equal(await command('stop'), true);
+        if (by === 'stop') assert.equal(await command('stop'), true);
+        else await ops.close();
         go();
         await assert.rejects(opening, { name: 'Stopped' });
-        assert.deepEqual([removed, current().state], [[12], 'stopped']);
+        assert.deepEqual(removed, [12]);
+        if (by === 'stop') assert.equal(current().state, 'stopped');
+        // Ended here, so the walks below can start.
+        else dispatch({ type: 'stop' });
         if (step === 'create') assert.deepEqual(attached, [], 'the debugger never reaches it');
       } finally {
         Object.assign(chrome.tabs, { create, remove });
