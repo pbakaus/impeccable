@@ -287,7 +287,6 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       const answer = await call(issuer(), '/walks', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
-      if (answer?.status === 409 && Number.isInteger(answer.json?.max)) return { ok: false, why: 'limit', max: answer.json.max };
       const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
       return handoff && typeof handoff === 'object' ? { ok: true, handoff } : { ok: false, why: 'failed' };
     },

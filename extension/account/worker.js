@@ -2,7 +2,8 @@
 // is taken only when Chrome itself says it came from one of this extension's popup pages: never from a page, a
 // content script, another extension, or the walk's side panel. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
-// and how making or removing a persona went. A walk the person starts on their tab goes to the walk helper as the server's block and the tab's id alone.
+// and how making or removing a persona went. A walk the person starts on their tab goes to the walk helper as the
+// server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
 import { HELPER_ID } from '../shared/ids.js';
 import { helper, onboard } from '../onboarding/contact.js';

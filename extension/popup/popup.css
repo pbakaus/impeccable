@@ -447,17 +447,15 @@ body.has-tabs header {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 8px;
 }
 
-.create-form {
-  margin-top: 0;
+.walk-form {
+  margin-top: 8px;
 }
 
 .walk-form[hidden],
 .create-form[hidden],
-.persona-confirm[hidden],
-.persona-remove[hidden] {
+.persona-confirm[hidden] {
   display: none;
 }
 

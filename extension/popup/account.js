@@ -197,7 +197,6 @@
     const answer = await ask('create', { description });
     if (!answer?.ok) { creatingState(answer?.why ?? 'failed', answer?.why === 'limit' ? WORDS.createLimit(answer.max) : CREATE_WHY[answer?.why] ?? WORDS.createFailed); return; }
     createBox.value = '';
-    createBox.disabled = false;
     createForm.dataset.state = 'done';
     createForm.hidden = true;
     createButton.hidden = false;
