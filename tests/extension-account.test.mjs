@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import { CLIENT_ID, PRODUCTION, authorizeUrl, challengeFor, issuerAllowed, readCallback, readMetadata } from '../extension/account/flow.js';
 import { createSession } from '../extension/account/session.js';
-import { IDS } from '../extension/shared/ids.js';
 
 const ISSUER = PRODUCTION;
 const REDIRECT = 'https://ext.chromiumapp.org/callback';
@@ -245,17 +244,23 @@ describe('account session', () => {
 // The account worker on a stubbed Chrome: who it answers.
 describe('account worker', () => {
   const listeners = [];
-  /** What the walk helper answers main's hello with, and to whom main sent it; the tabs main opened. */
-  const helper = { answer: null, asked: [] };
+  /** The tabs the worker opened, and the side panels. */
   const opened = [];
+  const panels = [];
   const session = {};
+  const local = {};
+  const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
+  const none = { addListener() {} };
   globalThis.chrome = {
     runtime: {
-      id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({}), onMessage: { addListener: (listener) => listeners.push(listener) },
-      async sendMessage(id, message) { helper.asked.push({ id, message }); if (!helper.answer) throw new Error('no such extension'); return helper.answer; },
+      id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({}), onMessage: { addListener: (listener) => listeners.push(listener) }, onConnect: none,
+      async sendMessage() {},
     },
-    storage: { local: { async get() { return {}; }, async set() {} }, session: { async get(key) { return { [key]: session[key] }; }, async set(values) { Object.assign(session, values); } } },
-    tabs: { async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
+    storage: { local: area(local), session: area(session), sync: { async get(defaults) { return defaults; } } },
+    tabs: { onCreated: none, onUpdated: none, onRemoved: none, async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
+    debugger: { onEvent: none, onDetach: none },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    sidePanel: { async open(where) { panels.push(where); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
   const loaded = Promise.all([import('../extension/account/worker.js'), import('../extension/onboarding/contact.js')]);
@@ -280,22 +285,10 @@ describe('account worker', () => {
     assert.equal(answer.available, false);
   });
 
-  // Main's side of the walk helper's door: it asks the helper by its id, and only its own pages may ask it.
   const fromPopup = { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' };
-  for (const [answer, state] of [[{ ok: true, contract: 2, version: '1.4.0' }, 'ready'], [{ ok: true, contract: 1 }, 'old'], [null, 'missing']]) {
-    it(`calls the walk helper ${state}`, async () => {
-      await loaded;
-      helper.answer = answer;
-      assert.deepEqual(await ask({ walks: 'helper' }, fromPopup), { state });
-      assert.deepEqual(helper.asked.at(-1), { id: IDS.unpacked.helper, message: { walks: 'hello' } });
-    });
-  }
-
-  it('opens the onboarding once, the first time a walk starts without the helper', async () => {
+  it('opens the onboarding once, the first time a walk starts', async () => {
     await loaded;
-    helper.answer = null;
     const fromPage = { id: 'ext', frameId: 0, url: 'http://app.localhost/app/acme/outings/o1', tab: { id: 4, index: 2, windowId: 1 } };
-    for (const listener of listeners) listener({ walks: 'helper' }, fromPage, () => assert.fail('a page is answered'));
     for (let n = 0; n < 2; n += 1) for (const listener of listeners) listener({ walks: 'start' }, fromPage, () => undefined);
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.deepEqual(opened.map((tab) => [tab.url, tab.openerTabId]), [['chrome-extension://ext/onboarding/onboarding.html', 4]]);
@@ -323,7 +316,7 @@ describe('account worker', () => {
   const start = (tabId = 7) => ask({ account: 'walk', persona: { preset: 'ines' }, task: ' Read the top story. ', tabId }, fromPopup);
 
   for (const [label, walks, answer] of [
-    ['hands the server’s block and the tab to the helper, and nothing of the sign-in', () => json(201, { handoff: HANDOFF }), { ok: true, panel: true }],
+    ['hands the server’s block and the tab to the walk, and nothing of the sign-in', () => json(201, { handoff: HANDOFF }), { ok: true, panel: true }],
     ['says walks are not there yet when the door answers 404', () => json(404, {}), { ok: false, why: 'unavailable' }],
     ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
     ['hands nothing over for a socket off the server’s pair', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }],
@@ -331,35 +324,26 @@ describe('account worker', () => {
     it(`walks the person’s tab: ${label}`, async () => {
       await loaded;
       startServer(walks);
-      helper.answer = { ok: true, contract: 2, panel: true };
-      const before = helper.asked.length;
+      delete session.handoff;
       assert.deepEqual(await start(), answer);
       assert.deepEqual(posted.at(-1), { body: { persona: { preset: 'ines' }, task: 'Read the top story.', url: 'https://news.example.com/' }, auth: 'Bearer access-walk', method: 'POST' });
-      const walked = helper.asked.slice(before).filter((m) => m.message.walks === 'walk');
-      assert.deepEqual(walked, answer.ok ? [{ id: IDS.unpacked.helper, message: { walks: 'walk', handoff: JSON.stringify(HANDOFF), tabId: 7 } }] : []);
-      assert.equal(JSON.stringify(helper.asked).includes('access-walk') || JSON.stringify(helper.asked).includes('refresh-walk'), false, 'no token ever reaches the helper');
+      assert.deepEqual(panels.at(-1), { tabId: 7 });
+      assert.deepEqual(session.handoff ? [session.handoff.outing, session.handoff.adopt] : null, answer.ok ? ['o9', 7] : null);
+      assert.equal(JSON.stringify(session.handoff ?? {}).includes('access-walk') || JSON.stringify(session.handoff ?? {}).includes('refresh-walk'), false, 'no token ever reaches the walk');
     });
   }
 
-  for (const [label, tabId, helperAnswer, why] of [
-    ['a tab that is not a web page', 9, { ok: true, contract: 2 }, 'tab'],
-    ['no helper, opening its onboarding', 7, null, 'helper'],
-  ]) {
-    it(`starts no walk on ${label}`, async () => {
-      await loaded;
-      startServer(() => json(201, { handoff: HANDOFF }));
-      helper.answer = helperAnswer;
-      const [sent, tabs] = [posted.length, opened.length];
-      assert.deepEqual(await start(tabId), { ok: false, why });
-      assert.equal(posted.length, sent, 'the server is not asked');
-      assert.equal(opened.length - tabs, why === 'helper' ? 1 : 0);
-    });
-  }
+  it('starts no walk on a tab that is not a web page', async () => {
+    await loaded;
+    startServer(() => json(201, { handoff: HANDOFF }));
+    const sent = posted.length;
+    assert.deepEqual(await start(9), { ok: false, why: 'tab' });
+    assert.equal(posted.length, sent, 'the server is not asked');
+  });
 
   it('starts a walk with one of the person’s own personas as `mine`, never `own`', async () => {
     await loaded;
     startServer(() => json(201, { handoff: HANDOFF }));
-    helper.answer = { ok: true, contract: 2, panel: true };
     await ask({ account: 'walk', persona: { mine: 'night-nurse' }, task: 'Read the top story.', tabId: 7 }, fromPopup);
     assert.deepEqual(posted.at(-1).body.persona, { mine: 'night-nurse' });
   });

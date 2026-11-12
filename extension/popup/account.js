@@ -2,8 +2,8 @@
  * Impeccable extension popup: the account.
  *
  * Tabs along the top of the popup: Scan (the detector, popup.js, as it always was), Personas (only when signed in)
- * and Settings, the cog at the row's right end (who is signed in, Sign out, the walk helper). Signed out, one button
- * under every tab signs in. It asks the background worker (account/worker.js, onboarding/contact.js) and holds no
+ * and Settings, the cog at the row's right end (who is signed in, Sign out). Signed out, one button
+ * under every tab signs in. It asks the background worker (account/worker.js) and holds no
  * token itself. The tabs show when the account server takes extension sign-ins, and always in a build loaded
  * unpacked, so its screens can be seen before the server is there; Sign in then says it is not available yet.
  * Otherwise, or in a browser with no `chrome.identity` (Firefox shares this page), the popup is the detector alone,
@@ -210,7 +210,7 @@
     void create(description);
   });
 
-  const WHY = { unavailable: WORDS.walkUnavailable, scope: WORDS.walkScope, helper: WORDS.walkHelper, tab: WORDS.walkTab };
+  const WHY = { unavailable: WORDS.walkUnavailable, scope: WORDS.walkScope, tab: WORDS.walkTab };
   form.addEventListener('submit', async (event) => {
     event.preventDefault?.();
     const task = taskBox.value.trim();
@@ -247,18 +247,6 @@
     select(selected);
   }
 
-  /** The walk helper's row in Settings: added, or a button to the onboarding that adds or updates it. */
-  async function helper() {
-    const answer = await send({ walks: 'helper' });
-    if (!answer) return;
-    const row = $('helper-row');
-    row.dataset.state = answer.state;
-    $('helper-state').textContent = { ready: WORDS.helperReady, old: WORDS.helperOld }[answer.state] ?? WORDS.helperMissing;
-    $('btn-helper').textContent = answer.state === 'old' ? WORDS.helperUpdate : WORDS.helperAdd;
-    $('btn-helper').hidden = answer.state === 'ready';
-    row.hidden = false;
-  }
-
   function note(text) {
     $('account-error').textContent = text;
     $('account-error').hidden = text === '';
@@ -290,13 +278,6 @@
     if (answer?.ok) { loadedPersonas = false; draw(answer); }
   });
 
-  // Closed only once the tab is asked for: a popup that closes first takes the request with it.
-  $('btn-helper').addEventListener('click', () => {
-    chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/onboarding.html') }).finally(() => window.close());
-  });
-
-  $('helper-label').textContent = WORDS.helper;
   $('btn-sign-in').textContent = WORDS.signIn;
   void ask('status').then(draw);
-  void helper();
 })();

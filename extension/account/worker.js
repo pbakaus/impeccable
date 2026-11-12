@@ -2,11 +2,11 @@
 // is taken only when Chrome itself says it came from one of this extension's popup pages: never from a page, a
 // content script, another extension, or the walk's side panel. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
-// and how making or removing a persona went. A walk the person starts on their tab goes to the walk helper as the
-// server's block and the tab's id alone.
+// and how making or removing a persona went. A walk the person starts on their tab goes to the walks (walks/link.js)
+// as the server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
-import { HELPER_ID } from '../shared/ids.js';
-import { helper, onboard } from '../onboarding/contact.js';
+import { adopt } from '../walks/link.js';
+import { firstWalk } from '../onboarding/contact.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
@@ -41,7 +41,7 @@ async function status() {
   return me ? { ok: true, available: true, signedIn: true, email: me.email, ...server } : { ok: true, available: true, signedIn: await session.signedIn(), ...server };
 }
 
-/** The socket's origin for a walk the account server `at` starts: its fixed pair, as the helper holds it too. */
+/** The socket's origin for a walk the account server `at` starts: its fixed pair, as walks/handoff.js holds it too. */
 function socketOf(at) {
   const url = new URL(at);
   if (url.hostname === 'api.localhost') return `ws://localhost${url.port ? `:${url.port}` : ''}`;
@@ -53,24 +53,25 @@ const PRESETS = ['ines', 'kofi', 'priya', 'tomasz', 'hana', 'noor'];
 const TASK_MAX = 2000;
 
 /**
- * A walk of the tab the person is on: the tab must be a web page, the helper here (else its onboarding opens), and
- * then the server is asked. What the server answers goes to the helper; the popup hears only how it went.
+ * A walk of the tab the person is on: the tab must be a web page, and then the server is asked. What the server
+ * answers goes to the walks; the popup hears only how it went. `panel`: whether the side panel opened on the click.
  */
-async function walk({ persona, task, tabId }) {
+async function walk({ persona, task, tabId }, panel = Promise.resolve(false)) {
   const kind = ['own', 'mine'].find((key) => typeof persona?.[key] === 'string' && persona[key]);
   const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind] } : null;
   const goal = typeof task === 'string' ? task.trim() : '';
   if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { ok: false, why: 'failed' };
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (!/^https?:\/\//.test(tab?.url ?? '') || tab.url.length > 2048) return { ok: false, why: 'tab' };
-  if ((await helper()) !== 'ready') { await onboard(tab).catch(() => undefined); return { ok: false, why: 'helper' }; }
   const at = issuer;
   const started = await session.startWalk({ persona: ref, task: goal, url: tab.url });
   if (!started.ok) return started;
   const socket = socketOf(at);
   if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };
-  const taken = await chrome.runtime.sendMessage(HELPER_ID, { walks: 'walk', handoff: JSON.stringify(started.handoff), tabId }).catch(() => null);
-  return taken?.ok ? { ok: true, panel: taken.panel === true } : { ok: false, why: 'failed' };
+  const taken = await adopt(JSON.stringify(started.handoff), tabId).catch(() => null);
+  if (!taken?.ok) return { ok: false, why: 'failed' };
+  void firstWalk(tab).catch(() => undefined);
+  return { ok: true, panel: await panel };
 }
 
 /**
@@ -127,6 +128,12 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.account !== 'string') return false;
   if (!fromPopup(sender)) { respond({ ok: false, why: 'sender' }); return false; }
   if (!Object.hasOwn(ANSWERS, message.account)) { respond({ ok: false, why: 'unknown' }); return false; }
+  // At once, while Chrome still counts the popup's click: whether the side panel opened is said in the answer.
+  if (message.account === 'walk' && Number.isInteger(message.tabId)) {
+    const panel = chrome.sidePanel.open({ tabId: message.tabId }).then(() => true, () => false);
+    void chosen.then(() => walk(message, panel)).then(respond, () => respond({ ok: false, why: 'failed' }));
+    return true;
+  }
   // Every answer is for the server chosen, once it is known: a worker Chrome just started reads it first.
   void chosen.then(() => ANSWERS[message.account](message)).then(respond, () => respond({ ok: false, why: 'failed' }));
   return true;

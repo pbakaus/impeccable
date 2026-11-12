@@ -262,33 +262,8 @@ body.has-tabs header {
   border-top: 1px solid var(--ks-rule);
 }
 
-.sign-in[hidden],
-.helper-row[hidden],
-.helper-row .btn[hidden] {
+.sign-in[hidden] {
   display: none;
-}
-
-.helper-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.helper-state {
-  color: var(--ks-ink);
-  font-weight: 500;
-}
-
-.helper-row[data-state="ready"] .helper-state::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin: 0 6px 1px 0;
-  border-radius: 50%;
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
 }
 
 .account-panel {

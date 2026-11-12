@@ -10,6 +10,11 @@
     "storage",
     "webNavigation",
     "offscreen",
+    "debugger",
+    "tabs",
+    "tabGroups",
+    "sidePanel",
+    "downloads",
     "identity"
   ],
   "host_permissions": [
@@ -23,6 +28,9 @@
     "type": "module"
   },
   "devtools_page": "devtools/devtools.html",
+  "side_panel": {
+    "default_path": "walks/panel/panel.html"
+  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -37,12 +45,41 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "externally_connectable": {
-    "ids": [
-      "ohahfjdkphinllkplmjhinlojjflpkkl"
-    ]
-  },
   "content_scripts": [
+    {
+      "matches": [
+        "https://impeccable.reviews/app/*/outings/*",
+        "https://app.impeccable.style/app/*/outings/*",
+        "https://staging.impeccable.reviews/app/*/outings/*",
+        "https://app.staging.impeccable.style/app/*/outings/*",
+        "http://localhost/app/*/outings/*",
+        "http://app.localhost/app/*/outings/*"
+      ],
+      "js": [
+        "walks/handoff-content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://impeccable.reviews/app/*/outings/*",
+        "https://app.impeccable.style/app/*/outings/*",
+        "https://staging.impeccable.reviews/app/*/outings/*",
+        "https://app.staging.impeccable.style/app/*/outings/*",
+        "http://localhost/app/*/outings/*",
+        "http://app.localhost/app/*/outings/*",
+        "https://impeccable.reviews/app/cli/authorize*",
+        "https://app.impeccable.style/app/cli/authorize*",
+        "https://staging.impeccable.reviews/app/cli/authorize*",
+        "https://app.staging.impeccable.style/app/cli/authorize*",
+        "http://localhost/app/cli/authorize*",
+        "http://app.localhost/app/cli/authorize*"
+      ],
+      "js": [
+        "walks/present.js"
+      ],
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "https://impeccable.reviews/app/*/outings/*",

@@ -33,7 +33,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
     ...props,
   });
   // The page as popup.html marks it up: everything account.js finds hidden at first is hidden.
-  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error', 'sign-in', 'helper-row'];
+  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error', 'sign-in'];
   const node = id => {
     if (!nodes.has(id)) nodes.set(id, element({ id, disabled: id === 'btn-copy-all', hidden: HIDDEN.includes(id) }));
     return nodes.get(id);
@@ -63,7 +63,6 @@ async function popup({ initial = state(), deferState = false, account, root = SO
           messages.push(message);
           // An answer may be worked out from the message, and come later.
           if (message.account) { const answer = account[message.account]; void Promise.resolve(typeof answer === 'function' ? answer(message) : answer ?? { ok: false }).then(callback); return; }
-          if (message.walks) { callback(account?.walks ?? null); return; }
           if (message.action === 'get-state') {
             if (deferState) h.deliverState = callback;
             else callback(initial);
@@ -296,14 +295,6 @@ for (const [label, status, asks] of [
     await h.click('btn-sign-in');
     assert.equal(h.messages.some((m) => m.account === 'sign-in'), asks);
     assert.equal(h.node('account-error').hidden, false, 'it says why nothing happened');
-  });
-}
-
-for (const [state, button] of [['ready', true], ['missing', false], ['old', false]]) {
-  test(`Settings shows the walk helper ${state}`, async () => {
-    const h = await popup({ account: { status: { ok: true, available: true, signedIn: false }, walks: { state } } });
-    await tick();
-    assert.deepEqual([h.node('helper-row').hidden, h.node('helper-row').dataset.state, h.node('btn-helper').hidden], [false, state, button]);
   });
 }
 

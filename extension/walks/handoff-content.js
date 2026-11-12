@@ -1,4 +1,4 @@
-// Runs only on our own app's page for an outing (the helper's `content_scripts`, scripts/lib/extension-manifests.js). It reads the page's hand-off
+// Runs only on our own app's page for an outing (manifest.json `content_scripts`). It reads the page's hand-off
 // block and passes its text to the worker, which checks where it came from and every field of it (handoff.js). It
 // listens to nothing the page's script can send: no window messages, no custom events.
 (() => {

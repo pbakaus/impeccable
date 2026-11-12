@@ -10,16 +10,11 @@
  * 2. Checks that every path the manifest and the service worker reference
  *    exists in extension/.
  * 3. Packages, from the one source (scripts/lib/extension-manifests.js):
- *    - extension.zip: main, "Impeccable", for the Chrome Web Store. The
- *      detector exactly as published: no account, no onboarding, no new
- *      permission. Unpacked, main is extension/ itself.
- *    - extension-walks.zip: the walk helper, "Impeccable Walks", for the
- *      Chrome Web Store: walks/ and the permissions that drive a tab, held to
- *      the web app's production hosts and refusing staging and this machine's
- *      hosts in code (extension/shared/build.js). Unpacked, with all of it on,
- *      it is staged at dist/extension-walks/.
- *    - extension-firefox.zip: main's detector for AMO. Firefox cannot drive a
- *      tab through the debugger, so it has no walks and no helper.
+ *    - extension.zip: "Impeccable" for the Chrome Web Store: the detector and
+ *      walks, held to the web app's production hosts, with the account and the
+ *      first-walk onboarding left out. Unpacked, it is extension/ itself.
+ *    - extension-firefox.zip: the detector for AMO. Firefox cannot drive a
+ *      tab through the debugger, so it has no walks.
  *
  * The Firefox manifest declares the detector's background worker as an
  * event-page `scripts` entry (the universally-supported path on Gecko), and
@@ -39,7 +34,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DETECTOR_WORKER, moduleReferences, stageFirefox, stageHelper, stageStore } from './lib/extension-manifests.js';
+import { DETECTOR_WORKER, moduleReferences, stageFirefox, stageStore } from './lib/extension-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -126,7 +121,7 @@ function checkReferences(dir, manifest, label) {
   const swSource = fs.readFileSync(path.join(EXT_DIR, DETECTOR_WORKER), 'utf-8');
   const declared = manifestReferences(manifest);
   const loaded = background && manifest.background?.type === 'module' ? moduleReferences(dir, background) : [];
-  // The detector's worker opens and injects its files by path; the walk helper does not load it.
+  // The detector's worker opens and injects its files by path.
   const detector = [...declared, ...loaded].includes(DETECTOR_WORKER) ? serviceWorkerReferences(swSource) : [];
   const referenced = [...new Set([...declared, ...loaded, ...detector])];
   const missingRefs = referenced.filter((rel) => !fs.existsSync(path.join(dir, rel)));
@@ -158,7 +153,7 @@ function packZip(zipPath, cwd, excludes = []) {
   console.log(`Packaged ${path.relative(ROOT, zipPath)} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-// --- 3a. Chrome store zips: main and the walk helper ---
+// --- 3a. The Chrome store zip ---
 
 const chromeStageDir = path.join(DIST, 'extension-chrome');
 const chromeStoreManifest = stageStore(EXT_DIR, chromeStageDir);
@@ -166,18 +161,7 @@ console.log(`Staged ${path.relative(ROOT, chromeStageDir)}/ (Chrome store manife
 checkReferences(chromeStageDir, chromeStoreManifest, `${path.relative(ROOT, chromeStageDir)}/`);
 packZip(path.join(DIST, 'extension.zip'), chromeStageDir, ['*.DS_Store']);
 
-const walksStoreDir = path.join(DIST, 'extension-walks-store');
-const walksStoreManifest = stageHelper(EXT_DIR, walksStoreDir, { store: true });
-checkReferences(walksStoreDir, walksStoreManifest, `${path.relative(ROOT, walksStoreDir)}/`);
-packZip(path.join(DIST, 'extension-walks.zip'), walksStoreDir, ['*.DS_Store']);
-
-// --- 3b. The walk helper unpacked, for Load unpacked beside extension/ ---
-
-const walksDir = path.join(DIST, 'extension-walks');
-checkReferences(walksDir, stageHelper(EXT_DIR, walksDir), `${path.relative(ROOT, walksDir)}/`);
-console.log(`Staged ${path.relative(ROOT, walksDir)}/ (the walk helper, to load unpacked)`);
-
-// --- 3c. Firefox: stage an unpacked build (consumed by `web-ext lint` in CI),
+// --- 3b. Firefox: stage an unpacked build (consumed by `web-ext lint` in CI),
 // then zip it for AMO. ---
 
 const ffStageDir = path.join(DIST, 'extension-firefox');

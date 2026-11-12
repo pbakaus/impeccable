@@ -1,7 +1,6 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -10,8 +9,7 @@ import vm from 'node:vm';
 import { readHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
-import { HELPER_KEY, START_PAGES, WALK_PERMISSIONS, firefoxManifest, helperManifest, isStoreFile, moduleReferences, stageHelper, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
-import { IDS } from '../extension/shared/ids.js';
+import { WALK_PERMISSIONS, firefoxManifest, isStoreFile, moduleReferences, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8'));
@@ -23,7 +21,6 @@ const stageOnce = (name, make) => () => (staged[name] ??= (() => {
   return root;
 })());
 const STORE = stageOnce('main', stageStore);
-const HELPER_STORE = stageOnce('helper', (from, to) => stageHelper(from, to, { store: true }));
 after(() => { for (const root of Object.values(staged)) rmSync(path.dirname(root), { recursive: true, force: true }); });
 
 const PAGE = 'https://app.impeccable.style/app/acme/outings/o1';
@@ -72,7 +69,7 @@ describe('walk hand-off', () => {
     ['this machine without the app host', 'http://localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket'],
   ]) {
     it(`takes a hand-off from ${label} in the build loaded unpacked${label === 'production' ? ' and the store build' : ', not the store build'}`, async () => {
-      const store = await import(pathToFileURL(path.join(HELPER_STORE(), 'walks/handoff.js')).href);
+      const store = await import(pathToFileURL(path.join(STORE(), 'walks/handoff.js')).href);
       const text = JSON.stringify(block({ socket }));
       assert.deepEqual([readHandoff(text, page).ok, store.readHandoff(text, page).ok], [true, label === 'production']);
     });
@@ -212,7 +209,7 @@ describe('walk mark on our pages', () => {
 });
 
 // The real Chrome worker (detector, then walks) on a stubbed browser: both halves share one set of listeners.
-describe('walk helper worker', () => {
+describe('walk worker', () => {
   const listeners = {};
   const event = (name) => ({ addListener(callback) { (listeners[name] ??= []).push(callback); } });
   const area = () => {
@@ -229,31 +226,16 @@ describe('walk helper worker', () => {
   const titles = [];
   globalThis.chrome = {
     runtime: {
-      id: 'ext', onMessage: event('message'), onMessageExternal: event('external'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
-      getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => helperManifest(MANIFEST),
+      id: 'ext', onMessage: event('message'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
+      getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => MANIFEST,
     },
-    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle({ title }) { titles.push(title); } },
+    action: { async setPopup({ popup }) { toolbar.push({ popup }); }, async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle({ title }) { titles.push(title); } },
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
   };
   const loaded = import('../extension/walks/worker.js');
-
-  // The one message that crosses between the two extensions; nothing else, from anyone else, is answered.
-  for (const [label, message, id, answered] of [
-    ['main’s hello', { walks: 'hello' }, IDS.unpacked.main, true],
-    ['another extension’s hello', { walks: 'hello' }, 'other', false],
-    ['main asking for more', { walks: 'hello', token: 'x' }, IDS.unpacked.main, false],
-    ['main asking anything else', { walks: 'open' }, IDS.unpacked.main, false],
-  ]) {
-    it(`answers ${label}: ${answered}`, async () => {
-      await loaded;
-      const answers = [];
-      for (const listener of listeners.external) listener(message, { id }, (answer) => answers.push(answer));
-      assert.deepEqual(answers, answered ? [{ ok: true, contract: 2, version: MANIFEST.version }] : []);
-    });
-  }
 
   const handOver = (sender) => new Promise((resolve) => {
     for (const listener of listeners.message) listener({ handoff: JSON.stringify(block()) }, sender, resolve);
@@ -278,11 +260,11 @@ describe('walk helper worker', () => {
     assert.deepEqual({ url, protocols }, { url: block().socket, protocols: ['impeccable-outing', block().ticket] });
   });
 
-  it('points the toolbar icon at the walk panel, walk or not', async () => {
+  it('points the toolbar icon at the walk panel while a walk is under way, and back at the popup after', async () => {
     await loaded;
     // The server calls the walk off.
     sockets.at(-1).onclose({ reason: 'cancelled' });
-    assert.deepEqual(toolbar, [{ openPanelOnActionClick: true }]);
+    assert.deepEqual(toolbar.slice(-4), [{ popup: '' }, { openPanelOnActionClick: true }, { popup: MANIFEST.action.default_popup }, { openPanelOnActionClick: false }]);
   });
 
   it('ends a walk the server switched off as failed, said once in the panel and the toolbar', async () => {
@@ -426,7 +408,7 @@ describe('walk helper worker', () => {
       page.seen = {};
       assert.equal(await command('resume'), true);
       await asked;
-      assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, helperManifest(MANIFEST).action.default_title]);
+      assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
 
@@ -584,13 +566,10 @@ describe('walk helper worker', () => {
     });
   }
 
-  // A walk of the person's own tab, handed over by main: after the walks above, as it takes the one walk there is.
+  // A walk of the person's own tab, handed over by the account worker: after the walks above, as it takes the one walk there is.
   const SHOP = 'https://shop.example.com';
   const started = (over = {}) => JSON.stringify(block({ socket: 'wss://impeccable.reviews/api/outings/o1/socket', url: `${SHOP}/cart`, ...over }));
-  const fromMain = (message, id = IDS.unpacked.main) => new Promise((resolve) => {
-    let answered = false;
-    for (const listener of listeners.external) if (listener(message, { id }, (answer) => { answered = true; resolve(answer); }) !== true && !answered) resolve(null);
-  });
+  const fromMain = async ({ handoff, tabId }) => (await import('../extension/walks/link.js')).adopt(handoff, tabId);
   const tabs = { made: [], removed: [], ungrouped: [], groupId: -1, url: `${SHOP}/cart` };
   // The person's history in the tab: a page of the same site from before the walk, then where it starts.
   const history = { currentIndex: 1, entries: [{ id: 1, url: `${SHOP}/before` }, { id: 2, url: `${SHOP}/cart` }] };
@@ -607,16 +586,6 @@ describe('walk helper worker', () => {
     });
     return walk;
   })());
-
-  for (const [label, message, id] of [
-    ['another extension', { walks: 'walk', handoff: started(), tabId: 21 }, 'other'],
-    ['main with a field too many', { walks: 'walk', handoff: started(), tabId: 21, token: 'x' }, IDS.unpacked.main],
-  ]) {
-    it(`takes no walk of a tab from ${label}`, async () => {
-      await ownTab();
-      assert.equal(await fromMain(message, id), null);
-    });
-  }
 
   for (const [label, handoff, why] of [
     ['a socket on another host', started({ socket: 'wss://example.com/api/outings/o1/socket' }), 'socket'],
@@ -923,74 +892,44 @@ describe('walk glow', () => {
 describe('derived extension manifests', () => {
   const files = (folder) => [folder, ...readdirSync(path.join(ROOT, 'extension', folder), { recursive: true }).map((file) => `${folder}/${file}`)];
 
-  // Firefox ships main's store files (stageFirefox).
   it('leaves walks, the account and the onboarding out of Firefox', () => {
     const firefox = firefoxManifest(MANIFEST);
     assert.deepEqual(firefox.permissions.filter((permission) => [...WALK_PERMISSIONS, 'identity'].includes(permission)), []);
     for (const key of ['side_panel', 'content_scripts', 'externally_connectable', 'key']) assert.equal(key in firefox, false, key);
-    assert.deepEqual(['walks', 'account', 'onboarding'].flatMap(files).filter((file) => isStoreFile(file)), []);
-    assert.deepEqual([MANIFEST.background.service_worker, 'background/service-worker.js'].map((file) => isStoreFile(file)), [false, true]);
   });
 
-  it('gives the helper every walk permission and file, and main none of them', () => {
-    const helper = helperManifest(MANIFEST);
-    assert.deepEqual(WALK_PERMISSIONS.filter((permission) => !helper.permissions.includes(permission)), []);
-    for (const main of [MANIFEST, storeManifest(MANIFEST)]) {
-      assert.deepEqual(main.permissions.filter((permission) => WALK_PERMISSIONS.includes(permission)), []);
-      assert.equal(JSON.stringify(main).includes('walks/'), false);
-    }
-    const root = HELPER_STORE();
-    const shipped = readdirSync(root, { recursive: true });
-    assert.deepEqual(files('walks').filter((file) => !shipped.includes(file)), [], 'every walk file');
-    assert.deepEqual(shipped.filter((file) => /^(account|onboarding|popup|devtools|detector|content|offscreen|background)\b/.test(file)), [], 'nothing of main');
-    assert.deepEqual(moduleReferences(root, helper.background.service_worker).filter((file) => !existsSync(path.join(root, file))), []);
-    assert.deepEqual(helper.content_scripts.flatMap((entry) => entry.js).sort(), ['walks/handoff-content.js', 'walks/present.js']);
-  });
-
-  it('holds the store helper to production hosts and its switches off, and the unpacked one to neither', () => {
-    const store = JSON.parse(readFileSync(path.join(HELPER_STORE(), 'manifest.json'), 'utf8'));
-    const matches = store.content_scripts.flatMap((entry) => entry.matches);
-    assert.ok(matches.length > 0);
-    assert.deepEqual(matches.filter((match) => /staging|localhost/.test(match)), []);
-    assert.equal('key' in store, false);
-    assert.match(readFileSync(path.join(HELPER_STORE(), 'shared/build.js'), 'utf8'), /account: false, devHosts: false/);
-    assert.ok(helperManifest(MANIFEST).content_scripts.some((entry) => entry.matches.some((match) => match.includes('localhost'))));
-  });
-
-  it('leaves the account and the onboarding out of main’s store build, and keeps them in the one loaded unpacked', () => {
+  it('ships walks in the store build, held to production hosts with its switches off, and the account and the onboarding out', () => {
     const store = STORE();
-    const loads = (root, manifest) => moduleReferences(root, manifest.background.service_worker);
-    assert.deepEqual(readdirSync(store, { recursive: true }).filter((file) => /^(account|onboarding|walks)\b|popup\/(account|words)\.js$/.test(file)), []);
     const manifest = JSON.parse(readFileSync(path.join(store, 'manifest.json'), 'utf8'));
-    assert.deepEqual(loads(store, manifest).filter((file) => !existsSync(path.join(store, file))), []);
+    const shipped = readdirSync(store, { recursive: true });
+    assert.deepEqual(files('walks').filter((file) => !shipped.includes(file)), [], 'every walk file');
+    assert.deepEqual(shipped.filter((file) => /^(account|onboarding)\b|popup\/(account|words)\.js$/.test(file)), []);
+    assert.deepEqual(['account', 'onboarding'].flatMap(files).filter((file) => isStoreFile(file)), []);
+    assert.deepEqual(moduleReferences(store, manifest.background.service_worker).filter((file) => !existsSync(path.join(store, file))), []);
+    assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js).sort(), ['walks/handoff-content.js', 'walks/present.js']);
+    const matches = manifest.content_scripts.flatMap((entry) => entry.matches);
+    assert.deepEqual(matches.filter((match) => /staging|localhost/.test(match)), []);
+    assert.equal('key' in manifest, false);
+    assert.match(readFileSync(path.join(store, 'shared/build.js'), 'utf8'), /account: false, devHosts: false/);
     assert.doesNotMatch(readFileSync(path.join(store, 'popup/popup.html'), 'utf8'), /account\.js|words\.js/);
-    assert.deepEqual(['account/worker.js', 'onboarding/contact.js'].filter((file) => !loads(path.join(ROOT, 'extension'), MANIFEST).includes(file)), []);
-  });
-
-  // Each lets only the other in, by the id Chrome gives it: from its key when loaded unpacked, the store's otherwise.
-  it('names each extension’s id on the other side, and each key gives the unpacked id', () => {
-    const idOf = (key) => createHash('sha256').update(Buffer.from(key, 'base64')).digest('hex').slice(0, 32).replace(/./g, (h) => String.fromCharCode(97 + parseInt(h, 16)));
-    assert.deepEqual([idOf(MANIFEST.key), idOf(HELPER_KEY)], [IDS.unpacked.main, IDS.unpacked.helper]);
-    assert.deepEqual(MANIFEST.externally_connectable, { ids: [IDS.unpacked.helper] });
-    assert.deepEqual(helperManifest(MANIFEST).externally_connectable, { ids: [IDS.unpacked.main] });
-    assert.deepEqual(helperManifest(MANIFEST, { store: true }).externally_connectable, { ids: [IDS.store.main] });
-    assert.deepEqual(MANIFEST.content_scripts.flatMap((entry) => entry.matches), START_PAGES, 'main’s onboarding runs where the helper marks the page');
+    assert.deepEqual(['account/worker.js', 'onboarding/contact.js', 'walks/worker.js'].filter((file) => !moduleReferences(path.join(ROOT, 'extension'), MANIFEST.background.service_worker).includes(file)), []);
   });
 });
 
 // Chrome's permission warnings (developer.chrome.com, "Permissions list" and "Permission warning guidelines"): the
 // permissions below show none. Any other permission, and any host, counts as one. An update that adds a warning
-// switches the extension off until the person accepts it, so main's must stay those of the version people have.
-describe('main extension install warnings', () => {
+// switches the extension off until the person accepts it: walks add the four of driving a tab, and nothing else.
+describe('extension install warnings', () => {
   const SILENT = ['activeTab', 'alarms', 'identity', 'offscreen', 'scripting', 'sidePanel', 'storage'];
   /** As published in 1.4.0, the version people have installed. */
   const PUBLISHED = { permissions: ['activeTab', 'scripting', 'storage', 'webNavigation', 'offscreen'], host_permissions: ['<all_urls>'] };
   const warned = (manifest) => manifest.permissions.filter((permission) => !SILENT.includes(permission)).sort();
   const hosts = (manifest) => [...(manifest.host_permissions ?? []), ...(manifest.content_scripts ?? []).flatMap((entry) => entry.matches)];
 
+  const GAINED = ['debugger', 'downloads', 'tabGroups', 'tabs'];
   for (const [label, manifest] of [['loaded unpacked', MANIFEST], ['the store build', storeManifest(MANIFEST)]]) {
-    it(`asks for no warning 1.4.0 did not: ${label}`, () => {
-      assert.deepEqual(warned(manifest), warned(PUBLISHED));
+    it(`asks for no warning 1.4.0 did not but walks': ${label}`, () => {
+      assert.deepEqual(warned(manifest), [...warned(PUBLISHED), ...GAINED].sort());
       // 1.4.0 has every site, so any content script's pages are already in its warning.
       assert.ok(hosts(PUBLISHED).includes('<all_urls>') || hosts(manifest).every((host) => hosts(PUBLISHED).includes(host)));
       assert.deepEqual(manifest.host_permissions, PUBLISHED.host_permissions);

@@ -213,10 +213,11 @@ hooks.said.push((message) => {
   if (message.event === 'blocked') dispatch({ type: 'blocked', what: message.what, url: message.url });
 });
 
-// The side panel is one of this extension's own pages; a content script's word is not taken for a control.
+// Only the side panel controls a walk: not a content script, nor any other page of this extension.
+const PANEL = chrome.runtime.getURL('walks/panel/');
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.control !== 'string') return false;
-  if (sender.id !== chrome.runtime.id || sender.origin !== self.location.origin) return false;
+  if (sender.id !== chrome.runtime.id || sender.origin !== self.location.origin || !sender.url?.startsWith(PANEL)) return false;
   void command(message.control).then((ok) => respond({ ok }));
   return true;
 });

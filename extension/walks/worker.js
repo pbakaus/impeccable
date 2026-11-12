@@ -8,7 +8,7 @@ const PROTOCOL = 2;
 const SUBPROTOCOL = 'impeccable-outing';
 /** The most text one socket message carries, in UTF-16 code units (the walk protocol's part size): the hub takes about 1 MiB a message. */
 const PART_CHARS = 256 * 1024;
-/** What this helper can do beyond the protocol: walk the person's own tab, ask the person before a deed, and go to another site on their Yes. */
+/** What this extension can do beyond the protocol: walk the person's own tab, ask the person before a deed, and go to another site on their Yes. */
 const CAN = ['tab', 'ask', 'go'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */
 const BOOT = crypto.randomUUID();
@@ -47,7 +47,6 @@ import { needsNoTab } from './control.js';
 import { dial, linked, unlinked, whereTo } from './link.js';
 import { isStartPage } from './handoff.js';
 import './toolbar.js';
-import './contact.js';
 
 // What the driver tells of the tab goes out the way a reply does.
 speak((message) => say(message));
