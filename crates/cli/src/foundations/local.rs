@@ -249,7 +249,13 @@ const STYLE_EXTS: &[&str] = &[
 ];
 const PAGE_EXTS: &[&str] = &[
     "html", "htm", "md", "mdx", "astro", "svelte", "vue", "tsx", "jsx", "ts", "js", "erb", "php",
-    "liquid", "njk", "hbs",
+    "liquid", "njk", "hbs", "ejs", "pug", "haml", "slim", "twig", "jinja", "jinja2", "j2",
+];
+/// Server-side template formats: what makes a server framework a website,
+/// and so what every web check must also be able to read.
+const TEMPLATE_EXTS: &[&str] = &[
+    "erb", "php", "ejs", "pug", "haml", "slim", "twig", "njk", "jinja", "jinja2", "j2", "liquid",
+    "hbs",
 ];
 
 impl Project {
@@ -612,38 +618,50 @@ impl Project {
         !self.has_manifest
             && !self.files.is_empty()
             && self.files.iter().all(|f| {
-                matches!(ext(f), "md" | "markdown" | "txt" | "text" | "rst")
-                    || name(f).eq_ignore_ascii_case("readme")
+                let n = name(f);
+                matches!(
+                    ext(f),
+                    "md" | "markdown"
+                        | "txt"
+                        | "text"
+                        | "rst"
+                        | "png"
+                        | "jpg"
+                        | "jpeg"
+                        | "gif"
+                        | "webp"
+                        | "svg"
+                        | "pdf"
+                )
+                    // The files any repository carries, notes included.
+                    || n.starts_with('.')
+                    || [
+                        "readme",
+                        "license",
+                        "licence",
+                        "notice",
+                        "copying",
+                        "authors",
+                        "codeowners",
+                    ]
+                    .iter()
+                    .any(|m| n.to_ascii_lowercase().starts_with(m))
             })
     }
 
     fn has_templates(&self) -> bool {
         self.any(|f| {
+            let e = ext(f);
+            let html = matches!(e, "html" | "htm");
+            // A served folder counts only for real HTML: `public/index.php`
+            // is a front controller, and an API has one too.
             !is_test_path(f)
-                && matches!(
-                    ext(f),
-                    "html"
-                        | "htm"
-                        | "erb"
-                        | "php"
-                        | "ejs"
-                        | "pug"
-                        | "haml"
-                        | "slim"
-                        | "twig"
-                        | "njk"
-                        | "jinja"
-                        | "jinja2"
-                        | "j2"
-                        | "liquid"
-                        | "hbs"
-                )
-                && (f.split('/').any(|p| p == "templates")
-                    || f.starts_with("app/views/")
-                    || f.starts_with("resources/views/")
-                    || f.starts_with("views/")
-                    || f.starts_with("public/")
-                    || f.starts_with("static/"))
+                && ((html && (f.starts_with("public/") || f.starts_with("static/")))
+                    || ((html || TEMPLATE_EXTS.contains(&e))
+                        && (f.split('/').any(|p| p == "templates")
+                            || f.starts_with("app/views/")
+                            || f.starts_with("resources/views/")
+                            || f.starts_with("views/"))))
         })
     }
 
@@ -1137,11 +1155,9 @@ impl Project {
         static LINK: OnceLock<Regex> = OnceLock::new();
         static REL: OnceLock<Regex> = OnceLock::new();
         static HREF: OnceLock<Regex> = OnceLock::new();
-        for f in self
-            .files
-            .iter()
-            .filter(|f| UI_EXTS.contains(&ext(f)) && !is_test_path(f))
-        {
+        for f in self.files.iter().filter(|f| {
+            (UI_EXTS.contains(&ext(f)) || TEMPLATE_EXTS.contains(&ext(f))) && !is_test_path(f)
+        }) {
             let Some(t) = self.read(f) else { continue };
             let t = evidence_text(f, &t);
             for link in re(&LINK, r"(?is)<link\b[^>]*>").find_iter(&t) {
@@ -1314,23 +1330,12 @@ impl Project {
             .files
             .iter()
             .filter(|f| {
-                matches!(
-                    ext(f),
-                    "html"
-                        | "htm"
-                        | "astro"
-                        | "svelte"
-                        | "vue"
-                        | "tsx"
-                        | "jsx"
-                        | "ts"
-                        | "js"
-                        | "erb"
-                        | "liquid"
-                        | "njk"
-                        | "hbs"
-                        | "php"
-                )
+                let e = ext(f);
+                TEMPLATE_EXTS.contains(&e)
+                    || matches!(
+                        e,
+                        "html" | "htm" | "astro" | "svelte" | "vue" | "tsx" | "jsx" | "ts" | "js"
+                    )
             })
             .filter(|f| !is_test_path(f))
             .any(|f| {
