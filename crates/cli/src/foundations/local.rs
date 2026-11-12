@@ -1028,13 +1028,29 @@ impl Project {
                 "ico" | "svg" | "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif"
             )
         };
+        // Next's icon routes: `app/icon.tsx` and `app/apple-icon.tsx` draw the
+        // icon in code. The exact lower-case name in the app folder only, so
+        // a component such as `src/Icon.tsx` is never one.
+        let next_route = |f: &str, stem: &str| {
+            ["app/", "src/app/"].iter().any(|d| {
+                f.strip_prefix(d).is_some_and(|n| {
+                    ["tsx", "jsx", "ts", "js"]
+                        .iter()
+                        .any(|e| n == format!("{stem}.{e}"))
+                })
+            })
+        };
         let mut favicon = self.any(|f| {
-            in_dirs(f) && image(f) && {
-                let n = name(f).to_ascii_lowercase();
-                n.starts_with("favicon")
-                    || matches!(n.as_str(), "icon.svg" | "icon.png" | "icon.ico")
-            }
+            next_route(f, "icon")
+                || (in_dirs(f) && image(f) && {
+                    let n = name(f).to_ascii_lowercase();
+                    n.starts_with("favicon")
+                        || matches!(n.as_str(), "icon.svg" | "icon.png" | "icon.ico")
+                })
         });
+        // A sized PNG named as an icon: `logo192.png`, `pwa-512x512.png`.
+        static SIZE: OnceLock<Regex> = OnceLock::new();
+        let size = re(&SIZE, r"(^|[^0-9])(180|192|512)([^0-9]|$)");
         let mut large = self.any(|f| {
             in_dirs(f) && image(f) && {
                 let n = name(f).to_ascii_lowercase();
@@ -1047,8 +1063,19 @@ impl Project {
                 ]
                 .iter()
                 .any(|p| n.starts_with(p))
+                    || (n.ends_with(".png")
+                        && size.is_match(&n)
+                        && ["icon", "android-chrome", "logo", "touch", "pwa"]
+                            .iter()
+                            .any(|w| n.contains(w)))
             }
-        });
+        }) || self.any(|f| next_route(f, "apple-icon"))
+            || self.any(|f| {
+                next_route(f, "manifest")
+                    && self
+                        .read(f)
+                        .is_some_and(|t| evidence_text(f, &t).contains("icons"))
+            });
         static LINK: OnceLock<Regex> = OnceLock::new();
         static REL: OnceLock<Regex> = OnceLock::new();
         static HREF: OnceLock<Regex> = OnceLock::new();
@@ -1066,10 +1093,15 @@ impl Project {
                 let (Some(rel), Some(href)) = (rel, href) else {
                     continue;
                 };
+                let rel = rel[1].to_ascii_lowercase();
+                // An icon written into the page itself is still an icon.
+                if href[1].starts_with("data:image/") {
+                    favicon |= rel.split_whitespace().any(|r| r == "icon");
+                    continue;
+                }
                 let Some(target) = self.icon_target(f, &href[1]) else {
                     continue;
                 };
-                let rel = rel[1].to_ascii_lowercase();
                 if image(&target) {
                     favicon |= rel.split_whitespace().any(|r| r == "icon");
                     large |= rel == "apple-touch-icon";
