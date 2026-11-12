@@ -126,6 +126,39 @@ check "json: stdout parses as JSON" 'jq -e . "$H/json.out" >/dev/null'
 # Lines that say something is wrong ("not ready", "didn't verify") still print, on stderr.
 check "json: no not-entitled line on stderr" '! grep -q "this account doesn.t include them" "$H/json.err"'
 
+# 4b. Worlds (REN-1763): `impeccable world <id>` seeds a fresh project from a catalog
+#     world, never overwrites, and names why when it can't. Skipped where staging
+#     doesn't offer worlds:read or the binary has no world verb yet.
+case "$scopes" in *" worlds:read "*) worlds=1 ;; *) worlds=0; info "staging does not offer worlds:read; worlds skipped" ;; esac
+if [ "$worlds" = 1 ] && ! "$BIN" world --help > /dev/null 2>&1; then worlds=0; info "this binary has no world verb; worlds skipped"; fi
+if [ "$worlds" = 1 ]; then
+  W="$H/world-project"; mkdir -p "$W"
+  PUBLIC_WORLD=${E2E_WORLD_PUBLIC:-sd-seedbed-lobes}
+  PRO_WORLD=${E2E_WORLD_PRO:-boutique-window-dressed-as-diagonal}
+  (cd "$W" && "$BIN" world "$PUBLIC_WORLD" > "$H/world.out" 2> "$H/world.err"); rc=$?
+  check "world: seeds a public world (exit 0)" '[ $rc = 0 ]'
+  info "world: $(tr '\n' ' ' < "$H/world.out" | cut -c1-200) $(tr '\n' ' ' < "$H/world.err" | cut -c1-200)"
+  check "world: says the world is now the design system" 'grep -q "is now this project.s design system\.$" "$H/world.out"'
+  check "world: no colour codes in piped output" '! grep -q "$(printf "\033")" "$H/world.out"'
+  check "world: DESIGN.md names the world in its frontmatter" 'grep -q "^world: \"\{0,1\}$PUBLIC_WORLD" "$W/DESIGN.md"'
+  check "world: DESIGN.md carries a reference image" 'grep -q "^Reference image: https://" "$W/DESIGN.md"'
+  check "world: the sidecar is marked as seeded" '[ "$(jq -r .seededFrom.world "$W/.impeccable/design.json" 2>/dev/null)" = "$PUBLIC_WORLD" ]'
+  before=$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)
+  (cd "$W" && "$BIN" world "$PUBLIC_WORLD" > "$H/world2.out" 2>&1); rc=$?
+  check "world: a second run writes nothing and points at --print" '[ $rc = 0 ] && grep -q "already exists, so nothing was written" "$H/world2.out" && [ "$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)" = "$before" ]'
+  (cd "$W" && "$BIN" world "$PUBLIC_WORLD" --print > "$H/world-print.out" 2>/dev/null)
+  check "world: --print hands over the seed as JSON" '[ "$(jq -r .id "$H/world-print.out" 2>/dev/null)" = "$PUBLIC_WORLD" ]'
+  W2="$H/world-project-2"; mkdir -p "$W2"
+  (cd "$W2" && "$BIN" world no-such-world-e2e > /dev/null 2> "$H/world404.err"); rc=$?
+  check "world: an unknown id says so and writes nothing" '[ $rc = 1 ] && grep -q "^No world has the id no-such-world-e2e\." "$H/world404.err" && [ ! -e "$W2/DESIGN.md" ]'
+  (cd "$W2" && "$BIN" world "$PRO_WORLD" > "$H/worldpro.out" 2> "$H/worldpro.err"); rc=$?
+  if grep -q "Pro rules: included\|^Plan: \(Pro\|Team\)" "$H/whoami.out"; then
+    check "world: a Pro world seeds on a Pro plan" '[ $rc = 0 ] && [ -f "$W2/DESIGN.md" ]'
+  else
+    check "world: a Pro world on Free names Pro and the pricing page" '[ $rc = 1 ] && grep -q "needs Pro\. See impeccable.style/pricing" "$H/worldpro.err" && [ ! -e "$W2/DESIGN.md" ]'
+  fi
+fi
+
 # 5. Two sessions on one sign-in (pristine #4576): session B is a copy of A's stored
 #    sign-in. Each forced refresh rotates the refresh token, so B's second refresh
 #    presents a token A already used. Before #4576 that revoked the whole grant.
