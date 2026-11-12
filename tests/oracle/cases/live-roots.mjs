@@ -1,8 +1,8 @@
 /**
  * `impeccable live` (boot) and `live-inject` corpus: root resolution
  * (roots.json + repo pointer), config checks, framework injection.
- * Boot cases stop at config_missing so no helper server is spawned; the one
- * full boot (`live-boot-full-cycle`) stops its server in a final step.
+ * Full boot cases stop their helper server in a final step; other boot
+ * cases stop at config_missing without spawning a helper.
  */
 import { LIVE_FILES, fakeGit, rm, write } from '../live-helpers.mjs';
 
@@ -57,6 +57,24 @@ export default [
     // dynamic (first free from 8400), masked per-case.
     id: 'live-boot-full-cycle', verb: 'live', workspace: 'live-html', files: [...F, 'index.html', 'public/**'], normalize: PORT_NORM,
     steps: [{ verb: 'live' }, { verb: 'live-inject', args: ['--check'] }, { verb: 'live-server', args: ['stop'] }],
+  },
+  {
+    id: 'live-boot-no-dev-server-static', verb: 'live', workspace: 'live-html',
+    files: [...F, 'index.html', 'pages/**'], normalize: PORT_NORM,
+    env: { IMPECCABLE_DEV_URL_CANDIDATES: 'http://127.0.0.1:1' },
+    setup: (ws) => {
+      rm(ws, 'package.json');
+      write(ws, 'pages/about us.html', '<html><body>About</body></html>\n');
+      write(ws, CFG, JSON.stringify({ files: ['index.html', 'pages/about us.html'], insertBefore: '</body>', commentSyntax: 'html', cspChecked: true }));
+    },
+    steps: [{ args: ['--allow-missing-context', '--dev-url'] }, { verb: 'live-server', args: ['stop'] }],
+  },
+  {
+    id: 'live-boot-no-dev-server-dev-script', verb: 'live', workspace: 'live-html',
+    files: [...F, 'index.html'], normalize: PORT_NORM,
+    env: { IMPECCABLE_DEV_URL_CANDIDATES: 'http://127.0.0.1:1' },
+    setup: (ws) => write(ws, 'package.json', JSON.stringify({ name: 'oracle-dev-script', scripts: { dev: 'vite' } })),
+    steps: [{ args: ['--allow-missing-context', '--dev-url'] }, { verb: 'live-server', args: ['stop'] }],
   },
   {
     id: 'live-server-background-static-subdir', verb: 'live-server', workspace: 'live-workspaces', cwd: 'static-mock', normalize: PORT_NORM,
