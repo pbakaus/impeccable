@@ -618,45 +618,50 @@ impl Project {
         !self.has_manifest
             && !self.files.is_empty()
             && self.files.iter().all(|f| {
-                let n = name(f);
-                matches!(
-                    ext(f),
-                    "md" | "markdown"
-                        | "txt"
-                        | "text"
-                        | "rst"
-                        | "png"
-                        | "jpg"
-                        | "jpeg"
-                        | "gif"
-                        | "webp"
-                        | "svg"
-                        | "pdf"
-                )
-                    // The files any repository carries, notes included.
+                let n = name(f).to_ascii_lowercase();
+                let e = ext(&n);
+                let prose = matches!(e, "md" | "markdown" | "txt" | "text" | "rst");
+                // The papers any repository carries: `LICENSE`, `NOTICE.txt`.
+                // By whole name, so `license_check.py` stays source.
+                let stem = n.split('.').next().unwrap_or("");
+                let papers = (e.is_empty() || prose)
+                    && matches!(
+                        stem,
+                        "readme"
+                            | "license"
+                            | "licence"
+                            | "notice"
+                            | "copying"
+                            | "authors"
+                            | "codeowners"
+                    );
+                prose
+                    || papers
                     || n.starts_with('.')
-                    || [
-                        "readme",
-                        "license",
-                        "licence",
-                        "notice",
-                        "copying",
-                        "authors",
-                        "codeowners",
-                    ]
-                    .iter()
-                    .any(|m| n.to_ascii_lowercase().starts_with(m))
+                    || matches!(e, "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "pdf")
             })
     }
 
     fn has_templates(&self) -> bool {
+        static PAGE: OnceLock<Regex> = OnceLock::new();
         self.any(|f| {
             let e = ext(f);
             let html = matches!(e, "html" | "htm");
-            // A served folder counts only for real HTML: `public/index.php`
-            // is a front controller, and an API has one too.
+            let served = f.starts_with("public/") || f.starts_with("static/");
+            // In a served folder a PHP file is a page only when it writes
+            // one: `public/index.php` is also every API's front controller.
+            let php_page = || {
+                e == "php"
+                    && self.read(f).is_some_and(|t| {
+                        re(
+                            &PAGE,
+                            r"(?i)<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]",
+                        )
+                        .is_match(&evidence_text(f, &t))
+                    })
+            };
             !is_test_path(f)
-                && ((html && (f.starts_with("public/") || f.starts_with("static/")))
+                && ((served && (html || php_page()))
                     || ((html || TEMPLATE_EXTS.contains(&e))
                         && (f.split('/').any(|p| p == "templates")
                             || f.starts_with("app/views/")
@@ -2223,7 +2228,19 @@ fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
 /// Cheap evidence-only comment removal, never used by the secret scanner.
 fn evidence_text(file: &str, text: &str) -> String {
     static BLOCK: OnceLock<Regex> = OnceLock::new();
+    static TEMPLATE: OnceLock<Regex> = OnceLock::new();
     let text = re(&BLOCK, r"(?s)<!--.*?-->|/\*.*?\*/").replace_all(text, " ");
+    // The template languages' own comments: Jinja and Twig `{# #}`, ERB and
+    // EJS `<%# %>`, Blade `{{-- --}}`, Handlebars `{{! }}`, Liquid's block.
+    let text = if TEMPLATE_EXTS.contains(&ext(file)) {
+        re(
+            &TEMPLATE,
+            r"(?s)\{#.*?#\}|<%#.*?%>|\{\{--.*?--\}\}|\{\{!--.*?--\}\}|\{\{!.*?\}\}|\{%-?\s*comment\s*-?%\}.*?\{%-?\s*endcomment\s*-?%\}",
+        )
+        .replace_all(&text, " ")
+    } else {
+        text
+    };
     let slash = matches!(
         ext(file),
         "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "vue" | "svelte" | "astro" | "scss" | "less"
