@@ -4,9 +4,9 @@
 
 /** This extension's name at the account server. */
 export const CLIENT_ID = 'impeccable-extension';
-/** What it asks for: who is signed in, and their personas; and to start walks, where the server offers that. */
+/** What it asks for: who is signed in, and their personas; and to start walks and create personas, where the server offers each. */
 export const SCOPES = 'account:read personas:read';
-const START_WALKS = 'outings:start';
+const OFFERED = ['outings:start', 'personas:create'];
 /** The account server every build signs in to unless told otherwise. */
 export const PRODUCTION = 'https://api.impeccable.style';
 /** The other servers a build loaded unpacked may sign in to: staging, and this machine's stand-in on any port. */
@@ -59,8 +59,9 @@ export function readMetadata(json, issuer) {
   const home = originOf(issuer);
   if (originOf(doors.token) !== home || originOf(doors.revoke) !== home) return null;
   if (![home, dialogOrigin(issuer)].includes(originOf(doors.authorize))) return null;
-  // A scope the server does not list would fail the sign-in: asked for only once it is there.
-  const scope = Array.isArray(json.scopes_supported) && json.scopes_supported.includes(START_WALKS) ? `${SCOPES} ${START_WALKS}` : SCOPES;
+  // A scope the server does not list would fail the sign-in: each is asked for only once it is there.
+  const listed = Array.isArray(json.scopes_supported) ? json.scopes_supported : [];
+  const scope = [SCOPES, ...OFFERED.filter((each) => listed.includes(each))].join(' ');
   return { ...doors, scope };
 }
 

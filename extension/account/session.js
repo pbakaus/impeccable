@@ -61,6 +61,13 @@ const sealed = { credentials: 'omit', redirect: 'error' };
 const SIGNED_IN = ['signed-in', 'refreshing'];
 /** A persona's name in the person's own list, as the server gives it. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
+/** A persona as the server lists it, field by field: `{ name, role, slug?, mine? }` (`mine`: the person's own, by slug). */
+const personaOf = (p) => ({
+  name: p.name, role: typeof p.role === 'string' ? p.role : '',
+  ...(SLUG.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : {}) } : {}),
+});
+/** Why creating a persona did not happen, by the server's answer. */
+const CREATE_WHY = { 404: 'unavailable', 409: 'limit', 429: 'quota' };
 
 /**
  * A session against the server `issuer()` names. `fetch` and `store` are the network and the disk; `launch` opens
@@ -175,16 +182,16 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
   }
 
   /**
-   * A request to `at`'s extension door with its access token (a GET, or `body` posted as JSON): once more after a
-   * refresh if the server says it is stale. Resolves to `{ status, json }`, or null when nothing could be sent.
+   * A request to `at`'s extension door with its access token (a GET, `body` posted as JSON, or `method`): once more
+   * after a refresh if the server says it is stale. Resolves to `{ status, json }`, or null when nothing could be sent.
    */
-  async function call(at, path, body) {
+  async function call(at, path, body, method = body ? 'POST' : undefined) {
     for (let tries = 0; tries < 2; tries++) {
       const bearer = tries === 0 ? await token(at) : await refresh(at);
       // No token, or one that came back after the server in use changed: nothing is sent anywhere.
       if (!bearer || issuer() !== at) return null;
       const headers = { authorization: `Bearer ${bearer}`, accept: 'application/json', ...(body ? { 'content-type': 'application/json' } : {}) };
-      const answer = await fetch(`${resourceFor(at)}${path}`, { headers, ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}), ...sealed });
+      const answer = await fetch(`${resourceFor(at)}${path}`, { headers, ...(method ? { method } : {}), ...(body ? { body: JSON.stringify(body) } : {}), ...sealed });
       if (answer.status === 401) { if (access?.token === bearer) access = null; continue; }
       return { status: answer.status, json: await answer.json().catch(() => null) };
     }
@@ -241,11 +248,32 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '' } : null;
     },
 
-    /** The signed-in person's personas: `[{ name, role }]`, or null. */
+    /** The signed-in person's personas: `[{ name, role, slug?, mine? }]`, or null. */
     async personas() {
       const list = await read(issuer(), '/personas');
       const rows = Array.isArray(list?.personas) ? list.personas : null;
-      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map((p) => ({ name: p.name, role: typeof p.role === 'string' ? p.role : '', ...(SLUG.test(p.slug) ? { slug: p.slug } : {}) })) ?? null;
+      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf) ?? null;
+    },
+
+    /**
+     * Asks the server to make the person a persona of their own from `description`. The same `requestId` sent again
+     * is answered with the persona it made, never a second. `{ ok: true, persona }`, or `{ ok: false, why }`: `short`,
+     * `scope` (signed in before personas could be created), `unavailable`, `limit`, `quota`, `failed`.
+     */
+    async createPersona({ description, requestId }) {
+      const answer = await call(issuer(), '/personas', { description, requestId }).catch(() => null);
+      const made = [200, 201].includes(answer?.status) ? answer.json?.persona : null;
+      if (typeof made?.name === 'string' && SLUG.test(made.slug)) return { ok: true, persona: personaOf({ ...made, mine: true }) };
+      if (answer?.status === 400 && answer.json?.field === 'description') return { ok: false, why: 'short' };
+      if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      return { ok: false, why: CREATE_WHY[answer?.status] ?? 'failed' };
+    },
+
+    /** Removes one of the person's own personas. A 404 is one already gone. `{ ok }`. */
+    async removePersona(slug) {
+      if (!SLUG.test(slug)) return { ok: false };
+      const answer = await call(issuer(), `/personas/mine/${slug}`, undefined, 'DELETE').catch(() => null);
+      return { ok: answer?.status === 204 || answer?.status === 404 };
     },
 
     /**

@@ -1,12 +1,12 @@
 // The account's half of the background worker: it answers the popup (popup/account.js), and nobody else. A message
 // is taken only when Chrome itself says it came from one of this extension's popup pages: never from a page, a
 // content script, another extension, or the walk's side panel. No answer ever carries a token: only whether the
-// server takes sign-ins, whether this browser is signed in, the email, the personas' names, and how a walk's start
-// went. A walk the person starts on their tab goes to the walk helper as the server's block and the tab's id alone.
+// server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
+// and how making or removing a persona went. A walk the person starts on their tab goes to the walk helper as the server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
 import { HELPER_ID } from '../shared/ids.js';
 import { helper, onboard } from '../onboarding/contact.js';
-import { PRODUCTION, issuerAllowed } from './flow.js';
+import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
@@ -56,7 +56,8 @@ const TASK_MAX = 2000;
  * then the server is asked. What the server answers goes to the helper; the popup hears only how it went.
  */
 async function walk({ persona, task, tabId }) {
-  const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : typeof persona?.own === 'string' && persona.own ? { own: persona.own } : null;
+  const kind = ['own', 'mine'].find((key) => typeof persona?.[key] === 'string' && persona[key]);
+  const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind] } : null;
   const goal = typeof task === 'string' ? task.trim() : '';
   if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { ok: false, why: 'failed' };
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -71,12 +72,48 @@ async function walk({ persona, task, tabId }) {
   return taken?.ok ? { ok: true, panel: taken.panel === true } : { ok: false, why: 'failed' };
 }
 
+/**
+ * Making a persona of the person's own: one at a time, in this worker, so a popup that closes does not stop it. Its
+ * description and request id are kept in chrome.storage.session until the server makes it: a retry of the same
+ * description, or a worker Chrome ended mid-way, sends the same id again, and the server answers with the persona it
+ * made rather than a second. `open` marks one sent and not answered yet.
+ */
+let making = null;
+const kept = () => chrome.storage.session.get('personaCreate').then(({ personaCreate }) => personaCreate ?? null, () => null);
+async function create({ description }) {
+  const text = typeof description === 'string' ? description.trim() : '';
+  if (text.length < 8 || text.length > 1500) return { ok: false, why: 'short' };
+  if (making) return making.description === text ? making.done : { ok: false, why: 'busy' };
+  making = { description: text, done: (async () => {
+    try {
+      const was = await kept();
+      const requestId = was?.description === text ? was.requestId : randomText();
+      await chrome.storage.session.set({ personaCreate: { description: text, requestId, open: true } });
+      const made = await session.createPersona({ description: text, requestId });
+      await chrome.storage.session.set({ personaCreate: made.ok ? null : { description: text, requestId, open: false } });
+      return made;
+    } finally {
+      making = null;
+    }
+  })() };
+  return making.done;
+}
+
+/** The personas, and the description of one still being made (or sent and never answered), for the popup to wait on. */
+async function personas() {
+  const [list, was] = await Promise.all([session.personas(), making ? null : kept()]);
+  const creating = making?.description ?? (was?.open ? was.description : null);
+  return list ? { ok: true, personas: list, ...(creating ? { creating } : {}) } : { ok: false, why: 'personas' };
+}
+
 const ANSWERS = {
+  create,
+  personas,
+  async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,
   async 'sign-in'() { const done = await session.signIn(); return done.ok ? status() : { ok: false, why: done.why }; },
-  async 'sign-out'() { await session.signOut(); return status(); },
-  async personas() { const personas = await session.personas(); return personas ? { ok: true, personas } : { ok: false, why: 'personas' }; },
+  async 'sign-out'() { await session.signOut(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };
     issuer = server;

@@ -58,7 +58,11 @@ describe('account sign-in flow', () => {
   });
 
   // An unknown scope fails the sign-in: the one that starts walks is asked for once the server lists it.
-  for (const [listed, scope] of [[undefined, 'account:read personas:read'], [['account:read', 'personas:read', 'outings:start'], 'account:read personas:read outings:start']]) {
+  for (const [listed, scope] of [
+    [undefined, 'account:read personas:read'],
+    [['account:read', 'personas:read', 'outings:start'], 'account:read personas:read outings:start'],
+    [['account:read', 'personas:read', 'personas:create', 'outings:start'], 'account:read personas:read outings:start personas:create'],
+  ]) {
     it(`asks for ${scope}`, () => { assert.equal(readMetadata({ ...META, scopes_supported: listed }, ISSUER).scope, scope); });
   }
 
@@ -264,7 +268,7 @@ describe('account worker', () => {
   ]) {
     it(`refuses ${label}`, async () => {
       await loaded;
-      assert.deepEqual(await ask({ account: 'status' }, sender), { ok: false, why: 'sender' });
+      for (const account of ['status', 'create', 'remove']) assert.deepEqual(await ask({ account, description: 'A night-shift nurse.', slug: 'ada' }, sender), { ok: false, why: 'sender' });
     });
   }
 
@@ -305,11 +309,14 @@ describe('account worker', () => {
   } };
   const HANDOFF = { v: 1, outing: 'o9', socket: 'wss://impeccable.reviews/api/outings/o9/socket', ticket: 'ticket-0123456789', persona: { name: 'Ines', role: '' }, errand: { name: '', goal: 'Read the top story.', doneWhen: [] }, url: 'https://news.example.com/', allow: [] };
   const posted = [];
-  const startServer = (walks) => {
+  const made = [];
+  const startServer = (walks, mine = () => json(404, {})) => {
     globalThis.fetch = async (url, init = {}) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-walk', refresh_token: 'refresh-walk-2', expires_in: 900 });
       if (url === `${ISSUER}/extension/v1/walks`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
+      if (url === `${ISSUER}/extension/v1/personas` && !init.method) return json(200, { personas: [{ ...PERSONA, role: 1 }] });
+      if (url.startsWith(`${ISSUER}/extension/v1/personas`) && init.method) { made.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null }); return mine(); }
       return json(404, {});
     };
   };
@@ -346,6 +353,77 @@ describe('account worker', () => {
       assert.deepEqual(await start(tabId), { ok: false, why });
       assert.equal(posted.length, sent, 'the server is not asked');
       assert.equal(opened.length - tabs, why === 'helper' ? 1 : 0);
+    });
+  }
+
+  it('starts a walk with one of the person’s own personas as `mine`, never `own`', async () => {
+    await loaded;
+    startServer(() => json(201, { handoff: HANDOFF }));
+    helper.answer = { ok: true, contract: 2, panel: true };
+    await ask({ account: 'walk', persona: { mine: 'night-nurse' }, task: 'Read the top story.', tabId: 7 }, fromPopup);
+    assert.deepEqual(posted.at(-1).body.persona, { mine: 'night-nurse' });
+  });
+
+  // Making a persona: each answer the server gives, as the popup hears it.
+  const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
+  const create = (description) => ask({ account: 'create', description }, fromPopup);
+  for (const [status, body, answer] of [
+    [201, { persona: PERSONA }, { ok: true, persona: PERSONA }],
+    [200, { persona: PERSONA }, { ok: true, persona: PERSONA }],
+    [400, { error: 'invalid', field: 'description' }, { ok: false, why: 'short' }],
+    [403, { error: 'insufficient_scope' }, { ok: false, why: 'scope' }],
+    [404, {}, { ok: false, why: 'unavailable' }],
+    [409, { error: 'limit', max: 5 }, { ok: false, why: 'limit' }],
+    [429, { error: 'quota', retryAt: 0 }, { ok: false, why: 'quota' }],
+    [502, { error: 'draft' }, { ok: false, why: 'failed' }],
+  ]) {
+    it(`creates a persona: a ${status} is ${answer.ok ? 'the persona' : answer.why}`, async () => {
+      await loaded;
+      startServer(() => json(404, {}), () => json(status, body));
+      session.personaCreate = null;
+      assert.deepEqual(await create(`  A night-shift nurse, answer ${status}.  `), answer);
+      assert.deepEqual(Object.keys(made.at(-1).body), ['description', 'requestId']);
+      assert.equal(made.at(-1).body.description, `A night-shift nurse, answer ${status}.`);
+    });
+  }
+
+  it('sends a retry of the same description with the same request id, and a new one after it was made', async () => {
+    await loaded;
+    const answers = [json(502, { error: 'draft' }), json(201, { persona: PERSONA }), json(201, { persona: PERSONA })];
+    startServer(() => json(404, {}), () => answers.shift());
+    session.personaCreate = null;
+    const before = made.length;
+    assert.equal((await create('A night-shift nurse.')).ok, false);
+    assert.equal((await create('A night-shift nurse.')).ok, true);
+    await create('A night-shift nurse.');
+    const ids = made.slice(before).map((m) => m.body.requestId);
+    assert.match(ids[0], /^[A-Za-z0-9_-]{8,64}$/);
+    assert.deepEqual([ids[1] === ids[0], ids[2] === ids[0]], [true, false]);
+  });
+
+  it('tells the next popup of a persona sent and never answered (the worker ended), and resends it with its request id', async () => {
+    await loaded;
+    startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
+    session.personaCreate = { description: 'A night-shift nurse.', requestId: 'kept-0123456789', open: true };
+    assert.deepEqual(await ask({ account: 'personas' }, fromPopup), { ok: true, personas: [{ ...PERSONA, role: '' }], creating: 'A night-shift nurse.' });
+    await create('A night-shift nurse.');
+    assert.equal(made.at(-1).body.requestId, 'kept-0123456789');
+  });
+
+  it('sends nothing for a description under eight characters', async () => {
+    await loaded;
+    startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
+    const before = made.length;
+    assert.deepEqual(await create(' Nurse '), { ok: false, why: 'short' });
+    assert.equal(made.length, before);
+  });
+
+  for (const [status, ok] of [[204, true], [404, true], [500, false]]) {
+    it(`removes one of the person’s own personas: a ${status} is ${ok ? 'done' : 'not'}`, async () => {
+      await loaded;
+      startServer(() => json(404, {}), () => json(status, null));
+      assert.deepEqual(await ask({ account: 'remove', slug: 'rosa' }, fromPopup), { ok });
+      assert.deepEqual(made.at(-1), { url: `${ISSUER}/extension/v1/personas/mine/rosa`, method: 'DELETE', body: null });
     });
   }
 });
