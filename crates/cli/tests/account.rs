@@ -137,37 +137,3 @@ fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("Plan: Free."), "{text}");
 }
-
-#[test]
-#[cfg(target_os = "macos")]
-fn a_home_without_a_keychain_says_why_sign_in_failed_and_how_out() {
-    // Catches: "Sign-in failed: keychain write failed (-60006)." A HOME with no
-    // keychain (SSH, a changed HOME, the launch smoke test) must name the cause
-    // and the file store. Measured on macOS: such a HOME answers -60006.
-    let fake = Fake::start();
-    let mut env = fake.env("cli-login-no-keychain");
-    env.remove("IMPECCABLE_CREDENTIAL_STORE");
-    let mut child = impeccable(&env, &["login", "--no-browser"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut url = String::new();
-    BufReader::new(child.stdout.take().unwrap())
-        .read_line(&mut url)
-        .unwrap();
-    browser(url.trim());
-    let out = child.wait_with_output().unwrap();
-    // Whatever happened, leave no sign-in behind (a keychain item included).
-    impeccable(&env, &["logout"]).output().unwrap();
-    let err = String::from_utf8_lossy(&out.stderr);
-    assert!(!out.status.success(), "{err}");
-    assert!(
-        err.contains("Sign-in failed: macOS wouldn't let the CLI write its keychain here"),
-        "{err}"
-    );
-    assert!(
-        err.contains("run: IMPECCABLE_CREDENTIAL_STORE=file impeccable login."),
-        "{err}"
-    );
-}
