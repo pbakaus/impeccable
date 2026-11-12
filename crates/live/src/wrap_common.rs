@@ -266,6 +266,34 @@ pub fn filter_by_text(
         .collect()
 }
 
+/// Candidates whose whole text is `text`. A short heading ("Pricing") is too
+/// short to trust as a substring, but as an element's entire text it is exact.
+fn filter_by_whole_text(
+    candidates: &[ElementMatch],
+    lines: &[String],
+    text: &str,
+) -> Vec<ElementMatch> {
+    let collapsed = WS_RUN_RE.replace_all(text, " ");
+    let target = trim(&collapsed).to_lowercase();
+    if target.is_empty() {
+        return Vec::new();
+    }
+    candidates
+        .iter()
+        .filter(|c| {
+            let Some(end) = c.end_line else {
+                return false;
+            };
+            let body = lines[c.start_line..=end].join(" ");
+            let inner = TAG_RE.replace_all(&body, " ");
+            let inner = inner.to_lowercase();
+            let spaced = WS_RUN_RE.replace_all(&inner, " ");
+            trim(&spaced) == target
+        })
+        .copied()
+        .collect()
+}
+
 /// Whether `text` is long enough (8 normalized chars) to choose between
 /// elements; `filter_by_text` matches nothing below that.
 fn text_disambiguates(text: &str) -> bool {
@@ -555,6 +583,16 @@ pub fn resolve_in_file(
     tag: Option<&str>,
     text: Option<&str>,
 ) -> Resolution {
+    // A bare element with short text: its whole text may still single it out.
+    if is_tag_only_search(queries, tag) {
+        if let Some(short) = text.filter(|t| !text_disambiguates(t)) {
+            let candidates = collect_candidates(&file.lines, queries, tag);
+            let whole = filter_by_whole_text(&candidates, &file.lines, short);
+            if whole.len() == 1 {
+                return Resolution::Match(file, whole[0]);
+            }
+        }
+    }
     resolve_lines(file, queries, tag, text.filter(|t| text_disambiguates(t)))
 }
 
@@ -691,6 +729,22 @@ fn resolve_tag_in_project(
     );
     if files.is_empty() {
         return Resolution::NotFound;
+    }
+    if let Some(short) = text.filter(|t| !text_disambiguates(t)) {
+        // Short text: exactly one element in the project whose whole text it is.
+        let whole: Vec<(usize, ElementMatch)> = files
+            .iter()
+            .enumerate()
+            .flat_map(|(i, (file, candidates))| {
+                filter_by_whole_text(candidates, &file.lines, short)
+                    .into_iter()
+                    .map(move |m| (i, m))
+            })
+            .collect();
+        if whole.len() == 1 {
+            let (index, m) = whole[0];
+            return Resolution::Match(files.remove(index).0, m);
+        }
     }
     if let Some(text) = text {
         let matching: Vec<_> = files
@@ -863,6 +917,22 @@ mod tests {
             let second = result.find("<h2>Second heading</h2>").unwrap();
             assert_eq!(wrapper > second, insert, "{result}");
         }
+    }
+
+    #[test]
+    fn tag_only_short_text_matches_a_whole_heading_only() {
+        let lines: Vec<String> = ["<main>", "  <h2>First</h2>", "  <h2>Second</h2>", "  <h2>Same</h2>", "  <h2>Same</h2>", "  <h2>Second helping</h2>", "</main>"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let queries = vec!["<h2".to_string()];
+        let candidates = collect_candidates(&lines, &queries, Some("h2"));
+        assert_eq!(candidates.len(), 5);
+        let second = filter_by_whole_text(&candidates, &lines, "Second");
+        assert_eq!(second.len(), 1, "a substring match is not a whole-text match");
+        assert_eq!(second[0].start_line, 2);
+        assert_eq!(filter_by_whole_text(&candidates, &lines, "Same").len(), 2);
+        assert!(filter_by_whole_text(&candidates, &lines, "").is_empty());
     }
 
     #[test]
