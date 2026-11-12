@@ -77,6 +77,7 @@ Commands:
   whoami                           Show the signed-in account and whether it includes Pro rules
   walkthrough <recording>          Turn a screen recording into a Needs you walkthrough (MP4, poster, chapters)
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  foundations [path]               Check which product foundations this project has in place
 
 Options:
   --help       Show this help message
