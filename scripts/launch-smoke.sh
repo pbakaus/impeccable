@@ -63,7 +63,10 @@ unset CI IMPECCABLE_HOME IMPECCABLE_AGENTS_HOME IMPECCABLE_BIN IMPECCABLE_PRO DO
 # The CLI's own sign-in wait matches the 10 minutes the prompt promises.
 export IMPECCABLE_LOGIN_TIMEOUT=600
 unset CLAUDE_CONFIG_DIR CODEX_HOME IMPECCABLE_CLAUDE_BIN IMPECCABLE_CODEX_BIN
-[ "$TARGET" = staging ] && export IMPECCABLE_CREDENTIAL_STORE=file
+# The scratch HOME has no macOS login keychain (the keychain search list lives under
+# ~/Library), so a keychain sign-in can't be saved there and login fails. Keep the sign-in
+# in a file inside the scratch HOME on every target; cleanup deletes it with the rest.
+export IMPECCABLE_CREDENTIAL_STORE=file
 imp() { "${CLI[@]}" "$@"; }
 
 failed=0
@@ -141,9 +144,11 @@ if offers design:write; then
 fi
 
 # 5. Critique history: one saved report, its first-upload notice.
+#    The metadata is what the skill's critique command sends: without na_heuristics
+#    (and a max_score that matches it) the CLI saves the report but never uploads it.
 if offers critiques:write; then
   printf '# Critique\n\nSmoke test report.\n' > "$H/report.md"
-  (cd "$H/repo" && IMPECCABLE_CRITIQUE_META='{"target":"Smoke","total_score":24,"max_score":32,"p0_count":0,"p1_count":1}' \
+  (cd "$H/repo" && IMPECCABLE_CRITIQUE_META='{"target":"Smoke","total_score":24,"max_score":32,"na_heuristics":"3,7","p0_count":0,"p1_count":1}' \
     imp critique-storage write smoke "$H/report.md" > "$H/crit.out" 2> "$H/crit.err"); rc=$?
   check "critique: saved" '[ $rc = 0 ]'
   check "critique: first-upload notice" 'grep -q "Uploaded this critique report to your Impeccable account." "$H/crit.out" "$H/crit.err"'
