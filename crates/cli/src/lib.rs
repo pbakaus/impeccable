@@ -21,6 +21,7 @@ mod loop_connect;
 mod loop_install;
 
 mod setup_report;
+mod walkthrough;
 
 /// Schedule the setup worker after an open binary's Pro scan dispatch.
 #[doc(hidden)]
