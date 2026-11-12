@@ -279,39 +279,85 @@ mod mac {
         assert!(names.is_empty());
     }
 
+    /// Start the installed bundle's executable (the fixture's is /bin/sleep) and wait until the
+    /// process listing the installer reads shows it.
+    fn run_bundle(apps: &Path) -> std::process::Child {
+        let process = Command::new(apps.join(APP).join("Contents/MacOS/Impeccable Loop"))
+            .arg("60")
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while running_pids(&apps.join(APP)).unwrap().is_empty() && std::time::Instant::now() < deadline {
+            thread::yield_now();
+        }
+        process
+    }
+
     #[test]
-    fn running_bundle_refuses_update_and_crash_backup_recovers() {
+    fn update_quits_a_running_loop_then_swaps() {
+        // Catches (Loop journey, 10 Nov): Loop's menu line copies 'impeccable loop update', which always
+        // failed the first time because the person ran it while Loop was open.
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let old = fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut process = run_bundle(&apps);
+        let bytes = fixture("1.1.0", &source.0);
+        let pins = format!("{}{}", pin("1.0.0", &old), pin("1.1.0", &bytes));
+        let (base, server) = serve(bytes, "1.1.0");
+        let result = run_inner(&args("update"), &io(&home.0, &base), &pins, "macos");
+        server.join().unwrap();
+        let status = process.wait().unwrap();
+        assert!(result.as_deref().unwrap_or_default().contains("Updated Loop 1.1.0"), "{result:?}");
+        assert!(!status.success(), "the running Loop was asked to quit");
+        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.1.0");
+        clean(&apps);
+    }
+
+    #[test]
+    fn a_loop_that_does_not_quit_keeps_the_refusal_and_the_old_app() {
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut process = run_bundle(&apps);
+        // Signal 0 delivers nothing: a stand-in for a Loop that doesn't quit when asked.
+        let error = quit_running_with(&apps.join(APP), Duration::from_millis(300), 0).unwrap_err();
+        assert!(process.try_wait().unwrap().is_none(), "the Loop that didn't quit is left running");
+        process.kill().unwrap();
+        process.wait().unwrap();
+        assert_eq!(error, "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.");
+        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.0.0");
+    }
+
+    #[test]
+    fn quitting_touches_only_this_bundle() {
+        // Another process (not this bundle's executable) is never signalled.
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut other = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+        assert!(quit_running(&apps.join(APP), Duration::from_millis(300)).is_ok());
+        assert!(other.try_wait().unwrap().is_none(), "an unrelated sleep kept running");
+        other.kill().unwrap();
+        other.wait().unwrap();
+    }
+
+    #[test]
+    fn crash_backup_recovers() {
         let source = Stage::new(&std::env::temp_dir()).unwrap();
         let home = Stage::new(&std::env::temp_dir()).unwrap();
         let bytes = fixture("1.0.0", &source.0);
         let apps = home.0.join("Applications");
         fs::create_dir(&apps).unwrap();
-        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
-        let mut process = Command::new(apps.join(APP).join("Contents/MacOS/Impeccable Loop"))
-            .arg("60")
-            .spawn()
-            .unwrap();
-        // Wait until exec has happened by observing the same process listing the installer uses.
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while refuse_running(&apps.join(APP)).is_ok() && std::time::Instant::now() < deadline {
-            thread::yield_now();
-        }
-        let pins = pin("2.0.0", &bytes);
-        let result = run_inner(
-            &args("update"),
-            &io(&home.0, "http://127.0.0.1:1"),
-            &pins,
-            "macos",
-        );
-        process.kill().unwrap();
-        process.wait().unwrap();
-        let error = result.unwrap_err();
-        assert!(error.contains("Quit Loop first"), "{error}");
-        assert_eq!(
-            plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(),
-            "1.0.0"
-        );
-        fs::rename(apps.join(APP), apps.join(".impeccable-loop-previous.app")).unwrap();
+        fs::rename(source.0.join(APP), apps.join(".impeccable-loop-previous.app")).unwrap();
         let result = run_inner(
             &args("update"),
             &io(&home.0, "http://127.0.0.1:1"),

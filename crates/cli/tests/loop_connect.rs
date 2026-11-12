@@ -1,0 +1,643 @@
+//! `impeccable loop connect` and `loop disconnect` against fake `claude` and `codex` CLIs
+//! in a scratch home: the Impeccable MCP server and Loop's hooks are added through the
+//! agents engine's journal, and disconnect removes exactly what connect wrote.
+#![cfg(target_os = "macos")]
+use std::collections::HashMap;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
+
+const URL: &str = "https://api.impeccable.style/mcp";
+
+struct Box {
+    root: PathBuf,
+    env: HashMap<String, String>,
+}
+
+impl Box {
+    fn new(name: &str) -> Box {
+        let root = std::env::temp_dir().join(format!(
+            "impeccable-loop-connect-{name}-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("home/.claude")).unwrap();
+        fs::create_dir_all(root.join("home/.codex")).unwrap();
+        fs::create_dir_all(root.join("bin")).unwrap();
+        let mut env = HashMap::new();
+        env.insert("HOME".into(), root.join("home").display().to_string());
+        env.insert(
+            "IMPECCABLE_HOME".into(),
+            root.join("home/.impeccable").display().to_string(),
+        );
+        env.insert(
+            "PATH".into(),
+            format!("{}:/usr/bin:/bin", root.join("bin").display()),
+        );
+        // Fakes in the image of the real CLIs: Claude 2.1.x prints text on `get` and takes no
+        // --scope there; Codex answers `get --json` with its transport object.
+        // Fakes in the image of the real CLIs, writing the same files: Claude keeps user
+        // MCP servers in .claude.json (in CLAUDE_CONFIG_DIR when set, else HOME); Codex in
+        // CODEX_HOME/config.toml.
+        script(
+            &root.join("bin/claude"),
+            r#"#!/bin/sh
+f="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+[ -f "$f" ] || echo '{}' > "$f"
+case "$2" in
+add-json) jq --arg n "$5" --argjson c "$6" '.mcpServers[$n]=$c' "$f" > "$f.t" && mv "$f.t" "$f";;
+remove) jq --arg n "$5" 'del(.mcpServers[$n])' "$f" > "$f.t" && mv "$f.t" "$f";;
+esac
+exit 0
+"#,
+        );
+        script(
+            &root.join("bin/codex"),
+            r#"#!/bin/sh
+f="${CODEX_HOME:-$HOME/.codex}/config.toml"
+case "$2" in
+add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+esac
+exit 0
+"#,
+        );
+        Box { root, env }
+    }
+    fn home(&self) -> PathBuf {
+        self.root.join("home")
+    }
+    fn install_loop(&self) {
+        let macos = self
+            .home()
+            .join("Applications/Impeccable Loop.app/Contents/MacOS");
+        fs::create_dir_all(&macos).unwrap();
+        script(&macos.join("loop-hook"), "#!/bin/sh\nexit 0\n");
+    }
+    fn run(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_impeccable"))
+            .args(args)
+            .env_clear()
+            .envs(&self.env)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap()
+    }
+    fn support(&self) -> PathBuf {
+        self.home()
+            .join("Library/Application Support/Impeccable Reviews/Loop")
+    }
+}
+
+impl Drop for Box {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+fn script(path: &Path, body: &str) {
+    fs::write(path, body).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+fn claude_entry(file: &Path) -> serde_json::Value {
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .map(|v| v["mcpServers"]["impeccable"].clone())
+        .unwrap_or(serde_json::Value::Null)
+}
+
+fn codex_config(b: &Box) -> String {
+    fs::read_to_string(b.home().join(".codex/config.toml")).unwrap_or_default()
+}
+
+fn text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+#[test]
+fn connect_refuses_plainly_without_loop() {
+    // Catches: writing hooks that call a Loop helper that isn't there.
+    let b = Box::new("no-loop");
+    let out = b.run(&["loop", "connect"]);
+    assert!(!out.status.success());
+    assert!(
+        text(&out).contains("impeccable loop install"),
+        "{}",
+        text(&out)
+    );
+    assert!(
+        !b.home().join(".claude/settings.json").exists(),
+        "nothing written"
+    );
+}
+
+#[test]
+fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
+    // Catches (Loop journey C2 and C3): no command connected a customer's agents to Needs you.
+    let b = Box::new("roundtrip");
+    b.install_loop();
+    let personal = r#"{
+  "hooks": {
+    "Stop": [{"hooks": [{"type": "command", "command": "echo mine"}]}]
+  },
+  "theme": "dark"
+}
+"#;
+    fs::write(b.home().join(".claude/settings.json"), personal).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let said = text(&out);
+    assert!(
+        said.contains("/mcp") && said.contains("codex mcp login impeccable"),
+        "{said}"
+    );
+
+    // The MCP server: the built-in URL, for both agents, in their own files.
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(
+        codex_config(&b).contains(&format!("[mcp_servers.impeccable]\nurl = \"{URL}\"")),
+        "{}",
+        codex_config(&b)
+    );
+
+    // Claude's hooks call Loop's helper with the agreed arguments and options.
+    let settings: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap())
+            .unwrap();
+    let helper = b
+        .home()
+        .join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+    let quoted = format!("'{}'", helper.display());
+    let command = |event: &str, i: usize| settings["hooks"][event][i]["hooks"][0].clone();
+    assert_eq!(
+        command("Stop", 0)["command"],
+        "echo mine",
+        "personal hook kept first"
+    );
+    let stop = command("Stop", 1);
+    assert_eq!(stop["command"], format!("{quoted} claude lifecycle"));
+    assert_eq!(
+        (
+            stop["async"].clone(),
+            stop["asyncRewake"].clone(),
+            stop["timeout"].clone()
+        ),
+        (true.into(), true.into(), 86400.into())
+    );
+    assert_eq!(
+        command("PostToolUse", 0)["command"],
+        format!("{quoted} claude register")
+    );
+    assert_eq!(
+        settings["hooks"]["PreToolUse"][0]["matcher"],
+        "AskUserQuestion"
+    );
+    assert_eq!(
+        command("PreToolUse", 0)["command"],
+        format!("{quoted} claude adoption")
+    );
+    for event in ["SessionStart", "StopFailure"] {
+        assert_eq!(
+            command(event, 0)["command"],
+            format!("{quoted} claude lifecycle"),
+            "{event}"
+        );
+    }
+
+    // What the helper reads, private.
+    let claude = b.support().join("claude-install.json");
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&claude).unwrap()).unwrap();
+    assert_eq!(record["enabled"], true);
+    assert_eq!(record["harness"], "claude");
+    assert_eq!(
+        record["executable"],
+        b.root.join("bin/claude").display().to_string()
+    );
+    assert_eq!(
+        record["configDir"],
+        b.home().join(".claude").display().to_string()
+    );
+    assert_eq!(
+        fs::metadata(&claude).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        fs::metadata(b.support()).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    let codex: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("codex-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        (codex["enabled"].clone(), codex["harness"].clone()),
+        (true.into(), "codex".into())
+    );
+
+    // Again: nothing doubles.
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let again: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        again["hooks"]["Stop"].as_array().unwrap().len(),
+        2,
+        "connect is idempotent"
+    );
+
+    // Disconnect: exactly what connect wrote goes, personal settings come back byte for byte.
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(
+        fs::read_to_string(b.home().join(".claude/settings.json")).unwrap(),
+        personal
+    );
+    // MCP servers are never removed by disconnect: the exact command is printed instead.
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(codex_config(&b).contains("mcp_servers.impeccable"));
+    let said = text(&out);
+    assert!(
+        said.contains("env -u CLAUDE_CONFIG_DIR claude mcp remove --scope user impeccable"),
+        "{said}"
+    );
+    assert!(
+        said.contains(&format!(
+            "CODEX_HOME='{}' codex mcp remove impeccable",
+            b.home().join(".codex").display()
+        )),
+        "{said}"
+    );
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&claude).unwrap()).unwrap();
+    assert_eq!(
+        (record["enabled"].clone(), record["uninstalled"].clone()),
+        (false.into(), true.into())
+    );
+}
+
+#[test]
+fn an_agent_without_its_cli_is_skipped_not_failed() {
+    let b = Box::new("claude-only");
+    b.install_loop();
+    fs::remove_file(b.root.join("bin/codex")).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Codex: not found"), "{}", text(&out));
+    assert!(!claude_entry(&b.home().join(".claude.json")).is_null());
+    assert!(!b.support().join("codex-install.json").exists());
+}
+
+#[test]
+fn disconnect_undoes_the_account_connect_used_not_todays() {
+    // Catches (adversarial review, #1389): disconnect from a shell without CLAUDE_CONFIG_DIR
+    // missing the work account connect configured.
+    let mut b = Box::new("accounts");
+    b.install_loop();
+    let work = b.root.join("work-claude");
+    fs::create_dir_all(&work).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), work.display().to_string());
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(work.join("settings.json").exists());
+    b.env.remove("CLAUDE_CONFIG_DIR");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        !work.join("settings.json").exists(),
+        "the work account's hooks are gone"
+    );
+    let said = text(&out);
+    assert!(
+        said.contains(&format!(
+            "CLAUDE_CONFIG_DIR='{}' claude mcp remove",
+            work.display()
+        )),
+        "the removal command names the work account: {said}"
+    );
+}
+
+#[test]
+fn a_missing_cli_does_not_stop_disconnect() {
+    // Disconnect runs no agent CLI at all: hooks go and Loop stops waking either way.
+    let b = Box::new("missing-cli");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    fs::rename(b.root.join("bin/claude"), b.root.join("claude-moved")).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!b.home().join(".claude/settings.json").exists());
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(record["enabled"], false);
+}
+
+#[test]
+fn a_symlinked_support_folder_is_refused_before_anything_is_written() {
+    let b = Box::new("symlink");
+    b.install_loop();
+    let elsewhere = b.root.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    fs::create_dir_all(
+        b.home()
+            .join("Library/Application Support/Impeccable Reviews"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&elsewhere, b.support()).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(!out.status.success());
+    assert!(
+        text(&out).contains("isn't a plain folder"),
+        "{}",
+        text(&out)
+    );
+    assert!(
+        !b.home().join(".claude/settings.json").exists(),
+        "no agent changed"
+    );
+    assert_eq!(fs::read_dir(&elsewhere).unwrap().count(), 0);
+}
+
+#[test]
+fn one_agent_failing_reports_the_other_and_rolls_itself_back() {
+    let b = Box::new("partial");
+    b.install_loop();
+    // Codex already has a different server called impeccable: connect must not take it over.
+    let theirs = "[mcp_servers.impeccable]\nurl = \"https://elsewhere.example/mcp\"\n";
+    fs::write(b.home().join(".codex/config.toml"), theirs).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(!out.status.success());
+    let said = text(&out);
+    assert!(said.contains("Claude Code: connected"), "{said}");
+    assert!(
+        said.contains(&format!(
+            "Codex: not connected: {} already has a different MCP server called impeccable; it was left alone. Remove or rename it, then connect again.",
+            b.home().join(".codex/config.toml").display()
+        )),
+        "{said}"
+    );
+    assert!(
+        !b.home().join(".codex/hooks.json").exists(),
+        "nothing of Codex's was touched"
+    );
+    assert_eq!(codex_config(&b), theirs);
+}
+
+#[test]
+fn the_cli_is_resolved_once_from_absolute_executable_entries() {
+    let mut b = Box::new("resolve");
+    b.install_loop();
+    // A '.' entry and a non-executable claude earlier in PATH are both passed over.
+    let decoy = b.root.join("decoy");
+    fs::create_dir_all(&decoy).unwrap();
+    fs::write(decoy.join("claude"), "not a program").unwrap();
+    let path = format!(".:{}:{}", decoy.display(), b.env["PATH"]);
+    b.env.insert("PATH".into(), path);
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        record["executable"],
+        b.root.join("bin/claude").display().to_string()
+    );
+}
+
+#[test]
+fn an_entry_the_person_already_had_is_kept_on_disconnect() {
+    // connect adds only when absent, so disconnect removes only what it added.
+    let b = Box::new("theirs-exact");
+    b.install_loop();
+    let mine = format!("[mcp_servers.impeccable]\nurl = \"{URL}\"\n");
+    fs::write(b.home().join(".codex/config.toml"), &mine).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(codex_config(&b), mine, "the person's own entry stays");
+}
+
+#[test]
+fn disconnect_never_touches_another_accounts_server() {
+    // Catches (adversarial review, #1389, high): disconnect with CLAUDE_CONFIG_DIR pointing
+    // at another account removing that account's server.
+    let mut b = Box::new("other-account");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let work = b.root.join("work-claude");
+    fs::create_dir_all(&work).unwrap();
+    let theirs =
+        r#"{"mcpServers":{"impeccable":{"type":"http","url":"https://elsewhere.example/mcp"}}}"#;
+    fs::write(work.join(".claude.json"), theirs).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), work.display().to_string());
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(
+        fs::read_to_string(work.join(".claude.json")).unwrap(),
+        theirs
+    );
+}
+
+fn journals(b: &Box) -> Vec<PathBuf> {
+    let mut found: Vec<PathBuf> = fs::read_dir(b.home().join(".impeccable/agents"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().unwrap().to_string_lossy().into_owned();
+            n.ends_with(".json") && !n.ends_with(".pending.json")
+        })
+        .collect();
+    found.sort();
+    found
+}
+
+fn claude_journal(b: &Box) -> PathBuf {
+    journals(b)
+        .into_iter()
+        .find(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("impeccable-loop-claude-")
+        })
+        .expect("a Claude journal")
+}
+
+#[test]
+fn an_unreadable_journal_fails_disconnect_instead_of_reporting_nothing() {
+    // Catches (#1389 review): a journal that couldn't be read was skipped, and disconnect
+    // said "Nothing to disconnect" while that installation's hooks stayed.
+    let b = Box::new("unreadable");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal = claude_journal(&b);
+    fs::write(&journal, "{ not json").unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(said.contains(&journal.display().to_string()), "{said}");
+    assert!(!said.contains("Nothing to disconnect"), "{said}");
+}
+
+#[test]
+fn another_owners_pending_transaction_does_not_fail_disconnect() {
+    // Catches (#1389 review): every *.pending.json counted, so another tool's half-done
+    // apply failed Loop's disconnect with advice that didn't help.
+    let b = Box::new("foreign-pending");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(claude_journal(&b)).unwrap()).unwrap();
+    let mut spec = journal["spec"].clone();
+    spec["owner"] = "another-tool".into();
+    let tx = serde_json::json!({
+        "version": 2,
+        "journal_path": b.home().join(".impeccable/agents/other.json"),
+        "prior_journal": null,
+        "desired_spec": spec,
+        "prior_spec": null,
+        "targets": [],
+    });
+    let pending = b.home().join(".impeccable/agents/other.pending.json");
+    fs::write(&pending, tx.to_string()).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        pending.exists(),
+        "another owner's transaction is left alone"
+    );
+}
+
+#[test]
+fn disconnect_rolls_back_a_connect_that_stopped_part_way() {
+    // Catches (#1389 review): a connect that stopped after writing hooks left a pending
+    // transaction; disconnect only printed advice and the hooks stayed.
+    let b = Box::new("own-pending");
+    b.install_loop();
+    let settings = b.home().join(".claude/settings.json");
+    let before = "{\"theme\": \"dark\"}\n";
+    fs::write(&settings, before).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let journal_path = claude_journal(&b);
+    let journal: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&journal_path).unwrap()).unwrap();
+    let after = fs::read(&settings).unwrap();
+    assert_ne!(after, before.as_bytes());
+    // As if the apply had written the hooks and its journal, then stopped.
+    let tx = serde_json::json!({
+        "version": 2,
+        "journal_path": journal_path,
+        "prior_journal": null,
+        "desired_spec": journal["spec"],
+        "prior_spec": null,
+        "targets": [{"path": settings, "before": before.as_bytes(), "after": after}],
+    });
+    let stem = journal_path
+        .file_stem()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let pending = journal_path.with_file_name(format!("{stem}.pending.json"));
+    fs::write(&pending, tx.to_string()).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!pending.exists());
+    assert_eq!(fs::read_to_string(&settings).unwrap(), before);
+    // Its journal is gone with the rollback; the MCP server it added and Loop's record
+    // are still handled (#1389 review).
+    let said = text(&out);
+    assert!(
+        said.contains("Claude Code: an earlier connect that stopped part way was rolled back")
+            && said.contains("claude mcp remove"),
+        "{said}"
+    );
+    let record: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(b.support().join("claude-install.json")).unwrap())
+            .unwrap();
+    assert_eq!(record["enabled"], false, "{record}");
+}
+
+#[test]
+fn a_status_it_cannot_read_stops_connect_before_anything_changes() {
+    // Catches (#1389 review): a status error read as "not installed", so a later failure
+    // could undo hooks that were working.
+    let b = Box::new("status-error");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let settings = b.home().join(".claude/settings.json");
+    let installed = fs::read(&settings).unwrap();
+    fs::write(claude_journal(&b), "{ not json").unwrap();
+    let out = b.run(&["loop", "connect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(said.contains("couldn't read its hooks"), "{said}");
+    assert_eq!(fs::read(&settings).unwrap(), installed);
+}
+
+#[test]
+fn connect_says_when_the_hooks_point_at_a_loop_that_moved() {
+    // Catches (t6): Loop moved to /Applications leaves hooks calling a missing helper,
+    // which exits quietly; connect said only "isn't installed".
+    let b = Box::new("loop-moved");
+    b.install_loop();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    fs::remove_dir_all(b.home().join("Applications/Impeccable Loop.app")).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    let said = text(&out);
+    assert!(!out.status.success(), "{said}");
+    assert!(
+        said.contains("Loop's hooks point at a Loop that isn't there")
+            && said.contains("Impeccable Loop.app/Contents/MacOS/loop-hook")
+            && said.contains("~/Applications"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_relative_config_folder_connects_that_account_not_the_default() {
+    // Catches (#1372 review): a relative CLAUDE_CONFIG_DIR or CODEX_HOME was ignored, so
+    // connect wrote the default account and said it had connected the one asked for.
+    let mut b = Box::new("relative-config");
+    b.install_loop();
+    let work = b.root.join("work");
+    fs::create_dir_all(work.join("claude-work")).unwrap();
+    fs::create_dir_all(work.join("codex-work")).unwrap();
+    b.env
+        .insert("CLAUDE_CONFIG_DIR".into(), "claude-work".into());
+    b.env.insert("CODEX_HOME".into(), "./codex-work".into());
+    let out = Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["loop", "connect"])
+        .current_dir(&work)
+        .env_clear()
+        .envs(&b.env)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(
+        claude_entry(&work.join("claude-work/.claude.json")),
+        serde_json::json!({"type":"http","url":URL})
+    );
+    assert!(work.join("claude-work/settings.json").exists());
+    assert_eq!(
+        claude_entry(&b.home().join(".claude.json")),
+        serde_json::Value::Null
+    );
+    assert!(!b.home().join(".claude/settings.json").exists());
+    assert!(fs::read_to_string(work.join("codex-work/config.toml"))
+        .unwrap_or_default()
+        .contains(URL));
+    assert!(!codex_config(&b).contains(URL));
+}

@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -184,24 +184,66 @@ fn executable(app: &Path) -> Result<PathBuf> {
     fs::canonicalize(app.join("Contents/MacOS").join(name)).map_err(|e| e.to_string())
 }
 
-fn refuse_running(app: &Path) -> Result<()> {
+const RUNNING: &str =
+    "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.";
+/// How long `loop update` waits for a running Loop to quit.
+const QUIT_WAIT: Duration = Duration::from_secs(10);
+
+/// The pids whose executable is exactly this bundle's, never another app's: matched by
+/// canonical path, not by name or bundle id (a development build shares the id).
+fn running_pids(app: &Path) -> Result<Vec<i32>> {
     let exe = executable(app)?;
     let out = Command::new("/bin/ps")
-        .args(["-axo", "comm="])
+        .args(["-axo", "pid=,comm="])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err("Cannot check whether Loop is running; quit Loop and retry.".into());
     }
-    if String::from_utf8_lossy(&out.stdout)
+    Ok(String::from_utf8_lossy(&out.stdout)
         .lines()
-        .any(|line| fs::canonicalize(line.trim()).is_ok_and(|path| path == exe))
-    {
-        return Err(
-            "Impeccable Loop is running. Quit Loop first, then run impeccable loop update.".into(),
-        );
+        .filter_map(|line| {
+            let (pid, comm) = line.trim_start().split_once(char::is_whitespace)?;
+            let path = fs::canonicalize(comm.trim()).ok()?;
+            (path == exe).then(|| pid.parse().ok()).flatten()
+        })
+        .collect())
+}
+
+/// Ask a running Loop to quit (SIGTERM to this bundle's processes only) and wait up to
+/// `wait` for them to exit. One that is still running keeps today's refusal.
+fn quit_running(app: &Path, wait: Duration) -> Result<()> {
+    #[cfg(unix)]
+    let signal = libc::SIGTERM;
+    #[cfg(not(unix))]
+    let signal = 0;
+    quit_running_with(app, wait, signal)
+}
+
+/// [`quit_running`] with the signal as a parameter, so a test can stand in for a Loop
+/// that ignores it (signal 0 delivers nothing).
+fn quit_running_with(app: &Path, wait: Duration, signal: i32) -> Result<()> {
+    let pids = running_pids(app)?;
+    if pids.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    for &pid in &pids {
+        #[cfg(unix)]
+        // SAFETY: a plain signal to a pid this bundle's executable owns.
+        unsafe {
+            libc::kill(pid, signal);
+        }
+    }
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        if running_pids(app)?.is_empty() {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(RUNNING.into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
@@ -247,6 +289,17 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
         return Ok(USAGE.into());
+    }
+    match args.first().map(String::as_str) {
+        Some("connect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::connect(io);
+        }
+        Some("disconnect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::disconnect(io);
+        }
+        _ => {}
     }
     let update = match args.first().map(String::as_str) {
         Some("install") => false,
@@ -336,7 +389,8 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
                 "Loop {installed} is newer than the newest pinned release ({version}); nothing to update.\n"
             ));
         }
-        refuse_running(&app)?;
+        // A running Loop is asked to quit only once the new build is downloaded and
+        // verified, just before the swap, so a failed download leaves it running.
     }
     let base = io
         .env("IMPECCABLE_DOWNLOAD_BASE")
@@ -369,7 +423,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         return Err("Loop bundle version does not match its release.".into());
     }
     if update {
-        refuse_running(&app)?;
+        quit_running(&app, QUIT_WAIT)?;
     }
     swap(&staged, &app, &backup, update)?;
     if !no_open {

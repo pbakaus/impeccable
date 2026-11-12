@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n",
+  "stderr": "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect\n       impeccable loop disconnect\n",
   "exit": 1,
   "signal": null,
   "files": {}
