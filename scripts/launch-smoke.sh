@@ -63,7 +63,10 @@ unset CI IMPECCABLE_HOME IMPECCABLE_AGENTS_HOME IMPECCABLE_BIN IMPECCABLE_PRO DO
 # The CLI's own sign-in wait matches the 10 minutes the prompt promises.
 export IMPECCABLE_LOGIN_TIMEOUT=600
 unset CLAUDE_CONFIG_DIR CODEX_HOME IMPECCABLE_CLAUDE_BIN IMPECCABLE_CODEX_BIN
-[ "$TARGET" = staging ] && export IMPECCABLE_CREDENTIAL_STORE=file
+# The scratch HOME has no macOS login keychain (the keychain search list lives under
+# ~/Library), so a keychain sign-in can't be saved there and login fails. Keep the sign-in
+# in a file inside the scratch HOME on every target; cleanup deletes it with the rest.
+export IMPECCABLE_CREDENTIAL_STORE=file
 imp() { "${CLI[@]}" "$@"; }
 
 failed=0
