@@ -64,6 +64,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             0
         }
         "detect" => detect(rest, io, &engines, pack.rule_pack),
+        "foundations" => crate::foundations::run(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
         "login" => {
@@ -215,51 +216,44 @@ fn detect(
     if let Some(full) = report {
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();
-        // Source scans can establish failures, but a missing finding cannot
-        // establish a pass (regex-only files, ignores and unresolved styles).
-        let mut foundations = std::collections::BTreeMap::new();
-        for f in &full.findings {
-            if f.advisory == Some(true) {
-                continue;
-            }
-            let id = if f.antipattern == "low-contrast" {
-                Some("readable-contrast")
-            } else if impeccable_core::registry::ANTIPATTERNS
-                .iter()
-                .any(|r| r.id == f.antipattern && r.category == "slop")
-            {
-                Some("no-generic-ai-patterns")
-            } else {
-                None
-            };
-            if let Some(id) = id {
-                foundations.insert(id.to_string(), "failing".to_string());
-            }
-        }
-        let scan = impeccable_account::health::Scan {
-            foundations,
-            root: full.root,
-            files_scanned: full.files_scanned,
-            hits: full
-                .findings
-                .into_iter()
-                .map(|f| impeccable_account::health::Hit {
-                    advisory: f.advisory == Some(true),
-                    rule: f.antipattern,
-                    file: f.file,
-                    snippet: f.snippet,
-                })
-                .collect(),
-            ruleset: full.ruleset,
-            engine_version: VERSION.to_string(),
-            started,
-        };
+        let foundations = crate::foundations::from_scan(
+            &full.root,
+            &full,
+            impeccable_account::health::foundations_wanted(io),
+        );
+        let scan = health_scan(full, foundations, started);
         let quiet = args
             .iter()
             .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code
+}
+
+/// Design health's view of a full scan, with its foundations states.
+pub(crate) fn health_scan(
+    full: impeccable_detect::cli::FullScan,
+    foundations: std::collections::BTreeMap<String, String>,
+    started: std::time::SystemTime,
+) -> impeccable_account::health::Scan {
+    impeccable_account::health::Scan {
+        foundations,
+        root: full.root,
+        files_scanned: full.files_scanned,
+        hits: full
+            .findings
+            .into_iter()
+            .map(|f| impeccable_account::health::Hit {
+                advisory: f.advisory == Some(true),
+                rule: f.antipattern,
+                file: f.file,
+                snippet: f.snippet,
+            })
+            .collect(),
+        ruleset: full.ruleset,
+        engine_version: VERSION.to_string(),
+        started,
+    }
 }
 
 /// Whether this invocation is a scan the Pro engine may take over: the
@@ -289,6 +283,7 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "foundations",
     "setup",
     "setup-report",
     "health-design-refresh",
@@ -377,6 +372,9 @@ mod verb_tests {
             .iter()
             .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
             .collect();
-        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
+        );
     }
 }
