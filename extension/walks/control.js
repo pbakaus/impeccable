@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { endWalk, fail, fence, fenced, hold, hooks, onAsk, onSignIn, ops, personHas, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, lookOnly, onAsk, onSignIn, ops, personHas, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -108,6 +108,8 @@ for (const [name, run] of Object.entries(ops)) {
       const at = fenced();
       if (!(await clear(name)) && at === fenced()) {
         if (!agreed) {
+          // Another site the person let the walk go to is only looked at: no deed is asked for there.
+          if (lookOnly()) throw fail('NotAllowed', 'on another site a walk only looks');
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');
           if (said !== 'yes' || at !== fenced()) throw overtaken();

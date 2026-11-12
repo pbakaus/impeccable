@@ -8,7 +8,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 import { readHandoff, resultLink } from '../extension/walks/handoff.js';
-import { admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
+import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
 import { HELPER_KEY, START_PAGES, WALK_PERMISSIONS, firefoxManifest, helperManifest, isStoreFile, moduleReferences, stageHelper, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 import { IDS } from '../extension/shared/ids.js';
@@ -590,10 +590,13 @@ describe('walk helper worker', () => {
     for (const listener of listeners.external) if (listener(message, { id }, (answer) => { answered = true; resolve(answer); }) !== true && !answered) resolve(null);
   });
   const tabs = { made: [], removed: [], ungrouped: [], groupId: -1, url: `${SHOP}/cart` };
+  // The person's history in the tab: a page of the same site from before the walk, then where it starts.
+  const history = { currentIndex: 1, entries: [{ id: 1, url: `${SHOP}/before` }, { id: 2, url: `${SHOP}/cart` }] };
   let own;
   const ownTab = () => (own ??= (async () => {
     const walk = await walked();
     await walk.ops.close();
+    answers['Page.getNavigationHistory'] = () => history;
     Object.assign(chrome.tabs, {
       async create(tab) { tabs.made.push(tab); return { id: 30, windowId: 1 }; },
       async remove(id) { tabs.removed.push(id); },
@@ -659,21 +662,134 @@ describe('walk helper worker', () => {
     }
   });
 
-  it('asks before another site, and goes there only on Yes', async () => {
-    const { command, current } = await ownTab();
-    for (const [url, answer, fetched] of [['https://news.example.org/a', 'yes', 'Fetch.continueRequest'], ['https://ads.example.net/', 'no', 'Fetch.failRequest']]) {
+  // The tab asks for a request as a page would: a top-level document unless `extra` says otherwise.
+  let moves = 0;
+  const move = (url, extra = {}) => fireOn(21, 'Fetch.requestPaused', { requestId: `go-${(moves += 1)}`, resourceType: 'Document', frameId: 'main', request: { method: 'GET', url }, ...extra });
+  const fetched = (from) => sent.slice(from).filter((m) => m.startsWith('Fetch.'));
+  const goTold = (from) => told.slice(from).filter((m) => m.kind === 'go');
+  const click = { action: 'click', x: 5, y: 5 };
+
+  it('asks before another site, once for it and its www and https forms, goes there only on Yes, and keeps a No', async () => {
+    const { ops, command, current } = await ownTab();
+    page.seen = {};
+    // What the other end had heard when the move was let through.
+    let heardAtContinue = null;
+    const { sendCommand } = chrome.debugger;
+    chrome.debugger.sendCommand = async (target, method, params) => {
+      if (method === 'Fetch.continueRequest') heardAtContinue ??= goTold(0).map((m) => `${m.event}:${m.said ?? ''}`).slice(-2);
+      return sendCommand(target, method, params);
+    };
+    try {
+      for (const [url, answer, done] of [['http://news.example.org/a', 'yes', 'Fetch.continueRequest'], ['https://ads.example.net/', 'no', 'Fetch.failRequest']]) {
+        await ops.mouse(click);
+        const [at, heard] = [sent.length, told.length];
+        move(url);
+        await settle(5);
+        assert.deepEqual([current().ask, fetched(at)], [{ kind: 'go', what: new URL(url).host }, []]);
+        await command(answer);
+        await settle(5);
+        assert.deepEqual(fetched(at), [done]);
+        const origin = new URL(url).origin;
+        assert.deepEqual(goTold(heard), [{ event: 'asking', kind: 'go', origin }, { event: 'answered', kind: 'go', origin, said: answer }]);
+      }
+    } finally {
+      chrome.debugger.sendCommand = sendCommand;
+    }
+    assert.deepEqual(heardAtContinue, ['asking:', 'answered:yes'], 'told the question and its answer before the move went on');
+    await ops.mouse(click);
+    for (const [url, done] of [
+      ['https://news.example.org/b', 'Fetch.continueRequest'],
+      ['https://www.news.example.org/c', 'Fetch.continueRequest'],
+      ['https://ads.example.net/again', 'Fetch.failRequest'],
+      ['https://www.ads.example.net/', 'Fetch.failRequest'],
+      ['http://192.168.1.1/', 'Fetch.failRequest'],
+    ]) {
+      const [at, heard] = [sent.length, told.length];
+      move(url);
+      await settle(5);
+      assert.deepEqual([current().ask, fetched(at), goTold(heard)], [null, [done], []], `${url} is not asked about`);
+      if (done === 'Fetch.failRequest') assert.equal(told.slice(heard).find((m) => m.event === 'blocked')?.url, url);
+    }
+  });
+
+  it('asks again after a pause cut a question short, and tells the other end so while paused', async () => {
+    const { ops, command, current } = await ownTab();
+    page.seen = {};
+    await ops.mouse(click);
+    const [at, heard] = [sent.length, told.length];
+    const origin = 'https://shop.example.net';
+    move(`${origin}/`);
+    await settle(5);
+    assert.equal(current().ask?.kind, 'go');
+    assert.equal(await command('pause'), true);
+    await settle(5);
+    assert.deepEqual([goTold(heard).map((m) => m.said ?? m.event), fetched(at)], [['asking', 'void'], ['Fetch.failRequest']]);
+    assert.equal(await command('resume'), true);
+    await ops.mouse(click);
+    move(`${origin}/`);
+    await settle(5);
+    assert.equal(current().ask?.what, 'shop.example.net', 'asked again');
+    await command('no');
+    await settle(5);
+  });
+
+  it('asks nothing of a move that is not the walk’s own: a goto, one long after its last click, one while going back', async () => {
+    const { ops, current } = await ownTab();
+    page.seen = {};
+    await assert.rejects(ops.goto({ url: 'https://elsewhere.example.com/', waitUntil: 'load', timeout: 1000 }), { name: 'NotAllowed' });
+    assert.equal(current().ask, null);
+    await ops.mouse(click);
+    const { now } = Date;
+    Date.now = () => now() + 11_000;
+    try {
       const at = sent.length;
-      fireOn(21, 'Fetch.requestPaused', { requestId: `go-${url}`, resourceType: 'Document', frameId: 'main', request: { method: 'GET', url } });
+      move('https://late.example.com/');
       await settle(5);
-      assert.deepEqual([current().ask, sent.slice(at).filter((m) => m.startsWith('Fetch.'))], [{ kind: 'go', what: new URL(url).host }, []]);
-      await command(answer);
+      assert.deepEqual([current().ask, fetched(at)], [null, ['Fetch.failRequest']], 'a page’s own timer is refused unasked');
+    } finally {
+      Date.now = now;
+    }
+    // Back: never to the person's page from before the walk, nor to a site the walk may not be on.
+    for (const entries of [history.entries, [...history.entries, { id: 3, url: 'https://elsewhere.example.com/' }, { id: 4, url: `${SHOP}/cart` }]]) {
+      Object.assign(history, { entries, currentIndex: entries.length - 1 });
+      const at = sent.length;
+      await assert.rejects(ops.goBack({ waitUntil: 'load', timeout: 1000 }), { name: 'NotAllowed' });
+      assert.deepEqual([current().ask, sent.slice(at).filter((m) => m === 'Page.navigateToHistoryEntry')], [null, []]);
+    }
+    Object.assign(history, { entries: [...history.entries.slice(0, 2), { id: 3, url: `${SHOP}/list` }, { id: 4, url: `${SHOP}/cart` }], currentIndex: 3 });
+    await ops.mouse(click);
+    const back = ops.goBack({ waitUntil: 'load', timeout: 1000 });
+    await settle(10);
+    const at = sent.length;
+    move('https://redirect.example.com/');
+    await settle(5);
+    assert.deepEqual([current().ask, fetched(at)], [null, ['Fetch.failRequest']], 'nothing is asked while going back');
+    fireOn(21, 'Page.navigatedWithinDocument', { frameId: 'main', url: `${SHOP}/list` });
+    await back;
+    Object.assign(history, { entries: history.entries.slice(0, 2), currentIndex: 1 });
+  });
+
+  it('only looks on another site: a write there fails, and no typing or asked deed is done there', async () => {
+    const { ops, current } = await ownTab();
+    page.seen = {};
+    fireOn(21, 'Page.frameNavigated', { frame: { id: 'main', loaderId: 'n1', url: 'https://news.example.org/a' } });
+    for (const [url, method, done] of [
+      ['https://news.example.org/vote', 'POST', 'Fetch.failRequest'],
+      ['https://news.example.org/more', 'GET', 'Fetch.continueRequest'],
+      [`${SHOP}/api/cart`, 'POST', 'Fetch.continueRequest'],
+    ]) {
+      const at = sent.length;
+      move(url, { resourceType: 'XHR', request: { method, url } });
       await settle(5);
-      assert.deepEqual(sent.slice(at).filter((m) => m.startsWith('Fetch.')), [fetched]);
+      assert.deepEqual(fetched(at), [done], `${method} ${url}`);
     }
     const at = sent.length;
-    fireOn(21, 'Fetch.requestPaused', { requestId: 'go-local', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'http://192.168.1.1/' } });
-    await settle(5);
-    assert.deepEqual([current().ask, sent.slice(at).filter((m) => m.startsWith('Fetch.'))], [null, ['Fetch.failRequest']], 'a private address is never asked for');
+    await assert.rejects(ops.keyboard({ action: 'type', text: 'hi' }), { name: 'NotAllowed' });
+    await assert.rejects(ops.mouse({ ...click, ask: { kind: 'send', what: 'Send the comment' } }), { name: 'NotAllowed' });
+    assert.deepEqual([current().ask, sent.slice(at).filter((m) => m.startsWith('Input.'))], [null, []]);
+    await ops.keyboard({ action: 'press', key: 'PageDown' });
+    assert.equal(sent.slice(at).filter((m) => m === 'Input.dispatchKeyEvent').length, 2, 'a key that only scrolls is pressed');
+    fireOn(21, 'Page.frameNavigated', { frame: { id: 'main', loaderId: 'n2', url: `${SHOP}/cart` } });
   });
 
   it('lets go of the person’s tab at the end and leaves it open, out of the group it was put in', async () => {
@@ -681,6 +797,34 @@ describe('walk helper worker', () => {
     await ops.close();
     assert.deepEqual([tabs.made, tabs.removed, tabs.ungrouped, current().state], [[], [], [21], 'done']);
   });
+
+  // Each on a walk of its own, after the one above has ended: the counts start at nothing.
+  for (const [label, answer, asked] of [[`${MAX_OTHER_SITES} other sites`, 'yes', MAX_OTHER_SITES], [`${MAX_SITE_QUESTIONS} questions`, 'no', MAX_SITE_QUESTIONS]]) {
+    it(`asks no more after ${label}: the next site is refused unasked`, async () => {
+      const { ops, command, current } = await ownTab();
+      const before = sockets.length;
+      assert.equal((await fromMain({ walks: 'walk', handoff: started(), tabId: 21 })).ok, true);
+      for (let turn = 0; turn < 50 && sockets.length === before; turn++) await settle(1);
+      await ops.open({ url: `${SHOP}/`, name: 'Ines' });
+      page.seen = {};
+      try {
+        for (let n = 0; n <= asked; n++) {
+          await ops.mouse(click);
+          const at = sent.length;
+          move(`https://site${n}.example.com/`);
+          await settle(5);
+          if (n === asked) assert.deepEqual([current().ask, fetched(at)], [null, ['Fetch.failRequest']]);
+          else {
+            assert.equal(current().ask?.what, `site${n}.example.com`);
+            await command(answer);
+            await settle(5);
+          }
+        }
+      } finally {
+        await ops.close();
+      }
+    });
+  }
 
   it('drops a reply that settles after its socket is gone, never sending it on the next one', async () => {
     const { ops } = await ownTab();

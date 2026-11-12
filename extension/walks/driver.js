@@ -1,7 +1,7 @@
 // The walk's driver: the one tab a walk has, and every op the socket may ask of it (the walk protocol). It
 // decides nothing: the session engine on the other end does the thinking. worker.js holds the socket and answers;
 // guard.js says where the tab may be and what it may start.
-import { admit, arm, askable, held, onSite, onlyThisTab, popupWatch, refuseDownload, stillHome, webOrigin } from './guard.js';
+import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 
@@ -47,7 +47,8 @@ let fences = 0;
 export const fenced = () => fences;
 export function fence() { fences += 1; }
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the walk was paused before this was done'); };
-const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached']);
+// `answered`: a pause during a question settles it, and the other end waits on that answer.
+const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered']);
 
 /** Tells the other end, and whoever in here listens. */
 export function say(message) {
@@ -82,18 +83,31 @@ let asker = async () => 'no';
 export function onAsk(listener) { asker = listener; }
 
 /**
- * Whether the walked tab may go to `url`: on its site already, or, on a walk of the person's own tab, to another site
- * the person said yes to, which is then the walk's for the rest of it.
+ * Whether the walked tab of the person's own walk may go to `url`, another site: only when the person says yes to it,
+ * which makes it the walk's for the rest of it. Asked only of a move the walk's own click or key made, never while
+ * going back, paused or already asking, once per site, and only so many times (guard.js). A No is kept: that site is
+ * refused unasked from then on. The other end hears the question and its answer before the move goes on or fails.
  */
 async function mayGo(url) {
   const tab = walk;
-  if (!tab) return false;
-  if (stillHome(url, tab.allowed)) return true;
-  if (!tab.adopted || !askable(url, tab.allowed)) return false;
-  if ((await asker({ kind: 'go', what: new URL(url).host })) !== 'yes' || walk !== tab) return false;
-  tab.allowed.push(webOrigin(url));
+  const origin = webOrigin(url);
+  if (!tab?.adopted || !askable(url, tab.allowed) || tab.refused.has(origin) || tab.goingBack || tab.asking || hush) return false;
+  if (!(Date.now() - tab.lastInputAt <= ASK_AFTER_INPUT_MS) || tab.sites >= MAX_OTHER_SITES || tab.questions >= MAX_SITE_QUESTIONS) return false;
+  tab.questions += 1;
+  tab.asking = true;
+  say({ event: 'asking', kind: 'go', origin });
+  const said = await asker({ kind: 'go', what: new URL(url).host });
+  tab.asking = false;
+  say({ event: 'answered', kind: 'go', origin, said });
+  if (walk !== tab || said === 'void') return false;
+  if (said === 'no') { for (const one of siteOrigins(origin)) tab.refused.add(one); return false; }
+  tab.sites += 1;
+  tab.allowed.push(...siteOrigins(origin));
   return true;
 }
+
+/** Whether the walked tab is on a site the walk only looks at: another site the person let it go to. */
+export const lookOnly = () => Boolean(walk?.adopted && !stillHome(walk.url, walk.writable));
 
 /** A debugger command on a tab, as Chrome answers it. */
 export const send = (tabId, method, params) => chrome.debugger.sendCommand({ tabId }, method, params);
@@ -375,14 +389,16 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       const tab = walk;
       // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
-      const allowed = heldAtSignIn && isSignInPage(params.request?.url) ? [...tab.allowed, new URL(params.request.url).origin] : tab.allowed;
+      const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
+      const allowed = signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
+      const writable = [...tab.writable, ...signIn];
       // A sign-in page asked for: paused before the guard answers, whatever it answers; unless the person is the one
       // signing in.
       const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
       if (!heldAtSignIn && top && isSignInPage(params.request?.url)) spotted();
       // Another site, on a walk of the person's own tab: held until the person says whether it may go there.
       const asking = top && tab.adopted && !heldAtSignIn && !onSite(params.request?.url, allowed) ? mayGo(params.request.url) : Promise.resolve();
-      void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, (url) => {
+      void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, writable, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
       }).then((became) => {
@@ -590,13 +606,17 @@ async function adopt(name, allow) {
     await chrome.debugger.attach({ tabId }, '1.3');
     attached = true;
     still();
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...new Set([site, ...allowedFor(allow)])], adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
+    const writable = [...new Set([site, ...allowedFor(allow)])];
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await cmd('Network.enable');
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
     const { frameTree } = await cmd('Page.getFrameTree');
     walk.mainFrame = frameTree.frame.id;
     walk.loader = frameTree.frame.loaderId;
+    // The person's history before the walk is theirs: going back never reaches it.
+    walk.firstIndex = (await cmd('Page.getNavigationHistory')).currentIndex ?? 0;
     await arm(cmd);
     for (const hook of hooks.opened) { still(); await hook(walk); }
     still();
@@ -640,7 +660,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await cmd('Network.enable');
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -668,7 +688,8 @@ export const ops = {
   },
 
   async goto({ url, waitUntil, timeout }) {
-    if (!(await mayGo(url))) {
+    // Never a question: only a click of the walk's own reaches a new site.
+    if (!stillHome(url, walk.allowed)) {
       say({ event: 'blocked', what: 'navigation', url: String(url).slice(0, 500) });
       throw fail('NotAllowed', `a walk stays on ${walk.origin}`);
     }
@@ -693,8 +714,12 @@ export const ops = {
   async goBack({ waitUntil, timeout }) {
     const want = waitUntil === 'domcontentloaded' ? 'DOMContentLoaded' : 'load';
     const history = await cmd('Page.getNavigationHistory');
+    const tab = walk;
+    // On the person's own tab, back stays within the walk: never to a page from before it, nor to a site it may not be on.
+    if (tab.adopted && (history.currentIndex - 1 < tab.firstIndex || !onSite(history.entries[history.currentIndex - 1]?.url, tab.allowed))) throw fail('NotAllowed', 'back would leave the sites this walk may be on');
     if (history.currentIndex < 1) return { value: null };
     const page = watch();
+    tab.goingBack = true;
     try {
       let navigated = false;
       await cmd('Page.navigateToHistoryEntry', { entryId: history.entries[history.currentIndex - 1].id });
@@ -706,6 +731,7 @@ export const ops = {
       }, timeout, navigationTimeout(timeout));
       return { value: { status: walk.statuses.get(walk.loader) ?? null } };
     } finally {
+      tab.goingBack = false;
       page.stop();
     }
   },
@@ -751,6 +777,7 @@ export const ops = {
     if (action === 'down' || action === 'click') {
       overtaken(at);
       m.down = true;
+      walk.lastInputAt = Date.now();
       await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x: m.x, y: m.y, button: 'left', buttons: 1, clickCount: 1 });
     }
     if (action === 'up' || action === 'click') {
@@ -764,12 +791,14 @@ export const ops = {
   // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.
   async keyboard({ action, key, text }) {
     const at = fences;
+    walk.lastInputAt = Date.now();
     if (action === 'press') {
       await typable();
       overtaken(at);
       await press(key);
     } else {
       for (const ch of text) {
+        if (lookOnly()) throw fail('NotAllowed', 'on another site a walk only looks');
         await typable();
         overtaken(at);
         if (ch === '\n' || ch === '\r') await press('Enter');

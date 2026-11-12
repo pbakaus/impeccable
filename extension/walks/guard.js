@@ -18,7 +18,8 @@
 //     that tab and no other (driver.js `adopt`). Only loopback addresses and the origins the hand-off allowed may be
 //     walked from a new tab; the person's own tab is walked on its own site, and refused before anything if it is ours.
 //   - wandering off on the person's own tab: another site is gone to only once the person says yes to it, and never
-//     to our own pages, this machine or a private network address (`askable`).
+//     to our own pages, this machine or a private network address (`askable`). Only a move soon after the walk's own
+//     click or key is asked about, each site once and only so many; there the walk only looks (driver.js `mayGo`).
 //   - reaching our own account: our app, API and sign-in pages are refused in every build (`isOwnPage`), even when
 //     the hand-off allowed them or they are on this machine.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
@@ -123,6 +124,26 @@ export function askable(url, allowed) {
   return !isLoopback(hostname) && !isPrivate(hostname);
 }
 
+/**
+ * What one Yes to another site lets the walk of the person's own tab do: at most this many sites besides the start,
+ * and this many questions in all. A contract with the web app, which says the first to the persona.
+ */
+export const MAX_OTHER_SITES = 8;
+export const MAX_SITE_QUESTIONS = 12;
+/** Only a move this soon after the walk's own click or key is the walk's doing, so only then is the person asked. */
+export const ASK_AFTER_INPUT_MS = 10_000;
+
+/**
+ * The origins one site is, for a question: its host with and without `www.`, on the scheme asked for and on https. One
+ * Yes or No covers them all, so a redirect from http to https, or to `www.`, does not ask again.
+ */
+export function siteOrigins(origin) {
+  const { protocol, hostname, port } = new URL(origin);
+  const bare = hostname.replace(/^www\./, '');
+  const schemes = protocol === 'https:' ? ['https:'] : [protocol, 'https:'];
+  return schemes.flatMap((scheme) => [bare, `www.${bare}`].map((host) => new URL(`${scheme}//${host}${port ? `:${port}` : ''}`).origin));
+}
+
 /** Whether the top-level document may be at `url`. A blob the site made is the site's; nothing else without an origin is. */
 export function onSite(url, allowed) {
   try {
@@ -154,15 +175,16 @@ const READS = ['GET', 'HEAD', 'OPTIONS'];
 
 /**
  * What to do with a request the tab is held on: `continue`; `block` for a top-level document off the site (aborted,
- * and told); `refuse` for a request that would change something on an origin that is not the walk's own (failed,
+ * and told); `refuse` for a request that would change something on an origin that is not `writable` (failed,
  * untold: pages send these all the time, to counters and the like). The walk's own site may be written to: a walk
- * exists to add, change and delete there. A frame's documents and reads are its own.
+ * exists to add, change and delete there. Another site the person let it go to is only looked at. A frame's documents
+ * and reads are its own.
  */
-export function verdict(paused, mainFrame, allowed) {
+export function verdict(paused, mainFrame, allowed, writable = allowed) {
   const url = paused.request?.url;
   if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed) ? 'continue' : 'block';
   if (READS.includes(String(paused.request?.method ?? 'GET').toUpperCase())) return 'continue';
-  return allowed.includes(webOrigin(url)) && !isOwnPage(url) ? 'continue' : 'refuse';
+  return writable.includes(webOrigin(url)) && !isOwnPage(url) ? 'continue' : 'refuse';
 }
 
 /* ------------------------------ on the tab ------------------------------ */
@@ -182,9 +204,9 @@ export async function arm(send) {
  * the address before the abort is sent, so whoever asked for the navigation knows why it failed by the time it does.
  * Resolves to what became of the request: `continued`, `refused` or `gone`.
  */
-export async function held(send, paused, mainFrame, allowed, refused) {
+export async function held(send, paused, mainFrame, allowed, writable, refused) {
   let answer = 'block';
-  try { answer = verdict(paused, mainFrame, allowed); } catch { /* unreadable: refused */ }
+  try { answer = verdict(paused, mainFrame, allowed, writable); } catch { /* unreadable: refused */ }
   const pass = answer === 'continue';
   if (answer === 'block') refused(String(paused.request?.url ?? '').slice(0, 500));
   try {
