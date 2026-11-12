@@ -2270,12 +2270,37 @@ The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
 `productType` and `items`, plus an optional `label`: the repo's name by design
 health's label recipe, sent only when the remote supplies a usable one. Scan
 identity, time, repo key and label match design health.
-`productType` is `null`: the detector does not classify products. Non-advisory
-built-in `slop` findings establish `no-generic-ai-patterns: failing`;
-`low-contrast` findings establish `readable-contrast: failing`. Absent findings
-do not establish a pass: ignores, regex-only files and unresolved styles leave
-coverage incomplete. No item is sent as `checked` or `covered`, and every other
-catalog item is omitted because the scan supplies no corresponding check.
+`productType` is `null`: the detector does not classify products. `items` maps
+only these 18 ids, the ones the service accepts, to `checked` or `failing`
+(`covered` is never sent yet); an item without evidence either way is left out.
+
+- Detector classes. Non-advisory built-in `slop` findings establish
+  `no-generic-ai-patterns: failing`; `low-contrast` findings establish
+  `readable-contrast: failing`. A pass means "none found by the scan" and is
+  sent only where the scan could have found one: `readable-contrast: checked`
+  needs at least one file read by the static HTML engine (low contrast never
+  runs on regex-only files), `no-generic-ai-patterns: checked` at least one
+  markup, style or component file; both need every rule of the class enabled
+  and no advisory finding of it.
+- Project files (`crates/cli/src/foundations/local.rs`), when the scanned root
+  is a git work tree's top: one offline walk, sorted, skipping dependency,
+  build and hidden directories, capped at 20,000 paths, 6,000 file reads and
+  512 KiB per file (files over 2 MiB are never read). Past a cap only `failing`
+  states are sent. `ci-runs-tests`, `dependency-scanning`, `app-icons`,
+  `not-found-page`, `social-previews`, `legal-pages`, `reduced-motion`,
+  `design-tokens`, `secrets-out-of-repo`, `error-tracking`,
+  `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
+  `reversible-migrations`; the checks are documented in that file.
+  `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
+  `error-tracking` are sent only for a web project (an HTML entry, a web
+  framework dependency, or pages/app/routes UI files), and `not-found-page`
+  only for a framework it knows. `secrets-out-of-repo` reads `git ls-files`
+  (a git failure sends nothing) for well-known key formats and tracked env
+  files; neither a value nor a path ever leaves the machine.
+- `real-packages` and `current-dependencies` need the network and are never sent.
+
+A detector `failing` wins over a project-file `checked`. The edit hook never
+runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
@@ -2284,6 +2309,27 @@ other failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
+
+## `foundations [path] [--json]`
+
+Runs the project-file checks and the detector's full scan of `path` (default:
+the working directory; detect's own output is discarded) and prints the
+roadmap: `Foundations: <n> of <m> in place`, where `m` counts the items with a
+state, then `Next up:` with the first failing item in roadmap order (launch:
+secrets-out-of-repo, readable-contrast, no-generic-ai-patterns,
+not-found-page, app-icons, social-previews, legal-pages, readme-runs,
+ci-runs-tests, design-tokens, reduced-motion, real-packages; paying:
+dependency-scanning, error-tracking, reversible-migrations, no-giant-files,
+current-dependencies; scale: infrastructure-as-code), a one-line reason and
+`Ask your agent: /impeccable foundations <id>`, then one line per other item
+(`✓` in place, `✗` to fix with its id, `·` not checked). When the next item is
+`secrets-out-of-repo` the terminal lists up to five `file:line (kind)`
+locations, never the value; for `no-giant-files`, up to five files with their
+line counts. A folder with no files prints `Nothing to check yet: ...`.
+`--json` prints `{"items": {id: state}, "next": id | null}` and nothing else.
+Exit 0; 1 for an unknown option or a missing folder. After printing, a
+signed-in CLI uploads the scan exactly as a full `detect` does (design health
+and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
 ## `health design on|off`
 

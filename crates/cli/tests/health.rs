@@ -468,6 +468,11 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
         ]
     );
     std::fs::write(root.join("contrast.html"), "<!doctype html><html><body><p style='color:#eee;background:#fff;font-size:16px'>Readable text</p></body></html>").unwrap();
+    // A tracked key: the item fails, and neither the key nor where it sits is sent.
+    let key = format!("sk_{}_{}", "live", "4eC39HqLyjWDarjtT1zdp7dcAbCdEf12");
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::write(root.join("src/billing-keys.ts"), format!("export const k = \"{key}\";\n")).unwrap();
+    git(&root, &["add", "src/billing-keys.ts"]);
     let out = run(&env, &root, &["detect", "--json", "."]);
     let r = fake.record.lock().unwrap();
     let body = r.foundations.last().expect("foundations uploaded");
@@ -475,7 +480,12 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
     assert_eq!(body["scanId"], r.scans.last().unwrap()["scanId"]);
     assert_eq!(body["items"]["no-generic-ai-patterns"], "failing");
     assert_eq!(body["items"]["readable-contrast"], "failing");
-    assert!(body["items"].get("design-tokens").is_none());
+    assert_eq!(body["items"]["secrets-out-of-repo"], "failing");
+    assert_eq!(body["items"]["ci-runs-tests"], "failing");
+    // Items that need the network are never claimed.
+    assert!(body["items"].get("real-packages").is_none());
+    let sent = body.to_string();
+    assert!(!sent.contains(&key[8..]) && !sent.contains("billing-keys"), "{sent}");
     // The repo's name, by health's label recipe, so the page needn't show a hash
     // (pristine#4721 accepts it).
     assert_eq!(body["label"], r.scans.last().unwrap()["label"]);
@@ -536,10 +546,19 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
     )
     .unwrap();
     run(&env, &root, &["detect", "--json", "."]);
-    assert_eq!(
-        fake.record.lock().unwrap().foundations.last().unwrap()["items"],
-        serde_json::json!({})
-    );
+    // A scan that read a page and found nothing claims "none found".
+    let items = fake.record.lock().unwrap().foundations.last().unwrap()["items"].clone();
+    assert_eq!(items["readable-contrast"], "checked", "{items}");
+    assert_eq!(items["no-generic-ai-patterns"], "checked", "{items}");
+    // The verb prints and uploads the same states, and the key's value stays
+    // out of its JSON too.
+    let verb = run(&env, &root, &["foundations", "--json"]);
+    let printed: serde_json::Value = serde_json::from_slice(&verb.stdout).unwrap();
+    assert_eq!(printed["items"], items);
+    assert_eq!(printed["next"], "secrets-out-of-repo");
+    assert_eq!(fake.record.lock().unwrap().foundations.last().unwrap()["items"], items);
+    let stdout = String::from_utf8_lossy(&verb.stdout);
+    assert!(!stdout.contains(&key[8..]) && !stdout.contains("billing-keys"));
 }
 
 #[test]

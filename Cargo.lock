@@ -541,6 +541,7 @@ dependencies = [
  "impeccable-live",
  "impeccable-skills",
  "libc",
+ "regex",
  "ring",
  "semver",
  "serde_json",

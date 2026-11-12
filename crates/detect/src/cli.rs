@@ -307,6 +307,10 @@ struct Ctx<'a> {
     regex_only_files: usize,
     /// Local files the engines read, for design health.
     files_scanned: usize,
+    /// Of those, the UI files (markup, styles, components) and the ones the
+    /// static HTML engine read, for foundations.
+    ui_files_scanned: usize,
+    html_files_scanned: usize,
     /// Their extensions, lowercased and sorted, for the note.
     regex_only_exts: BTreeSet<String>,
     /// Each scanned directory's framework dev-server port, deduplicated, so
@@ -499,12 +503,28 @@ pub struct FullScan {
     /// The scanned directory, absolute.
     pub root: String,
     pub files_scanned: usize,
+    /// Scanned markup, style and component files (not plain .js/.ts).
+    pub ui_files_scanned: usize,
+    /// Scanned files the static HTML engine read, the only local files the
+    /// element rules (low contrast among them) run on.
+    pub html_files_scanned: usize,
     /// What detect reported, after the config, ignores and `--no-advisory`.
     pub findings: Vec<Finding>,
     /// Everything besides the engine that decides which findings can exist:
     /// each enabled rule id (sorted), then each setting as `name=value`.
     /// Formatting flags are left out.
     pub ruleset: Vec<String>,
+}
+
+/// Markup, style and component files: the scannable ones besides plain scripts.
+fn is_ui_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [
+        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx", ".vue", ".svelte",
+        ".astro", ".blade.php",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
 }
 
 /// [`run_detect_with_pack`] that also hands back a [`FullScan`] when the run
@@ -759,6 +779,8 @@ fn detect_cli(
         had_operational_failure: false,
         regex_only_files: 0,
         files_scanned: 0,
+        ui_files_scanned: 0,
+        html_files_scanned: 0,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
@@ -925,6 +947,8 @@ fn detect_cli(
             *report = Some(FullScan {
                 root,
                 files_scanned: ctx.files_scanned,
+                ui_files_scanned: ctx.ui_files_scanned,
+                html_files_scanned: ctx.html_files_scanned,
                 findings: all.clone(),
                 ruleset,
             });
@@ -1219,6 +1243,12 @@ fn scan_targets(
                     Ok(f) => {
                         ctx.note_scanned(&opts);
                         ctx.files_scanned += 1;
+                        if uses_html_engine(file, &ctx.config.extensions) {
+                            ctx.html_files_scanned += 1;
+                            ctx.ui_files_scanned += 1;
+                        } else if is_ui_file(file) {
+                            ctx.ui_files_scanned += 1;
+                        }
                         f
                     }
                     Err(e) => {
