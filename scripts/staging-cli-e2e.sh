@@ -144,17 +144,19 @@ if [ "$worlds" = 1 ]; then
   check "world: DESIGN.md carries a reference image" 'grep -q "^Reference image: https://" "$W/DESIGN.md"'
   check "world: the sidecar is marked as seeded" '[ "$(jq -r .seededFrom.world "$W/.impeccable/design.json" 2>/dev/null)" = "$PUBLIC_WORLD" ]'
   # The seed's fingerprint, so a local build from the same world can be shown to start from these exact files.
-  info "world: seed sha256 DESIGN.md $(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1) design.json $(shasum -a 256 "$W/.impeccable/design.json" | cut -d" " -f1)"
-  before=$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)
+  fhash() { { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi; } 2>/dev/null | cut -d" " -f1; }
+  info "world: seed sha256 DESIGN.md $(fhash "$W/DESIGN.md") design.json $(fhash "$W/.impeccable/design.json")"
+  before=$(fhash "$W/DESIGN.md")
   (cd "$W" && "$BIN" world "$PUBLIC_WORLD" > "$H/world2.out" 2>&1); rc=$?
-  check "world: a second run writes nothing and points at --print" '[ $rc = 0 ] && grep -q "already exists, so nothing was written" "$H/world2.out" && [ "$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)" = "$before" ]'
+  check "world: a second run writes nothing and points at --print" '[ $rc = 0 ] && grep -q "already exists, so nothing was written" "$H/world2.out" && [ -n "$before" ] && [ "$(fhash "$W/DESIGN.md")" = "$before" ]'
   (cd "$W" && "$BIN" world "$PUBLIC_WORLD" --print > "$H/world-print.out" 2>/dev/null)
   check "world: --print hands over the seed as JSON" '[ "$(jq -r .id "$H/world-print.out" 2>/dev/null)" = "$PUBLIC_WORLD" ]'
   W2="$H/world-project-2"; mkdir -p "$W2"
   (cd "$W2" && "$BIN" world no-such-world-e2e > /dev/null 2> "$H/world404.err"); rc=$?
   check "world: an unknown id says so and writes nothing" '[ $rc = 1 ] && grep -q "^No world has the id no-such-world-e2e\." "$H/world404.err" && [ ! -e "$W2/DESIGN.md" ]'
   (cd "$W2" && "$BIN" world "$PRO_WORLD" > "$H/worldpro.out" 2> "$H/worldpro.err"); rc=$?
-  if grep -q "Pro rules: included\|^Plan: \(Pro\|Team\)" "$H/whoami.out"; then
+  # The account's own answer, not its display text: any paid plan (Enterprise too) has pro true.
+  if [ "$("$BIN" whoami --json 2>/dev/null | jq -r .pro)" = true ]; then
     check "world: a Pro world seeds on a Pro plan" '[ $rc = 0 ] && [ -f "$W2/DESIGN.md" ]'
   else
     check "world: a Pro world on Free names Pro and the pricing page" '[ $rc = 1 ] && grep -q "needs Pro\. See impeccable.style/pricing" "$H/worldpro.err" && [ ! -e "$W2/DESIGN.md" ]'
