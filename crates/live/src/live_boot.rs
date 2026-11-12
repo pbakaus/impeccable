@@ -850,7 +850,8 @@ mod tests {
                 f.write(marker, "export default {}");
                 if marker == "svelte.config.js" { f.write("src/app.html", "<body>%sveltekit.body%</body>"); }
             }
-            let path = f.0.join(".impeccable/live/config.json").to_string_lossy().into_owned();
+            // Joined part by part: the engine prints the platform's own separators.
+            let path = f.0.join(".impeccable").join("live").join("config.json").to_string_lossy().into_owned();
             let (out, _) = f.run("check", &["--check", "--auto-config"], None);
             assert_eq!(out, format!("{}\n", json!({"ok":false,"error":"config_missing","path":path})), "{marker}");
             assert!(!std::path::Path::new(&path).exists());
