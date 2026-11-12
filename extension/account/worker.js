@@ -47,6 +47,7 @@ function socketOf(at) {
   return { 'api.impeccable.style': 'wss://impeccable.reviews', 'api.staging.impeccable.style': 'wss://staging.impeccable.reviews' }[url.hostname] ?? null;
 }
 
+/** The presets' ids, as popup/words.js lists them (that file is the popup's alone): the server holds each one's card. */
 const PRESETS = ['ines', 'kofi', 'priya', 'tomasz', 'hana', 'noor'];
 const TASK_MAX = 2000;
 
