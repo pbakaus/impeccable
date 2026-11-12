@@ -57,14 +57,16 @@ fn text(b: &[u8]) -> String {
 
 #[test]
 fn seeds_design_md_and_a_marked_sidecar_then_names_the_next_step() {
-    let (f, env) = signed_in("world-seed");
+    let (f, mut env) = signed_in("world-seed");
     f.route("GET", SEED, 200, vec![], seed_body());
     let dir = project("seed");
+    // A truecolor terminal setting alone never puts escapes into a pipe: agents read plain lines.
+    env.insert("COLORTERM".into(), "truecolor".into());
     let out = run(&env, &dir, &["world", "kinpaku"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert_eq!(
         text(&out.stdout),
-        "Seeded DESIGN.md from the world Kinpaku (kinpaku). Next: ask your agent to build your next page with /impeccable. It reads DESIGN.md first.\n"
+        "Kinpaku is now this project's design system.\nWrote DESIGN.md and .impeccable/design.json.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in Kinpaku.\n"
     );
     assert_eq!(
         std::fs::read_to_string(dir.join("DESIGN.md")).unwrap(),

@@ -147,10 +147,15 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     match write(&root, &seed) {
         Ok(()) => {
-            io.out(&format!(
-                "Seeded DESIGN.md from the world {} ({}). Next: ask your agent to build your next page with /impeccable. It reads DESIGN.md first.\n",
-                seed.name, seed.id
+            let name = &seed.name;
+            let mut out = format!("{name} is now this project's design system.\n");
+            if truecolor(io) {
+                out.push_str(&swatches(&seed.design_md));
+            }
+            out.push_str(&format!(
+                "Wrote DESIGN.md and .impeccable/design.json.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in {name}.\n"
             ));
+            io.out(&out);
             0
         }
         Err(Exists(found)) => {
@@ -164,6 +169,108 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             1
         }
     }
+}
+
+/// Swatches only where they render: a real terminal that says it does 24-bit
+/// colour, and no NO_COLOR. Agents and pipes get the plain lines.
+fn truecolor(io: &Io) -> bool {
+    use std::io::IsTerminal;
+    std::io::stdout().is_terminal()
+        && io.env.get("NO_COLOR").is_none_or(|v| v.is_empty())
+        && io.env.get("TERM").is_none_or(|t| t != "dumb")
+        && io
+            .env
+            .get("COLORTERM")
+            .is_some_and(|c| c == "truecolor" || c == "24bit")
+}
+
+/// The world's palette from the DESIGN.md frontmatter `colors:` block, as one
+/// row of up to 12 swatches. Values the CLI can't read are skipped; an empty
+/// row is left out.
+fn swatches(design_md: &str) -> String {
+    let row: String = palette(design_md)
+        .into_iter()
+        .take(12)
+        .map(|(r, g, b)| format!("\x1b[38;2;{r};{g};{b}m\u{2588}\u{2588}\u{2588}\x1b[0m "))
+        .collect();
+    if row.is_empty() {
+        String::new()
+    } else {
+        format!("  {}\n", row.trim_end())
+    }
+}
+
+fn palette(design_md: &str) -> Vec<(u8, u8, u8)> {
+    let Some(front) = design_md
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split("\n---").next())
+    else {
+        return Vec::new();
+    };
+    let mut in_colors = false;
+    let mut out = Vec::new();
+    for line in front.lines() {
+        if !line.starts_with([' ', '\t', '#']) && !line.is_empty() {
+            in_colors = line.trim_end() == "colors:";
+            continue;
+        }
+        if !in_colors || line.trim_start().starts_with('#') {
+            continue;
+        }
+        let Some((_, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        let value = match value.chars().next() {
+            Some(q @ ('"' | '\'')) => value[1..].split(q).next().unwrap_or(""),
+            _ => value.split(" #").next().unwrap_or("").trim(),
+        };
+        if let Some(rgb) = css_color(value) {
+            out.push(rgb);
+        }
+    }
+    out
+}
+
+/// `#rgb`, `#rrggbb` and `oklch(L[%] C H)`, the forms DESIGN.md frontmatter uses.
+fn css_color(v: &str) -> Option<(u8, u8, u8)> {
+    if let Some(hex) = v.strip_prefix('#') {
+        let hex: String = match hex.len() {
+            3 => hex.chars().flat_map(|c| [c, c]).collect(),
+            6 => hex.to_string(),
+            _ => return None,
+        };
+        let n = u32::from_str_radix(&hex, 16).ok()?;
+        return Some(((n >> 16) as u8, (n >> 8) as u8, n as u8));
+    }
+    let inner = v.strip_prefix("oklch(")?.strip_suffix(')')?;
+    let mut parts = inner.split('/').next()?.split_whitespace();
+    let l = parts.next()?;
+    let l = match l.strip_suffix('%') {
+        Some(p) => p.parse::<f64>().ok()? / 100.0,
+        None => l.parse::<f64>().ok()?,
+    };
+    let c: f64 = parts.next()?.parse().ok()?;
+    let h: f64 = parts.next()?.trim_end_matches("deg").parse().ok()?;
+    let (a, b) = (c * h.to_radians().cos(), c * h.to_radians().sin());
+    let l_ = (l + 0.396_337_777_4 * a + 0.215_803_757_3 * b).powi(3);
+    let m_ = (l - 0.105_561_345_8 * a - 0.063_854_172_8 * b).powi(3);
+    let s_ = (l - 0.089_484_177_5 * a - 1.291_485_548 * b).powi(3);
+    let lin = [
+        4.076_741_662_1 * l_ - 3.307_711_591_3 * m_ + 0.230_969_929_2 * s_,
+        -1.268_438_004_6 * l_ + 2.609_757_401_1 * m_ - 0.341_319_396_5 * s_,
+        -0.004_196_086_3 * l_ - 0.703_418_614_7 * m_ + 1.707_614_701 * s_,
+    ];
+    let enc = |x: f64| {
+        let x = x.clamp(0.0, 1.0);
+        let s = if x <= 0.003_130_8 {
+            12.92 * x
+        } else {
+            1.055 * x.powf(1.0 / 2.4) - 0.055
+        };
+        (s * 255.0).round() as u8
+    };
+    Some((enc(lin[0]), enc(lin[1]), enc(lin[2])))
 }
 
 fn failure(id: &str, e: &SessionError) -> String {
@@ -269,6 +376,20 @@ mod tests {
         ] {
             assert!(!valid_id(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn the_palette_comes_from_the_frontmatter_colors_block() {
+        let md = "---\nname: W\ncolors:\n  # anchors\n  gold: \"#c9a227\" # accent\n  ink: '#000'\n  white: \"oklch(100% 0 0)\"\n  black: oklch(0 0 0)\n  var: \"var(--x)\"\nrounded:\n  sm: \"#ffffff\"\n---\n# W\ncolors:\n  late: \"#123456\"\n";
+        assert_eq!(
+            palette(md),
+            vec![(0xc9, 0xa2, 0x27), (0, 0, 0), (255, 255, 255), (0, 0, 0)]
+        );
+        assert!(palette("# no frontmatter\n").is_empty());
+        assert_eq!(swatches("# none\n"), "");
+        // A saturated oklch lands in gamut as a warm gold, not black or white.
+        let (r, g, b) = css_color("oklch(84% 0.19 80.46)").unwrap();
+        assert!(r > 200 && g > 150 && b < 80, "{r} {g} {b}");
     }
 
     #[test]

@@ -2223,7 +2223,7 @@ binary, including for npx and PATH installs without an adjacent skill directory.
 Exact output strings:
 
 - `Usage: impeccable world <id> [--print]`
-- `Seeded DESIGN.md from the world <name> (<id>). Next: ask your agent to build your next page with /impeccable. It reads DESIGN.md first.`
+- `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
 - `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
 - `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
 - `Using a world needs your Impeccable account. Run impeccable login, then try again.`
@@ -2252,6 +2252,12 @@ that race the sidecar it wrote is removed and the merge line is printed.
 sign-in line, any other 403 the Pro line, 404 the unknown-id line; network
 failures say the account couldn't be reached. Every failure exits 1 and
 writes nothing.
+
+On success, when stdout is a terminal, `COLORTERM` is `truecolor` or `24bit`,
+`NO_COLOR` is unset or empty and `TERM` is not `dumb`, a row of up to 12
+24-bit colour swatches follows the first line: the `#rgb`, `#rrggbb` and
+`oklch()` values in the seed's DESIGN.md frontmatter `colors:` block, in
+order. Pipes and agents never see escape codes.
 
 `--print` skips the existence check and the writes and prints the answer as
 one JSON line `{id, name, design_md, sidecar}` on stdout, for an agent to
