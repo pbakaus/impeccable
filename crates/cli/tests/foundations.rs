@@ -60,6 +60,8 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
     // Catches: a check that misses its pass evidence, passes without it, or
     // claims an item it can't judge (an unknown framework, a non-web project).
     let stripe = format!("sk_{}_{}", "live", "4eC39HqLyjWDarjtT1zdp7dcAbCdEf12");
+    let pem_body = "MIIEpAIBAAKCAQEA3Tz2mr7SZiAMfQyuvBjM9Oi4eFkE1JZhqrJr7Lw0xQ9vQb8Z\n".repeat(3);
+    let github = format!("ghp_{}", "R8x2Kq9LmZ4vT7wN1pB6sD3fH5jY0cE2gA8u");
     let big: String = (0..1_200)
         .map(|i| format!("export const v{i} = {i};\n"))
         .collect();
@@ -75,7 +77,7 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("no manifest", vec![("README.md", "# Notes\n".into())], false, "dependency-scanning", None),
         ("icons", vec![("package.json", NEXT.into()), ("app/favicon.ico", "x".into()), ("app/apple-icon.png", "x".into())], false, "app-icons", Some("checked")),
         ("screenshot is no icon", vec![("package.json", NEXT.into()), ("app/favicon.ico", "x".into()), ("public/screenshot-1920x1080.png", "x".into())], false, "app-icons", Some("failing")),
-        ("component names are no legal pages", vec![("package.json", NEXT.into()), ("components/PrivacyToggle.tsx", "x\n".into()), ("lib/terms.ts", "x\n".into())], false, "legal-pages", Some("failing")),
+        ("component names are no legal pages", vec![("package.json", NEXT.into()), ("app/page.tsx", "x\n".into()), ("components/PrivacyToggle.tsx", "x\n".into()), ("lib/terms.ts", "x\n".into())], false, "legal-pages", Some("failing")),
         ("nested app is judged in its own folder", vec![("package.json", "{}".into()), ("apps/web/package.json", NEXT.into())], false, "not-found-page", None),
         ("page read by the html engine", vec![("index.html", "<!doctype html><html><body><p>Hello</p></body></html>".into())], false, "readable-contrast", Some("checked")),
         ("component read by regex only", vec![("index.html", "<!doctype html><html><body><div id=root></div></body></html>".into()), ("src/App.tsx", "export const App = () => <p>Hello</p>;\n".into())], false, "readable-contrast", None),
@@ -99,6 +101,16 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("arbitrary variant transition", vec![("package.json", REACT.into()), ("src/Menu.tsx", "export const M = () => <div className=\"data-[state=open]:transition-all\" />;\n".into())], false, "reduced-motion", Some("failing")),
         ("bare transition after a template interpolation", vec![("package.json", REACT.into()), ("src/Tab.tsx", "export const T = ({ x }) => <div className={`p-4 ${x} transition`} disabled />;\n".into())], false, "reduced-motion", Some("failing")),
         ("transition after an @-utility and an interpolation", vec![("package.json", REACT.into()), ("src/Box.tsx", "export const B = ({ x }) => <div className={`@container ${x} transition`} />;\n".into())], false, "reduced-motion", Some("failing")),
+        ("a PEM header alone", vec![("src/auth.ts", "// expects -----BEGIN RSA PRIVATE KEY-----\nconst ok = pem.includes('-----BEGIN RSA PRIVATE KEY-----');\n".into())], true, "secrets-out-of-repo", Some("checked")),
+        ("a PEM key with its body", vec![("deploy/key.pem", format!("-----BEGIN RSA PRIVATE KEY-----\n{}\n-----END RSA PRIVATE KEY-----\n", pem_body))], true, "secrets-out-of-repo", Some("failing")),
+        ("placeholder keys in a redaction test", vec![("test/redact.spec.ts", "redact(\"AKIAABCDEFGHIJKLMNOP\");\nredact(\"ghp_abcdefghijklmnopqrstuvwxyz0123456789\");\n".into())], true, "secrets-out-of-repo", Some("checked")),
+        ("a realistic key in a test file", vec![("test/redact.spec.ts", format!("redact(\"{github}\");\n"))], true, "secrets-out-of-repo", Some("failing")),
+        ("public names in a tracked env file", vec![(".env.production", "PUBLIC_POSTHOG_PROJECT_TOKEN=phc_123\nPUBLIC_POSTHOG_HOST=https://eu.posthog.com\n".into())], true, "secrets-out-of-repo", Some("checked")),
+        ("a password in a tracked env file", vec![(".env.production", "APP_NAME=shop\nDATABASE_PASSWORD=hunter2\n".into())], true, "secrets-out-of-repo", Some("failing")),
+        ("a tracked env example", vec![(".env.example", "STRIPE_SECRET_KEY=\nDATABASE_URL=postgres://user:password@localhost/db\n".into())], true, "secrets-out-of-repo", Some("checked")),
+        ("astro srcDir icons", vec![("package.json", r#"{"devDependencies":{"astro":"5.0.0"}}"#.into()), ("astro.config.mjs", "export default defineConfig({ srcDir: './site', publicDir: './site/public' });\n".into()), ("site/public/favicon.svg", "x".into()), ("site/public/apple-touch-icon.png", "x".into())], false, "app-icons", Some("checked")),
+        ("app one folder down", vec![("package.json", "{}".into()), ("web/package.json", NEXT.into()), ("web/next.config.js", "module.exports = {};\n".into()), ("web/app/not-found.tsx", "export default function N() {}\n".into())], false, "not-found-page", Some("checked")),
+        ("unrecognised web layout", vec![("package.json", NEXT.into()), ("lib/site.ts", "export {};\n".into())], false, "app-icons", None),
         ("motion unguarded", vec![("a.css", "a { transition: color 1s; }\n".into())], false, "reduced-motion", Some("failing")),
         ("tokens", vec![("a.css", ":root { --brand: #3355ff; }\na { color: var(--brand); }\n".into())], false, "design-tokens", Some("checked")),
         ("hard-coded colors", vec![("a.css", many_hex)], false, "design-tokens", Some("failing")),
@@ -141,6 +153,30 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
     }
     let _ = std::fs::remove_dir_all(&tmp);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn a_subfolder_is_judged_with_its_repository() {
+    // Catches: a subfolder run failing CI and dependency scanning that live
+    // at the repository's top, or judging the top's README as its own.
+    let dir = std::env::temp_dir().join(format!("impeccable-foundations-sub-{}", std::process::id()));
+    for (path, body) in [
+        (".github/workflows/ci.yml", WORKFLOW_TESTS),
+        (".github/dependabot.yml", "version: 2\n"),
+        ("README.md", "```\nnpm install\nnpm run dev\n```\n"),
+        ("frontend/package.json", REACT),
+        ("frontend/src/main.ts", "export {};\n"),
+    ] {
+        let p = dir.join(path);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, body).unwrap();
+    }
+    git(&dir, &["init", "-q"]);
+    let got = foundations(&dir.join("frontend"));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got["items"]["ci-runs-tests"], "checked", "{got}");
+    assert_eq!(got["items"]["dependency-scanning"], "checked", "{got}");
+    assert!(got["items"].get("readme-runs").is_none(), "{got}");
 }
 
 #[test]

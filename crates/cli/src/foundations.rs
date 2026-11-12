@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 const ITEMS: &[(&str, &str, &str)] = &[
     (
         "secrets-out-of-repo",
-        "Secrets out of the repo",
+        "No secrets in the repository",
         "A key in a tracked file is a key anyone with the code can use.",
     ),
     (
@@ -29,7 +29,7 @@ const ITEMS: &[(&str, &str, &str)] = &[
     ),
     (
         "not-found-page",
-        "A real 404 page",
+        "A real not-found page",
         "A broken link should land somewhere helpful, not on a blank error.",
     ),
     (
@@ -44,7 +44,7 @@ const ITEMS: &[(&str, &str, &str)] = &[
     ),
     (
         "legal-pages",
-        "Privacy and terms pages",
+        "Legal pages",
         "Payment providers, app stores and people signing up look for them.",
     ),
     (
@@ -64,17 +64,17 @@ const ITEMS: &[(&str, &str, &str)] = &[
     ),
     (
         "reduced-motion",
-        "Reduced motion",
+        "Reduced motion respected",
         "Some people get sick from motion; their system asks you to tone it down.",
     ),
     (
         "real-packages",
-        "Real packages",
+        "Only real packages",
         "An agent can invent a package name that someone else then registers.",
     ),
     (
         "dependency-scanning",
-        "Dependency updates",
+        "Dependency scanning",
         "Known holes in old packages get patched only if someone hears about them.",
     ),
     (

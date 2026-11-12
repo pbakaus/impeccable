@@ -2303,8 +2303,18 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   only for a framework it knows; the framework comes from the root's own
   manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
   failure in a repository sends nothing) and each tracked text file whole,
-  up to 256 MiB in all, for well-known key formats and tracked env
-  files; neither a value nor a path ever leaves the machine.
+  up to 256 MiB in all, for well-known key formats (a private key needs its
+  body; obvious placeholders with EXAMPLE, a six-character ascending run or
+  six repeats don't count) and, in tracked env files other than
+  `.env.example`/`.sample`/`.template`, a non-empty value under a
+  secret-looking name that isn't public by convention (`PUBLIC_`,
+  `NEXT_PUBLIC_`, `VITE_`, ...); neither a value nor a path ever leaves the
+  machine. Run on a folder inside a repository, `ci-runs-tests` and
+  `dependency-scanning` also read the top's config, and `readme-runs` is
+  sent only when the folder has its own README. Web items look where the
+  app lives: an Astro `srcDir`/`publicDir`, or the one folder beside the
+  root holding a framework config; a layout without any conventional web
+  folder sends nothing for them.
 - `real-packages` and `current-dependencies` need the network and are never sent.
 
 A detector `failing` wins over a project-file `checked`. The edit hook never

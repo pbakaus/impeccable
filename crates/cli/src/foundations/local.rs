@@ -117,6 +117,8 @@ struct Project {
     scripts: BTreeSet<String>,
     package_jsons: Vec<Value>,
     has_manifest: bool,
+    /// A web view's file names, mapped back to the real ones.
+    alias: std::collections::HashMap<String, String>,
 }
 
 pub fn scan(root: &Path) -> Report {
@@ -129,23 +131,50 @@ pub fn scan(root: &Path) -> Report {
         return r;
     }
     p.load_manifests();
-    let web = p.is_web();
+    // A folder inside a repository: CI and dependency config live at the
+    // repository's top.
+    let top = repo_top(root).filter(|t| !same_dir(t, root));
+    let top_config = top.as_deref().map(Project::repo_config);
     let mut put = |id: &'static str, s: Option<State>| {
         if let Some(s) = s {
             r.items.insert(id, s);
         }
     };
-    put("ci-runs-tests", Some(p.ci_runs_tests()));
-    put("dependency-scanning", p.dependency_scanning());
+    let ci = match &top_config {
+        Some(t) if t.ci_runs_tests() == State::Checked => State::Checked,
+        _ => p.ci_runs_tests(),
+    };
+    put("ci-runs-tests", Some(ci));
+    let configured = p.dependency_configured()
+        || top_config
+            .as_ref()
+            .is_some_and(|t| t.dependency_configured());
+    put(
+        "dependency-scanning",
+        if configured {
+            Some(State::Checked)
+        } else {
+            p.has_manifest.then_some(State::Failing)
+        },
+    );
     put("infrastructure-as-code", Some(p.infrastructure_as_code()));
-    put("readme-runs", Some(p.readme_runs()));
+    // A subfolder without a README of its own isn't judged by the top's.
+    put(
+        "readme-runs",
+        p.readme_runs()
+            .filter(|_| top.is_none() || p.readme().is_some()),
+    );
     put("reversible-migrations", p.reversible_migrations());
-    if web {
-        put("app-icons", Some(p.app_icons()));
-        put("not-found-page", p.not_found_page());
-        put("social-previews", Some(p.social_previews()));
-        put("legal-pages", Some(p.legal_pages()));
-        put("error-tracking", Some(p.error_tracking()));
+    // The web app may sit in a folder of its own (an Astro srcDir, one app
+    // folder beside the config): judge its items there.
+    let view = p.web_view();
+    let w = view.as_ref().unwrap_or(&p);
+    if w.is_web() && w.recognised_layout() {
+        put("app-icons", Some(w.app_icons()));
+        put("not-found-page", w.not_found_page());
+        put("social-previews", Some(w.social_previews()));
+        put("legal-pages", Some(w.legal_pages()));
+        put("error-tracking", Some(w.error_tracking()));
     }
     put("reduced-motion", p.reduced_motion());
     put("design-tokens", p.design_tokens());
@@ -278,7 +307,164 @@ impl Project {
             scripts: BTreeSet::new(),
             package_jsons: Vec::new(),
             has_manifest: false,
+            alias: Default::default(),
         }
+    }
+
+    /// Just the CI and dependency-update config of a repository's top.
+    fn repo_config(top: &Path) -> Project {
+        let mut files: Vec<String> = [
+            ".gitlab-ci.yml",
+            ".circleci/config.yml",
+            "bitbucket-pipelines.yml",
+            "azure-pipelines.yml",
+            ".github/dependabot.yml",
+            ".github/dependabot.yaml",
+            "renovate.json",
+            "renovate.json5",
+            ".renovaterc",
+            ".renovaterc.json",
+            ".github/renovate.json",
+            ".github/renovate.json5",
+            ".gitlab/renovate.json",
+            ".snyk",
+        ]
+        .iter()
+        .filter(|f| top.join(f).is_file())
+        .map(|f| f.to_string())
+        .collect();
+        if let Ok(entries) = std::fs::read_dir(top.join(".github/workflows")) {
+            for e in entries.flatten().take(200) {
+                let n = e.file_name().to_string_lossy().into_owned();
+                if e.file_type().is_ok_and(|t| t.is_file()) {
+                    files.push(format!(".github/workflows/{n}"));
+                }
+            }
+        }
+        files.sort();
+        let mut p = Project::walk(Path::new("/nonexistent-impeccable-root"));
+        p.root = top.to_path_buf();
+        p.files = files;
+        p.truncated = false;
+        p
+    }
+
+    /// The web app's own view when it doesn't sit at the root in the
+    /// conventional layout: an Astro `srcDir`/`publicDir`, or the one
+    /// folder beside the root that holds a framework config. Paths in the
+    /// view are the conventional ones (`src/`, `public/`, the app root).
+    fn web_view(&self) -> Option<Project> {
+        const CONFIGS: &[&str] = &[
+            "astro.config.",
+            "next.config.",
+            "svelte.config.",
+            "nuxt.config.",
+            "vite.config.",
+            "gatsby-config.",
+            "remix.config.",
+            "react-router.config.",
+            "angular.json",
+        ];
+        let is_config = |f: &str| CONFIGS.iter().any(|c| name(f).starts_with(c));
+        let mut app = String::new();
+        if !self.files.iter().any(|f| !f.contains('/') && is_config(f)) {
+            let dirs: BTreeSet<&str> = self
+                .files
+                .iter()
+                .filter(|f| f.matches('/').count() == 1 && is_config(f))
+                .filter_map(|f| f.split('/').next())
+                .collect();
+            if dirs.len() == 1 {
+                app = format!("{}/", dirs.into_iter().next().unwrap_or_default());
+            }
+        }
+        // Astro names its source and public folders in its config.
+        static DIR: OnceLock<Regex> = OnceLock::new();
+        let dir = re(
+            &DIR,
+            r#"\b(srcDir|publicDir)\s*:\s*['"`](?:\./)?([^'"`]+?)/?['"`]"#,
+        );
+        let (mut src, mut public) = (None, None);
+        if let Some(cfg) = self.files.iter().find(|f| {
+            f.strip_prefix(app.as_str())
+                .is_some_and(|r| !r.contains('/') && r.starts_with("astro.config."))
+        }) {
+            if let Some(t) = self.read(cfg) {
+                for c in dir.captures_iter(&t) {
+                    let d = format!("{app}{}/", &c[2]);
+                    if &c[1] == "srcDir" {
+                        src = Some(d);
+                    } else {
+                        public = Some(d);
+                    }
+                }
+            }
+        }
+        if app.is_empty() && src.is_none() && public.is_none() {
+            return None;
+        }
+        let mut alias = std::collections::HashMap::new();
+        for f in &self.files {
+            let virt = if let Some(rest) = public.as_deref().and_then(|p| f.strip_prefix(p)) {
+                format!("public/{rest}")
+            } else if let Some(rest) = src.as_deref().and_then(|p| f.strip_prefix(p)) {
+                format!("src/{rest}")
+            } else if let Some(rest) = f.strip_prefix(app.as_str()) {
+                rest.to_string()
+            } else {
+                continue;
+            };
+            alias.entry(virt).or_insert_with(|| f.clone());
+        }
+        let mut files: Vec<String> = alias.keys().cloned().collect();
+        files.sort();
+        let mut root_deps = self.root_deps.clone();
+        if !app.is_empty() {
+            if let Some(v) = self
+                .read(&format!("{app}package.json"))
+                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            {
+                for key in ["dependencies", "devDependencies", "peerDependencies"] {
+                    if let Some(o) = v.get(key).and_then(Value::as_object) {
+                        root_deps.extend(o.keys().cloned());
+                    }
+                }
+            }
+        }
+        Some(Project {
+            root: self.root.clone(),
+            files,
+            truncated: self.truncated,
+            reads: Default::default(),
+            read_capped: Default::default(),
+            cache: Default::default(),
+            cached: Default::default(),
+            root_deps,
+            deps: self.deps.clone(),
+            scripts: self.scripts.clone(),
+            package_jsons: Vec::new(),
+            has_manifest: self.has_manifest,
+            alias,
+        })
+    }
+
+    /// A layout the web checks know where to look in. Anything else sends
+    /// nothing for them rather than a failure.
+    fn recognised_layout(&self) -> bool {
+        const PLACES: &[&str] = &[
+            "public/",
+            "static/",
+            "src/",
+            "app/",
+            "pages/",
+            "routes/",
+            "layouts/",
+            "_layouts/",
+            "templates/",
+            "views/",
+            "resources/views/",
+        ];
+        self.any(|f| PLACES.iter().any(|p| f.starts_with(p)) || f == "index.html")
     }
 
     fn has(&self, rel: &str) -> bool {
@@ -300,7 +486,8 @@ impl Project {
             return None;
         }
         self.reads.set(self.reads.get() + 1);
-        let text: Option<Rc<str>> = read_capped(&self.root.join(rel)).map(Rc::from);
+        let real = self.alias.get(rel).map_or(rel, String::as_str);
+        let text: Option<Rc<str>> = read_capped(&self.root.join(real)).map(Rc::from);
         let size = text.as_ref().map_or(0, |t| t.len());
         if self.cached.get() + size <= MAX_CACHED {
             self.cached.set(self.cached.get() + size);
@@ -528,8 +715,8 @@ impl Project {
         State::Failing
     }
 
-    fn dependency_scanning(&self) -> Option<State> {
-        let configured = [
+    fn dependency_configured(&self) -> bool {
+        [
             ".github/dependabot.yml",
             ".github/dependabot.yaml",
             "renovate.json",
@@ -546,14 +733,7 @@ impl Project {
             || self
                 .package_jsons
                 .iter()
-                .any(|p| p.get("renovate").is_some());
-        if configured {
-            Some(State::Checked)
-        } else if self.has_manifest {
-            Some(State::Failing)
-        } else {
-            None
-        }
+                .any(|p| p.get("renovate").is_some())
     }
 
     fn infrastructure_as_code(&self) -> State {
@@ -603,8 +783,8 @@ impl Project {
         }
     }
 
-    fn readme_runs(&self) -> State {
-        let Some(readme) = [
+    fn readme(&self) -> Option<&'static str> {
+        [
             "README.md",
             "README",
             "README.markdown",
@@ -613,8 +793,16 @@ impl Project {
             "readme.md",
             "Readme.md",
         ]
-        .iter()
-        .find(|f| self.has(f)) else {
+        .into_iter()
+        .find(|f| self.has(f))
+    }
+
+    fn readme_runs(&self) -> Option<State> {
+        Some(self.readme_runs_state())
+    }
+
+    fn readme_runs_state(&self) -> State {
+        let Some(readme) = self.readme() else {
             return State::Failing;
         };
         let Some(text) = self.read(readme) else {
@@ -1257,19 +1445,9 @@ impl Project {
         };
         for f in &files {
             let n = name(f);
-            if is_env_file(n) {
-                // Outside git an env file is where keys belong.
-                if !in_git {
-                    continue;
-                }
-                hit(
-                    SecretHit {
-                        file: f.clone(),
-                        line: 1,
-                        kind: "environment file",
-                    },
-                    &mut found,
-                );
+            let env = is_env_file(n);
+            // Outside git an env file is where keys belong.
+            if env && !in_git {
                 continue;
             }
             if is_lockfile(n) || is_binary_ext(ext(f)) {
@@ -1297,9 +1475,26 @@ impl Project {
             };
             // One pass over the file, counting lines as it goes.
             let (mut line, mut at) = (1usize, 0usize);
+            // A tracked env file: a value under a secret-looking name.
+            if env {
+                for l in secret_env_lines(&t) {
+                    hit(
+                        SecretHit {
+                            file: f.clone(),
+                            line: l,
+                            kind: "secret in an environment file",
+                        },
+                        &mut found,
+                    );
+                }
+            }
             for m in secrets_regex().find_iter(&t) {
                 line += t[at..m.start()].matches('\n').count();
                 at = m.start();
+                // Redaction tests and docs use obvious stand-ins.
+                if is_placeholder(m.as_str()) {
+                    continue;
+                }
                 hit(
                     SecretHit {
                         file: f.clone(),
@@ -1432,7 +1627,8 @@ const KEY_FORMATS: &[(&str, &str)] = &[
     ),
     (r"\bAIza[0-9A-Za-z_-]{35}\b", "Google API key"),
     (
-        r"-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----",
+        // A header alone (a comment, a string a check looks for) is no key.
+        r"-----BEGIN (RSA |EC |OPENSSH |DSA |ENCRYPTED )?PRIVATE KEY-----(?:\s|\\[nr])*[A-Za-z0-9+/=]{64}",
         "private key",
     ),
 ];
@@ -1562,6 +1758,90 @@ fn read_capped(path: &Path) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// An obvious stand-in rather than a key: EXAMPLE, an ascending run of
+/// six (abcdef, 123456), or one character six times in a row.
+fn is_placeholder(key: &str) -> bool {
+    if key.to_ascii_uppercase().contains("EXAMPLE") {
+        return true;
+    }
+    let b = key.as_bytes();
+    let (mut up, mut same) = (1, 1);
+    for w in b.windows(2) {
+        up = if w[0].is_ascii_alphanumeric() && w[1] == w[0] + 1 {
+            up + 1
+        } else {
+            1
+        };
+        same = if w[1] == w[0] { same + 1 } else { 1 };
+        if up >= 6 || same >= 6 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Lines of an env file that hold a non-empty value under a secret-looking
+/// name (or a URL with a password), skipping names public by convention.
+/// Only line numbers leave this function, never names or values.
+fn secret_env_lines(text: &str) -> Vec<usize> {
+    const PUBLIC: &[&str] = &[
+        "PUBLIC_",
+        "NEXT_PUBLIC_",
+        "VITE_",
+        "NUXT_PUBLIC_",
+        "EXPO_PUBLIC_",
+        "REACT_APP_",
+        "GATSBY_",
+    ];
+    const SECRET: &[&str] = &[
+        "KEY",
+        "SECRET",
+        "TOKEN",
+        "PASSWORD",
+        "PASSWD",
+        "PWD",
+        "CREDENTIAL",
+        "PRIVATE",
+        "DSN",
+    ];
+    static URL_PASSWORD: OnceLock<Regex> = OnceLock::new();
+    let url_password = re(&URL_PASSWORD, r"://[^/\s:@]+:[^@\s]+@");
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        let name = name.trim().to_ascii_uppercase();
+        let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+        if value.is_empty() || PUBLIC.iter().any(|p| name.starts_with(p)) {
+            continue;
+        }
+        if SECRET.iter().any(|s| name.contains(s)) || url_password.is_match(value) {
+            out.push(i + 1);
+        }
+    }
+    out
+}
+
+/// The nearest folder at or above `root` that holds a `.git`.
+fn repo_top(root: &Path) -> Option<PathBuf> {
+    root.ancestors()
+        .find(|d| d.join(".git").exists())
+        .map(Path::to_path_buf)
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 /// Whether `root` or a folder above it holds a `.git`.
