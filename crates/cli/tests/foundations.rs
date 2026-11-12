@@ -218,6 +218,8 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("animate-none is no motion", vec![("package.json", REACT.into()), ("src/A.tsx", "export const A = () => <div className=\"animate-none\">Hi</div>;\n".into())], false, "reduced-motion", Some("checked")),
         ("icon extensions in capitals", vec![("package.json", NEXT.into()), ("public/favicon.ICO", "x".into()), ("public/apple-touch-icon.PNG", "x".into())], false, "app-icons", Some("checked")),
         ("a comma inside a quoted list entry", vec![("package.json", REACT.into()), (".gitlab-ci.yml", "notes:\n  script: ['echo \"Next steps, npm test\"']\n".into())], false, "ci-runs-tests", Some("failing")),
+        ("an apostrophe in a plain list entry", vec![("package.json", REACT.into()), (".gitlab-ci.yml", "test:\n  script: [echo it's fine, npm test]\n".into())], false, "ci-runs-tests", Some("checked")),
+        ("a list quote that never closes", vec![("package.json", REACT.into()), (".gitlab-ci.yml", "test:\n  script: ['echo hi, npm run build]\n".into())], false, "ci-runs-tests", None),
         ("readme names a missing script", vec![("package.json", REACT.into()), ("README.md", "```\nnpm install\nnpm run start:prod\n```\n".into())], false, "readme-runs", Some("failing")),
         ("giant file", vec![("src/big.ts", big.clone())], false, "no-giant-files", Some("failing")),
         ("giant fixture", vec![("tests/fixtures/big.ts", big), ("src/a.ts", "export {};\n".into())], false, "no-giant-files", Some("checked")),

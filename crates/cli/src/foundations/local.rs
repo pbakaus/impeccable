@@ -2193,9 +2193,11 @@ fn ci_commands(text: &str) -> String {
                         // Split on the commas between entries, never on
                         // one inside a quoted entry.
                         let (mut quote, mut entry) = (None, String::new());
+                        // A quote opens only at the start of an entry: an
+                        // apostrophe inside a plain one is just a letter.
                         for ch in list.chars().chain([',']) {
                             match (quote, ch) {
-                                (None, '"' | '\'') => quote = Some(ch),
+                                (None, '"' | '\'') if entry.trim().is_empty() => quote = Some(ch),
                                 (Some(q), c) if c == q => quote = None,
                                 (None, ',') => {
                                     out.push_str(entry.trim());
@@ -2204,6 +2206,13 @@ fn ci_commands(text: &str) -> String {
                                 }
                                 _ => entry.push(ch),
                             }
+                        }
+                        // A quote that never closed: keep what's left as one
+                        // command nobody can classify, so nothing is claimed.
+                        if quote.is_some() {
+                            out.push_str("unreadable-list-entry ");
+                            out.push_str(entry.trim());
+                            out.push('\n');
                         }
                     }
                     None => {
