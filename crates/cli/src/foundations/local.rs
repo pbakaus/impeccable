@@ -412,11 +412,17 @@ impl Project {
             return None;
         }
         let mut alias = std::collections::HashMap::new();
+        // A folder the config moved away from isn't the app's any more.
+        let moved = |f: &str, dir: &Option<String>, conventional: &str| {
+            dir.is_some() && f.starts_with(&format!("{app}{conventional}"))
+        };
         for f in &self.files {
             let virt = if let Some(rest) = public.as_deref().and_then(|p| f.strip_prefix(p)) {
                 format!("public/{rest}")
             } else if let Some(rest) = src.as_deref().and_then(|p| f.strip_prefix(p)) {
                 format!("src/{rest}")
+            } else if moved(f, &public, "public/") || moved(f, &src, "src/") {
+                continue;
             } else if let Some(rest) = f.strip_prefix(app.as_str()) {
                 rest.to_string()
             } else {
@@ -482,10 +488,14 @@ impl Project {
         static OUTSIDE: OnceLock<Regex> = OnceLock::new();
         let outside = re(
             &OUTSIDE,
-            r#"(?is)<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//"#,
+            r#"(?is)<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
         );
         let (mut ignores, mut unresolved) = (false, false);
-        for f in self.files.iter().filter(|f| UI_EXTS.contains(&ext(f))) {
+        for f in self
+            .files
+            .iter()
+            .filter(|f| UI_EXTS.contains(&ext(f)) && !is_test_path(f))
+        {
             let Some(t) = self.read(f) else {
                 return (true, true);
             };
@@ -1522,7 +1532,8 @@ impl Project {
                 line += t[at..m.start()].matches('\n').count();
                 at = m.start();
                 // Redaction tests and docs use obvious stand-ins.
-                if is_placeholder(m.as_str()) {
+                // (A private key's body has long fixed runs: never a stand-in.)
+                if !m.as_str().starts_with("-----") && is_placeholder(m.as_str()) {
                     continue;
                 }
                 hit(
@@ -1705,8 +1716,17 @@ fn tailwind_transition(text: &str) -> bool {
         let mut depth = 1usize;
         let rest = &text[m.end()..];
         let mut end = rest.len();
+        // Braces inside '...' or "..." are text, not code.
+        let mut quote: Option<char> = None;
         for (i, c) in rest.char_indices().take(4000) {
+            if let Some(q) = quote {
+                if c == q {
+                    quote = None;
+                }
+                continue;
+            }
             match c {
+                '\'' | '"' => quote = Some(c),
                 '{' => depth += 1,
                 '}' => {
                     depth -= 1;
