@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { BUILD } from '../shared/build.js';
-import { endWalk, fail, fence, fenced, hold, hooks, onAsk, onSignIn, ops, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, onAsk, onSignIn, ops, personHas, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -201,6 +201,7 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
+  personHas(view.state === 'takeover');
   // A question the walk no longer stands behind is over, unanswered.
   if (answering && !view.ask) settle('void');
   // Only the person's own take-over at a sign-in opens the sign-in pages to the tab: a page can fake a sign-in

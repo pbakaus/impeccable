@@ -164,6 +164,9 @@ const FILM_SHOT_MS = 150;
 /** The least time between two pictures asked for when one fails at once. */
 const FILM_RETRY_MS = 45;
 let filmed = 0;
+/** Set while the person has taken the tab over (control.js): the film takes nothing of what they do. */
+let theirs = false;
+export function personHas(on) { theirs = on; }
 
 async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   await cut();
@@ -174,8 +177,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   tab.film = film;
   film.done = (async () => {
     while (film.on && walk === tab) {
-      // Paused: the film stands still, taking nothing, until the walk goes on (or the film is cut).
-      if (hush) { await sleep(FILM_RETRY_MS); continue; }
+      // Paused, or in the person's hands: the film stands still, taking nothing, until the walk goes on (or the film is cut).
+      if (hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
       const started = Date.now();
       try {
         let size = tab.viewport;
@@ -184,11 +187,11 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
           size = { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
         }
         const scale = Math.min(1, maxWidth > 0 ? maxWidth / size.width : 1, maxHeight > 0 ? maxHeight / size.height : 1);
-        if (hush) continue;
+        if (hush || theirs) continue;
         // A sign-in on the page is a pause before it is a picture; a page that cannot be read is not filmed.
         const seen = await look();
         if (signingIn(seen) || isSignInPage(tab.url)) { spotted(); continue; }
-        if (!seen || hush) { await sleep(FILM_RETRY_MS); continue; }
+        if (!seen || hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
         asked.catch(() => undefined);
@@ -196,15 +199,15 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         if (!shot) continue;
         const frame = await smaller(shot.data, Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
-        // Taken as the walk was paused: never sent.
-        if (hush) continue;
+        // Taken as the walk was paused or taken over: never sent.
+        if (hush || theirs) continue;
         // A page that has not changed is not sent again: a film held open (the walk paused mid-wait) would otherwise send the same picture until it ends.
         if (frame === film.last) continue;
         // Held until the last one sent is `FILM_GAP_MS` old: paced where it is sent, so a picture that took longer or
         // shorter to take does not close the gap. In short sleeps, so a film that is cut is not kept waiting on one.
         while (film.on && walk === tab && Date.now() - film.sentAt < FILM_GAP_MS) await sleep(Math.min(8, FILM_GAP_MS - (Date.now() - film.sentAt)));
         if (!film.on || walk !== tab) break;
-        if (hush) continue;
+        if (hush || theirs) continue;
         film.last = frame;
         film.sentAt = Date.now();
         say({ event: 'cdp', method: 'Page.screencastFrame', params: { data: frame, sessionId: film.id, metadata: { deviceWidth: size.width, deviceHeight: size.height, pageScaleFactor: 1, offsetTop: 0, scrollOffsetX: 0, scrollOffsetY: 0, timestamp: Date.now() / 1000 } } });

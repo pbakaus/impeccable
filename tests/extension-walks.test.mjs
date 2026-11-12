@@ -366,6 +366,23 @@ describe('walk helper worker', () => {
     await ops.cdp({ method: 'Page.stopScreencast' });
   });
 
+  it('films none of the person’s screen while they have the tab, and films again once they hand it back', async () => {
+    const { ops, command } = await walked();
+    page.seen = {};
+    await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
+    await settle(100);
+    assert.equal(await command('takeover'), true);
+    await settle(20);
+    const taken = sent.length;
+    const frames = told.length;
+    await settle(200);
+    assert.deepEqual([since(taken, 'Page.captureScreenshot'), told.slice(frames).filter((m) => m.method === 'Page.screencastFrame').length], [0, 0]);
+    assert.equal(await command('handback'), true);
+    await settle(150);
+    assert.ok(since(taken, 'Page.captureScreenshot') > 0, 'the film rolls again');
+    await ops.cdp({ method: 'Page.stopScreencast' });
+  });
+
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while it holds.
   for (const [sign, show] of [
     ['a visible password field', () => { page.seen = { password: true }; }],
