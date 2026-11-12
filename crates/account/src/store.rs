@@ -521,9 +521,15 @@ pub(crate) fn keychain_error(action: &str, code: i32) -> String {
     const FILE: &str = "To keep the sign-in in ~/.impeccable instead, run: IMPECCABLE_CREDENTIAL_STORE=file impeccable login";
     // Sign-out advice must finish signing out, never sign back in.
     if action == "delete" {
-        return format!(
-            "macOS wouldn't let the CLI remove its keychain entry ({code}). Unlock your keychain or choose Allow if asked, then run impeccable logout again"
-        );
+        return match code {
+            // No keychain in this session: no prompt can appear, so retrying here can't work.
+            -25307 | -60006 => format!(
+                "this session has no macOS keychain to remove the sign-in from ({code}), as over SSH or with a changed HOME. Run impeccable logout from a terminal on the Mac itself"
+            ),
+            _ => format!(
+                "macOS wouldn't let the CLI remove its keychain entry ({code}). Unlock your keychain or choose Allow if asked, then run impeccable logout again"
+            ),
+        };
     }
     match code {
         // errSecNoDefaultKeychain; errAuthorizationCanceled, which is what a
@@ -739,8 +745,13 @@ mod keychain_error_tests {
         for code in [-25307, -60006, -25308, -128, -1] {
             let delete = keychain_error("delete", code);
             assert!(!delete.contains("impeccable login"), "{delete}");
-            assert!(
-                delete.ends_with("then run impeccable logout again"),
+            assert!(delete.contains("impeccable logout"), "{delete}");
+            // With no keychain in the session no prompt can appear, so the advice is another terminal.
+            let missing = matches!(code, -25307 | -60006);
+            assert_eq!(delete.contains("choose Allow"), !missing, "{delete}");
+            assert_eq!(
+                delete.contains("from a terminal on the Mac itself"),
+                missing,
                 "{delete}"
             );
         }
