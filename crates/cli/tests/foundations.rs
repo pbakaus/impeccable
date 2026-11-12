@@ -95,6 +95,7 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("tailwind variant transition unguarded", vec![("package.json", REACT.into()), ("src/Card.tsx", "export const C = () => (\n  <div\n    className=\"p-4\n      hover:transition-transform\"\n  />\n);\n".into())], false, "reduced-motion", Some("failing")),
         ("readme script only in a nested app", vec![("package.json", "{}".into()), ("apps/web/package.json", REACT.into()), ("README.md", "```\nnpm install\nnpm run dev\n```\n".into())], false, "readme-runs", Some("failing")),
         ("the word transition in copy", vec![("package.json", REACT.into()), ("src/About.tsx", "const transition = 1;\nexport const A = () => <p className=\"text-lg\">We help teams transition to new tools.</p>;\n".into())], false, "reduced-motion", Some("checked")),
+        ("transition in a shared class string", vec![("package.json", REACT.into()), ("src/Card.tsx", "const card = \"hover:scale-110 transition duration-200\";\nexport const C = () => <div className={cn(card, { [`${x}`]: y })} />;\n".into())], false, "reduced-motion", Some("failing")),
         ("motion unguarded", vec![("a.css", "a { transition: color 1s; }\n".into())], false, "reduced-motion", Some("failing")),
         ("tokens", vec![("a.css", ":root { --brand: #3355ff; }\na { color: var(--brand); }\n".into())], false, "design-tokens", Some("checked")),
         ("hard-coded colors", vec![("a.css", many_hex)], false, "design-tokens", Some("failing")),

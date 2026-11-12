@@ -1448,22 +1448,27 @@ fn secrets_regex() -> &'static Regex {
     })
 }
 
-/// A Tailwind `transition` utility inside a class value or `@apply`
-/// (variant prefixes and wrapped class lists included), never prose.
+/// A Tailwind `transition` utility: a specific one (`transition-transform`,
+/// `hover:transition`, `transition duration-200`) anywhere, since prose
+/// doesn't spell those; a bare `transition` only inside a class value or
+/// `@apply`.
 fn tailwind_transition(text: &str) -> bool {
+    static SPECIFIC: OnceLock<Regex> = OnceLock::new();
     static CLASSES: OnceLock<Regex> = OnceLock::new();
-    static UTILITY: OnceLock<Regex> = OnceLock::new();
+    static BARE: OnceLock<Regex> = OnceLock::new();
+    let specific = re(
+        &SPECIFIC,
+        r#"(?:^|[\s"'`{])(?:[a-z0-9-]+:)*transition-(?:all|colors|opacity|shadow|transform)(?:$|[\s"'`};])|(?:^|[\s"'`{])(?:[a-z0-9-]+:)+transition(?:$|[\s"'`};])|\btransition\s+(?:duration|ease|delay)-"#,
+    );
+    if specific.is_match(text) {
+        return true;
+    }
     let classes = re(
         &CLASSES,
-        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{[^}]{0,600}\}|"[^"]{0,600}"|'[^']{0,600}'|`[^`]{0,600}`)|@apply\b[^;]{0,300};"#,
+        r#"(?s)(?:\bclass(?:Name)?|:class)\s*=\s*(?:\{.{0,2000}?\}\s*(?:/?>|\s[\w:-]+=)|"[^"]{0,2000}"|'[^']{0,2000}'|`[^`]{0,2000}`)|@apply\b[^;]{0,300};"#,
     );
-    let utility = re(
-        &UTILITY,
-        r#"(?:^|[\s"'`{:])transition(?:-(?:all|colors|opacity|shadow|transform))?(?:$|[\s"'`};])"#,
-    );
-    classes
-        .find_iter(text)
-        .any(|m| utility.is_match(m.as_str()))
+    let bare = re(&BARE, r#"(?:^|[\s"'`{])transition(?:$|[\s"'`};])"#);
+    classes.find_iter(text).any(|m| bare.is_match(m.as_str()))
 }
 
 /// The kind of a matched key. Never returns the value.
