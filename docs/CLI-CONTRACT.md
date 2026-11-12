@@ -2269,18 +2269,82 @@ nothing.
 After the same full git-repo `detect` that supplies design health, the CLI sends
 `POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
 requests that scope only when OAuth metadata lists it in `scopes_supported`.
-Existing sign-ins without the scope send nothing to this route.
+Existing sign-ins without the scope send nothing to this route, and their
+scans don't compute foundations at all.
 
 The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
 `productType` and `items`, plus an optional `label`: the repo's name by design
 health's label recipe, sent only when the remote supplies a usable one. Scan
 identity, time, repo key and label match design health.
-`productType` is `null`: the detector does not classify products. Non-advisory
-built-in `slop` findings establish `no-generic-ai-patterns: failing`;
-`low-contrast` findings establish `readable-contrast: failing`. Absent findings
-do not establish a pass: ignores, regex-only files and unresolved styles leave
-coverage incomplete. No item is sent as `checked` or `covered`, and every other
-catalog item is omitted because the scan supplies no corresponding check.
+`productType` is `null`: the detector does not classify products. `items` maps
+only these 18 ids, the ones the service accepts, to `checked` or `failing`
+(`covered` is never sent yet); an item without evidence either way is left out.
+
+- Detector classes. Non-advisory built-in `slop` findings establish
+  `no-generic-ai-patterns: failing`; `low-contrast` findings establish
+  `readable-contrast: failing`. A pass means "none found by the scan" and is
+  sent only where the scan could have found one. Ignores and unresolved styles
+  can't establish a pass: no pass is sent when a UI file carries an inline
+  ignore, `ignore-values` is set, or (for contrast) a scanned page loads a
+  remote stylesheet or any script. Either pass needs at least one file read by the static HTML engine and no other
+  non-style file (component or script) left to the regex engine, since low
+  contrast and many slop rules never run on regex-only files. Both need every rule of
+  the class enabled, no advisory finding of it, and no `--no-advisory`.
+- Project files (`crates/cli/src/foundations/local.rs`), when the scanned root
+  is a git work tree's top: one offline walk, sorted, skipping dependency,
+  build and hidden directories, capped at 20,000 files, 100,000 directory
+  entries, 6,000 file reads and 512 KiB per file (files over 2 MiB are never
+  read). Past a cap only states a found file proves are sent (a found CI
+  config passes; a missing guard no longer fails). `ci-runs-tests`, `dependency-scanning`, `app-icons`,
+  `not-found-page`, `social-previews`, `legal-pages`, `reduced-motion`,
+  `design-tokens`, `secrets-out-of-repo`, `error-tracking`,
+  `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
+  `reversible-migrations`; the checks are documented in that file.
+  `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
+  `error-tracking` are sent only for a web project (an app framework or its config, an HTML entry, markup templates/served pages, or pages/routes UI files;
+  server dependencies alone do not count, and Rails `config.api_only = true`,
+  React Native and Expo are never web), and `not-found-page`
+  only for a framework it knows; the framework comes from the root's own
+  manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
+  failure in a repository sends nothing) and each tracked text file whole,
+  up to 256 MiB in all, for well-known key formats (a private key needs its
+  body; obvious placeholders with EXAMPLE, a six-character ascending run or
+  six repeats don't count) and, in tracked env files other than
+  `.env.example`/`.sample`/`.template`, a non-empty value under a
+  secret name segment separated by `_` (KEY, SECRET, TOKEN, PASSWORD,
+  PASSWD, PWD, CREDENTIAL, PRIVATE), or a URL carrying a password. DSN is
+  not a secret name segment; URLs without passwords do not count. Public
+  prefixes (`PUBLIC_`, `NEXT_PUBLIC_`, `VITE_`, ...), `$VAR`/`${VAR}`
+  references and placeholders (empty, changeme/change-me, your-/your_,
+  xxx, <...>, example, placeholder, todo, dummy, test) do not count.
+  Google API matches are skipped in Firebase client config (authDomain,
+  firebaseapp.com or messagingSenderId in the same file) and files named
+  google-services.json or GoogleService-Info.plist; other key formats still
+  count. Neither a value nor a path ever leaves the
+  machine. Run on a folder inside a repository, `ci-runs-tests` and
+  `dependency-scanning` also read the top's config, and `readme-runs` is
+  sent only when the folder has its own README. Web items look where the
+  app lives: an Astro `srcDir`/`publicDir`, or the one folder beside the
+  root holding a framework config; a layout without any conventional web
+  folder sends nothing for them.
+- `real-packages` and `current-dependencies` need the network and are never sent.
+
+Project-file evidence for the affected items (comments do not count):
+
+| Item | Checked | Failing or omitted |
+|---|---|---|
+| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Notes-only repos send nothing. Missing CI, checkout/setup alone, or only recognised non-test commands (install, build, lint, format, typecheck, deploy, echo) fails. Any unclassified command sends nothing. |
+| `app-icons` | Favicon and large image files in known public folders, including icons/images subfolders, or local image links/manifest entries anywhere. | Missing either fails in a recognised web layout. Source components are not icons. |
+| `social-previews` | `og:image`, `twitter:image`, Nuxt `ogImage`, Next `openGraph.images` (including `generateMetadata`), or a share-image file. | No image fails; `twitter:card` alone is insufficient. |
+| `reduced-motion` | A real reduced-motion guard, or UI without detected motion. | Motion without a guard fails, including Web Animations, Svelte directives, Motion components and Tailwind animation classes. |
+| `design-tokens` | A project colour custom property defined and used through `var()`, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities, unused colour definitions and third-party variables do not supply evidence. |
+| `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Notes-only repos send nothing. Missing commands/scripts fails otherwise. Scaffolding and prose do not count. |
+| `infrastructure-as-code` | Hosting config in the project; `eas.json` for Expo/React Native. | Notes-only repos, package libraries without app evidence and a bare React Native app without `eas.json` send nothing. Missing config fails otherwise, an Expo app without `eas.json` included. |
+
+
+
+A detector `failing` wins over a project-file `checked`. The edit hook never
+runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
@@ -2289,6 +2353,27 @@ other failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
+
+## `foundations [path] [--json]`
+
+Runs the project-file checks and the detector's full scan of `path` (default:
+the working directory; detect's own output is discarded) and prints the
+roadmap: `Foundations: <n> of <m> in place`, where `m` counts the items with a
+state, then `Next up:` with the first failing item in roadmap order (launch:
+secrets-out-of-repo, readable-contrast, no-generic-ai-patterns,
+not-found-page, app-icons, social-previews, legal-pages, readme-runs,
+ci-runs-tests, design-tokens, reduced-motion, real-packages; paying:
+dependency-scanning, error-tracking, reversible-migrations, no-giant-files,
+current-dependencies; scale: infrastructure-as-code), a one-line reason and
+`Ask your agent: /impeccable foundations <id>`, then one line per other item
+(`✓` in place, `✗` to fix with its id, `·` not checked). When the next item is
+`secrets-out-of-repo` the terminal lists up to five `file:line (kind)`
+locations, never the value; for `no-giant-files`, up to five files with their
+line counts. A folder with no files prints `Nothing to check yet: ...`.
+`--json` prints `{"items": {id: state}, "next": id | null}` and nothing else.
+Exit 0; 1 for an unknown option or a missing folder. After printing, a
+signed-in CLI uploads the scan exactly as a full `detect` does (design health
+and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
 ## `health design on|off`
 

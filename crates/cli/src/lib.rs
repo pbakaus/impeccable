@@ -13,6 +13,7 @@ pub mod capture_service;
 pub mod reviewed_entry;
 
 mod font_render;
+mod foundations;
 mod router;
 pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
