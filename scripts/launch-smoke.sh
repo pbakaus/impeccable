@@ -144,9 +144,11 @@ if offers design:write; then
 fi
 
 # 5. Critique history: one saved report, its first-upload notice.
+#    The metadata is what the skill's critique command sends: without na_heuristics
+#    (and a max_score that matches it) the CLI saves the report but never uploads it.
 if offers critiques:write; then
   printf '# Critique\n\nSmoke test report.\n' > "$H/report.md"
-  (cd "$H/repo" && IMPECCABLE_CRITIQUE_META='{"target":"Smoke","total_score":24,"max_score":32,"p0_count":0,"p1_count":1}' \
+  (cd "$H/repo" && IMPECCABLE_CRITIQUE_META='{"target":"Smoke","total_score":24,"max_score":32,"na_heuristics":"3,7","p0_count":0,"p1_count":1}' \
     imp critique-storage write smoke "$H/report.md" > "$H/crit.out" 2> "$H/crit.err"); rc=$?
   check "critique: saved" '[ $rc = 0 ]'
   check "critique: first-upload notice" 'grep -q "Uploaded this critique report to your Impeccable account." "$H/crit.out" "$H/crit.err"'
