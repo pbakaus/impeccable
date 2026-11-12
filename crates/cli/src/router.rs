@@ -213,7 +213,11 @@ fn detect(
     if let Some(full) = report {
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();
-        let foundations = crate::foundations::from_scan(&full.root, &full);
+        let foundations = crate::foundations::from_scan(
+            &full.root,
+            &full,
+            impeccable_account::health::foundations_wanted(io),
+        );
         let scan = health_scan(full, foundations, started);
         let quiet = args
             .iter()
@@ -357,6 +361,9 @@ mod verb_tests {
             .iter()
             .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
             .collect();
-        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
+        );
     }
 }

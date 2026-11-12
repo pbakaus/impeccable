@@ -2268,7 +2268,8 @@ nothing.
 After the same full git-repo `detect` that supplies design health, the CLI sends
 `POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
 requests that scope only when OAuth metadata lists it in `scopes_supported`.
-Existing sign-ins without the scope send nothing to this route.
+Existing sign-ins without the scope send nothing to this route, and their
+scans don't compute foundations at all.
 
 The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
 `productType` and `items`, plus an optional `label`: the repo's name by design
@@ -2281,11 +2282,12 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
 - Detector classes. Non-advisory built-in `slop` findings establish
   `no-generic-ai-patterns: failing`; `low-contrast` findings establish
   `readable-contrast: failing`. A pass means "none found by the scan" and is
-  sent only where the scan could have found one: `readable-contrast: checked`
-  needs at least one file read by the static HTML engine and no other
+  sent only where the scan could have found one. Ignores and unresolved styles
+  can't establish a pass: no pass is sent when a UI file carries an inline
+  ignore, `ignore-values` is set, or (for contrast) a scanned page loads a
+  remote stylesheet or any script. Either pass needs at least one file read by the static HTML engine and no other
   non-style file (component or script) left to the regex engine, since low
-  contrast never runs on regex-only files; `no-generic-ai-patterns: checked`
-  needs at least one markup, style or component file. Both need every rule of
+  contrast and many slop rules never run on regex-only files. Both need every rule of
   the class enabled, no advisory finding of it, and no `--no-advisory`.
 - Project files (`crates/cli/src/foundations/local.rs`), when the scanned root
   is a git work tree's top: one offline walk, sorted, skipping dependency,
@@ -2298,8 +2300,8 @@ only these 18 ids, the ones the service accepts, to `checked` or `failing`
   `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
   `reversible-migrations`; the checks are documented in that file.
   `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
-  `error-tracking` are sent only for a web project (an HTML entry, a web
-  framework dependency, or pages/app/routes UI files), and `not-found-page`
+  `error-tracking` are sent only for a web project (an app framework or its config, an HTML entry, a server-side web
+  framework, or pages/routes UI files; never React Native or Expo), and `not-found-page`
   only for a framework it knows; the framework comes from the root's own
   manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
   failure in a repository sends nothing) and each tracked text file whole,

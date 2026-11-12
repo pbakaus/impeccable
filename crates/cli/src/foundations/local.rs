@@ -99,6 +99,11 @@ pub struct Report {
     pub giant_files: Vec<(String, usize)>,
     /// No file at all under the root.
     pub empty: bool,
+    /// A UI file carries an inline detector ignore, which can hide a finding.
+    pub inline_ignores: bool,
+    /// An HTML page loads a remote stylesheet or any script, so its styles
+    /// aren't all in the files the detector read.
+    pub unresolved_pages: bool,
 }
 
 struct Project {
@@ -176,6 +181,9 @@ pub fn scan(root: &Path) -> Report {
         put("legal-pages", Some(w.legal_pages()));
         put("error-tracking", Some(w.error_tracking()));
     }
+    let (ignores, unresolved) = p.page_hints();
+    r.inline_ignores = ignores;
+    r.unresolved_pages = unresolved;
     put("reduced-motion", p.reduced_motion());
     put("design-tokens", p.design_tokens());
     let (giant, giant_state) = p.giant_files();
@@ -467,6 +475,28 @@ impl Project {
         self.any(|f| PLACES.iter().any(|p| f.starts_with(p)) || f == "index.html")
     }
 
+    /// Inline detector ignores in UI files, and HTML pages whose styles
+    /// come from outside the files (a remote stylesheet, any script).
+    /// Unread files count as both, so a pass is never assumed.
+    fn page_hints(&self) -> (bool, bool) {
+        static OUTSIDE: OnceLock<Regex> = OnceLock::new();
+        let outside = re(
+            &OUTSIDE,
+            r#"(?is)<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//"#,
+        );
+        let (mut ignores, mut unresolved) = (false, false);
+        for f in self.files.iter().filter(|f| UI_EXTS.contains(&ext(f))) {
+            let Some(t) = self.read(f) else {
+                return (true, true);
+            };
+            ignores |= t.contains("impeccable-disable") || t.contains("impeccable-ignore");
+            if matches!(ext(f), "html" | "htm") {
+                unresolved |= outside.is_match(&t);
+            }
+        }
+        (ignores, unresolved)
+    }
+
     fn has(&self, rel: &str) -> bool {
         self.files.binary_search_by(|f| f.as_str().cmp(rel)).is_ok()
     }
@@ -594,6 +624,10 @@ impl Project {
     /// entry, a server-side web framework, or UI files in page directories.
     /// Nested apps in a monorepo are judged by running on their own folder.
     fn is_web(&self) -> bool {
+        // A native app (React Native, Expo) is not a website.
+        if self.dep("react-native") || self.dep("expo") {
+            return false;
+        }
         const APP_FRAMEWORKS: &[&str] = &[
             "next",
             "nuxt",
@@ -611,13 +645,13 @@ impl Project {
             "nuxt.config.",
             "svelte.config.",
             "astro.config.",
-            "vite.config.",
             "gatsby-config.",
             "remix.config.",
             "react-router.config.",
             "vue.config.",
             "angular.json",
         ];
+        // A Vite config alone may build a library; its HTML entry decides.
         if APP_FRAMEWORKS.iter().any(|d| self.dep(d))
             || self.any(|f| !f.contains('/') && CONFIGS.iter().any(|c| f.starts_with(c)))
         {
@@ -647,16 +681,9 @@ impl Project {
             return true;
         }
         self.any(|f| {
-            [
-                "pages/",
-                "app/",
-                "routes/",
-                "src/pages/",
-                "src/app/",
-                "src/routes/",
-            ]
-            .iter()
-            .any(|d| f.starts_with(d))
+            ["pages/", "routes/", "src/pages/", "src/routes/"]
+                .iter()
+                .any(|d| f.starts_with(d))
                 && UI_EXTS.contains(&ext(f))
         })
     }
@@ -762,7 +789,6 @@ impl Project {
             "skaffold.yaml",
             "amplify.yml",
             "firebase.json",
-            "app.json",
             "apprunner.yaml",
             "nixpacks.toml",
         ];
@@ -1057,7 +1083,11 @@ impl Project {
             })
         } else if self.jekyll() {
             ["404.html", "404.md"].iter().any(|f| self.has(f))
-        } else if self.dep("vite") || self.has("index.html") || self.has("public/index.html") {
+        } else if self.other_dep("composer.json", "laravel/framework") {
+            self.any(|f| f.starts_with("resources/views/errors/404."))
+        } else if self.other_dep("Gemfile", "rails") {
+            self.has("public/404.html") || self.any(|f| f.starts_with("app/views/errors/not_found"))
+        } else if self.has("index.html") || self.has("public/index.html") {
             // A static 404, or the client router's catch-all route.
             let catch_all = re(
                 &CATCH_ALL,
@@ -1727,8 +1757,16 @@ fn read_whole(path: &Path, left: u64) -> (Whole, u64) {
     let Ok(file) = std::fs::File::open(path) else {
         return (Whole::Skip, 0);
     };
+    // Look at the head first: a binary file isn't read further.
+    let mut file = file.take(left + 1);
     let mut buf = Vec::new();
-    let read = file.take(left + 1).read_to_end(&mut buf);
+    if (&mut file).take(8192).read_to_end(&mut buf).is_err() {
+        return (Whole::Skip, buf.len() as u64);
+    }
+    if buf.contains(&0) {
+        return (Whole::Skip, buf.len() as u64);
+    }
+    let read = file.read_to_end(&mut buf);
     let raw = buf.len() as u64;
     if read.is_err() {
         return (Whole::Skip, raw);

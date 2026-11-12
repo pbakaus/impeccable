@@ -109,15 +109,19 @@ const ITEMS: &[(&str, &str, &str)] = &[
 pub(crate) fn from_scan(
     root: &str,
     full: &impeccable_detect::cli::FullScan,
+    foundations_wanted: bool,
 ) -> BTreeMap<String, String> {
     let mut items: BTreeMap<String, String> = BTreeMap::new();
-    // Only a git work tree's top uploads; don't walk anything else.
-    if std::path::Path::new(root).join(".git").exists() {
-        for (id, s) in local::scan(std::path::Path::new(root)).items {
-            items.insert(id.to_string(), s.as_str().to_string());
-        }
+    // Only a git work tree's top uploads, and only with foundations
+    // consent: anything else pays nothing here.
+    if !foundations_wanted || !std::path::Path::new(root).join(".git").exists() {
+        return items;
     }
-    for (id, s) in detector(full) {
+    let local = local::scan(std::path::Path::new(root));
+    for (id, s) in &local.items {
+        items.insert(id.to_string(), s.as_str().to_string());
+    }
+    for (id, s) in detector(full, &local) {
         items.insert(id.to_string(), s.to_string());
     }
     items
@@ -125,7 +129,10 @@ pub(crate) fn from_scan(
 
 /// The detector's two classes. A pass means "none found by the scan", and
 /// only where the scan ran those rules on files they can judge.
-fn detector(full: &impeccable_detect::cli::FullScan) -> BTreeMap<&'static str, &'static str> {
+fn detector(
+    full: &impeccable_detect::cli::FullScan,
+    local: &local::Report,
+) -> BTreeMap<&'static str, &'static str> {
     let slop: Vec<&str> = impeccable_core::registry::ANTIPATTERNS
         .iter()
         .filter(|r| r.category == "slop")
@@ -157,19 +164,24 @@ fn detector(full: &impeccable_detect::cli::FullScan) -> BTreeMap<&'static str, &
     if full.ruleset.iter().any(|r| r == "no-advisory=true") {
         return out;
     }
-    // Low contrast runs only where the static HTML engine reads the page, so
-    // a component the regex engine read leaves the pass unproven.
-    if full.html_files_scanned > 0
-        && full.regex_component_files == 0
+    // Element rules run only where the static HTML engine reads the page,
+    // so a component the regex engine read leaves a pass unproven; so do
+    // ignores (inline or configured values), which can hide a finding, and
+    // pages styled from outside (a CDN stylesheet or a script).
+    let ignores = local.inline_ignores
+        || full
+            .ruleset
+            .iter()
+            .any(|r| r.starts_with("ignore-values=") && r != "ignore-values=[]");
+    let judged = full.html_files_scanned > 0 && full.regex_component_files == 0 && !ignores;
+    if judged
+        && !local.unresolved_pages
         && enabled("low-contrast")
         && !advisory.contains(&"readable-contrast")
     {
         out.entry("readable-contrast").or_insert("checked");
     }
-    if full.ui_files_scanned > 0
-        && slop.iter().all(|r| enabled(r))
-        && !advisory.contains(&"no-generic-ai-patterns")
-    {
+    if judged && slop.iter().all(|r| enabled(r)) && !advisory.contains(&"no-generic-ai-patterns") {
         out.entry("no-generic-ai-patterns").or_insert("checked");
     }
     out
@@ -230,7 +242,7 @@ pub(crate) fn run(
         .map(|(id, s)| (id.to_string(), s.as_str().to_string()))
         .collect();
     if let Some(full) = &full {
-        for (id, s) in detector(full) {
+        for (id, s) in detector(full, &local) {
             items.insert(id.to_string(), s.to_string());
         }
     }

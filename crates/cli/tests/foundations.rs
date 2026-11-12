@@ -48,6 +48,7 @@ fn git(dir: &Path, args: &[&str]) {
     assert!(ok, "git {args:?}");
 }
 
+const NESTED_CARDS: &str = include_str!("../../../tests/fixtures/antipatterns/nested-cards.html");
 const WORKFLOW_TESTS: &str = "on:\n  pull_request:\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n      - run: npm test\n";
 const WORKFLOW_BUILD: &str =
     "on: [push]\njobs:\n  build:\n    steps:\n      - run: npm run build\n";
@@ -111,6 +112,16 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("astro srcDir icons", vec![("package.json", r#"{"devDependencies":{"astro":"5.0.0"}}"#.into()), ("astro.config.mjs", "export default defineConfig({ srcDir: './site', publicDir: './site/public' });\n".into()), ("site/public/favicon.svg", "x".into()), ("site/public/apple-touch-icon.png", "x".into())], false, "app-icons", Some("checked")),
         ("app one folder down", vec![("package.json", "{}".into()), ("web/package.json", NEXT.into()), ("web/next.config.js", "module.exports = {};\n".into()), ("web/app/not-found.tsx", "export default function N() {}\n".into())], false, "not-found-page", Some("checked")),
         ("unrecognised web layout", vec![("package.json", NEXT.into()), ("lib/site.ts", "export {};\n".into())], false, "app-icons", None),
+        ("slop markup in components only", vec![("src/App.tsx", NESTED_CARDS.into()), ("src/app.css", ".card { padding: 1rem; }\n".into())], false, "no-generic-ai-patterns", None),
+        ("tailwind from a CDN", vec![("index.html", "<!doctype html><html><head><script src=\"https://cdn.tailwindcss.com\"></script></head><body class=\"bg-white\"><p class=\"text-gray-200\">Faint</p></body></html>".into())], false, "readable-contrast", None),
+        ("styles from a remote stylesheet", vec![("index.html", "<!doctype html><html><head><link rel=\"stylesheet\" href=\"https://example.com/site.css\"></head><body><p class=\"faint\">Faint</p></body></html>".into())], false, "readable-contrast", None),
+        ("a suppressed contrast finding", vec![("index.html", "<!doctype html><html><body><!-- impeccable-disable low-contrast --><p style=\"color:#bbb;background:#fff\">Faint</p></body></html>".into())], false, "readable-contrast", None),
+        ("a vite library", vec![("package.json", r#"{"devDependencies":{"vite":"6.0.0"}}"#.into()), ("vite.config.ts", "export default {};\n".into()), ("src/index.ts", "export const x = 1;\n".into())], false, "app-icons", None),
+        ("an expo app is not a site", vec![("package.json", r#"{"dependencies":{"expo":"52.0.0","react-native":"0.76.0","expo-router":"4.0.0"}}"#.into()), ("app.json", "{\"expo\":{}}\n".into()), ("app/index.tsx", "export default function I() {}\n".into())], false, "app-icons", None),
+        ("app.json is no infrastructure", vec![("package.json", r#"{"dependencies":{"expo":"52.0.0","react-native":"0.76.0"}}"#.into()), ("app.json", "{\"expo\":{}}\n".into())], false, "infrastructure-as-code", Some("failing")),
+        ("laravel 404 view", vec![("composer.json", r#"{"require":{"laravel/framework":"^11.0"}}"#.into()), ("package.json", r#"{"devDependencies":{"vite":"6.0.0","laravel-vite-plugin":"1.0.0"}}"#.into()), ("resources/views/errors/404.blade.php", "<h1>Not found</h1>\n".into()), ("resources/views/welcome.blade.php", "<h1>Hi</h1>\n".into())], false, "not-found-page", Some("checked")),
+        ("a public env file", vec![(".env.production", "NEXT_PUBLIC_SITE_URL=https://example.com\n".into())], true, "secrets-out-of-repo", Some("checked")),
+        ("the AWS documentation key", vec![("README.md", "Set `AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE`.\n".into())], true, "secrets-out-of-repo", Some("checked")),
         ("motion unguarded", vec![("a.css", "a { transition: color 1s; }\n".into())], false, "reduced-motion", Some("failing")),
         ("tokens", vec![("a.css", ":root { --brand: #3355ff; }\na { color: var(--brand); }\n".into())], false, "design-tokens", Some("checked")),
         ("hard-coded colors", vec![("a.css", many_hex)], false, "design-tokens", Some("failing")),
