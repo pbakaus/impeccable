@@ -1,6 +1,30 @@
 use std::process::Command;
 
 #[test]
+fn directory_text_scan_preserves_the_utf8_error() {
+    let root = std::env::temp_dir().join(format!("impeccable-text-bytes-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("style.css"),
+        b"/* Caf\xe9 */ body { color: black }",
+    )
+    .unwrap();
+    let result = Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["detect", "--no-config", "--json", "."])
+        .current_dir(&root)
+        .env("IMPECCABLE_HOME", root.join("home"))
+        .env("IMPECCABLE_NO_TELEMETRY", "1")
+        .env("IMPECCABLE_TELEMETRY_CHANNEL", "test")
+        .output()
+        .unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+    assert_eq!(result.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&result.stderr);
+    assert!(error.contains("valid UTF-8"), "{error}");
+    assert!(!error.contains("ENOENT"), "{error}");
+}
+
+#[test]
 fn directory_and_explicit_html_scans_accept_the_same_bytes() {
     let root = std::env::temp_dir().join(format!("impeccable-html-bytes-{}", std::process::id()));
     let project = root.join("project");
