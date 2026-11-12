@@ -32,11 +32,13 @@ async function started(tab) {
   await chrome.tabs.create({ url: PAGE, windowId: tab.windowId, index: tab.index + 1, openerTabId: tab.id });
 }
 
+let starts = Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.walks === 'helper' && ownPage(sender)) {
     void helper().then((state) => respond({ state }), () => respond({ state: 'missing' }));
     return true;
   }
-  if (message?.walks === 'start' && ownScript(sender)) void started(sender.tab).catch(() => undefined);
+  // One at a time: two pages starting together open one onboarding.
+  if (message?.walks === 'start' && ownScript(sender)) starts = starts.then(() => started(sender.tab)).catch(() => undefined);
   return false;
 });

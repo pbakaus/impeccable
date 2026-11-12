@@ -134,9 +134,9 @@
     if (answer?.ok) { loadedPersonas = false; draw(answer); }
   });
 
+  // Closed only once the tab is asked for: a popup that closes first takes the request with it.
   $('btn-helper').addEventListener('click', () => {
-    void chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/onboarding.html') });
-    window.close();
+    chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/onboarding.html') }).finally(() => window.close());
   });
 
   $('helper-label').textContent = WORDS.helper;

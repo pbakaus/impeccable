@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CLIENT_ID, PRODUCTION, authorizeUrl, challengeFor, issuerAllowed, readCallback, readMetadata } from '../extension/account/flow.js';
 import { createSession } from '../extension/account/session.js';
+import { IDS } from '../extension/shared/ids.js';
 
 const ISSUER = PRODUCTION;
 const REDIRECT = 'https://ext.chromiumapp.org/callback';
@@ -235,12 +236,20 @@ describe('account session', () => {
 // The account worker on a stubbed Chrome: who it answers.
 describe('account worker', () => {
   const listeners = [];
+  /** What the walk helper answers main's hello with, and to whom main sent it; the tabs main opened. */
+  const helper = { answer: null, asked: [] };
+  const opened = [];
+  const session = {};
   globalThis.chrome = {
-    runtime: { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({}), onMessage: { addListener: (listener) => listeners.push(listener) } },
-    storage: { local: { async get() { return {}; }, async set() {} } },
+    runtime: {
+      id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({}), onMessage: { addListener: (listener) => listeners.push(listener) },
+      async sendMessage(id, message) { helper.asked.push({ id, message }); if (!helper.answer) throw new Error('no such extension'); return helper.answer; },
+    },
+    storage: { local: { async get() { return {}; }, async set() {} }, session: { async get(key) { return { [key]: session[key] }; }, async set(values) { Object.assign(session, values); } } },
+    tabs: { async create(tab) { opened.push(tab); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
-  const loaded = import('../extension/account/worker.js');
+  const loaded = Promise.all([import('../extension/account/worker.js'), import('../extension/onboarding/contact.js')]);
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   for (const [label, sender] of [
@@ -260,5 +269,26 @@ describe('account worker', () => {
     const answer = await ask({ account: 'status' }, { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' });
     assert.equal(answer.ok, true);
     assert.equal(answer.available, false);
+  });
+
+  // Main's side of the walk helper's door: it asks the helper by its id, and only its own pages may ask it.
+  const fromPopup = { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' };
+  for (const [answer, state] of [[{ ok: true, contract: 1, version: '1.4.0' }, 'ready'], [{ ok: true, contract: 2 }, 'old'], [null, 'missing']]) {
+    it(`calls the walk helper ${state}`, async () => {
+      await loaded;
+      helper.answer = answer;
+      assert.deepEqual(await ask({ walks: 'helper' }, fromPopup), { state });
+      assert.deepEqual(helper.asked.at(-1), { id: IDS.unpacked.helper, message: { walks: 'hello' } });
+    });
+  }
+
+  it('opens the onboarding once, the first time a walk starts without the helper', async () => {
+    await loaded;
+    helper.answer = null;
+    const fromPage = { id: 'ext', frameId: 0, url: 'http://app.localhost/app/acme/outings/o1', tab: { id: 4, index: 2, windowId: 1 } };
+    for (const listener of listeners) listener({ walks: 'helper' }, fromPage, () => assert.fail('a page is answered'));
+    for (let n = 0; n < 2; n += 1) for (const listener of listeners) listener({ walks: 'start' }, fromPage, () => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(opened.map((tab) => [tab.url, tab.openerTabId]), [['chrome-extension://ext/onboarding/onboarding.html', 4]]);
   });
 });
