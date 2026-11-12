@@ -485,11 +485,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert!(v["productType"].is_null());
                     assert!(v["scannedAt"].as_str().unwrap().ends_with('Z'));
+                    // The service refuses the whole upload over one unknown id.
                     for (id, state) in v["items"].as_object().unwrap() {
+                        assert!(FOUNDATION_IDS.contains(&id.as_str()), "{id}");
                         assert!(
-                            ["no-generic-ai-patterns", "readable-contrast"].contains(&id.as_str())
+                            ["checked", "failing", "covered"].contains(&state.as_str().unwrap()),
+                            "{state}"
                         );
-                        assert_eq!(state, "failing");
                     }
                     record.lock().unwrap().foundations.push(v);
                     json(
@@ -999,3 +1001,25 @@ pub fn parse_label(value: Option<&serde_json::Value>) -> Result<Option<String>, 
     }
     Ok(Some(name.to_string()))
 }
+
+/// The foundations ids the service accepts.
+const FOUNDATION_IDS: &[&str] = &[
+    "design-tokens",
+    "no-generic-ai-patterns",
+    "readable-contrast",
+    "reduced-motion",
+    "app-icons",
+    "not-found-page",
+    "social-previews",
+    "secrets-out-of-repo",
+    "real-packages",
+    "dependency-scanning",
+    "reversible-migrations",
+    "ci-runs-tests",
+    "error-tracking",
+    "infrastructure-as-code",
+    "legal-pages",
+    "readme-runs",
+    "no-giant-files",
+    "current-dependencies",
+];

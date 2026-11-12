@@ -92,6 +92,18 @@ pub fn wanted(io: &Io) -> bool {
     impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
 }
 
+/// Whether the signed-in grant includes foundations consent, from the saved
+/// sign-in state alone (no keychain, git or network), so a scan that won't
+/// upload foundations doesn't compute them.
+pub fn foundations_wanted(io: &Io) -> bool {
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    crate::store::Store::new(&account)
+        .state()
+        .is_some_and(|s| s.signed_in && s.foundations)
+}
+
 /// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
 /// and hint off stderr. The caller has checked [`wanted`].
 pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {

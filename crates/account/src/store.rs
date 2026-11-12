@@ -515,6 +515,45 @@ pub fn write_private_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<(), St
     result.map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
+/// What a macOS keychain failure means for the person, with the way out.
+/// The bare OSStatus told nobody anything: the keychain is missing in an SSH
+/// session or under a changed HOME, locked without a way to ask, or the
+/// person declined the prompt. The file store is the documented alternative,
+/// and a sign-in remembers its store, so setting it once for `login` is enough.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn keychain_error(action: &str, code: i32) -> String {
+    const FILE: &str = "To keep the sign-in in ~/.impeccable instead, run: IMPECCABLE_CREDENTIAL_STORE=file impeccable login";
+    // Sign-out advice must finish signing out, never sign back in.
+    if action == "delete" {
+        return match code {
+            // No keychain in this session: no prompt can appear, so retrying here can't work.
+            -25307 | -60006 => format!(
+                "this session has no macOS keychain to remove the sign-in from ({code}), as over SSH or with a changed HOME. Run impeccable logout from a terminal on the Mac itself"
+            ),
+            _ => format!(
+                "macOS wouldn't let the CLI remove its keychain entry ({code}). Unlock your keychain or choose Allow if asked, then run impeccable logout again"
+            ),
+        };
+    }
+    match code {
+        // errSecNoDefaultKeychain; errAuthorizationCanceled, which is what a
+        // write returns when HOME has no keychain (measured on macOS 27)
+        -25307 | -60006 => format!(
+            "macOS wouldn't let the CLI {action} its keychain here (no keychain in this session, as over SSH or with a changed HOME, or its prompt was declined). {FILE}"
+        ),
+        // errSecInteractionNotAllowed, errSecAuthFailed: locked, and no way to ask
+        -25308 | -25293 => format!(
+            "the macOS keychain is locked and can't ask to unlock here. Unlock it and try again, or {}",
+            FILE.replacen("To keep", "to keep", 1)
+        ),
+        // errSecUserCanceled
+        -128 => format!(
+            "the keychain prompt was declined. Run impeccable login again and choose Allow. {FILE}"
+        ),
+        code => format!("keychain {action} failed ({code}). {FILE}"),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod keychain {
     pub const AVAILABLE: bool = true;
@@ -526,7 +565,7 @@ mod keychain {
         match passwords::get_generic_password(service, account) {
             Ok(v) => Ok(Some(v)),
             Err(e) if e.code() == NOT_FOUND => Ok(None),
-            Err(e) => Err(format!("keychain read failed ({})", e.code())),
+            Err(e) => Err(super::keychain_error("read", e.code())),
         }
     }
     pub fn get_noninteractive(service: &str, account: &str) -> Result<Option<Vec<u8>>, String> {
@@ -544,19 +583,19 @@ mod keychain {
                 _ => None,
             })),
             Err(e) if e.code() == NOT_FOUND => Ok(None),
-            Err(e) => Err(format!("keychain read failed ({})", e.code())),
+            Err(e) => Err(super::keychain_error("read", e.code())),
         }
     }
 
     pub fn set(service: &str, account: &str, secret: &[u8]) -> Result<(), String> {
         passwords::set_generic_password(service, account, secret)
-            .map_err(|e| format!("keychain write failed ({})", e.code()))
+            .map_err(|e| super::keychain_error("write", e.code()))
     }
     pub fn delete(service: &str, account: &str) -> Result<(), String> {
         match passwords::delete_generic_password(service, account) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == NOT_FOUND => Ok(()),
-            Err(e) => Err(format!("keychain delete failed ({})", e.code())),
+            Err(e) => Err(super::keychain_error("delete", e.code())),
         }
     }
 }
@@ -687,6 +726,43 @@ mod keychain {
     }
     pub fn delete(_: &str, _: &str) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod keychain_error_tests {
+    use super::keychain_error;
+    #[test]
+    fn each_keychain_failure_says_what_happened_and_how_out() {
+        let missing = keychain_error("write", -60006);
+        assert!(missing.starts_with(
+            "macOS wouldn't let the CLI write its keychain here (no keychain in this session"
+        ));
+        assert_eq!(missing, keychain_error("write", -25307));
+        assert!(missing.ends_with("IMPECCABLE_CREDENTIAL_STORE=file impeccable login"));
+        assert!(keychain_error("read", -25308).starts_with("the macOS keychain is locked"));
+        assert!(keychain_error("read", -25308).contains("or to keep the sign-in in ~/.impeccable"));
+        assert!(keychain_error("write", -128).starts_with("the keychain prompt was declined"));
+        let other = keychain_error("read", -1);
+        assert!(other.starts_with("keychain read failed (-1). To keep"));
+        // Sign-out advice must never be "sign in": a failed delete says how to finish signing out.
+        for code in [-25307, -60006, -25308, -128, -1] {
+            let delete = keychain_error("delete", code);
+            assert!(!delete.contains("impeccable login"), "{delete}");
+            assert!(delete.contains("impeccable logout"), "{delete}");
+            // With no keychain in the session no prompt can appear, so the advice is another terminal.
+            let missing = matches!(code, -25307 | -60006);
+            assert_eq!(delete.contains("choose Allow"), !missing, "{delete}");
+            assert_eq!(
+                delete.contains("from a terminal on the Mac itself"),
+                missing,
+                "{delete}"
+            );
+        }
+        // Login prints "Sign-in failed: {e}." so no message may end in a period.
+        for code in [-25307, -60006, -25308, -25293, -128, -1] {
+            assert!(!keychain_error("write", code).ends_with('.'));
+        }
     }
 }
 
