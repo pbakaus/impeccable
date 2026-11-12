@@ -623,18 +623,13 @@ impl Project {
                 let prose = matches!(e, "md" | "markdown" | "txt" | "text" | "rst");
                 // The papers any repository carries: `LICENSE`, `NOTICE.txt`.
                 // By whole name, so `license_check.py` stays source.
-                let stem = n.split('.').next().unwrap_or("");
-                let papers = (e.is_empty() || prose)
-                    && matches!(
-                        stem,
-                        "readme"
-                            | "license"
-                            | "licence"
-                            | "notice"
-                            | "copying"
-                            | "authors"
-                            | "codeowners"
-                    );
+                // `LICENSE-MIT`, `COPYING.LESSER` and `LICENSE.txt` too.
+                static PAPERS: OnceLock<Regex> = OnceLock::new();
+                let papers = re(
+                    &PAPERS,
+                    r"^(readme|license|licence|notice|copying|authors|codeowners)(-[a-z0-9.-]+)?(\.(md|markdown|txt|text|rst|lesser|mit|apache|bsd|gpl|lgpl|agpl))?$",
+                )
+                .is_match(&n);
                 prose
                     || papers
                     || n.starts_with('.')
@@ -655,7 +650,7 @@ impl Project {
                     && self.read(f).is_some_and(|t| {
                         re(
                             &PAGE,
-                            r"(?i)<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]",
+                            r"(?i)<!doctype html|(?:^|[^<])<(?:html|head|body)[\s>]",
                         )
                         .is_match(&evidence_text(f, &t))
                     })
@@ -2232,12 +2227,23 @@ fn evidence_text(file: &str, text: &str) -> String {
     let text = re(&BLOCK, r"(?s)<!--.*?-->|/\*.*?\*/").replace_all(text, " ");
     // The template languages' own comments: Jinja and Twig `{# #}`, ERB and
     // EJS `<%# %>`, Blade `{{-- --}}`, Handlebars `{{! }}`, Liquid's block.
+    static HANDLEBARS: OnceLock<Regex> = OnceLock::new();
     let text = if TEMPLATE_EXTS.contains(&ext(file)) {
-        re(
+        let text = re(
             &TEMPLATE,
-            r"(?s)\{#.*?#\}|<%#.*?%>|\{\{--.*?--\}\}|\{\{!--.*?--\}\}|\{\{!.*?\}\}|\{%-?\s*comment\s*-?%\}.*?\{%-?\s*endcomment\s*-?%\}",
+            r"(?s)\{#.*?#\}|<%#.*?%>|\{\{--.*?--\}\}|\{%-?\s*comment\s*-?%\}.*?\{%-?\s*endcomment\s*-?%\}",
         )
-        .replace_all(&text, " ")
+        .replace_all(&text, " ");
+        // Only in Handlebars: Blade's `{!! $html !!}` opens the same way.
+        if ext(file) == "hbs" {
+            std::borrow::Cow::Owned(
+                re(&HANDLEBARS, r"(?s)\{\{!--.*?--\}\}|\{\{!.*?\}\}")
+                    .replace_all(&text, " ")
+                    .into_owned(),
+            )
+        } else {
+            text
+        }
     } else {
         text
     };
