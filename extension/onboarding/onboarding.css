@@ -218,8 +218,12 @@ body[data-step="add"] .waiting {
   background: var(--ks-ink);
 }
 
-body[data-step="ready"] .dots {
-  visibility: hidden;
+body[data-step="ready"] .nav {
+  display: none;
+}
+
+body[data-step="ready"] .screen {
+  min-height: 0;
 }
 
 .btn {
