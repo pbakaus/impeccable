@@ -143,6 +143,8 @@ if [ "$worlds" = 1 ]; then
   check "world: DESIGN.md names the world in its frontmatter" 'grep -q "^world: \"\{0,1\}$PUBLIC_WORLD" "$W/DESIGN.md"'
   check "world: DESIGN.md carries a reference image" 'grep -q "^Reference image: https://" "$W/DESIGN.md"'
   check "world: the sidecar is marked as seeded" '[ "$(jq -r .seededFrom.world "$W/.impeccable/design.json" 2>/dev/null)" = "$PUBLIC_WORLD" ]'
+  # The seed's fingerprint, so a local build from the same world can be shown to start from these exact files.
+  info "world: seed sha256 DESIGN.md $(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1) design.json $(shasum -a 256 "$W/.impeccable/design.json" | cut -d" " -f1)"
   before=$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)
   (cd "$W" && "$BIN" world "$PUBLIC_WORLD" > "$H/world2.out" 2>&1); rc=$?
   check "world: a second run writes nothing and points at --print" '[ $rc = 0 ] && grep -q "already exists, so nothing was written" "$H/world2.out" && [ "$(shasum -a 256 "$W/DESIGN.md" | cut -d" " -f1)" = "$before" ]'
