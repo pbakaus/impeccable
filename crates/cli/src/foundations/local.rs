@@ -146,10 +146,10 @@ pub fn scan(root: &Path) -> Report {
         }
     };
     let ci = match &top_config {
-        Some(t) if t.ci_runs_tests() == State::Checked => State::Checked,
+        Some(t) if t.ci_runs_tests() != Some(State::Failing) => t.ci_runs_tests(),
         _ => p.ci_runs_tests(),
     };
-    put("ci-runs-tests", Some(ci));
+    put("ci-runs-tests", ci);
     let configured = p.dependency_configured()
         || top_config
             .as_ref()
@@ -162,7 +162,7 @@ pub fn scan(root: &Path) -> Report {
             p.has_manifest.then_some(State::Failing)
         },
     );
-    put("infrastructure-as-code", Some(p.infrastructure_as_code()));
+    put("infrastructure-as-code", p.infrastructure_as_code());
     // A subfolder without a README of its own isn't judged by the top's.
     put(
         "readme-runs",
@@ -709,12 +709,12 @@ impl Project {
 
     // --- checks ---------------------------------------------------------
 
-    fn ci_runs_tests(&self) -> State {
+    fn ci_runs_tests(&self) -> Option<State> {
         static TEST: OnceLock<Regex> = OnceLock::new();
         static TRIGGER: OnceLock<Regex> = OnceLock::new();
         let test = re(
             &TEST,
-            r"(?m)\b(npm|pnpm|yarn|bun)\s+(run\s+)?test\b|\bnpm\s+t\b|\b(npx|pnpx|bunx)\s+(vitest|jest|playwright|mocha|ava)\b|\bvitest\b|\bjest\b|\bplaywright\s+test\b|\bpytest\b|\bcargo\s+(test|nextest)\b|\bgo\s+test\b|\brspec\b|\bphpunit\b|\bpest\b|\bmix\s+test\b|\bdeno\s+test\b|\bgradlew?\s+(test|check)\b|\bmvnw?\b.*\b(test|verify)\b|\bdotnet\s+test\b|\b(turbo|nx)\s+(run\s+)?test\b|\bmake\s+test\b|\bbin/rails\s+test\b|\brake\s+(test|spec)\b|\btox\b|\bnox\b|\bswift\s+test\b|\bflutter\s+test\b",
+            r#"(?m)(?:^|&&|;|\|\|)[ \t]*['"]?(?:(?:bundle[ \t]+exec)[ \t]+)?(?:\./)?(?:\b(npm|pnpm|yarn|bun)\s+(?:(?:-r|--filter\s+\S+)\s+)?(run\s+)?test\b|\bnpm\s+t\b|\b(npx|pnpx|bunx)\s+(vitest|jest|playwright|mocha|ava)\b|\bvitest\b|\bjest\b|\bplaywright\s+test\b|\bpytest\b|\bcargo\s+(test|nextest)\b|\bgo\s+test\b|\brspec\b|\bphpunit\b|\bpest\b|\bmix\s+test\b|\bdeno\s+test\b|\bgradlew?\s+(test|check)\b|\bmvnw?\b.*\b(test|verify)\b|\bdotnet\s+test\b|\b(turbo|nx)\s+(run\s+)?test\b|\b(make|just)\s+(test|check)\b|\bnode\s+--test\b|\byarn\s+workspaces\b[^\n]*\btest\b|\bnx\s+run-many\b[^\n]*\s(?:-t|--target[= ])\s*test\b|\bbin/rails\s+test\b|\brake\s+(test|spec)\b|\btox\b|\bnox\b|\bswift\s+test\b|\bflutter\s+test\b)"#,
         );
         let trigger = re(&TRIGGER, r"\b(push|pull_request|pull_request_target)\b");
         let ci: Vec<&String> = self
@@ -731,9 +731,20 @@ impl Project {
                     )
             })
             .collect();
+        let mut commands = false;
         for f in ci {
-            let Some(text) = self.read(f) else { continue };
-            if !test.is_match(&text) {
+            let text = self.read(f)?;
+            let text = evidence_text(f, &text);
+            // A custom action may run tests; its contents are unknown.
+            commands |= text.lines().any(|l| {
+                (l.contains("uses:")
+                    && !l.contains("actions/checkout@")
+                    && !l.contains("actions/setup-"))
+                    || l.trim_start().starts_with("- task:")
+            });
+            let runs = ci_commands(&text);
+            commands |= !runs.trim().is_empty();
+            if !test.is_match(&runs) {
                 continue;
             }
             if f.starts_with(".github/") {
@@ -743,9 +754,9 @@ impl Project {
                     continue;
                 }
             }
-            return State::Checked;
+            return Some(State::Checked);
         }
-        State::Failing
+        (!commands).then_some(State::Failing)
     }
 
     fn dependency_configured(&self) -> bool {
@@ -769,7 +780,7 @@ impl Project {
                 .any(|p| p.get("renovate").is_some())
     }
 
-    fn infrastructure_as_code(&self) -> State {
+    fn infrastructure_as_code(&self) -> Option<State> {
         let named = [
             "wrangler.toml",
             "wrangler.jsonc",
@@ -809,9 +820,26 @@ impl Project {
                 || f.starts_with("helm/")
         });
         if found {
-            State::Checked
+            return Some(State::Checked);
+        }
+        // Package projects without app evidence have nothing to deploy.
+        let library = self
+            .read("package.json")
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .is_some_and(|p| {
+                ["main", "exports", "bin"]
+                    .iter()
+                    .any(|k| p.get(k).is_some())
+            })
+            || self.has("Cargo.toml")
+            || self.has("pyproject.toml")
+            || self.has("setup.py")
+            || self.has("setup.cfg")
+            || self.any(|f| ext(f) == "gemspec");
+        if library && !self.is_web() && !self.dep("expo") && !self.dep("react-native") {
+            None
         } else {
-            State::Failing
+            Some(State::Failing)
         }
     }
 
@@ -840,6 +868,7 @@ impl Project {
         let Some(text) = self.read(readme) else {
             return State::Failing;
         };
+        let text = readme_commands(&evidence_text(readme, &text));
         static INSTALL: OnceLock<Regex> = OnceLock::new();
         static RUN: OnceLock<Regex> = OnceLock::new();
         static NO_INSTALL: OnceLock<Regex> = OnceLock::new();
@@ -985,65 +1014,77 @@ impl Project {
             "assets/",
             "src/assets/",
             "web/",
+            "public/icons/",
+            "static/icons/",
+            "public/images/",
         ];
         let in_dirs = |f: &str| {
             dirs.iter()
                 .any(|d| f.starts_with(d) && !f[d.len()..].contains('/'))
         };
-        let mut favicon = self.any(|f| {
-            let n = name(f).to_ascii_lowercase();
-            in_dirs(f)
-                && (n.starts_with("favicon.")
-                    || matches!(
-                        n.as_str(),
-                        "icon.svg"
-                            | "icon.png"
-                            | "icon.ico"
-                            | "icon.tsx"
-                            | "icon.jsx"
-                            | "icon.js"
-                            | "icon.ts"
-                    ))
-        });
-        static SIZE: OnceLock<Regex> = OnceLock::new();
-        let size = re(&SIZE, r"(^|[^0-9])(180|192|512)([^0-9]|$)");
-        let large_name = |n: &str| {
-            n.starts_with("apple-touch-icon")
-                || n.starts_with("apple-icon")
-                || (n.ends_with(".png")
-                    && size.is_match(n)
-                    && ["icon", "android-chrome", "logo", "touch"]
-                        .iter()
-                        .any(|w| n.contains(w)))
+        let image = |f: &str| {
+            matches!(
+                ext(f),
+                "ico" | "svg" | "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif"
+            )
         };
-        let mut large = self.any(|f| in_dirs(f) && large_name(&name(f).to_ascii_lowercase()));
-        // A web manifest with icons, and `<link rel="icon">` in an HTML entry.
-        for f in &self.files {
-            let n = name(f);
-            if !in_dirs(f) {
-                continue;
+        let mut favicon = self.any(|f| {
+            in_dirs(f) && image(f) && {
+                let n = name(f).to_ascii_lowercase();
+                n.starts_with("favicon")
+                    || matches!(n.as_str(), "icon.svg" | "icon.png" | "icon.ico")
             }
+        });
+        let mut large = self.any(|f| {
+            in_dirs(f) && image(f) && {
+                let n = name(f).to_ascii_lowercase();
+                [
+                    "apple-touch-icon",
+                    "apple-icon",
+                    "icon-192",
+                    "icon-512",
+                    "android-chrome-",
+                ]
+                .iter()
+                .any(|p| n.starts_with(p))
+            }
+        });
+        static LINK: OnceLock<Regex> = OnceLock::new();
+        static REL: OnceLock<Regex> = OnceLock::new();
+        static HREF: OnceLock<Regex> = OnceLock::new();
+        for f in self
+            .files
+            .iter()
+            .filter(|f| UI_EXTS.contains(&ext(f)) && !is_test_path(f))
+        {
+            let Some(t) = self.read(f) else { continue };
+            let t = evidence_text(f, &t);
+            for link in re(&LINK, r"(?is)<link\b[^>]*>").find_iter(&t) {
+                let tag = link.as_str();
+                let rel = re(&REL, r#"(?i)\brel\s*=\s*["']([^"']+)["']"#).captures(tag);
+                let href = re(&HREF, r#"(?i)\bhref\s*=\s*["']([^"']+)["']"#).captures(tag);
+                let (Some(rel), Some(href)) = (rel, href) else {
+                    continue;
+                };
+                let Some(target) = self.icon_target(f, &href[1]) else {
+                    continue;
+                };
+                let rel = rel[1].to_ascii_lowercase();
+                if image(&target) {
+                    favicon |= rel.split_whitespace().any(|r| r == "icon");
+                    large |= rel == "apple-touch-icon";
+                }
+                if rel == "manifest" {
+                    large |= self.manifest_has_icon(&target);
+                }
+            }
+        }
+        for f in &self.files {
             if matches!(
-                n,
-                "manifest.json"
-                    | "site.webmanifest"
-                    | "manifest.webmanifest"
-                    | "manifest.ts"
-                    | "manifest.js"
+                name(f),
+                "manifest.json" | "site.webmanifest" | "manifest.webmanifest"
             ) {
-                if !large {
-                    large = self
-                        .read(f)
-                        .is_some_and(|t| t.contains("\"icons\"") || t.contains("icons:"));
-                }
-            } else if n == "index.html" || n == "app.html" {
-                if let Some(t) = self.read(f) {
-                    let t = t.to_ascii_lowercase();
-                    favicon |= t.contains("rel=\"icon\"")
-                        || t.contains("rel='icon'")
-                        || t.contains("rel=\"shortcut icon\"");
-                    large |= t.contains("apple-touch-icon");
-                }
+                large |= self.manifest_has_icon(f);
             }
         }
         if favicon && large {
@@ -1051,6 +1092,58 @@ impl Project {
         } else {
             State::Failing
         }
+    }
+
+    /// Resolve local URLs against the source folder and conventional public roots.
+    fn icon_target(&self, file: &str, url: &str) -> Option<String> {
+        if url.contains(":") || url.starts_with("//") {
+            return None;
+        }
+        let url = url.split(['?', '#']).next()?;
+        let path = if url.starts_with('/') {
+            PathBuf::from(url.trim_start_matches('/'))
+        } else {
+            Path::new(file).parent()?.join(url)
+        };
+        let mut parts = Vec::new();
+        for part in path.components() {
+            match part {
+                std::path::Component::Normal(p) => parts.push(p.to_str()?),
+                std::path::Component::ParentDir => {
+                    parts.pop()?;
+                }
+                std::path::Component::CurDir => {}
+                _ => return None,
+            }
+        }
+        let target = parts.join("/");
+        [
+            target.clone(),
+            format!("public/{target}"),
+            format!("static/{target}"),
+        ]
+        .into_iter()
+        .find(|f| self.has(f))
+    }
+
+    fn manifest_has_icon(&self, f: &str) -> bool {
+        self.read(f)
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|v| v.get("icons").and_then(Value::as_array).cloned())
+            .is_some_and(|icons| {
+                icons.iter().any(|icon| {
+                    icon.get("src").and_then(Value::as_str).is_some_and(|src| {
+                        let Some(target) = self.icon_target(f, src) else {
+                            return false;
+                        };
+                        self.has(&target)
+                            && matches!(
+                                ext(&target),
+                                "png" | "svg" | "ico" | "webp" | "jpg" | "jpeg"
+                            )
+                    })
+                })
+            })
     }
 
     fn not_found_page(&self) -> Option<State> {
@@ -1152,9 +1245,10 @@ impl Project {
             .filter(|f| !is_test_path(f))
             .any(|f| {
                 self.read(f).is_some_and(|t| {
+                    let t = evidence_text(f, &t);
                     t.contains("og:image")
                         || t.contains("twitter:image")
-                        || t.contains("twitter:card")
+                        || (t.contains("useSeoMeta") && t.contains("ogImage"))
                         || (t.contains("openGraph") && t.contains("images"))
                 })
             });
@@ -1291,7 +1385,7 @@ impl Project {
         static GUARD: OnceLock<Regex> = OnceLock::new();
         let motion = re(
             &MOTION,
-            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-(spin|ping|pulse|bounce|\[)|\btransition:[a-z]|<motion\."#,
+            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-[\w\[]+|\.animate\s*\(|\b(?:in|out|transition):[a-z]|\btransition:[a-z]|<motion\."#,
         );
         let guard = re(
             &GUARD,
@@ -1320,6 +1414,7 @@ impl Project {
                 has_ui = true;
             }
             let Some(t) = self.read(f) else { continue };
+            let t = evidence_text(f, &t);
             if guard.is_match(&t) {
                 return Some(State::Checked);
             }
@@ -1357,6 +1452,7 @@ impl Project {
         }) {
             return Some(State::Checked);
         }
+        let mut project_colors = BTreeSet::new();
         let mut hardcoded = 0usize;
         let mut ui = false;
         for f in &self.files {
@@ -1369,15 +1465,31 @@ impl Project {
                 ui = true;
             }
             let Some(t) = self.read(f) else { continue };
+            let t = evidence_text(f, &t);
+            for m in color_var.find_iter(&t) {
+                let property = m.as_str().split(':').next().unwrap_or("");
+                if !["--swiper-", "--tw-", "--bs-", "--mdc-"]
+                    .iter()
+                    .any(|p| property.starts_with(p))
+                {
+                    project_colors.insert(property.trim().to_string());
+                }
+            }
             if (tailwind_config && t.contains("colors"))
                 || (t.contains("@theme") && t.contains("--color-"))
-                || color_var.is_match(&t)
+                || project_colors.len() >= 3
                 || theme.is_match(&t)
             {
                 return Some(State::Checked);
             }
             if UI_EXTS.contains(&e) {
-                hardcoded += hard.find_iter(&t).count();
+                hardcoded += hard
+                    .find_iter(&t)
+                    .filter(|m| {
+                        // Numeric HTML entities aren't CSS colours.
+                        m.start() == 0 || t.as_bytes()[m.start() - 1] != b'&'
+                    })
+                    .count();
             }
         }
         (ui && hardcoded >= 20).then_some(State::Failing)
@@ -1972,4 +2084,109 @@ fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()))
+}
+
+/// Cheap evidence-only comment removal, never used by the secret scanner.
+fn evidence_text(file: &str, text: &str) -> String {
+    static BLOCK: OnceLock<Regex> = OnceLock::new();
+    let text = re(&BLOCK, r"(?s)<!--.*?-->|/\*.*?\*/").replace_all(text, " ");
+    let slash = matches!(
+        ext(file),
+        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "vue" | "svelte" | "astro" | "scss" | "less"
+    );
+    let hash = matches!(ext(file), "yml" | "yaml" | "sh" | "py" | "rb" | "toml");
+    text.lines()
+        .filter(|l| {
+            let l = l.trim_start();
+            !(slash && l.starts_with("//") || hash && l.starts_with('#'))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn ci_commands(text: &str) -> String {
+    static STEP: OnceLock<Regex> = OnceLock::new();
+    let step = re(
+        &STEP,
+        r"^(\s*)(?:-\s*)?(?:run|script|command|bash|powershell|pwsh):\s*(.*)$",
+    );
+    let mut out = String::new();
+    let mut block = None;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(c) = step.captures(line) {
+            let command = c[2].trim();
+            block = Some(c[1].len());
+            if !matches!(command, "" | "|" | ">" | "|-" | ">-") {
+                out.push_str(command);
+                out.push('\n');
+            }
+        } else if let Some(indent) = block {
+            if line.len() - line.trim_start().len() > indent {
+                out.push_str(line.trim().trim_start_matches("- "));
+                out.push('\n');
+            } else {
+                block = None;
+            }
+        }
+    }
+    out
+}
+
+/// Only Markdown code containing a command, not surrounding prose.
+fn readme_commands(text: &str) -> String {
+    static INLINE: OnceLock<Regex> = OnceLock::new();
+    static COMMAND: OnceLock<Regex> = OnceLock::new();
+    let command = re(
+        &COMMAND,
+        r"^\s*(?:\$\s*)?(?:npx|npm|pnpm|yarn|bun|pip3?|poetry|uv|bundle|composer|mix|go|deno|make|bin/setup|bin/dev|cargo|python3?|flask|uvicorn|rails|docker|hugo|jekyll|artisan)\b",
+    );
+    let project_command = |line: &str| {
+        let words: Vec<_> = line
+            .trim()
+            .trim_start_matches('$')
+            .split_whitespace()
+            .collect();
+        command.is_match(line)
+            && !(words.first() == Some(&"npx")
+                && words.get(1).is_some_and(|w| {
+                    w.starts_with("create-") || w.contains("/create-") || *w == "degit"
+                }))
+    };
+    let mut fence = None;
+    let mut out = String::new();
+    for line in text.lines() {
+        let l = line.trim_start();
+        let marker = if l.starts_with("```") {
+            Some('`')
+        } else if l.starts_with("~~~") {
+            Some('~')
+        } else {
+            None
+        };
+        if let Some(m) = marker {
+            if fence == Some(m) {
+                fence = None;
+            } else if fence.is_none() {
+                fence = Some(m);
+            }
+            continue;
+        }
+        if fence.is_some() {
+            if project_command(line) {
+                out.push_str(line);
+                out.push('\n');
+            }
+        } else {
+            for c in re(&INLINE, r"`([^`\n]+)`").captures_iter(line) {
+                if project_command(&c[1]) {
+                    out.push_str(&c[1]);
+                    out.push('\n');
+                }
+            }
+        }
+    }
+    out
 }
