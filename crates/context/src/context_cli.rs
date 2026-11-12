@@ -274,7 +274,7 @@ fn append_seeded_world_directive(parts: &mut Parts, ctx: &Ctx) {
         return;
     }
     let Some(id) = seeded_world(ctx.design.as_deref()) else { return };
-    parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it. Before designing, open the `Reference image:` URL in DESIGN.md and look at it, on a code-led build too: it is the one picture of this world."));
+    parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it. Before designing, download the `Reference image:` named in DESIGN.md into the workspace and look at it, on a code-led build too: it is the one picture of this world."));
 }
 
 fn append_autonomy_counter_directive(parts: &mut Parts) {
