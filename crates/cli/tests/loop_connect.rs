@@ -705,3 +705,74 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
         assert!(!after.contains(" claude context"), "{after}");
     }
 }
+
+#[test]
+fn status_and_json_connect_tell_loop_what_each_agent_needs() {
+    // Catches: Loop's Settings and first-run panel having no way to see or drive connect.
+    let b = Box::new("status-json");
+    b.install_loop_version("0.1.1");
+    let status = |b: &Box| -> serde_json::Value {
+        let out = b.run(&["loop", "status", "--json"]);
+        assert!(out.status.success(), "{}", text(&out));
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let before = status(&b);
+    assert_eq!(before["loop"]["installed"], true);
+    assert_eq!(before["loop"]["version"], "0.1.1");
+    for a in before["agents"].as_array().unwrap() {
+        assert_eq!(
+            (
+                a["detected"].clone(),
+                a["mcp"].clone(),
+                a["hooks"].clone(),
+                a["instruction"].clone()
+            ),
+            (true.into(), "absent".into(), false.into(), false.into()),
+            "{a}"
+        );
+    }
+    // One agent, non-interactive, one JSON object on stdout.
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true);
+    let agents = v["agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(
+        (agents[0]["agent"].clone(), agents[0]["result"].clone()),
+        ("claude".into(), "connected".into())
+    );
+    let after = status(&b);
+    let row = |h: &str| {
+        after["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["agent"] == h)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        (
+            row("claude")["mcp"].clone(),
+            row("claude")["hooks"].clone(),
+            row("claude")["instruction"].clone(),
+            row("claude")["connected"].clone()
+        ),
+        ("registered".into(), true.into(), true.into(), true.into())
+    );
+    assert_eq!(
+        row("codex")["mcp"],
+        "absent",
+        "only the agent asked for was connected"
+    );
+    // An unknown agent is a JSON failure, never a prompt.
+    let out = b.run(&["loop", "connect", "--agent", "cursor", "--json"]);
+    assert!(!out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(
+        v["error"].as_str().unwrap().contains("Unknown agent"),
+        "{v}"
+    );
+}

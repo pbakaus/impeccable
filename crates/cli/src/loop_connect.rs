@@ -100,6 +100,39 @@ struct Agent {
 
 /// `loop connect`.
 pub(crate) fn connect(io: &Io) -> Result<String> {
+    let (out, connected, failed, _) = connect_agents(io, None)?;
+    if connected == 0 && failed == 0 {
+        return Err(format!(
+            "{out}No coding agent found to connect (Claude Code or Codex)."
+        ));
+    }
+    if failed > 0 {
+        return Err(out.trim_end().to_string());
+    }
+    Ok(out)
+}
+
+/// `loop connect [--agent claude|codex] --json`, for Loop's own Settings and first-run
+/// panel: never asks anything, and always answers one JSON object on stdout. The bool
+/// is whether every agent asked for connected.
+pub(crate) fn connect_json(io: &Io, only: Option<&str>) -> (Value, bool) {
+    match connect_agents(io, only) {
+        Ok((_, connected, failed, agents)) => (
+            json!({ "ok": failed == 0 && connected > 0, "agents": agents }),
+            failed == 0 && connected > 0,
+        ),
+        Err(e) => (json!({ "ok": false, "error": e, "agents": [] }), false),
+    }
+}
+
+/// Connects each agent (or just `only`), returning the text report, how many connected
+/// and failed, and one JSON row per agent. Errors are the reasons nothing was tried.
+fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, Vec<Value>)> {
+    if let Some(h) = only {
+        if !AGENTS.iter().any(|(a, _)| *a == h) {
+            return Err(format!("Unknown agent: {h}. Use claude or codex."));
+        }
+    }
     init_mcp_url(io)?;
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
@@ -110,10 +143,15 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
     let mut out = String::new();
+    let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
     for (harness, label) in AGENTS {
+        if only.is_some_and(|h| h != harness) {
+            continue;
+        }
         let Some(agent) = agent(io, &home, harness) else {
             out.push_str(&format!("{label}: not found, skipped.\n"));
+            rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
             continue;
         };
         match connect_one(&agent, &helper, &support) {
@@ -126,25 +164,98 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
                 if !manual.is_empty() {
                     out.push_str(&format!("  Then in {label}: {}.\n", manual.join("; ")));
                 }
+                rows.push(json!({
+                    "agent": harness, "label": label, "result": "connected",
+                    "signIn": sign_in(harness), "then": manual,
+                }));
             }
             Err(e) => {
                 failed += 1;
                 out.push_str(&format!("{label}: not connected: {e}\n"));
+                rows.push(json!({ "agent": harness, "label": label, "result": "failed", "error": e }));
             }
         }
-    }
-    if connected == 0 && failed == 0 {
-        return Err(format!(
-            "{out}No coding agent found to connect (Claude Code or Codex)."
-        ));
     }
     if connected > 0 {
         out.push_str("To check it works, ask your agent to post a test question to Needs you.\n");
     }
-    if failed > 0 {
-        return Err(out.trim_end().to_string());
+    Ok((out, connected, failed, rows))
+}
+
+/// `loop status [--json]`: what Loop and each agent look like right now, read only.
+/// Nothing is written and no lock is taken; the agents' CLIs are never run.
+pub(crate) fn status(io: &Io) -> Result<Value> {
+    init_mcp_url(io)?;
+    let home = home(io)?;
+    let helper = home.join(APP).join(HELPER);
+    let loop_installed = helper.is_file();
+    let version = helper
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|c| {
+            Command::new("/usr/bin/plutil")
+                .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+                .arg(c.join("Info.plist"))
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()
+        })
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let support = SUPPORT
+        .iter()
+        .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
+    let mut agents = Vec::new();
+    for (harness, label) in AGENTS {
+        let Some(agent) = agent(io, &home, harness) else {
+            agents.push(json!({ "agent": harness, "label": label, "detected": false }));
+            continue;
+        };
+        let mcp = match read_entry(&agent) {
+            Entry::Exact => "registered",
+            Entry::Absent => "absent",
+            Entry::Other(_) => "different",
+        };
+        let hooks = loop_installed
+            && run_spec("status", &spec(&agent, &helper)).is_ok_and(|s| s["installed"] == true);
+        let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
+        let instruction = fs::read_to_string(&rules).is_ok_and(|t| t.contains(INSTRUCTION));
+        let connected = read_record(&support, harness).is_some_and(|r| r["enabled"] == true);
+        agents.push(json!({
+            "agent": harness, "label": label, "detected": true,
+            "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
+        }));
     }
-    Ok(out)
+    Ok(json!({
+        "loop": { "installed": loop_installed, "version": version },
+        "agents": agents,
+    }))
+}
+
+/// The plain-text form of `status`.
+pub(crate) fn status_text(v: &Value) -> String {
+    let mut out = match v["loop"]["version"].as_str() {
+        Some(ver) if v["loop"]["installed"] == true => format!("Loop {ver}: installed.\n"),
+        _ if v["loop"]["installed"] == true => "Loop: installed.\n".to_string(),
+        _ => "Loop: not installed. Run impeccable loop install.\n".to_string(),
+    };
+    for a in v["agents"].as_array().into_iter().flatten() {
+        let label = a["label"].as_str().unwrap_or("Agent");
+        if a["detected"] != true {
+            out.push_str(&format!("{label}: not found.\n"));
+        } else if a["connected"] == true && a["hooks"] == true && a["mcp"] == "registered" {
+            out.push_str(&format!("{label}: connected.\n"));
+        } else {
+            out.push_str(&format!(
+                "{label}: not connected (MCP server {}, hooks {}, instruction {}). Run impeccable loop connect.\n",
+                a["mcp"].as_str().unwrap_or("absent"),
+                if a["hooks"] == true { "present" } else { "missing" },
+                if a["instruction"] == true { "present" } else { "missing" },
+            ));
+        }
+    }
+    out
 }
 
 /// One agent. A failure after the hooks were newly installed undoes them; an earlier,

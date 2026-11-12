@@ -2213,6 +2213,16 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   still counts as connect's own. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
   server in place, printing the command that removes it.
+- `impeccable loop status [--json]` reads, and never writes: whether Loop is
+  installed and its version, and per agent `detected`, `mcp`
+  (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
+  The JSON form is `{loop:{installed, version}, agents:[{agent, label, detected,
+  mcp, hooks, instruction, connected}]}`.
+- `impeccable loop connect --agent claude|codex` connects only that agent.
+  `--json` never prompts and prints one object on stdout,
+  `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
+  error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
+  unknown agent). It exits 0 only when every agent asked for connected.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.

@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -273,6 +273,12 @@ fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
 }
 
 pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
+    // The JSON forms answer one object on stdout whatever happened, for Loop's own UI.
+    if args.iter().any(|a| a == "--json") {
+        if let Some(code) = run_json(args, io, std::env::consts::OS) {
+            return code;
+        }
+    }
     match run_inner(args, io, PINS, std::env::consts::OS) {
         Ok(message) => {
             io.out(&message);
@@ -285,6 +291,31 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
+/// `loop status --json` and `loop connect [--agent claude|codex] --json`. `None` when
+/// the arguments are not one of those, so usage errors read as usual.
+fn run_json(args: &[String], io: &mut Io, os: &str) -> Option<i32> {
+    let rest: Vec<&str> = args[1..]
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--json")
+        .collect();
+    let (value, ok) = match (args.first().map(String::as_str), rest.as_slice()) {
+        _ if check_platform(os).is_err() => (
+            serde_json::json!({ "ok": false, "error": "Impeccable Loop is only available on macOS." }),
+            false,
+        ),
+        (Some("status"), []) => match crate::loop_connect::status(io) {
+            Ok(v) => (v, true),
+            Err(e) => (serde_json::json!({ "ok": false, "error": e }), false),
+        },
+        (Some("connect"), []) => crate::loop_connect::connect_json(io, None),
+        (Some("connect"), ["--agent", agent]) => crate::loop_connect::connect_json(io, Some(agent)),
+        _ => return None,
+    };
+    io.out(&format!("{value}\n"));
+    Some(if ok { 0 } else { 1 })
+}
+
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
@@ -294,6 +325,26 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         Some("connect") if args.len() == 1 => {
             check_platform(os)?;
             return crate::loop_connect::connect(io);
+        }
+        Some("status") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::status(io).map(|v| crate::loop_connect::status_text(&v));
+        }
+        Some("connect") if args.len() == 3 && args[1] == "--agent" => {
+            check_platform(os)?;
+            let (v, ok) = crate::loop_connect::connect_json(io, Some(&args[2]));
+            let lines: Vec<String> = v["agents"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|a| match a["result"].as_str() {
+                    Some("connected") => format!("{}: connected.", a["label"].as_str().unwrap_or("")),
+                    Some("not_found") => format!("{}: not found.", a["label"].as_str().unwrap_or("")),
+                    _ => format!("{}: not connected: {}", a["label"].as_str().unwrap_or(""), a["error"].as_str().unwrap_or("")),
+                })
+                .collect();
+            let text = if lines.is_empty() { v["error"].as_str().unwrap_or("").to_string() } else { lines.join("\n") };
+            return if ok { Ok(format!("{text}\n")) } else { Err(text) };
         }
         Some("disconnect") if args.len() == 1 => {
             check_platform(os)?;
