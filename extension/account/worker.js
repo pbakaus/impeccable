@@ -30,7 +30,7 @@ const session = createSession({
 async function status() {
   await chosen;
   session.retry();
-  const server = UNPACKED ? { server: issuer } : {};
+  const server = UNPACKED ? { server: issuer, unpacked: true } : {};
   if (!(await session.available())) return { ok: true, available: false, ...server };
   if (!(await session.signedIn())) return { ok: true, available: true, signedIn: false, ...server };
   const me = await session.me();

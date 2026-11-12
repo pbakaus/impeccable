@@ -1,38 +1,35 @@
 /**
  * Impeccable extension popup: the account.
  *
- * Three tabs over the popup: Scan (the detector, popup.js, as it always was), Personas (only when signed in) and
- * Settings (who is signed in, Sign in, Sign out). It asks the background worker (account/worker.js) and holds no
- * token itself. The tabs show only when the account server takes extension sign-ins: when it answers 404, or this
- * browser has no `chrome.identity` (Firefox shares this page), the popup is the detector alone, as before. The store
- * build does not load this script at all, so its popup asks no server anything.
+ * Tabs along the top of the popup: Scan (the detector, popup.js, as it always was), Personas (only when signed in)
+ * and Settings, the cog at the row's right end (who is signed in, Sign out, the walk helper). Signed out, one button
+ * under every tab signs in. It asks the background worker (account/worker.js, onboarding/contact.js) and holds no
+ * token itself. The tabs show when the account server takes extension sign-ins, and always in a build loaded
+ * unpacked, so its screens can be seen before the server is there; Sign in then says it is not available yet.
+ * Otherwise, or in a browser with no `chrome.identity` (Firefox shares this page), the popup is the detector alone,
+ * as before. The store build does not load this script at all, so its popup asks no server anything. Its words are
+ * in words.js.
  */
 (() => {
-  const WORDS = {
-    signedIn: 'Signed in as',
-    signedOut: 'Not signed in.',
-    failed: 'Couldn’t sign in. Try again.',
-    noPersonas: 'No personas yet.',
-    personasFailed: 'Couldn’t load your personas.',
-  };
-
+  const WORDS = globalThis.IMPECCABLE_WORDS?.popup;
   const $ = (id) => document.getElementById(id);
   const tabs = $('account-tabs');
-  if (!tabs || !globalThis.chrome?.identity) return;
-
+  if (!tabs || !WORDS || !globalThis.chrome?.identity) return;
   const TABS = ['scan', 'personas', 'settings'];
   const tab = (name) => $(`tab-${name}`);
   const panel = (name) => $(`panel-${name}`);
 
-  const ask = (account, extra = {}) => new Promise((resolve) => {
+  const send = (message) => new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage({ account, ...extra }, (answer) => resolve(chrome.runtime.lastError ? null : answer ?? null));
+      chrome.runtime.sendMessage(message, (answer) => resolve(chrome.runtime.lastError ? null : answer ?? null));
     } catch {
       resolve(null);
     }
   });
+  const ask = (account, extra = {}) => send({ account, ...extra });
 
   let selected = 'scan';
+  let status = null;
   let loadedPersonas = false;
 
   function select(name, { focus = false } = {}) {
@@ -73,27 +70,42 @@
     note.hidden = note.textContent === '';
   }
 
-  function draw(status) {
-    const on = status?.ok === true && status.available === true;
+  function draw(next) {
+    status = next;
+    const available = next?.ok === true && next.available === true;
+    const on = available || next?.unpacked === true;
+    const signedIn = available && next.signedIn === true;
     tabs.hidden = !on;
     document.body.classList.toggle('has-tabs', on);
-    document.body.dataset.account = !on ? 'off' : status.signedIn ? 'signed-in' : 'signed-out';
+    document.body.dataset.account = !on ? 'off' : signedIn ? 'signed-in' : 'signed-out';
+    $('sign-in').hidden = !on || signedIn;
     if (!on) { select('scan'); return; }
-    tab('personas').hidden = !status.signedIn;
-    $('account-label').textContent = status.signedIn ? WORDS.signedIn : WORDS.signedOut;
-    $('account-email').textContent = status.email ?? '';
-    $('account-email').hidden = !status.signedIn || !status.email;
-    $('btn-sign-in').hidden = status.signedIn === true;
-    $('btn-sign-out').hidden = status.signedIn !== true;
+    tab('personas').hidden = !signedIn;
+    $('account-label').textContent = signedIn ? WORDS.signedIn : WORDS.signedOut;
+    $('account-email').textContent = next.email ?? '';
+    $('account-email').hidden = !signedIn || !next.email;
+    $('btn-sign-out').hidden = !signedIn;
     // Only a build loaded unpacked says which server it signs in to, and lets it be changed.
-    $('account-server-row').hidden = typeof status.server !== 'string';
-    if (typeof status.server === 'string') $('account-server').value = status.server;
+    $('account-server-row').hidden = typeof next.server !== 'string';
+    if (typeof next.server === 'string') $('account-server').value = next.server;
     select(selected);
   }
 
-  function failed(show) {
-    $('account-error').textContent = show ? WORDS.failed : '';
-    $('account-error').hidden = !show;
+  /** The walk helper's row in Settings: added, or a button to the onboarding that adds or updates it. */
+  async function helper() {
+    const answer = await send({ walks: 'helper' });
+    if (!answer) return;
+    const row = $('helper-row');
+    row.dataset.state = answer.state;
+    $('helper-state').textContent = { ready: WORDS.helperReady, old: WORDS.helperOld }[answer.state] ?? WORDS.helperMissing;
+    $('btn-helper').textContent = answer.state === 'old' ? WORDS.helperUpdate : WORDS.helperAdd;
+    $('btn-helper').hidden = answer.state === 'ready';
+    row.hidden = false;
+  }
+
+  function note(text) {
+    $('account-error').textContent = text;
+    $('account-error').hidden = text === '';
   }
 
   for (const name of TABS) tab(name).addEventListener('click', () => select(name));
@@ -107,12 +119,13 @@
 
   // The sign-in window takes the focus, which closes this popup; the worker finishes it, and the next popup shows it.
   $('btn-sign-in').addEventListener('click', async () => {
-    failed(false);
+    if (status?.available !== true) { note(WORDS.signInUnavailable); return; }
+    note('');
     const answer = await ask('sign-in');
-    if (answer?.ok) draw(answer); else failed(true);
+    if (answer?.ok) draw(answer); else note(WORDS.failed);
   });
   $('btn-sign-out').addEventListener('click', async () => {
-    failed(false);
+    note('');
     loadedPersonas = false;
     draw(await ask('sign-out'));
   });
@@ -121,5 +134,13 @@
     if (answer?.ok) { loadedPersonas = false; draw(answer); }
   });
 
+  $('btn-helper').addEventListener('click', () => {
+    void chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/onboarding.html') });
+    window.close();
+  });
+
+  $('helper-label').textContent = WORDS.helper;
+  $('btn-sign-in').textContent = WORDS.signIn;
   void ask('status').then(draw);
+  void helper();
 })();

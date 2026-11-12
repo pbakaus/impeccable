@@ -7,6 +7,9 @@ field; paste them as they are. Keep this file in step with the manifest
 
 > Draft: the lines about walks (permissions, remote code, data usage) are not
 > final. The repository owner reviews store copy before any of it is pasted.
+> Walks now ship in a second extension, the walk helper "Impeccable Walks"
+> (`dist/extension-walks.zip`, scripts/lib/extension-manifests.js): those lines
+> belong in its own listing, and this one keeps the 1.4.0 detector copy.
 
 ## Name
 Impeccable

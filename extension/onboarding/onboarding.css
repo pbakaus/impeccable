@@ -1,0 +1,261 @@
+/*
+ * The first-walk onboarding: one card on the paper, three short screens and a
+ * last one once the helper answers. Tokens live in ../shared/kinpaku.css; the
+ * buttons are the popup's, repeated here because this page loads no popup CSS.
+ */
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  font-size: var(--ks-type-ui);
+}
+
+.card {
+  width: min(100%, 420px);
+  padding: 22px 24px 18px;
+  border: 1px solid var(--ks-rule);
+  border-radius: var(--ks-radius-md);
+  background: var(--ks-paper-raised);
+  box-shadow: 0 1px 2px oklch(13% 0 0 / 0.04), 0 8px 24px oklch(13% 0 0 / 0.06);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--ks-rule);
+}
+
+.kicker {
+  margin-left: auto;
+  font-size: var(--ks-type-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ks-text-muted);
+}
+
+.screen[hidden],
+.btn[hidden],
+.steps[hidden] {
+  display: none;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 210px;
+}
+
+h1 {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ks-ink);
+}
+
+p {
+  line-height: 1.55;
+}
+
+.points,
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-left: 0;
+  list-style: none;
+}
+
+.points li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.points li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.6em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+}
+
+/* What it never does: a struck dash, ink, not alarm red. */
+.points.is-never li::before {
+  top: 0.75em;
+  width: 9px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--ks-ink);
+}
+
+.steps {
+  counter-reset: step;
+  padding: 10px 12px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-paper-deep);
+}
+
+.steps li {
+  counter-increment: step;
+  font-family: var(--ks-font);
+}
+
+.steps li::before {
+  content: counter(step) ".";
+  display: inline-block;
+  width: 18px;
+  color: var(--ks-text-muted);
+}
+
+/* The walk's tab, in a group of its own beside yours. */
+.tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 10px 0;
+  margin-bottom: 6px;
+  border-radius: var(--ks-radius-sm);
+  background: var(--ks-gray);
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+}
+
+.tab-own,
+.tab-walk {
+  padding: 5px 10px;
+  border-radius: 6px 6px 0 0;
+  background: var(--ks-paper-deep);
+}
+
+.tab-group {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding-bottom: 0;
+  border-bottom: 2px solid var(--ks-kinpaku);
+}
+
+.tab-group-label {
+  margin-bottom: 4px;
+  padding: 1px 6px;
+  border-radius: var(--ks-radius-pill);
+  background: var(--ks-kinpaku);
+  color: var(--ks-on-gold);
+  font-weight: 600;
+}
+
+.tab-walk {
+  background: var(--ks-paper-raised);
+  color: var(--ks-ink);
+}
+
+.waiting {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--ks-text-muted);
+}
+
+body[data-step="add"] .waiting {
+  display: flex;
+}
+
+.waiting::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
+  animation: wait 1.4s var(--ks-ease) infinite alternate;
+}
+
+@keyframes wait {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting::before { animation: none; }
+}
+
+.fine {
+  font-size: var(--ks-type-micro);
+  color: var(--ks-text-muted);
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  margin-right: auto;
+}
+
+.dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ks-gray);
+}
+
+.dots i.is-on {
+  background: var(--ks-ink);
+}
+
+body[data-step="ready"] .dots {
+  visibility: hidden;
+}
+
+.btn {
+  min-height: 32px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--ks-radius-sm);
+  font-family: inherit;
+  font-size: var(--ks-type-label);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease);
+}
+
+.screen .btn {
+  align-self: flex-start;
+}
+
+.btn-primary {
+  background: var(--ks-ink);
+  border-color: var(--ks-ink);
+  color: var(--ks-paper-raised);
+}
+
+.btn-primary:hover {
+  background: var(--ks-text);
+}
+
+.btn-secondary {
+  background: var(--ks-paper-raised);
+  border-color: var(--ks-edge);
+  color: var(--ks-ink);
+  box-shadow: var(--ks-cap-lift);
+}
+
+.btn-secondary:hover {
+  border-color: var(--ks-ink);
+}

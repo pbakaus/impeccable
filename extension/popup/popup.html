@@ -19,7 +19,12 @@
   <nav class="tabs" id="account-tabs" role="tablist" aria-label="Sections" hidden>
     <button class="tab" id="tab-scan" type="button" role="tab" aria-controls="panel-scan" aria-selected="true">Scan</button>
     <button class="tab" id="tab-personas" type="button" role="tab" aria-controls="panel-personas" aria-selected="false" tabindex="-1" hidden>Personas</button>
-    <button class="tab" id="tab-settings" type="button" role="tab" aria-controls="panel-settings" aria-selected="false" tabindex="-1">Settings</button>
+    <button class="tab tab-icon" id="tab-settings" type="button" role="tab" aria-controls="panel-settings" aria-selected="false" tabindex="-1" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="2.2"/>
+        <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/>
+      </svg>
+    </button>
   </nav>
 
   <section id="panel-scan" role="tabpanel" aria-labelledby="tab-scan">
@@ -47,14 +52,22 @@
   <section class="account-panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
     <p class="account-label" id="account-label"></p>
     <p class="account-email" id="account-email" hidden></p>
-    <button class="btn btn-primary" id="btn-sign-in" type="button" hidden>Sign in</button>
     <button class="btn btn-secondary" id="btn-sign-out" type="button" hidden>Sign out</button>
-    <p class="account-note is-error" id="account-error" role="status" hidden></p>
+    <div class="helper-row" id="helper-row" hidden>
+      <p class="account-label" id="helper-label"></p>
+      <p class="helper-state" id="helper-state"></p>
+      <button class="btn btn-secondary" id="btn-helper" type="button" hidden></button>
+    </div>
     <label class="account-server" id="account-server-row" hidden>
       <span class="account-label">Server</span>
       <input id="account-server" type="url" spellcheck="false">
     </label>
   </section>
+
+  <div class="sign-in" id="sign-in" hidden>
+    <button class="btn btn-secondary" id="btn-sign-in" type="button"></button>
+    <p class="account-note is-error" id="account-error" role="status" hidden></p>
+  </div>
 
   <footer>
     <a href="https://impeccable.style" id="link-site">impeccable.style</a>
@@ -62,6 +75,7 @@
 
   <script src="../shared/findings-report.js"></script>
   <script src="popup.js"></script>
+  <script src="words.js"></script>
   <script src="account.js"></script>
 </body>
 </html>

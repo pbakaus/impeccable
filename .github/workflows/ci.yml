@@ -186,6 +186,8 @@ jobs:
             dist/
             !dist/extension-chrome/
             !dist/extension-firefox/
+            !dist/extension-walks/
+            !dist/extension-walks-store/
           retention-days: 7
 
   # The Rust workspace: the engine binary, the rule core, and every crate

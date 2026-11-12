@@ -197,8 +197,9 @@ footer a:hover {
   border-bottom-color: var(--ks-kinpaku);
 }
 
-/* Account tabs. Shown only when the account server takes extension sign-ins
-   (popup/account.js); otherwise the popup is the detector alone, as above.
+/* Account tabs. Shown when the account server takes extension sign-ins, and
+   always in a build loaded unpacked (popup/account.js); otherwise the popup is
+   the detector alone, as above. Settings is the cog at the row's right end.
    The tab row takes over the head's rule; the selected tab is ink over a
    gold hairline, like the count's rule when it lights. */
 
@@ -243,6 +244,51 @@ body.has-tabs header {
 .tab[aria-selected="true"] {
   color: var(--ks-ink);
   border-bottom-color: var(--ks-kinpaku);
+}
+
+.tab-icon {
+  display: flex;
+  margin-left: auto;
+  padding-bottom: 5px;
+}
+
+/* Signed out: one way in, under whichever tab is open. */
+
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--ks-rule);
+}
+
+.sign-in[hidden],
+.helper-row[hidden],
+.helper-row .btn[hidden] {
+  display: none;
+}
+
+.helper-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.helper-state {
+  color: var(--ks-ink);
+  font-weight: 500;
+}
+
+.helper-row[data-state="ready"] .helper-state::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 6px 1px 0;
+  border-radius: 50%;
+  background: var(--ks-kinpaku);
+  box-shadow: var(--ks-led);
 }
 
 .account-panel {

@@ -33,7 +33,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
     ...props,
   });
   // The page as popup.html marks it up: everything account.js finds hidden at first is hidden.
-  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error'];
+  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error', 'sign-in', 'helper-row'];
   const node = id => {
     if (!nodes.has(id)) nodes.set(id, element({ id, disabled: id === 'btn-copy-all', hidden: HIDDEN.includes(id) }));
     return nodes.get(id);
@@ -62,6 +62,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
         sendMessage(message, callback) {
           messages.push(message);
           if (message.account) { callback(account[message.account] ?? { ok: false }); return; }
+          if (message.walks) { callback(account?.walks ?? null); return; }
           if (message.action === 'get-state') {
             if (deferState) h.deliverState = callback;
             else callback(initial);
@@ -70,6 +71,8 @@ async function popup({ initial = state(), deferState = false, account, root = SO
       },
     },
   });
+  // window.close is the popup closing itself; a test reads it as nothing more.
+  context.window = { close() {} };
   const html = readFileSync(path.join(root, 'popup/popup.html'), 'utf8');
   for (const [, src] of html.matchAll(/<script src="([^"]+)"><\/script>/g)) {
     vm.runInContext(readFileSync(path.join(root, 'popup', src), 'utf8'), context);
@@ -262,7 +265,7 @@ function stagedStore() {
 
 for (const [label, account, asked, store] of [
   ['a browser without sign-in (Firefox)', undefined, false],
-  ['a server that answers 404', { status: { ok: true, available: false } }, true],
+  ['a store-like build whose server answers 404', { status: { ok: true, available: false } }, true],
   // The store build has no account: its popup asks nothing, even of a server that takes sign-ins.
   ['the store build', { status: { ok: true, available: true, signedIn: true, email: 'mira@example.com' } }, false, true],
 ]) {
@@ -277,21 +280,37 @@ for (const [label, account, asked, store] of [
   });
 }
 
-test('signed out, the popup offers Settings and Sign in, and no Personas', async () => {
-  const h = await popup({ account: { status: { ok: true, available: true, signedIn: false } } });
-  assert.equal(h.node('account-tabs').hidden, false);
-  assert.equal(h.node('tab-personas').hidden, true);
-  assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
-  h.click('tab-settings');
-  assert.deepEqual([h.node('panel-settings').hidden, h.node('panel-scan').hidden, h.node('btn-sign-in').hidden, h.node('btn-sign-out').hidden], [false, true, false, true]);
-  assert.equal(h.body.dataset.account, 'signed-out');
-});
+// A build loaded unpacked shows its account screens before the server takes sign-ins: Sign in then asks nothing.
+for (const [label, status, asks] of [
+  ['the server takes sign-ins', { ok: true, available: true, signedIn: false }, true],
+  ['a build loaded unpacked, before the server takes sign-ins', { ok: true, available: false, unpacked: true, server: 'https://api.impeccable.style' }, false],
+]) {
+  test(`signed out, the popup offers Settings and Sign in under every tab, and no Personas: ${label}`, async () => {
+    const h = await popup({ account: { status, 'sign-in': { ok: false } } });
+    assert.deepEqual([h.node('account-tabs').hidden, h.node('tab-personas').hidden, h.node('sign-in').hidden], [false, true, false]);
+    assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
+    h.click('tab-settings');
+    assert.deepEqual([h.node('panel-settings').hidden, h.node('panel-scan').hidden, h.node('sign-in').hidden, h.node('btn-sign-out').hidden], [false, true, false, true]);
+    assert.equal(h.body.dataset.account, 'signed-out');
+    await h.click('btn-sign-in');
+    assert.equal(h.messages.some((m) => m.account === 'sign-in'), asks);
+    assert.equal(h.node('account-error').hidden, false, 'it says why nothing happened');
+  });
+}
+
+for (const [state, button] of [['ready', true], ['missing', false], ['old', false]]) {
+  test(`Settings shows the walk helper ${state}`, async () => {
+    const h = await popup({ account: { status: { ok: true, available: true, signedIn: false }, walks: { state } } });
+    await tick();
+    assert.deepEqual([h.node('helper-row').hidden, h.node('helper-row').dataset.state, h.node('btn-helper').hidden], [false, state, button]);
+  });
+}
 
 test('signed in, the popup shows the email and lists the personas', async () => {
   const h = await popup({ account: { status: signedIn, personas } });
   assert.equal(h.node('tab-personas').hidden, false);
   h.click('tab-settings');
-  assert.deepEqual([h.node('account-email').textContent, h.node('btn-sign-in').hidden, h.node('btn-sign-out').hidden], ['mira@example.com', true, false]);
+  assert.deepEqual([h.node('account-email').textContent, h.node('sign-in').hidden, h.node('btn-sign-out').hidden], ['mira@example.com', true, false]);
   h.click('tab-personas');
   await tick();
   assert.equal(h.node('panel-personas').hidden, false);

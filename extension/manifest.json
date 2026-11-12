@@ -3,17 +3,13 @@
   "name": "Impeccable",
   "description": "Detect common UI anti-patterns in any web page",
   "version": "1.4.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlywjgQRMvPJaVHqmEuIb4L8lDL3t/eT5ZUMc1m7m4SywhZryC3MwAJuAj5oSsETXj0OEpYs0vkn63zK3fHCacMF/jh5DtMqbohu0q3gprfglG11BDpX/DKvLMhwMnlIApUln71u5VJVBPKS5j+vhmAxcqy7G4Ml47P7m5l7c0QKyT+m/9lbFzwh69Y4sUQBIsbRxzJkg6PbH8q/DXxL9GdXr0CkcdaWVQ+LRWp3RNHrfTSGmlvOaLrP9Qm8h4WIeM9R58gLizyh2FmIlDQBO8hDOD89XRixcgu38u7LBuMHPDXex44Psa7Lxim8UoKW8E52/qZx1b3+dTsDKSIwpCQIDAQAB",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "webNavigation",
     "offscreen",
-    "debugger",
-    "tabs",
-    "tabGroups",
-    "sidePanel",
-    "downloads",
     "identity"
   ],
   "host_permissions": [
@@ -27,9 +23,6 @@
     "type": "module"
   },
   "devtools_page": "devtools/devtools.html",
-  "side_panel": {
-    "default_path": "walks/panel/panel.html"
-  },
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
@@ -44,21 +37,12 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
+  "externally_connectable": {
+    "ids": [
+      "ohahfjdkphinllkplmjhinlojjflpkkl"
+    ]
+  },
   "content_scripts": [
-    {
-      "matches": [
-        "https://impeccable.reviews/app/*/outings/*",
-        "https://app.impeccable.style/app/*/outings/*",
-        "https://staging.impeccable.reviews/app/*/outings/*",
-        "https://app.staging.impeccable.style/app/*/outings/*",
-        "http://localhost/app/*/outings/*",
-        "http://app.localhost/app/*/outings/*"
-      ],
-      "js": [
-        "walks/handoff-content.js"
-      ],
-      "run_at": "document_idle"
-    },
     {
       "matches": [
         "https://impeccable.reviews/app/*/outings/*",
@@ -75,9 +59,9 @@
         "http://app.localhost/app/cli/authorize*"
       ],
       "js": [
-        "walks/present.js"
+        "onboarding/start.js"
       ],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ]
 }
