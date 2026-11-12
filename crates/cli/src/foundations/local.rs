@@ -491,11 +491,7 @@ impl Project {
             r#"(?is)<script\b[^>]*\bsrc\s*=|<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
         );
         let (mut ignores, mut unresolved) = (false, false);
-        for f in self
-            .files
-            .iter()
-            .filter(|f| UI_EXTS.contains(&ext(f)) && !is_test_path(f))
-        {
+        for f in self.files.iter().filter(|f| UI_EXTS.contains(&ext(f))) {
             let Some(t) = self.read(f) else {
                 return (true, true);
             };
@@ -1717,13 +1713,35 @@ fn tailwind_transition(text: &str) -> bool {
         let rest = &text[m.end()..];
         let mut end = rest.len();
         // Braces inside '...' or "..." are text, not code.
+        // and so are comments; a backslash escapes the next character.
         let mut quote: Option<char> = None;
-        for (i, c) in rest.char_indices().take(4000) {
+        let mut comment: Option<char> = None;
+        let mut chars = rest.char_indices().take(4000).peekable();
+        while let Some((i, c)) = chars.next() {
+            if let Some(kind) = comment {
+                let next = chars.peek().map(|(_, n)| *n);
+                if (kind == '/' && c == '\n') || (kind == '*' && c == '*' && next == Some('/')) {
+                    comment = None;
+                    if kind == '*' {
+                        chars.next();
+                    }
+                }
+                continue;
+            }
             if let Some(q) = quote {
-                if c == q {
+                if c == '\\' {
+                    chars.next();
+                } else if c == q {
                     quote = None;
                 }
                 continue;
+            }
+            if c == '/' {
+                if let Some((_, n @ ('/' | '*'))) = chars.peek().copied() {
+                    comment = Some(n);
+                    chars.next();
+                    continue;
+                }
             }
             match c {
                 '\'' | '"' => quote = Some(c),
