@@ -1712,7 +1712,7 @@ fn tailwind_transition(text: &str) -> bool {
         let mut depth = 1usize;
         let rest = &text[m.end()..];
         let mut end = rest.len();
-        // Braces inside '...' or "..." are text, not code.
+        // Braces inside '...', "..." or `...` are text, not code,
         // and so are comments; a backslash escapes the next character.
         let mut quote: Option<char> = None;
         let mut comment: Option<char> = None;
@@ -1744,7 +1744,8 @@ fn tailwind_transition(text: &str) -> bool {
                 }
             }
             match c {
-                '\'' | '"' => quote = Some(c),
+                // A template is text too; its `${}` braces balance inside it.
+                '\'' | '"' | '`' => quote = Some(c),
                 '{' => depth += 1,
                 '}' => {
                     depth -= 1;
