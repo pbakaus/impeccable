@@ -100,7 +100,13 @@ struct Agent {
 
 /// `loop connect`.
 pub(crate) fn connect(io: &Io) -> Result<String> {
-    let (out, connected, failed, _) = connect_agents(io, None)?;
+    connect_only(io, None)
+}
+
+/// `loop connect [--agent claude|codex]`: the full text report, sign-in and follow-up
+/// steps included, for every agent or just the one named.
+pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
+    let (out, connected, failed, _) = connect_agents(io, only)?;
     if connected == 0 && failed == 0 {
         return Err(format!(
             "{out}No coding agent found to connect (Claude Code or Codex)."
@@ -206,6 +212,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     let support = SUPPORT
         .iter()
         .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
+    let installed = installed_specs(OWNER).map(|f| f.committed).unwrap_or_default();
     let mut agents = Vec::new();
     for (harness, label) in AGENTS {
         let Some(agent) = agent(io, &home, harness) else {
@@ -217,11 +224,29 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
             Entry::Absent => "absent",
             Entry::Other(_) => "different",
         };
+        // Hooks count only when the engine installed them for this very config folder and
+        // every resource is still as written: a journal alone says nothing once a hook was
+        // removed by hand. A folder with no installation is answered without touching the
+        // engine's folder at all.
         let hooks = loop_installed
-            && run_spec("status", &spec(&agent, &helper)).is_ok_and(|s| s["installed"] == true);
+            && installed.iter().any(|s| s.harness == harness && s.root == agent.root)
+            && run_spec("status", &spec(&agent, &helper)).is_ok_and(|s| {
+                s["installed"] == true
+                    && s["resources"]
+                        .as_array()
+                        .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
+            });
         let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
         let instruction = fs::read_to_string(&rules).is_ok_and(|t| t.contains(INSTRUCTION));
-        let connected = read_record(&support, harness).is_some_and(|r| r["enabled"] == true);
+        // The wake record is shared per agent; it speaks for this folder only when it names it.
+        let root = agent.root.display().to_string();
+        let connected = read_record(&support, harness).is_some_and(|r| {
+            r["enabled"] == true
+                && (r["configDir"].as_str() == Some(root.as_str())
+                    || r["accounts"]
+                        .as_array()
+                        .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(root.as_str()))))
+        });
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
             "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
@@ -244,7 +269,11 @@ pub(crate) fn status_text(v: &Value) -> String {
         let label = a["label"].as_str().unwrap_or("Agent");
         if a["detected"] != true {
             out.push_str(&format!("{label}: not found.\n"));
-        } else if a["connected"] == true && a["hooks"] == true && a["mcp"] == "registered" {
+        } else if a["connected"] == true
+            && a["hooks"] == true
+            && a["instruction"] == true
+            && a["mcp"] == "registered"
+        {
             out.push_str(&format!("{label}: connected.\n"));
         } else {
             out.push_str(&format!(
@@ -716,7 +745,9 @@ fn add_server(agent: &Agent) -> Result<()> {
         };
     }
     let mut child = cli(agent, &["mcp", "add", MCP_NAME, "--url", mcp_url()])
-        .stdout(Stdio::inherit())
+        // Codex's own messages go to this command's stderr, never its stdout: a person
+        // still sees them, and `--json` keeps exactly one object on stdout.
+        .stdout(std::io::stderr())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| e.to_string())?;

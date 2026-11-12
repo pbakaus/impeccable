@@ -2224,9 +2224,16 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
   (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
+  `hooks` is true only when the engine installed them for the selected config
+  folder and every resource is still as written; `connected` only when the
+  wake record names that folder. A home with nothing installed is answered
+  without creating any file. The text form says connected only when the MCP
+  server, the hooks, the instruction block and the record all hold.
   The JSON form is `{loop:{installed, version}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
-- `impeccable loop connect --agent claude|codex` connects only that agent.
+- `impeccable loop connect --agent claude|codex` connects only that agent. Its text
+  report keeps the sign-in and follow-up lines. An agent CLI's own output goes
+  to stderr, so stdout carries the report or the one JSON object and nothing else.
   `--json` never prompts and prints one object on stdout,
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an

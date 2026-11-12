@@ -793,3 +793,91 @@ fn connect_flags_only_go_with_install() {
         );
     }
 }
+
+#[test]
+fn status_tells_the_truth_after_things_change_by_hand() {
+    // Catches: status saying connected when a hook or the instruction block was removed,
+    // when another config folder is selected, or writing into a home that has nothing.
+    let b = Box::new("status-truth");
+    b.install_loop_version("0.1.1");
+    let status = |b: &Box, extra: &[(&str, String)]| -> serde_json::Value {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_impeccable"));
+        c.args(["loop", "status", "--json"])
+            .env_clear()
+            .envs(&b.env)
+            .stdin(Stdio::null());
+        for (k, v) in extra {
+            c.env(k, v);
+        }
+        serde_json::from_slice(&c.output().unwrap().stdout).unwrap()
+    };
+    let claude = |v: &serde_json::Value| {
+        v["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["agent"] == "claude")
+            .unwrap()
+            .clone()
+    };
+    // Nothing installed: status answers without creating the engine's folder.
+    status(&b, &[]);
+    assert!(
+        !b.home().join(".impeccable/agents").exists(),
+        "status must not write"
+    );
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert_eq!(claude(&status(&b, &[]))["hooks"], true);
+    // Another Claude config folder is not connected just because the default one is.
+    let other = b.root.join("other-claude");
+    fs::create_dir_all(&other).unwrap();
+    let elsewhere = claude(&status(
+        &b,
+        &[("CLAUDE_CONFIG_DIR", other.display().to_string())],
+    ));
+    assert_eq!(
+        (elsewhere["connected"].clone(), elsewhere["hooks"].clone()),
+        (false.into(), false.into())
+    );
+    // The instruction block removed by hand: plain status no longer says connected.
+    fs::write(b.home().join(".claude/CLAUDE.md"), "").unwrap();
+    let plain = text(&b.run(&["loop", "status"]));
+    assert!(
+        plain.contains("Claude Code: not connected") && plain.contains("instruction missing"),
+        "{plain}"
+    );
+    // The hooks removed by hand: the journal alone no longer counts.
+    fs::write(b.home().join(".claude/settings.json"), "{}").unwrap();
+    assert_eq!(claude(&status(&b, &[]))["hooks"], false);
+}
+
+#[test]
+fn json_stays_one_object_when_codex_talks_and_one_agent_keeps_its_next_steps() {
+    // Catches: `codex mcp add` printing into the JSON Loop reads, and `--agent` in text
+    // mode dropping the sign-in and follow-up lines.
+    let b = Box::new("json-clean");
+    b.install_loop_version("0.1.1");
+    script(
+        &b.root.join("bin/codex"),
+        r#"#!/bin/sh
+f="${CODEX_HOME:-$HOME/.codex}/config.toml"
+case "$2" in
+add) echo "Added global MCP server 'impeccable'."; printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+esac
+exit 0
+"#,
+    );
+    let out = b.run(&["loop", "connect", "--agent", "codex", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(v["ok"], true, "{v}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Added global MCP server"));
+    let said = text(&b.run(&["loop", "connect", "--agent", "claude"]));
+    assert!(
+        said.contains("Claude Code: connected.")
+            && said.contains("Sign in:")
+            && said.contains("/mcp"),
+        "{said}"
+    );
+    assert!(!said.contains("Codex"), "{said}");
+}

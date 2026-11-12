@@ -378,19 +378,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
         Some("connect") if args.len() == 3 && args[1] == "--agent" => {
             check_platform(os)?;
-            let (v, ok) = crate::loop_connect::connect_json(io, Some(&args[2]));
-            let lines: Vec<String> = v["agents"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .map(|a| match a["result"].as_str() {
-                    Some("connected") => format!("{}: connected.", a["label"].as_str().unwrap_or("")),
-                    Some("not_found") => format!("{}: not found.", a["label"].as_str().unwrap_or("")),
-                    _ => format!("{}: not connected: {}", a["label"].as_str().unwrap_or(""), a["error"].as_str().unwrap_or("")),
-                })
-                .collect();
-            let text = if lines.is_empty() { v["error"].as_str().unwrap_or("").to_string() } else { lines.join("\n") };
-            return if ok { Ok(format!("{text}\n")) } else { Err(text) };
+            return crate::loop_connect::connect_only(io, Some(&args[2]));
         }
         Some("disconnect") if args.len() == 1 => {
             check_platform(os)?;
