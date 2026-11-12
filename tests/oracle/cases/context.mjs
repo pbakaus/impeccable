@@ -780,6 +780,15 @@ const cases = [
   { id: 'seed-platform-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--from', 'k1', '--platform', 'tv'], env: seedEnv() },
   { id: 'seed-candidate-count-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'k1', '--candidate-count', '9'], env: seedEnv() },
   { id: 'seed-no-product-gate', verb: 'concept-seed', workspace: 'ctx-visual-only', args: ['--scope', 'direction', '--from', 'k1'], env: seedEnv() },
+  {
+    id: 'seed-surface-settled-world', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'surface', '--mode', 'persuade', '--from', 'oracle-key-1'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
   { id: 'seed-direction-local', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '2', '--register', 'bolder'], env: seedEnv() },

@@ -247,26 +247,6 @@ fn append_image_gen_directive(parts: &mut Parts, env: &Env, provider: &Provider)
     ].join(" "));
 }
 
-/// The catalog world id a DESIGN.md was seeded from: the `world:` line `impeccable world`
-/// writes into its frontmatter.
-fn seeded_world(design: Option<&str>) -> Option<String> {
-    let mut lines = design?.lines();
-    if lines.next()?.trim_end() != "---" {
-        return None;
-    }
-    for line in lines {
-        if line.trim_end() == "---" {
-            return None;
-        }
-        if let Some(value) = line.strip_prefix("world:") {
-            let id = value.trim().trim_matches(|c| c == '"' || c == '\'');
-            let ok = !id.is_empty() && id.len() <= 80 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-            return ok.then(|| id.to_string());
-        }
-    }
-    None
-}
-
 /// A world the person chose is the visual authority before any code carries it. Without
 /// this line the boot reads as "no visual authority", and an agent rolls a new world.
 fn append_seeded_world_directive(parts: &mut Parts, ctx: &Ctx) {
@@ -1680,7 +1660,7 @@ mod wiring_fallback_tests {
 
 #[cfg(test)]
 mod seeded_world_tests {
-    use super::seeded_world;
+    use crate::context::seeded_world;
 
     #[test]
     fn reads_the_world_line_from_the_frontmatter_only() {
