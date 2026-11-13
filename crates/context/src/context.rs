@@ -95,8 +95,9 @@ pub struct Ctx {
 }
 
 /// The catalog world id a DESIGN.md was seeded from: the `world:` line `impeccable world`
-/// writes into its frontmatter.
-pub(crate) fn seeded_world(design: Option<&str>) -> Option<String> {
+/// writes into its frontmatter. `impeccable world` checks its own output with it, so the
+/// writer and every reader agree on one rule.
+pub fn seeded_world(design: Option<&str>) -> Option<String> {
     let mut lines = design?.lines();
     if lines.next()?.trim_end() != "---" {
         return None;

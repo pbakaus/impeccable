@@ -21,6 +21,41 @@ const UNREADABLE: &str = "Your Impeccable account sent a world this CLI can't re
 
 const USAGE: &str = "Usage: impeccable world <id> [--print]\n";
 
+/// The seed's DESIGN.md carrying `world: "<id>"` in its frontmatter, the line
+/// every later boot and roll reads (`seeded_world`) to know the person chose
+/// this world. A frontmatter without one gets it as its first key; a file
+/// with no frontmatter gets one holding only that line. A frontmatter that
+/// names another world, holds a value no reader accepts, or never closes
+/// cannot carry it, and the seed is refused.
+fn with_world_line(design_md: &str, id: &str) -> Option<String> {
+    let eol = if design_md.contains("\r\n") { "\r\n" } else { "\n" };
+    let line = format!("world: \"{id}\"{eol}");
+    let mut lines = design_md.split_inclusive('\n');
+    let first = lines.next().unwrap_or("");
+    let out = if first.trim_end() == "---" {
+        let mut closed = false;
+        let mut named = false;
+        for l in lines {
+            if l.trim_end() == "---" {
+                closed = true;
+                break;
+            }
+            named |= l.starts_with("world:");
+        }
+        if !closed {
+            return None;
+        }
+        if named {
+            design_md.to_string()
+        } else {
+            format!("{first}{line}{}", &design_md[first.len()..])
+        }
+    } else {
+        format!("---{eol}{line}---{eol}{design_md}")
+    };
+    (impeccable_context::context::seeded_world(Some(&out)).as_deref() == Some(id)).then_some(out)
+}
+
 /// A catalog id: lowercase letters, digits and single dashes. It goes into a
 /// URL path, so nothing else is allowed through.
 fn valid_id(id: &str) -> bool {
@@ -124,7 +159,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     };
     let answer =
         Session::load(&account).and_then(|mut s| s.get(&format!("/cli/v1/worlds/{id}/seed")));
-    let seed = match answer {
+    let mut seed = match answer {
         Ok(v) => match parse(&id, &v) {
             Some(seed) => seed,
             None => {
@@ -146,6 +181,17 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         });
         io.out(&format!("{out}\n"));
         return 0;
+    }
+    // Checked before anything is written: a seed that cannot name its world
+    // would leave every later roll dealing catalog worlds and palettes.
+    match with_world_line(&seed.design_md, &seed.id) {
+        Some(md) => seed.design_md = md,
+        None => {
+            io.err(&format!(
+                "The DESIGN.md your Impeccable account sent for {id} can't record which world it came from, so nothing was written. Update the Impeccable CLI and try again.\n"
+            ));
+            return 1;
+        }
     }
     match write(&root, &seed) {
         Ok(()) => {
@@ -316,6 +362,30 @@ struct Dir {
     handle: std::fs::File,
     #[cfg(not(unix))]
     path: std::path::PathBuf,
+    /// A child folder, rechecked before every create and remove in it. The
+    /// root is the project itself and may legitimately sit behind a link.
+    #[cfg(not(unix))]
+    child: bool,
+}
+
+/// A real folder, never a symlink, a junction or another reparse point. A
+/// path-held directory cannot pin the folder it checked, so the check runs
+/// again right before each write; a swap inside that window is the one race
+/// left where there is no `O_NOFOLLOW`.
+#[cfg(not(unix))]
+fn real_folder(path: &Path) -> bool {
+    let Ok(m) = path.symlink_metadata() else {
+        return false;
+    };
+    #[cfg(windows)]
+    let redirect = {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    };
+    #[cfg(not(windows))]
+    let redirect = false;
+    m.is_dir() && !m.file_type().is_symlink() && !redirect
 }
 
 impl Dir {
@@ -334,11 +404,12 @@ impl Dir {
         #[cfg(not(unix))]
         Ok(Dir {
             path: path.to_path_buf(),
+            child: false,
         })
     }
 
-    /// A real child folder, created when absent. A symlink or a file of that
-    /// name is refused, never followed.
+    /// A real child folder, created when absent. A symlink, a junction or a
+    /// file of that name is refused, never followed.
     fn child(&self, name: &str) -> Result<Dir, WriteError> {
         let not_folder = || Failed(format!("{name} is not a folder"));
         #[cfg(unix)]
@@ -366,12 +437,13 @@ impl Dir {
         #[cfg(not(unix))]
         {
             let path = self.path.join(name);
-            match path.symlink_metadata() {
-                Ok(m) if !m.is_dir() => return Err(not_folder()),
-                Ok(_) => {}
-                Err(_) => std::fs::create_dir(&path).map_err(|e| Failed(e.to_string()))?,
+            if path.symlink_metadata().is_err() {
+                std::fs::create_dir(&path).map_err(|e| Failed(e.to_string()))?;
             }
-            Ok(Dir { path })
+            if !real_folder(&path) {
+                return Err(not_folder());
+            }
+            Ok(Dir { path, child: true })
         }
     }
 
@@ -410,10 +482,14 @@ impl Dir {
             }
         };
         #[cfg(not(unix))]
-        let opened = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(self.path.join(name));
+        let opened = if self.child && !real_folder(&self.path) {
+            return Err(Failed(format!("{} is not a folder", self.path.display())));
+        } else {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(self.path.join(name))
+        };
         let mut file = match opened {
             Ok(f) => f,
             Err(e) if exists(&e) => return Err(Exists(label)),
@@ -438,7 +514,9 @@ impl Dir {
             }
         }
         #[cfg(not(unix))]
-        let _ = std::fs::remove_file(self.path.join(name));
+        if !self.child || real_folder(&self.path) {
+            let _ = std::fs::remove_file(self.path.join(name));
+        }
     }
 }
 
@@ -519,6 +597,39 @@ mod tests {
             std::fs::read_to_string(outside.join("design.json")).unwrap(),
             "theirs"
         );
+    }
+
+    #[test]
+    fn the_written_design_md_always_names_its_world() {
+        // Catches: a seed written without a `world:` line, so later rolls still
+        // deal catalog worlds and palettes over the one the person chose.
+        let w = |md: &str| with_world_line(md, "kinpaku");
+        let kept = "---\nname: K\nworld: \"kinpaku\"\ncolors:\n  gold: \"#c9a227\"\n---\n# K\n";
+        assert_eq!(w(kept).as_deref(), Some(kept));
+        assert_eq!(
+            w("---\nname: K\ncolors:\n  gold: \"#c9a227\"\n---\n# K\n").as_deref(),
+            Some("---\nworld: \"kinpaku\"\nname: K\ncolors:\n  gold: \"#c9a227\"\n---\n# K\n")
+        );
+        assert_eq!(
+            w("# K\n").as_deref(),
+            Some("---\nworld: \"kinpaku\"\n---\n# K\n")
+        );
+        assert_eq!(
+            w("---\r\nname: K\r\n---\r\n").as_deref(),
+            Some("---\r\nworld: \"kinpaku\"\r\nname: K\r\n---\r\n")
+        );
+        // The inserted line leaves the palette readable.
+        let md = w("---\ncolors:\n  gold: \"#c9a227\"\n---\n").unwrap();
+        assert_eq!(palette(&md), vec![(0xc9, 0xa2, 0x27)]);
+        // Another world, a value no reader accepts, an unclosed frontmatter.
+        for bad in [
+            "---\nworld: swiss\n---\n",
+            "---\nworld: \"../x\"\n---\n",
+            "---\nworld:\n---\n",
+            "---\nname: K\n",
+        ] {
+            assert_eq!(w(bad), None, "{bad}");
+        }
     }
 
     #[test]
