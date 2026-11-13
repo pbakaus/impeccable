@@ -396,20 +396,27 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         .collect();
     // The recording itself is never the output: converting clip.mp4 into its own folder
     // writes clip-walkthrough.mp4 beside it. In a folder the person named, a clip.mp4 or
-    // clip.png already there is theirs too, so the pair goes to the -walkthrough names;
-    // the default folder holds only what this verb wrote, so a rerun replaces it.
+    // clip.png already there is theirs too, so the pair goes to the first free one of
+    // clip-walkthrough, clip-walkthrough-2, ...; the default folder holds only what this
+    // verb wrote, so a rerun there replaces it.
     let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     };
     let taken = |p: &Path| std::fs::symlink_metadata(p).is_ok();
-    let (plain_film, plain_poster) =
-        (out_dir.join(format!("{stem}.mp4")), out_dir.join(format!("{stem}.png")));
-    if same(&plain_film, &input)
-        || same(&plain_poster, &input)
-        || (!default_out && (taken(&plain_film) || taken(&plain_poster)))
-    {
-        stem.push_str("-walkthrough");
+    let blocked = |s: &str| {
+        let (f, p) = (out_dir.join(format!("{s}.mp4")), out_dir.join(format!("{s}.png")));
+        same(&f, &input) || same(&p, &input) || (!default_out && (taken(&f) || taken(&p)))
+    };
+    if blocked(&stem) {
+        let base = stem.clone();
+        stem = (1u32..)
+            .map(|n| match n {
+                1 => format!("{base}-walkthrough"),
+                n => format!("{base}-walkthrough-{n}"),
+            })
+            .find(|s| !blocked(s))
+            .expect("a free name");
     }
     let film = out_dir.join(format!("{stem}.mp4"));
     let poster = out_dir.join(format!("{stem}.png"));

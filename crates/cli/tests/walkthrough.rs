@@ -273,6 +273,11 @@ fn the_recording_itself_is_never_overwritten_or_deleted() {
     assert!(!dir.join("take.mp4").exists());
     assert_eq!(v["film"]["path"], dir.join("take-walkthrough.mp4").to_str().unwrap());
     assert_eq!(v["poster"]["path"], dir.join("take-walkthrough.png").to_str().unwrap());
+    // And the fallback pair is the person's once it exists: the next run numbers forward.
+    let (out, v) = run(&dir, ffmpeg.parent(), &["rec/take.mp4", "--out", "."]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(v["film"]["path"], dir.join("take-walkthrough-2.mp4").to_str().unwrap());
+    assert!(dir.join("take-walkthrough.mp4").exists());
     // A failing conversion leaves the recording and removes only its own scratch files.
     std::fs::write(dir.join("broken.mp4"), "not a video").unwrap();
     let (_, v) = run(&dir, ffmpeg.parent(), &["broken.mp4", "--out", "."]);

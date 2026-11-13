@@ -2365,8 +2365,9 @@ object on stdout and exits 0 on success, 1 otherwise.
   into place, so a failure removes only what the run made. The recording is
   never the output: when `<stem>.mp4` or `<stem>.png` would be the recording
   itself, the stem gains `-walkthrough`. So it does in a folder `--out` named
-  when `<stem>.mp4` or `<stem>.png` is already there: those are the person's,
-  and only the default folder's files are replaced by a rerun. `<stem>` is the
+  when `<stem>.mp4` or `<stem>.png` is already there: those are the person's.
+  When that pair is taken too, the stem numbers forward (`-walkthrough-2`, ...)
+  to the first free pair. Only the default folder's files are replaced by a rerun. `<stem>` is the
   recording's name with anything but letters, digits, `-` and `_` turned into `-`.
 - **Success.** `{ok:true, film:{path, format:"mp4", bytes, sha256, durationMs,
   width, height}, poster:{path, format:"png", bytes, atMs}, chapters:[{at,
