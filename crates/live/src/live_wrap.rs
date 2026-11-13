@@ -179,6 +179,10 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
+        Resolution::SharedLine(file, m) => {
+            eprintln(io, &json_compact(&element_shared_line_error(&rel(&file.path), m)));
+            return 1;
+        }
         Resolution::AmbiguousFiles(hits) => {
             eprintln(
                 io,

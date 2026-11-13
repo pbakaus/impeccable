@@ -121,26 +121,104 @@ pub fn is_tag_only_search(queries: &[String], tag: Option<&str>) -> bool {
     tag.map_or(false, |tag| queries.len() == 1 && queries[0] == format!("<{}", tag))
 }
 
-fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
-    if let Some(tag) = tag.filter(|tag| query == format!("<{}", tag)) {
-        // Lowercase ASCII names are HTML tags; component names retain their case.
-        let html_tag = tag.is_ascii() && !tag.bytes().any(|b| b.is_ascii_uppercase());
-        return line.match_indices('<').any(|(start, _)| {
-            let Some(prefix) = line[start..].get(..query.len()) else {
+/// Lowercase ASCII names are HTML tags; component names retain their case.
+fn is_html_tag(tag: &str) -> bool {
+    tag.is_ascii() && !tag.bytes().any(|b| b.is_ascii_uppercase())
+}
+
+/// Byte offsets in `line` where `prefix` (`<h1` or `</h1`) starts a tag of
+/// that exact name, under the tag's case policy.
+fn tag_prefix_positions(line: &str, prefix: &str, html_tag: bool) -> Vec<usize> {
+    line.match_indices('<')
+        .filter(|(start, _)| {
+            let Some(found) = line[*start..].get(..prefix.len()) else {
                 return false;
             };
             let matches = if html_tag {
-                prefix.eq_ignore_ascii_case(query)
+                found.eq_ignore_ascii_case(prefix)
             } else {
-                prefix == query
+                found == prefix
             };
-            matches && line[start + query.len()..]
+            matches && line[start + prefix.len()..]
                 .chars()
                 .next()
                 .map_or(true, |c| c.is_whitespace() || c == '>' || c == '/')
-        });
+        })
+        .map(|(start, _)| start)
+        .collect()
+}
+
+fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
+    if let Some(tag) = tag.filter(|tag| query == format!("<{}", tag)) {
+        return !tag_prefix_positions(line, query, is_html_tag(tag)).is_empty();
     }
     line.contains(query)
+}
+
+/// Whether a tag-only match shares its first or last line with other markup:
+/// a second opener of the tag on the opening line (a sibling or a nested
+/// element of the same tag), text before the opener, or anything after the
+/// closing tag. Wrap and accept replace whole lines, so such a range would
+/// take its neighbours with it.
+fn shares_boundary_line(lines: &[String], m: ElementMatch, tag: &str) -> bool {
+    let html_tag = is_html_tag(tag);
+    let start_text = &lines[m.start_line];
+    let openers = tag_prefix_positions(start_text, &format!("<{}", tag), html_tag);
+    let Some(&first) = openers.first() else {
+        return false;
+    };
+    if openers.len() > 1 || !start_text[..first].trim().is_empty() {
+        return true;
+    }
+    let Some(end) = m.end_line else {
+        return false;
+    };
+    let end_text = &lines[end];
+    let from = if end == m.start_line { first + 1 } else { 0 };
+    let closes = tag_prefix_positions(&end_text[from..], &format!("</{}", tag), html_tag);
+    // The first close on the end line: a later one belongs to a neighbour.
+    match closes.first() {
+        Some(&close) => {
+            let rest = &end_text[from + close..];
+            rest.find('>').map_or(false, |gt| !rest[gt + 1..].trim().is_empty())
+        }
+        // A void or self-closing element on one line: any later tag is a neighbour.
+        None if end == m.start_line => end_text[from..]
+            .match_indices('<')
+            .any(|(i, _)| end_text[from + i + 1..].starts_with(|c: char| c.is_ascii_alphabetic() || c == '/')),
+        None => false,
+    }
+}
+
+/// A tag-only match whose boundary lines hold other markup is refused rather
+/// than wrapped line by line.
+fn refuse_shared_lines(resolved: Resolution, queries: &[String], tag: Option<&str>) -> Resolution {
+    let Some(tag) = tag.filter(|_| is_tag_only_search(queries, tag)) else {
+        return resolved;
+    };
+    match resolved {
+        Resolution::Match(file, m) if shares_boundary_line(&file.lines, m, tag) => {
+            Resolution::SharedLine(file, m)
+        }
+        Resolution::TextNotInFile(file, candidates)
+            if candidates.len() == 1 && shares_boundary_line(&file.lines, candidates[0], tag) =>
+        {
+            Resolution::SharedLine(file, candidates[0])
+        }
+        other => other,
+    }
+}
+
+/// The refusal wrap and insert print for a `SharedLine` resolution.
+pub fn element_shared_line_error(file: &str, m: ElementMatch) -> Value {
+    json!({
+        "error": "element_ambiguous",
+        "fallback": "agent-driven",
+        "reason": "shared_line",
+        "file": file,
+        "candidates": candidates_json(&[m]),
+        "hint": "The element shares a source line with other markup, so a wrapper around its lines would take that markup with it. Write the wrapper manually with each marker on a line of its own. See \"Handle fallback\" in live.md.",
+    })
 }
 
 /// JS: OPENER_RE = /<([A-Za-z][A-Za-z0-9]*)(?=[\s/>]|$)/  (first match's tag)
@@ -597,6 +675,8 @@ pub enum Resolution {
     NotFound,
     /// Tag-only targeting leaves candidates in several source files.
     AmbiguousFiles(Vec<(String, Vec<ElementMatch>)>),
+    /// A tag-only match that shares its first or last line with other markup.
+    SharedLine(SourceFile, ElementMatch),
 }
 
 /// Resolve the locator inside one file.
@@ -610,6 +690,15 @@ pub fn resolve_in_file(
         Ok(resolved) => return resolved,
         Err(mut files) => files.remove(0),
     };
+    refuse_shared_lines(resolve_file_lines(file, queries, tag, text), queries, tag)
+}
+
+fn resolve_file_lines(
+    file: SourceFile,
+    queries: &[String],
+    tag: Option<&str>,
+    text: Option<&str>,
+) -> Resolution {
     // A bare element with short text: its whole text may still single it out.
     if is_tag_only_search(queries, tag) {
         if let Some(short) = text.filter(|t| !text_disambiguates(t)) {
@@ -681,7 +770,7 @@ pub fn resolve_in_project(
         return resolved;
     }
     if is_tag_only_search(queries, tag) {
-        return resolve_tag_in_project(queries, cwd, tag, text);
+        return refuse_shared_lines(resolve_tag_in_project(queries, cwd, tag, text), queries, tag);
     }
     let text = text.filter(|t| text_disambiguates(t));
     let extensions = resolve_live_template_extensions(cwd);
@@ -1233,6 +1322,51 @@ mod tests {
         let error: Value = serde_json::from_str(err.trim()).unwrap();
         assert_eq!(error["error"], "element_ambiguous");
         assert_eq!(project.source("index.html"), source);
+    }
+
+    #[test]
+    fn tag_only_refuses_a_range_that_shares_its_line_with_other_markup() {
+        for insert in [false, true] {
+            for (source, text) in [
+                ("<h2>First</h2><h2>Second</h2>\n", None),
+                ("<h2>First</h2><h2>Second</h2>\n", Some("Second")),
+                ("<h2>First</h2><h2>Second</h2>\n", Some("Second heading")),
+                ("<main>\n  <h2>First</h2><p>Keep</p>\n</main>\n", None),
+                ("<h2>\n  First\n</h2><p>Keep</p>\n", None),
+                ("Intro <h2>First</h2>\n", None),
+            ] {
+                for explicit in [false, true] {
+                    let project = TagProject::new("index.html", source);
+                    let mut args = vec!["--tag", "h2"];
+                    if let Some(text) = text {
+                        args.extend(["--text", text]);
+                    }
+                    if explicit {
+                        args.extend(["--file", "index.html"]);
+                    }
+                    let (code, out, err) = project.run(insert, &args);
+                    assert_eq!(code, 1, "{source:?} {out} {err}");
+                    let error: Value = serde_json::from_str(err.trim()).unwrap();
+                    assert_eq!(error["error"], "element_ambiguous", "{source:?}");
+                    assert_eq!(error["reason"], "shared_line", "{source:?}");
+                    assert_eq!(error["fallback"], "agent-driven");
+                    assert_eq!(project.source("index.html"), source);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tag_only_boundary_check_leaves_lone_elements_alone() {
+        let page = lines(&["<main>", "  <h2 title=\"a\">First</h2>  ", "  <h2>", "    Second", "  </h2>", "  <img src=\"a.png\">", "</main>"]);
+        let m = |start, end| ElementMatch { start_line: start, end_line: Some(end) };
+        assert!(!shares_boundary_line(&page, m(1, 1), "h2"));
+        assert!(!shares_boundary_line(&page, m(2, 4), "h2"));
+        assert!(!shares_boundary_line(&page, m(5, 5), "img"));
+        let crowded = lines(&["<img src=\"a.png\"><p>Keep</p>", "<H2>A</H2><H2>B</H2>", "<Card>A</Card><Card>B</Card>"]);
+        assert!(shares_boundary_line(&crowded, m(0, 0), "img"));
+        assert!(shares_boundary_line(&crowded, m(1, 1), "h2"));
+        assert!(shares_boundary_line(&crowded, m(2, 2), "Card"));
     }
 
     #[test]
