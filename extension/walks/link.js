@@ -19,7 +19,7 @@
 // opens another, which starts the worker; it finds its ticket spent and asks the page for a fresh one.
 import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
-import { adoptIn, grant, openIn } from './driver.js';
+import { adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
 import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
@@ -89,6 +89,7 @@ export async function whereTo() {
     if (handoff.spent) { void refresh(); return null; }
     grant(handoff.allow);
     openIn(handoff.windowId);
+    watchedFromTerminal(handoff.terminal ? handoff.tabId : null);
     adoptIn(typeof handoff.adopt === 'number' ? { tabId: handoff.adopt, site: handoff.site } : null);
     return { socket: handoff.socket, ticket: handoff.ticket };
   }
@@ -96,6 +97,7 @@ export async function whereTo() {
   if (typeof own?.socket !== 'string') return null;
   grant(own.allow);
   openIn(null);
+  watchedFromTerminal(null);
   adoptIn(null);
   return { socket: own.socket };
 }
@@ -139,7 +141,7 @@ async function take(text, sender) {
   const read = readHandoff(text, sender.url);
   if (!read.ok) return read;
   const before = await kept();
-  const from = { windowId: sender.tab.windowId, tabId: sender.tab.id };
+  const from = { windowId: sender.tab.windowId, tabId: sender.tab.id, terminal: new URL(sender.url).searchParams.get('from') === 'terminal' };
   if (isLive(current())) {
     if (before?.outing !== read.handoff.outing) return { ok: false, why: 'busy' };
     // The same walk, handed over again. While it still waits for its tab, a new ticket is a fresh way in (the page

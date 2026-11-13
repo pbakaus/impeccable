@@ -78,6 +78,14 @@ export function openIn(windowId) { home = typeof windowId === 'number' ? windowI
 let adopted = null;
 export function adoptIn(tab) { adopted = tab; }
 
+/**
+ * A walk watched from the terminal (its page's address says `from=terminal`): the tab of the page that handed it over,
+ * or null. That page goes once the walk's own tab is open, and the walk's own tab goes when the walk lets go of it: the
+ * terminal shows the steps, and opens the result.
+ */
+let terminal = null;
+export function watchedFromTerminal(pageTabId) { terminal = typeof pageTabId === 'number' ? pageTabId : null; }
+
 /** Whom to ask before a deed or another site (control.js): resolves to `yes`, `no`, or `void` when the walk stopped walking. */
 let asker = async () => 'no';
 export function onAsk(listener) { asker = listener; }
@@ -676,6 +684,7 @@ export const ops = {
       // rest, not across a navigation still under way. A page that did not load is the engine's to find, with its own patience.
       await within(cmd('Page.navigate', { url }), OPEN_MS, 'slow').catch(() => undefined);
       still();
+      if (terminal !== null) await chrome.tabs.remove(terminal).catch(() => undefined);
       return { value: { tabId: tab.id, group, before: { width: before.width, height: before.height } } };
     } catch (err) {
       // A walk that could not be guarded, or was stopped, does not start, and leaves no tab behind.
@@ -845,6 +854,7 @@ export const ops = {
     if (tab) {
       await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
       await letGo(tab, 'closed');
+      if (terminal !== null && !tab.adopted) await chrome.tabs.remove(tab.tabId).catch(() => undefined);
     }
     return {};
   },
