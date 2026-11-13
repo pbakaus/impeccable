@@ -514,10 +514,11 @@ retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNI
 #### `concept-seed.mjs` -> `node {{scripts_path}}/concept-seed.mjs`
 
 - **Invoked from**: `reference/new-work.md:37` "`node {{scripts_path}}/concept-seed.mjs --scope surface --mode <mode>`" and `:46` "4. Run `node {{scripts_path}}/concept-seed.mjs --scope direction --mode <mode>` and follow what it prints. No substitute, no skip". Header usage lines: `--scope direction --mode persuade`, `--scope surface --mode operate --from <key>`, `--grain flow`, `--candidate-count 6`, `--from <key> --reroll 1 [--register bolder]`, `--chosen <challenger-id> --kind challenger --from <key> --scope direction`, `--kind assigned --from <key> --scope direction`.
-- **Args** (each read as `args[idx+1]` after `indexOf`): `--scope` (`surface` default | `direction`), `--from <key>` (default `IMPECCABLE_CONCEPT_SEED` env or `crypto.randomBytes(4).toString('hex')`), `--reroll <n>` (Number, default 0), `--register safer|bolder`, `--mode persuade|operate|read|experience`, `--grain product|flow|view|region`, `--platform web|ios|android`, `--candidate-count 5..7` (default 7), `--chosen <id>`, `--kind assigned|pick|challenger|canon`.
+- **Args** (each read as `args[idx+1]` after `indexOf`): `--scope` (`surface` default | `direction`), `--from <key>` (default `IMPECCABLE_CONCEPT_SEED` env or `crypto.randomBytes(4).toString('hex')`), `--reroll <n>` (Number, default 0), `--register safer|bolder`, `--replace-world` (flag, direction only; binary only), `--mode persuade|operate|read|experience`, `--grain product|flow|view|region`, `--platform web|ios|android`, `--candidate-count 5..7` (default 7), `--chosen <id>`, `--kind assigned|pick|challenger|canon`.
 - **Env**: `IMPECCABLE_CONCEPT_SEED`, `IMPECCABLE_CATALOG_DIR` (default = script dir; local catalog files `concept-ingredients.json`, `concept-reviews.json`, `composition-ingredients.json`, `composition-reviews.json`; invalid/missing → treated as absent), `IMPECCABLE_API_URL` (default `https://impeccable.style/api`, trailing `/` stripped), `IMPECCABLE_API_TIMEOUT` (ms, default 4000, one shared deadline for all API calls in the run), `IMPECCABLE_NO_TELEMETRY`, `DO_NOT_TRACK`, `IMPECCABLE_CARD_BASE` (default `https://impeccable.style/worlds/cards`), `IMPECCABLE_COMPOSITIONS=1` (renders composition block; otherwise compositions are dealt but not printed).
-- **Validation errors** (stderr, `exitCode 1`): `concept-seed: --scope must be direction or surface`; `--reroll must be a non-negative integer`; `--register must be safer or bolder`; `--register steers a re-roll round; pass --reroll <n> with it`; `--register applies to direction rounds only`; `--mode must be persuade, operate, read, or experience`; `--grain must be one of product, flow, view, region`; `--platform must be one of web, ios, android`; `--candidate-count must be an integer from 5 to 7`; `concept-seed: every challenger tier needs at least one approved concept` (local catalog).
+- **Validation errors** (stderr, `exitCode 1`): `concept-seed: --scope must be direction or surface`; `--reroll must be a non-negative integer`; `--register must be safer or bolder`; `--register steers a re-roll round; pass --reroll <n> with it`; `--register applies to direction rounds only`; `--replace-world applies to direction rounds only`; `--mode must be persuade, operate, read, or experience`; `--grain must be one of product, flow, view, region`; `--platform must be one of web, ios, android`; `--candidate-count must be an integer from 5 to 7`; `concept-seed: every challenger tier needs at least one approved concept` (local catalog).
 - **Init gate** (render path only): imports `./context.mjs` `loadContext(cwd)`; if `!hasProduct` → `stdout> NO_PRODUCT_MD: the dice stay in the cup until product truth exists. Complete the init ask round and write PRODUCT.md first (reference/init.md), then re-run this exact command. Challengers fuse their form with facts from PRODUCT.md; without it every direction is ungrounded.\n`, `exit 1`.
+- **Seeded world** (binary only): when DESIGN.md's frontmatter has a `world:` id accepted by the boot's `seeded_world` reader, surface and direction rolls replace the catalog world candidates, palettes and card references with `WORLD: settled (<id>, seeded from the catalog). The structures below are dealt inside it; do not roll, re-pick or replace the world.` (a direction roll appends ` Only when the user asks to replace it, rerun this roll with --replace-world.`) and skip the request that would only fetch them. Every other block is unchanged, except that a `--register bolder` round, whose register deals only foreign worlds, prints `BOLDER REGISTER UNAVAILABLE: ...` before the `RE-ROLL ROUND` line and then runs as a plain re-roll (no register tag, the plain assigned block, the plain restated line); its rerun command keeps `--register bolder`. `--replace-world` lifts the settlement for that direction roll: the catalog challengers return, `WORLD: replacing <id>, seeded from the catalog, at the user's request.` and the note that the documented replacement drops DESIGN.md's `world:` line and the sidecar's `seededFrom` open the authority instructions, and the rerun command carries ` --replace-world` after any `--register`. Without a seeded world the flag changes only the rerun command. A project with its own design system and no seeded world rolls as before, challengers included. With no local catalog and `IMPECCABLE_COMPOSITIONS` off, a seeded roll makes no roll request and its header reads `source: settled`.
 - **Assigned index math**: `unit(salt) = sha256(`${scope}:${salt}:${key}`).readUInt32BE(0)/0xffffffff`; `indexSalt = reroll===0 ? 'index' : `index:reroll-${reroll}``; `buildIndex = 3 + floor(unit(indexSalt)*(candidateCount-2))` (3..candidateCount). Surface scope deals `dealtIndices=[buildIndex]` plus up to 2 more distinct in 1..candidateCount via `unit(`${indexSalt}:deal-${draw}`)` (fills sequentially after 64 draws).
 - **Data resolution**: local catalog → `source:'local'` (challengers via `selectApprovedChallengers`, compositions via `selectApprovedCompositions`, both in `lib/roll-selection.mjs`, hash = Node sha256 hex; `poolRevision` = first 12 hex of sha256 over sorted approved `familyId:id:strength:form:spark:JSON(system):webLeverage` lines); else **roll API** `GET ${API_BASE}/roll?scope=&key=&reroll=[&mode=][&grain=][&platform=]` (`URLSearchParams` order: scope, key, reroll, mode, grain, platform), raced against the shared budget; non-ok, timeout, or `challengers` empty → null; response fields used: `poolRevision, approvedCount, catalogCount, challengers, compositions|stagings|staging`; else **degraded**.
 - **Selection algorithm** (roll-selection): challengers: approved concepts; per `wellTier` in `['graphic','interaction','atmosphere']` (all three must be non-empty), optional `minRating` gate, `mode` gate (`review.allowedModes` absent = all; a tier the gate would empty keeps its full pool, except under a mode with tier quotas, where that tier's quota moves to `graphic` and the tier is not refilled; `graphic` itself always falls back), strength filter (`direction` wants `world|dual`, `surface` wants `composition|dual`; per-tier fallback to full pool). Per-tier quota: `TIER_QUOTAS = { operate: { graphic: 5, interaction: 1, atmosphere: 0 } }`, every other mode (and no mode) 2 per tier. Tier order ranked by digests of `${scope}:${key}:tiers${salt}:${tierId}` desc; a zero-quota tier is skipped without shifting `index`; per tier tickets (`breadth==='niche'` excluded; tickets by rating `{1:1,2:2,3:2}`, default 2) ranked by `${scope}:${key}:challenger-${index}${salt}:${id}#${ticket}`; take `quota` picks in ranked order, each the first concept of a `familyId` not yet picked in that tier, else the next distinct id (at quota 2: first pick + first of a different family) → 6 picks when every tier can fill its quota, fewer on a thin catalog; re-roll round n excludes all earlier picks (fallback to the full tier pool if exhausted; under a quota, when fewer than `quota` unseen concepts remain, deal those first, then top up from the rest of the tier ranked with the same salt); `salt = round===0 ? '' : `:reroll-${round}``. Compositions: approved, non-niche (fallback all), `surface===mode` (empty → none), platform hard filter (`platforms` absent = all), tickets ranked with salt `${scope}:${key}:staging[:reroll-${round}]`, grain-preferred stable partition, distinct `familyId` first then top-up, count 3; `match = {grain, atGrain, grainAvailable, platform, platformExcluded}`.
@@ -2329,6 +2330,48 @@ Existing pins cannot be overwritten with a different digest.
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
 
+## Walkthrough
+
+`impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
+turns a screen recording (anything the system's ffmpeg reads: WebM, GIF, MOV,
+MP4) into what a Needs you walkthrough card takes. It always prints one JSON
+object on stdout and exits 0 on success, 1 otherwise.
+
+- **Tools.** `ffmpeg` and `ffprobe` are found in `IMPECCABLE_FFMPEG_DIR` when
+  set (the only place looked then), else on `PATH`, else in `/opt/homebrew/bin`,
+  `/usr/local/bin` and `/usr/bin`. Without them: `{ok:false,
+  error:"ffmpeg_missing", message}`, the message naming the install command
+  for this OS.
+- **Checks before any write.** No recording named is `usage`; a missing file
+  is `not_found`; a file ffprobe can't read is `unreadable`; a recording over
+  2:00 is `too_long` (a recording whose container states no length, as a
+  browser's MediaRecorder WebM often doesn't, is converted first and the same
+  limits are then checked on the film); a chapter
+  that isn't `M:SS=Text` (also `H:MM:SS` or plain seconds; text 1 to 200
+  characters on one line), more than 12 chapters, two chapters at the same
+  moment, or a chapter after the end is `bad_chapter`. `--ship` is the approve
+  button's label, 1 to 40 characters, `Looks right` by default.
+- **Film.** `<out>/<stem>.mp4`: H.264 (`libx264`, `yuv420p`), no audio,
+  `+faststart`, even dimensions, at most 1920 px wide and never upscaled. Over
+  50 MB it is encoded again at 1280 px wide with a higher quality factor; still
+  over is `convert_failed`. The result is probed and must be H.264 without
+  audio.
+- **Poster.** `<out>/<stem>.png`, at most 1280 px wide, cut at the first
+  chapter's time, and never earlier than one second in (a first frame is
+  usually blank); one second in when there are no chapters.
+- **Output folder.** `--out`, else `.impeccable/walkthroughs/` under the
+  working directory; only that default folder gets a self-ignoring
+  `.gitignore`. Files are built under names private to the run and renamed
+  into place, so a failure removes only what the run made. The recording is
+  never the output: when `<stem>.mp4` or `<stem>.png` would be the recording
+  itself, the stem gains `-walkthrough`. `<stem>` is the
+  recording's name with anything but letters, digits, `-` and `_` turned into `-`.
+- **Success.** `{ok:true, film:{path, format:"mp4", bytes, sha256, durationMs,
+  width, height}, poster:{path, format:"png", bytes, atMs}, chapters:[{at,
+  text}], post:{attachments, interaction}, _instructions}`. `sha256` is
+  base64url without padding. Chapters are sorted, in milliseconds. `post` is
+  ready to merge into a `needs_you.post` call: attachment ids `film` and
+  `poster`, and `interaction: {kind:"walkthrough", film, shot, ship:{label}, chapters}`.
 ## World seed
 
 Exact output strings:
