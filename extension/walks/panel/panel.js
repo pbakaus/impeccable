@@ -38,6 +38,8 @@ let ended = false;
 /** Talk to type (voice.js): the browser's speech recognition, none where it has none; and the listening under way. */
 const Speech = speechCtor();
 let voice = null;
+/** A press waiting on the microphone answer, so a second press does nothing. */
+let asking = false;
 
 /* ------------------------------ building blocks ------------------------------ */
 
@@ -174,28 +176,39 @@ function home() {
  */
 async function talk() {
   if (voice) { voice.stop(); return; }
+  // One press at a time: a double press (or a held Enter) must not start two listeners, or open two mic tabs.
+  if (asking) return;
+  asking = true;
   const mic = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
-  if (!mic || mic.state === 'granted') { hear(); return; }
+  if (!mic || mic.state === 'granted') { asking = false; hear(); return; }
   const blocked = () => { pre.note = COPY.voice['not-allowed']; render(); };
   if (mic.state === 'denied') blocked();
   // Until it is given: a refusal says so, and an Allow later (on the page, or in Chrome's settings) starts listening.
   mic.onchange = () => {
-    if (mic.state !== 'granted') { blocked(); return; }
+    if (mic.state === 'denied') blocked();
+    if (mic.state !== 'granted') return;
     mic.onchange = null;
+    asking = false;
     if (screen() === 'home' && !voice) hear();
   };
-  void chrome.tabs.create({ url: chrome.runtime.getURL('walks/mic/mic.html'), active: true, ...(here ? { openerTabId: here } : {}) }).catch(() => undefined);
+  // The mic page opens once per press; it shows the blocked state and Chrome's settings itself.
+  void chrome.tabs.create({ url: chrome.runtime.getURL('walks/mic/mic.html'), active: true, ...(here ? { openerTabId: here } : {}) })
+    .catch(() => undefined)
+    .finally(() => { setTimeout(() => { asking = false; }, 1500); });
 }
 
 /** Listens once: the words go into the box as they come, after what is there, and stay there to edit until Send. */
 function hear() {
   pre.note = '';
-  voice = listen(Speech, {
+  let ended = false;
+  const heard = listen(Speech, {
     base: pre.task,
     lang: navigator.language || 'en-US',
     onText: (text) => { pre.task = text; const box = app.querySelector('textarea.text'); if (box) box.value = text; },
-    onEnd: (error) => { voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
+    onEnd: (error) => { ended = true; voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
   });
+  // A recognizer that failed to start has already ended: keep no dead handle, or the button stays pressed.
+  if (!ended) voice = heard;
   render();
 }
 

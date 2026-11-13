@@ -44,7 +44,7 @@ export const COPY = {
   mic: {
     title: 'Talk to type',
     asking: 'Chrome is asking for your microphone.',
-    why: 'It’s used only while the mic in the side panel is on.',
+    why: 'It’s used only while the mic in the side panel is on. Chrome turns your voice into text with Google’s speech service; Impeccable never gets the audio.',
     on: 'Microphone on. Talk in the side panel.',
     blocked: 'The microphone is blocked. You can still type.',
     how: 'To talk later, allow the microphone for Impeccable in Chrome’s settings.',
