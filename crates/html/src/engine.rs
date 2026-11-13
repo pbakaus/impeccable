@@ -23,6 +23,7 @@ use crate::background::{
 };
 use crate::cascade::{build_static_style_map, collect_static_css_text};
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::{ImageSampler, ImageSamples};
 use crate::page::{
     check_cream_palette, check_page_layout, check_repeated_container_text_from_doc,
     check_static_page_typography,
@@ -102,6 +103,13 @@ pub struct DetectHtmlOptions<'a> {
     /// files, the way the built-in text-content analyzers do). A pack that
     /// implements both therefore never reports twice for the same file.
     pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    /// Where the sampled-contrast path (#560) gets an image's pixels:
+    /// decoded here and written to the persistent sample cache (`detect`),
+    /// or read from that cache alone, never decoding (the edit hook).
+    pub image_samples: ImageSamples,
+    /// The persistent sample cache directory; `None` is the default
+    /// (`IMPECCABLE_SAMPLE_CACHE`, else `<home>/.impeccable/sample-cache`).
+    pub sample_cache_dir: Option<&'a Path>,
 }
 
 /// Errors of the static engine.
@@ -139,6 +147,7 @@ fn run_rule(
     rule_id: &str,
     el: &StaticElement<'_>,
     tag: &str,
+    images: &ImageSampler,
     color_seen: &mut SafeTagTextSeen,
 ) -> Vec<RuleHit> {
     let style = el.style();
@@ -147,7 +156,7 @@ fn run_rule(
             let radius = resolve_border_radius_scalar_px(style, pf0(sv(style, "width")));
             check_element_borders(tag, style, radius, el)
         }
-        "color-rules" => check_element_colors(el, style, tag, None, color_seen),
+        "color-rules" => check_element_colors(el, style, tag, None, color_seen, images),
         "hover-color-rules" => check_element_hover_contrast(el, style, tag),
         "dark-glow" => {
             let base = el.parent_element().unwrap_or(*el);
@@ -230,7 +239,7 @@ pub fn detect_html_source(
         Meta::new("parse-html", "parse-document", fp),
         || StaticDocument::parse(html),
     );
-    let (css_text, pattern_css_text) = collect_static_css_text(
+    let (css, pattern_css_text) = collect_static_css_text(
         &doc,
         &file_dir,
         profile,
@@ -238,13 +247,20 @@ pub fn detect_html_source(
         options.warn,
         options.ignored_linked_stylesheet,
     );
-    build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
+    build_static_style_map(&mut doc, &css, profile, fp);
+    let css_text = css.text;
     // A stylesheet the engine could not read may round any card it never saw
     // a radius for; the side-accent gate keeps those findings.
     if crate::cascade::has_unread_stylesheet(&doc, &file_dir) {
         doc.set_unread_stylesheet();
     }
     let doc = doc;
+    let images = ImageSampler::new(
+        &file_dir.to_string_lossy(),
+        options.image_samples,
+        options.sample_cache_dir,
+    );
+    images.decode_ahead(&doc);
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
@@ -262,7 +278,7 @@ pub fn detect_html_source(
                 profile,
                 Meta::new("element", rule_id, fp),
                 |h: &RuleHit| h.id.as_str(),
-                || run_rule(rule_id, el, &tag, &mut color_seen),
+                || run_rule(rule_id, el, &tag, &images, &mut color_seen),
             );
             for h in hits {
                 if scoped_ignore_active(el, &h.id) {
@@ -619,7 +635,7 @@ pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
     let mut doc = StaticDocument::parse(html);
-    let (css_text, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
-    build_static_style_map(&mut doc, &css_text, None, &file_str);
+    let (css, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
+    build_static_style_map(&mut doc, &css, None, &file_str);
     doc.unsupported_selectors()
 }

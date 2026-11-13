@@ -26,7 +26,7 @@ detect = ["dep:impeccable-detect", "dep:impeccable-html"]
 [dependencies]
 impeccable-core = { workspace = true }
 impeccable-detect = { workspace = true, optional = true }
-impeccable-html = { workspace = true, optional = true }
+impeccable-html = { workspace = true, optional = true, default-features = false }
 wasm-bindgen = "0.2"
 serde_json = { workspace = true }
 
