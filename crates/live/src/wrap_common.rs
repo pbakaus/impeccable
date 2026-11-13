@@ -339,8 +339,74 @@ fn skip_line(line: &str) -> bool {
     stripped.starts_with("<!--") || stripped.starts_with("{/*") || stripped.starts_with("//")
 }
 
+/// `lines` with the contents of every script, style and textarea element
+/// blanked to spaces, line count unchanged. Those contents are text, not
+/// markup, so a tag-looking string inside them (a JS template, a CSS
+/// comment) is never a match and never opens or closes an element. The
+/// names match lowercase or uppercase only, so a `<Script>` component in
+/// JSX keeps its children.
+pub(crate) fn mask_raw_text(lines: &[String]) -> std::borrow::Cow<'_, [String]> {
+    let raw_name = |rest: &str| ["script", "style", "textarea"].into_iter().find(|name| {
+        rest.get(..name.len()).map_or(false, |n| n == *name || n == name.to_ascii_uppercase())
+            && rest[name.len()..].chars().next().map_or(true, |c| c.is_whitespace() || c == '>' || c == '/')
+    });
+    if !lines.iter().any(|l| l.match_indices('<').any(|(i, _)| raw_name(&l[i + 1..]).is_some())) {
+        return std::borrow::Cow::Borrowed(lines);
+    }
+    let mut out = Vec::with_capacity(lines.len());
+    // Inside a raw-text element: its lowercase close prefix (`</script`).
+    let mut inside: Option<String> = None;
+    // Inside the raw-text element's opening tag, before its `>`.
+    let mut in_opener: Option<&'static str> = None;
+    let mut quote: Option<char> = None;
+    for line in lines {
+        let mut masked = String::with_capacity(line.len());
+        let mut i = 0;
+        while i < line.len() {
+            let c = line[i..].chars().next().unwrap();
+            let closes = inside.as_deref()
+                .map(|close| line[i..].get(..close.len()).map_or(false, |n| n.eq_ignore_ascii_case(close)));
+            match closes {
+                Some(true) => {
+                    let len = inside.take().map_or(0, |close| close.len());
+                    masked.push_str(&line[i..i + len]);
+                    i += len;
+                    continue;
+                }
+                Some(false) => {
+                    masked.push(' ');
+                    i += c.len_utf8();
+                    continue;
+                }
+                None => {}
+            }
+            masked.push(c);
+            i += c.len_utf8();
+            if let Some(name) = in_opener {
+                if let Some(q) = quote {
+                    if c == q { quote = None; }
+                } else if c == '"' || c == '\'' {
+                    quote = Some(c);
+                } else if c == '>' {
+                    in_opener = None;
+                    if !masked.trim_end_matches('>').trim_end().ends_with('/') {
+                        inside = Some(format!("</{}", name));
+                    }
+                }
+            } else if c == '<' {
+                if let Some(name) = raw_name(&line[i..]) {
+                    in_opener = Some(name);
+                }
+            }
+        }
+        out.push(masked);
+    }
+    std::borrow::Cow::Owned(out)
+}
+
 /// JS: findElement(lines, query, tag)
 pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<ElementMatch> {
+    let lines = &*mask_raw_text(lines);
     for (i, line) in lines.iter().enumerate() {
         if !matches_query(line, query, tag) {
             continue;
@@ -364,6 +430,7 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<
 
 /// JS: findAllElements(lines, query, tag)
 pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Vec<ElementMatch> {
+    let lines = &*mask_raw_text(lines);
     let mut out = Vec::new();
     let mut seen: Vec<usize> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
@@ -1120,6 +1187,43 @@ mod tests {
         let result = project.source("index.html");
         assert!(result.contains("<div id=\"outer\"><div>a</div></div>"));
         assert!(result.find("impeccable-variants-end").unwrap() < result.find("<div>b</div>").unwrap());
+    }
+
+    #[test]
+    fn markup_inside_raw_text_is_never_a_fallback_match() {
+        // Isolation skips raw-text contents; the line resolver behind it must
+        // too, or it wraps (and later replaces) a line of JS or CSS.
+        let cases = [
+            ("index.html", "<main>\n<script>\n  const tpl = '<h1 id=\"picked\">Title</h1>';\n</script>\n</main>\n", vec!["--element-id", "picked", "--tag", "h1"]),
+            ("index.html", "<style>\n  /* <h1 class=\"picked\">x</h1> */\n</style>\n", vec!["--classes", "picked", "--tag", "h1"]),
+            ("index.html", "<textarea>\n<h1 id=\"picked\">Title</h1>\n</textarea>\n", vec!["--element-id", "picked"]),
+            ("Page.svelte", "<script>\n  const tpl = `<h1 id=\"picked\">Title</h1>`;\n</script>\n<p>x</p>\n", vec!["--element-id", "picked", "--tag", "h1"]),
+        ];
+        for (file, source, locator) in cases {
+            for insert in [false, true] {
+                let project = TagProject::new(file, source);
+                let (code, out, err) = project.run(insert, &locator);
+                // Refused (element_not_found, or "could not locate element"
+                // when the file walk saw the id): nothing is written.
+                assert_eq!(code, 1, "{source:?} {out} {err}");
+                assert!(out.trim().is_empty(), "{out}");
+                assert_eq!(project.source(file), source);
+            }
+        }
+        // The real element after a script that mentions it is still found.
+        let source = "<script>\n  const tpl = '<h1 id=\"picked\">';\n</script>\n<h1 id=\"picked\">Title</h1>\n";
+        let project = TagProject::new("index.html", source);
+        let (code, out, err) = project.run(false, &["--element-id", "picked", "--tag", "h1"]);
+        assert_eq!(code, 0, "{out} {err}");
+        let written = project.source("index.html");
+        assert!(written.contains("const tpl = '<h1 id=\"picked\">';\n</script>\n<!-- impeccable-variants-start"), "{written}");
+        // `<Script>` is a component in JSX and keeps its children; a
+        // self-closing `<script />` opens no raw text.
+        let lines_of = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let kept = lines_of(&["<Script>", "  <h1 id=\"picked\">Title</h1>", "</Script>"]);
+        assert_eq!(mask_raw_text(&kept).as_ref(), kept.as_slice());
+        let self_closing = lines_of(&["<script src=\"a.js\" />", "<h1 id=\"picked\">Title</h1>"]);
+        assert_eq!(mask_raw_text(&self_closing).as_ref(), self_closing.as_slice());
     }
 
     #[test]

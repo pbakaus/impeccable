@@ -7362,3 +7362,7 @@ A picked element in the middle of a line (a minified or one-line page) used to a
 ## Recorded 2026-11-12: a shared marker line on accept exits 0 with mode "error"
 
 `live-accept` answered `markers_share_line` with exit 1, and `live-poll` reads an accept's stdout only on exit 0, so the poll replaced the refusal with a generic `Command failed` and the agent never saw the hint. The refusal now carries `mode: "error"` and exits 0, the same shape as `source_locked`, and the poll instructions name the repair (move each marker onto a line of its own, rerun the command). Source and receipts are still untouched. The 8 `live-accept-shared-*` goldens changed in `exit` (1 to 0) and in `stdout` (the added `mode` field) only; no other golden changed.
+
+## Recorded 2026-11-12: live-wrap never matches inside script, style or textarea
+
+The line resolver searched raw-text contents like markup, so `live-wrap --query hero-hook` on the `live-html` fixture matched the `.hero-hook` CSS rule and wrapped the page's `<style>` block in `<head>`. Script, style and textarea contents are now blanked before the search, as the same-line isolation pass already did, so the query lands on `<p class="hero-hook">` in the body. `live-wrap-html-by-query` changed in `stdout` (startLine 14, endLine 22, originalLineCount 1) and in the written `index.html`; no other golden changed.

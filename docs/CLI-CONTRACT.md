@@ -1794,7 +1794,9 @@ selected element or anchor is isolated. The normal line-based scaffold then
 uses those lines.
 
 The contents of script, style and textarea are text, not markup: a tag
-inside them is never a candidate and never nests the element around them.
+inside them is never a candidate and never nests the element around them,
+in the isolation pass and in the line resolver behind it alike, so a locator
+that only matches a JS or CSS string is refused and nothing is written.
 Void names (img, input, link, ...) fold case only in HTML-like files; in
 .jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
 component that keeps its children. A class, id or query locator whose
