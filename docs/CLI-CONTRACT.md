@@ -2330,8 +2330,13 @@ that names another world, holds an id the reader rejects, or never closes is
 refused before anything is written, with `The DESIGN.md your Impeccable
 account sent for <id> can't record which world it came from, so nothing was
 written. Update the Impeccable CLI and try again.` on stderr, exit 1. It
-writes `.impeccable/design.json` (the sidecar plus
-`seededFrom: {world, name}`) and then `DESIGN.md`, each create-new, so an
+writes `.impeccable/design.json` at the resolved project root (the sidecar plus
+`seededFrom: {world, name}`) and then `DESIGN.md`. When context resolves a
+PRODUCT.md, DESIGN.md goes beside that product, including in `docs/`,
+`.agents/context/`, or `IMPECCABLE_CONTEXT_DIR`, so the next boot reads both.
+Otherwise DESIGN.md goes at the resolved project root (cwd as a fallback).
+The sidecar stays at the project root, where context reads it for that design.
+Each file is create-new, so an
 existing file or symlink is never followed or replaced. Both are created
 relative to directory handles held open (on Unix), so a `.impeccable` that
 is a symlink is refused and one swapped after the check cannot redirect a

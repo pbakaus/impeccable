@@ -84,6 +84,52 @@ fn seeds_workspace_root_from_nested_cwd_and_context_reads_it() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+fn seeds_beside_fallback_product(folder: &str, env_override: bool) {
+    let (f, mut env) = signed_in("world-fallback-product");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("fallback-product");
+    let context_dir = dir.join(folder);
+    std::fs::create_dir_all(&context_dir).unwrap();
+    let product = "# PRODUCT.md\n\nA catalog for independent goldsmiths.\n";
+    std::fs::write(context_dir.join("PRODUCT.md"), product).unwrap();
+    if env_override {
+        env.insert("IMPECCABLE_CONTEXT_DIR".into(), context_dir.to_string_lossy().into_owned());
+    }
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    // Boot from the same cwd must retain product truth as well as the world.
+    let out = run(&env, &dir, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let boot = text(&out.stdout);
+    assert!(boot.contains(product.trim()), "{boot}");
+    assert!(!boot.contains("NO_PRODUCT_MD"), "{boot}");
+    assert!(boot.contains("SEEDED_WORLD:"), "{boot}");
+    assert!(context_dir.join("DESIGN.md").exists());
+    let sidecar: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(dir.join(".impeccable/design.json")).unwrap(),
+    ).unwrap();
+    assert_eq!(sidecar["seededFrom"]["world"], "kinpaku");
+    assert!(!dir.join("DESIGN.md").exists());
+    assert!(!context_dir.join(".impeccable/design.json").exists());
+    assert_eq!(std::fs::read_to_string(context_dir.join("PRODUCT.md")).unwrap(), product);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn seeds_beside_docs_product_and_context_reads_both() {
+    seeds_beside_fallback_product("docs", false);
+}
+
+#[test]
+fn seeds_beside_agents_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product(".agents/context", false);
+}
+
+#[test]
+fn seeds_beside_env_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product("custom-context", true);
+}
+
 #[test]
 fn existing_workspace_sidecar_blocks_seed_from_nested_cwd() {
     let (f, env) = signed_in("world-workspace-existing");

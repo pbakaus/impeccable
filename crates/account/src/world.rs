@@ -148,6 +148,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     } else {
         std::path::PathBuf::from(&resolved.project_root)
     };
+    // context_dir is the resolved PRODUCT.md parent when one exists. A root
+    // DESIGN.md would otherwise hide that product on the next context boot.
+    let design_root = if resolved.product_path.is_some() {
+        std::path::PathBuf::from(&resolved.context_dir)
+    } else {
+        root.clone()
+    };
+    // Sidecars are read from project_root/.impeccable, even for fallback docs.
     let relative = |path: &Path| jsp::relative(&cwd, &cwd, &path.to_string_lossy()).replace('\\', "/");
     // Checked before any request, so an existing design system costs nothing.
     if !print {
@@ -204,14 +212,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     }
-    match write(&root, &seed) {
+    match write(&root, &design_root, &seed) {
         Ok(()) => {
             let name = &seed.name;
             let mut out = format!("{name} is now this project's design system.\n");
             if truecolor(io) {
                 out.push_str(&swatches(&seed.design_md));
             }
-            let design = relative(&root.join("DESIGN.md"));
+            let design = relative(&design_root.join("DESIGN.md"));
             let sidecar = relative(&root.join(".impeccable/design.json"));
             out.push_str(&format!(
                 "Wrote {design} and {sidecar}.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in {name}.\n"
@@ -220,7 +228,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Err(Exists(found)) => {
-            let found = relative(&root.join(found));
+            let base = if found == "DESIGN.md" { &design_root } else { &root };
+            let found = relative(&base.join(found));
             io.out(&format!(
                 "{found} already exists, so nothing was written. To merge this world into it, run impeccable world {id} --print and fold its DESIGN.md into yours.\n"
             ));
@@ -539,7 +548,7 @@ impl Dir {
 /// planted in its place, or a swapped `.impeccable`) is never followed or
 /// replaced. Whatever this run created is removed again when a later step
 /// fails; nothing that was there before is ever touched.
-fn write(root: &Path, seed: &Seed) -> Result<(), WriteError> {
+fn write(root: &Path, design_root: &Path, seed: &Seed) -> Result<(), WriteError> {
     if let Some(found) = existing(root) {
         return Err(Exists(found));
     }
@@ -552,11 +561,12 @@ fn write(root: &Path, seed: &Seed) -> Result<(), WriteError> {
         serde_json::to_vec_pretty(&sidecar).map_err(|e| Failed(e.to_string()))?;
     sidecar_bytes.push(b'\n');
     let top = Dir::root(root)?;
+    let design_dir = Dir::root(design_root)?;
     let dir = top.child(".impeccable")?;
     dir.create("design.json", ".impeccable/design.json", |f| {
         f.write_all(&sidecar_bytes)
     })?;
-    if let Err(e) = top.create("DESIGN.md", "DESIGN.md", |f| {
+    if let Err(e) = design_dir.create("DESIGN.md", "DESIGN.md", |f| {
         f.write_all(seed.design_md.as_bytes())
     }) {
         dir.remove("design.json");
