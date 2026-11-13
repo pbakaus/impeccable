@@ -25,6 +25,7 @@ pub mod profiler;
 pub mod project_tokens;
 pub mod regex_matchers;
 pub mod skills;
+pub mod unused_ignores;
 pub mod util;
 
 use impeccable_common::Io;
