@@ -650,8 +650,10 @@ fn lex_markup(lines: &[String], start: usize, mut on: impl FnMut(Lexed) -> bool)
                         if on(Lexed::OpenEnd { name: &tag_name, line: i, col: j + 1, self_closing }) {
                             return;
                         }
+                        // `<Script>` is a JSX component and keeps its
+                        // children; HTML names fold case.
                         let raw = tag_name.to_ascii_lowercase();
-                        mode = if !self_closing && RAW_TEXT_TAGS.contains(&raw.as_str()) {
+                        mode = if !self_closing && folds_tag_case(&tag_name) && RAW_TEXT_TAGS.contains(&raw.as_str()) {
                             hidden_from = j + 1;
                             LexMode::Raw(raw)
                         } else {
@@ -1245,6 +1247,35 @@ mod tests {
         let result = project.source("index.html");
         assert!(result.contains("<div id=\"outer\"><div>a</div></div>"));
         assert!(result.find("impeccable-variants-end").unwrap() < result.find("<div>b</div>").unwrap());
+    }
+
+    #[test]
+    fn comments_and_contained_scripts_never_refuse_a_safe_wrap() {
+        // A `<script>` inside a comment or a quoted value opens no raw text,
+        // so the real heading after it is still found (PRRT_kwDOQWgufc629hF0).
+        for source in [
+            "<!-- <script> -->\n<h1 id=\"picked\">Title</h1>\n",
+            "<p title=\"<script>\">x</p>\n<h1 id=\"picked\">Title</h1>\n",
+        ] {
+            let project = TagProject::new("index.html", source);
+            let (code, out, err) = project.run(false, &["--element-id", "picked", "--tag", "h1"]);
+            assert_eq!(code, 0, "{source:?} {out} {err}");
+            assert!(project.source("index.html").contains("<!-- impeccable-variants-start"), "{source:?}");
+        }
+        // A close inside a comment, or a tag-looking string inside a
+        // contained script, is no neighbour (629hF1, 629qIh).
+        for source in [
+            "<main>\n<div>A<!-- </div> --></div>\n</main>\n",
+            "<main>\n<div><script>const t = '<div>';</script></div>\n</main>\n",
+        ] {
+            for insert in [false, true] {
+                let project = TagProject::new("index.html", source);
+                let (code, out, err) = project.run(insert, &["--tag", "div"]);
+                assert_eq!(code, 0, "{source:?} {out} {err}");
+                assert!(!out.contains("shared_line"), "{out}");
+                assert!(project.source("index.html").contains("data-impeccable-variants="), "{source:?}");
+            }
+        }
     }
 
     #[test]
