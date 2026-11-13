@@ -27,7 +27,7 @@ Required:
 Element identification (at least one required):
   --element-id ID    HTML id attribute of the element
   --classes A,B,C    Comma- or space-separated CSS class names
-  --tag TAG          Tag name (div, section, etc.)
+  --tag TAG          Tag name (div, section, etc.); a tag alone is enough
   --query TEXT       Fallback: raw text to search for
 
 Optional:
@@ -81,8 +81,8 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
         eprintln(io, "Missing --id");
         return 1;
     };
-    if element_id.is_none() && classes.is_none() && query.is_none() {
-        eprintln(io, "Need at least one of: --element-id, --classes, --query");
+    if element_id.is_none() && classes.is_none() && tag.is_none() && query.is_none() {
+        eprintln(io, "Need at least one of: --element-id, --classes, --tag, --query");
         return 1;
     }
 
@@ -175,10 +175,25 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
+        Resolution::SharedLine(file, m) => {
+            eprintln(io, &json_compact(&element_shared_line_error(&rel(&file.path), m)));
+            return 1;
+        }
+        Resolution::AmbiguousFiles(hits) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "candidates": file_candidates_json(&cwd, &hits),
+                })),
+            );
+            return 1;
+        }
         Resolution::NotFound => {
             let mut generated_hit: Option<String> = None;
             for q in &queries {
-                generated_hit = find_file_with_query(q, &cwd, true);
+                generated_hit = find_file_with_query(q, &cwd, true, tag.as_deref());
                 if generated_hit.is_some() {
                     break;
                 }

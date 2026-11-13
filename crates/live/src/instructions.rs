@@ -9,8 +9,23 @@ pub fn poll_cmd(self_cmd: &str) -> String {
 }
 
 /// JS: bootInstructions({ scriptsPath })
-pub fn boot_instructions(self_cmd: &str) -> String {
-    format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd))
+pub fn boot_instructions(
+    self_cmd: &str,
+    dev_url: Option<&str>,
+    page_url: Option<&str>,
+    dev_command: Option<&str>,
+) -> String {
+    let origin = dev_url.map(|url| format!("Open {} as the page origin that serves a pageFiles entry (never serverPort; that is the helper).", url));
+    let origin = origin.or_else(|| dev_command.map(|command| format!("No dev server answered. If one is already running on another port or HTTPS, use its URL; otherwise start `{}` in the background, wait until it prints its URL, and run this boot again to get devUrl.", command)))
+        .or_else(|| page_url.map(|url| format!("No dev server is needed: open {} (a file URL; never serverPort, that is the helper). Tell the user that URL.", url)));
+    let instructions = format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd));
+    match origin {
+        Some(origin) => instructions.replacen(
+            "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper).",
+            &origin, 1,
+        ),
+        None => instructions,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -216,15 +231,19 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             Some(v) if truthy(Some(v)) => js_str(Some(v)),
             _ => String::new(),
         };
+        let mut locator = String::new();
+        for (flag, value) in [("--element-id", el_id), ("--classes", classes), ("--tag", tag)] {
+            if !value.is_empty() {
+                locator.push_str(&format!(" {} \"{}\"", flag, value));
+            }
+        }
         steps.push(format!(
-            "Preflight could not scaffold{}. Run {} --id {} --count {} --element-id \"{}\" --classes \"{}\" --tag \"{}\" --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
+            "Preflight could not scaffold{}. Run {} --id {} --count {}{} --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
             err,
             script_cmd(self_cmd, "live-wrap"),
             id,
             count,
-            el_id,
-            classes,
-            tag
+            locator
         ));
     }
     // A Go the generate verb fired (`origin: "agent"`) plans exactly like a
@@ -449,6 +468,21 @@ mod tests {
     }
 
     #[test]
+    fn bare_element_fallback_omits_empty_locator_flags() {
+        for element in [
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee" }),
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee", "id": "", "classes": [] }),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("element".into(), element);
+            let instructions = generate_instructions(&event, "impeccable");
+            assert!(instructions.contains("live-wrap --id ab12cd34 --count 3 --tag \"h1\""), "{instructions}");
+            assert!(!instructions.contains("--element-id \"\""), "{instructions}");
+            assert!(!instructions.contains("--classes \"\""), "{instructions}");
+        }
+    }
+
+    #[test]
     fn an_agent_initiated_generate_plans_exactly_like_a_users() {
         let lane = generate_instructions(&generate_event(Some("agent")), "impeccable");
         let user = generate_instructions(&generate_event(None), "impeccable");
@@ -486,5 +520,38 @@ mod tests {
         assert!(locked.contains("impeccable live-complete --id ab12cd34 --discarded"), "{locked}");
         let restored = instructions_for_event(&event(json!({ "handled": true, "file": "src/App.tsx" })), "impeccable").unwrap();
         assert!(restored.starts_with("Original restored"), "{restored}");
+    }
+}
+
+#[cfg(test)]
+mod boot_tests {
+    use super::*;
+
+    #[test]
+    fn boot_without_server_names_static_page_or_dev_command() {
+        let default = boot_instructions("impeccable", None, None, None);
+        let page = boot_instructions("impeccable", None, Some("file:///app/index.html"), None);
+        assert!(page.starts_with("No dev server is needed: open file:///app/index.html (a file URL; never serverPort, that is the helper). Tell the user that URL."));
+        assert!(!page.contains("Open the app URL that serves"));
+        let dev = boot_instructions("impeccable", None, None, Some("npm run dev"));
+        assert!(dev.contains("start `npm run dev` in the background, wait until it prints its URL"));
+        assert!(dev.contains("run this boot again to get devUrl"));
+        for text in [&page, &dev] {
+            assert_eq!(text.split_once(" Then ").unwrap().1, default.split_once(" Then ").unwrap().1);
+        }
+    }
+
+    #[test]
+    fn boot_url_names_page_origin_and_preserves_default() {
+        let default = boot_instructions("impeccable", None, None, None);
+        let expected = "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run impeccable live-poll immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.";
+        assert_eq!(default, expected);
+        let url = "http://localhost:5173";
+        let named = boot_instructions("impeccable", Some(url), None, None);
+        assert_eq!(named, expected.replacen(
+            "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper).",
+            &format!("Open {} as the page origin that serves a pageFiles entry (never serverPort; that is the helper).", url), 1,
+        ));
+        assert_eq!(named.split_once(" Then ").unwrap().1, default.split_once(" Then ").unwrap().1);
     }
 }

@@ -141,8 +141,15 @@ export function normalize(text, { ws, home = os.homedir() }) {
   }
   let wsReal = null;
   try { wsReal = ws ? fs.realpathSync(ws) : null; } catch { /* staged dir already gone */ }
+  // A file:// URL carries the workspace percent-encoded (live's `pageUrls`), so a tmpdir with a space
+  // or a non-ASCII byte would leave the encoded form unmasked. Mask it the way the binary writes it.
+  const encoded = (p) => {
+    if (!p) return null;
+    const e = Array.from(Buffer.from(p.replace(/\\/g, '/'), 'utf8'), (b) => /[A-Za-z0-9\-._~/:]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, '0')}`).join('');
+    return e === p ? null : e;
+  };
   for (const [needle, tag] of [
-    [wsReal, '<WS>'], [ws, '<WS>'], [REPO_ROOT, '<REPO>'], [home, '<HOME>'],
+    [wsReal, '<WS>'], [ws, '<WS>'], [encoded(wsReal), '<WS>'], [encoded(ws), '<WS>'], [REPO_ROOT, '<REPO>'], [home, '<HOME>'],
   ]) {
     if (needle) out = maskPath(out, needle, tag);
   }
