@@ -294,7 +294,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true } } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, onboarded = true, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true } } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -417,6 +417,18 @@ for (const [label, status, offers] of [
     assert.deepEqual([h.body.dataset.account, h.body.dataset.screen, h.acts().includes('send')], ['signed-in', 'home', true]);
   });
 }
+
+test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, onboarded: false, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  const seen = [h.body.dataset.screen];
+  await h.press('got-it');
+  seen.push(h.body.dataset.screen);
+  await h.press('start-walking');
+  seen.push(h.body.dataset.screen);
+  assert.deepEqual([seen, h.local.onboarded], [['before', 'tab-group', 'home'], true]);
+  const next = await sidePanel({ view: STUBS.idle, status: signedIn, onboarded: h.local.onboarded, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  assert.equal(next.body.dataset.screen, 'home');
+});
 
 test('the store build’s side panel asks nothing of an account and offers only the terminal', async () => {
   const h = await sidePanel({ view: STUBS['signed-out'], status: signedIn, root: stagedStore() });

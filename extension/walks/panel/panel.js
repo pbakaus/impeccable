@@ -55,6 +55,12 @@ const ICONS = {
   mic: ['M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z', 'M5 11a7 7 0 0 0 14 0M12 18v3'],
   stop: ['M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z'],
   out: ['M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
+  cursor: ['M5 3l14 7-6 2-2 6z'],
+  camera: ['M4 8h3l2-2.5h6L17 8h3v11H4z', 'M8.5 13a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0'],
+  warn: ['M12 3.5L2.5 20h19z', 'M12 10v4.5M12 17.2v.1'],
+  shield: ['M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z', 'M8.5 12l2.5 2.5 4.5-5'],
+  tab: ['M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 9h18'],
+  cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
 function icon(name) {
   const svg = document.createElementNS(SVG, 'svg');
@@ -89,9 +95,25 @@ const name = () => view.who?.name || walker?.name || '';
 /** The persona walking, with its face when it is the one picked here. */
 const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
 
-function top(url = hereUrl) {
+/** The site the panel walks; before a walk, Scan and the settings (where the account is signed out) beside it. */
+function top(url = hereUrl, { tools = false } = {}) {
   const host = hostOf(url);
-  return el('div', { class: 'top' }, host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }));
+  return el('div', { class: 'top' },
+    host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
+    el('span', { class: 'grow' }),
+    tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
+    tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.top.settings, 'aria-label': COPY.top.settings, onclick: () => { void chrome.runtime.openOptionsPage?.()?.catch?.(() => undefined); } }, icon('cog')) : null,
+  );
+}
+
+/** Scan: the popup's own Scan screen (panel.html `#panel-scan`, driven by popup/popup.js), with the way back. */
+function scan() {
+  const box = document.getElementById('panel-scan');
+  box.hidden = false;
+  return [
+    el('div', { class: 'top' }, button('back', COPY.top.back, 'sec sm', () => { pre.screen = pre.back ?? 'home'; render(); }), el('span', { class: 'grow' }), hostOf(hereUrl) ? el('span', { class: 'where' }, el('b', { text: hostOf(hereUrl) })) : null),
+    el('div', { class: 'scan-wrap' }, box),
+  ];
 }
 
 function button(action, text, kind = 'sec', onclick = () => act(action)) {
@@ -111,14 +133,14 @@ async function loadPersonas() {
 
 function home() {
   const person = picked();
-  if (pre.personas === undefined) return [top(), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
-  if (!person) return [top(), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }))];
+  if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
+  if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }))];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
   box.value = pre.task;
   const send = () => { pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
   return [
-    top(),
+    top(hereUrl, { tools: true }),
     el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
     pre.personas.length > 1 ? el('div', { class: 'strip', role: 'group', 'aria-label': COPY.home.who }, pre.personas.map((each, i) => el('button', {
       type: 'button', class: i === pre.pick ? 'sel' : '', 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
@@ -134,7 +156,7 @@ function home() {
   ];
 }
 
-const WHY = { tab: COPY.why.tab, unavailable: COPY.why.unavailable, scope: COPY.why.scope, plan: COPY.why.plan };
+const WHY = COPY.why;
 
 /** Send: the person's task becomes the persona's short plan. */
 async function plan() {
@@ -288,6 +310,35 @@ function terminal() {
   return [el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.idle.line }), el('p', { class: 'task', text: COPY.idle.how }), el('code', { class: 'command-line', text: COPY.command }), copy)];
 }
 
+/* ------------------------------ first run ------------------------------ */
+
+/** The first time the panel is signed in, before the home: two screens, then never again (chrome.storage.local `onboarded`). */
+const foot = (on, action, text, onclick) => el('div', { class: 'fr-foot' },
+  el('div', { class: 'fr-dots', 'aria-hidden': true }, [0, 1].map((i) => el('i', { class: i === on ? 'on' : '' }))),
+  button(action, text, 'gold full tall', onclick));
+
+function beforeYouStart() {
+  const words = COPY.firstRun.before;
+  return [
+    el('div', { class: 'fr-mid' }, el('h2', { class: 'hd', text: words.title }),
+      el('ul', { class: 'fr-list' }, words.points.map(([name, fact, more]) => el('li', { class: name === 'warn' ? 'warn' : '' }, icon(name), el('span', {}, el('b', { text: fact }), ' ', more))))),
+    foot(0, 'got-it', words.next, () => { pre.screen = 'tab-group'; render(); }),
+  ];
+}
+
+function tabGroup() {
+  const words = COPY.firstRun.tabGroup;
+  const person = picked() ?? { name: words.example };
+  return [
+    el('div', { class: 'fr-mid' },
+      el('div', { class: 'fr-art', 'aria-hidden': true },
+        el('div', { class: 'tg-strip' }, el('span', { class: 'tg-chip', text: COPY.tabGroup(person.name) }), el('span', { class: 'tg-tab in' }, icon('tab'), words.site), el('span', { class: 'tg-tab out' }, icon('tab'), words.other)),
+        el('div', { class: 'tg-page' }, el('span', { class: 'tg-line' }), el('span', { class: 'tg-line s' }), el('span', { class: 'tg-pill' }, face(person, 18), `${COPY.badge.here(person.name)} · ${COPY.badge.step(2)}`))),
+      el('h2', { class: 'hd', text: words.title }), el('p', { class: 'fr-p', text: words.line })),
+    foot(1, 'start-walking', words.next, () => { pre.screen = 'home'; void chrome.storage.local.set({ onboarded: true }).catch(() => undefined); render(); }),
+  ];
+}
+
 /* ------------------------------ drawing ------------------------------ */
 
 /** Which screen the panel shows now. */
@@ -300,7 +351,7 @@ function screen() {
   return pre.screen;
 }
 
-const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, home, planning, plan: planned };
+const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, home, planning, plan: planned, scan };
 
 function render() {
   const shown = screen();
@@ -313,9 +364,11 @@ function render() {
   body.dataset.ask = view.ask?.kind ?? '';
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   app.className = `screen screen-${shown}`;
+  if (shown !== 'scan') { const box = document.getElementById('panel-scan'); if (box && box !== app) box.hidden = true; }
   app.replaceChildren(...SCREENS[shown]().filter(Boolean));
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
+Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
@@ -327,10 +380,11 @@ async function look() {
 async function knowAccount() {
   const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
   const was = account?.signedIn === true;
+  const before = screen();
   account = answer?.ok === true && answer.available === true ? answer : null;
   if (account?.signedIn === true && (!was || pre.personas === null)) void loadPersonas();
-  // Drawn again only when the sign-in changed: a redraw would take the task box from under the person's typing.
-  if (was !== (account?.signedIn === true) && !isLive(view)) render();
+  // Drawn again only when the screen changes: a redraw would take the task box from under the person's typing.
+  if (screen() !== before) render();
 }
 
 /** The walk's results page, as the worker kept it: only on the walk's own server (handoff.js `resultLink`). */
@@ -364,6 +418,7 @@ async function start() {
     chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; if (pre.screen === 'home' && !isLive(view)) render(); } });
     const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
+    if (!(await chrome.storage.local.get('onboarded').catch(() => ({}))).onboarded) pre.screen = 'before';
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
     if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.

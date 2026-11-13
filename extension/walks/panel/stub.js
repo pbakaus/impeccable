@@ -74,7 +74,11 @@ export const PRE = {
   home: { personas: PERSONAS, task: TASK },
   planning: { personas: PERSONAS, task: TASK, screen: 'planning' },
   plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN },
+  before: { personas: PERSONAS, screen: 'before' },
+  'tab-group': { personas: PERSONAS, screen: 'tab-group' },
 };
+STUBS.before = STUBS.idle;
+STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;

@@ -91,4 +91,27 @@ export const COPY = {
   },
 
   tabGroup: (name) => `Impeccable · ${name}`,
+
+  /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print]. */
+  firstRun: {
+    before: {
+      title: 'Before you start',
+      points: [
+        ['cursor', 'It acts in your browser, signed in as you.', 'What it clicks and types counts as you.'],
+        ['camera', 'It takes screenshots of the pages it walks.', 'Keep it off private sites, like banking or health.'],
+        ['warn', 'Pages can hide instructions.', 'Text you can’t see can try to steer it somewhere you didn’t ask.'],
+        ['shield', 'You approve the plan first.', 'Steps that can’t be undone are marked !. Anything risky that isn’t on the plan is skipped.'],
+      ],
+      next: 'Got it',
+    },
+    tabGroup: {
+      title: 'Walks get their own tab group',
+      line: 'Each walk opens in its own tab group, named after the persona. They see the pages in that group, and none of your other tabs.',
+      /** The picture's two tabs, and its persona while none is loaded. */
+      site: 'Tidy',
+      other: 'Your email',
+      example: 'Mira',
+      next: 'Start walking',
+    },
+  },
 };
