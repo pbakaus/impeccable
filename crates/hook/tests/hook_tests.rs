@@ -138,9 +138,10 @@ fn admin_on_status_and_reset_manage_antigravity_named_hooks() {
     let manifest: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
     assert_eq!(manifest["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
     let cmd = manifest["impeccable"]["Stop"][0]["command"].as_str().unwrap();
-    assert!(cmd.contains("../.agent/skills/impeccable/scripts/impeccable"), "{cmd}");
+    assert_eq!(cmd, impeccable_context::hook_wiring::antigravity_hook_command(cfg!(windows)));
     let (status, _, _) = admin_run(&r, &["status"]);
-    assert!(status.lines().any(|l| l.contains(".agent") && !l.contains("not")), "{status}");
+    let line = status.lines().map(str::trim).find(|l| l.starts_with("wiring .agent:")).unwrap_or_else(|| panic!("{status}"));
+    assert!(!line.contains("not wired"), "{line}");
 
     // A user's `enabled: false` switches the hook off: not wired.
     let mut off = manifest.clone();
@@ -157,6 +158,33 @@ fn admin_on_status_and_reset_manage_antigravity_named_hooks() {
     let after: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
     assert!(after.get("impeccable").is_none(), "{after}");
     assert_eq!(after["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+}
+
+#[test]
+fn admin_on_writes_the_global_antigravity_hook_for_a_user_skill() {
+    // ZpM: with only the global skill (`~/.gemini/config/skills/impeccable`),
+    // `hooks on` writes `~/.gemini/config/hooks.json` with the install's
+    // command, and `status` reads that file as wired.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    let launcher = jsp::join(&[&cwd, ".test-home", ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]);
+    t.write(".test-home/.gemini/config/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!t.exists(".agents/hooks.json"), "the shared workspace file is not written for a global skill");
+    let global: Value = serde_json::from_str(&t.read(".test-home/.gemini/config/hooks.json")).unwrap();
+    let cmd = global["impeccable"]["Stop"][0]["command"].as_str().unwrap();
+    let expected = if cfg!(windows) {
+        impeccable_context::hook_markers::windows_launcher_hook_command(&launcher, "hook")
+    } else {
+        format!("[ ! -f '{launcher}' ] || '{launcher}' hook")
+    };
+    assert_eq!(cmd, expected);
+    assert_eq!(global["impeccable"]["PostToolUse"][0]["hooks"][0]["command"], Value::String(expected));
+    let (status, _, _) = admin_run(&r, &["status"]);
+    let line = status.lines().map(str::trim).find(|l| l.starts_with("wiring .agent:")).unwrap_or_else(|| panic!("{status}"));
+    assert!(!line.contains("not wired"), "{line}");
 }
 
 #[test]
@@ -2998,6 +3026,34 @@ fn antigravity_fresh_project_stop_reports_immediate_only_findings() {
 }
 
 #[test]
+fn antigravity_root_comes_from_workspace_paths_not_the_process_cwd() {
+    // Antigravity runs the command from the manifest's directory: the
+    // workspace's `.agents/`, or `~/.gemini/config/` for the global hook.
+    // Neither is the project, and the payload carries no `cwd`.
+    let t = Tmp::new();
+    let project = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("src/a.css", SIDE_TAB_CSS);
+    t.write(".agents/hooks.json", "{}");
+    t.write("elsewhere/.gemini/config/hooks.json", "{}");
+    for proc_dir in [jsp::join(&[&project, ".agents"]), jsp::join(&[&project, "elsewhere", ".gemini", "config"])] {
+        let r = rt_with(&proc_dir, env(&[("HOME", &jsp::join(&[&project, "elsewhere"]))]));
+        let mut post = agy_post(&project, &file, json!(format!("c-{proc_dir}")));
+        post["conversationId"] = json!(format!("agy-{proc_dir}"));
+        let one = hook::run_hook(&r, &post.to_string());
+        assert_eq!(audit_str(&one.audit, "cwd"), Some(project.as_str()), "{proc_dir}");
+        let stop = json!({
+            "conversationId": format!("agy-{proc_dir}"),
+            "workspacePaths": [project],
+            "terminationReason": "NO_TOOL_CALL",
+        });
+        let res = hook::run_stop_hook(&r, &stop.to_string());
+        assert!(res.stdout.contains("[side-tab]"), "{proc_dir}: {:?}", res.audit);
+        assert!(!std::path::Path::new(&jsp::join(&[&proc_dir, ".impeccable"])).exists(), "{proc_dir}");
+    }
+}
+
+#[test]
 fn antigravity_same_tool_call_scans_once() {
     // Z_v: the claim key reads Antigravity's nested `toolCall.id` (and the
     // `stepIdx` when no id is sent), scoped by `conversationId`.
@@ -3027,6 +3083,11 @@ fn antigravity_silent_skip_still_answers_json() {
     let stdin = agy_post(&cwd, &jsp::join(&[&cwd, "src/a.css"]), json!("c1")).to_string();
     let (mut io, cap) = Io::captured("", std::path::PathBuf::from(&cwd), HashMap::new());
     hook::run(&r, &stdin, &mut io);
+    assert_eq!(String::from_utf8(cap.stdout.borrow().clone()).unwrap(), "{}");
+    // A Stop with nothing to report answers the same way.
+    let stop = json!({ "conversationId": "agy-fresh", "workspacePaths": [cwd], "terminationReason": "NO_TOOL_CALL" }).to_string();
+    let (mut io, cap) = Io::captured("", std::path::PathBuf::from(&cwd), HashMap::new());
+    hook::run(&rt(&cwd), &stop, &mut io);
     assert_eq!(String::from_utf8(cap.stdout.borrow().clone()).unwrap(), "{}");
 }
 

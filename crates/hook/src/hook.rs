@@ -1143,8 +1143,7 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     // JS: process.env.IMPECCABLE_HOOK_DEPTH = process.env.IMPECCABLE_HOOK_DEPTH || '1'
     // is exported for child processes; this binary spawns none, so the
     // pre-mutation snapshot in `rt.env` is the only value that matters.
-    let stop = is_stop_event(stdin);
-    let result = if stop {
+    let result = if is_stop_event(stdin) {
         run_stop_hook(rt, stdin)
     } else {
         run_hook(rt, stdin)
@@ -1152,9 +1151,10 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     write_audit_log(rt, &result.audit, &rt.proc_cwd);
     if !result.stdout.is_empty() {
         io.out(&result.stdout);
-    } else if !stop && antigravity_stdin(rt, stdin) {
-        // Antigravity reads PostToolUse stdout as JSON; an early skip
-        // (disabled, no file, duplicate) still answers with the empty object.
+    } else if antigravity_stdin(rt, stdin) {
+        // Antigravity reads hook stdout as JSON; an early skip (disabled, no
+        // file, duplicate, a Stop with nothing to report) still answers with
+        // the empty object.
         io.out("{}");
     }
     0
