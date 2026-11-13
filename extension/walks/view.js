@@ -61,7 +61,9 @@ function step(view, action) {
       return { ...view, who: whoOf(action.persona, view.who), workflow: action.errand ? workflowOf(action.errand) : view.workflow };
     case 'step': {
       if (!onTab || typeof action.step?.n !== 'number') return view;
-      const step = { n: action.step.n, did: text(action.step.did, 400), said: text(action.step.said, 600), ...(action.step.issue ? { issue: text(action.step.issue, 400) } : {}) };
+      // `refused`: not done, as the server marks it. `no`, the person said No to it or to one before it; `held`, it needed a Yes it could not ask for.
+      const refused = ['no', 'held'].includes(action.step.refused) ? { refused: action.step.refused } : {};
+      const step = { n: action.step.n, did: text(action.step.did, 400), said: text(action.step.said, 600), ...(action.step.issue ? { issue: text(action.step.issue, 400) } : {}), ...refused };
       return { ...view, steps: [...view.steps.filter((kept) => kept.n !== step.n), step].slice(-STEPS_KEPT) };
     }
     case 'checks':

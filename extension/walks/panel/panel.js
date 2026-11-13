@@ -289,7 +289,9 @@ function idle() {
 function doneLine() {
   const outcome = view.outcome;
   if (!outcome) return COPY.done.plain;
-  if (!outcome.finished) return COPY.done.unfinished(name(), outcome.issues.length);
+  // The first deed the person said No to; one the walk could not ask about (`held`) is not a No.
+  const saidNo = view.steps.find((entry) => entry.refused === 'no')?.n;
+  if (!outcome.finished) return saidNo ? COPY.done.saidNo(name(), saidNo) : COPY.done.unfinished(name(), outcome.issues.length);
   return outcome.issues.length > 0 ? COPY.done.issues(name(), outcome.issues.length) : COPY.done.clean(name());
 }
 

@@ -514,6 +514,21 @@ test('the side panel shows a finished walk on its own tab alone, and a site’s 
   assert.equal(later.body.dataset.state, 'idle', 'opened later on another tab');
 });
 
+// The steps as the server lands them after a No: that deed and each one after it marked `no`; a deed the walk could not
+// ask about marked `held`, which is not a No.
+for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' }, 2], ['could not ask at step 2', { 2: 'held' }, null]]) {
+  test(`the side panel’s ending names the step only for a No: ${label}`, async () => {
+    const { reduce } = await import('../extension/walks/view.js');
+    const { COPY } = await import('../extension/walks/panel/copy.js');
+    const steps = [1, 2, 3].map((n) => ({ type: 'step', step: { n, did: marks[n] ? 'Didn’t click “Delete”' : 'Clicked “Add”', said: '', ...(marks[n] ? { refused: marks[n] } : {}) } }));
+    const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, ...steps, { type: 'finish', outcome: { finished: false, issues: [] } }].reduce(reduce, STUBS.waiting);
+    const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
+    const line = h.app.querySelector('p.line').textContent;
+    if (named) assert.deepEqual([line.includes(`step ${named}`), line === COPY.done.unfinished('Mira', 0)], [true, false]);
+    else assert.equal(line, COPY.done.unfinished('Mira', 0));
+  });
+}
+
 // No walk running: never a dead end. With the account the popup uses, the panel signs in or points at Personas.
 for (const [label, status, offers] of [
   ['signed out', { ok: true, available: true, signedIn: false }, 'sign-in'],

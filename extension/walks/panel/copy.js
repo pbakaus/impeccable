@@ -74,6 +74,8 @@ export const COPY = {
     clean: (name) => `${name || 'Your walker'} finished. No issues.`,
     issues: (name, n) => `${name || 'Your walker'} finished and found ${issues(n)}.`,
     unfinished: (name, n) => (n > 0 ? `${name || 'Your walker'} could not finish, and found ${issues(n)}.` : `${name || 'Your walker'} could not finish.`),
+    /** The person said No at step `n`: the walk's page says it in these words. */
+    saidNo: (name, n) => `You said No at step ${n}, so ${name || 'your walker'} didn’t get it done.`,
     plain: 'This walk is over.',
     again: 'Watch it again',
     step: (n) => `Step ${n}`,
