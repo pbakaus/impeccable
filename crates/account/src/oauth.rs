@@ -32,6 +32,8 @@ pub struct Metadata {
     pub foundations: bool,
     pub design: bool,
     pub critiques: bool,
+    /// `journeys:start`, for `impeccable journeys` (`crate::journeys`).
+    pub journeys: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -88,6 +90,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == CRITIQUES_SCOPE)),
+            journeys: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == JOURNEYS_SCOPE)),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -103,6 +109,9 @@ pub const DESIGN_SCOPE: &str = "design:write";
 /// Uploading foundations evidence, separately consented from detector counts.
 pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
 
+/// Starting and following journeys (`crate::journeys`).
+pub const JOURNEYS_SCOPE: &str = "journeys:start";
+
 /// Request feature scopes only where the service advertises them.
 pub(crate) fn scopes(meta: &Metadata) -> String {
     let mut scopes = SCOPES.to_string();
@@ -112,6 +121,7 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.foundations, FOUNDATIONS_SCOPE),
         (meta.design, DESIGN_SCOPE),
         (meta.critiques, CRITIQUES_SCOPE),
+        (meta.journeys, JOURNEYS_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -468,7 +478,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..32 {
+        for mask in 0..64 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -478,6 +488,7 @@ mod scope_tests {
                 foundations: mask & 4 != 0,
                 design: mask & 8 != 0,
                 critiques: mask & 16 != 0,
+                journeys: mask & 32 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -488,6 +499,7 @@ mod scope_tests {
                 (4, FOUNDATIONS_SCOPE),
                 (8, DESIGN_SCOPE),
                 (16, CRITIQUES_SCOPE),
+                (32, JOURNEYS_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }

@@ -76,6 +76,7 @@ Commands:
   logout                           Sign out on this machine
   whoami                           Show the signed-in account and whether it includes Pro rules
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  journeys <workflow-or-goal>      Someone from your app's cast takes a journey through it and reports what they hit
 
 Options:
   --help       Show this help message

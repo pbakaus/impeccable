@@ -2431,3 +2431,80 @@ Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only
 repos and invalid names omit `label`. No label is sent without a repo key.
+
+## Journeys
+
+`impeccable journeys <workflow | "a goal"> (--url <address> | --pr <n>)`
+starts a journey: someone from the app's cast takes a saved workflow, or the
+goal, through the app at that address. The service runs it. In the person's
+own Chrome it runs through the Impeccable extension, which takes it over from
+the journey's page; `--cloud` runs it in the service's browser. The command
+opens that page, prints each step as it lands, then the result. `--help`
+prints the full usage, options and exit codes.
+
+- `journeys workflows` lists the app's saved workflows.
+- `journeys status <id> [--wait <seconds>]` reads where a journey stands,
+  following it for at most that long first.
+- `journeys stop <id>` calls one off.
+- `journeys skill` writes `impeccable-journeys/SKILL.md` under
+  `.claude/skills` and `.agents/skills` at the git root (the working
+  directory outside a checkout). It makes no request and needs no sign-in.
+
+The repository is `--repo <owner/name>`, else the checkout's GitHub `origin`;
+the app is `--app <key>`, else `main`. `status` and `stop` need neither.
+
+Exit codes: 0 the journey reached its goal; 1 it ended without getting there,
+failed or was cancelled; 2 it couldn't start (a refusal, bad usage) or the
+command stopped watching (20 minutes, Ctrl-C, no Chrome within 2 minutes);
+3 (`status` only) still going; 4 no sign-in the service takes. With several
+`--device` values the journeys run one after another: 2 if any couldn't
+start, else 1 if any didn't get there, else 0. `--detach` exits 0 once the
+journey has started.
+
+With `--json`, stdout carries exactly one JSON object and every line goes to
+stderr: the result (`finished`, `steps`, `ms`, `doneWhen`, `issues`,
+`replayUrl`, `id`, `state`, `device`, and `error` for a failed journey);
+`{id, state, device, page}` for `--detach`; `{id, state, steps, issues,
+device, page}` for a journey still going; `{journeys: [...]}` for several
+devices; `{error, device?, id?}` for anything that stopped the command, where
+`error` is the service's refusal code or one of `bad-usage`, `not-signed-in`,
+`timeout`, `stopped`, `unreachable`, `outdated`, `unknown`, `not-run`.
+
+Sign-in is `impeccable login`. It requests `journeys:start` only when the
+service lists it in `scopes_supported`. The command never starts a sign-in:
+signed out, expired, or holding a grant without the scope (403
+`insufficient_scope`), it prints one line naming `impeccable login` and exits
+4 without retrying.
+
+Requests, all on the account service with the CLI grant:
+
+- `POST /cli/v1/journeys` with `{repo, app, errand | (goal, doneWhen), url |
+  pr, persona, browser, visitMode, device?}`. `persona` is a slug or `auto`;
+  `browser` is `chrome` or `cloud`; `visitMode` is `new` or `returning`;
+  `device` is `desktop`, `mobile` or `tablet`. The answer is `{id, state,
+  device, page}`.
+- `GET /cli/v1/journeys/<id>` answers `{id, state, steps, outcome, error,
+  device, page?}`. `state` is one of `queued`, `waiting_for_browser`,
+  `walking`, `done`, `failed`, `cancelled`; `outcome` is null until it ends.
+- `POST /cli/v1/journeys/<id>/cancel` with `{}` answers `{id, state}`.
+- `GET /cli/v1/workflows?repo=&app=` answers `{errands: [...]}`;
+  `POST /cli/v1/workflows` saves one for `--save` and answers `{errand}`.
+
+A refusal is `{error: <code>}` and gets one fixed line; no sentence of the
+service's is printed. A bare 404 reads as journeys not being on. A 5xx or no
+answer is `unreachable`; while following, five in a row end the command. Any
+other code is `unknown`, and an answer whose shape this version cannot read
+is `outdated`: both say to update the CLI.
+
+The CLI never builds a page address. It shows and opens only the `page` the
+service names, and only when that is https (http between a loopback service
+and a loopback page), carries no credentials, and is on the service's own
+host or the site above it. A start answer without such a page is `outdated`.
+For a journey in Chrome that the command is following, it opens the page with
+`from=terminal` added to the query. `IMPECCABLE_NO_BROWSER=1` opens nothing;
+the link is printed either way. Text from the service is printed without its
+control characters.
+
+Ctrl-C, the 20-minute limit and a Chrome that never turns up each post the
+cancel (three-second deadline, best effort) before the command exits. On
+Windows Ctrl-C ends the command without the cancel.

@@ -30,6 +30,8 @@ pub struct Knobs {
     pub design_denied: bool,
     pub critiques: bool,
     pub critiques_denied: bool,
+    /// Journeys switched on: `scopes_supported` lists `journeys:start`.
+    pub journeys: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -71,6 +73,8 @@ pub struct Record {
     pub forgets: usize,
     pub setups: Vec<serde_json::Value>,
     pub designs: Vec<serde_json::Value>,
+    /// Each JSON body sent to an extra route ([`Fake::route`]), with its path.
+    pub bodies: Vec<(String, serde_json::Value)>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
@@ -294,6 +298,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         if path.starts_with("/cli/") && !authorized {
             (401, vec![], vec![])
         } else {
+            if let Ok(sent) = serde_json::from_slice(&body) {
+                record.lock().unwrap().bodies.push((path.to_string(), sent));
+            }
             c
         }
     } else {
@@ -315,6 +322,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.foundations { scopes.push("foundations:write"); }
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
+                        if k.journeys { scopes.push("journeys:start"); }
                         scopes
                     }),
                 }),
@@ -333,6 +341,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
                         "design:write" => k.design,
+                        "journeys:start" => k.journeys,
                         _ => false,
                     })
                 };

@@ -79,6 +79,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
         "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
+        "journeys" => impeccable_account::journeys::run(rest, io),
         "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
@@ -286,6 +287,7 @@ const KNOWN_VERBS: &[&str] = &[
     "logout",
     "whoami",
     "health",
+    "journeys",
     "setup",
     "setup-report",
     "health-design-refresh",
