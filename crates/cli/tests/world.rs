@@ -68,9 +68,10 @@ fn seeds_design_md_and_a_marked_sidecar_then_names_the_next_step() {
         text(&out.stdout),
         "Kinpaku is now this project's design system.\nWrote DESIGN.md and .impeccable/design.json.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in Kinpaku.\n"
     );
+    // The world line every later boot and roll settles on, added when the seed has none.
     assert_eq!(
         std::fs::read_to_string(dir.join("DESIGN.md")).unwrap(),
-        "# Kinpaku\n\nGold leaf on lacquer.\n"
+        "---\nworld: \"kinpaku\"\n---\n# Kinpaku\n\nGold leaf on lacquer.\n"
     );
     let sidecar: serde_json::Value =
         serde_json::from_slice(&std::fs::read(dir.join(".impeccable/design.json")).unwrap())
@@ -139,6 +140,7 @@ fn service_answers_map_to_one_actionable_line_each() {
         (404, r#"{"error":"not_found"}"#, "No world has the id kinpaku. Copy the id from the world in the Impeccable worlds catalog.\n"),
         (200, "<html>maintenance</html>", "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
         (200, r##"{"id":"other","name":"X","design_md":"# X","sidecar":{}}"##, "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
+        (200, r##"{"id":"kinpaku","name":"K","design_md":"---\nworld: swiss\n---\n# K\n","sidecar":{}}"##, "The DESIGN.md your Impeccable account sent for kinpaku can't record which world it came from, so nothing was written. Update the Impeccable CLI and try again.\n"),
     ];
     for (status, body, line) in cases {
         f.route("GET", SEED, status, vec![], body);
