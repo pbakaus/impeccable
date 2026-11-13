@@ -255,10 +255,10 @@ fn append_image_gen_directive(parts: &mut Parts, env: &Env, provider: &Provider)
 fn append_seeded_world_directive(parts: &mut Parts, ctx: &Ctx) {
     let Some(id) = seeded_world(ctx.design.as_deref()) else { return };
     if ctx.has_visual_implementation {
-        parts.push(format!("SEEDED_WORLD: DESIGN.md names the catalog world `{id}`, seeded by `impeccable world`. The person chose this world, so it is this project's visual authority, above the styles already in code: code built in it extends it, and styles that predate the seed, such as a starter template's CSS, are no incumbent world to inherit or preserve. Never roll, re-pick, or replace it. Until a build has resolved it, build inside it per the seeded-world case in reference/new-work.md, and download the `Reference image:` named in DESIGN.md into the workspace and look at it before designing, on a code-led build too: it is the one picture of this world. Once a build carries it and `document` has recorded it, it is the established world."));
+        parts.push(format!("SEEDED_WORLD: DESIGN.md names the catalog world `{id}`, seeded by `impeccable world`. The person chose this world, so it is this project's visual authority, above the styles already in code: code built in it extends it, and styles that predate the seed, such as a starter template's CSS, are no incumbent world to inherit or preserve. Never roll, re-pick, or replace it on your own initiative; an explicit request from the person for a redesign or a different world overrides this, so follow the redesign flow in reference/new-work.md. Until a build has resolved it, build inside it per the seeded-world case in reference/new-work.md, and download the `Reference image:` named in DESIGN.md into the workspace and look at it before designing, on a code-led build too: it is the one picture of this world. Once a build carries it and `document` has recorded it, it is the established world."));
         return;
     }
-    parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it. Before designing, download the `Reference image:` named in DESIGN.md into the workspace and look at it, on a code-led build too: it is the one picture of this world."));
+    parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it on your own initiative; an explicit request from the person for a redesign or a different world overrides this, so follow the redesign flow in reference/new-work.md. Before designing, download the `Reference image:` named in DESIGN.md into the workspace and look at it, on a code-led build too: it is the one picture of this world."));
 }
 
 fn append_autonomy_counter_directive(parts: &mut Parts) {
@@ -1727,19 +1727,21 @@ mod seeded_world_tests {
     // a visual implementation.
     const STARTER_CSS: &str = ":root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n\nbody {\n  color: var(--foreground);\n  background: var(--background);\n}\n";
 
-    fn boot(product: bool) -> String {
-        let root = std::env::temp_dir().join(format!("impeccable-seeded-starter-{}-{product}", std::process::id()));
+    fn boot(product: bool, starter: bool) -> String {
+        let root = std::env::temp_dir().join(format!("impeccable-seeded-starter-{}-{product}-{starter}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let _ = std::fs::remove_dir_all(&root);
         let project = root.join("project");
         std::fs::create_dir_all(project.join(".git")).unwrap();
         std::fs::create_dir_all(project.join("app")).unwrap();
         std::fs::create_dir_all(root.join("home")).unwrap();
         std::fs::write(project.join("DESIGN.md"), SEED).unwrap();
-        std::fs::write(project.join("app/globals.css"), STARTER_CSS).unwrap();
+        if starter {
+            std::fs::write(project.join("app/globals.css"), STARTER_CSS).unwrap();
+        }
         if product {
             std::fs::write(project.join("PRODUCT.md"), "# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nA starter.\n").unwrap();
         }
-        assert!(crate::context::has_visual_implementation(&project.to_string_lossy()), "the starter CSS must read as a visual implementation");
+        assert_eq!(crate::context::has_visual_implementation(&project.to_string_lossy()), starter);
         let home = root.join("home").to_string_lossy().into_owned();
         let mut env = crate::util::Env::new();
         for (k, v) in [("HOME", home.as_str()), ("USERPROFILE", home.as_str()), ("IMPECCABLE_NO_UPDATE_CHECK", "1"), ("IMPECCABLE_NO_STALENESS_CHECK", "1"), ("IMPECCABLE_NO_TELEMETRY", "1")] {
@@ -1758,12 +1760,23 @@ mod seeded_world_tests {
         // reads boilerplate as the incumbent world and a roll replaces the world
         // the person just chose.
         for product in [false, true] {
-            let out = boot(product);
+            let out = boot(product, true);
             assert!(out.contains("SEEDED_WORLD: DESIGN.md names the catalog world `sd-seedbed-lobes`"), "product={product}: {out}");
-            assert!(out.contains("Never roll, re-pick, or replace it"), "product={product}: {out}");
+            assert!(out.contains("Never roll, re-pick, or replace it on your own initiative"), "product={product}: {out}");
             assert!(!out.contains("no code carries it yet"), "product={product}: {out}");
             // The no-PRODUCT.md boot must not also call the starter CSS the incumbent authority.
             assert!(!out.contains("code and assets are incumbent design authority"), "product={product}: {out}");
+        }
+    }
+
+    #[test]
+    fn explicit_redesign_or_different_world_overrides_the_seed() {
+        for product in [false, true] {
+            for starter in [false, true] {
+                let out = boot(product, starter);
+                assert!(out.contains("an explicit request from the person for a redesign or a different world overrides this"), "{out}");
+                assert!(out.contains("follow the redesign flow in reference/new-work.md"), "{out}");
+            }
         }
     }
 }

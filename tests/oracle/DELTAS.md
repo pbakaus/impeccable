@@ -7373,3 +7373,7 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 
 - `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: the seeded world with starter CSS, without and with PRODUCT.md.
 - `world-refuses-docs-design`: `docs/DESIGN.md already exists, so nothing was written. ...`, exit 0, nothing written, no request.
+
+## Recorded 2026-11-13: explicit redesign requests override a seeded world
+
+- `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.

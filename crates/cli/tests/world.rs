@@ -24,6 +24,9 @@ fn run(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Output {
     c.args(args)
         .env_clear()
         .envs(env)
+        .env("IMPECCABLE_NO_STALENESS_CHECK", "1")
+        .env("IMPECCABLE_NO_UPDATE_CHECK", "1")
+        .env("IMPECCABLE_NO_TELEMETRY", "1")
         .current_dir(cwd)
         .stdin(Stdio::null());
     for key in ["PATH", "SystemRoot", "TEMP", "TMP"] {
@@ -53,6 +56,49 @@ fn seed_body() -> String {
 
 fn text(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
+}
+
+fn monorepo(name: &str) -> (PathBuf, PathBuf) {
+    let dir = project(name);
+    let cwd = dir.join("apps/web/src");
+    std::fs::create_dir_all(&cwd).unwrap();
+    std::fs::write(dir.join("package.json"), r#"{"workspaces":["apps/*"]}"#).unwrap();
+    std::fs::write(dir.join("apps/web/package.json"), r#"{"name":"web"}"#).unwrap();
+    (dir, cwd)
+}
+
+#[test]
+fn seeds_workspace_root_from_nested_cwd_and_context_reads_it() {
+    let (f, env) = signed_in("world-workspace");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace");
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(dir.join("apps/web/DESIGN.md").exists());
+    assert!(dir.join("apps/web/.impeccable/design.json").exists());
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert!(text(&out.stdout).contains("Wrote ../DESIGN.md and ../.impeccable/design.json."));
+    let out = run(&env, &cwd, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("SEEDED_WORLD:"), "{}", text(&out.stdout));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn existing_workspace_sidecar_blocks_seed_from_nested_cwd() {
+    let (f, env) = signed_in("world-workspace-existing");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace-existing");
+    let sidecar = dir.join("apps/web/.impeccable/design.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    std::fs::write(&sidecar, "{}").unwrap();
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).starts_with("../.impeccable/design.json already exists"));
+    assert_eq!(f.hits(SEED), 0);
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert_eq!(std::fs::read_to_string(sidecar).unwrap(), "{}");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

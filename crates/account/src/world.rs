@@ -108,17 +108,6 @@ fn existing(root: &Path) -> Option<&'static str> {
         .find(|t| root.join(t).symlink_metadata().is_ok())
 }
 
-/// The DESIGN.md `context` would read from this directory, by the reader's own
-/// resolver (`docs/`, `.agents/context/`, a workspace or repo root above, or
-/// `IMPECCABLE_CONTEXT_DIR`), named relative to it. A seed written beside a
-/// design system found there would shadow it on every later boot.
-fn resolved_design(root: &Path, env: &std::collections::HashMap<String, String>) -> Option<String> {
-    use impeccable_context::{context::resolve_context, jsp, target_args::TargetOptions};
-    let cwd = jsp::resolve(&root.to_string_lossy(), &[]);
-    let found = resolve_context(&cwd, &TargetOptions::default(), env).design_path?;
-    Some(jsp::relative(&cwd, &cwd, &found).replace('\\', "/"))
-}
-
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut id = None;
     let mut print = false;
@@ -151,12 +140,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         ));
         return 1;
     }
-    let root = io.cwd.clone();
+    use impeccable_context::{context::resolve_context, jsp, target_args::TargetOptions};
+    let cwd = jsp::resolve(&io.cwd.to_string_lossy(), &[]);
+    let resolved = resolve_context(&cwd, &TargetOptions::default(), &io.env);
+    let root = if resolved.project_root.is_empty() {
+        io.cwd.clone()
+    } else {
+        std::path::PathBuf::from(&resolved.project_root)
+    };
+    let relative = |path: &Path| jsp::relative(&cwd, &cwd, &path.to_string_lossy()).replace('\\', "/");
     // Checked before any request, so an existing design system costs nothing.
     if !print {
         let found = existing(&root)
-            .map(str::to_string)
-            .or_else(|| resolved_design(&root, &io.env));
+            .map(|found| relative(&root.join(found)))
+            .or_else(|| resolved.design_path.as_deref().map(|found| relative(Path::new(found))));
         if let Some(found) = found {
             io.out(&format!(
                 "{found} already exists, so nothing was written. To merge this world into it, run impeccable world {id} --print and fold its DESIGN.md into yours.\n"
@@ -214,13 +211,16 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             if truecolor(io) {
                 out.push_str(&swatches(&seed.design_md));
             }
+            let design = relative(&root.join("DESIGN.md"));
+            let sidecar = relative(&root.join(".impeccable/design.json"));
             out.push_str(&format!(
-                "Wrote DESIGN.md and .impeccable/design.json.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in {name}.\n"
+                "Wrote {design} and {sidecar}.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in {name}.\n"
             ));
             io.out(&out);
             0
         }
         Err(Exists(found)) => {
+            let found = relative(&root.join(found));
             io.out(&format!(
                 "{found} already exists, so nothing was written. To merge this world into it, run impeccable world {id} --print and fold its DESIGN.md into yours.\n"
             ));
