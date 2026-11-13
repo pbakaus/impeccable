@@ -1,1039 +1,131 @@
-/*
- * The walk panel: a paper sheet beside the tab being walked.
- *
- * Tokens and their rules live in the extension's own ../../shared/kinpaku.css: paper and
- * ink; gold is the lit dot and the tag and never carries text; patina-deep is the colour that may be read;
- * vermilion is for a walk that failed and nothing else (a walk the person stopped did not fail).
- *
- * How a walk reads here:
- *   Live     a lit gold dot: on the walker's face while they are at it, and on the step they are on.
- *   State    patina: a met check, a paused or taken-over walk, something the guard kept from happening.
- *   Issue    the gold tag, as a finding names itself in the other extension.
- *   Failure  vermilion, on the one line that says what ended the walk.
- *
- * The buttons are the popup's (popup/popup.css), the segmented control and the switch are the DevTools panel's
- * (devtools/panel.css), and a finished walk's issues are its findings rows. Those blocks are copied, not restyled.
- */
-
-html,
-body {
-  height: 100%;
-}
-
-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 280px;
-  font-size: var(--ks-type-ui);
-  font-variant-numeric: tabular-nums;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ks-gray-2) transparent;
-}
-
-::selection {
-  background: var(--ks-patina-pale);
-  color: var(--ks-ink);
-}
-
-p,
-h1,
-h2,
-blockquote {
-  overflow-wrap: anywhere;
-}
-
-/* ============================================================
-   Head of the sheet: the mark and the wordmark, as in the popup
-   ============================================================ */
-.top {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-h1 {
-  font-family: var(--ks-font-wordmark);
-  font-size: var(--ks-type-ui);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--ks-ink);
-}
-
-#app {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-#app > * {
-  flex: none;
-}
-
-#app > .feed-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.screen {
-  overflow-y: auto;
-}
-
-/* ============================================================
-   Who is walking, and what for
-   ============================================================ */
-.head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  padding: 14px 14px 13px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-.who {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-}
-
-.face {
-  position: relative;
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border: 1px solid var(--ks-edge);
-  border-radius: 50%;
-  background: var(--ks-paper-raised);
-  box-shadow: var(--ks-cap-lift);
-}
-
-.face-letter {
-  font-family: var(--ks-font-wordmark);
-  font-size: 19px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--ks-ink);
-}
-
-/* The light: dark at rest, lit gold while they walk, patina while the walk is held. */
-.face-light {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--ks-paper);
-  border-radius: 50%;
-  background: var(--ks-gray-2);
-  box-sizing: content-box;
-}
-
-.face[data-light="walking"] .face-light,
-.face[data-light="waiting"] .face-light {
-  background: var(--ks-kinpaku);
-  animation: lit 1.6s var(--ks-ease) infinite;
-}
-
-.face[data-light="paused"] .face-light,
-.face[data-light="takeover"] .face-light,
-.face[data-light="done"] .face-light {
-  background: var(--ks-patina);
-}
-
-.face[data-light="failed"] .face-light {
-  background: var(--ks-vermilion);
-}
-
-@keyframes lit {
-  0%, 100% { box-shadow: 0 0 0 0 oklch(84% 0.19 80 / 0.55); }
-  60% { box-shadow: 0 0 0 5px oklch(84% 0.19 80 / 0); }
-}
-
-.who-text {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1px;
-  min-width: 0;
-}
-
-.who-name {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--ks-ink);
-}
-
-.who-role {
-  font-size: var(--ks-type-label);
-  line-height: 1.4;
-  color: var(--ks-text-muted);
-}
-
-.who-facts {
-  font-size: var(--ks-type-micro);
-  color: var(--ks-text-muted);
-}
-
-.who-facts span + span::before {
-  content: "\00b7";
-  margin: 0 6px;
-  color: var(--ks-text-mute-deep);
-}
-
-.who-compact .face {
-  width: 28px;
-  height: 28px;
-}
-
-.who-compact .face-letter {
-  font-size: 15px;
-}
-
-.who-compact .face-light {
-  right: -3px;
-  bottom: -3px;
-  width: 7px;
-  height: 7px;
-}
-
-.who-compact .who-text {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-}
-
-.who-compact .who-name {
-  font-size: var(--ks-type-ui);
-}
-
-.workflow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-}
-
-.workflow-name {
-  font-size: var(--ks-type-ui);
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--ks-ink);
-}
-
-.workflow-goal {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text);
-}
-
-/* A walk held: paused, or in the person's hands. A state, so patina. */
-.status {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--ks-rule);
-  background: var(--ks-paper-deep);
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-ink);
-}
-
-.status::before {
-  content: "";
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ks-patina);
-  transform: translateY(-1px);
-}
-
-.status[data-busy="yes"]::before {
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
-}
-
-/* The walk's question: nothing is done until Yes. Gold, as it waits on the person. */
-.ask {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ks-rule);
-  background: var(--ks-paper-deep);
-  box-shadow: inset 3px 0 0 var(--ks-kinpaku);
-}
-
-.ask-title {
-  font-weight: 600;
-  color: var(--ks-ink);
-}
-
-.ask-what {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text);
-  overflow-wrap: anywhere;
-}
-
-/* The first-walk intro, once: the question's box in patina, with one button to put it away. */
-.intro {
-  display: grid;
-  gap: 6px;
-  justify-items: start;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--ks-rule);
-  background: var(--ks-paper-deep);
-  box-shadow: inset 3px 0 0 var(--ks-patina);
-}
-.intro-line {
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--ks-ink);
-}
-.intro-more {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text);
-}
-.intro .btn {
-  width: auto;
-  margin-top: 4px;
-}
-
-/* ============================================================
-   Section names and counts (devtools/panel.css: category header)
-   ============================================================ */
-.section-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px 5px;
-}
-
-.section-name {
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-micro);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ks-text-muted);
-}
-
-.count {
-  display: inline-flex;
-  align-items: center;
-  min-height: 15px;
-  padding: 0 5px;
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-gray);
-  color: var(--ks-text-muted);
-  font-family: var(--ks-mono);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.progress {
-  margin-left: auto;
-  font-size: var(--ks-type-micro);
-  color: var(--ks-text-muted);
-}
-
-/* ============================================================
-   The "done when" checks
-   ============================================================ */
-.checks {
-  display: grid;
-  gap: 1px;
-  padding: 2px 14px 10px;
-  list-style: none;
-}
-
-.check {
-  display: grid;
-  grid-template-columns: 15px minmax(0, 1fr);
-  gap: 9px;
-  align-items: start;
-  padding: 3px 0;
-  font-size: var(--ks-type-label);
-  line-height: 1.4;
-  color: var(--ks-text-muted);
-}
-
-.check-box {
-  display: grid;
-  place-items: center;
-  width: 15px;
-  height: 15px;
-  margin-top: 1px;
-  border: 1px solid var(--ks-edge);
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-paper-raised);
-  transition: background-color var(--ks-settle) var(--ks-ease), border-color var(--ks-settle) var(--ks-ease);
-}
-
-.check-box svg {
-  width: 11px;
-  height: 11px;
-  fill: none;
-  stroke: var(--ks-paper-raised);
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.check[data-met="yes"] {
-  color: var(--ks-ink);
-}
-
-.check[data-met="yes"] .check-box {
-  border-color: var(--ks-patina-deep);
-  background: var(--ks-patina-deep);
-}
-
-/* The checks as one line that ticks, open to the list. */
-.checks-line {
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-.checks-line summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.checks-line summary::-webkit-details-marker {
-  display: none;
-}
-
-.checks-line summary::after {
-  content: "";
-  width: 5px;
-  height: 5px;
-  border-right: 1.5px solid var(--ks-text-faint);
-  border-bottom: 1.5px solid var(--ks-text-faint);
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform var(--ks-quick) var(--ks-ease);
-}
-
-.checks-line[open] summary::after {
-  transform: translateY(1px) rotate(-135deg);
-}
-
-.pips {
-  display: flex;
-  gap: 3px;
-}
-
-.pip {
-  width: 14px;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--ks-gray-2);
-  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
-  transition: background-color var(--ks-settle) var(--ks-ease);
-}
-
-.pip[data-met="yes"] {
-  background: var(--ks-patina-deep);
-  box-shadow: none;
-}
-
-/* ============================================================
-   The feed: each step as it lands
-   ============================================================ */
-.feed {
-  display: grid;
-  gap: 1px;
-  padding: 0 8px 12px;
-  list-style: none;
-}
-
-.step,
-.note {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
-  padding: 7px 6px;
-  border-radius: var(--ks-radius-sm);
-}
-
-.step:hover {
-  background: var(--ks-paper-deep);
-}
-
-.step-n {
-  position: relative;
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-micro);
-  text-align: right;
-  color: var(--ks-text-faint);
-}
-
-/* The step they are on: its number in ink, its dot lit. */
-.step[data-latest="yes"] .step-n {
-  font-weight: 600;
-  color: var(--ks-ink);
-}
-
-.step[data-latest="yes"] .step-n::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
-  transform: translateY(-50%);
-}
-
-.step-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  min-width: 0;
-}
-
-.step-did {
-  font-size: var(--ks-type-ui);
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--ks-ink);
-}
-
-.step-said,
-.now-said {
-  quotes: "\201c" "\201d";
-}
-
-.step-said {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text-muted);
-}
-
-.step-said::before,
-.now-said::before {
-  content: open-quote;
-}
-
-.step-said::after,
-.now-said::after {
-  content: close-quote;
-}
-
-.step-issue {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  margin-top: 3px;
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text);
-}
-
-.step-issue .ks-tag {
-  flex: none;
-}
-
-/* Something the guard kept from happening: told where it happened, quietly. */
-.note {
-  padding-block: 4px;
-  font-size: var(--ks-type-micro);
-  line-height: 1.45;
-  color: var(--ks-text-muted);
-}
-
-.note-mark {
-  justify-self: end;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ks-patina);
-}
-
-.feed-empty {
-  padding: 10px 14px;
-  font-size: var(--ks-type-label);
-  color: var(--ks-text-muted);
-}
-
-.follow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  font-size: var(--ks-type-micro);
-  color: var(--ks-text-muted);
-  cursor: pointer;
-}
-
-/* The trail of earlier steps: one line each. */
-.feed-brief .step {
-  padding-block: 4px;
-}
-
-.feed-brief .step-did {
-  font-size: var(--ks-type-label);
-  font-weight: 400;
-  color: var(--ks-text);
-}
-
-/* ============================================================
-   Controls
-   ============================================================ */
-.bar {
-  padding: 10px 14px 12px;
-  border-top: 1px solid var(--ks-rule);
-  background: var(--ks-paper);
-}
-
-.controls {
-  display: grid;
-  grid-auto-columns: 1fr;
-  grid-auto-flow: column;
-  gap: 6px;
-}
-
-.foot-checks .checks {
-  padding: 0 0 10px;
-}
-
-/* Buttons (popup/popup.css) */
-.btn {
-  display: block;
-  width: 100%;
-  min-height: 30px;
-  padding: 7px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--ks-radius-sm);
-  font-family: inherit;
-  font-size: var(--ks-type-label);
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background-color var(--ks-quick) var(--ks-ease),
-    border-color var(--ks-quick) var(--ks-ease),
-    color var(--ks-quick) var(--ks-ease);
-}
-
-.btn-primary {
-  background: var(--ks-ink);
-  border-color: var(--ks-ink);
-  color: var(--ks-paper-raised);
-}
-
-.btn-primary:hover {
-  background: var(--ks-text);
-  border-color: var(--ks-text);
-}
-
-.btn-primary:active {
-  background: oklch(8% 0 0);
-  border-color: oklch(8% 0 0);
-}
-
-.btn-secondary {
-  background: var(--ks-paper-raised);
-  border-color: var(--ks-edge);
-  color: var(--ks-ink);
-  box-shadow: var(--ks-cap-lift);
-}
-
-.btn-secondary:hover {
-  border-color: var(--ks-ink);
-}
-
-.btn-secondary:active {
-  background: var(--ks-gray);
-  box-shadow: var(--ks-cap-press);
-}
-
-a.btn {
-  width: auto;
-  text-align: center;
-  text-decoration: none;
-  line-height: 14px;
-}
-
-/* Who drives, as one instrument (the checklist arrangement). */
-.instrument {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--ks-rule);
-  background: var(--ks-paper-deep);
-}
-
-.instrument .btn {
-  flex: none;
-  width: auto;
-}
-
-.drive {
-  flex: 1;
-  min-width: 0;
-}
-
-.drive button {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.drive button:disabled {
-  color: var(--ks-text-mute-deep);
-  cursor: default;
-}
-
-/* Segmented control: a recessed track carrying raised caps (devtools/panel.css) */
-.setting-segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-gray);
-  box-shadow: var(--ks-track-recess);
-}
-
-.setting-segmented button {
-  position: relative;
-  padding: 3px 9px 3px 16px;
-  border: none;
-  border-radius: 2px;
-  background: transparent;
-  color: var(--ks-text-muted);
-  font-family: inherit;
-  font-size: var(--ks-type-micro);
-  font-weight: 500;
-  line-height: 1.4;
-  cursor: pointer;
-  transition:
-    background-color var(--ks-quick) var(--ks-ease),
-    color var(--ks-quick) var(--ks-ease),
-    box-shadow var(--ks-quick) var(--ks-ease);
-}
-
-/* The key's indicator: dark at rest, lit gold on the selected cap. */
-.setting-segmented button::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 6px;
-  transform: translateY(-50%);
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ks-gray-2);
-  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
-  transition: background-color var(--ks-quick) var(--ks-ease), box-shadow var(--ks-quick) var(--ks-ease);
-}
-
-.setting-segmented button:hover:not(:disabled) {
-  color: var(--ks-ink);
-}
-
-.setting-segmented button.active {
-  background: var(--ks-paper-raised);
-  box-shadow: var(--ks-cap-lift);
-  color: var(--ks-ink);
-}
-
-.setting-segmented button.active::before {
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
-}
-
-.setting-segmented button:active:not(:disabled) {
-  box-shadow: var(--ks-cap-press);
-  transform: translateY(1px);
-}
-
-/* Switch: a recessed track, a paper knob, a dot that lights when on (devtools/panel.css) */
-.setting-switch {
-  position: relative;
-  display: inline-block;
-  width: 30px;
-  height: 18px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.setting-switch input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.setting-switch-track {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--ks-radius-pill);
-  background: var(--ks-gray-2);
-  box-shadow: var(--ks-track-recess);
-}
-
-.setting-switch-track::before {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--ks-paper-raised);
-  box-shadow: var(--ks-cap-lift);
-  transition: transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1);
-}
-
-.setting-switch-track::after {
-  content: '';
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--ks-gray-2);
-  box-shadow: inset 0 1px 1px oklch(13% 0 0 / 0.18);
-  transition:
-    transform 220ms cubic-bezier(0.3, 0.7, 0.2, 1),
-    background-color var(--ks-quick) var(--ks-ease),
-    box-shadow var(--ks-quick) var(--ks-ease);
-}
-
-.setting-switch input:checked + .setting-switch-track::before,
-.setting-switch input:checked + .setting-switch-track::after {
-  transform: translateX(12px);
-}
-
-.setting-switch input:checked + .setting-switch-track::after {
-  background: var(--ks-kinpaku);
-  box-shadow: var(--ks-led);
-}
-
-.setting-switch input:focus-visible + .setting-switch-track {
-  outline: 2px solid var(--ks-patina);
-  outline-offset: 2px;
-}
-
-/* ============================================================
-   The "now" arrangement: what is happening, large
-   ============================================================ */
-.now {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 14px 14px 16px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-.now-did {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
-  font-size: var(--ks-type-ui);
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--ks-ink);
-}
-
-.now-said {
-  font-size: 18px;
-  line-height: 1.35;
-  color: var(--ks-ink);
-  text-wrap: pretty;
-}
-
-/* The steps a look away (the checklist arrangement). */
-.all-steps summary {
-  padding: 8px 14px;
-  font-size: var(--ks-type-label);
-  font-weight: 600;
-  color: var(--ks-patina-deep);
-  cursor: pointer;
-}
-
-/* ============================================================
-   Before a walk, and after one
-   ============================================================ */
-.quiet {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  justify-items: start;
-  padding: 22px 14px;
-}
-
-.line {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--ks-ink);
-  text-wrap: balance;
-}
-
-.feed-scroll > .line {
-  padding: 16px 14px 10px;
-}
-
-.feed-scroll > .who {
-  padding: 14px 14px 0;
-}
-
-.feed-scroll > .workflow {
-  padding: 12px 14px 0;
-}
-
-.feed-scroll > p:has(.link) {
-  padding: 4px 14px 16px;
-}
-
-/* A walk that failed. The one vermilion here. */
-.failure {
-  color: var(--ks-vermilion);
-}
-
-.command {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  justify-items: start;
-  width: 100%;
-}
-
-.how {
-  font-size: var(--ks-type-label);
-  color: var(--ks-text-muted);
-}
-
-.command-line {
-  display: block;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--ks-rule);
-  border-radius: var(--ks-radius-sm);
-  background: var(--ks-paper-deep);
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-label);
-  color: var(--ks-ink);
-  overflow-wrap: anywhere;
-  user-select: all;
-}
-
-.command .btn,
-.quiet > .btn {
-  width: auto;
-}
-
-.link {
-  font-size: var(--ks-type-ui);
-  font-weight: 600;
-  color: var(--ks-patina-deep);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-}
-
-.link:hover {
-  color: var(--ks-patina-ink);
-}
-
-/* A finished walk's issues (devtools/panel.css: findings rows) */
-.issues {
-  display: grid;
-  gap: 1px;
-  padding: 0 8px 8px;
-  list-style: none;
-}
-
-.finding-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 6px 8px;
-  border-radius: var(--ks-radius-sm);
-  transition: background-color var(--ks-quick) var(--ks-ease);
-}
-
-.finding-item:hover {
-  background: var(--ks-paper-deep);
-}
-
-.finding-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.finding-row .finding-selector {
-  flex: 1;
-  min-width: 0;
-}
-
-/* The one colored text in the list. Patina clears 4.5:1 on paper. */
-.finding-selector {
-  font-family: var(--ks-mono);
-  font-size: var(--ks-type-micro);
-  color: var(--ks-patina-deep);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.finding-detail {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-ink);
-}
-
-.finding-description {
-  font-size: var(--ks-type-label);
-  line-height: 1.45;
-  color: var(--ks-text-muted);
-  quotes: "\201c" "\201d";
-}
-
-.finding-description::before {
-  content: open-quote;
-}
-
-.finding-description::after {
-  content: close-quote;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .face-light {
-    animation: none !important;
-  }
-
-  * {
-    transition-duration: 0s !important;
-  }
-}
+/* The side panel, in the popup's language: impeccable.style colours, 10px corners, Live Mode type (Albert Sans for
+   controls, Alumni Sans for big words, JetBrains Mono for labels; system stand-ins where they are not installed). */
+:root {
+  --paper: oklch(97.8% 0 0); --paper-raised: oklch(99.5% 0 0); --paper-deep: oklch(95% 0 0);
+  --gray: oklch(92% 0 0); --gray-2: oklch(88% 0 0);
+  --ink: oklch(13% 0 0); --text: oklch(22% 0 0); --muted: oklch(46% 0 0); --faint: oklch(51% 0 0); --mute-deep: oklch(66% 0 0);
+  --rule: oklch(13% 0 0 / .08);
+  --gold: oklch(84% .19 80.46); --gold-pale: oklch(86% .07 84); --gold-rich: oklch(77% .13 82); --gold-deep: oklch(61% .085 78); --on-gold: oklch(14% .018 95);
+  --gold-wash: oklch(96.5% .025 84);
+  --vermilion: oklch(52% .16 35);
+  --inst-text: oklch(93% 0 0);
+  --lacquer: oklch(20% .01 85); --lacquer-edge: oklch(74% .09 82 / .6);
+  --font: "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --wordmark: "Alumni Sans", "Albert Sans", "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: light;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--paper-raised); color: var(--text); font-family: var(--font); font-size: 16px; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+button, textarea { font: inherit; color: inherit; background: none; border: 0; text-align: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 2px; }
+ul, ol { list-style: none; }
+q { quotes: "“" "”"; }
+b { font-weight: 500; }
+.grow { flex: 1; }
+
+#app { min-height: 100%; display: flex; flex-direction: column; padding: 16px 20px 20px; }
+
+/* ---------- faces: src/admin-ui/face.ts FACE_CSS ---------- */
+.face { --face-cx: .5; --face-cy: .4; --face-zoom: 1.82; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; overflow: hidden;
+  background-color: var(--paper-deep); border: 1px solid var(--rule);
+  background-image: var(--face, none); background-repeat: no-repeat; background-size: calc(100% * var(--face-zoom));
+  background-position: calc((0.5 - var(--face-cx) * var(--face-zoom)) / (1 - var(--face-zoom)) * 100%) calc((0.5 - var(--face-cy) * var(--face-zoom)) / (1 - var(--face-zoom)) * 100%);
+  transition: background-position .4s var(--ease); }
+.face-letter { font-family: var(--wordmark); font-weight: 300; font-size: 2.6em; color: var(--muted); }
+.strip .face-letter { font-size: 1.1rem; }
+.plan-head .face-letter { font-size: 1.6rem; }
+.hero .face, .walk-head .face, .mid .face, .end .face { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold); }
+.face.is-thinking { animation: ring 1.6s var(--ease) infinite; }
+
+/* ---------- controls ---------- */
+.ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mark { width: 18px; height: 18px; flex: none; fill: currentColor; color: var(--ink); }
+.mark.big { width: 36px; height: 36px; }
+.hd { font-family: var(--wordmark); font-weight: 200; font-size: 2.5rem; line-height: 1.02; color: var(--ink); text-wrap: balance; }
+.btn { height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border-radius: 10px; font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--ink); }
+.btn-sec { background: var(--paper-deep); }
+.btn-sec:hover { background: var(--gray); }
+.btn-gold { background: var(--gold); color: var(--on-gold); font-size: 14px; font-weight: 600; box-shadow: inset 0 1px 0 oklch(100% 0 0 / .35); }
+.btn-gold:disabled { background: var(--gray); color: var(--mute-deep); box-shadow: none; }
+.btn-big { width: 100%; height: 88px; flex: none; padding: 0 22px 0 24px; gap: 14px; justify-content: space-between; border-radius: 14px; font-size: 22px; font-weight: 700; white-space: normal; box-shadow: inset 0 1px 0 oklch(100% 0 0 / .35), 0 6px 16px oklch(77% .13 82 / .35); }
+.btn-big .big-t { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; line-height: 1.15; }
+.btn-big b { font-weight: 700; }
+.btn-big small { font-size: 14px; font-weight: 500; }
+.btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
+.pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pair .btn { width: 100%; }
+.mic { position: relative; width: 40px; height: 40px; flex: none; display: inline-grid; place-items: center; border-radius: 10px; border: 1.5px dashed var(--gold-deep); color: var(--gold-deep); }
+.mic em { position: absolute; top: -8px; right: -8px; font-family: var(--mono); font-style: normal; font-size: 9px; letter-spacing: .06em; padding: 1px 4px; border-radius: 4px; background: var(--ink); color: var(--paper-raised); }
+.err { font-size: 13px; line-height: 18px; color: var(--vermilion); text-wrap: balance; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: pulse 1.4s infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ring { 0%, 100% { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold); } 50% { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.pro { width: 100%; height: 44px; display: grid; grid-template-columns: 18px 1fr 15px; align-items: center; gap: 12px; padding: 0 18px; border-radius: 10px; background: var(--lacquer); border: 1px solid var(--lacquer-edge); color: var(--inst-text); font-size: 14px; font-weight: 500; text-align: center; }
+.pro .mark, .pro .arrow { color: var(--gold); }
+
+/* ---------- screens ---------- */
+.top { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.where { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.where b { color: var(--ink); }
+.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 20px; text-align: center; }
+.hero .face { margin-bottom: 8px; }
+.name { font-family: var(--wordmark); font-weight: 200; font-size: 3.25rem; line-height: .9; color: var(--ink); }
+.about { margin-top: 6px; font-size: 15px; line-height: 1.5; color: var(--text); text-wrap: pretty; }
+.strip { flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: calc(5 * 44px + 4 * 6px); margin: 20px auto; }
+.strip button { width: 44px; height: 44px; border-radius: 50%; padding: 3px; display: grid; place-items: center; }
+.strip button.sel { box-shadow: inset 0 0 0 2px var(--gold); }
+.box { flex: none; margin-top: auto; padding-top: 16px; }
+.box .err { margin: 0 4px 10px; text-align: center; }
+.field { border-radius: 16px; background: var(--paper-deep); padding: 14px 12px 12px 16px; }
+.field:focus-within { background: var(--paper-raised); box-shadow: inset 0 0 0 1.5px var(--gold-rich), 0 0 0 4px var(--gold-wash); }
+.text { display: block; width: 100%; min-height: 44px; resize: none; font-size: 15px; line-height: 1.45; color: var(--ink); padding-bottom: 12px; outline: none; }
+.text::placeholder { color: var(--faint); }
+.row { display: flex; align-items: center; gap: 8px; }
+.row .btn { padding: 0 22px; }
+.mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }
+.mid .face { margin-bottom: 12px; }
+.act { font-size: 17px; font-weight: 500; line-height: 1.35; color: var(--ink); }
+.task { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); text-wrap: balance; }
+.mid .task, .end .task { max-width: 30ch; }
+.plan-head { flex: none; display: flex; align-items: center; gap: 14px; margin-top: 24px; }
+.plan-head .face { box-shadow: 0 0 0 3px var(--paper-raised), 0 0 0 5px var(--gold); }
+.plan-head + .task { margin-top: 16px; }
+.plan { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 20px; }
+.plan li { min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 12px; border-radius: 12px; background: var(--paper-deep); font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--ink); }
+.plan li i, .confirm i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; font-style: normal; }
+.plan li i::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-deep); }
+.plan li.risky i, .confirm i { border-radius: 50%; background: var(--vermilion); color: var(--paper-raised); font-family: var(--mono); font-size: 12px; line-height: 1; }
+.plan li.risky i::before { content: none; }
+.confirm { flex: none; display: flex; align-items: center; gap: 10px; margin: 16px 0 12px; padding-left: 12px; font-size: 15px; font-weight: 500; color: var(--ink); }
+.screen-plan .err { margin: 12px 0 0; }
+.walk-head { flex: none; display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 24px; text-align: center; }
+.walk-head .hd { font-size: 2.25rem; }
+.ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
+.ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
+.sofar { flex: none; display: flex; flex-direction: column; margin-top: 24px; }
+.sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 4px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
+.sofar li:first-child { border-top: 0; }
+.sofar .n { width: 22px; flex: none; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--mute-deep); }
+.sofar .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sofar li.now { padding: 12px 14px 12px 12px; border: 1px solid var(--gold-rich); border-radius: 12px; background: var(--gold-wash); color: var(--ink); font-size: 15px; }
+.sofar li.now + li { border-top: 0; }
+.sofar li.now .n { color: var(--gold-deep); }
+.sofar li.now q { font-size: 13px; color: var(--muted); }
+.screen-walking > .task { margin-top: 24px; text-align: center; }
+.bar { position: sticky; bottom: 0; flex: none; height: 44px; margin-top: 16px; display: flex; border-radius: 10px; overflow: hidden; background: var(--lacquer); border: 1px solid var(--lacquer-edge); color: var(--inst-text); }
+.bar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.bar .ic { color: var(--gold); }
+.end { flex: none; display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 56px; text-align: center; }
+.end .face { margin-bottom: 14px; }
+.end.is-still .face { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
+.end .hd { font-size: 3rem; }
+.screen-end .btn-big { margin-top: 24px; }
+.command-line { display: block; padding: 10px 12px; border-radius: 10px; background: var(--paper-deep); font-family: var(--mono); font-size: 12px; color: var(--ink); }

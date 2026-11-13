@@ -12,47 +12,41 @@ export const COPY = {
   /** How a walk is started: the command as the web app publishes it. Change it there and here together. */
   command: 'npx @impeccable/reviews walk',
 
-  /** No walk running. With an account, it points at the popup's Personas, or signs in first. */
-  idle: {
-    line: 'No walk running.',
-    how: 'Start one from your terminal:',
-    also: 'Or start one from your terminal:',
-    personas: 'Pick a persona from the Impeccable icon, then press Walk this tab.',
-    open: 'Open personas',
-    signIn: 'Sign in to walk a tab with a persona.',
-    signInAction: 'Sign in',
-    signInFailed: 'Sign-in didn’t finish. Try again.',
-  },
-  /** Once, on the first walk ever. */
-  intro: {
-    line: (name) => `${name || 'Your walker'} clicks, scrolls and types on your site, like a visitor.`,
-    more: 'Pause, take over or stop it any time, right here.',
-    ok: 'Got it',
-  },
+  /** No account to start from here (the store build): the terminal. */
+  idle: { line: 'No walk running.', how: 'Start one from your terminal:' },
   copy: { action: 'Copy command', done: 'Copied' },
 
-  waiting: { line: (name) => `${name || 'Your walker'} is on the way.` },
+  signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.' },
+  top: { walking: 'Walking', noSite: 'Open a web page to walk it.' },
 
-  who: {
-    visit: { new: 'New here', returning: 'Has been here before' },
-    device: { desktop: 'Desktop', mobile: 'Phone', tablet: 'Tablet' },
+  home: {
+    ask: (name) => `What should ${name} try?`,
+    who: 'Personas',
+    send: 'Send',
+    mic: 'Talk to type (coming in V2)',
+    none: 'No personas yet.',
+    failed: 'Couldn’t load your personas.',
+  },
+  why: {
+    tab: 'This tab can’t be walked. Open a web page first.',
+    unavailable: 'Walks from the extension aren’t available yet.',
+    scope: 'Sign in again to start walks.',
+    plan: 'That plan ran out. Send the task again.',
+    failed: 'Couldn’t do that. Try again.',
+  },
+  plan: {
+    reading: (name) => `${name} is reading the task…`,
+    title: (name) => `${name}’s plan`,
+    risky: 'Some steps can’t be undone. Go ahead?',
+    edit: 'Edit the task',
+    start: 'Start walk',
   },
 
   walking: {
-    steps: 'Steps',
-    follow: 'Follow along',
-    checks: 'Done when',
-    progress: (met, all) => `${met} of ${all} done`,
+    line: (name) => `${name || 'Your walker'} is on the way`,
     first: (name) => `${name || 'Your walker'} is taking a first look.`,
-    issue: 'Issue',
-    now: 'Now',
-    earlier: (n) => (n === 1 ? '1 earlier step' : `${n} earlier steps`),
-    all: (n) => (n === 1 ? 'The 1 step so far' : `All ${n} steps so far`),
   },
-
-  controls: { pause: 'Pause', resume: 'Continue', takeover: 'Take over', handback: 'Hand back', stop: 'Stop' },
-  /** The same three, as one switch: who is driving the tab. */
-  drive: { walker: (name) => `${name || 'Walker'} drives`, paused: 'Paused', you: 'You drive' },
+  controls: { resume: 'Continue', handback: 'Hand back', stop: 'Stop' },
 
   paused: { line: (name) => `Paused. ${name || 'Your walker'} waits right here.` },
   /**
@@ -61,7 +55,7 @@ export const COPY = {
    * is paused; no screenshots are taken while it is paused.
    */
   signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
-  /** Before a deed the server marked (delete, pay, send), or before another site: nothing is done until Yes. */
+  /** Before a deed the server marked (delete, pay, send), or before another site, on a walk with no plan: nothing is done until Yes. */
   ask: {
     title: 'Are you sure?',
     go: (name, host) => `Let ${name || 'your walker'} go to ${host}?`,
@@ -70,33 +64,21 @@ export const COPY = {
   },
   takeover: { line: (name) => `Your turn. ${name || 'Your walker'} picks up where you leave off.` },
 
-  done: {
-    clean: (name) => `${name || 'Your walker'} finished. No issues.`,
-    issues: (name, n) => `${name || 'Your walker'} finished and found ${issues(n)}.`,
-    unfinished: (name, n) => (n > 0 ? `${name || 'Your walker'} could not finish, and found ${issues(n)}.` : `${name || 'Your walker'} could not finish.`),
-    /** The person said No at step `n`: the walk's page says it in these words. */
+  end: {
+    done: (name) => `${name || 'Your walker'}’s done.`,
+    stopped: (name) => `You stopped ${name || 'the walk'}.`,
+    failed: 'The walk ended.',
+    found: (name, n) => `${name || 'Your walker'} found ${issues(n)}`,
+    beforeStop: 'before you stopped the walk',
     saidNo: (name, n) => `You said No at step ${n}, so ${name || 'your walker'} didn’t get it done.`,
-    plain: 'This walk is over.',
-    again: 'Watch it again',
-    step: (n) => `Step ${n}`,
+    see: (name) => `See ${name ? `${name}’s` : 'the'} walk`,
   },
-
-  stopped: { line: 'You stopped this walk.', how: 'Start another from your terminal:' },
 
   failed: {
-    'tab-closed': 'The tab was closed, so the walk ended.',
-    connection: 'The connection dropped, so the walk ended.',
+    'tab-closed': 'The tab was closed.',
+    connection: 'The connection dropped.',
     'switched-off': 'Walks were switched off, so this one stopped.',
-    'left-site': (site) => `The page left ${hostOf(site) || 'the allowed address'}, so the walk ended.`,
-    how: 'Start it again from your terminal:',
-  },
-
-  /** What the guard stopped, told in the feed where it happened. */
-  kept: {
-    navigation: (url) => (hostOf(url) ? `Kept on this site: ${hostOf(url)} was not opened.` : 'Kept on this site.'),
-    popup: () => 'A new tab was closed.',
-    download: () => 'A download was refused.',
-    'file-picker': () => 'A file picker stayed shut.',
+    'left-site': (site) => `The page left ${hostOf(site) || 'the allowed address'}.`,
   },
 
   badge: {

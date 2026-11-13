@@ -437,7 +437,7 @@ test('Remove asks first, and Keep keeps them', async () => {
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1 } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1, personas = [], plan = { ok: false } } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -468,10 +468,10 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
   Object.assign(globalThis, {
     document, location: { search: '' }, addEventListener() {},
     chrome: {
-      runtime: { async sendMessage(message) { sent.push(message); return message.account === 'status' ? status : message.account === 'sign-in' ? signIn : undefined; } },
+      runtime: { async sendMessage(message) { sent.push(message); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk: { ok: true } }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
-      tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
+      tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
     },
   });
   await import(`${pathToFileURL(path.join(root, 'walks/panel/panel.js')).href}?n=${panels += 1}`);
@@ -480,38 +480,44 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
   const show = async (next) => { for (const listener of changed) listener({ view: { newValue: next } }); await tick(); };
   const press = async (act) => { for (const listener of app.querySelector(`[data-act="${act}"]`).listeners.click) listener({}); for (let n = 0; n < 3; n += 1) await tick(); };
   const switchTo = async (id) => { front = id; for (const listener of activated) listener({ tabId: id }); for (let n = 0; n < 3; n += 1) await tick(); };
-  return { app, body: document.body, sent, opened, local, session, acts, show, press, switchTo, intro: () => app.querySelector('.intro') !== null };
+  return { app, body: document.body, sent, opened, local, session, acts, show, press, switchTo };
 }
 
-test('the first walk ever shows its intro in the side panel, once, and opens no tab', async () => {
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn });
-  assert.equal(h.intro(), false);
-  await h.show(STUBS.walking);
-  assert.deepEqual([h.intro(), h.local.onboarded, h.opened], [true, true, []]);
-  await h.press('intro-ok');
-  assert.equal(h.intro(), false);
-  await h.show(STUBS.done);
-  await h.show(STUBS.walking);
-  assert.equal(h.intro(), false, 'not on the next walk');
-  const later = await sidePanel({ view: STUBS.walking, status: signedIn, onboarded: true });
-  assert.equal(later.intro(), false, 'not in a panel opened later');
-});
-
-test('the side panel shows a finished walk on its own tab alone, and a site’s root as no page', async () => {
+test('the side panel shows a finished walk on its own tab alone, with one button to its results naming the count', async () => {
   const { reduce } = await import('../extension/walks/view.js');
   const issues = [{ step: 5, page: '/edit.html', what: 'Not saved' }, { step: 8, page: '/', what: 'Gone at once' }];
-  const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome: { finished: true, issues } }].reduce(reduce, STUBS.waiting);
+  const replayUrl = 'https://impeccable.reviews/app/tidy/outings/o-1';
+  const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome: { finished: true, issues }, replayUrl }].reduce(reduce, STUBS.waiting);
   const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
-  assert.deepEqual([h.body.dataset.state, h.app.querySelectorAll('.finding-selector').map((node) => node.textContent)], ['done', ['/edit.html']]);
+  const results = () => h.app.querySelector('[data-act="results"]');
+  assert.deepEqual([h.body.dataset.screen, results().attributes['data-issues']], ['end', '2']);
   await h.switchTo(8);
-  assert.deepEqual([h.body.dataset.state, h.acts().includes('personas')], ['idle', true]);
+  assert.equal(h.body.dataset.screen, 'home');
   await h.show({ ...STUBS.walking, tab: 7 });
-  assert.equal(h.body.dataset.state, 'walking', 'a walk under way shows on every tab');
+  assert.deepEqual([h.body.dataset.screen, h.acts()], ['walking', ['stop']], 'a walk under way shows on every tab, with Stop alone');
   await h.show(ended);
   await h.switchTo(7);
-  assert.equal(h.body.dataset.state, 'done');
+  await h.press('results');
+  assert.deepEqual([h.opened.map((made) => made.url), h.body.dataset.screen], [[replayUrl], 'home'], 'the results open, and the panel goes home');
   const later = await sidePanel({ view: ended, status: signedIn, tab: 8 });
-  assert.equal(later.body.dataset.state, 'idle', 'opened later on another tab');
+  assert.equal(later.body.dataset.screen, 'home', 'opened later on another tab');
+});
+
+test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
+  const plan = { id: 'p-1', risky: true, steps: [{ text: 'Add a to-do', risky: false }, { text: 'Delete it', risky: true }] };
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex' }], plan: { ok: true, plan }, tab: 7 });
+  assert.equal(h.body.dataset.screen, 'home');
+  await h.press('pick-1');
+  const box = h.app.querySelector('textarea');
+  box.value = 'Add a to-do, then delete it.';
+  await h.press('send');
+  assert.deepEqual(JSON.parse(JSON.stringify(h.sent.filter((m) => m.account === 'plan'))), [{ account: 'plan', persona: { mine: 'alex' }, task: 'Add a to-do, then delete it.', tabId: 7 }]);
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('[data-risky]').length, h.app.querySelectorAll('[data-confirm]').length], ['plan', 1, 1]);
+  await h.press('edit');
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelector('textarea').value], ['home', 'Add a to-do, then delete it.']);
+  await h.press('send');
+  await h.press('start');
+  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId]), [[{ mine: 'alex' }, 'p-1', 7]]);
 });
 
 // The steps as the server lands them after a No: that deed and each one after it marked `no`; a deed the walk could not
@@ -519,34 +525,27 @@ test('the side panel shows a finished walk on its own tab alone, and a site’s 
 for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' }, 2], ['could not ask at step 2', { 2: 'held' }, null]]) {
   test(`the side panel’s ending names the step only for a No: ${label}`, async () => {
     const { reduce } = await import('../extension/walks/view.js');
-    const { COPY } = await import('../extension/walks/panel/copy.js');
     const steps = [1, 2, 3].map((n) => ({ type: 'step', step: { n, did: marks[n] ? 'Didn’t click “Delete”' : 'Clicked “Add”', said: '', ...(marks[n] ? { refused: marks[n] } : {}) } }));
     const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, ...steps, { type: 'finish', outcome: { finished: false, issues: [] } }].reduce(reduce, STUBS.waiting);
     const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
-    const line = h.app.querySelector('p.line').textContent;
-    if (named) assert.deepEqual([line.includes(`step ${named}`), line === COPY.done.unfinished('Mira', 0)], [true, false]);
-    else assert.equal(line, COPY.done.unfinished('Mira', 0));
+    const line = h.app.querySelector('p.line')?.textContent;
+    if (named) assert.ok(line.includes(`step ${named}`));
+    else assert.equal(line, undefined);
   });
 }
 
-// No walk running: never a dead end. With the account the popup uses, the panel signs in or points at Personas.
+// No walk running: never a dead end. Signed out, the panel signs in and then shows the personas; with no account, the terminal.
 for (const [label, status, offers] of [
   ['signed out', { ok: true, available: true, signedIn: false }, 'sign-in'],
-  ['signed in', signedIn, 'personas'],
-  ['a server that takes no sign-ins', { ok: true, available: false }, null],
+  ['a server that takes no sign-ins', { ok: true, available: false }, 'copy'],
 ]) {
-  test(`with no walk running, the side panel offers the terminal and ${offers ?? 'nothing else'}: ${label}`, async () => {
-    const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true } });
-    assert.deepEqual(h.acts().filter((act) => act !== 'copy'), offers ? [offers] : []);
-    assert.ok(h.acts().includes('copy'));
-    if (!offers) return;
+  test(`with no walk running, the side panel offers ${offers}: ${label}`, async () => {
+    const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+    assert.deepEqual(h.acts(), [offers]);
+    if (offers !== 'sign-in') return;
     await h.press(offers);
-    if (offers === 'sign-in') {
-      assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');
-      assert.deepEqual([h.body.dataset.account, h.acts().includes('personas')], ['signed-in', true]);
-    } else {
-      assert.deepEqual([h.opened, h.session.popupTab], [['popup'], 'personas']);
-    }
+    assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');
+    assert.deepEqual([h.body.dataset.account, h.body.dataset.screen, h.acts().includes('send')], ['signed-in', 'home', true]);
   });
 }
 

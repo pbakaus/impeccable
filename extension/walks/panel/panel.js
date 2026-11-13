@@ -1,37 +1,39 @@
-// The side panel: a walk as it happens. It draws one object, the walk's view (../view.js), which the worker keeps
-// in chrome.storage.session; it decides nothing and holds nothing of its own beyond where the feed is scrolled.
-// Every word comes from copy.js. No framework and no build: this folder loads as it is.
+// The side panel. Signed in, it is where a walk starts and ends: pick a persona, say what they should try, approve
+// their short plan, watch them walk with only Stop to press, then one big button to what they found. A walk under way
+// is one object, the walk's view (../view.js), which the worker keeps in chrome.storage.session; the panel decides
+// nothing of it. Before a walk (the persona, the task, the plan) is the panel's own. Every word comes from copy.js.
+// No framework and no build: this folder loads as it is.
 //
-//   panel.html                      the live walk
+//   panel.html                      the live panel
 //   panel.html?stub=<name>          a stand-in state (stub.js), for looking at each one
-//   panel.html?variant=<name>       how a walk under way is arranged: feed (the default), checklist or now
 import { COPY } from './copy.js';
+import { resultLink } from '../handoff.js';
 import { emptyView, isLive, reduce } from '../view.js';
 import { BUILD } from '../../shared/build.js';
 
-const VARIANTS = ['feed', 'checklist', 'now'];
 const params = new URLSearchParams(location.search);
-const variant = VARIANTS.includes(params.get('variant')) ? params.get('variant') : 'feed';
 const app = document.getElementById('app');
 
 let view = emptyView(false);
-/** Whether the feed keeps to its newest step. */
-let follow = true;
 /** What a control does: asks the worker, or, on a stand-in, walks the same state machine here. */
 let act = () => undefined;
-/** The account as the popup sees it (account/worker.js `status`), for the empty state: null when there is none to offer. */
+/** The account as the popup sees it (account/worker.js `status`): null when there is none to offer. */
 let account = null;
-/** Whether the panel's last sign-in did not finish: said until one does, whatever redraws the panel meanwhile. */
+/** Whether the panel's last sign-in did not finish: said until one does. */
 let signInFailed = false;
-/** The first-walk intro: whether it was ever shown (chrome.storage.local `onboarded`), and whether it is up now. */
-let seen = true;
-let intro = false;
 /**
- * The tab this panel's window shows (undefined on a stand-in, which draws every state). A finished walk's result is
- * drawn on its own tab alone: on any other, the panel is as it is with no walk, so an old result never reads as this
- * page's. A walk stopped or failed still says why wherever the panel is, with the way to start again.
+ * The tab this panel's window shows, and its address (undefined on a stand-in). A finished walk's result is drawn on
+ * its own tab alone; a walk stopped or failed says so wherever the panel is.
  */
 let here;
+let hereUrl = '';
+/** Before a walk: the personas, the one picked, the task, and where the person is (`home`, `planning`, `plan`). */
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '' };
+/** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
+let walker = null;
+let walkUrl = null;
+/** Set once the person opened a walk's results: the panel goes home. A new walk clears it. */
+let ended = false;
 
 /* ------------------------------ building blocks ------------------------------ */
 
@@ -49,357 +51,315 @@ function el(tag, props = {}, ...children) {
 }
 
 const SVG = 'http://www.w3.org/2000/svg';
-function tick() {
+const ICONS = {
+  mic: ['M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z', 'M5 11a7 7 0 0 0 14 0M12 18v3'],
+  stop: ['M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z'],
+  out: ['M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
+};
+function icon(name) {
   const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('class', 'ic');
+  svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(SVG, 'path');
-  path.setAttribute('d', 'M2.5 6.4 5 8.8 9.6 3.4');
-  svg.append(path);
+  for (const d of ICONS[name]) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
   return svg;
 }
 
-const name = () => view.who?.name ?? '';
-const met = () => (view.workflow?.doneWhen ?? []).filter((check) => check.met).length;
-
-/** The walker's face: their initial, and a light that says whether they are at it. */
-function face() {
-  return el('span', { class: 'face', 'aria-hidden': true, 'data-light': view.state }, el('span', { class: 'face-letter', text: (name().trim()[0] ?? '').toUpperCase() }), el('span', { class: 'face-light' }));
+/**
+ * A persona's face: one cell of its face sheet (six moods, three across and two down), cropped as the app crops it
+ * (src/admin-ui/face.ts): tight under 60px, head and shoulders above. No picture: the initial in the same circle.
+ */
+const CELLS = ['neutral', 'curious', 'confident', 'confused', 'frustrated', 'delighted'];
+function face(person, size, mood = 'neutral', cls = '') {
+  const i = Math.max(0, CELLS.indexOf(mood));
+  const loose = size >= 60;
+  const cx = ((i % 3) + 0.5) / 3;
+  const cy = (Math.floor(i / 3) + (loose ? 0.45 : 0.4)) / 2;
+  const picture = person?.face ? `--face:url("${person.face.replace(/["\\]/g, '')}");--face-cx:${cx.toFixed(4)};--face-cy:${cy.toFixed(4)};--face-zoom:${(loose ? 3 : 2 / 0.55).toFixed(3)};` : '';
+  return el('span', { class: `face ${cls}`.trim(), 'aria-hidden': true, 'data-mood': mood, style: `width:${size}px;height:${size}px;${picture}` },
+    person?.face ? null : el('span', { class: 'face-letter', text: (person?.name?.trim()[0] ?? '').toUpperCase() }));
 }
 
-function who({ compact = false } = {}) {
-  if (!view.who?.name) return null;
-  const facts = [view.who.visit ? COPY.who.visit[view.who.visit] : null, COPY.who.device[view.who.device] ?? null].filter(Boolean);
-  return el('div', { class: compact ? 'who who-compact' : 'who' },
-    face(),
-    el('div', { class: 'who-text' },
-      el('p', { class: 'who-name', text: view.who.name }),
-      view.who.role && !compact ? el('p', { class: 'who-role', text: view.who.role }) : null,
-      facts.length > 0 ? el('p', { class: 'who-facts' }, facts.map((fact) => el('span', { text: fact }))) : null,
+const hostOf = (url) => { try { return /^https?:/.test(url) ? new URL(url).host : ''; } catch { return ''; } };
+const name = () => view.who?.name || walker?.name || '';
+/** The persona walking, with its face when it is the one picked here. */
+const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
+
+function top(url = hereUrl) {
+  const host = hostOf(url);
+  return el('div', { class: 'top' }, host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }));
+}
+
+function button(action, text, kind = 'sec', onclick = () => act(action)) {
+  return el('button', { class: `btn btn-${kind}`, type: 'button', 'data-act': action, text, onclick });
+}
+
+/* ------------------------------ before a walk ------------------------------ */
+
+const picked = () => pre.personas?.[pre.pick] ?? null;
+const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
+
+async function loadPersonas() {
+  const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
+  pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
+  if (!isLive(view)) render();
+}
+
+function home() {
+  const person = picked();
+  if (pre.personas === undefined) return [top(), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
+  if (!person) return [top(), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }))];
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
+  box.value = pre.task;
+  const send = () => { pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
+  box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
+  return [
+    top(),
+    el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
+    pre.personas.length > 1 ? el('div', { class: 'strip', role: 'group', 'aria-label': COPY.home.who }, pre.personas.map((each, i) => el('button', {
+      type: 'button', class: i === pre.pick ? 'sel' : '', 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
+      onclick: () => { pre.pick = i; pre.note = ''; render(); },
+    }, face(each, 38)))) : null,
+    el('div', { class: 'box' },
+      pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
+      el('div', { class: 'field' }, box, el('div', { class: 'row' },
+        el('span', { class: 'mic', title: COPY.home.mic, 'aria-label': COPY.home.mic }, icon('mic'), el('em', { text: 'V2' })),
+        el('span', { class: 'grow' }),
+        button('send', COPY.home.send, 'gold', send))),
     ),
-  );
-}
-
-function workflow() {
-  if (!view.workflow) return null;
-  // A goal given for the occasion has no name: the goal stands alone.
-  return el('div', { class: 'workflow' }, view.workflow.name ? el('p', { class: 'workflow-name', text: view.workflow.name }) : null, el('p', { class: 'workflow-goal', text: view.workflow.goal }));
-}
-
-function checks() {
-  const list = view.workflow?.doneWhen ?? [];
-  if (list.length === 0) return null;
-  return el('ul', { class: 'checks' }, list.map((check) => el('li', { class: 'check', 'data-met': check.met ? 'yes' : 'no' }, el('span', { class: 'check-box' }, check.met ? tick() : null), el('span', { class: 'check-text', text: check.text }))));
-}
-
-const progress = () => el('span', { class: 'progress', text: COPY.walking.progress(met(), view.workflow.doneWhen.length) });
-
-/** The checks as one line that ticks, open to the list. */
-function checksLine() {
-  if (!view.workflow?.doneWhen.length) return null;
-  return el('details', { class: 'checks-line' },
-    el('summary', {}, el('span', { class: 'section-name', text: COPY.walking.checks }), el('span', { class: 'pips', 'aria-hidden': true }, view.workflow.doneWhen.map((check) => el('span', { class: 'pip', 'data-met': check.met ? 'yes' : 'no' }))), progress()),
-    checks(),
-  );
-}
-
-function issueTag() {
-  return el('span', { class: 'ks-tag', text: COPY.walking.issue });
-}
-
-function step(entry, { latest = false, brief = false } = {}) {
-  return el('li', { class: 'step', 'data-n': entry.n, 'data-latest': latest ? 'yes' : undefined, 'data-issue': entry.issue ? 'yes' : undefined },
-    el('span', { class: 'step-n', text: String(entry.n) }),
-    el('div', { class: 'step-body' },
-      el('p', { class: 'step-did', text: entry.did }, brief && entry.issue ? [' ', issueTag()] : null),
-      !brief && entry.said ? el('p', { class: 'step-said', text: entry.said }) : null,
-      !brief && entry.issue ? el('p', { class: 'step-issue' }, issueTag(), el('span', { text: entry.issue })) : null,
-    ),
-  );
-}
-
-function note(entry) {
-  return el('li', { class: 'note', 'data-kind': entry.what }, el('span', { class: 'note-mark', 'aria-hidden': true }), el('p', { text: (COPY.kept[entry.what] ?? COPY.kept.navigation)(entry.url) }));
-}
-
-/** The steps in order, each thing the guard stopped where it happened. */
-function feed({ brief = false, upTo = Infinity } = {}) {
-  const steps = view.steps.filter((entry) => entry.n <= upTo);
-  const newest = view.steps.at(-1)?.n;
-  const rows = [];
-  for (const entry of view.notes.filter((kept) => kept.after === 0)) rows.push(note(entry));
-  for (const entry of steps) {
-    rows.push(step(entry, { latest: entry.n === newest && view.state === 'walking', brief }));
-    if (!brief) for (const kept of view.notes.filter((item) => item.after === entry.n)) rows.push(note(kept));
-  }
-  return el('ol', { class: brief ? 'feed feed-brief' : 'feed' }, rows);
-}
-
-function button(action, kind = 'secondary') {
-  return el('button', { class: `btn btn-${kind}`, type: 'button', 'data-act': action, text: COPY.controls[action], onclick: () => act(action) });
-}
-
-/** Pause, Take over, Stop: or whichever of them the moment offers. */
-function controls() {
-  if (view.state === 'paused') return el('div', { class: 'controls' }, button('resume'), button('takeover'), button('stop', 'primary'));
-  if (view.state === 'takeover') return el('div', { class: 'controls' }, button('handback'), button('stop', 'primary'));
-  return el('div', { class: 'controls' }, button('pause'), button('takeover'), button('stop', 'primary'));
-}
-
-/** The same choices as one switch: who is driving the tab. */
-function driveSwitch() {
-  const caps = [
-    { key: 'walking', text: COPY.drive.walker(name()), action: view.state === 'paused' ? 'resume' : 'handback' },
-    { key: 'paused', text: COPY.drive.paused, action: 'pause', off: view.state === 'takeover' },
-    { key: 'takeover', text: COPY.drive.you, action: 'takeover' },
   ];
-  return el('div', { class: 'setting-segmented drive', role: 'group' }, caps.map((cap) => el('button', {
-    type: 'button', class: cap.key === view.state ? 'active' : '', 'aria-pressed': cap.key === view.state ? 'true' : 'false', 'data-act': cap.key === view.state ? undefined : cap.action,
-    disabled: cap.off, text: cap.text, onclick: () => { if (cap.key !== view.state) act(cap.action); },
-  })));
 }
 
-function status() {
-  const line = view.state === 'paused' ? (view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name())) : view.state === 'takeover' ? COPY.takeover.line(name()) : null;
-  return line ? el('p', { class: 'status', role: 'status', text: line }) : null;
+const WHY = { tab: COPY.why.tab, unavailable: COPY.why.unavailable, scope: COPY.why.scope, plan: COPY.why.plan };
+
+/** Send: the person's task becomes the persona's short plan. */
+async function plan() {
+  const person = picked();
+  pre.screen = 'planning';
+  pre.note = '';
+  render();
+  const answer = await chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task: pre.task, tabId: here }).catch(() => null);
+  if (pre.screen !== 'planning') return;
+  if (answer?.ok) { pre.plan = answer.plan; pre.screen = 'plan'; } else { pre.note = WHY[answer?.why] ?? COPY.why.failed; pre.screen = 'home'; }
+  render();
 }
 
-/** The walk's question, and the only two answers: nothing is done until Yes. */
+/** Start walk: the approved plan goes with the walk, which then asks nothing mid-way. */
+async function go(start) {
+  const person = picked();
+  start.disabled = true;
+  walker = { name: person.name, face: person.face ?? null };
+  ended = false;
+  await chrome.storage.session.set({ walker }).catch(() => undefined);
+  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id }).catch(() => null);
+  if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
+  pre.note = WHY[answer?.why] ?? COPY.why.failed;
+  render();
+}
+
+function planning() {
+  const person = picked();
+  return [top(), el('div', { class: 'mid' }, face(person, 112, 'curious', 'is-thinking'), el('p', { class: 'act', text: COPY.plan.reading(person.name) }), el('q', { class: 'task', text: pre.task }), el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
+}
+
+function planned() {
+  const person = picked();
+  const start = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'start', text: COPY.plan.start, onclick: () => { void go(start); } });
+  return [
+    top(),
+    el('div', { class: 'plan-head' }, face(person, 56, 'confident'), el('h2', { class: 'hd', text: COPY.plan.title(person.name) })),
+    el('q', { class: 'task', text: pre.task }),
+    el('ul', { class: 'plan' }, pre.plan.steps.map((line) => el('li', { class: line.risky ? 'risky' : '', 'data-risky': line.risky ? 'yes' : undefined }, el('i', { text: line.risky ? '!' : '' }), el('span', { text: line.text })))),
+    el('span', { class: 'grow' }),
+    pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
+    pre.plan.risky ? el('p', { class: 'confirm', 'data-confirm': true }, el('i', { text: '!' }), COPY.plan.risky) : null,
+    el('div', { class: 'pair' }, button('edit', COPY.plan.edit, 'sec', () => { pre.screen = 'home'; pre.plan = null; pre.note = ''; render(); app.querySelector('textarea')?.focus(); }), start),
+  ];
+}
+
+/* ------------------------------ a walk under way ------------------------------ */
+
+const moodOf = (step) => step?.mood ?? (step?.issue ? 'confused' : step ? 'curious' : 'neutral');
+
+/** A question a walk from the terminal still asks: nothing is done until Yes. A planned walk asks none. */
 function question() {
   if (!view.ask) return null;
   const line = view.ask.kind === 'go' ? COPY.ask.go(name(), view.ask.what) : view.ask.what;
   return el('div', { class: 'ask', role: 'alertdialog', 'aria-label': COPY.ask.title, 'data-kind': view.ask.kind },
-    el('p', { class: 'ask-title', text: COPY.ask.title }),
     el('p', { class: 'ask-what', text: line }),
-    el('div', { class: 'controls' },
-      el('button', { class: 'btn btn-secondary', type: 'button', 'data-act': 'no', text: COPY.ask.no, onclick: () => act('no') }),
-      el('button', { class: 'btn btn-primary', type: 'button', 'data-act': 'yes', text: COPY.ask.yes, onclick: () => act('yes') }),
-    ),
+    el('div', { class: 'pair' }, button('no', COPY.ask.no), button('yes', COPY.ask.yes, 'gold')),
   );
 }
 
-function followSwitch() {
-  return el('label', { class: 'follow' },
-    el('span', { text: COPY.walking.follow }),
-    el('span', { class: 'setting-switch' }, el('input', { type: 'checkbox', checked: follow, 'data-follow': true, onchange: (event) => { follow = event.target.checked; if (follow) toNewest(); } }), el('span', { class: 'setting-switch-track' })),
-  );
+/** A walk that paused itself (a sign-in) or was held goes on only by the person's word. */
+function held() {
+  if (view.state === 'paused') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }), button('resume', COPY.controls.resume, 'gold'));
+  if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), button('handback', COPY.controls.handback, 'gold'));
+  return null;
 }
 
-function sectionHead(text, ...rest) {
-  return el('div', { class: 'section-head' }, el('h2', { class: 'section-name', text }), ...rest);
+function walkingScreen() {
+  const steps = [...view.steps].reverse();
+  return [
+    top(view.site ?? hereUrl),
+    el('div', { class: 'walk-head' }, face(walking(), 112, moodOf(view.steps.at(-1))), el('h2', { class: 'hd', role: 'status', text: COPY.walking.line(name()) })),
+    question(),
+    held(),
+    steps.length > 0 ? el('ol', { class: 'sofar' }, steps.map((step, i) => el('li', { class: i === 0 ? 'now' : '', 'data-n': step.n, 'data-issue': step.issue ? 'yes' : undefined },
+      el('span', { class: 'n', text: String(step.n).padStart(2, '0') }),
+      el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : el('p', { class: 'task', text: COPY.walking.first(name()) }),
+    el('span', { class: 'grow' }),
+    el('div', { class: 'bar' }, el('button', { type: 'button', 'data-act': 'stop', onclick: () => act('stop') }, icon('stop'), COPY.controls.stop)),
+  ];
 }
 
-/** How to start a walk: the command, and one press to copy it. */
-function command(how) {
-  const copy = el('button', { class: 'btn btn-secondary', type: 'button', 'data-act': 'copy', text: COPY.copy.action });
+/* ------------------------------ the end ------------------------------ */
+
+/** What the walk found: the server's count once it finished, else the issues its steps showed. */
+const found = () => (view.outcome ? view.outcome.issues.length : view.steps.filter((step) => step.issue).length);
+const resultsUrl = () => view.outcome?.replayUrl ?? walkUrl;
+
+function end() {
+  const state = view.state;
+  const n = found();
+  const link = resultsUrl();
+  const reason = state === 'failed' ? view.failure?.reason ?? 'connection' : null;
+  const why = reason ? (typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site) : COPY.failed[reason]) : null;
+  // The first deed the person said No to (a walk with no plan): the walk's page says it in these words. `held` is not a No.
+  const saidNo = view.outcome && !view.outcome.finished ? view.steps.find((step) => step.refused === 'no')?.n : undefined;
+  const head = state === 'done' ? COPY.end.done(name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
+  const label = n > 0 ? COPY.end.found(name(), n) : COPY.end.see(name());
+  const results = el('button', { class: 'btn btn-gold btn-big', type: 'button', 'data-act': 'results', 'data-issues': String(n), disabled: !link,
+    onclick: () => { void chrome.tabs.create({ url: link, active: true }).catch(() => undefined); ended = true; render(); } },
+  el('span', { class: 'big-t' }, el('b', { text: label }), n > 0 && state === 'stopped' ? el('small', { text: COPY.end.beforeStop }) : null), icon('out'));
+  return [
+    top(view.site ?? hereUrl),
+    el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
+      face(walking(), 132, state === 'done' ? 'delighted' : state === 'failed' ? 'confused' : 'neutral'),
+      el('h2', { class: 'hd', role: 'status', text: head }),
+      why ? el('p', { class: 'err', role: 'alert', text: why }) : saidNo ? el('p', { class: 'line task', text: COPY.end.saidNo(name(), saidNo) }) : view.workflow?.goal ? el('q', { class: 'task', text: view.workflow.goal }) : null),
+    el('span', { class: 'grow' }),
+    results,
+  ];
+}
+
+/* ------------------------------ signed out, and no account ------------------------------ */
+
+const MARK = ['M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z', 'M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z'];
+function mark(cls) {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('class', cls);
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const d of MARK) { const path = document.createElementNS(SVG, 'path'); path.setAttribute('d', d); svg.append(path); }
+  return svg;
+}
+
+/** The extension's own sign-in, as the popup's Sign in does it. */
+async function signIn(control) {
+  control.disabled = true;
+  const answer = await chrome.runtime.sendMessage({ account: 'sign-in' }).catch(() => null);
+  signInFailed = answer?.ok !== true;
+  if (!signInFailed) account = answer.available === true ? answer : null;
+  if (account?.signedIn === true) void loadPersonas();
+  render();
+}
+
+function signedOut() {
+  const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), el('span', { class: 'arrow', text: '→' }));
+  return [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro)];
+}
+
+/** How to start a walk with no account: the command, and one press to copy it. */
+function terminal() {
+  const copy = el('button', { class: 'btn btn-sec', type: 'button', 'data-act': 'copy', text: COPY.copy.action });
   copy.addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(COPY.command); } catch { return; }
     copy.textContent = COPY.copy.done;
     setTimeout(() => { copy.textContent = COPY.copy.action; }, 1600);
   });
-  return el('div', { class: 'command' }, el('p', { class: 'how', text: how }), el('code', { class: 'command-line', text: COPY.command }), copy);
+  return [el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.idle.line }), el('p', { class: 'task', text: COPY.idle.how }), el('code', { class: 'command-line', text: COPY.command }), copy)];
 }
-
-/* ------------------------------ a walk under way, three ways ------------------------------ */
-
-const emptyFeed = () => el('p', { class: 'feed-empty', text: COPY.walking.first(name()) });
-
-const ARRANGED = {
-  // The feed has the room; the checks are one line that ticks; the controls sit under the newest step.
-  feed: () => [
-    el('div', { class: 'head' }, who(), workflow()),
-    status(),
-    question(),
-    checksLine(),
-    sectionHead(COPY.walking.steps, el('span', { class: 'count', text: String(view.steps.length) }), followSwitch()),
-    el('div', { class: 'feed-scroll' }, view.steps.length > 0 || view.notes.length > 0 ? feed() : emptyFeed()),
-    el('footer', { class: 'bar' }, controls()),
-  ],
-  // The checks are the page; who drives is one switch at the top; the steps are a look away.
-  checklist: () => [
-    el('div', { class: 'instrument' }, driveSwitch(), button('stop', 'primary')),
-    el('div', { class: 'feed-scroll' },
-      who({ compact: true }),
-      status(),
-      question(),
-      workflow(),
-      view.workflow?.doneWhen.length ? sectionHead(COPY.walking.checks, progress()) : null,
-      checks(),
-      sectionHead(COPY.walking.now),
-      view.steps.length > 0 ? el('ol', { class: 'feed' }, step(view.steps.at(-1), { latest: view.state === 'walking' })) : emptyFeed(),
-      view.steps.length > 1 ? el('details', { class: 'all-steps' }, el('summary', { text: COPY.walking.all(view.steps.length) }), feed()) : null,
-    ),
-  ],
-  // What is happening now, large; everything before it as a short trail; the checks and controls at the foot.
-  now: () => {
-    const latest = view.steps.at(-1);
-    return [
-      el('div', { class: 'head' }, who()),
-      status(),
-      question(),
-      el('div', { class: 'now', 'data-issue': latest?.issue ? 'yes' : undefined },
-        latest ? [el('p', { class: 'now-did', 'data-n': latest.n }, el('span', { class: 'step-n', text: String(latest.n) }), el('span', { text: latest.did })), latest.said ? el('blockquote', { class: 'now-said', text: latest.said }) : null, latest.issue ? el('p', { class: 'step-issue' }, issueTag(), el('span', { text: latest.issue })) : null] : emptyFeed(),
-      ),
-      view.steps.length > 1 ? sectionHead(COPY.walking.earlier(view.steps.length - 1)) : null,
-      el('div', { class: 'feed-scroll' }, view.steps.length > 1 ? feed({ brief: true, upTo: latest.n - 1 }) : null),
-      el('footer', { class: 'bar' }, view.workflow?.doneWhen.length ? el('div', { class: 'foot-checks' }, checks()) : null, controls()),
-    ];
-  },
-};
-
-/** Once, on the first walk ever: what the walker does, and that the person can stop it. Got it puts it away. */
-function introNote() {
-  return el('div', { class: 'intro', role: 'note' },
-    el('p', { class: 'intro-line', text: COPY.intro.line(name()) }),
-    el('p', { class: 'intro-more', text: COPY.intro.more }),
-    el('button', { class: 'btn btn-secondary', type: 'button', 'data-act': 'intro-ok', text: COPY.intro.ok, onclick: () => { intro = false; render(); } }),
-  );
-}
-
-/* ------------------------------ every other state ------------------------------ */
-
-/** Opens the popup on Personas; where Chrome will not, the words above the button still say how. */
-function openPersonas(button) {
-  void chrome.storage.session.set({ popupTab: 'personas' }).catch(() => undefined);
-  chrome.action.openPopup().catch(() => {
-    button.hidden = true;
-    void chrome.storage.session.remove('popupTab').catch(() => undefined);
-  });
-}
-
-/** The extension's own sign-in, as the popup's Sign in does it. */
-async function signIn(button) {
-  button.disabled = true;
-  const answer = await chrome.runtime.sendMessage({ account: 'sign-in' }).catch(() => null);
-  signInFailed = answer?.ok !== true;
-  if (!signInFailed) account = answer.available === true ? answer : null;
-  render();
-}
-
-/** No walk running: the two ways to start one, the popup's Personas (signed in, or Sign in first) and the terminal. */
-function idle() {
-  if (!account) return [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.idle.line }), command(COPY.idle.how))];
-  const signedIn = account.signedIn === true;
-  const note = el('p', { class: 'how', text: signedIn ? COPY.idle.personas : signInFailed ? COPY.idle.signInFailed : COPY.idle.signIn });
-  const go = el('button', { class: 'btn btn-primary', type: 'button', 'data-act': signedIn ? 'personas' : 'sign-in', text: signedIn ? COPY.idle.open : COPY.idle.signInAction });
-  go.addEventListener('click', () => (signedIn ? openPersonas(go) : signIn(go)));
-  return [el('div', { class: 'quiet' }, el('p', { class: 'line', text: COPY.idle.line }), note, go, command(COPY.idle.also))];
-}
-
-function doneLine() {
-  const outcome = view.outcome;
-  if (!outcome) return COPY.done.plain;
-  // The first deed the person said No to; one the walk could not ask about (`held`) is not a No.
-  const saidNo = view.steps.find((entry) => entry.refused === 'no')?.n;
-  if (!outcome.finished) return saidNo ? COPY.done.saidNo(name(), saidNo) : COPY.done.unfinished(name(), outcome.issues.length);
-  return outcome.issues.length > 0 ? COPY.done.issues(name(), outcome.issues.length) : COPY.done.clean(name());
-}
-
-/** The issues of a finished walk: where, what, and what the walker said of it. */
-function issues() {
-  const list = view.outcome?.issues ?? [];
-  if (list.length === 0) return null;
-  return el('ul', { class: 'issues' }, list.map((issue) => {
-    // The server names a site's root `/`: beside the step it reads as a stray slash, so the step stands alone.
-    const page = issue.page.replace(/\/$/, '');
-    return el('li', { class: 'finding-item' },
-      el('div', { class: 'finding-row' }, el('span', { class: 'ks-tag', text: COPY.done.step(issue.step) }), page ? el('span', { class: 'finding-selector', text: page }) : null),
-      el('span', { class: 'finding-detail', text: issue.what }),
-      issue.said ? el('span', { class: 'finding-description', text: issue.said }) : null,
-    );
-  }));
-}
-
-const SCREENS = {
-  'signed-out': idle,
-  idle,
-  waiting: () => [el('div', { class: 'head' }, who(), workflow()), el('p', { class: 'status', role: 'status', 'data-busy': 'yes', text: COPY.waiting.line(name()) }), el('footer', { class: 'bar' }, el('div', { class: 'controls' }, button('stop', 'primary')))],
-  done: () => [
-    el('div', { class: 'head' }, who({ compact: true }), view.workflow?.name ? el('p', { class: 'workflow-name', text: view.workflow.name }) : null),
-    el('div', { class: 'feed-scroll' },
-      el('p', { class: 'line', role: 'status', text: doneLine() }),
-      checks(),
-      issues(),
-      view.outcome?.replayUrl ? el('p', {}, el('a', { class: 'link', 'data-act': 'replay', href: view.outcome.replayUrl, target: '_blank', rel: 'noreferrer', text: COPY.done.again })) : null,
-    ),
-  ],
-  stopped: () => [el('div', { class: 'head' }, who({ compact: true })), el('div', { class: 'quiet' }, el('p', { class: 'line', role: 'status', text: COPY.stopped.line }), command(COPY.stopped.how))],
-  failed: () => {
-    const reason = view.failure?.reason ?? 'connection';
-    const line = typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site) : COPY.failed[reason];
-    return [el('div', { class: 'head' }, who({ compact: true })), el('div', { class: 'quiet' }, el('p', { class: 'line failure', role: 'alert', text: line }), command(COPY.failed.how))];
-  },
-};
 
 /* ------------------------------ drawing ------------------------------ */
 
-const scroller = () => app.querySelector('.feed-scroll');
-function toNewest() {
-  const box = scroller();
-  if (box) box.scrollTop = box.scrollHeight;
+/** Which screen the panel shows now. */
+function screen() {
+  if (isLive(view)) return 'walking';
+  const over = (view.state === 'done' && (here === undefined || view.tab === here)) || view.state === 'stopped' || view.state === 'failed';
+  if (over && !ended) return 'end';
+  if (!account) return 'terminal';
+  if (account.signedIn !== true) return 'signed-out';
+  return pre.screen;
 }
+
+const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, home, planning, plan: planned };
 
 function render() {
-  const live = ['walking', 'paused', 'takeover'].includes(view.state);
-  const state = view.state !== 'done' || here === undefined || view.tab === here ? view.state : view.linked ? 'idle' : 'signed-out';
-  // A control that was pressed is often gone once it worked (Pause becomes Resume): focus stays in its place.
-  const acts = () => [...app.querySelectorAll('[data-act]')];
+  const shown = screen();
   const focused = document.activeElement?.getAttribute?.('data-act');
-  const place = acts().indexOf(document.activeElement);
-  const open = [...app.querySelectorAll('details[open]')].map((details) => details.className);
-  const at = scroller()?.scrollTop ?? 0;
   const body = document.body;
-  if (live && !seen) {
-    seen = true;
-    intro = true;
-    void chrome.storage.local.set({ onboarded: true }).catch(() => undefined);
-  }
-  if (!live) intro = false;
-  body.dataset.state = state;
+  body.dataset.state = view.state;
+  body.dataset.screen = shown;
   body.dataset.account = account ? (account.signedIn === true ? 'signed-in' : 'signed-out') : 'off';
-  body.dataset.variant = live ? variant : '';
   body.dataset.steps = String(view.steps.length);
-  body.dataset.device = view.who?.device ?? '';
-  body.dataset.held = view.state === 'paused' ? view.held ?? '' : '';
   body.dataset.ask = view.ask?.kind ?? '';
-  body.dataset.reason = state === 'failed' ? view.failure?.reason ?? '' : '';
-  body.dataset.issues = state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
-  app.className = live ? `walk walk-${variant}` : 'screen';
-  app.replaceChildren(...(live ? [intro ? introNote() : null, ...ARRANGED[variant]()] : (SCREENS[state] ?? SCREENS.idle)()).filter(Boolean));
-  for (const details of app.querySelectorAll('details')) if (open.includes(details.className)) details.open = true;
-  if (focused) (app.querySelector(`[data-act="${focused}"]`) ?? acts()[place])?.focus();
-  if (live && follow) toNewest(); else if (scroller()) scroller().scrollTop = at;
+  body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
+  app.className = `screen screen-${shown}`;
+  app.replaceChildren(...SCREENS[shown]().filter(Boolean));
+  if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 
-/** Which tab this panel's window shows: asked when the panel opens and each time another tab comes to the front. */
+/** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
   here = tab?.id ?? null;
+  hereUrl = tab?.url ?? '';
 }
 
 async function knowAccount() {
   const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
+  const was = account?.signedIn === true;
   account = answer?.ok === true && answer.available === true ? answer : null;
-  if (!isLive(view)) render();
+  if (account?.signedIn === true && (!was || pre.personas === null)) void loadPersonas();
+  if (!isLive(view) && pre.screen === 'home') render();
+}
+
+/** The walk's results page, as the worker kept it: only on the walk's own server (handoff.js `resultLink`). */
+async function knowWalk() {
+  const { walker: kept, walkUrl: url, handoff } = await chrome.storage.session.get(['walker', 'walkUrl', 'handoff']).catch(() => ({}));
+  walker = kept ?? walker;
+  walkUrl = typeof url === 'string' && handoff?.socket ? resultLink(url, handoff.socket) : null;
 }
 
 async function start() {
   const stub = params.get('stub');
   if (stub !== null) {
-    const { STUBS } = await import('./stub.js');
+    const { STUBS, PRE } = await import('./stub.js');
     view = STUBS[stub] ?? STUBS.idle;
+    Object.assign(pre, PRE[stub] ?? PRE.home);
+    account = { signedIn: stub !== 'signed-out' };
+    walker = pre.personas?.[0] ?? null;
+    walkUrl = 'https://impeccable.reviews/app/tidy/outings/o-7f3a';
+    hereUrl = 'https://tidy.example/';
     act = (action) => { view = reduce(view, { type: action }); render(); };
   } else {
     act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
     chrome.storage.session.onChanged.addListener((changes) => {
+      if (changes.walker || changes.walkUrl) void knowWalk().then(render);
       if (!changes.view) return;
       view = changes.view.newValue ?? emptyView(false);
+      if (isLive(view)) ended = false;
       render();
     });
-    chrome.tabs.onActivated.addListener(() => { void look().then(() => { if (view.state === 'done') render(); }); });
-    const [{ view: kept }, { onboarded }] = await Promise.all([chrome.storage.session.get('view'), chrome.storage.local.get('onboarded'), look()]);
+    chrome.tabs.onActivated.addListener(() => { void look().then(render); });
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; if (pre.screen === 'home' && !isLive(view)) render(); } });
+    const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
-    seen = onboarded === true;
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
     if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.

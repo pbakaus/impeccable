@@ -7,6 +7,7 @@
 // as the server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
 import { adopt } from '../walks/link.js';
+import { planned } from '../walks/control.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
@@ -17,8 +18,8 @@ const UNPACKED = BUILD.devHosts;
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
 const PANEL = chrome.runtime.getURL('walks/panel/');
-/** What the side panel may ask: its empty state offers Sign in, or points at the popup's Personas. */
-const PANEL_ASKS = ['status', 'sign-in'];
+/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, a plan and the walk. */
+const PANEL_ASKS = ['status', 'sign-in', 'personas', 'plan', 'walk'];
 const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;
@@ -60,20 +61,38 @@ const TASK_MAX = 2000;
  * A walk of the tab the person is on: the tab must be a web page, and then the server is asked. What the server
  * answers goes to the walks; the popup hears only how it went. `panel`: whether the side panel opened on the click.
  */
-async function walk({ persona, task, tabId }, panel = Promise.resolve(false)) {
+/** The walk asked for, checked: `{ body, tab }`, or `{ why }`. */
+async function asked({ persona, task, tabId }) {
   const kind = ['own', 'mine'].find((key) => typeof persona?.[key] === 'string' && persona[key]);
   const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind] } : null;
   const goal = typeof task === 'string' ? task.trim() : '';
-  if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { ok: false, why: 'failed' };
+  if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { why: 'failed' };
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (!/^https?:\/\//.test(tab?.url ?? '') || tab.url.length > 2048) return { ok: false, why: 'tab' };
+  if (!/^https?:\/\//.test(tab?.url ?? '') || tab.url.length > 2048) return { why: 'tab' };
+  return { body: { persona: ref, task: goal, url: tab.url } };
+}
+
+/** A short plan of the walk, for the person to approve in the side panel before it starts. */
+async function plan(message) {
+  const ask = await asked(message);
+  return ask.body ? session.planWalk(ask.body) : { ok: false, why: ask.why };
+}
+
+const PLAN_ID = /^[A-Za-z0-9_-]{1,80}$/;
+async function walk({ plan: approved, ...message }, panel = Promise.resolve(false)) {
+  const ask = await asked(message);
+  if (!ask.body) return { ok: false, why: ask.why };
+  if (approved !== undefined && !PLAN_ID.test(approved)) return { ok: false, why: 'failed' };
   const at = issuer;
-  const started = await session.startWalk({ persona: ref, task: goal, url: tab.url });
+  const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}) });
   if (!started.ok) return started;
   const socket = socketOf(at);
   if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };
-  const taken = await adopt(JSON.stringify(started.handoff), tabId).catch(() => null);
+  const taken = await adopt(JSON.stringify(started.handoff), message.tabId).catch(() => null);
   if (!taken?.ok) return { ok: false, why: 'failed' };
+  // An approved plan approved its steps: the walk asks nothing mid-way, and its results wait behind the panel's button.
+  planned(Boolean(approved));
+  await chrome.storage.session.set({ walkUrl: started.walkUrl ?? null }).catch(() => undefined);
   return { ok: true, panel: await panel };
 }
 
@@ -114,6 +133,7 @@ async function personas() {
 const ANSWERS = {
   create,
   personas,
+  plan,
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,

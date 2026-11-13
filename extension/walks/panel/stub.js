@@ -1,5 +1,5 @@
-// Stand-in walks for looking at the panel without one: `panel.html?stub=<name>` draws a state from here, and
-// `&variant=feed|checklist|now` picks the arrangement of a walk under way. The buttons work, on the stand-in.
+// Stand-in walks for looking at the panel without one: `panel.html?stub=<name>` draws a state from here (STUBS for a
+// walk, PRE for before one). The buttons work, on the stand-in.
 // Every state is made by the same steps a real walk takes (view.js), so none can be one a walk cannot reach.
 import { emptyView, reduce } from '../view.js';
 
@@ -62,3 +62,19 @@ export const STUBS = {
   'failed-switched-off': run(walking, [{ type: 'fail', reason: 'switched-off' }]),
   'failed-left-site': run(walking, [{ type: 'fail', reason: 'left-site' }]),
 };
+
+const PERSONAS = [
+  { name: 'Mira', role: 'Studio manager', about: 'The studio manager who opens this first every morning. Runs a 24-person studio from this one page.', slug: 'mira' },
+  ...['Alex', 'Grace', 'Nadia', 'Owen', 'Robin', 'Sam'].map((name) => ({ name, role: 'A visitor', slug: name.toLowerCase() })),
+];
+const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risky: false }, { text: 'Add a to-do', risky: false }, { text: 'Rename it', risky: false }, { text: 'Delete it', risky: true }] };
+const TASK = HANDOFF.errand.goal;
+/** Before a walk: the panel's own state, by stub name. */
+export const PRE = {
+  home: { personas: PERSONAS, task: TASK },
+  planning: { personas: PERSONAS, task: TASK, screen: 'planning' },
+  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN },
+};
+STUBS.home = STUBS.idle;
+STUBS.planning = STUBS.idle;
+STUBS.plan = STUBS.idle;

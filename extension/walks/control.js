@@ -21,7 +21,10 @@ const release = () => { for (const go of held.splice(0)) go(); };
 
 /** Set by Stop: the server may not open another tab on this hand-off. A new hand-off clears it. */
 let stopped = false;
-export function rearm() { stopped = false; }
+/** Set once a walk starts on a plan the person approved in the side panel: it asks nothing mid-way. A new hand-off clears it. */
+let plannedWalk = false;
+export function rearm() { stopped = false; plannedWalk = false; }
+export function planned(on) { plannedWalk = on; }
 
 /**
  * Pauses the walk for a reason of its own (a sign-in). From walking, or from a person's pause or take-over: in every
@@ -77,6 +80,8 @@ let answering = null;
  * walking first (paused, taken over, ended). Nothing else the walk asks is done meanwhile (`clear`).
  */
 function consent(ask) {
+  // The approved plan approved its steps up front, another site among them (the person's word, REN-1838).
+  if (plannedWalk) return Promise.resolve('yes');
   if (!dispatch({ type: 'ask', ask })) return Promise.resolve('void');
   return new Promise((resolve) => {
     const timer = setTimeout(() => settle('no'), ASK_MS);
@@ -203,7 +208,8 @@ onView((view) => {
 });
 
 hooks.opened.push((tab) => {
-  resultBeside = tab.adopted ? tab.tabId : null;
+  // A planned walk's results open from the panel's own button instead.
+  resultBeside = tab.adopted && !plannedWalk ? tab.tabId : null;
   dispatch({ type: 'opened', name: tab.name, site: tab.origin, tab: tab.tabId });
 });
 hooks.closed.push((why) => {

@@ -36,6 +36,8 @@ function whoOf(persona, before) {
 
 /** Kinds of question a walk asks the person: a deed the server marked (delete, pay, send), or another site (go). */
 const ASKS = ['delete', 'pay', 'send', 'go'];
+/** The faces a step may wear: the cells of a persona's face sheet. */
+export const MOODS = ['neutral', 'curious', 'confident', 'confused', 'frustrated', 'delighted'];
 
 /** A question stands only while the walk is walking: a pause, a take-over or an end takes it away unanswered. */
 export function reduce(view, action) {
@@ -63,7 +65,8 @@ function step(view, action) {
       if (!onTab || typeof action.step?.n !== 'number') return view;
       // `refused`: not done, as the server marks it. `no`, the person said No to it or to one before it; `held`, it needed a Yes it could not ask for.
       const refused = ['no', 'held'].includes(action.step.refused) ? { refused: action.step.refused } : {};
-      const step = { n: action.step.n, did: text(action.step.did, 400), said: text(action.step.said, 600), ...(action.step.issue ? { issue: text(action.step.issue, 400) } : {}), ...refused };
+      const mood = MOODS.includes(action.step.mood) ? { mood: action.step.mood } : {};
+      const step = { n: action.step.n, did: text(action.step.did, 400), said: text(action.step.said, 600), ...(action.step.issue ? { issue: text(action.step.issue, 400) } : {}), ...refused, ...mood };
       return { ...view, steps: [...view.steps.filter((kept) => kept.n !== step.n), step].slice(-STEPS_KEPT) };
     }
     case 'checks':

@@ -61,11 +61,19 @@ const sealed = { credentials: 'omit', redirect: 'error' };
 const SIGNED_IN = ['signed-in', 'refreshing'];
 /** A persona's name in the person's own list, as the server gives it. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
-/** A persona as the server lists it, field by field: `{ name, role, slug?, mine? }` (`mine`: the person's own, by slug). */
+/** A persona as the server lists it, field by field: `{ name, role, slug?, mine?, about?, face? }` (`mine`: the person's own, by slug; `face`: its face sheet's https address). */
 const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
   ...(SLUG.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : {}) } : {}),
+  ...(typeof p.about === 'string' && p.about ? { about: p.about.slice(0, 1500) } : {}),
+  ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
 });
+/** A plan as the server answers it: `{ id, steps: [{ text, risky }], risky }`, or null. */
+function planOf(plan) {
+  const steps = Array.isArray(plan?.steps) ? plan.steps.filter((s) => typeof s?.text === 'string' && s.text.trim()).slice(0, 12).map((s) => ({ text: s.text.slice(0, 200), risky: s.risky === true })) : [];
+  if (typeof plan?.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(plan.id) || steps.length === 0) return null;
+  return { id: plan.id, steps, risky: plan.risky === true || steps.some((s) => s.risky) };
+}
 /** Why creating a persona did not happen, by the server's answer. */
 const CREATE_WHY = { 404: 'unavailable', 409: 'limit', 429: 'quota' };
 
@@ -288,7 +296,18 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
       const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
-      return handoff && typeof handoff === 'object' ? { ok: true, handoff } : { ok: false, why: 'failed' };
+      if (!handoff || typeof handoff !== 'object') return { ok: false, why: answer?.json?.error === 'bad-plan' ? 'plan' : 'failed' };
+      // The walk's page, where its results are: beside the block, which takes no key it does not know.
+      return { ok: true, handoff, ...(typeof answer.json.walkUrl === 'string' ? { walkUrl: answer.json.walkUrl } : {}) };
+    },
+
+    /** Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as `startWalk`. */
+    async planWalk(body) {
+      const answer = await call(issuer(), '/walks/plan', body).catch(() => null);
+      if (answer?.status === 404) return { ok: false, why: 'unavailable' };
+      if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      const plan = answer && answer.status >= 200 && answer.status < 300 ? planOf(answer.json?.plan) : null;
+      return plan ? { ok: true, plan } : { ok: false, why: 'failed' };
     },
 
     /** Opens the sign-in window and keeps the grant it ends in. Resolves to whether it did, or why not. */
