@@ -692,6 +692,19 @@ fn as_object(v: &Value) -> Map<String, Value> {
 fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     let existing_object = as_object(existing);
     let fresh_object = as_object(fresh);
+    if !fresh_object.contains_key("hooks") {
+        let mut merged = existing_object.clone();
+        let keys: Vec<String> = merged.keys().cloned().collect();
+        for key in keys {
+            if key == "impeccable" || merged.get(&key).is_some_and(value_has_impeccable_hook_marker) {
+                merged.shift_remove(&key);
+            }
+        }
+        for (k, v) in fresh_object {
+            merged.insert(k, v);
+        }
+        return Value::Object(merged);
+    }
     let existing_hooks = obj_field(&existing_object, "hooks")
         .cloned()
         .unwrap_or_default();
@@ -846,7 +859,14 @@ fn prune_impeccable_hook_from_manifest(path: &str) -> Result<bool, String> {
         }
     }
     let mut next = parsed.clone();
-    if !cleaned.is_empty() {
+    if !parsed.contains_key("hooks") {
+        let keys: Vec<String> = next.keys().cloned().collect();
+        for key in keys {
+            if key == "impeccable" || next.get(&key).is_some_and(value_has_impeccable_hook_marker) {
+                next.shift_remove(&key);
+            }
+        }
+    } else if !cleaned.is_empty() {
         next.insert("hooks".into(), Value::Object(cleaned));
     } else {
         next.shift_remove("hooks");

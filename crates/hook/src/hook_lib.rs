@@ -1826,16 +1826,22 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes" | "antigravity") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
         // Hermes' pre_verify plugin hands this same shape to its verify gate.
+        // Antigravity expects {"decision":"continue","reason":"..."} on Stop.
         if js::trim(text).is_empty() {
             return String::new();
         }
-        out.insert("decision".into(), Value::String(if harness == "gemini" { "deny" } else { "block" }.to_string()));
+        let decision = match harness {
+            "gemini" => "deny",
+            "antigravity" => "continue",
+            _ => "block",
+        };
+        out.insert("decision".into(), Value::String(decision.to_string()));
         out.insert("reason".into(), Value::String(text.to_string()));
     } else {
         let mut inner = Map::new();
@@ -1924,11 +1930,15 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
         Some("hermes") => return "hermes",
+        Some("antigravity") => return "antigravity",
         _ => {}
     }
     if let Some(ev) = event {
         if matches!(str_field(ev, "hook_event_name"), Some("BeforeTool" | "AfterAgent")) {
             return "gemini";
+        }
+        if str_field(ev, "conversationId").is_some() && !ev.contains_key("conversation_id") {
+            return "antigravity";
         }
         // Grok Build sends camelCase `toolName`/`toolInput`/`hookEventName`
         // and no snake_case pair. GitHub Copilot sends camelCase
@@ -2186,6 +2196,62 @@ fn normalize_grok_event(
     out
 }
 
+/// Antigravity (`agy` CLI, IDE, 2.0) sends camelCase `conversationId`,
+/// `workspacePaths`, `toolCall: { id, name, args }`, and on Stop
+/// `continuationActive` and `terminationReason`.
+fn normalize_antigravity_event(
+    event: &Map<String, Value>,
+    project_cwd: &str,
+) -> Map<String, Value> {
+    let cwd = str_field(event, "cwd")
+        .map(str::to_string)
+        .or_else(|| match event.get("workspacePaths") {
+            Some(Value::Array(roots)) => match roots.first() {
+                Some(Value::String(r)) if !r.is_empty() => Some(r.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .unwrap_or_else(|| project_cwd.to_string());
+    let session_id = event
+        .get("conversationId")
+        .filter(|v| truthy_value(Some(v)))
+        .cloned()
+        .unwrap_or_else(|| Value::String("unknown".to_string()));
+    let tool_call = obj_field(event, "toolCall");
+    let tool_name = tool_call
+        .and_then(|tc| tc.get("name"))
+        .filter(|v| truthy_value(Some(v)))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut tool_input = tool_call
+        .and_then(|tc| obj_field(tc, "args"))
+        .cloned()
+        .unwrap_or_default();
+    if !tool_input.contains_key("file_path") {
+        let file_path = tool_input
+            .get("Path")
+            .filter(|v| truthy_value(Some(v)))
+            .or_else(|| tool_input.get("TargetFile").filter(|v| truthy_value(Some(v))))
+            .or_else(|| tool_input.get("path").filter(|v| truthy_value(Some(v))))
+            .cloned();
+        if let Some(fp) = file_path {
+            tool_input.insert("file_path".into(), fp);
+        }
+    }
+    let mut out = event.clone();
+    out.insert("cwd".into(), Value::String(cwd));
+    out.insert("session_id".into(), session_id);
+    out.insert("tool_name".into(), tool_name);
+    out.insert("tool_input".into(), Value::Object(tool_input));
+    if event.get("continuationActive") == Some(&Value::Bool(true))
+        && !event.contains_key("stop_hook_active")
+    {
+        out.insert("stop_hook_active".into(), Value::Bool(true));
+    }
+    out
+}
+
 /// JS: normalizeHookEvent(event, projectCwd, harness)
 pub fn normalize_hook_event(
     rt: &Runtime,
@@ -2193,6 +2259,9 @@ pub fn normalize_hook_event(
     project_cwd: &str,
     harness: &str,
 ) -> Map<String, Value> {
+    if harness == "antigravity" {
+        return normalize_antigravity_event(event, project_cwd);
+    }
     if harness == "github" {
         return normalize_github_event(rt, event, project_cwd);
     }

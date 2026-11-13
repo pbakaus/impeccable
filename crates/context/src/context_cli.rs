@@ -20,6 +20,7 @@ const OUTPUT_BUDGET_CHARS: usize = 24_000;
 
 pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     match provider_id {
+        "antigravity" => &[".agents/hooks.json"],
         "claude-code" => &[".claude/settings.local.json", ".claude/settings.json"],
         "codex" | "agents" => &[".codex/hooks.json"],
         "cursor" => &[".cursor/hooks.json"],
@@ -34,6 +35,7 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
 /// provider's manifest. `None`: that verb has no target for the provider.
 fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
     let dir = match provider_id {
+        "antigravity" => ".agent",
         "claude-code" => ".claude",
         "codex" | "agents" => ".agents",
         "cursor" => ".cursor",
@@ -60,6 +62,7 @@ pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
+        "antigravity" => Some(jsp::join(&[&crate::util::homedir(env), ".gemini", "config", "hooks.json"])),
         "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
@@ -69,7 +72,7 @@ pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<Str
     }
 }
 
-const STOP_REVIEW_PROVIDERS: [&str; 4] = ["claude-code", "codex", "agents", "grok"];
+const STOP_REVIEW_PROVIDERS: [&str; 5] = ["antigravity", "claude-code", "codex", "agents", "grok"];
 
 // Only the launcher-era design hook counts as an active automatic hook. A
 // manifest that still names the JS-era `.mjs` script (a pre-launcher install

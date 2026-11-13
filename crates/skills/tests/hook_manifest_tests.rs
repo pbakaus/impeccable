@@ -254,6 +254,29 @@ fn grok_manifest_is_rewritten() {
     );
 }
 
+#[test]
+fn antigravity_named_hook_manifest_merges_and_preserves_other_hooks() {
+    let existing = json!({
+        "other-hook": {
+            "PostToolUse": [{ "matcher": "run_command", "hooks": [{ "type": "command", "command": "./lint.sh" }] }]
+        },
+        "impeccable": {
+            "PostToolUse": [{ "matcher": "edit_file", "hooks": [{ "type": "command", "command": "old" }] }]
+        }
+    });
+    let fresh = json!({
+        "impeccable": {
+            "PostToolUse": [{ "matcher": "write_file|edit_file", "hooks": [{ "type": "command", "command": "new" }] }],
+            "Stop": [{ "type": "command", "command": "new" }]
+        }
+    });
+    let merged = merge_hook_manifests(&existing, &fresh);
+    assert!(merged.get("hooks").is_none());
+    assert!(merged.get("other-hook").is_some());
+    assert_eq!(merged["impeccable"]["PostToolUse"][0]["hooks"][0]["command"], "new");
+    assert_eq!(merged["impeccable"]["Stop"][0]["command"], "new");
+}
+
 /// Pipes the probe event to a hook shell and returns its exit code. A shell
 /// that kept stdin from the shim would leave it reading forever. The bound only
 /// has to tell that from a slow start: Windows PowerShell has taken over 30 s

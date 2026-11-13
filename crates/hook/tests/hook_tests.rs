@@ -2857,6 +2857,67 @@ fn grok_post_tool_use_scans_and_stop_reports_everything() {
 }
 
 #[test]
+fn antigravity_harness_detection_and_lifecycle() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    let css = t.write("src/a.css", MIXED_CSS);
+
+    let post_val = json!({
+        "hookEventName": "PostToolUse",
+        "conversationId": "agy-1",
+        "workspacePaths": [cwd],
+        "cwd": cwd,
+        "toolCall": { "id": "t1", "name": "edit_file", "args": { "Path": css } },
+    });
+    let post_map = post_val.as_object().unwrap();
+    assert_eq!(resolve_harness(&r, Some(post_map)), "antigravity");
+    assert!(!is_stop_event(post_map));
+
+    let one = hook::run_hook(&r, &post_val.to_string());
+    assert_eq!(one.stdout, "{}");
+    assert_eq!(audit_str(&one.audit, "harness"), Some("antigravity"));
+
+    // Stop reports both immediate and deferred findings with decision: "continue".
+    let stop_val = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "workspacePaths": [cwd],
+        "cwd": cwd,
+        "terminationReason": "NO_TOOL_CALL",
+        "continuationActive": false,
+    });
+    assert!(is_stop_event(stop_val.as_object().unwrap()));
+    let deep = hook::run_stop_hook(&r, &stop_val.to_string());
+    let parsed: Value = serde_json::from_str(&deep.stdout).unwrap();
+    assert_eq!(parsed["decision"], "continue");
+    let reason = parsed["reason"].as_str().unwrap();
+    assert!(reason.contains("[gradient-text]") && reason.contains("[side-tab]"), "{reason}");
+
+    // Non-NO_TOOL_CALL terminationReason is skipped.
+    let canceled = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "cwd": cwd,
+        "terminationReason": "USER_CANCELED",
+    }).to_string();
+    let second = hook::run_stop_hook(&r, &canceled);
+    assert_eq!(second.stdout, "");
+    assert_eq!(audit_str(&second.audit, "skipped"), Some("stop-reason"));
+
+    // continuationActive: true guards against re-entry loops.
+    let active = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "cwd": cwd,
+        "terminationReason": "NO_TOOL_CALL",
+        "continuationActive": true,
+    }).to_string();
+    let re = hook::run_stop_hook(&r, &active);
+    assert_eq!(audit_str(&re.audit, "skipped"), Some("stop-hook-active"));
+}
+
+#[test]
 fn stop_cache_syncs_after_clean_scan_so_reintroductions_fire() {
     // 3c442af7: a finding that was fixed and then reintroduced must fire
     // again — the clean Stop in between rewrites the remembered set.

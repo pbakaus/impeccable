@@ -34,6 +34,7 @@ pub struct HookArtifactSpec {
 /// JS: PROVIDER_HOOK_ARTIFACTS[provider]
 pub fn provider_hook_artifacts(provider: &str) -> &'static [HookArtifactSpec] {
     match provider {
+        ".agent" => &[HookArtifactSpec { source_provider: ".agent", rel: "hooks.json", dest_provider: ".agents", dest_rel: None }],
         ".claude" => &[HookArtifactSpec { source_provider: ".claude", rel: "settings.json", dest_provider: ".claude", dest_rel: Some("settings.local.json") }],
         ".gemini" => &[HookArtifactSpec { source_provider: ".gemini", rel: "settings.json", dest_provider: ".gemini", dest_rel: None }],
         ".cursor" => &[HookArtifactSpec { source_provider: ".cursor", rel: "hooks.json", dest_provider: ".cursor", dest_rel: None }],
@@ -70,6 +71,13 @@ pub fn hook_artifacts_for_provider(bundle_dir: &str, root: &str, provider: &str)
 }
 
 fn hook_artifacts_for_install(bundle_dir: &str, root: &str, provider: &str, user_scope: bool) -> Vec<HookArtifact> {
+    if provider == ".agent" && user_scope {
+        return vec![HookArtifact {
+            src: jsp::join(&[bundle_dir, ".agent", "hooks.json"]),
+            dest: jsp::join(&[root, ".gemini", "config", "hooks.json"]),
+            shared_dest: None,
+        }];
+    }
     if provider == ".claude" && user_scope {
         return vec![HookArtifact {
             src: jsp::join(&[bundle_dir, ".claude", "settings.json"]),
@@ -126,6 +134,8 @@ pub fn launcher_rel_path(provider: &str) -> String {
         format!("${{CLAUDE_PROJECT_DIR}}/{rel}")
     } else if provider == ".gemini" {
         format!("$GEMINI_PROJECT_DIR/{rel}")
+    } else if provider == ".agent" {
+        format!("../{rel}")
     } else {
         rel
     }
@@ -140,7 +150,7 @@ pub fn launcher_rel_path(provider: &str) -> String {
 /// path or the hook command targets a file that does not exist.
 pub fn launcher_path(skill_root: &str, provider: &str) -> Option<String> {
     match provider {
-        ".cursor" | ".claude" | ".agents" | ".grok" | ".gemini" => {
+        ".agent" | ".cursor" | ".claude" | ".agents" | ".grok" | ".gemini" => {
             Some(jsp::join(&[skill_root, provider, "skills", "impeccable", "scripts", "impeccable"]))
         }
         _ => None,
@@ -563,7 +573,14 @@ pub fn prune_impeccable_hook_from_manifest(manifest_path: &str) -> Result<bool, 
         }
     }
     let mut next = parsed.clone();
-    if !cleaned.is_empty() {
+    if !parsed.contains_key("hooks") {
+        let keys: Vec<String> = next.keys().cloned().collect();
+        for key in keys {
+            if key == "impeccable" || next.get(&key).is_some_and(value_has_impeccable_hook_marker) {
+                next.shift_remove(&key);
+            }
+        }
+    } else if !cleaned.is_empty() {
         next.insert("hooks".to_string(), Value::Object(cleaned));
     } else {
         next.shift_remove("hooks");
@@ -590,6 +607,19 @@ fn as_object(v: Option<&Value>) -> Map<String, Value> {
 pub fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     let existing_object = as_object(Some(existing));
     let fresh_object = as_object(Some(fresh));
+    if !fresh_object.contains_key("hooks") {
+        let mut merged = existing_object.clone();
+        let keys: Vec<String> = merged.keys().cloned().collect();
+        for key in keys {
+            if key == "impeccable" || merged.get(&key).is_some_and(value_has_impeccable_hook_marker) {
+                merged.shift_remove(&key);
+            }
+        }
+        for (k, v) in fresh_object {
+            merged.insert(k, v);
+        }
+        return Value::Object(merged);
+    }
     let existing_hooks = as_object(existing_object.get("hooks"));
     let fresh_hooks = as_object(fresh_object.get("hooks"));
 
@@ -647,7 +677,7 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             }
             continue;
         }
-        let manifest_root = if user_scope && *provider == ".claude" { skill_root } else { root };
+        let manifest_root = if user_scope && matches!(*provider, ".claude" | ".agent") { skill_root } else { root };
         for artifact in hook_artifacts_for_install(bundle_dir, manifest_root, provider, user_scope) {
             if !util::exists(&artifact.src) {
                 continue;
@@ -667,7 +697,17 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             // team-committed command even when the user installs globally.
             let absolute = (skill_root != root || sys.is_home_dir(root))
                 && !(*provider == ".github" && github_keeps_portable_form(sys, root));
-            let fresh = rewrite_hook_commands_for_skill_root(&fresh_manifest, provider, skill_root, absolute);
+            let fresh = if user_scope && *provider == ".agent" && absolute {
+                let global_launcher = jsp::join(&[skill_root, ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]);
+                let quoted = QuotedPath {
+                    posix: sh_single_quote(&global_launcher),
+                    win32: json_string(&global_launcher),
+                    raw: global_launcher,
+                };
+                rewrite_value(&fresh_manifest, provider, &quoted, cfg!(windows))
+            } else {
+                rewrite_hook_commands_for_skill_root(&fresh_manifest, provider, skill_root, absolute)
+            };
             let mut next = fresh.clone();
             if util::exists(&artifact.dest) {
                 match read_manifest(&artifact.dest) {

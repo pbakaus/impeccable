@@ -196,7 +196,58 @@ fn gemini_manifest() -> Value {
     )])
 }
 
+const ANTIGRAVITY_HOOK_COMMAND: &str = "\"../.agent/skills/impeccable/scripts/impeccable\" hook";
+
+fn antigravity_manifest() -> Value {
+    let cmd = if cfg!(windows) {
+        crate::hook_markers::windows_launcher_hook_command(
+            "../.agent/skills/impeccable/scripts/impeccable",
+            "hook",
+        )
+    } else {
+        ANTIGRAVITY_HOOK_COMMAND.to_string()
+    };
+    obj(vec![(
+        "impeccable",
+        obj(vec![
+            (
+                "PostToolUse",
+                Value::Array(vec![obj(vec![
+                    (
+                        "matcher",
+                        Value::from("write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content"),
+                    ),
+                    (
+                        "hooks",
+                        Value::Array(vec![obj(vec![
+                            ("type", Value::from("command")),
+                            ("command", Value::from(cmd.clone())),
+                            ("timeout", Value::from(TIMEOUT_SECONDS)),
+                        ])]),
+                    ),
+                ])]),
+            ),
+            (
+                "Stop",
+                Value::Array(vec![obj(vec![
+                    ("type", Value::from("command")),
+                    ("command", Value::from(cmd)),
+                    ("timeout", Value::from(STOP_TIMEOUT_SECONDS)),
+                ])]),
+            ),
+        ]),
+    )])
+}
+
 pub const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
+    ManifestTarget {
+        provider: ".agent",
+        skill_rel: ".agent/skills/impeccable",
+        dest_rel: ".agents/hooks.json",
+        shared_dest_rel: None,
+        manifest: antigravity_manifest,
+        user_settings: false,
+    },
     ManifestTarget {
         provider: ".claude",
         skill_rel: ".claude/skills/impeccable",

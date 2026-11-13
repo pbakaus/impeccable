@@ -375,7 +375,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         // pass. Remembering here would dedupe those findings out of Stop.
         // Touch the file so Stop has it, and leave the finding list empty
         // (#646).
-        if harness == "grok" {
+        if matches!(harness, "grok" | "antigravity") {
             touch_file(&mut cache, &session_id, file_path);
         } else {
             // Deferred findings a Stop pass already reported stay remembered;
@@ -426,7 +426,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
 
-    if !fresh_groups.is_empty() {
+    if !fresh_groups.is_empty() && harness != "antigravity" {
         let scan = &scans[&fresh_groups[0].file_path];
         let short = footer_mode_short(&mut cache, &session_id);
         let reserve = design_note_reserve(rt, scan, &mut cache, &session_id);
@@ -514,6 +514,19 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))));
     if wants_persist && persist_cache(rt, &project_cwd, &cache) {
         record_session_root(rt, harness, &session_value, &project_cwd);
+    }
+
+    if harness == "antigravity" {
+        return RunResult {
+            stdout: "{}".to_string(),
+            audit: with(
+                &audit,
+                vec![
+                    ("emitted", Value::Bool(false)),
+                    ("durationMs", ms_since(started)),
+                ],
+            ),
+        };
     }
 
     if detector_threw_any && pending_winner.is_none() && clean_winner.is_none() {
@@ -689,6 +702,20 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     if harness == "grok" {
         if let Some(Value::String(reason)) = event.get("reason") {
             if reason != "end_turn" {
+                return result(
+                    &audit,
+                    vec![
+                        ("skipped", Value::from("stop-reason")),
+                        ("reason", Value::String(reason.clone())),
+                        ("durationMs", ms_since(started)),
+                    ],
+                );
+            }
+        }
+    }
+    if harness == "antigravity" {
+        if let Some(Value::String(reason)) = event.get("terminationReason") {
+            if reason != "NO_TOOL_CALL" {
                 return result(
                     &audit,
                     vec![

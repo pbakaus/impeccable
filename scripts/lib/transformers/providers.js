@@ -203,6 +203,10 @@ export const PROVIDERS = {
     configDir: '.agent',
     displayName: 'Antigravity',
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+    emitHooks: 'antigravity',
+    // Antigravity discovers workspace hooks from `.agents/hooks.json`
+    // (or global `~/.gemini/config/hooks.json`), with `.agent/skills` for skills.
+    hooksManifestRel: 'hooks.json',
   },
   hermes: {
     provider: 'hermes',
