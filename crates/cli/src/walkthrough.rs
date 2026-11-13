@@ -82,11 +82,15 @@ fn duration_fits(seconds: f64) -> bool {
 }
 
 /// Keep end markers playable and within the server's limit, without merging chapters.
+fn at_ms_fitted(at_ms: u64, film_ms: u64) -> u64 {
+    at_ms.min(film_ms.saturating_sub(1)).min(MAX_CHAPTER_MS)
+}
+
 fn chapter_at(at_ms: u64, film_ms: u64, previous: Option<u64>) -> Option<u64> {
     if at_ms > film_ms.saturating_add(DURATION_TOLERANCE_MS) {
         return None;
     }
-    let at_ms = at_ms.min(film_ms.saturating_sub(1)).min(MAX_CHAPTER_MS);
+    let at_ms = at_ms_fitted(at_ms, film_ms);
     if previous.is_some_and(|p| at_ms <= p) {
         return None;
     }
@@ -391,6 +395,18 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     }
     let film = out_dir.join(format!("{stem}.mp4"));
     let poster = out_dir.join(format!("{stem}.png"));
+    // Two runs that would write the same film and poster take turns, so each run's answer
+    // names a film and poster it made together, never one of each.
+    let _turn = match OutputTurn::take(&out_dir, &stem) {
+        Ok(turn) => turn,
+        Err(e) => {
+            return fail(
+                io,
+                "write_failed",
+                format!("Couldn't write in {}: {e}.", out_dir.display()),
+            )
+        }
+    };
     // Everything is built under names only this run uses, then moved into place: a failure
     // removes what this run made and nothing else, and a finished file is never half-written.
     let token = std::process::id();
@@ -501,54 +517,77 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         return too_long(io, made_seconds);
     }
     let made_ms = (made_seconds * 1000.0).round() as u64;
-    let mut previous = None;
+    let mut previous: Option<(u64, String)> = None;
     for chapter in &mut chapters {
-        let Some(at_ms) = chapter_at(chapter.at_ms, made_ms, previous) else {
+        let Some(at_ms) = chapter_at(chapter.at_ms, made_ms, previous.as_ref().map(|p| p.0)) else {
             let _ = std::fs::remove_file(&film_tmp);
-            return late_chapter(io, chapter, made_ms);
+            if chapter.at_ms > made_ms.saturating_add(DURATION_TOLERANCE_MS) {
+                return late_chapter(io, chapter, made_ms);
+            }
+            // Within the tolerance, a chapter past the end is moved onto the last moment,
+            // where it can land on the chapter before it.
+            let before = previous.map(|p| p.1).unwrap_or_default();
+            return fail(
+                io,
+                "bad_chapter",
+                format!(
+                    "The chapters \"{before}\" and \"{}\" both land at {} once fitted to the film, which ends at {}. Move the earlier one back.",
+                    chapter.text,
+                    clock(at_ms_fitted(chapter.at_ms, made_ms)),
+                    clock(made_ms)
+                ),
+            );
         };
         chapter.at_ms = at_ms;
-        previous = Some(at_ms);
+        previous = Some((at_ms, chapter.text.clone()));
     }
 
     // The poster is the first chapter's moment, never earlier than a second in: a chapter at
     // 0:00 is the usual first one, and a recording's first frame is usually blank.
-    let poster_ms = chapters
+    let wanted_ms = chapters
         .first()
         .map(|c| c.at_ms.max(1000))
         .unwrap_or(1000)
         .min(made_ms.saturating_sub(100));
-    let at = format!("{:.3}", poster_ms as f64 / 1000.0);
-    let poster_result = run_tool(
-        &ffmpeg,
-        &[
-            "-y",
-            "-v",
-            "error",
-            "-ss",
-            &at,
-            "-i",
-            &film_tmp.to_string_lossy(),
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale='min(1280,iw)':-2",
-            &poster_tmp.to_string_lossy(),
-        ],
-    );
-    let poster_bytes = match poster_result.and_then(|_| {
-        std::fs::metadata(&poster_tmp)
-            .map(|m| m.len())
-            .map_err(|e| e.to_string())
-    }) {
-        Ok(b) if b > 0 => b,
-        Ok(_) | Err(_) => {
-            return discard(
-                io,
-                "convert_failed",
-                "Couldn't cut the poster still from the video.".into(),
-            );
+    // A seek near the end can land past a low frame rate's last frame and cut nothing, so
+    // the still falls back to the middle of the film, then its first frame.
+    let mut poster_cut = None;
+    for poster_ms in [wanted_ms, made_ms / 2, 0] {
+        let at = format!("{:.3}", poster_ms as f64 / 1000.0);
+        let result = run_tool(
+            &ffmpeg,
+            &[
+                "-y",
+                "-v",
+                "error",
+                "-ss",
+                &at,
+                "-i",
+                &film_tmp.to_string_lossy(),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale='min(1280,iw)':-2",
+                &poster_tmp.to_string_lossy(),
+            ],
+        );
+        if let Ok(b) = result.and_then(|_| {
+            std::fs::metadata(&poster_tmp)
+                .map(|m| m.len())
+                .map_err(|e| e.to_string())
+        }) {
+            if b > 0 {
+                poster_cut = Some((poster_ms, b));
+                break;
+            }
         }
+    }
+    let Some((poster_ms, poster_bytes)) = poster_cut else {
+        return discard(
+            io,
+            "convert_failed",
+            "Couldn't cut the poster still from the video.".into(),
+        );
     };
 
     let digest = match std::fs::read(&film_tmp) {
@@ -561,9 +600,14 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             )
         }
     };
-    if let Err(e) =
-        std::fs::rename(&film_tmp, &film).and_then(|_| std::fs::rename(&poster_tmp, &poster))
-    {
+    // The poster goes first: if the film then fails to move, the poster this run just placed
+    // is removed too, so a failure leaves nothing of this run behind.
+    let placed = std::fs::rename(&poster_tmp, &poster).and_then(|_| {
+        std::fs::rename(&film_tmp, &film).inspect_err(|_| {
+            let _ = std::fs::remove_file(&poster);
+        })
+    });
+    if let Err(e) = placed {
         return discard(
             io,
             "write_failed",
@@ -664,5 +708,31 @@ mod tests {
         assert_eq!(clock(0), "0:00");
         assert_eq!(clock(4_000), "0:04");
         assert_eq!(clock(125_900), "2:05");
+    }
+}
+
+/// The turn one run holds on a film and poster name while it makes them: an exclusive lock
+/// on a hidden file beside them, removed when the run ends.
+struct OutputTurn {
+    path: PathBuf,
+    _file: std::fs::File,
+}
+
+impl OutputTurn {
+    fn take(dir: &Path, stem: &str) -> std::io::Result<OutputTurn> {
+        let path = dir.join(format!(".{stem}.walkthrough.lock"));
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)?;
+        file.lock()?;
+        Ok(OutputTurn { path, _file: file })
+    }
+}
+
+impl Drop for OutputTurn {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
     }
 }
