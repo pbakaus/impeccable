@@ -60,7 +60,10 @@ fn another_issuer_under_the_same_home_never_clears_this_ones_copy() {
     let (_io, prod) = signed_in(&production, "taste-shared-home");
     staging.knobs.lock().unwrap().taste = true;
     let mut env = staging.env("taste-shared-home-staging");
-    env.insert("IMPECCABLE_HOME".into(), prod.home.to_string_lossy().into_owned());
+    // The whole home moves, profile included: Windows allows the file store only inside it.
+    for key in ["IMPECCABLE_HOME", "HOME", "USERPROFILE"] {
+        env.insert(key.into(), prod.home.to_string_lossy().into_owned());
+    }
     // Signing in to staging under the shared home leaves production's copy.
     let path = cached(&prod);
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
