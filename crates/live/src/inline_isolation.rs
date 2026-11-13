@@ -104,6 +104,7 @@ fn raw_text_parent(ts: &[Token], token: &Token) -> Option<usize> {
 
 struct Candidate {
     file: usize,
+    rank: usize,
     start: usize,
     end: usize,
     range: ElementMatch,
@@ -122,49 +123,50 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         if !queries.iter().any(|q| source.contains(q.as_str()) || matches_query(&source, q, tag)) {
             continue;
         }
-        let ext = jsp::extname(&file.path);
-        let jsx = matches!(ext.as_str(), ".jsx" | ".tsx");
-        // Files where a capitalized tag is a component, not an HTML element.
-        // A configured .js/.ts/.mdx extension holds JSX too.
-        let components = jsx || matches!(ext.as_str(), ".vue" | ".svelte" | ".astro"
-            | ".js" | ".mjs" | ".cjs" | ".ts" | ".mdx");
+        let dialect = Dialect::of(&file.path);
+        let jsx = dialect == Dialect::Jsx;
+        let components = dialect != Dialect::Html;
         // Tokens are read from the masked source, whose byte offsets match
         // `source`; when the lexer cannot finish, from `source` itself.
-        let ts = match mask_source(&file.lines, Dialect::of(&file.path)) {
+        let ts = match mask_source(&file.lines, dialect) {
             Some(masked) => tokens(&masked, !components, false),
             None => tokens(&source, !components, true),
         };
-        // The query that matches an opening tag, found once per file.
-        let opener_query = queries.iter().find(|q| ts.iter().any(|n| !n.close
+        // Pair each opener with its own closer before matching inner text.
+        let ends: Vec<_> = ts.iter().enumerate().map(|(ti, t)| {
+            if t.close { return None; }
+            if t.single { return Some(t.end); }
+            let mut depth = 1;
+            for next in &ts[ti + 1..] {
+                if raw_text_parent(&ts, next) != raw_text_parent(&ts, t)
+                    && !raw(&t.name.to_ascii_lowercase()) {
+                    continue;
+                }
+                if next.name.eq_ignore_ascii_case(&t.name) {
+                    if next.close { depth -= 1; } else if !next.single { depth += 1; }
+                    if depth == 0 { return Some(next.end); }
+                }
+            }
+            None
+        }).collect();
+        let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
             && tag.map_or(true, |tag| tag.eq_ignore_ascii_case(&n.name))
             && matches_query(&source[n.start..n.end], q, tag)));
         for (ti, t) in ts.iter().enumerate().filter(|(_, t)| !t.close) {
             if tag.map_or(false, |tag| !tag.eq_ignore_ascii_case(&t.name)) { continue; }
             if source[t.start..t.end].contains("data-impeccable-variant") { continue; }
-            let end = if t.single { t.end } else {
-                let mut depth = 1;
-                let mut end = None;
-                for next in &ts[ti + 1..] {
-                    // Markup-looking strings in raw text do not nest the outer element.
-                    if raw_text_parent(&ts, next) != raw_text_parent(&ts, t)
-                        && !raw(&t.name.to_ascii_lowercase()) {
-                        continue;
-                    }
-                    if next.name.eq_ignore_ascii_case(&t.name) {
-                        if next.close { depth -= 1; } else if !next.single { depth += 1; }
-                        if depth == 0 { end = Some(next.end); break; }
-                    }
-                }
-                let Some(end) = end else { continue }; end
-            };
-            let query_matches = if let Some(q) = opener_query {
-                matches_query(&source[t.start..t.end], q, tag)
+            let Some(end) = ends[ti] else { continue };
+            let rank = if let Some(rank) = opener_query {
+                matches_query(&source[t.start..t.end], &queries[rank], tag).then_some(rank)
             } else {
-                queries.iter().any(|q| source[t.end..end].contains(q)
-                    && !ts[ti + 1..].iter().any(|n| !n.close && n.start < end
-                        && source[n.start..end].contains(q)))
+                queries.iter().position(|q| source[t.end..end].match_indices(q.as_str()).any(|(offset, _)| {
+                    let at = t.end + offset;
+                    !ts[ti + 1..].iter().enumerate().any(|(i, n)| !n.close
+                        && n.start < end && n.start <= at
+                        && ends[ti + 1 + i].map_or(true, |child_end| at < child_end))
+                }))
             };
-            if !query_matches { continue; }
+            let Some(rank) = rank else { continue };
             let ls = source[..t.start].rfind('\n').map_or(0, |n| n + 1);
             let le = source[end..].find('\n').map_or(source.len(), |n| end + n);
             let before = &source[ls..t.start];
@@ -178,10 +180,15 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
             }
             let text_before = before.rsplit('>').next().unwrap_or(before).trim();
             let text_after = after.split('<').next().unwrap_or(after).trim();
-            let neighbours_block = ts.iter().filter(|n| n.end <= t.start && n.end > ls).last()
-                .map_or(true, |n| block(&n.name.to_ascii_lowercase()))
-                && ts.iter().find(|n| n.start >= end && n.start < le)
-                    .map_or(true, |n| block(&n.name.to_ascii_lowercase()));
+            let is_block = |n: &Token| if components { block(&n.name) } else { block(&n.name.to_ascii_lowercase()) };
+            // Check each inserted newline independently. A body parent alone
+            // cannot make an adjacent pair of inline siblings whitespace-safe.
+            let left_safe = before.trim().is_empty() || before.ends_with(char::is_whitespace)
+                || (is_block(t) && ts.iter().filter(|n| n.end <= t.start && n.end > ls).last()
+                    .map_or(false, |n| is_block(n)));
+            let right_safe = after.trim().is_empty() || after.starts_with(char::is_whitespace)
+                || (is_block(t) && ts.iter().find(|n| n.start >= end && n.start < le)
+                    .map_or(false, |n| is_block(n)));
             // JSX drops whitespace that holds a newline, so a split is safe only
             // where the element touches a tag or an expression container (or the
             // line's edge): never next to text, a space, or a JS keyword such as
@@ -190,11 +197,16 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
             let jsx_right = after.trim().is_empty() || after.starts_with('<') || after.starts_with('{');
             let safe = if jsx { !protected && jsx_left && jsx_right } else {
                 !protected && text_before.is_empty() && text_after.is_empty()
-                    && (block(&t.name.to_ascii_lowercase()) || t.parent.map_or(false, |p| ts[p].name.eq_ignore_ascii_case("body")) || neighbours_block)
+                    && left_safe && right_safe
             };
-            candidates.push(Candidate { file: fi, start: t.start, end,
+            candidates.push(Candidate { file: fi, rank, start: t.start, end,
                 range: ElementMatch { start_line: source[..t.start].matches('\n').count(), end_line: Some(source[..end].matches('\n').count()) }, shared, safe });
         }
+    }
+    // Locator precedence is global, before text or shared-line filtering can
+    // discard a stronger hit in favour of another file's weaker locator.
+    if let Some(rank) = candidates.iter().map(|c| c.rank).min() {
+        candidates.retain(|c| c.rank == rank);
     }
     if !candidates.iter().any(|c| c.shared) { return Err(files); }
     if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
@@ -236,7 +248,7 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
     let c = candidates.remove(0);
     let mut file = files.into_iter().nth(c.file).unwrap();
     if !c.shared { return Ok(Resolution::Match(file, c.range)); }
-    if !c.safe { return Ok(Resolution::Inline(file.path)); }
+    if !c.safe { return Ok(Resolution::SharedLine(file, c.range)); }
     let source = file.lines.join("\n");
     let ls = source[..c.start].rfind('\n').map_or(0, |n| n + 1);
     let le = source[c.end..].find('\n').map_or(source.len(), |n| c.end + n);

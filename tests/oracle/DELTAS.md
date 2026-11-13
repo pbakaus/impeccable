@@ -7375,3 +7375,13 @@ A picked element in the middle of a line (a minified or one-line page) used to a
 ## Recorded 2026-11-12: live-wrap never matches inside a comment, script, style or textarea
 
 The line resolver searched comment and raw-text contents like markup, so `live-wrap --query hero-hook` on the `live-html` fixture matched the `.hero-hook` CSS rule and wrapped the page's `<style>` block in `<head>`. The element scans now read tags through one lexer that skips comments, raw-text contents and quoted attribute values, and matches HTML tag names case-insensitively; comment and raw-text contents are blanked before the search, so the query lands on `<p class="hero-hook">` in the body. `live-wrap-html-by-query` changed in `stdout` (startLine 14, endLine 22, originalLineCount 1) and in the written `index.html`; no other golden changed.
+
+## Recorded 2026-11-13: unsafe inline isolation uses the shared-line fallback
+
+- `live-wrap-same-line-text-inline`, `live-insert-same-line-text-inline`,
+  `live-wrap-same-line-inline-spans`, `live-insert-same-line-inline-spans`:
+  unsafe isolation now reports `element_ambiguous` with `reason: "shared_line"`,
+  the candidate line range, and the existing shared-line manual-wrapper hint
+  instead of `element_inline`. This keeps whitespace-sensitive refusals on the
+  fallback the agent already handles. Reviewed all four decoded goldens:
+  only stderr changes; exit 1, empty stdout, and source files stay unchanged.

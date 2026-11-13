@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "{\"error\":\"element_inline\",\"fallback\":\"agent-driven\",\"file\":\"index.html\",\"hint\":\"Cannot safely isolate this element without changing whitespace or unpersisted source line numbers. Use a manual wrapper with each marker on its own line.\"}\n",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"reason\":\"shared_line\",\"file\":\"index.html\",\"candidates\":[{\"startLine\":1,\"endLine\":1}],\"hint\":\"The element shares a source line with other markup, so a wrapper around its lines would take that markup with it. Write the wrapper manually with each marker on a line of its own. See \\\"Handle fallback\\\" in live.md.\"}\n",
   "exit": 1,
   "signal": null,
   "files": {
