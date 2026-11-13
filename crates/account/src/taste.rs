@@ -264,9 +264,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         let date = impeccable_context::util::iso_now();
         body["session"] = digest_id("use", &[&root, &date[..10], &salt]).into();
     }
-    let Some(left) = Duration::from_secs(3).checked_sub(started.elapsed()).filter(|d| !d.is_zero())
-        else { return 0; };
-    let client = crate::http::Client::with_deadline(&account, left);
+    let end = started + Duration::from_secs(3);
+    if end <= Instant::now() { return 0; }
+    // Name lookup counts against the same three seconds; the POST itself
+    // stays on this thread.
+    let client = crate::http::Client::until(&account, end);
     let Ok(reply) = client.post_taste(&format!("{}/cli/v1/taste/{route}", account.issuer), token, body)
         else { return 0; };
     let line = if route == "calls" {

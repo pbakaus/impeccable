@@ -2616,7 +2616,10 @@ IMPECCABLE_NO_TASTE is present (including empty, 0 or false), or when
 telemetry::opt_out_reason finds any telemetry opt-out, including DO_NOT_TRACK=1
 or project configuration. The ordinary foreground credential loader is bounded
 to one second; only an existing unexpired access token is used, with no renewal.
-The request uses the remainder of a three-second budget. Network failures,
+The request uses the remainder of a three-second budget, name lookup included:
+the lookup (of the issuer, or of a proxy) runs on a helper thread and a lookup
+still pending at the end of the budget drops the write; the POST itself never
+leaves the calling thread. Network failures,
 404 (feature off), 403 (insufficient_scope), any non-200, and malformed replies
 exit 0 silently. The server rejects invalid calls with 400 invalid_request and
 field, or 413 above 4 KiB. A 200 call response prints exactly one line:

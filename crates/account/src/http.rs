@@ -5,7 +5,7 @@
 use crate::config::{self, Account};
 use std::io::Read;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiError {
@@ -64,6 +64,17 @@ impl Client {
     }
 
     pub fn with_deadline(account: &Account, deadline: Duration) -> Client {
+        Client::build(account, deadline, None)
+    }
+
+    /// A client for a caller with a hard budget ending at `end`: name lookup
+    /// is bounded by it too (see [`bounded_lookup`]), so a stalled resolver
+    /// drops the request instead of holding the caller.
+    pub fn until(account: &Account, end: Instant) -> Client {
+        Client::build(account, end.saturating_duration_since(Instant::now()), Some(end))
+    }
+
+    fn build(account: &Account, deadline: Duration, end: Option<Instant>) -> Client {
         // A loopback rehearsal must not be sent to a corporate proxy, and
         // its names never reach a resolver: plain HTTP is allowed for them
         // only because they cannot leave the machine.
@@ -72,11 +83,15 @@ impl Client {
         } else {
             // Every request stays on the issuer's origin (`checked`), so its
             // host decides the NO_PROXY match for the whole client.
-            impeccable_context::http::agent_builder(&account.issuer)
+            let builder = impeccable_context::http::agent_builder(&account.issuer);
+            match end {
+                Some(end) => builder.resolver(move |netloc: &str| bounded_lookup(netloc, end, system_lookup)),
+                None => builder,
+            }
         };
         // ureq 2 gives timeout_connect precedence over its overall timeout.
-        // DNS remains synchronous and unbounded in ureq; this cap bounds the
-        // connect operation, not resolution. Never move an upload to a detached
+        // ureq resolves names synchronously with no timeout of its own; only a
+        // client from `until` bounds that. Never move an upload to a detached
         // worker: it could transmit after the caller's timeout or opt-out.
         let agent = builder
             .timeout_connect(deadline.min(Duration::from_secs(10)))
@@ -280,6 +295,27 @@ pub fn valid_token(token: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"-._~+/".contains(&b))
 }
 
+fn system_lookup(netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
+    std::net::ToSocketAddrs::to_socket_addrs(netloc).map(Iterator::collect)
+}
+
+/// Resolve `netloc` (the issuer's, or a proxy's) by `end` at the latest. The
+/// lookup runs on a helper thread that is abandoned when time runs out; it
+/// carries no request, so nothing is sent after the caller gave up.
+fn bounded_lookup(
+    netloc: &str,
+    end: Instant,
+    lookup: fn(&str) -> std::io::Result<Vec<SocketAddr>>,
+) -> std::io::Result<Vec<SocketAddr>> {
+    let timed_out = || std::io::Error::new(std::io::ErrorKind::TimedOut, "name lookup ran out of time");
+    let wait = end.saturating_duration_since(Instant::now());
+    if wait.is_zero() {
+        return Err(timed_out());
+    }
+    let netloc = netloc.to_string();
+    crate::session::read_within(wait, move || lookup(&netloc)).unwrap_or_else(|| Err(timed_out()))
+}
+
 /// Loopback rehearsal names resolve to loopback, without a resolver
 /// (RFC 6761 section 6.3); any other name is refused rather than looked up.
 fn resolve_loopback(netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
@@ -304,6 +340,24 @@ fn resolve_loopback(netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stalled_name_lookup_gives_up_at_the_callers_deadline() {
+        fn stalls(_: &str) -> std::io::Result<Vec<SocketAddr>> {
+            std::thread::sleep(Duration::from_secs(5));
+            Ok(vec![])
+        }
+        fn answers(_: &str) -> std::io::Result<Vec<SocketAddr>> {
+            Ok(vec![SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 443)])
+        }
+        let started = Instant::now();
+        let err = bounded_lookup("api.example.invalid:443", started + Duration::from_millis(200), stalls)
+            .unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(bounded_lookup("x:443", Instant::now() + Duration::from_secs(2), answers).unwrap().len(), 1);
+        assert!(bounded_lookup("x:443", Instant::now(), answers).is_err());
+    }
 
     #[test]
     fn loopback_names_never_reach_a_resolver() {
