@@ -261,7 +261,7 @@ fn antigravity_named_hook_manifest_merges_and_preserves_other_hooks() {
             "PostToolUse": [{ "matcher": "run_command", "hooks": [{ "type": "command", "command": "./lint.sh" }] }]
         },
         "impeccable": {
-            "PostToolUse": [{ "matcher": "edit_file", "hooks": [{ "type": "command", "command": "old" }] }]
+            "PostToolUse": [{ "matcher": "edit_file", "hooks": [{ "type": "command", "command": "\"../.agent/skills/impeccable/scripts/impeccable\" hook" }] }]
         }
     });
     let fresh = json!({
@@ -940,4 +940,108 @@ fn partial_user_settings_never_prune_the_project_hook() {
     prune_duplicate_claude_hooks(&sys, &home, &root).unwrap();
     assert!(std::path::Path::new(&local).exists());
     let _ = std::fs::remove_dir_all(dir);
+}
+
+// ─── Antigravity named hooks (.agents/hooks.json, ~/.gemini/config/hooks.json) ─
+
+fn agy_bundle_manifest() -> Value {
+    use impeccable_context::hook_wiring::{antigravity_hook_command, antigravity_manifest_for_command};
+    antigravity_manifest_for_command(&antigravity_hook_command(false))
+}
+
+#[test]
+fn antigravity_install_and_hooks_on_write_the_same_command_per_platform() {
+    // ZpR: `hooks on` and install/update must agree on both platforms, or each
+    // rewrites the other's entry and the wiring check flips.
+    use impeccable_context::hook_wiring::{antigravity_hook_command, antigravity_manifest_for_command};
+    for win32 in [false, true] {
+        let installed = rewrite_hook_commands_for_platform(&agy_bundle_manifest(), ".agent", "/proj", false, win32);
+        assert_eq!(installed, antigravity_manifest_for_command(&antigravity_hook_command(win32)), "win32={win32}");
+    }
+    let win = antigravity_hook_command(true);
+    assert!(win.starts_with("cmd /c") || win.contains(".cmd"), "{win}");
+    assert!(!win.contains("[ ! -f"), "{win}");
+}
+
+#[test]
+fn antigravity_prune_strips_only_impeccable_entries_from_named_hooks() {
+    let dir = tmp_dir("agy-prune");
+    let path = dir.join("hooks.json").to_string_lossy().into_owned();
+    let mut manifest = agy_bundle_manifest();
+    manifest["impeccable"]["PostToolUse"].as_array_mut().unwrap()
+        .push(json!({ "matcher": "run_command", "hooks": [{ "type": "command", "command": "./mine.sh" }] }));
+    manifest["lint"] = json!({ "PostToolUse": [{ "matcher": "write_to_file", "hooks": [{ "type": "command", "command": "./lint.sh" }] }] });
+    manifest["$schema"] = json!("https://example.invalid/hooks.json");
+    write(&path, &manifest.to_string());
+    assert!(file_has_impeccable_hook_marker(&path));
+    assert!(prune_impeccable_hook_from_manifest(&path).unwrap());
+    let after: Value = serde_json::from_str(&read(&path)).unwrap();
+    assert!(!value_has_impeccable_hook_marker(&after), "{after}");
+    assert_eq!(after["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+    assert_eq!(after["impeccable"]["PostToolUse"].as_array().unwrap().len(), 1);
+    assert!(after["impeccable"].get("Stop").is_none());
+    assert_eq!(after["$schema"], "https://example.invalid/hooks.json");
+
+    // A manifest that held only our hook is removed outright.
+    write(&path, &agy_bundle_manifest().to_string());
+    assert!(prune_impeccable_hook_from_manifest(&path).unwrap());
+    assert!(!std::path::Path::new(&path).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn prune_leaves_a_hookless_claude_settings_file_alone() {
+    // The named-hook branch must not treat a Claude settings file without a
+    // `hooks` key as Antigravity's shape and drop its other keys.
+    let dir = tmp_dir("claude-perms");
+    let path = dir.join("settings.json").to_string_lossy().into_owned();
+    let settings = json!({ "permissions": { "allow": ["Bash(.claude/skills/impeccable/scripts/impeccable hook)"] }, "model": "x" });
+    write(&path, &settings.to_string());
+    assert!(!file_has_impeccable_hook_marker(&path));
+    assert!(!prune_impeccable_hook_from_manifest(&path).unwrap());
+    let after: Value = serde_json::from_str(&read(&path)).unwrap();
+    assert_eq!(after, settings);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn antigravity_user_install_writes_the_global_manifest_and_prunes_a_dead_project_entry() {
+    // ZpM / ZpU: a `--user` install writes ~/.gemini/config/hooks.json, counts
+    // it as installed, and removes a project `.agents/hooks.json` entry whose
+    // `../.agent/skills/...` launcher is missing.
+    let dir = tmp_dir("agy-user");
+    let root = dir.to_string_lossy().into_owned();
+    let bundle = jsp::join(&[&root, "bundle"]);
+    let home = jsp::join(&[&root, "home"]);
+    let project = jsp::join(&[&root, "project"]);
+    write(&jsp::join(&[&bundle, ".agents", "hooks.json"]), &agy_bundle_manifest().to_string());
+    write(&jsp::join(&[&home, ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]), "#!/bin/sh\n");
+    let project_manifest = jsp::join(&[&project, ".agents", "hooks.json"]);
+    let mut project_hooks = agy_bundle_manifest();
+    project_hooks["lint"] = json!({ "Stop": [{ "type": "command", "command": "./lint.sh" }] });
+    write(&project_manifest, &project_hooks.to_string());
+    let mut env = HashMap::new();
+    env.insert("HOME".to_string(), home.clone());
+    env.insert("USERPROFILE".to_string(), home.clone());
+    let sys = Sys::new(env, home.clone());
+
+    assert!(!hook_installed_for_provider_at_scope(&sys, &home, ".agent", true));
+    let written = copy_provider_hooks(&sys, &bundle, &project, &[".agent"], false, Some(&home), Some(&project)).unwrap();
+    let global = jsp::join(&[&home, ".gemini", "config", "hooks.json"]);
+    assert_eq!(written, [global.clone()]);
+    let after: Value = serde_json::from_str(&read(&global)).unwrap();
+    let cmd = after["impeccable"]["Stop"][0]["command"].as_str().unwrap();
+    assert!(cmd.contains(&jsp::join(&[&home, ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"])) || cfg!(windows), "{cmd}");
+    assert!(hook_installed_for_provider_at_scope(&sys, &home, ".agent", true));
+
+    let project_after: Value = serde_json::from_str(&read(&project_manifest)).unwrap();
+    assert!(!value_has_impeccable_hook_marker(&project_after), "{project_after}");
+    assert_eq!(project_after["lint"]["Stop"][0]["command"], "./lint.sh");
+
+    // A project that ships its own Antigravity skill keeps its shared entry.
+    write(&project_manifest, &agy_bundle_manifest().to_string());
+    write(&skill_launcher(&project, ".agent"), "#!/bin/sh\n");
+    copy_provider_hooks(&sys, &bundle, &project, &[".agent"], false, Some(&home), Some(&project)).unwrap();
+    assert!(value_has_impeccable_hook_marker(&serde_json::from_str::<Value>(&read(&project_manifest)).unwrap()));
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -201,6 +201,118 @@ pub fn value_has_impeccable_hook_marker(v: &serde_json::Value) -> bool {
     }
 }
 
+/// The events an Antigravity named hook may carry. Antigravity's
+/// `hooks.json` has no top-level `hooks` key: each top-level key names a hook,
+/// and that hook holds event arrays (`PreToolUse` / `PostToolUse` grouped by
+/// `matcher`, the rest flat handler lists) beside an optional `enabled`.
+pub const NAMED_HOOK_EVENTS: &[&str] =
+    &["PreToolUse", "PostToolUse", "Stop", "SessionStart", "PreInvocation", "PostInvocation"];
+
+/// True when `v` is an Antigravity named hook: an object with at least one
+/// known event key holding an array. The shape gate keeps every other
+/// top-level settings block (Claude `permissions`, `env`, ...) out of reach.
+pub fn is_named_hook(v: &serde_json::Value) -> bool {
+    v.as_object().is_some_and(|o| NAMED_HOOK_EVENTS.iter().any(|e| o.get(*e).is_some_and(serde_json::Value::is_array)))
+}
+
+/// True when a manifest without a `hooks` key holds Antigravity named hooks.
+pub fn is_named_hook_manifest(root: &serde_json::Value) -> bool {
+    root.as_object().is_some_and(|o| !o.contains_key("hooks") && o.values().any(is_named_hook))
+}
+
+fn named_hook_subtree(root: &serde_json::Value, active_only: bool) -> Option<serde_json::Value> {
+    let o = root.as_object()?;
+    if let Some(h) = o.get("hooks") {
+        return Some(h.clone());
+    }
+    let named: serde_json::Map<String, serde_json::Value> = o
+        .iter()
+        .filter(|(_, v)| is_named_hook(v))
+        .filter(|(_, v)| !active_only || v.get("enabled") != Some(&serde_json::Value::Bool(false)))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    (!named.is_empty()).then_some(serde_json::Value::Object(named))
+}
+
+/// The hook-bearing part of a manifest, the one place readers find it: the
+/// `hooks` value when the root has one (every harness but Antigravity),
+/// otherwise an object of the root's Antigravity named hooks, disabled ones
+/// included (pruning and repair must still see them). `None` when neither.
+pub fn manifest_hook_subtree(root: &serde_json::Value) -> Option<serde_json::Value> {
+    named_hook_subtree(root, false)
+}
+
+/// `manifest_hook_subtree` without named hooks set to `enabled: false`: the
+/// subtree that actually runs, for "is a hook active" checks.
+pub fn active_manifest_hook_subtree(root: &serde_json::Value) -> Option<serde_json::Value> {
+    named_hook_subtree(root, true)
+}
+
+/// Strips Impeccable entries from every Antigravity named hook in `root`
+/// with `strip` (the caller's `strip_impeccable_hook_entries`), entry by
+/// entry. An emptied event is dropped, a named hook left with no event is
+/// dropped, and everything else (other hooks, their `enabled`, non-hook
+/// keys) is kept as it was.
+pub fn strip_named_hooks(
+    root: &serde_json::Map<String, serde_json::Value>,
+    strip: impl Fn(Option<&serde_json::Value>) -> Vec<serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    use serde_json::Value;
+    let mut out = serde_json::Map::new();
+    for (name, hook) in root {
+        let Some(fields) = hook.as_object().filter(|_| is_named_hook(hook)) else {
+            out.insert(name.clone(), hook.clone());
+            continue;
+        };
+        let mut next = serde_json::Map::new();
+        for (k, v) in fields {
+            if NAMED_HOOK_EVENTS.contains(&k.as_str()) && v.is_array() {
+                let kept = strip(Some(v));
+                if !kept.is_empty() {
+                    next.insert(k.clone(), Value::Array(kept));
+                }
+            } else {
+                next.insert(k.clone(), v.clone());
+            }
+        }
+        if next.keys().any(|k| NAMED_HOOK_EVENTS.contains(&k.as_str())) {
+            out.insert(name.clone(), Value::Object(next));
+        }
+    }
+    out
+}
+
+/// Merges a fresh Antigravity named-hook manifest into `existing`: strips
+/// Impeccable entries everywhere first, then appends each fresh hook's event
+/// entries to a surviving hook of the same name (keeping its `enabled` and
+/// any user entries) or inserts the fresh hook whole.
+pub fn merge_named_hooks(
+    existing: &serde_json::Map<String, serde_json::Value>,
+    fresh: &serde_json::Map<String, serde_json::Value>,
+    strip: impl Fn(Option<&serde_json::Value>) -> Vec<serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    use serde_json::Value;
+    let mut merged = strip_named_hooks(existing, strip);
+    for (name, hook) in fresh {
+        match (merged.get_mut(name), hook) {
+            (Some(Value::Object(current)), Value::Object(added)) if is_named_hook(hook) => {
+                for (event, entries) in added {
+                    match (current.get_mut(event), entries) {
+                        (Some(Value::Array(have)), Value::Array(more)) => have.extend(more.iter().cloned()),
+                        _ => {
+                            current.insert(event.clone(), entries.clone());
+                        }
+                    }
+                }
+            }
+            _ => {
+                merged.insert(name.clone(), hook.clone());
+            }
+        }
+    }
+    merged
+}
+
 /// Moves a Cursor manifest's launcher-form `preToolUse` gate entry to the
 /// post-edit hook in place: the same launcher command with `hook-before-edit`
 /// swapped for `hook`, under `postToolUse` with the `^Write$` matcher. Other
@@ -387,6 +499,52 @@ mod tests {
         let next = migrate_cursor_gate_in_place(&both).unwrap();
         assert_eq!(next["hooks"].as_object().unwrap().len(), 1);
         assert_eq!(next["hooks"]["postToolUse"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn named_hook_subtree_is_shape_gated() {
+        let cmd = "\"../.agent/skills/impeccable/scripts/impeccable\" hook";
+        let m = serde_json::json!({
+            "impeccable": {"PostToolUse": [{"matcher": "write_to_file", "hooks": [{"type": "command", "command": cmd}]}]},
+            "off": {"enabled": false, "Stop": [{"type": "command", "command": cmd}]},
+            "permissions": {"allow": [cmd]},
+        });
+        assert!(is_named_hook_manifest(&m));
+        let all = manifest_hook_subtree(&m).unwrap();
+        assert!(all.get("impeccable").is_some() && all.get("off").is_some() && all.get("permissions").is_none());
+        let active = active_manifest_hook_subtree(&m).unwrap();
+        assert!(active.get("off").is_none());
+        // A Claude settings file with no `hooks` key is not a named-hook
+        // manifest, even when a permission names the launcher.
+        let claude = serde_json::json!({"permissions": {"allow": [cmd]}});
+        assert!(!is_named_hook_manifest(&claude));
+        assert_eq!(manifest_hook_subtree(&claude), None);
+        assert_eq!(manifest_hook_subtree(&serde_json::json!({"hooks": {"Stop": []}})), Some(serde_json::json!({"Stop": []})));
+    }
+
+    #[test]
+    fn strip_and_merge_named_hooks_keep_user_entries() {
+        let ours = serde_json::json!({"type": "command", "command": "\"../.agent/skills/impeccable/scripts/impeccable\" hook"});
+        let strip = |v: Option<&serde_json::Value>| -> Vec<serde_json::Value> {
+            v.and_then(|v| v.as_array()).map(|a| a.iter().filter(|e| !value_has_impeccable_hook_marker(e)).cloned().collect()).unwrap_or_default()
+        };
+        let existing = serde_json::json!({
+            "impeccable": {"enabled": false, "Stop": [ours.clone(), {"type": "command", "command": "./mine.sh"}]},
+            "lint": {"PostToolUse": [{"matcher": "write_to_file", "hooks": [{"type": "command", "command": "./lint.sh"}]}]},
+            "only-ours": {"Stop": [ours.clone()]},
+            "settings": {"x": 1},
+        });
+        let stripped = strip_named_hooks(existing.as_object().unwrap(), strip);
+        assert_eq!(serde_json::Value::Object(stripped.clone()), serde_json::json!({
+            "impeccable": {"enabled": false, "Stop": [{"type": "command", "command": "./mine.sh"}]},
+            "lint": {"PostToolUse": [{"matcher": "write_to_file", "hooks": [{"type": "command", "command": "./lint.sh"}]}]},
+            "settings": {"x": 1},
+        }));
+        let fresh = serde_json::json!({"impeccable": {"Stop": [ours.clone()]}});
+        let merged = merge_named_hooks(existing.as_object().unwrap(), fresh.as_object().unwrap(), strip);
+        assert_eq!(merged["impeccable"], serde_json::json!({"enabled": false, "Stop": [{"type": "command", "command": "./mine.sh"}, ours]}));
+        assert!(merged.get("only-ours").is_none());
+        assert_eq!(merged["lint"], existing["lint"]);
     }
 
     #[test]

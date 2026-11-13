@@ -509,7 +509,12 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // this, clean-edit editCount bumps would stop persisting the moment
     // state relocates. Under stock paths the cache sits inside
     // `.impeccable/`, so the extra check changes nothing there.
+    // Antigravity skips the emit branch above (its PostToolUse stdout is
+    // ignored), which is where every other harness persists fresh findings.
+    // Persist them here instead so Stop sees the touched file even in a
+    // project with no `.impeccable/` yet.
     let wants_persist = deferred_total > 0
+        || (harness == "antigravity" && !fresh_groups.is_empty())
         || (cache_dirty
             && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))));
     if wants_persist && persist_cache(rt, &project_cwd, &cache) {
@@ -714,8 +719,10 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         }
     }
     if harness == "antigravity" {
+        // The binary spells the reason `NO_TOOL_CALL`; the published docs
+        // show `model_stop` for the same natural end of a turn.
         if let Some(Value::String(reason)) = event.get("terminationReason") {
-            if reason != "NO_TOOL_CALL" {
+            if !reason.eq_ignore_ascii_case("NO_TOOL_CALL") && !reason.eq_ignore_ascii_case("model_stop") {
                 return result(
                     &audit,
                     vec![
@@ -1102,6 +1109,13 @@ fn is_stop_event(stdin: &str) -> bool {
     }
 }
 
+fn antigravity_stdin(rt: &Runtime, stdin: &str) -> bool {
+    match serde_json::from_str::<Value>(stdin) {
+        Ok(Value::Object(o)) => resolve_harness(rt, Some(&o)) == "antigravity",
+        _ => rt.env("IMPECCABLE_HOOK_HARNESS") == Some("antigravity"),
+    }
+}
+
 /// `impeccable hook` (hook.mjs main). Returns the exit code (always 0).
 pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(stdin) {
@@ -1129,7 +1143,8 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     // JS: process.env.IMPECCABLE_HOOK_DEPTH = process.env.IMPECCABLE_HOOK_DEPTH || '1'
     // is exported for child processes; this binary spawns none, so the
     // pre-mutation snapshot in `rt.env` is the only value that matters.
-    let result = if is_stop_event(stdin) {
+    let stop = is_stop_event(stdin);
+    let result = if stop {
         run_stop_hook(rt, stdin)
     } else {
         run_hook(rt, stdin)
@@ -1137,6 +1152,10 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     write_audit_log(rt, &result.audit, &rt.proc_cwd);
     if !result.stdout.is_empty() {
         io.out(&result.stdout);
+    } else if !stop && antigravity_stdin(rt, stdin) {
+        // Antigravity reads PostToolUse stdout as JSON; an early skip
+        // (disabled, no file, duplicate) still answers with the empty object.
+        io.out("{}");
     }
     0
 }

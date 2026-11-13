@@ -47,8 +47,8 @@ const BUCKET_SECONDS: u64 = 600;
 const TOOL_CALL_ID_KEYS: &[&str] = &["tool_use_id", "toolUseId", "tool_call_id", "toolCallId"];
 
 /// The session the call belongs to: Claude Code and Codex send `session_id`,
-/// Cursor `conversation_id` (and `session_id`).
-const SESSION_KEYS: &[&str] = &["session_id", "sessionId", "conversation_id"];
+/// Cursor `conversation_id` (and `session_id`), Antigravity `conversationId`.
+const SESSION_KEYS: &[&str] = &["session_id", "sessionId", "conversation_id", "conversationId"];
 
 /// What happened to the claim for this invocation.
 #[derive(Debug, PartialEq, Eq)]
@@ -64,11 +64,32 @@ fn non_empty_str<'a>(event: &'a Map<String, Value>, keys: &[&str]) -> Option<&'a
     keys.iter().find_map(|k| event.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
 }
 
+/// The event's tool-call identity: a top-level id, else Antigravity's nested
+/// `toolCall.id`, else Antigravity's `stepIdx` (the step's index in its
+/// conversation, also unique per call; the published docs show a `toolCall`
+/// without an `id`). The step form is used only beside a `conversationId`,
+/// which scopes it.
+fn tool_call_id(event: &Map<String, Value>) -> Option<String> {
+    if let Some(id) = non_empty_str(event, TOOL_CALL_ID_KEYS) {
+        return Some(id.to_string());
+    }
+    let nested = event.get("toolCall").and_then(Value::as_object);
+    if let Some(id) = nested.and_then(|tc| tc.get("id")).and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return Some(id.to_string());
+    }
+    let conversation = event.get("conversationId").and_then(Value::as_str).filter(|s| !s.is_empty());
+    match (nested, conversation, event.get("stepIdx")) {
+        (Some(_), Some(_), Some(Value::Number(step))) => Some(format!("step:{step}")),
+        _ => None,
+    }
+}
+
 /// The claim key for an event, or `None` when the payload names no tool call.
 /// The project root and the scan targets are part of it, so two projects (or
 /// two test fixtures) that happen to reuse an id never collide.
 pub fn event_key(event: &Map<String, Value>, project_cwd: &str, files: &[String]) -> Option<String> {
-    let call = non_empty_str(event, TOOL_CALL_ID_KEYS)?;
+    let call = tool_call_id(event)?;
+    let call = call.as_str();
     let session = non_empty_str(event, SESSION_KEYS).unwrap_or("");
     let mut files: Vec<&str> = files.iter().map(String::as_str).collect();
     files.sort_unstable();

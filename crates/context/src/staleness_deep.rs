@@ -263,12 +263,12 @@ pub fn check_hook_installation(
     let mut installed_at: Option<String> = None;
     for (root, mp, is_user) in &entries {
         let Some(raw) = read_json(mp) else { continue };
-        let Some(hooks) = raw.get("hooks") else { continue };
-        if !js_truthy(hooks) {
+        let Some(hooks) = crate::hook_markers::active_manifest_hook_subtree(&raw) else { continue };
+        if !js_truthy(&hooks) {
             continue;
         }
         let mut commands = Vec::new();
-        collect_hook_commands(hooks, &mut commands);
+        collect_hook_commands(&hooks, &mut commands);
         if commands.is_empty() {
             continue;
         }
@@ -278,7 +278,10 @@ pub fn check_hook_installation(
             .iter()
             .filter(|c| {
                 let Some(token) = hook_script_token_from(c) else { return false };
-                let Some(abs) = resolve_hook_script_path(&token, root) else { return false };
+                // Antigravity runs each hook command from the directory that
+                // holds its `hooks.json`, so a relative launcher resolves there.
+                let base = if provider_id == "antigravity" { jsp::dirname(mp) } else { root.to_string() };
+                let Some(abs) = resolve_hook_script_path(&token, &base) else { return false };
                 !exists(&abs)
             })
             .collect();
@@ -311,7 +314,7 @@ pub fn check_hook_installation(
                 // `update --user` rewrites only Claude's user manifest; other
                 // providers get project hooks, and a launcher entry in their
                 // home file is never repointed.
-                if *is_user && provider_id == "claude-code" {
+                if *is_user && matches!(provider_id, "claude-code" | "antigravity") {
                     "Reinstall with `impeccable update --user`, which rewrites this user-level manifest against the skill's current location."
                 } else if *is_user {
                     "Edit this user-level manifest by hand: point the command at the installed skill's launcher, or remove the Impeccable entry. `impeccable update --user` installs project hooks and does not repoint this file."
@@ -659,6 +662,26 @@ mod tests {
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].id, "hook-script-missing");
         assert!(findings[0].fix.starts_with("Reinstall with `impeccable update --user`"), "{:?}", findings[0].fix);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn antigravity_named_hook_resolves_relative_launcher_from_manifest_dir() {
+        let root = tmp();
+        write(&root, ".agent/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+        let cmd = "\"../.agent/skills/impeccable/scripts/impeccable\" hook";
+        write(
+            &root,
+            ".agents/hooks.json",
+            &serde_json::json!({"impeccable": {"Stop": [{"type": "command", "command": cmd}]}}).to_string(),
+        );
+        // The launcher exists one level up from `.agents/`, where Antigravity
+        // runs the command; resolving it from the project root would miss it.
+        assert!(check_hook_installation(&root, None, "antigravity", None).is_empty());
+        std::fs::remove_file(crate::jsp::join(&[&root, ".agent/skills/impeccable/scripts/impeccable"])).unwrap();
+        let findings = check_hook_installation(&root, None, "antigravity", None);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].id, "hook-script-missing");
         let _ = std::fs::remove_dir_all(&root);
     }
 

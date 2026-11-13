@@ -196,17 +196,27 @@ fn gemini_manifest() -> Value {
     )])
 }
 
-const ANTIGRAVITY_HOOK_COMMAND: &str = "\"../.agent/skills/impeccable/scripts/impeccable\" hook";
+/// Antigravity runs a hook command from the directory holding its
+/// `hooks.json` (`.agents/` for a workspace), through `sh -c` on POSIX and
+/// `cmd /c` on Windows, so the project launcher is one level up.
+const ANTIGRAVITY_LAUNCHER: &str = "../.agent/skills/impeccable/scripts/impeccable";
 
-fn antigravity_manifest() -> Value {
-    let cmd = if cfg!(windows) {
-        crate::hook_markers::windows_launcher_hook_command(
-            "../.agent/skills/impeccable/scripts/impeccable",
-            "hook",
-        )
+/// The workspace Antigravity hook command for one platform. Install/update
+/// (`hook_command` for `.agent` in the skills crate) writes the same string,
+/// guard included: a workspace whose skill is gone (or was installed only
+/// globally) runs a no-op instead of a missing launcher.
+pub fn antigravity_hook_command(win32: bool) -> String {
+    if win32 {
+        crate::hook_markers::windows_launcher_hook_command(ANTIGRAVITY_LAUNCHER, "hook")
     } else {
-        ANTIGRAVITY_HOOK_COMMAND.to_string()
-    };
+        format!("[ ! -f \"{ANTIGRAVITY_LAUNCHER}\" ] || \"{ANTIGRAVITY_LAUNCHER}\" hook")
+    }
+}
+
+/// Antigravity's `hooks.json` holds named hooks, not a `hooks` key: one
+/// `impeccable` hook with a grouped `PostToolUse` entry for the file-write
+/// tools and a flat `Stop` handler list. Timeouts are seconds.
+pub fn antigravity_manifest_for_command(cmd: &str) -> Value {
     obj(vec![(
         "impeccable",
         obj(vec![
@@ -221,7 +231,7 @@ fn antigravity_manifest() -> Value {
                         "hooks",
                         Value::Array(vec![obj(vec![
                             ("type", Value::from("command")),
-                            ("command", Value::from(cmd.clone())),
+                            ("command", Value::from(cmd)),
                             ("timeout", Value::from(TIMEOUT_SECONDS)),
                         ])]),
                     ),
@@ -239,15 +249,11 @@ fn antigravity_manifest() -> Value {
     )])
 }
 
+fn antigravity_manifest() -> Value {
+    antigravity_manifest_for_command(&antigravity_hook_command(cfg!(windows)))
+}
+
 pub const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
-    ManifestTarget {
-        provider: ".agent",
-        skill_rel: ".agent/skills/impeccable",
-        dest_rel: ".agents/hooks.json",
-        shared_dest_rel: None,
-        manifest: antigravity_manifest,
-        user_settings: false,
-    },
     ManifestTarget {
         provider: ".claude",
         skill_rel: ".claude/skills/impeccable",
@@ -296,6 +302,14 @@ pub const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
         manifest: gemini_manifest,
         user_settings: true,
     },
+    ManifestTarget {
+        provider: ".agent",
+        skill_rel: ".agent/skills/impeccable",
+        dest_rel: ".agents/hooks.json",
+        shared_dest_rel: None,
+        manifest: antigravity_manifest,
+        user_settings: false,
+    },
 ];
 
 
@@ -309,6 +323,9 @@ pub fn manifest_is_wired(path: &str, expected: &Value) -> bool {
 
 fn contains_entries(actual: &Value, expected: &Value) -> bool {
     match expected {
+        // An Antigravity named hook switched off with `enabled: false` is
+        // present but does not run, so it is not wired.
+        Value::Object(fields) if actual.get("enabled") == Some(&Value::Bool(false)) && !fields.contains_key("enabled") => false,
         Value::Object(fields) => fields.iter().filter(|(k, _)| !matches!(k.as_str(),
             "description" | "timeout" | "timeoutSec" | "statusMessage")).all(|(k, v)| {
             actual.get(k).is_some_and(|a| {

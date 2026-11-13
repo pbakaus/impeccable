@@ -47,6 +47,20 @@ fn user_claude_hook_command(skill_root: &str, win32: bool) -> String {
     format!("[ ! -f {q} ] || {q} hook")
 }
 
+/// The command a user-scope `hooks on` writes into Antigravity's global
+/// `~/.gemini/config/hooks.json`: the install's form for `.agent`, the
+/// guarded absolute launcher on POSIX and the `cmd /c if exist` shim on
+/// Windows, where Antigravity runs commands through `cmd /c`.
+fn user_antigravity_hook_command(skill_root: &str, win32: bool) -> String {
+    let launcher = jsp::join(&[skill_root, "scripts", "impeccable"]);
+    if win32 {
+        impeccable_context::hook_markers::windows_launcher_hook_command(&launcher, "hook")
+    } else {
+        let q = format!("'{}'", launcher.replace('\'', "'\\''"));
+        format!("[ ! -f {q} ] || {q} hook")
+    }
+}
+
 struct RawFile {
     exists: bool,
     malformed: bool,
@@ -363,7 +377,7 @@ fn hermes_hook_is_wired(rt: &Runtime) -> bool {
 fn target_is_wired(rt: &Runtime, cwd: &str, target: &impeccable_context::hook_wiring::ManifestTarget) -> bool {
     let fresh = (target.manifest)();
     let provider_id = match target.provider {
-        ".claude" => "claude-code", ".agents" => "codex", _ => "",
+        ".claude" => "claude-code", ".agents" => "codex", ".agent" => "antigravity", _ => "",
     };
     manifest_is_wired(&jsp::join(&[cwd, target.dest_rel]), &fresh)
         || target.shared_dest_rel.is_some_and(|rel| manifest_is_wired(&jsp::join(&[cwd, rel]), &fresh))
@@ -591,12 +605,14 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
         let user_claude_dir = impeccable_context::context_cli::claude_config_dir(&rt.proc_cwd, &rt.env);
         let user_skill = if target.provider == ".claude" {
             jsp::join(&[&user_claude_dir, "skills", "impeccable"])
+        } else if target.provider == ".agent" {
+            jsp::join(&[&rt.homedir(), ".gemini", "config", "skills", "impeccable"])
         } else {
             jsp::join(&[&rt.homedir(), target.skill_rel])
         };
         let (skill_root, user_scoped) = if exists(&project_skill) {
             (project_skill, false)
-        } else if target.provider == ".claude"
+        } else if matches!(target.provider, ".claude" | ".agent")
             // The launcher itself, not just the skill folder: a user hook
             // naming a missing launcher is a no-op, and switching to it would
             // prune a project hook that may still run another installation.
@@ -618,9 +634,16 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
             // project hook is then the only one the machine has. The committed
             // `settings.json` belongs to the team and is never rewritten with
             // a home path.
-            prune_after = Some(dest.clone());
-            dest = jsp::join(&[&user_claude_dir, "settings.json"]);
-            user_settings = true;
+            if target.provider == ".claude" {
+                prune_after = Some(dest.clone());
+                dest = jsp::join(&[&user_claude_dir, "settings.json"]);
+                user_settings = true;
+            } else {
+                // Antigravity's global hooks file. The project
+                // `.agents/hooks.json` is a shared workspace file and is left
+                // as it is; with no project skill its entry is a guarded no-op.
+                dest = jsp::join(&[&rt.homedir(), ".gemini", "config", "hooks.json"]);
+            }
         } else if let Some(sd) = &shared_dest {
             if manifest_is_wired(sd, &(target.manifest)()) {
                 prune_impeccable_hook_from_manifest(&dest)?;
@@ -628,7 +651,9 @@ fn repair_hook_manifests(rt: &Runtime, cwd: &str, safe_only: bool) -> Result<Rep
                 continue;
             }
         }
-        let fresh = if user_scoped {
+        let fresh = if user_scoped && target.provider == ".agent" {
+            impeccable_context::hook_wiring::antigravity_manifest_for_command(&user_antigravity_hook_command(&skill_root, rt.win32))
+        } else if user_scoped {
             claude_manifest_for_command(&user_claude_hook_command(&skill_root, rt.win32))
         } else {
             (target.manifest)()
@@ -692,18 +717,12 @@ fn as_object(v: &Value) -> Map<String, Value> {
 fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     let existing_object = as_object(existing);
     let fresh_object = as_object(fresh);
-    if !fresh_object.contains_key("hooks") {
-        let mut merged = existing_object.clone();
-        let keys: Vec<String> = merged.keys().cloned().collect();
-        for key in keys {
-            if key == "impeccable" || merged.get(&key).is_some_and(value_has_impeccable_hook_marker) {
-                merged.shift_remove(&key);
-            }
-        }
-        for (k, v) in fresh_object {
-            merged.insert(k, v);
-        }
-        return Value::Object(merged);
+    if impeccable_context::hook_markers::is_named_hook_manifest(fresh) {
+        return Value::Object(impeccable_context::hook_markers::merge_named_hooks(
+            &existing_object,
+            &fresh_object,
+            strip_impeccable_hook_entries,
+        ));
     }
     let existing_hooks = obj_field(&existing_object, "hooks")
         .cloned()
@@ -768,8 +787,8 @@ fn file_has_impeccable_hook_marker(path: &str) -> bool {
     let Value::Object(o) = parsed else {
         return false;
     };
-    match o.get("hooks") {
-        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(h),
+    match impeccable_context::hook_markers::manifest_hook_subtree(&Value::Object(o)) {
+        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(&h),
         _ => false,
     }
 }
@@ -860,12 +879,9 @@ fn prune_impeccable_hook_from_manifest(path: &str) -> Result<bool, String> {
     }
     let mut next = parsed.clone();
     if !parsed.contains_key("hooks") {
-        let keys: Vec<String> = next.keys().cloned().collect();
-        for key in keys {
-            if key == "impeccable" || next.get(&key).is_some_and(value_has_impeccable_hook_marker) {
-                next.shift_remove(&key);
-            }
-        }
+        // Antigravity named hooks (`file_has_impeccable_hook_marker` already
+        // confirmed the shape): strip entry by entry, keep everything else.
+        next = impeccable_context::hook_markers::strip_named_hooks(&parsed, strip_impeccable_hook_entries);
     } else if !cleaned.is_empty() {
         next.insert("hooks".into(), Value::Object(cleaned));
     } else {

@@ -122,6 +122,44 @@ fn admin_on_and_reset_manage_gemini_without_losing_user_settings() {
 }
 
 #[test]
+fn admin_on_status_and_reset_manage_antigravity_named_hooks() {
+    // Z_g / ZpJ: named hooks must count as installed, read as wired, and be
+    // pruned by `reset` and `off`, keeping the user's own hooks and entries.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write(".agent/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+    t.write(".agents/hooks.json", &json!({
+        "lint": { "PostToolUse": [{ "matcher": "write_to_file", "hooks": [{ "type": "command", "command": "./lint.sh" }] }] }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0);
+    assert!(out.contains(".agent"), "{out}");
+    let manifest: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
+    assert_eq!(manifest["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+    let cmd = manifest["impeccable"]["Stop"][0]["command"].as_str().unwrap();
+    assert!(cmd.contains("../.agent/skills/impeccable/scripts/impeccable"), "{cmd}");
+    let (status, _, _) = admin_run(&r, &["status"]);
+    assert!(status.lines().any(|l| l.contains(".agent") && !l.contains("not")), "{status}");
+
+    // A user's `enabled: false` switches the hook off: not wired.
+    let mut off = manifest.clone();
+    off["impeccable"]["enabled"] = json!(false);
+    t.write(".agents/hooks.json", &off.to_string());
+    assert!(!impeccable_context::hook_wiring::manifest_is_wired(
+        &jsp::join(&[&cwd, ".agents/hooks.json"]),
+        &(impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == ".agent").unwrap().manifest)(),
+    ));
+    t.write(".agents/hooks.json", &manifest.to_string());
+
+    let (out, _, _) = admin_run(&r, &["reset"]);
+    assert!(out.contains("Removed hook entries from: .agent."), "{out}");
+    let after: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
+    assert!(after.get("impeccable").is_none(), "{after}");
+    assert_eq!(after["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+}
+
+#[test]
 fn gemini_after_agent_uses_native_retry_contract_and_session_scope() {
     let t = Tmp::new();
     t.write("index.html", "<main>In progress</main>");
@@ -2915,6 +2953,81 @@ fn antigravity_harness_detection_and_lifecycle() {
     }).to_string();
     let re = hook::run_stop_hook(&r, &active);
     assert_eq!(audit_str(&re.audit, "skipped"), Some("stop-hook-active"));
+}
+
+fn agy_post(cwd: &str, file: &str, call: Value) -> Value {
+    let mut tool_call = json!({ "name": "write_to_file", "args": { "TargetFile": file } });
+    if !call.is_null() {
+        tool_call["id"] = call;
+    }
+    json!({
+        "conversationId": "agy-fresh",
+        "workspacePaths": [cwd],
+        "stepIdx": 3,
+        "toolCall": tool_call,
+    })
+}
+
+#[test]
+fn antigravity_fresh_project_stop_reports_immediate_only_findings() {
+    // Z_m: Antigravity ignores PostToolUse stdout, so its fresh findings are
+    // never emitted there. In a project with no `.impeccable/` and nothing
+    // deferred the cache used to be dropped, and Stop saw no touched file.
+    for css in [GRADIENT_CSS, SIDE_TAB_CSS] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let r = rt(&cwd);
+        let file = t.write("src/a.css", css);
+        assert!(!std::path::Path::new(&jsp::join(&[&cwd, ".impeccable"])).exists());
+        let post = hook::run_hook(&r, &agy_post(&cwd, &file, json!("c1")).to_string());
+        assert_eq!(post.stdout, "{}");
+        // Documented Stop input: no event name, no toolCall.
+        let stop = json!({
+            "conversationId": "agy-fresh",
+            "workspacePaths": [cwd],
+            "terminationReason": "model_stop",
+            "fullyIdle": true,
+        });
+        assert!(is_stop_event(stop.as_object().unwrap()));
+        let res = hook::run_stop_hook(&r, &stop.to_string());
+        let parsed: Value = serde_json::from_str(&res.stdout).unwrap_or_else(|_| panic!("{css}: {:?}", res.audit));
+        assert_eq!(parsed["decision"], "continue");
+        let reason = parsed["reason"].as_str().unwrap();
+        assert!(reason.contains("[gradient-text]") || reason.contains("[side-tab]"), "{reason}");
+    }
+}
+
+#[test]
+fn antigravity_same_tool_call_scans_once() {
+    // Z_v: the claim key reads Antigravity's nested `toolCall.id` (and the
+    // `stepIdx` when no id is sent), scoped by `conversationId`.
+    for call in [json!("agy-call-1"), Value::Null] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let file = t.write("src/card.css", SIDE_TAB_CSS);
+        let e = claim_env(&t, &[]);
+        let stdin = agy_post(&cwd, &file, call.clone()).to_string();
+        let first = hook::run_hook(&rt_with(&cwd, e.clone()), &stdin);
+        assert!(scanned(&first), "{call}: {:?}", first.audit);
+        let second = hook::run_hook(&rt_with(&cwd, e.clone()), &stdin);
+        assert_eq!(second.audit.get("skipped"), Some(&json!("duplicate-event")), "{call}: {:?}", second.audit);
+        // A different step of the same conversation is a different event.
+        let mut other = agy_post(&cwd, &file, if call.is_null() { Value::Null } else { json!("agy-call-2") });
+        other["stepIdx"] = json!(4);
+        let third = hook::run_hook(&rt_with(&cwd, e), &other.to_string());
+        assert!(scanned(&third), "{call}: {:?}", third.audit);
+    }
+}
+
+#[test]
+fn antigravity_silent_skip_still_answers_json() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_DISABLED", "1")]));
+    let stdin = agy_post(&cwd, &jsp::join(&[&cwd, "src/a.css"]), json!("c1")).to_string();
+    let (mut io, cap) = Io::captured("", std::path::PathBuf::from(&cwd), HashMap::new());
+    hook::run(&r, &stdin, &mut io);
+    assert_eq!(String::from_utf8(cap.stdout.borrow().clone()).unwrap(), "{}");
 }
 
 #[test]

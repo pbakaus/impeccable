@@ -18,7 +18,7 @@
 //! writers and the three readers can never disagree on what counts as ours.
 
 use impeccable_context::hermes;
-use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, is_impeccable_hook_command, is_launcher_hook_command, parse_manifest_jsonc, windows_launcher_hook_command};
+use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -34,7 +34,9 @@ pub struct HookArtifactSpec {
 /// JS: PROVIDER_HOOK_ARTIFACTS[provider]
 pub fn provider_hook_artifacts(provider: &str) -> &'static [HookArtifactSpec] {
     match provider {
-        ".agent" => &[HookArtifactSpec { source_provider: ".agent", rel: "hooks.json", dest_provider: ".agents", dest_rel: None }],
+        // Antigravity reads workspace hooks from `.agents/hooks.json`, and the
+        // bundle ships the manifest there (`hooksManifestDir` in the build).
+        ".agent" => &[HookArtifactSpec { source_provider: ".agents", rel: "hooks.json", dest_provider: ".agents", dest_rel: None }],
         ".claude" => &[HookArtifactSpec { source_provider: ".claude", rel: "settings.json", dest_provider: ".claude", dest_rel: Some("settings.local.json") }],
         ".gemini" => &[HookArtifactSpec { source_provider: ".gemini", rel: "settings.json", dest_provider: ".gemini", dest_rel: None }],
         ".cursor" => &[HookArtifactSpec { source_provider: ".cursor", rel: "hooks.json", dest_provider: ".cursor", dest_rel: None }],
@@ -73,7 +75,7 @@ pub fn hook_artifacts_for_provider(bundle_dir: &str, root: &str, provider: &str)
 fn hook_artifacts_for_install(bundle_dir: &str, root: &str, provider: &str, user_scope: bool) -> Vec<HookArtifact> {
     if provider == ".agent" && user_scope {
         return vec![HookArtifact {
-            src: jsp::join(&[bundle_dir, ".agent", "hooks.json"]),
+            src: jsp::join(&[bundle_dir, ".agents", "hooks.json"]),
             dest: jsp::join(&[root, ".gemini", "config", "hooks.json"]),
             shared_dest: None,
         }];
@@ -226,7 +228,9 @@ pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String 
     let verb = hook_verb(provider);
     let q = match (provider, win32) {
         (".gemini", _) => return gemini_hook_command(quoted, verb, win32),
-        (".grok", true) => return windows_hook_command(quoted, provider),
+        // Antigravity runs a hook command through `cmd /c` on Windows, where
+        // the POSIX guard is not a command; `hooks on` writes this same form.
+        (".grok" | ".agent", true) => return windows_hook_command(quoted, provider),
         (".agents", _) | (".github", _) | (_, false) => &quoted.posix,
         (_, true) => &quoted.win32,
     };
@@ -349,9 +353,9 @@ pub fn manifest_has_stale_hook(file: &str) -> bool {
         return false;
     }
     let Ok(text) = util::read_text(file) else { return false };
-    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&text) else { return false };
-    match map.get("hooks") {
-        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(h) && !value_has_launcher_hook_marker(h),
+    let Ok(root @ Value::Object(_)) = serde_json::from_str::<Value>(&text) else { return false };
+    match manifest_hook_subtree(&root) {
+        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(&h) && !value_has_launcher_hook_marker(&h),
         _ => false,
     }
 }
@@ -370,9 +374,9 @@ pub fn manifest_has_retired_cursor_gate(file: &str) -> bool {
 /// JS: fileHasImpeccableHookMarker(file): parse and scan only the `hooks`
 /// subtree.
 pub fn file_has_impeccable_hook_marker(file: &str) -> bool {
-    let Some((Value::Object(map), _)) = read_manifest(file) else { return false };
-    match map.get("hooks") {
-        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(h),
+    let Some((root @ Value::Object(_), _)) = read_manifest(file) else { return false };
+    match manifest_hook_subtree(&root) {
+        Some(h @ (Value::Object(_) | Value::Array(_))) => value_has_impeccable_hook_marker(&h),
         _ => false,
     }
 }
@@ -436,10 +440,70 @@ pub fn hook_installed_for_provider_at_scope(sys: &Sys, root: &str, provider: &st
     if user_scope && provider == ".claude" {
         return user_claude_hook_is_current(root);
     }
+    if user_scope && provider == ".agent" {
+        return user_antigravity_hook_is_current(root);
+    }
     if user_scope && provider == ".github" && github_manifest_names_missing_project_skill(root) {
         return false;
     }
     hook_installed_for_provider(sys, root, provider)
+}
+
+/// The global Antigravity launcher, under `~/.gemini/config/skills` (where
+/// Antigravity loads global skills from), quoted for each shell.
+fn antigravity_user_launcher(home_root: &str) -> QuotedPath {
+    let launcher = jsp::join(&[home_root, ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]);
+    QuotedPath { posix: sh_single_quote(&launcher), win32: json_string(&launcher), raw: launcher }
+}
+
+/// The global Antigravity manifest, `~/.gemini/config/hooks.json`.
+fn antigravity_user_manifest(home_root: &str) -> String {
+    jsp::join(&[home_root, ".gemini", "config", "hooks.json"])
+}
+
+/// True only when the global Antigravity manifest runs the global launcher,
+/// that launcher exists, and every Impeccable command in it is the form a
+/// user-scope install writes (the Claude rule, `user_claude_hook_is_current`):
+/// a marker alone would count a dangling or project-relative entry as
+/// installed and skip the rewrite.
+pub fn user_antigravity_hook_is_current(home_root: &str) -> bool {
+    user_antigravity_hook_is_current_for(home_root, cfg!(windows))
+}
+
+/// `user_antigravity_hook_is_current` with the platform made explicit.
+pub fn user_antigravity_hook_is_current_for(home_root: &str, win32: bool) -> bool {
+    let quoted = antigravity_user_launcher(home_root);
+    if !util::exists(&quoted.raw) {
+        return false;
+    }
+    let expected = hook_command(&quoted, ".agent", win32);
+    let path = antigravity_user_manifest(home_root);
+    let Some((root, _)) = read_manifest(&path) else { return false };
+    let Some(hooks) = manifest_hook_subtree(&root) else { return false };
+    let mut commands = Vec::new();
+    collect_impeccable_hook_commands(&hooks, &mut commands);
+    let target = impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == ".agent");
+    !commands.is_empty()
+        && commands.iter().all(|c| *c == expected)
+        && target.is_some_and(|t| impeccable_context::hook_wiring::manifest_is_wired(&path, &(t.manifest)()))
+}
+
+/// After a user-scope Antigravity install, the project's `.agents/hooks.json`
+/// entry is removed only when it is dead: the global hook is current and the
+/// project has no Antigravity skill of its own, so the entry's
+/// `../.agent/skills/...` launcher is missing and the guard makes it a no-op.
+/// A project that ships its own skill keeps its entry: `.agents/hooks.json`
+/// is a workspace file teammates share, and a home and a project hook firing
+/// for one edit is settled inside the hook (`hook_claim`).
+pub fn prune_dead_project_antigravity_hook(sys: &Sys, home_root: &str, project_root: &str) -> Result<(), String> {
+    if sys.is_home_dir(project_root) || !user_antigravity_hook_is_current(home_root) {
+        return Ok(());
+    }
+    if util::exists(&jsp::join(&[project_root, ".agent", "skills", "impeccable", "scripts", "impeccable"])) {
+        return Ok(());
+    }
+    prune_impeccable_hook_from_manifest(&jsp::join(&[project_root, ".agents", "hooks.json"]))?;
+    Ok(())
 }
 
 /// The portable prefix of a project Copilot hook command.
@@ -574,12 +638,9 @@ pub fn prune_impeccable_hook_from_manifest(manifest_path: &str) -> Result<bool, 
     }
     let mut next = parsed.clone();
     if !parsed.contains_key("hooks") {
-        let keys: Vec<String> = next.keys().cloned().collect();
-        for key in keys {
-            if key == "impeccable" || next.get(&key).is_some_and(value_has_impeccable_hook_marker) {
-                next.shift_remove(&key);
-            }
-        }
+        // Antigravity named hooks (the marker check above confirmed the
+        // shape): strip entry by entry, keep everything else.
+        next = strip_named_hooks(&parsed, strip_impeccable_hook_entries);
     } else if !cleaned.is_empty() {
         next.insert("hooks".to_string(), Value::Object(cleaned));
     } else {
@@ -607,18 +668,8 @@ fn as_object(v: Option<&Value>) -> Map<String, Value> {
 pub fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     let existing_object = as_object(Some(existing));
     let fresh_object = as_object(Some(fresh));
-    if !fresh_object.contains_key("hooks") {
-        let mut merged = existing_object.clone();
-        let keys: Vec<String> = merged.keys().cloned().collect();
-        for key in keys {
-            if key == "impeccable" || merged.get(&key).is_some_and(value_has_impeccable_hook_marker) {
-                merged.shift_remove(&key);
-            }
-        }
-        for (k, v) in fresh_object {
-            merged.insert(k, v);
-        }
-        return Value::Object(merged);
+    if is_named_hook_manifest(fresh) {
+        return Value::Object(merge_named_hooks(&existing_object, &fresh_object, strip_impeccable_hook_entries));
     }
     let existing_hooks = as_object(existing_object.get("hooks"));
     let fresh_hooks = as_object(fresh_object.get("hooks"));
@@ -698,13 +749,7 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             let absolute = (skill_root != root || sys.is_home_dir(root))
                 && !(*provider == ".github" && github_keeps_portable_form(sys, root));
             let fresh = if user_scope && *provider == ".agent" && absolute {
-                let global_launcher = jsp::join(&[skill_root, ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]);
-                let quoted = QuotedPath {
-                    posix: sh_single_quote(&global_launcher),
-                    win32: json_string(&global_launcher),
-                    raw: global_launcher,
-                };
-                rewrite_value(&fresh_manifest, provider, &quoted, cfg!(windows))
+                rewrite_value(&fresh_manifest, provider, &antigravity_user_launcher(skill_root), cfg!(windows))
             } else {
                 rewrite_hook_commands_for_skill_root(&fresh_manifest, provider, skill_root, absolute)
             };
@@ -742,6 +787,9 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
         }
         if user_scope && *provider == ".claude" {
             prune_duplicate_claude_hooks(sys, skill_root, project_root.unwrap_or(root))?;
+        }
+        if user_scope && *provider == ".agent" {
+            prune_dead_project_antigravity_hook(sys, skill_root, project_root.unwrap_or(root))?;
         }
     }
     Ok(written)

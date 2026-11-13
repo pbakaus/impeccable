@@ -143,8 +143,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         }
         for rel in manifests {
             if let Some(raw) = read_json(&jsp::join(&[&root, rel])) {
-                if let Some(h) = raw.get("hooks") {
-                    if crate::staleness::js_truthy(h) && value_has_hook_marker(h) {
+                if let Some(h) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                    if crate::staleness::js_truthy(&h) && value_has_hook_marker(&h) {
                         return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
                     }
                 }
@@ -153,8 +153,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     }
     if let Some(path) = user_hook_manifest(&provider.id, cwd, env) {
         if let Some(raw) = read_json(&path) {
-            if let Some(hooks) = raw.get("hooks") {
-                if crate::staleness::js_truthy(hooks) && value_has_hook_marker(hooks) {
+            if let Some(hooks) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                if crate::staleness::js_truthy(&hooks) && value_has_hook_marker(&hooks) {
                     return "stop";
                 }
             }
@@ -390,7 +390,7 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
         // Gemini's settings file may carry comments, and `hooks on` reads it the same way.
         safe_read(p)
             .and_then(|text| crate::hook_markers::parse_manifest_jsonc(&text))
-            .and_then(|(raw, _)| raw.get("hooks").cloned())
+            .and_then(|(raw, _)| crate::hook_markers::active_manifest_hook_subtree(&raw))
             .map(|hooks| crate::staleness::js_truthy(&hooks) && crate::hook_markers::value_has_impeccable_hook_marker(&hooks))
             .unwrap_or(false)
     });

@@ -2002,7 +2002,17 @@ pub fn is_stop_event(ev: &Map<String, Value>) -> bool {
         Some(v) => Some(v),
         None => ev.get("hookEventName"),
     };
-    matches!(name, Some(Value::String(s)) if matches!(js::to_lower_case(s).as_str(), "stop" | "afteragent"))
+    if let Some(Value::String(s)) = name {
+        return matches!(js::to_lower_case(s).as_str(), "stop" | "afteragent");
+    }
+    // Antigravity's documented Stop input carries no event name: it is the
+    // conversation envelope plus `terminationReason` / `fullyIdle`, with no
+    // `toolCall`. Recognise it by shape so a nameless Stop is not run as an
+    // edit.
+    name.is_none()
+        && matches!(ev.get("conversationId"), Some(Value::String(_)))
+        && !ev.contains_key("toolCall")
+        && (ev.contains_key("terminationReason") || ev.contains_key("fullyIdle"))
 }
 
 /// JS: parseGitHubToolArgs(toolArgs)
