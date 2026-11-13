@@ -2546,7 +2546,10 @@ state replaces the cache at once, so the next boot prints none of the old
 rules. Logout removes taste.json, and so does every new sign-in (it may be
 another person);
 so does a token renewal whose grant no longer includes taste:read, under the
-same lock;
+same lock. Every issuer under one home shares taste.json, so each of these, and
+a 404 or 403, removes only a copy whose issuer is its own; the worker's writes
+and every removal hold the home-wide <impeccable home>/taste.lock (taken after
+the sign-in lock, waiting at most three seconds);
 a late refresh cannot restore it after logout or replace a newer sign-in's
 cache. Under the write lock, every reply is discarded if the cache differs
 from the snapshot taken before fetching, including a deletion or pause.
