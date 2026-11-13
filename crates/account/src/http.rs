@@ -50,6 +50,16 @@ impl std::fmt::Display for ApiError {
 pub struct Client {
     agent: ureq::Agent,
     origin: String,
+    until: Option<Until>,
+}
+
+type Lookup = fn(&str) -> std::io::Result<Vec<SocketAddr>>;
+
+/// A hard end point for every request, name lookup included (see [`Client::until`]).
+struct Until {
+    account: Account,
+    end: Instant,
+    lookup: Lookup,
 }
 
 /// Largest JSON answer read from the service.
@@ -70,11 +80,34 @@ impl Client {
     /// A client for a caller with a hard budget ending at `end`: name lookup
     /// is bounded by it too (see [`bounded_lookup`]), so a stalled resolver
     /// drops the request instead of holding the caller.
+    /// Connect, read and the whole request end at `end` as well: each request
+    /// gets an agent built for the time left, however long the lookup or an
+    /// earlier request took.
     pub fn until(account: &Account, end: Instant) -> Client {
-        Client::build(account, end.saturating_duration_since(Instant::now()), Some(end))
+        Client::until_with(account, end, system_lookup)
     }
 
-    fn build(account: &Account, deadline: Duration, end: Option<Instant>) -> Client {
+    fn until_with(account: &Account, end: Instant, lookup: Lookup) -> Client {
+        let mut client = Client::build(account, Duration::ZERO, Some((end, lookup)));
+        client.until = Some(Until { account: account.clone(), end, lookup });
+        client
+    }
+
+    /// A request on this client's agent; under [`Client::until`], on a fresh
+    /// agent whose connect, read and overall timeouts all end at `end`.
+    fn start(&self, method: &str, url: &str) -> Result<ureq::Request, ApiError> {
+        let Some(until) = &self.until else {
+            return Ok(self.agent.request(method, url));
+        };
+        let agent = Client::build(&until.account, Duration::ZERO, Some((until.end, until.lookup))).agent;
+        let left = until.end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(ApiError::Network("the request ran out of time".into()));
+        }
+        Ok(agent.request(method, url).timeout(left))
+    }
+
+    fn build(account: &Account, deadline: Duration, bound: Option<(Instant, Lookup)>) -> Client {
         // A loopback rehearsal must not be sent to a corporate proxy, and
         // its names never reach a resolver: plain HTTP is allowed for them
         // only because they cannot leave the machine.
@@ -84,11 +117,14 @@ impl Client {
             // Every request stays on the issuer's origin (`checked`), so its
             // host decides the NO_PROXY match for the whole client.
             let builder = impeccable_context::http::agent_builder(&account.issuer);
-            match end {
-                Some(end) => builder.resolver(move |netloc: &str| bounded_lookup(netloc, end, system_lookup)),
+            match bound {
+                Some((end, lookup)) => builder.resolver(move |netloc: &str| bounded_lookup(netloc, end, lookup)),
                 None => builder,
             }
         };
+        // Measured after the TLS and proxy setup above, which loads the
+        // system's root certificates the first time.
+        let deadline = bound.map_or(deadline, |(end, _)| end.saturating_duration_since(Instant::now()));
         // ureq 2 gives timeout_connect precedence over its overall timeout.
         // ureq resolves names synchronously with no timeout of its own; only a
         // client from `until` bounds that. Never move an upload to a detached
@@ -102,6 +138,7 @@ impl Client {
         Client {
             agent,
             origin: account.issuer.clone(),
+            until: None,
         }
     }
 
@@ -117,7 +154,7 @@ impl Client {
 
     pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
-        let mut req = self.agent.get(url).set("accept", "application/json");
+        let mut req = self.start("GET", url)?.set("accept", "application/json");
         if let Some(token) = bearer {
             req = req.set("authorization", &bearer_header(token)?);
         }
@@ -129,7 +166,7 @@ impl Client {
         &self, url: &str, bearer: &str, etag: Option<&str>,
     ) -> Result<(u16, Option<String>, serde_json::Value), ApiError> {
         self.checked(url)?;
-        let mut req = self.agent.get(url)
+        let mut req = self.start("GET", url)?
             .set("accept", "application/json")
             .set("authorization", &bearer_header(bearer)?);
         if let Some(etag) = etag { req = req.set("if-none-match", etag); }
@@ -143,7 +180,7 @@ impl Client {
     /// Taste writes accept exactly 200, including when another 2xx contains JSON.
     pub fn post_taste(&self, url: &str, bearer: &str, body: serde_json::Value) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
-        let response = self.agent.post(url).set("accept", "application/json")
+        let response = self.start("POST", url)?.set("accept", "application/json")
             .set("authorization", &bearer_header(bearer)?)
             .send_json(body).map_err(classify)?;
         if response.status() != 200 {
@@ -158,15 +195,14 @@ impl Client {
         form: &[(&str, &str)],
     ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
-        let req = self.agent.post(url).set("accept", "application/json");
+        let req = self.start("POST", url)?.set("accept", "application/json");
         json_body(req.send_form(form))
     }
 
     /// A form POST whose answer has no body worth reading (revocation).
     pub fn post_form_empty(&self, url: &str, form: &[(&str, &str)]) -> Result<(), ApiError> {
         self.checked(url)?;
-        self.agent
-            .post(url)
+        self.start("POST", url)?
             .send_form(form)
             .map(|_| ())
             .map_err(classify)
@@ -180,8 +216,7 @@ impl Client {
     ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
         let req = self
-            .agent
-            .post(url)
+            .start("POST", url)?
             .set("accept", "application/json")
             .set("authorization", &bearer_header(bearer)?);
         json_body(req.send_json(body))
@@ -305,7 +340,7 @@ fn system_lookup(netloc: &str) -> std::io::Result<Vec<SocketAddr>> {
 fn bounded_lookup(
     netloc: &str,
     end: Instant,
-    lookup: fn(&str) -> std::io::Result<Vec<SocketAddr>>,
+    lookup: Lookup,
 ) -> std::io::Result<Vec<SocketAddr>> {
     let timed_out = || std::io::Error::new(std::io::ErrorKind::TimedOut, "name lookup ran out of time");
     let wait = end.saturating_duration_since(Instant::now());
@@ -357,6 +392,47 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
         assert_eq!(bounded_lookup("x:443", Instant::now() + Duration::from_secs(2), answers).unwrap().len(), 1);
         assert!(bounded_lookup("x:443", Instant::now(), answers).is_err());
+    }
+
+    #[test]
+    fn a_slow_lookup_into_a_silent_server_still_ends_at_the_deadline() {
+        use std::sync::atomic::{AtomicU16, Ordering};
+        static PORT: AtomicU16 = AtomicU16::new(0);
+        fn slow(_: &str) -> std::io::Result<Vec<SocketAddr>> {
+            std::thread::sleep(Duration::from_millis(700));
+            Ok(vec![SocketAddr::new(Ipv4Addr::LOCALHOST.into(), PORT.load(Ordering::SeqCst))])
+        }
+        // Accepts and never answers, so the TLS handshake waits on a read.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        PORT.store(listener.local_addr().unwrap().port(), Ordering::SeqCst);
+        std::thread::spawn(move || {
+            let held: Vec<_> = listener.incoming().take(4).collect();
+            std::thread::sleep(Duration::from_secs(10));
+            drop(held);
+        });
+        let account = Account {
+            issuer: "https://taste.example.invalid".into(),
+            home: std::env::temp_dir(),
+        };
+        let started = Instant::now();
+        let client = Client::until_with(&account, started + Duration::from_millis(1500), slow);
+        assert!(client
+            .post_taste("https://taste.example.invalid/cli/v1/taste/calls", "t", serde_json::json!({}))
+            .is_err());
+        let took = started.elapsed();
+        assert!(took >= Duration::from_millis(1400) && took < Duration::from_millis(1800), "{took:?}");
+        // Time spent between building the client and sending counts too.
+        fn fast(_: &str) -> std::io::Result<Vec<SocketAddr>> {
+            Ok(vec![SocketAddr::new(Ipv4Addr::LOCALHOST.into(), PORT.load(Ordering::SeqCst))])
+        }
+        let started = Instant::now();
+        let client = Client::until_with(&account, started + Duration::from_millis(1000), fast);
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(client
+            .post_taste("https://taste.example.invalid/cli/v1/taste/calls", "t", serde_json::json!({}))
+            .is_err());
+        let took = started.elapsed();
+        assert!(took < Duration::from_millis(1250), "{took:?}");
     }
 
     #[test]

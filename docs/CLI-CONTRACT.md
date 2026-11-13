@@ -2622,7 +2622,8 @@ to one second; only an existing unexpired access token is used, with no renewal.
 The request uses the remainder of a three-second budget, name lookup included:
 the lookup (of the issuer, or of a proxy) runs on a helper thread and a lookup
 still pending at the end of the budget drops the write; the POST itself never
-leaves the calling thread. Network failures,
+leaves the calling thread. Connect, read and the whole request end at the same
+point: each request is sent on an agent built for the time left. Network failures,
 404 (feature off), 403 (insufficient_scope), any non-200, and malformed replies
 exit 0 silently. The server rejects invalid calls with 400 invalid_request and
 field, or 413 above 4 KiB. A 200 call response prints exactly one line:
