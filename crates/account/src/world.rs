@@ -98,7 +98,7 @@ fn parse(id: &str, v: &serde_json::Value) -> Option<Seed> {
         })
 }
 
-/// The files a seed would write, relative to the project root. Any of them
+/// The design files and sidecar checked in a destination folder. Any of them
 /// existing means the project already has a design system.
 const TARGETS: [&str; 3] = ["DESIGN.md", "DESIGN.json", ".impeccable/design.json"];
 
@@ -148,8 +148,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     } else {
         std::path::PathBuf::from(&resolved.project_root)
     };
-    // context_dir is the resolved PRODUCT.md parent when one exists. A root
-    // DESIGN.md would otherwise hide that product on the next context boot.
+    // Resolve the destination once: beside a local or explicitly configured
+    // product, otherwise at the project root. Inherited products need a choice.
     let design_root = if resolved.product_path.is_some() {
         std::path::PathBuf::from(&resolved.context_dir)
     } else {
@@ -159,8 +159,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     let relative = |path: &Path| jsp::relative(&cwd, &cwd, &path.to_string_lossy()).replace('\\', "/");
     // Checked before any request, so an existing design system costs nothing.
     if !print {
-        let found = existing(&root)
-            .map(|found| relative(&root.join(found)))
+        let configured = io.env.get("IMPECCABLE_CONTEXT_DIR")
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| std::path::PathBuf::from(jsp::resolve(&cwd, &[value])));
+        if !design_root.starts_with(&root) && configured.as_ref() != Some(&design_root) {
+            let folder = relative(&design_root);
+            io.err(&format!(
+                "PRODUCT.md is in {folder}. A seed in this workspace would hide that PRODUCT.md, and a seed beside it would apply to every workspace. Run impeccable world {id} from the folder that holds PRODUCT.md to seed the whole repository, or run impeccable world {id} --print and save it where it belongs.\n"
+            ));
+            return 1;
+        }
+        let found = existing(&design_root)
+            .map(|found| relative(&design_root.join(found)))
+            .or_else(|| existing(&root).map(|found| relative(&root.join(found))))
             .or_else(|| resolved.design_path.as_deref().map(|found| relative(Path::new(found))));
         if let Some(found) = found {
             io.out(&format!(
@@ -228,7 +240,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Err(Exists(found)) => {
-            let base = if found == "DESIGN.md" { &design_root } else { &root };
+            let base = if found == "DESIGN.md" || found == "DESIGN.json" { &design_root } else { &root };
             let found = relative(&base.join(found));
             io.out(&format!(
                 "{found} already exists, so nothing was written. To merge this world into it, run impeccable world {id} --print and fold its DESIGN.md into yours.\n"
@@ -549,7 +561,7 @@ impl Dir {
 /// replaced. Whatever this run created is removed again when a later step
 /// fails; nothing that was there before is ever touched.
 fn write(root: &Path, design_root: &Path, seed: &Seed) -> Result<(), WriteError> {
-    if let Some(found) = existing(root) {
+    if let Some(found) = existing(design_root).or_else(|| existing(root)) {
         return Err(Exists(found));
     }
     let mut sidecar = seed.sidecar.clone();
@@ -561,7 +573,23 @@ fn write(root: &Path, design_root: &Path, seed: &Seed) -> Result<(), WriteError>
         serde_json::to_vec_pretty(&sidecar).map_err(|e| Failed(e.to_string()))?;
     sidecar_bytes.push(b'\n');
     let top = Dir::root(root)?;
-    let design_dir = Dir::root(design_root)?;
+    // Walk each local component from the pinned project root. Passing a
+    // multi-component path to openat would allow intermediate symlinks.
+    let mut local_dir = None;
+    let design_dir = if let Ok(relative) = design_root.strip_prefix(root) {
+        for component in relative.components() {
+            let std::path::Component::Normal(name) = component else {
+                return Err(Failed("context path is not a folder".into()));
+            };
+            let parent = local_dir.as_ref().unwrap_or(&top);
+            local_dir = Some(parent.child(&name.to_string_lossy())?);
+        }
+        local_dir.as_ref().unwrap_or(&top)
+    } else {
+        // Only an explicitly configured context directory can reach here.
+        local_dir = Some(Dir::root(design_root)?);
+        local_dir.as_ref().unwrap()
+    };
     let dir = top.child(".impeccable")?;
     dir.create("design.json", ".impeccable/design.json", |f| {
         f.write_all(&sidecar_bytes)

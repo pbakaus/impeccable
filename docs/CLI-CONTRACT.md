@@ -2308,7 +2308,8 @@ Exact output strings:
 `impeccable world <id>` seeds the current directory's design system from a
 catalog world. An id is 1 to 64 lowercase letters, digits and single inner
 dashes; anything else exits 1 without a request. When `DESIGN.md`,
-`DESIGN.json` or `.impeccable/design.json` exists (a symlink counts), or
+`DESIGN.json` or `.impeccable/design.json` exists in the chosen destination
+or project root (a symlink counts), or
 `context` run from the same directory would read a DESIGN.md somewhere else
 (the context reader's own resolver: `docs/` or `.agents/context/`, a
 workspace's repo root, or `IMPECCABLE_CONTEXT_DIR`), it writes nothing, makes
@@ -2331,11 +2332,23 @@ refused before anything is written, with `The DESIGN.md your Impeccable
 account sent for <id> can't record which world it came from, so nothing was
 written. Update the Impeccable CLI and try again.` on stderr, exit 1. It
 writes `.impeccable/design.json` at the resolved project root (the sidecar plus
-`seededFrom: {world, name}`) and then `DESIGN.md`. When context resolves a
-PRODUCT.md, DESIGN.md goes beside that product, including in `docs/`,
-`.agents/context/`, or `IMPECCABLE_CONTEXT_DIR`, so the next boot reads both.
-Otherwise DESIGN.md goes at the resolved project root (cwd as a fallback).
-The sidecar stays at the project root, where context reads it for that design.
+`seededFrom: {world, name}`) and then `DESIGN.md`. The destination is resolved once with context from cwd:
+
+1. No PRODUCT.md resolves: write DESIGN.md at the project root (cwd as a fallback).
+2. PRODUCT.md is inside the project root, including `docs/` or `.agents/context/`:
+   write beside it, opening each folder from the pinned project root with the
+   same no-symlink and Windows reparse-point checks as `.impeccable`.
+3. PRODUCT.md is in `IMPECCABLE_CONTEXT_DIR`: write beside it. Opening this
+   explicitly configured external directory by path is allowed.
+4. PRODUCT.md is outside the project root and not in `IMPECCABLE_CONTEXT_DIR`:
+   write nothing and exit 1. One plain message names its folder relative to cwd,
+   explains that a workspace seed would hide that PRODUCT.md and a seed beside
+   it would apply to every workspace, and offers running `impeccable world <id>`
+   from that folder to seed the whole repository or `impeccable world <id> --print`
+   and saving it where it belongs.
+
+The sidecar stays at the project root, where context reads it for that design,
+including local fallback and explicitly configured context folders.
 Each file is create-new, so an
 existing file or symlink is never followed or replaced. Both are created
 relative to directory handles held open (on Unix), so a `.impeccable` that
