@@ -921,3 +921,32 @@ exit 0
     );
     assert!(!said.contains("Codex"), "{said}");
 }
+
+#[test]
+fn an_agents_override_file_is_named_instead_of_reported_connected() {
+    // Catches: Codex reads AGENTS.override.md instead of AGENTS.md, so the instruction
+    // connect wrote never reached it while connect and status both said all was well.
+    let b = Box::new("codex-override");
+    b.install_loop_version("0.1.1");
+    fs::create_dir_all(b.home().join(".codex")).unwrap();
+    fs::write(b.home().join(".codex/AGENTS.override.md"), "Local rules.\n").unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(
+        text(&out).contains("AGENTS.override.md, which Codex reads instead of AGENTS.md"),
+        "{}",
+        text(&out)
+    );
+    let status = b.run(&["loop", "status"]);
+    assert!(
+        text(&status).contains("instruction hidden by AGENTS.override.md"),
+        "{}",
+        text(&status)
+    );
+    // Once the override carries the line, the instruction counts as present.
+    let mut rules = fs::read_to_string(b.home().join(".codex/AGENTS.override.md")).unwrap();
+    rules.push_str(INSTRUCTION);
+    fs::write(b.home().join(".codex/AGENTS.override.md"), rules).unwrap();
+    let status = b.run(&["loop", "status"]);
+    assert!(!text(&status).contains("hidden by"), "{}", text(&status));
+}

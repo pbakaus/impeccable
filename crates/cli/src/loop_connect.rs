@@ -240,7 +240,10 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
                         .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
             });
         let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
-        let instruction = fs::read_to_string(&rules).is_ok_and(|t| t.contains(INSTRUCTION));
+        let shadow = root_override(harness, &agent.root);
+        // Present only where the agent reads it: under an override, the override must carry it.
+        let instruction = fs::read_to_string(shadow.as_deref().unwrap_or(&rules))
+            .is_ok_and(|t| t.contains(INSTRUCTION));
         // The wake record is shared per agent; it speaks for this folder only when it names it.
         let root = agent.root.display().to_string();
         let connected = read_record(&support, harness).is_some_and(|r| {
@@ -253,6 +256,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
             "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
+            "instructionShadowed": shadow.is_some() && !instruction,
         }));
     }
     Ok(json!({
@@ -283,7 +287,13 @@ pub(crate) fn status_text(v: &Value) -> String {
                 "{label}: not connected (MCP server {}, hooks {}, instruction {}). Run impeccable loop connect.\n",
                 a["mcp"].as_str().unwrap_or("absent"),
                 if a["hooks"] == true { "present" } else { "missing" },
-                if a["instruction"] == true { "present" } else { "missing" },
+                if a["instruction"] == true {
+                    "present"
+                } else if a["instructionShadowed"] == true {
+                    "hidden by AGENTS.override.md"
+                } else {
+                    "missing"
+                },
             ));
         }
     }
@@ -404,7 +414,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
         ));
     }
-    Ok(status["manualActions"]
+    let mut manual: Vec<String> = status["manualActions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -412,7 +422,26 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
                 .map(str::to_owned)
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    // The engine wrote the instruction, but Codex reads AGENTS.override.md in its place.
+    if status["effective"] == false {
+        manual.push(shadowed_advice(&agent.root));
+    }
+    Ok(manual)
+}
+
+/// Codex reads `AGENTS.override.md` instead of `AGENTS.md` when both exist, so the
+/// instruction connect wrote never reaches it.
+fn root_override(harness: &str, root: &Path) -> Option<PathBuf> {
+    let p = root.join("AGENTS.override.md");
+    (harness == "codex" && p.exists()).then_some(p)
+}
+
+fn shadowed_advice(root: &Path) -> String {
+    format!(
+        "add this line to {}, which Codex reads instead of AGENTS.md: {INSTRUCTION}",
+        root.join("AGENTS.override.md").display()
+    )
 }
 
 /// `loop disconnect`: every installation connect made (from the engine's journals, not
