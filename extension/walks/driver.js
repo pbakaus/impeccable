@@ -46,7 +46,7 @@ export const hushed = () => hush;
 let fences = 0;
 export const fenced = () => fences;
 export function fence() { fences += 1; }
-const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the walk was paused before this was done'); };
+const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
 // `answered`: a pause during a question settles it, and the other end waits on that answer.
 const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered']);
 
@@ -196,7 +196,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   await cut();
   const tab = walk;
   if (!tab) throw fail('OutingClosed', 'no tab is open');
-  if (hush) throw fail('Paused', 'no film starts while the walk is paused');
+  if (hush) throw fail('Paused', 'no film starts while the journey is paused');
   const film = { on: true, id: (filmed += 1), done: null, last: '', sentAt: 0 };
   tab.film = film;
   film.done = (async () => {
@@ -578,8 +578,8 @@ const UNTYPABLE = { password: 'a password field', card: 'a payment card field', 
 /** Throws `NotAllowed` unless a key may go where focus is now. A page that cannot be read is not typed into. */
 async function typable() {
   const seen = await look();
-  if (!seen) throw fail('NotAllowed', 'a walk types only where it can see the focus');
-  if (seen.focus) throw fail('NotAllowed', `a walk does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
+  if (!seen) throw fail('NotAllowed', 'a journey types only where it can see the focus');
+  if (seen.focus) throw fail('NotAllowed', `a journey does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
 }
 
 async function press(name) {
@@ -596,7 +596,7 @@ async function adopt(name, allow) {
   const { tabId, site } = adopted;
   const me = { stopped: false };
   opening = me;
-  const still = () => { if (me.stopped) throw fail('Stopped', 'the walk ended before its tab opened'); };
+  const still = () => { if (me.stopped) throw fail('Stopped', 'the journey ended before its tab opened'); };
   let attached = false;
   let grouped = false;
   try {
@@ -652,7 +652,7 @@ export const ops = {
     const me = { stopped: false };
     opening = me;
     // Stopped or let go at any point from here: the walk never starts, and the tab made for it goes.
-    const still = () => { if (me.stopped) throw fail('Stopped', 'the walk ended before its tab opened'); };
+    const still = () => { if (me.stopped) throw fail('Stopped', 'the journey ended before its tab opened'); };
     let tab = null;
     try {
       // In the hand-off's window if it is still there, else wherever Chrome puts a new tab.
@@ -703,7 +703,7 @@ export const ops = {
     // Never a question: only a click of the walk's own reaches a new site.
     if (!stillHome(url, walk.allowed)) {
       say({ event: 'blocked', what: 'navigation', url: String(url).slice(0, 500) });
-      throw fail('NotAllowed', `a walk stays on ${walk.origin}`);
+      throw fail('NotAllowed', `a journey stays on ${walk.origin}`);
     }
     const want = waitUntil === 'domcontentloaded' ? 'DOMContentLoaded' : 'load';
     const started = Date.now();
@@ -711,7 +711,7 @@ export const ops = {
     try {
       const sent = await within(cmd('Page.navigate', { url }), timeout, navigationTimeout(timeout));
       // The address was on the site and something it led to was not: refused by name, not as a load that failed.
-      if (sent.errorText && page.saw((e) => e.kind === 'refused')) throw fail('NotAllowed', `a walk stays on ${walk.origin}`);
+      if (sent.errorText && page.saw((e) => e.kind === 'refused')) throw fail('NotAllowed', `a journey stays on ${walk.origin}`);
       if (sent.errorText) throw fail('Error', `${sent.errorText} at ${url}`);
       // The same document (a fragment): nothing loads.
       if (!sent.loaderId) return { value: { status: null } };
@@ -728,7 +728,7 @@ export const ops = {
     const history = await cmd('Page.getNavigationHistory');
     const tab = walk;
     // On the person's own tab, back stays within the walk: never to a page from before it, nor to a site it may not be on.
-    if (tab.adopted && (history.currentIndex - 1 < tab.firstIndex || !onSite(history.entries[history.currentIndex - 1]?.url, tab.allowed))) throw fail('NotAllowed', 'back would leave the sites this walk may be on');
+    if (tab.adopted && (history.currentIndex - 1 < tab.firstIndex || !onSite(history.entries[history.currentIndex - 1]?.url, tab.allowed))) throw fail('NotAllowed', 'back would leave the sites this journey may be on');
     if (history.currentIndex < 1) return { value: null };
     const page = watch();
     tab.goingBack = true;
@@ -810,7 +810,7 @@ export const ops = {
       await press(key);
     } else {
       for (const ch of text) {
-        if (lookOnly()) throw fail('NotAllowed', 'on another site a walk only looks');
+        if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
         await typable();
         overtaken(at);
         if (ch === '\n' || ch === '\r') await press('Enter');
@@ -830,7 +830,7 @@ export const ops = {
   // Filming a wait (the server asks in the protocol's own words, and hears its frames in them).
   async cdp({ method, params }) {
     if (!CDP_METHODS.has(method)) throw fail('NotAllowed', `${method} is not passed to the tab`);
-    if (method === 'Page.startScreencast' && walk.adopted) throw fail('NotSupported', 'a walk of your own tab takes stills only');
+    if (method === 'Page.startScreencast' && walk.adopted) throw fail('NotSupported', 'a journey of your own tab takes stills only');
     if (method === 'Page.startScreencast') await roll(params ?? {});
     else if (method === 'Page.stopScreencast') await cut();
     // An acknowledgement asks for the next frame of Chrome's own screencast; these frames wait for none.

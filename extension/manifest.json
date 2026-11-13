@@ -83,6 +83,17 @@
         "walks/present.js"
       ],
       "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://impeccable.reviews/pro/welcome*",
+        "https://staging.impeccable.reviews/pro/welcome*",
+        "http://localhost/pro/welcome*"
+      ],
+      "js": [
+        "account/welcome.js"
+      ],
+      "run_at": "document_start"
     }
   ]
 }

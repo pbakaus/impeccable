@@ -5,7 +5,7 @@ field; paste them as they are. Keep this file in step with the manifest
 (`extension/manifest.json`) and the rule registry (the count comes from
 `extension/detector/antipatterns.json` after `bun run build:extension`).
 
-> Draft: the lines about walks (permissions, remote code, data usage) are not
+> Draft: the lines about journeys (permissions, remote code, data usage) are not
 > final. The repository owner reviews store copy before any of it is pasted.
 
 ## Name
@@ -64,9 +64,9 @@ FEATURES
 - Works on any website, including pages with a strict Content Security Policy
 - Scans run 100% locally, no data sent anywhere
 
-WALKS
+JOURNEYS
 
-Walks are started from the Impeccable web app. The person picks who walks and what for; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A walk acts only on the one tab it opened, and only on the site the person chose.
+Journeys are started from the Impeccable web app. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
 
 The same 62 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
 
@@ -95,15 +95,15 @@ Detects and highlights UI anti-patterns (AI-generated design tells and general q
 - **storage**: Saves the user's own settings (disabled rules, overlay visibility, the auto-scan preference) in Chrome sync storage. No page data is stored.
 - **webNavigation**: Re-scans after in-page navigation in single-page apps, where no full page load happens.
 - **offscreen**: Runs the WebAssembly rule engine over the page snapshot in an offscreen document, because page Content Security Policies block WebAssembly in the content-script and page worlds. The document is created for a scan and closed afterward.
-- **Host permission (all sites)**: The user can scan any site they visit; the scan runs only on the active tab when the user asks for it. Walk content scripts run only on the Impeccable web app's walk and sign-in pages.
-- **debugger**: Drives the one tab a walk opens: clicks, typing, screenshots and page reads that the server asks for, and holding that tab to the site the person chose. It attaches only to that tab, only after the person starts a walk from the Impeccable web app, and detaches when the walk ends or the person stops it.
-- **tabs**: Opens the walk's tab, closes tabs the walked page tries to open, and reads the walked tab's address so it can be stopped the moment it leaves the chosen site.
-- **tabGroups**: Puts the walk's tab in a named group of its own so the person can tell it apart from their own tabs.
-- **sidePanel**: Shows the walk as it happens, with Pause, Take over and Stop.
-- **downloads**: Cancels and removes any download the walked tab starts; a walk never saves files.
+- **Host permission (all sites)**: The user can scan any site they visit; the scan runs only on the active tab when the user asks for it. Journey content scripts run only on the Impeccable web app's journey and sign-in pages.
+- **debugger**: Drives the one tab a journey opens: clicks, typing, screenshots and page reads that the server asks for, and holding that tab to the site the person chose. It attaches only to that tab, only after the person starts a journey from the Impeccable web app, and detaches when the journey ends or the person stops it.
+- **tabs**: Opens the journey's tab, closes tabs its page tries to open, and reads that tab's address so it can be stopped the moment it leaves the chosen site.
+- **tabGroups**: Puts the journey's tab in a named group of its own so the person can tell it apart from their own tabs.
+- **sidePanel**: Shows the journey as it happens, with Pause, Take over and Stop.
+- **downloads**: Cancels and removes any download the journey's tab starts; a journey never saves files.
 
 ## Remote code
-The extension's own code, including the rule engine (WebAssembly), ships inside the package. During a walk, Impeccable's server may send short page scripts that run in the walked tab only (for example to read what is on the page); nothing from the network runs in the extension itself.
+The extension's own code, including the rule engine (WebAssembly), ships inside the package. During a journey, Impeccable's server may send short page scripts that run in the journey's tab only (for example to read what is on the page); nothing from the network runs in the extension itself.
 
 ## Data usage
-Scans run locally; no page content, findings, or identifiers leave the browser. During a walk the person started, what the server asks for of the walked tab (screenshots, page content and its address) is sent to Impeccable's server to run the walk and show its results to that person; nothing from any other tab is read or sent. While a walk is paused, no screenshot is taken and nothing of the walked tab is sent. Outside a walk the extension sends nothing to any server. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.
+Scans run locally; no page content, findings, or identifiers leave the browser. During a journey the person started, what the server asks for of the journey's tab (screenshots, page content and its address) is sent to Impeccable's server to run the journey and show its results to that person; nothing from any other tab is read or sent. While a journey is paused, no screenshot is taken and nothing of the journey's tab is sent. Outside a journey the extension sends nothing to any server. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.

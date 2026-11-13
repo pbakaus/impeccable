@@ -98,10 +98,10 @@ export function webOrigin(url) {
  */
 export function admit(url, allow = []) {
   const origin = webOrigin(url);
-  if (!origin) throw refuse('a walk opens http and https addresses only');
-  if (isOwnPage(url)) throw refuse(`a walk never opens ${origin}${new URL(url).pathname}`);
+  if (!origin) throw refuse('a journey opens http and https addresses only');
+  if (isOwnPage(url)) throw refuse(`a journey never opens ${origin}${new URL(url).pathname}`);
   const listed = allow.filter((entry) => typeof entry === 'string' && webOrigin(entry) === entry);
-  if (!listed.includes(origin) && !isLoopback(new URL(url).hostname)) throw refuse(`${origin} is not on this machine and not on the walk's allow-list`);
+  if (!listed.includes(origin) && !isLoopback(new URL(url).hostname)) throw refuse(`${origin} is not on this machine and not on the journey's allow-list`);
   return { origin, allowed: [...new Set([origin, ...listed])] };
 }
 
@@ -169,7 +169,7 @@ export const namesAnotherTab = (req) => OTHER_TAB.find((key) => Object.hasOwn(re
 /** Throws `NotAllowed` for a request that names where to act: an op acts on the walked tab and nowhere else. */
 export function onlyThisTab(req) {
   const key = namesAnotherTab(req);
-  if (key) throw refuse(`an op acts on the walked tab only; this one names a ${key}`);
+  if (key) throw refuse(`an op acts on the journey's tab only; this one names a ${key}`);
 }
 
 /** The methods that only read. Any other asks a server to change something. */

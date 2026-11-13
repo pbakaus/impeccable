@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 import { CLIENT_ID, PRODUCTION, authorizeUrl, challengeFor, issuerAllowed, readCallback, readMetadata } from '../extension/account/flow.js';
 import { createSession } from '../extension/account/session.js';
@@ -413,6 +415,25 @@ describe('account worker', () => {
     assert.equal(made.at(-1).body.requestId, 'kept-0123456789');
   });
 
+  // The side panel's home asks for the personas itself, and is told whether signing in again would help.
+  for (const [label, personas, token, answer] of [
+    ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
+    ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],
+    ['says sign in again when the server ended the sign-in', () => json(401, {}), () => json(400, { error: 'invalid_grant' }), { ok: false, why: 'signed-out' }],
+  ]) {
+    it(`answers the side panel’s personas: ${label}`, async () => {
+      await loaded;
+      session.personaCreate = null;
+      globalThis.fetch = async (url) => {
+        if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+        if (url === META.token_endpoint) return token();
+        return url === `${ISSUER}/extension/v1/personas` ? personas() : json(404, {});
+      };
+      assert.deepEqual(await ask({ account: 'personas' }, fromPanel), answer);
+      records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
+    });
+  }
+
   it('sends nothing for a description under eight characters', async () => {
     await loaded;
     startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
@@ -430,4 +451,37 @@ describe('account worker', () => {
     });
   }
 
+  // A sign-in from the extension opens the Pro welcome page; that page's button (welcome.js) opens the side panel on its tab.
+  it('opens the Pro welcome page on the server’s website after the first sign-in only, and the side panel when that page alone asks', async () => {
+    await loaded;
+    startServer(() => json(404, {}));
+    chrome.identity.launchWebAuthFlow = async ({ url }) => `${REDIRECT}?${new URLSearchParams({ code: 'code-0123456789', state: new URL(url).searchParams.get('state'), iss: ISSUER })}`;
+    const tabs = opened.length;
+    for (let n = 0; n < 2; n += 1) assert.equal((await ask({ account: 'sign-in' }, fromPanel)).signedIn, true);
+    assert.deepEqual(opened.slice(tabs).map((tab) => tab.url), ['https://impeccable.reviews/pro/welcome']);
+    const page = { id: 'ext', frameId: 0, url: 'https://impeccable.reviews/pro/welcome', tab: { id: 12, windowId: 3 } };
+    const before = panels.length;
+    for (const sender of [{ ...page, url: 'https://impeccable.reviews/pricing' }, { ...page, url: 'https://evil.example/pro/welcome' }, { ...page, id: 'other' }, page]) {
+      for (const listener of listeners) listener({ panel: 'open' }, sender, () => undefined);
+    }
+    assert.deepEqual(panels.slice(before), [{ windowId: 3 }]);
+  });
+});
+
+// The welcome page's script (manifest.json), on a stub page: the mark the page reads, and its button.
+describe('welcome page', () => {
+  it('marks the page as having the extension, and its open-panel button asks the worker instead of following its link', () => {
+    const root = { dataset: {} };
+    let click;
+    const sent = [];
+    const document = { documentElement: root, addEventListener: (type, listener) => { if (type === 'click') click = listener; } };
+    vm.runInNewContext(readFileSync(new URL('../extension/account/welcome.js', import.meta.url), 'utf8'), { document, chrome: { runtime: { async sendMessage(message) { sent.push(message); } } } });
+    assert.equal(root.dataset.impeccableExtension, 'ready');
+    const press = (marked) => {
+      const event = { prevented: false, preventDefault() { this.prevented = true; }, target: { closest: (selector) => (marked && selector === '[data-impeccable-open-panel]' ? {} : null) } };
+      click(event);
+      return event.prevented;
+    };
+    assert.deepEqual([press(false), press(true), JSON.parse(JSON.stringify(sent))], [false, true, [{ panel: 'open' }]]);
+  });
 });

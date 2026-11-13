@@ -4,9 +4,9 @@
 // content script or another extension. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
 // and how making or removing a persona went. A walk the person starts on their tab goes to the walks (walks/link.js)
-// as the server's block and the tab's id alone.
+// as the server's block and the tab's id alone. The welcome page (welcome.js) may ask one thing: to open the side panel.
 import { BUILD } from '../shared/build.js';
-import { adopt } from '../walks/link.js';
+import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
 import { signedIn as pointToolbar } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
@@ -59,12 +59,26 @@ async function account() {
   return me ? { ok: true, available: true, signedIn: true, email: me.email, pro: me.pro, ...server } : { ok: true, available: true, signedIn: await session.signedIn(), ...server };
 }
 
-/** The socket's origin for a walk the account server `at` starts: its fixed pair, as walks/handoff.js holds it too. */
-function socketOf(at) {
+/** The website paired with the account server `at`: a fixed pair, as walks/handoff.js holds it too. */
+function siteOf(at) {
   const url = new URL(at);
-  if (url.hostname === 'api.localhost') return `ws://localhost${url.port ? `:${url.port}` : ''}`;
-  return { 'api.impeccable.style': 'wss://impeccable.reviews', 'api.staging.impeccable.style': 'wss://staging.impeccable.reviews' }[url.hostname] ?? null;
+  if (url.hostname === 'api.localhost') return `http://localhost${url.port ? `:${url.port}` : ''}`;
+  return { 'api.impeccable.style': 'https://impeccable.reviews', 'api.staging.impeccable.style': 'https://staging.impeccable.reviews' }[url.hostname] ?? null;
 }
+/** The socket's origin for a walk the account server `at` starts: its website's, over a socket. */
+const socketOf = (at) => siteOf(at)?.replace(/^http/, 'ws') ?? null;
+
+/** After the first sign-in with Impeccable Pro, its welcome page, on the website of the server signed in to; once (`welcomeSeen`). */
+async function welcome(answer) {
+  const site = answer.signedIn === true && answer.pro !== false ? siteOf(issuer) : null;
+  if (!site || (await chrome.storage.local.get('welcomeSeen').catch(() => ({}))).welcomeSeen) return answer;
+  await chrome.storage.local.set({ welcomeSeen: true }).catch(() => undefined);
+  void chrome.tabs.create({ url: `${site}/pro/welcome`, active: true }).catch(() => undefined);
+  return answer;
+}
+/** The welcome page's button (welcome.js) opens the panel as our outing page's does: on the website signed in to alone. */
+const isWelcomePage = (url) => { try { const at = new URL(url); return at.origin === siteOf(issuer) && /^\/pro\/welcome\/?$/.test(at.pathname); } catch { return false; } };
+opensPanel(isWelcomePage);
 
 /** The presets' ids, as popup/words.js lists them (that file is the popup's alone): the server holds each one's card. */
 const PRESETS = ['ines', 'kofi', 'priya', 'tomasz', 'hana', 'noor'];
@@ -139,11 +153,15 @@ async function create({ description }) {
   return making.done;
 }
 
-/** The personas, and the description of one still being made (or sent and never answered), for the popup to wait on. */
+/**
+ * The personas, and the description of one still being made (or sent and never answered), for the popup to wait on.
+ * None: `signed-out` when no sign-in is kept any more (the server ended it), else `personas`.
+ */
 async function personas() {
   const [list, was] = await Promise.all([session.personas(), making ? null : kept()]);
   const creating = making?.description ?? (was?.open ? was.description : null);
-  return list ? { ok: true, personas: list, ...(creating ? { creating } : {}) } : { ok: false, why: 'personas' };
+  if (list) return { ok: true, personas: list, ...(creating ? { creating } : {}) };
+  return { ok: false, why: (await session.signedIn().catch(() => true)) ? 'personas' : 'signed-out' };
 }
 
 const ANSWERS = {
@@ -153,7 +171,7 @@ const ANSWERS = {
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,
-  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status() : { ok: false, why: done.why }; },
+  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(welcome) : { ok: false, why: done.why }; },
   async 'sign-out'() { await session.signOut(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };

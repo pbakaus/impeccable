@@ -197,13 +197,17 @@ chrome.runtime.onConnect.addListener((port) => {
   void ready.then(() => { if (current().state !== 'waiting') port.postMessage({ rest: true }); }).catch(() => undefined);
 });
 
+/** Our pages whose click opens the panel: the outing page, and those the account adds (account/worker.js, the Pro welcome page). */
+const panelPages = [isOutingPage];
+export const opensPanel = (test) => { panelPages.push(test); };
+
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.handoff === 'string') {
     void take(message.handoff, sender).then(respond, () => respond({ ok: false, why: 'malformed' }));
     return true;
   }
-  // A click on our outing page opens the panel: called here and now, while Chrome still counts the click.
-  if (message?.panel === 'open' && sender.id === chrome.runtime.id && sender.tab && isOutingPage(sender.url ?? '')) {
+  // A click on one of those pages opens the panel: called here and now, while Chrome still counts the click.
+  if (message?.panel === 'open' && sender.id === chrome.runtime.id && sender.tab && panelPages.some((test) => test(sender.url ?? ''))) {
     void chrome.sidePanel.open({ windowId: sender.tab.windowId }).catch(() => undefined);
   }
   return false;
