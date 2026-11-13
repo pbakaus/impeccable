@@ -2379,7 +2379,7 @@ object on stdout and exits 0 on success, 1 otherwise.
 
 Exact output strings:
 
-- `Usage: impeccable world <id> [--print]`
+- `Usage: impeccable world <id> [--print]` on a usage error. `--help` prints the same line followed by what a world is, what the verb writes, `--print`, and that it needs an account; it exits 0 and makes no request.
 - `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
 - `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
 - `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`

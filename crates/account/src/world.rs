@@ -20,6 +20,23 @@ const MAX_SIDECAR: usize = 256 * 1024;
 const UNREADABLE: &str = "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n";
 
 const USAGE: &str = "Usage: impeccable world <id> [--print]\n";
+/// `--help`: what a world is and what the verb writes, before any sign-in.
+const HELP: &str = "Usage: impeccable world <id> [--print]
+
+Starts this project from a world: a finished visual direction, with its type,
+color, spacing and components. Copy the id from the world in the Impeccable
+worlds catalog.
+
+Writes DESIGN.md beside PRODUCT.md (at the project root when there is none)
+and .impeccable/design.json at the project root, and your agent builds every
+page in that world. It never overwrites: if the project already has a design
+system, it writes nothing and tells you how to merge.
+
+  --print   Print the seed as JSON instead of writing it (its DESIGN.md is in
+            design_md), to merge into the design system you have.
+
+Needs an Impeccable account (impeccable login). Some worlds need Pro.
+";
 
 /// The seed's DESIGN.md carrying `world: "<id>"` in its frontmatter, the line
 /// every later boot and roll reads (`seeded_world`) to know the person chose
@@ -115,7 +132,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         match a.as_str() {
             "--print" => print = true,
             "--help" | "-h" => {
-                io.out(USAGE);
+                io.out(HELP);
                 return 0;
             }
             s if s.starts_with('-') => {
