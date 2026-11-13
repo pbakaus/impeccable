@@ -8,8 +8,9 @@
 import { BUILD } from '../shared/build.js';
 import { adopt } from '../walks/link.js';
 import { planned } from '../walks/control.js';
+import { signedIn as pointToolbar } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
-import { createSession, idbStore } from './session.js';
+import { PLAN_ID, createSession, idbStore } from './session.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
 /** A development build (shared/build.js): only such a build may sign in to another server. */
@@ -26,6 +27,8 @@ let issuer = PRODUCTION;
 const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }) => {
   if (issuerAllowed(accountServer, UNPACKED)) issuer = accountServer;
 }, () => undefined).then(() => session.recover()).catch(() => undefined);
+// Signed in, the toolbar icon opens the side panel rather than the popup: from the worker's start, read from disk alone.
+void chosen.then(() => session.signedIn()).then(pointToolbar, () => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -37,6 +40,14 @@ const session = createSession({
 
 /** What the popup is told of the account. */
 async function status() {
+  const answer = await account();
+  const signedIn = await session.signedIn().catch(() => false);
+  pointToolbar(signedIn);
+  // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
+  return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
+}
+
+async function account() {
   await chosen;
   session.retry();
   const server = UNPACKED ? { server: issuer, unpacked: true } : {};
@@ -78,7 +89,6 @@ async function plan(message) {
   return ask.body ? session.planWalk(ask.body) : { ok: false, why: ask.why };
 }
 
-const PLAN_ID = /^[A-Za-z0-9_-]{1,80}$/;
 async function walk({ plan: approved, ...message }, panel = Promise.resolve(false)) {
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };

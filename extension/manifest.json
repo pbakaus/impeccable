@@ -28,6 +28,10 @@
     "type": "module"
   },
   "devtools_page": "devtools/devtools.html",
+  "options_ui": {
+    "page": "popup/settings.html",
+    "open_in_tab": false
+  },
   "side_panel": {
     "default_path": "walks/panel/panel.html"
   },
