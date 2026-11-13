@@ -268,6 +268,10 @@ fn skip_line(line: &str) -> bool {
 
 /// JS: findElement(lines, query, tag)
 pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<ElementMatch> {
+    // Masking only removes matches, so a file with none is never lexed.
+    if !lines.iter().any(|l| matches_query(l, query, tag)) {
+        return None;
+    }
     // Markup inside a comment or a script is no match.
     let masked = mask_markup(lines);
     for (i, line) in lines.iter().enumerate() {
@@ -295,6 +299,9 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<
 pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Vec<ElementMatch> {
     let mut out = Vec::new();
     let mut seen: Vec<usize> = Vec::new();
+    if !lines.iter().any(|l| matches_query(l, query, tag)) {
+        return out;
+    }
     let masked = mask_markup(lines);
     for (i, line) in lines.iter().enumerate() {
         if !matches_query(&masked[i], query, tag) {
@@ -642,8 +649,10 @@ fn lex_markup(lines: &[String], start: usize, mut on: impl FnMut(Lexed) -> bool)
                         if on(Lexed::OpenEnd { name: &tag_name, line: i, col: j + 1, self_closing }) {
                             return;
                         }
+                        // `<Script>` is a JSX component and keeps its
+                        // children; HTML names fold case.
                         let raw = tag_name.to_ascii_lowercase();
-                        mode = if !self_closing && RAW_TEXT_TAGS.contains(&raw.as_str()) {
+                        mode = if !self_closing && folds_tag_case(&tag_name) && RAW_TEXT_TAGS.contains(&raw.as_str()) {
                             hidden_from = j + 1;
                             LexMode::Raw(raw)
                         } else {
@@ -1472,6 +1481,9 @@ mod tests {
             assert!(!shares_boundary_line(&mask_markup(&lines(&[lone])), m, "div"), "{lone}");
         }
         assert!(shares_boundary_line(&mask_markup(&lines(&["<div>A</div><!-- x -->"])), m, "div"));
+        // `<Script>` is a JSX component: its children stay markup.
+        let component = lines(&["<Script>", "  <h1>Title</h1>", "</Script>"]);
+        assert_eq!(mask_markup(&component), component);
     }
 
     #[test]
