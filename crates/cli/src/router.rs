@@ -71,6 +71,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             let code = impeccable_account::run_login(rest, io);
             if code == 0 {
                 crate::setup_report::schedule(io);
+                crate::loop_install::after_login(io);
             }
             code
         }

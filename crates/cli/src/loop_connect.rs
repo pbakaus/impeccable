@@ -265,6 +265,12 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     }))
 }
 
+/// Whether a `status` agent row is connected all the way: Loop's record names it, and its
+/// MCP server, hooks and instruction are all in place.
+pub(crate) fn agent_connected(a: &Value) -> bool {
+    a["connected"] == true && a["hooks"] == true && a["instruction"] == true && a["mcp"] == "registered"
+}
+
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
@@ -276,11 +282,7 @@ pub(crate) fn status_text(v: &Value) -> String {
         let label = a["label"].as_str().unwrap_or("Agent");
         if a["detected"] != true {
             out.push_str(&format!("{label}: not found.\n"));
-        } else if a["connected"] == true
-            && a["hooks"] == true
-            && a["instruction"] == true
-            && a["mcp"] == "registered"
-        {
+        } else if agent_connected(a) {
             out.push_str(&format!("{label}: connected.\n"));
         } else {
             out.push_str(&format!(

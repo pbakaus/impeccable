@@ -137,3 +137,58 @@ fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("Plan: Free."), "{text}");
 }
+
+/// Signs in with `login --no-browser` (stdin is not a terminal) and returns stdout.
+#[cfg(target_os = "macos")]
+fn login_output(env: &std::collections::HashMap<String, String>) -> String {
+    use std::io::Read;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["login", "--no-browser"])
+        .env_clear()
+        .envs(env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut url = String::new();
+    stdout.read_line(&mut url).unwrap();
+    browser(url.trim());
+    let mut rest = String::new();
+    stdout.read_to_string(&mut rest).unwrap();
+    assert!(child.wait().unwrap().success());
+    rest
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn login_offers_loop_connect_only_when_loop_is_installed_and_an_agent_is_not_connected() {
+    // Catches: `loop connect` staying a door of its own that nobody finds after signing in,
+    // and the offer showing on a machine without Loop.
+    let fake = Fake::start();
+    let mut env = fake.env("cli-login-loop");
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    // A `claude` on PATH is all status needs to see the agent; it is never run.
+    let bin = home.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let claude = bin.join("claude");
+    std::fs::write(&claude, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&claude, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    env.insert("PATH".into(), format!("{}:/usr/bin:/bin", bin.display()));
+
+    let without = login_output(&env);
+    assert!(!without.contains("Loop"), "no Loop, no offer: {without}");
+
+    let macos = home.join("Applications/Impeccable Loop.app/Contents/MacOS");
+    std::fs::create_dir_all(&macos).unwrap();
+    std::fs::write(macos.join("loop-hook"), "#!/bin/sh\nexit 0\n").unwrap();
+    let with = login_output(&env);
+    assert!(
+        with.contains("Loop is installed. Connect Claude Code to it: impeccable loop connect\n"),
+        "{with}"
+    );
+    // Not a terminal: nothing was connected.
+    assert!(!home.join(".claude.json").exists());
+}

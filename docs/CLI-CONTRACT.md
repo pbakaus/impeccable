@@ -2294,6 +2294,16 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   so your agents bring their questions to Loop.` A connect that fails after
   the install exits 1 and says Loop is installed and to run `loop connect`
   again. The two flags go with `install` only, one at a time.
+- After a successful `impeccable login` on macOS, when Loop is installed and an
+  agent found on this machine is not fully connected (`loop status` row not
+  `connected` with MCP, hooks and instruction in place), login offers that
+  step for the agents still waiting, named as `Claude Code`, `Codex` or
+  `Claude Code and Codex`. A person at a terminal is asked `Loop is installed.
+  Connect <agents> to it now? [Y/n]` (Enter means yes; no prints `Later:
+  impeccable loop connect`); otherwise nothing is changed and login prints
+  `Loop is installed. Connect <agents> to it: impeccable loop connect`. A
+  failed connect is reported on stderr and login still exits 0. Without Loop,
+  or with every agent connected, login prints nothing about Loop.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
   (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
