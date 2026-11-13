@@ -1653,6 +1653,7 @@ mod tests {
                 let (code, _, err) = project.run(insert, &["--tag", tag, "--text", text]);
                 assert_eq!(code, 1, "{err}");
                 assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline");
+                assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["file"], "index.html");
                 assert_eq!(project.source("index.html"), source);
             }
         }
@@ -1855,6 +1856,7 @@ mod tests {
             let (code, _, err) = project.run(insert, &["--tag", "h1"]);
             assert_eq!(code, 1, "{err}");
             assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline");
+            assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["file"], "Page.svelte");
             assert_eq!(project.source("Page.svelte"), source);
         }
     }

@@ -30,8 +30,10 @@ fn tokens(source: &str, fold_case: bool, skip_comments: bool) -> Vec<Token> {
     let mut stack: Vec<usize> = Vec::new();
     let mut i = 0;
     // Astro frontmatter is executable source, not markup.
-    if source.starts_with("---\n") {
-        if let Some(end) = source[4..].find("\n---") { i = end + 8; }
+    if let Some(opener_len) = source.strip_prefix("---\r\n").map(|_| 5)
+        .or_else(|| source.strip_prefix("---\n").map(|_| 4)) {
+        // Matching from LF also covers CRLF without changing byte offsets.
+        if let Some(end) = source[opener_len..].find("\n---") { i = opener_len + end + 4; }
     }
     while i < bytes.len() {
         if skip_comments && source.is_char_boundary(i) && source[i..].starts_with("{/*") {
@@ -253,4 +255,20 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
     file.isolation = Some((c.range.start_line, c.range.end_line.unwrap(),
         c.range.start_line + replacement.join("\n").matches('\n').count()));
     Ok(Resolution::Match(file, ElementMatch { start_line, end_line: Some(end_line) }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn astro_crlf_frontmatter_does_not_create_markup_tokens() {
+        let source = "---\r\nconst fake = \"<div>\";\r\n---\r\n<main><h1>Title</h1></main>";
+        let ts = tokens(source, false, true);
+        assert_eq!(ts.len(), 4);
+        assert_eq!(ts[0].name, "main");
+        assert_eq!(ts[0].start, source.find("<main>").unwrap());
+        assert_eq!(&source[ts[1].start..ts[1].end], "<h1>");
+        assert_eq!(ts.last().unwrap().end, source.len());
+    }
 }

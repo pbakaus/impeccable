@@ -153,9 +153,10 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     } else {
         resolve_in_project(&queries, &cwd, tag.as_deref(), text.as_deref())
     };
+    let rel = |path: &str| jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[path]));
     let (file, m) = match resolved {
         Resolution::Inline(path) => {
-            eprintln(io, &json_compact(&element_inline_error(&path)));
+            eprintln(io, &json_compact(&element_inline_error(&rel(&path))));
             return 1;
         }
         Resolution::Match(file, m) => (file, m),
@@ -244,7 +245,7 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
         }
     };
     if file.isolation.is_some() && should_use_svelte_component_injection(&file.path, &env) {
-        eprintln(io, &json_compact(&element_inline_error(&file.path)));
+        eprintln(io, &json_compact(&element_inline_error(&rel(&file.path))));
         return 1;
     }
     let isolation = file.isolation;

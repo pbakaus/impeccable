@@ -281,15 +281,20 @@ fn svelte_component_instructions(event: &Map<String, Value>, scaffold: &Value) -
     )
 }
 
-fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+fn scaffold_is_insertion(scaffold: &Value) -> bool {
     let start = crate::util::js_number(scaffold.get("replaceStartLine"));
     let end = crate::util::js_number(scaffold.get("replaceEndLine"));
-    let insert_note = match (start, end) {
-        (Some(s), Some(e)) if e < s => format!(
+    matches!((start, end), (Some(s), Some(e)) if e < s)
+}
+
+fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+    let insert_note = if scaffold_is_insertion(scaffold) {
+        format!(
             " (replaceEndLine < replaceStartLine: this is an INSERTION at line {}; remove nothing)",
             js_str(scaffold.get("replaceStartLine"))
-        ),
-        _ => String::new(),
+        )
+    } else {
+        String::new()
     };
     format!(
         "The wrapper is NOT in source yet. In ONE edit to {}: splice preview CSS plus all {} variants into scaffold.wrapperBlock at the \"Variants: insert below this line\" marker, then replace lines {}-{}{} with the result. Two separate writes reload the framework mid-publish and strand the browser at 0/N. Author CSS per the returned cssAuthoring contract; each variant div holds exactly ONE top-level element (same tag as the original); first visible, others display: none. On JSX/TSX wrap the <style> content in a template literal and use className / style={{{{...}}}}.",
@@ -330,11 +335,23 @@ fn insert_scaffold_instructions(event: &Map<String, Value>, self_cmd: &str) -> S
     }
     if let Some(s) = scaffold {
         if s.get("sourceWritten") == Some(&Value::Bool(false)) {
+            let edit = if scaffold_is_insertion(s) {
+                format!(
+                    "insert at line {} of {}, remove nothing",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("file"))
+                )
+            } else {
+                format!(
+                    "replace lines [{}, {}] of {} with the result",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("replaceEndLine")),
+                    js_str(s.get("file"))
+                )
+            };
             return format!(
-                "{} Splice your variants into scaffold.wrapperBlock at the marker and insert the result at line {} of {} in ONE edit.",
-                base,
-                js_str(s.get("replaceStartLine")),
-                js_str(s.get("file"))
+                "{} Splice your variants into scaffold.wrapperBlock at the marker and {} in ONE edit.",
+                base, edit
             );
         }
     }
@@ -461,6 +478,22 @@ mod tests {
             m.insert("origin".into(), json!(o));
         }
         m
+    }
+
+    #[test]
+    fn deferred_insert_instructions_respect_the_replacement_range() {
+        for (end, expected) in [
+            (4, "replace lines [4, 4] of index.html with the result"),
+            (3, "insert at line 4 of index.html, remove nothing"),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("scaffold".into(), json!({
+                "sourceWritten": false, "file": "index.html",
+                "replaceStartLine": 4, "replaceEndLine": end
+            }));
+            let instructions = insert_scaffold_instructions(&event, "impeccable");
+            assert!(instructions.contains(expected), "{instructions}");
+        }
     }
 
     #[test]
