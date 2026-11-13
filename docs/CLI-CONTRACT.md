@@ -2329,6 +2329,89 @@ Existing pins cannot be overwritten with a different digest.
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
 
+## World seed
+
+Exact output strings:
+
+- `Usage: impeccable world <id> [--print]`
+- `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
+- `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
+- `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
+- `Using a world needs your Impeccable account. Run impeccable login, then try again.`
+- `Your sign-in expired. Run impeccable login, then try again.`
+- `Using a world needs a fresh sign-in. Run impeccable login, then try again.`
+- `The world <id> needs Pro. See impeccable.style/pricing`
+- `No world has the id <id>. Copy the id from the world in the Impeccable worlds catalog.`
+- `Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.`
+
+`impeccable world <id>` seeds the current directory's design system from a
+catalog world. An id is 1 to 64 lowercase letters, digits and single inner
+dashes; anything else exits 1 without a request. When `DESIGN.md`,
+`DESIGN.json` or `.impeccable/design.json` exists in the chosen destination
+or project root (a symlink counts), or
+`context` run from the same directory would read a DESIGN.md somewhere else
+(the context reader's own resolver: `docs/` or `.agents/context/`, a
+workspace's repo root, or `IMPECCABLE_CONTEXT_DIR`), it writes nothing, makes
+no request, prints the merge line on stdout and exits 0. The merge line names
+the file it found, relative to the current directory (`docs/DESIGN.md`,
+`../../DESIGN.md`).
+
+Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
+token (scope `worlds:read`, which `login` requests whenever the service lists
+it in `scopes_supported`; plan-gated by the service). A 200 answer must be
+`{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
+to 120 characters without control characters, a non-blank `design_md` and an
+object `sidecar`, each at most 256 KiB; anything else, a 200 body that is
+not JSON included, is the "can't read" line. The written `DESIGN.md` names
+its world in a frontmatter `world: "<id>"` line, the one every later boot and
+`concept-seed` roll reads: a frontmatter without one gets it as its first key,
+a seed with no frontmatter gets one holding only that line, and a frontmatter
+that names another world, holds an id the reader rejects, or never closes is
+refused before anything is written, with `The DESIGN.md your Impeccable
+account sent for <id> can't record which world it came from, so nothing was
+written. Update the Impeccable CLI and try again.` on stderr, exit 1. It
+writes `.impeccable/design.json` at the resolved project root (the sidecar plus
+`seededFrom: {world, name}`) and then `DESIGN.md`. The destination is resolved once with context from cwd:
+
+1. No PRODUCT.md resolves: write DESIGN.md at the project root (cwd as a fallback).
+2. PRODUCT.md is inside the project root, including `docs/` or `.agents/context/`:
+   write beside it, opening each folder from the pinned project root with the
+   same no-symlink and Windows reparse-point checks as `.impeccable`.
+3. PRODUCT.md is in `IMPECCABLE_CONTEXT_DIR`: write beside it. Opening this
+   explicitly configured external directory by path is allowed.
+4. PRODUCT.md is outside the project root and not in `IMPECCABLE_CONTEXT_DIR`:
+   write nothing and exit 1. One plain message names its folder relative to cwd,
+   explains that a workspace seed would hide that PRODUCT.md and a seed beside
+   it would apply to every workspace, and offers running `impeccable world <id>`
+   from that folder to seed the whole repository or `impeccable world <id> --print`
+   and saving it where it belongs.
+
+The sidecar stays at the project root, where context reads it for that design,
+including local fallback and explicitly configured context folders.
+Each file is create-new, so an
+existing file or symlink is never followed or replaced. Both are created
+relative to directory handles held open (on Unix), so a `.impeccable` that
+is a symlink is refused and one swapped after the check cannot redirect a
+write or a rollback. Elsewhere `.impeccable` must be a real folder, not a
+symlink, junction or other reparse point, rechecked before each create and
+remove in it. A file this run created but could not fill (a full
+disk) is removed again; if `DESIGN.md` loses
+that race the sidecar it wrote is removed and the merge line is printed.
+401 after a refresh is the expired line, 403 `insufficient_scope` the fresh
+sign-in line, any other 403 the Pro line, 404 the unknown-id line; network
+failures say the account couldn't be reached. Every failure exits 1 and
+writes nothing.
+
+On success, when stdout is a terminal, `COLORTERM` is `truecolor` or `24bit`,
+`NO_COLOR` is unset or empty and `TERM` is not `dumb`, a row of up to 12
+24-bit colour swatches follows the first line: the `#rgb`, `#rrggbb` and
+`oklch()` values in the seed's DESIGN.md frontmatter `colors:` block, in
+order. Pipes and agents never see escape codes.
+
+`--print` skips the existence check and the writes and prints the answer as
+one JSON line `{id, name, design_md, sidecar}` on stdout, for an agent to
+merge into an existing design system.
+
 ## Setup status
 
 Exact output strings:

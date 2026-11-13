@@ -33,6 +33,8 @@ pub struct Metadata {
     pub taste: bool,
     pub design: bool,
     pub critiques: bool,
+    /// `worlds:read`, for `impeccable world` (`crate::world`).
+    pub worlds: bool,
 }
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
@@ -91,6 +93,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == CRITIQUES_SCOPE)),
+            worlds: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == WORLDS_SCOPE)),
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -109,6 +115,9 @@ pub const TASTE_READ_SCOPE: &str = "taste:read";
 /// Uploading foundations evidence, separately consented from detector counts.
 pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
 
+/// Reading a catalog world's seed (`crate::world`).
+pub const WORLDS_SCOPE: &str = "worlds:read";
+
 /// Request feature scopes only where the service advertises them.
 pub(crate) fn scopes(meta: &Metadata) -> String {
     let mut scopes = SCOPES.to_string();
@@ -119,6 +128,7 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.design, DESIGN_SCOPE),
         (meta.critiques, CRITIQUES_SCOPE),
         (meta.taste, TASTE_READ_SCOPE),
+        (meta.worlds, WORLDS_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -477,7 +487,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..64 {
+        for mask in 0..128 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -488,6 +498,7 @@ mod scope_tests {
                 design: mask & 8 != 0,
                 critiques: mask & 16 != 0,
                 taste: mask & 32 != 0,
+                worlds: mask & 64 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -499,6 +510,7 @@ mod scope_tests {
                 (8, DESIGN_SCOPE),
                 (16, CRITIQUES_SCOPE),
                 (32, TASTE_READ_SCOPE),
+                (64, WORLDS_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }
