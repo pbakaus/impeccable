@@ -155,8 +155,8 @@ fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
 /// Whether a tag-only match shares its first or last line with other markup:
 /// a second opener of the tag on the opening line (a sibling or a nested
 /// element of the same tag), text before the opener, or anything after the
-/// closing tag. Wrap and accept replace whole lines, so such a range would
-/// take its neighbours with it.
+/// element's own end. Wrap and accept replace whole lines, so such a range
+/// would take its neighbours with it.
 fn shares_boundary_line(lines: &[String], m: ElementMatch, tag: &str) -> bool {
     let html_tag = is_html_tag(tag);
     let start_text = &lines[m.start_line];
@@ -167,24 +167,91 @@ fn shares_boundary_line(lines: &[String], m: ElementMatch, tag: &str) -> bool {
     if openers.len() > 1 || !start_text[..first].trim().is_empty() {
         return true;
     }
-    let Some(end) = m.end_line else {
+    let last = m.end_line.unwrap_or(m.start_line);
+    // Where the element really ends: the opener's own `>` for a void or
+    // self-closing tag, else the close that balances it (nested same-name
+    // children counted). Anything after that within the range is a neighbour.
+    let Some((end_line, end_col)) = element_end(lines, m.start_line, first, tag) else {
         return false;
     };
-    let end_text = &lines[end];
-    let from = if end == m.start_line { first + 1 } else { 0 };
-    let closes = tag_prefix_positions(&end_text[from..], &format!("</{}", tag), html_tag);
-    // The first close on the end line: a later one belongs to a neighbour.
-    match closes.first() {
-        Some(&close) => {
-            let rest = &end_text[from + close..];
-            rest.find('>').map_or(false, |gt| !rest[gt + 1..].trim().is_empty())
-        }
-        // A void or self-closing element on one line: any later tag is a neighbour.
-        None if end == m.start_line => end_text[from..]
-            .match_indices('<')
-            .any(|(i, _)| end_text[from + i + 1..].starts_with(|c: char| c.is_ascii_alphabetic() || c == '/')),
-        None => false,
+    if end_line > last {
+        return true;
     }
+    if !lines[end_line][end_col..].trim().is_empty() {
+        return true;
+    }
+    lines[end_line + 1..=last].iter().any(|l| !l.trim().is_empty())
+}
+
+/// The line and the byte just past the `>` that ends the element whose opener
+/// starts at `lines[line][col]`. Quotes and `{...}` inside a tag are skipped.
+fn element_end(lines: &[String], line: usize, col: usize, tag: &str) -> Option<(usize, usize)> {
+    let html_tag = is_html_tag(tag);
+    let void = html_tag && matches!(tag.to_ascii_lowercase().as_str(),
+        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr");
+    let open = format!("<{}", tag);
+    let close = format!("</{}", tag);
+    let starts = |text: &str, at: usize, prefix: &str| tag_prefix_positions(&text[at..], prefix, html_tag).first() == Some(&0);
+    // Scan one tag from (l, c) at its `<` to just past its `>`; true when it ends in `/>`.
+    let tag_end = |mut l: usize, mut c: usize| -> Option<(usize, usize, bool)> {
+        let mut quote: Option<u8> = None;
+        let mut braces = 0usize;
+        let mut prev = 0u8;
+        loop {
+            let bytes = lines.get(l)?.as_bytes();
+            while c < bytes.len() {
+                let b = bytes[c];
+                if let Some(q) = quote {
+                    if b == q { quote = None; }
+                } else if b == b'"' || b == b'\'' || (b == b'`' && braces > 0) {
+                    quote = Some(b);
+                } else if b == b'{' {
+                    braces += 1;
+                } else if b == b'}' {
+                    braces = braces.saturating_sub(1);
+                } else if b == b'>' && braces == 0 {
+                    return Some((l, c + 1, prev == b'/'));
+                }
+                if !b.is_ascii_whitespace() { prev = b; }
+                c += 1;
+            }
+            l += 1;
+            c = 0;
+        }
+    };
+    let (mut l, mut c, self_closing) = tag_end(line, col)?;
+    if self_closing || void {
+        return Some((l, c));
+    }
+    let mut depth = 1usize;
+    while l < lines.len() {
+        let text = &lines[l];
+        let Some(rel) = text[c..].find('<') else {
+            l += 1;
+            c = 0;
+            continue;
+        };
+        let at = c + rel;
+        if starts(text, at, &close) {
+            let (el, ec, _) = tag_end(l, at)?;
+            depth -= 1;
+            if depth == 0 {
+                return Some((el, ec));
+            }
+            l = el;
+            c = ec;
+        } else if starts(text, at, &open) {
+            let (el, ec, nested_self_closing) = tag_end(l, at)?;
+            if !nested_self_closing {
+                depth += 1;
+            }
+            l = el;
+            c = ec;
+        } else {
+            c = at + 1;
+        }
+    }
+    None
 }
 
 /// A tag-only match whose boundary lines hold other markup is refused rather
@@ -1175,6 +1242,39 @@ mod tests {
                     assert_eq!(project.source("index.html"), source);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn tag_only_boundary_check_reads_the_elements_own_end() {
+        let m = |start, end| ElementMatch { start_line: start, end_line: Some(end) };
+        // A nested child's close is not the parent's: the parent ends at the
+        // balancing close, and nothing follows it.
+        let nested = lines(&["<div>", "  Outer intro", "  <div>Child</div></div>"]);
+        assert!(!shares_boundary_line(&nested, m(0, 2), "div"));
+        let nested_tail = lines(&["<div>", "  <div>Child</div></div><p>Keep</p>"]);
+        assert!(shares_boundary_line(&nested_tail, m(0, 1), "div"));
+        // A multi-line self-closing tag ends at its `/>`.
+        let self_closing = lines(&["<Input", "  id=\"email\"", "/><p>Keep</p>"]);
+        assert!(shares_boundary_line(&self_closing, m(0, 2), "Input"));
+        let lone_self_closing = lines(&["<Input", "  onChange={(e) => set(e)}", "/>"]);
+        assert!(!shares_boundary_line(&lone_self_closing, m(0, 2), "Input"));
+        // Text or a comment after a void tag is a neighbour too.
+        for after in ["<img src=\"a.png\"> caption", "<img src=\"a.png\"><!-- note -->", "<br/> tail"] {
+            let page = lines(&[after]);
+            let tag = if after.starts_with("<br") { "br" } else { "img" };
+            assert!(shares_boundary_line(&page, m(0, 0), tag), "{after}");
+        }
+    }
+
+    #[test]
+    fn tag_only_wraps_a_parent_whose_last_line_closes_a_nested_child() {
+        for insert in [false, true] {
+            let source = "<main>\n<div>\n  Outer intro\n  <div>Child</div></div>\n</main>\n";
+            let project = TagProject::new("index.html", source);
+            let (code, out, err) = project.run(insert, &["--tag", "div", "--text", "Outer intro"]);
+            assert_eq!(code, 0, "{out} {err}");
+            assert!(project.source("index.html").contains("data-impeccable-variants="));
         }
     }
 
