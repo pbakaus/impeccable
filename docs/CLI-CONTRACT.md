@@ -1797,10 +1797,12 @@ The contents of script, style and textarea are text, not markup: a tag
 inside them is never a candidate and never nests the element around them.
 Void names (img, input, link, ...) fold case only in HTML-like files; in
 .jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
-component that keeps its children. A class, id or query locator with one
-match on lines of its own and others on shared lines (a minified copy) takes
-the lone match, as the line resolver would; a tag-only locator still weighs
-every candidate.
+component that keeps its children. A class, id or query locator whose
+first hit in walk order sits on a shared line (a minified copy) while another
+hit stands on lines of its own takes the first such lone hit, and with a
+`--text` that matches none of them refuses as `element_ambiguous`; it never
+wraps the minified line whole. A tag-only locator still weighs every
+candidate.
 
 HTML-like sources refuse splitting in pre, textarea, script and style, or
 next to non-whitespace text. Otherwise splitting requires a block-level tag,

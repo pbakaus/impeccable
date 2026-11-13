@@ -1165,6 +1165,35 @@ mod tests {
     }
 
     #[test]
+    fn same_line_minified_copy_is_never_wrapped_whole_when_the_pretty_file_is_ambiguous() {
+        let minified = "<main><h1 class=\"picked\">Title</h1><p>x</p></main>\n";
+        let pretty = "<main>\n  <h1 class=\"picked\">Title</h1>\n  <h1 class=\"picked\">Other</h1>\n</main>\n";
+        for (min_name, pretty_name) in [("a.html", "b.html"), ("b.html", "a.html")] {
+            for locator in [vec!["--classes", "picked"], vec!["--classes", "picked", "--text", "Nope"]] {
+                let project = TagProject::new(min_name, minified);
+                std::fs::write(project.0.join(pretty_name), pretty).unwrap();
+                let (_, out, err) = project.run(false, &locator);
+                assert_eq!(project.source(min_name), minified, "{min_name} {locator:?} {out} {err}");
+            }
+        }
+    }
+
+    #[test]
+    fn same_line_raw_text_skip_respects_self_closing_and_components() {
+        for (file, source) in [
+            ("App.jsx", "<form><textarea /><h1>Title</h1><p>x</p></form>"),
+            ("App.jsx", "<div><script src=\"x.js\" /><h1>Title</h1><p>x</p></div>"),
+            ("Page.astro", "<div><Script>go()</Script><h1>Title</h1><p>x</p></div>"),
+        ] {
+            let project = TagProject::new(file, source);
+            let (code, out, err) = project.run(false, &["--tag", "h1"]);
+            assert_eq!(code, 0, "{source} {out} {err}");
+            let written = project.source(file);
+            assert_eq!(written.lines().find(|l| l.contains("<h1>")).unwrap().trim(), "<h1>Title</h1>", "{written}");
+        }
+    }
+
+    #[test]
     fn same_line_template_regions_and_multiline_boundaries_are_preserved() {
         for (file, source) in [
             ("Page.astro", "---\nconst fake = '<h1>Ignored</h1>';\n---\n<main><h1>Title</h1><p>x</p></main>"),

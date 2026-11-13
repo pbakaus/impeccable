@@ -119,7 +119,10 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         }
         let ext = jsp::extname(&file.path);
         let jsx = matches!(ext.as_str(), ".jsx" | ".tsx");
-        let components = jsx || matches!(ext.as_str(), ".vue" | ".svelte" | ".astro");
+        // Files where a capitalized tag is a component, not an HTML element.
+        // A configured .js/.ts/.mdx extension holds JSX too.
+        let components = jsx || matches!(ext.as_str(), ".vue" | ".svelte" | ".astro"
+            | ".js" | ".mjs" | ".cjs" | ".ts" | ".mdx");
         let ts = tokens(&source, !components);
         // The query that matches an opening tag, found once per file.
         let opener_query = queries.iter().find(|q| ts.iter().any(|n| !n.close
@@ -196,7 +199,12 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         if !filtered.is_empty() {
             candidates = candidates.into_iter().enumerate().filter_map(|(i, c)| filtered.contains(&i).then_some(c)).collect();
         } else if candidates.len() > 1 {
-            if !tag_only && candidates.iter().any(|c| !c.shared) { return Err(files); }
+            if !tag_only && candidates.iter().any(|c| !c.shared) {
+                // The line resolver lands on the first hit in walk order; hand
+                // back only when that hit stands on lines of its own.
+                if !candidates[0].shared { return Err(files); }
+                candidates.retain(|c| !c.shared);
+            }
             let hits = candidates.iter().map(|c| (files[c.file].path.clone(), vec![c.range])).collect();
             return Ok(Resolution::TextInNoFile(hits));
         }
@@ -205,8 +213,11 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
     // ordinary source: a minified copy elsewhere does not make it ambiguous.
     // A tag alone must still weigh every candidate.
     if !tag_only && candidates.len() > 1 && candidates.iter().any(|c| !c.shared) {
+        // The line resolver would take the first hit in walk order, which may
+        // be the minified line; take the first lone hit here instead.
+        if !candidates[0].shared { return Err(files); }
         candidates.retain(|c| !c.shared);
-        if candidates.len() != 1 { return Err(files); }
+        candidates.truncate(1);
     }
     if candidates.len() != 1 {
         let hits = candidates.iter().map(|c| (files[c.file].path.clone(), vec![c.range])).collect();
