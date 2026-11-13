@@ -294,8 +294,9 @@ function signedOut() {
   return [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro)];
 }
 
-/** Signed in without Impeccable Pro, by the server's word: one line, and nothing to press. */
-const notPro = () => [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.notPro.line }))];
+/** Signed in without Impeccable Pro, by the server's word: one line, and the settings, where the account is signed out. */
+const notPro = () => [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.notPro.line }),
+  button('settings', COPY.top.settings, 'sec', () => { void chrome.runtime.openOptionsPage?.()?.catch?.(() => undefined); }))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
 function terminal() {
