@@ -7355,6 +7355,10 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 
 A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the shared invocation environment pins `IMPECCABLE_NO_TASTE` for every case (the isolated `context-taste-ready` case explicitly unsets it) so a developer's own copy never reaches a golden. New case: `context-taste-ready`.
 
+## Recorded 2026-11-12: the live boot names the next step when no dev server answers
+
+With `--dev-url` and no server found, the boot used to say "Open the app URL that serves a pageFiles entry" although no such URL existed. It now reports `pageUrls` (ready `file://` URLs) for a static folder, or `devCommand` for a project with a dev script, and `_instructions` say which to do. Output with a found `devUrl`, and without the flag, is unchanged. New cases: `live-boot-no-dev-server-static`, `live-boot-no-dev-server-dev-script`.
+
 ## Recorded 2026-11-12: live-wrap and live-insert locate a bare element by its tag
 
 A picked element with no id and no class (a fresh page's `<h1>`) could not be wrapped: preflight skipped it as `insufficient_locator` and the command the event printed failed with `Need at least one of: --element-id, --classes, --query`. A tag alone now locates it (`docs/CLI-CONTRACT.md`, live-wrap args). `live-wrap-missing-locator` and `live-insert-missing-locator` change to the new message (the wrap case now passes no locator at all, since `--tag h1` is one), both help goldens gain the "a tag alone is enough" line, and three new cases pin the behavior: `live-wrap-tag-only`, `live-wrap-tag-only-text-picks-second` (a short text that is one element's whole text) and `live-wrap-tag-only-ambiguous` (two elements with the same text give `element_ambiguous`, never the first match).

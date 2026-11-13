@@ -7,7 +7,7 @@ use crate::gitignore::ensure_live_git_ignores;
 use crate::inject::tag_strategy::{insert_tag, patch_csp_meta, remove_tag, revert_csp_meta};
 use crate::inject::{
     adapter_apply, adapter_remove, describe_inject_artifacts, framework_ignore_patterns,
-    resolve_framework, resolve_source_traits,
+    resolve_framework, resolve_source_traits, FrameworkName,
 };
 use crate::journal::{
     clear_inject_journal, heal_inject_journal, healed_to_value, record_injection,
@@ -31,6 +31,51 @@ Modes:
 Output (JSON):
   { ok, file, inserted|removed, config? }";
 
+/// Create only the common HTML/Vite config, using the same detectors as the
+/// injection and detect-csp verbs. Exclusive creation preserves an existing file.
+fn auto_configure(cwd: &str, path: &str) -> bool {
+    use std::io::Write;
+    // A framework's own config file means its adapter or setup guide decides, even when
+    // the framework resolver can't confirm it yet (dependencies not installed, say).
+    let framework_config = std::fs::read_dir(cwd).is_ok_and(|entries| {
+        entries.flatten().any(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            ["svelte.config.", "nuxt.config.", "next.config.", "astro.config.", "app.config.", "remix.config."]
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+        })
+    });
+    if framework_config {
+        return false;
+    }
+    if !std::path::Path::new(&jsp::join(&[cwd, "index.html"])).is_file()
+        || !matches!(resolve_framework(cwd, None).map(|r| r.name),
+            Some(FrameworkName::ViteGeneric | FrameworkName::StaticHtml))
+        || !impeccable_context::detect_csp::detect_csp(cwd)["shape"].is_null()
+    {
+        return false;
+    }
+    let Some(content) = safe_read(&jsp::join(&[cwd, "index.html"])) else { return false };
+    // Match insert_tag's literal, case-sensitive insertBefore lookup.
+    if content.rfind("</body>").is_none() {
+        return false;
+    }
+    let path = std::path::Path::new(path);
+    let Some(parent) = path.parent() else { return false };
+    if std::fs::create_dir_all(parent).is_err() {
+        return false;
+    }
+    let Ok(mut file) = std::fs::OpenOptions::new().write(true).create_new(true).open(path) else {
+        return false;
+    };
+    let config = r#"{"files":["index.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}"#;
+    if file.write_all(config.as_bytes()).is_err() {
+        let _ = std::fs::remove_file(path);
+        return false;
+    }
+    true
+}
+
 /// The verb entry: `enterLiveRoot()` then `injectCli()`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
@@ -52,6 +97,10 @@ pub fn inject_cli(args: &[String], io: &mut Io) -> i32 {
     let config_path = resolve_live_config_path(&cwd, &env);
 
     if has("--check") {
+        // Opt-in (`live --auto-config` passes it on): without the flag a missing config
+        // is reported exactly as before, and `--check` writes nothing.
+        let config_created =
+            has("--auto-config") && !exists(&config_path) && auto_configure(&cwd, &config_path);
         if !exists(&config_path) {
             println(
                 io,
@@ -85,10 +134,11 @@ pub fn inject_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 0;
         }
-        println(
-            io,
-            &json_compact(&json!({ "ok": true, "config": cfg, "path": config_path })),
-        );
+        let mut payload = json!({ "ok": true, "config": cfg, "path": config_path });
+        if config_created {
+            payload["configCreated"] = json!(true);
+        }
+        println(io, &json_compact(&payload));
         return 0;
     }
 
