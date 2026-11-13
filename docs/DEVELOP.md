@@ -74,6 +74,15 @@ source/                          -> dist/
 
 Each provider gets its own output directory.
 
+### Try the local build of the Chrome extension
+
+Run `bun run build:extension` once first: it writes the detector into `extension/detector/`. Then:
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top right).
+3. Click **Load unpacked**.
+4. Choose the `extension` folder of this repository. To sign in to servers other than production and this machine, list them in `extension/dev-hosts.local.json` (see `extension/dev-hosts.example.json`), run `bun run build:extension`, and load `dist/extension-dev` instead.
+
 ## Build System Details
 
 The build system uses a factory pattern under `scripts/`:
