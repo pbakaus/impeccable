@@ -170,88 +170,22 @@ fn shares_boundary_line(lines: &[String], m: ElementMatch, tag: &str) -> bool {
     let last = m.end_line.unwrap_or(m.start_line);
     // Where the element really ends: the opener's own `>` for a void or
     // self-closing tag, else the close that balances it (nested same-name
-    // children counted). Anything after that within the range is a neighbour.
-    let Some((end_line, end_col)) = element_end(lines, m.start_line, first, tag) else {
-        return false;
+    // children counted), read by the scanner `find_closing_line` uses.
+    // Anything after that within the range is a neighbour, and a scan that
+    // cannot find the end fails closed.
+    let void = html_tag && matches!(tag.to_ascii_lowercase().as_str(),
+        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr");
+    let written: String = start_text[first + 1..].chars().take(tag.chars().count()).collect();
+    let Some((end_line, end_col)) = scan_element(lines, m.start_line, &written, void).1 else {
+        return true;
     };
     if end_line > last {
         return true;
     }
-    if !lines[end_line][end_col..].trim().is_empty() {
+    if lines[end_line].chars().skip(end_col).any(|c| !is_js_whitespace(c)) {
         return true;
     }
     lines[end_line + 1..=last].iter().any(|l| !l.trim().is_empty())
-}
-
-/// The line and the byte just past the `>` that ends the element whose opener
-/// starts at `lines[line][col]`. Quotes and `{...}` inside a tag are skipped.
-fn element_end(lines: &[String], line: usize, col: usize, tag: &str) -> Option<(usize, usize)> {
-    let html_tag = is_html_tag(tag);
-    let void = html_tag && matches!(tag.to_ascii_lowercase().as_str(),
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr");
-    let open = format!("<{}", tag);
-    let close = format!("</{}", tag);
-    let starts = |text: &str, at: usize, prefix: &str| tag_prefix_positions(&text[at..], prefix, html_tag).first() == Some(&0);
-    // Scan one tag from (l, c) at its `<` to just past its `>`; true when it ends in `/>`.
-    let tag_end = |mut l: usize, mut c: usize| -> Option<(usize, usize, bool)> {
-        let mut quote: Option<u8> = None;
-        let mut braces = 0usize;
-        let mut prev = 0u8;
-        loop {
-            let bytes = lines.get(l)?.as_bytes();
-            while c < bytes.len() {
-                let b = bytes[c];
-                if let Some(q) = quote {
-                    if b == q { quote = None; }
-                } else if b == b'"' || b == b'\'' || (b == b'`' && braces > 0) {
-                    quote = Some(b);
-                } else if b == b'{' {
-                    braces += 1;
-                } else if b == b'}' {
-                    braces = braces.saturating_sub(1);
-                } else if b == b'>' && braces == 0 {
-                    return Some((l, c + 1, prev == b'/'));
-                }
-                if !b.is_ascii_whitespace() { prev = b; }
-                c += 1;
-            }
-            l += 1;
-            c = 0;
-        }
-    };
-    let (mut l, mut c, self_closing) = tag_end(line, col)?;
-    if self_closing || void {
-        return Some((l, c));
-    }
-    let mut depth = 1usize;
-    while l < lines.len() {
-        let text = &lines[l];
-        let Some(rel) = text[c..].find('<') else {
-            l += 1;
-            c = 0;
-            continue;
-        };
-        let at = c + rel;
-        if starts(text, at, &close) {
-            let (el, ec, _) = tag_end(l, at)?;
-            depth -= 1;
-            if depth == 0 {
-                return Some((el, ec));
-            }
-            l = el;
-            c = ec;
-        } else if starts(text, at, &open) {
-            let (el, ec, nested_self_closing) = tag_end(l, at)?;
-            if !nested_self_closing {
-                depth += 1;
-            }
-            l = el;
-            c = ec;
-        } else {
-            c = at + 1;
-        }
-    }
-    None
 }
 
 /// A tag-only match whose boundary lines hold other markup is refused rather
@@ -506,9 +440,20 @@ pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
     let Some(tag_name) = opener_tag(&lines[start]) else {
         return Some(start);
     };
+    scan_element(lines, start, &tag_name, false).0
+}
+
+/// The element scan behind `find_closing_line`, for the element whose opener
+/// `<tag_name` leads line `start`. Returns the line where the depth first sits
+/// at zero at a line's end (`find_closing_line`'s answer), and the line and
+/// char index just past the `>` where the depth first reaches zero. With
+/// `void`, the opener's own `>` ends the element.
+fn scan_element(lines: &[String], start: usize, tag_name: &str, void: bool) -> (Option<usize>, Option<(usize, usize)>) {
     // Scan chars with state carried across lines: an opening tag can span
     // lines and hold `>` inside a quoted value or a `{...}` prop (`=>`).
     let name: Vec<char> = tag_name.chars().collect();
+    let mut first_zero: Option<(usize, usize)> = None;
+    let mut opener_open = true;
     let mut depth: i64 = 0;
     let mut in_tag = false;
     let mut braces = 0usize;
@@ -517,10 +462,13 @@ pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
     let mut pending_close = false;
     for (i, line) in lines.iter().enumerate().skip(start) {
         let chars: Vec<char> = line.chars().collect();
-        if std::mem::take(&mut pending_close)
-            && chars.iter().find(|c| !is_js_whitespace(**c)) == Some(&'>')
-        {
-            depth -= 1;
+        if std::mem::take(&mut pending_close) {
+            if let Some(gt) = chars.iter().position(|c| !is_js_whitespace(*c)).filter(|&k| chars[k] == '>') {
+                depth -= 1;
+                if depth <= 0 && first_zero.is_none() {
+                    first_zero = Some((i, gt + 1));
+                }
+            }
         }
         let mut escaped = false;
         for (j, &c) in chars.iter().enumerate() {
@@ -559,14 +507,26 @@ pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
                     in_tag = false;
                     if j > 0 && chars[j - 1] == '/' {
                         depth -= 1;
+                        if depth <= 0 && first_zero.is_none() {
+                            first_zero = Some((i, j + 1));
+                        }
+                    } else if void && std::mem::take(&mut opener_open) && first_zero.is_none() {
+                        return (None, Some((i, j + 1)));
                     }
+                    opener_open = false;
                 }
             } else if c == '<' {
                 let rest = &chars[j + 1..];
                 if rest.first() == Some(&'/') && rest[1..].starts_with(&name) {
                     let after = &rest[1 + name.len()..];
-                    match after.iter().find(|c| !is_js_whitespace(**c)) {
-                        Some('>') => depth -= 1,
+                    match after.iter().position(|c| !is_js_whitespace(*c)) {
+                        Some(k) if after[k] == '>' => {
+                            depth -= 1;
+                            if depth <= 0 && first_zero.is_none() {
+                                // `<` + `/` + name + the whitespace before `>`.
+                                first_zero = Some((i, j + 2 + name.len() + k + 1));
+                            }
+                        }
                         None => pending_close = true,
                         _ => {}
                     }
@@ -585,10 +545,10 @@ pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
             }
         }
         if depth <= 0 {
-            return Some(i);
+            return (Some(i), first_zero);
         }
     }
-    None
+    (None, first_zero)
 }
 
 /// JS: detectCommentSyntax(filePath) → (open, close)
@@ -1265,6 +1225,32 @@ mod tests {
             let tag = if after.starts_with("<br") { "br" } else { "img" };
             assert!(shares_boundary_line(&page, m(0, 0), tag), "{after}");
         }
+    }
+
+    #[test]
+    fn tag_only_boundary_check_reads_jsx_quotes_and_fails_closed() {
+        let m = |start, end| ElementMatch { start_line: start, end_line: Some(end) };
+        let crowded = [
+            r#"<Card onClick={() => alert("it's")}>A</Card><p>Keep</p>"#,
+            r#"<Card data={a /* don't */}>A</Card><p>Keep</p>"#,
+            r#"<Card label={"say \"hi\" >"}>A</Card><p>Keep</p>"#,
+            r#"<Card title="it's">A</Card><p>Keep</p>"#,
+        ];
+        for line in crowded {
+            assert!(shares_boundary_line(&lines(&[line]), m(0, 0), "Card"), "{line}");
+        }
+        let lone = [
+            r#"<Card onClick={() => alert("it's")}>A</Card>"#,
+            r#"<Card label={"say \"hi\" >"}>A</Card>"#,
+        ];
+        for line in lone {
+            assert!(!shares_boundary_line(&lines(&[line]), m(0, 0), "Card"), "{line}");
+        }
+        let multi = lines(&["<Card", "  note={x /* it's */}", ">A</Card>", "<p>Keep</p>"]);
+        assert!(!shares_boundary_line(&multi, m(0, 2), "Card"));
+        // No end in sight: refuse rather than guess.
+        assert!(shares_boundary_line(&lines(&["<Card>A", "more"]), m(0, 1), "Card"));
+        assert!(shares_boundary_line(&lines(&["<Card>A"]), ElementMatch { start_line: 0, end_line: None }, "Card"));
     }
 
     #[test]
