@@ -4,7 +4,7 @@
 // content script or another extension. No answer ever carries a token: only whether the
 // server takes sign-ins, whether this browser is signed in, the email, the personas' names, how a walk's start went,
 // and how making or removing a persona went. A walk the person starts on their tab goes to the walks (walks/link.js)
-// as the server's block and the tab's id alone.
+// as the server's block and the tab's id alone. The welcome page (welcome.js) may ask one thing: to open the side panel.
 import { BUILD } from '../shared/build.js';
 import { adopt } from '../walks/link.js';
 import { planned } from '../walks/control.js';
@@ -57,11 +57,20 @@ async function account() {
   return me ? { ok: true, available: true, signedIn: true, email: me.email, ...server } : { ok: true, available: true, signedIn: await session.signedIn(), ...server };
 }
 
-/** The socket's origin for a walk the account server `at` starts: its fixed pair, as walks/handoff.js holds it too. */
-function socketOf(at) {
+/** The website paired with the account server `at`: a fixed pair, as walks/handoff.js holds it too. */
+function siteOf(at) {
   const url = new URL(at);
-  if (url.hostname === 'api.localhost') return `ws://localhost${url.port ? `:${url.port}` : ''}`;
-  return { 'api.impeccable.style': 'wss://impeccable.reviews', 'api.staging.impeccable.style': 'wss://staging.impeccable.reviews' }[url.hostname] ?? null;
+  if (url.hostname === 'api.localhost') return `http://localhost${url.port ? `:${url.port}` : ''}`;
+  return { 'api.impeccable.style': 'https://impeccable.reviews', 'api.staging.impeccable.style': 'https://staging.impeccable.reviews' }[url.hostname] ?? null;
+}
+/** The socket's origin for a walk the account server `at` starts: its website's, over a socket. */
+const socketOf = (at) => siteOf(at)?.replace(/^http/, 'ws') ?? null;
+
+/** After a sign-in with Impeccable Pro, its welcome page, on the website of the server signed in to. */
+function welcome(answer) {
+  const site = answer.signedIn === true && answer.pro !== false ? siteOf(issuer) : null;
+  if (site) void chrome.tabs.create({ url: `${site}/pro/welcome`, active: true }).catch(() => undefined);
+  return answer;
 }
 
 /** The presets' ids, as popup/words.js lists them (that file is the popup's alone): the server holds each one's card. */
@@ -151,7 +160,7 @@ const ANSWERS = {
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,
-  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status() : { ok: false, why: done.why }; },
+  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(welcome) : { ok: false, why: done.why }; },
   async 'sign-out'() { await session.signOut(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };
@@ -160,6 +169,13 @@ const ANSWERS = {
     return status();
   },
 };
+
+// The welcome page's button (welcome.js): the side panel opens on that tab. At once, while Chrome still counts the click.
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.welcome !== 'open-panel' || sender?.id !== chrome.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id)) return false;
+  if (/^\/pro\/welcome\/?$/.test(new URL(sender.url).pathname)) void chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => undefined);
+  return false;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.account !== 'string') return false;
