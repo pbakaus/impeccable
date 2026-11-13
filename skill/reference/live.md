@@ -71,6 +71,8 @@ If output is `{ ok: false, error: "config_invalid", message, path }`, the config
 
 If output is `{ ok: false, error: "config_missing", path }`, the boot could not decide alone. A static folder whose page has another name takes one step: when `{{scripts_path}}/impeccable detect-csp` reports `shape: null`, write `{"files":["<page>.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}` at the boot's reported `path` and boot again. Anything else (another framework, a CSP, several HTML files): read [live-setup.md](live-setup.md) and follow it. If the output carries a non-null `configDrift`, tell the user once which HTML files are uncovered and suggest adding them or switching `files` to a glob; never auto-edit the config.
 
+On `no_page`, tell the person in one sentence that there is nothing for Live to open yet. Offer to build the first page with `{{command_prefix}}impeccable craft <what they want>` and start Live on it once it exists. Do not create a page unless the person asks for one.
+
 ## Recovery commands
 
 The append-only journal under `.impeccable/live/sessions/` is canonical durable state (not project source). When the chat was interrupted, polling was missed, the helper restarted, or the browser reloaded:

@@ -148,6 +148,18 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         return 0;
     }
 
+    // Detect the absence of a page before persisting roots or creating config.
+    if !exists(&crate::paths::resolve_live_config_path(&active_cwd, &env))
+        && !exists(&jsp::join(&[&active_cwd, "package.json"]))
+        && !crate::live_inject::has_framework_config(&active_cwd)
+        && matches!(crate::inject::resolve_framework(&active_cwd, None).map(|r| r.name),
+            Some(crate::inject::FrameworkName::StaticHtml))
+        && !impeccable_context::detect_csp::has_html_files(&active_cwd)
+    {
+        println(io, &json_compact(&json!({"ok": false, "error": "no_page", "path": active_cwd})));
+        return 1;
+    }
+
     write_roots_manifest(&roots);
 
     // 1. Check config (in-process `live-inject --check` with cwd = appRoot).
@@ -619,6 +631,36 @@ mod tests {
     }
 
     #[test]
+    fn boot_empty_folder_reports_no_page_without_writes() {
+        let f = Fixture::new();
+        std::fs::remove_dir_all(f.0.join(".impeccable")).unwrap();
+        std::fs::remove_file(f.0.join("index.html")).unwrap();
+        let (mut io, captured) = Io::captured("", f.0.clone(), crate::util::Env::new());
+        let args = ["--allow-missing-context", "--dev-url", "--auto-config"].map(String::from);
+        assert_eq!(run(&args, &mut io), 1);
+        let out = String::from_utf8(captured.stdout.borrow().clone()).unwrap();
+        assert_eq!(out, format!("{}\n", json!({"ok":false,"error":"no_page","path":f.0})));
+        assert!(!f.0.join(".impeccable").exists());
+        assert_eq!(std::fs::read_dir(&f.0).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn boot_page_and_framework_signals_keep_config_missing() {
+        for marker in ["index.html", "public/nested/other.html", "package.json", "vite.config.js", "remix.config.js"] {
+            let f = Fixture::new();
+            std::fs::remove_dir_all(f.0.join(".impeccable")).unwrap();
+            std::fs::remove_file(f.0.join("index.html")).unwrap();
+            f.write(marker, "{}");
+            let (out, _) = f.run("live", &["--allow-missing-context", "--dev-url", "--auto-config"], None);
+            let root = f.0.to_string_lossy();
+            let path = f.0.join(".impeccable").join("live").join("config.json");
+            assert_eq!(out, format!("{}\n", json!({"ok":false,"error":"config_missing","path":path,
+                "targetPath":null,"projectRoot":root,"repoRoot":root})), "{marker}");
+            assert!(f.0.join(".impeccable/live/roots.json").exists());
+        }
+    }
+
+    #[test]
     fn dev_command_chooses_scripts_in_priority_order() {
         let f = Fixture::new();
         let root = f.0.to_str().unwrap();
@@ -855,6 +897,9 @@ mod tests {
             let (out, _) = f.run("check", &["--check", "--auto-config"], None);
             assert_eq!(out, format!("{}\n", json!({"ok":false,"error":"config_missing","path":path})), "{marker}");
             assert!(!std::path::Path::new(&path).exists());
+            if marker == "missing" {
+                continue; // Covered by boot_empty_folder_reports_no_page_without_writes.
+            }
             let (_, boot) = f.run("live", &["--allow-missing-context", "--auto-config"], None);
             assert_eq!(boot["error"], "config_missing", "{marker}");
             assert!(boot.get("configCreated").is_none());

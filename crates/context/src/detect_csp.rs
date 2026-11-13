@@ -37,7 +37,9 @@ static META_TAG_HINT: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)http-equiv\s*
 static MONOREPO_PATH: Lazy<Regex> = Lazy::new(|| Regex::new(r"packages/[^/]+/src/.*(config|next-config|security)").unwrap());
 static CONFIG_PATH: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^|/)(next|nuxt|vite|astro|svelte)\.config\.").unwrap());
 
+#[derive(Default)]
 struct Hits {
+    has_html: bool,
     append_arrays: Vec<String>,
     append_string: Vec<String>,
     middleware: Vec<String>,
@@ -161,6 +163,7 @@ fn walk(root: &str, dir: &str, depth: usize, hits: &mut Hits) {
             continue;
         }
         let ext = jsp::extname(&e.name);
+        hits.has_html |= ext == ".html";
         if !SCAN_EXTS.contains(&ext.as_str()) && !LAYOUT_EXTS.contains(&ext.as_str()) {
             continue;
         }
@@ -175,8 +178,15 @@ fn walk(root: &str, dir: &str, depth: usize, hits: &mut Hits) {
     }
 }
 
+/// Whether the existing auto-config CSP search contains an HTML file.
+pub fn has_html_files(cwd: &str) -> bool {
+    let mut hits = Hits::default();
+    walk(cwd, cwd, 0, &mut hits);
+    hits.has_html
+}
+
 pub fn detect_csp(cwd: &str) -> Value {
-    let mut hits = Hits { append_arrays: vec![], append_string: vec![], middleware: vec![], meta_tag: vec![] };
+    let mut hits = Hits::default();
     walk(cwd, cwd, 0, &mut hits);
     let (shape, signals): (Option<&str>, Vec<String>) = if !hits.append_arrays.is_empty() {
         (Some("append-arrays"), hits.append_arrays)
