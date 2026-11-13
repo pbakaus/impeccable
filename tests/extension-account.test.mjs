@@ -106,7 +106,7 @@ function harness({ grant = null, me = 401, launched, issuers = [ISSUER], gated =
         return gated ? new Promise((resolve) => gates.push(() => resolve(issue()))) : issue();
       },
       [meta.revocation_endpoint]: (init) => { const token = new URLSearchParams(String(init.body)).get('token'); live.delete(token); ended.push(token); return json(200, {}); },
-      [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira' }) : json(me, {})),
+      [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira', pro: true }) : json(me, {})),
       [`${at}/extension/v1/personas`]: () => json(200, { personas: [] }),
     });
   }
@@ -320,11 +320,13 @@ describe('account worker', () => {
     startServer(() => json(404, {}));
     await ask({ account: 'status' }, fromPopup);
     assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
-    // Signed in, and the server says the account has no Impeccable Pro: the popup alone, until it says otherwise.
+    // Signed in, and the server says the account has no Impeccable Pro, or doesn't say: the popup alone, until it says Pro.
     const served = globalThis.fetch;
-    globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: false }) : served(url, init));
-    assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false);
-    assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+    for (const said of [{ pro: false }, {}]) {
+      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', ...said }) : served(url, init));
+      assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false, JSON.stringify(said));
+      assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+    }
     globalThis.fetch = served;
     await ask({ account: 'status' }, fromPopup);
     assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);

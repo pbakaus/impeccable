@@ -252,10 +252,10 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     /** Asks the server in use again to end what it has yet to (not waited for). */
     retry() { void retire(issuer()); },
 
-    /** Who is signed in: `{ email, name, pro }`, or null. `pro` is the server's word alone: false only when it says so. */
+    /** Who is signed in: `{ email, name, pro }`, or null. `pro` is the server's word alone: true only when it says so. */
     async me() {
       const me = await read(issuer(), '/me');
-      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro !== false } : null;
+      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true } : null;
     },
 
     /** The signed-in person's personas: `[{ name, role, slug?, mine? }]`, or null. */
