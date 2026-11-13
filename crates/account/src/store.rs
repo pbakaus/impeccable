@@ -35,6 +35,8 @@ pub enum Backend {
 pub struct State {
     #[serde(default)]
     pub foundations: bool,
+    #[serde(default)]
+    pub taste: bool,
     pub schema: u32,
     #[serde(default)]
     pub scopes: Vec<String>,
@@ -365,6 +367,48 @@ impl Store {
         write_private(&self.dir.join("state.json"), &bytes)
     }
 
+    /// Drop this issuer's cached taste rules (caller holds the lifecycle
+    /// lock). Every issuer under one home shares the copy, so a copy another
+    /// issuer wrote is left alone, and the change is ordered with theirs by
+    /// [`Store::taste_lock_for`].
+    pub fn clear_taste(&self, _lock: &Lock) {
+        if let Ok(taste) = Store::taste_lock_for(&self.account.home, Duration::from_secs(3)) {
+            self.clear_taste_holding(&taste);
+        }
+    }
+
+    /// [`Store::clear_taste`] for a caller already holding the taste lock.
+    pub(crate) fn clear_taste_holding(&self, _taste: &Lock) {
+        let path = self.account.home.join("taste.json");
+        if impeccable_context::taste::read(&path).is_some_and(|v| v["issuer"] == self.account.issuer) {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// The one `taste.json` under a home, shared by every issuer: writes and
+    /// deletions hold this home-wide lock, taken after the lifecycle lock.
+    pub(crate) fn taste_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false).no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(home.join("taste.lock")).map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("another impeccable command is using the taste copy".into()),
+            }
+        }
+    }
+
     /// The tombstone: signed out under a new generation, then the secret
     /// removed from every backend (caller holds the lock).
     pub fn sign_out(
@@ -376,6 +420,7 @@ impl Store {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
             foundations: false,
+            taste: false,
             scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),
@@ -390,6 +435,7 @@ impl Store {
             login: 0,
         };
         self.write_state(&tomb)?;
+        self.clear_taste(_lock);
         self.remove_secret(None)
     }
 }
