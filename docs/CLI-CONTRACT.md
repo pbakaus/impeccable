@@ -1783,6 +1783,66 @@ Reducer per event type (`updatedAt = entry.ts`):
 
 #### 7. Wrap / scaffold contract (source-preview path)
 
+When a unique locator match shares its opening or closing line with other
+markup, wrap and insert first isolate its exact byte range in memory. The
+range ends at the matching same-name closing tag (nested tags counted), or
+at the opening tag's end for void and self-closing elements. Existing source
+extension selection is unchanged. Prefix content, with trailing whitespace
+trimmed, gets its own line; the element uses the original indent plus two
+spaces when a prefix precedes it; suffix content gets its own line. Only the
+selected element or anchor is isolated. The normal line-based scaffold then
+uses those lines.
+
+The contents of script, style and textarea are text, not markup: a tag
+inside them is never a candidate and never nests the element around them,
+in the isolation pass and in the line resolver behind it alike, so a locator
+that only matches a JS or CSS string is refused and nothing is written.
+Void names (img, input, link, ...) fold case only in HTML-like files; in
+.jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
+component that keeps its children. A class, id or query locator whose
+first hit in walk order sits on a shared line (a minified copy) while another
+hit stands on lines of its own drops the shared hits: a single surviving
+lone hit wins, several (with or without a `--text` that matches them all)
+refuse as `element_ambiguous`, and a `--text` that matches none refuses the
+same way; it never wraps the minified line whole. A tag-only locator still weighs every
+candidate.
+
+HTML-like sources (including Vue, Svelte, Astro and MDX) refuse splitting
+an element that is, or is inside, pre, textarea, script or style, or whose
+boundary is next to non-whitespace text. Each boundary must independently
+have only whitespace to the line's edge, have whitespace immediately next
+to the element, or have both the selected element and the nearest neighboring
+tag on that line in the fixed block list. A direct body child alone is not
+sufficient. The fixed block list is address, article, aside, blockquote,
+details, dialog, div, dl, fieldset, figcaption, figure, footer, form, h1-h6,
+header, hgroup, hr, li, main, nav, ol, p, section, table, ul, body. Block names
+are case-insensitive in HTML and case-sensitive in component-capable files.
+JSX isolation is limited to .jsx and .tsx, where the lexer and scaffold
+classifications agree. The .js, .mjs, .cjs, .ts, .mts and .cts module
+extensions do not isolate; shared-line matches fall back to the refusal
+below without changing source. The .jsx and .tsx extensions require,
+outside those protected elements,
+that the prefix contain only whitespace or end immediately in `>` or `}`,
+and that the suffix contain only whitespace or start immediately with `<`
+or `{`. Adjacent text, spaces separating markup, or JS tokens such as
+`return` fail this guard. Locator strength is ranked across files before
+text or shared-line filtering: an id match outranks a class or tag match,
+so a stronger shared-line hit cannot be discarded in favor of a weaker
+match in another file. Unsafe splits return stderr JSON with
+`error:'element_ambiguous', fallback:'agent-driven', reason:'shared_line', file, candidates:[{startLine,endLine}], hint`
+and exit 1 without writing source. The line resolver's remaining tag-only
+shared-boundary refusals use the same fallback. With `--defer-source-write`,
+`wrapperBlock` includes the isolated prefix and suffix as well as the scaffold,
+and replacement line numbers refer to the original unsplit source. Applying
+that single replacement produces the same content as an immediate write;
+scaffold line numbers refer to that resulting content. Wrap and insert still
+emit `error:'element_inline', fallback:'agent-driven', file, hint` and exit 1
+without writing source when Svelte component preview would require a split,
+because its retained anchor line numbers describe unchanged source. Their
+other `element_inline_error` call sites handle `Resolution::Inline`, which
+no current resolver constructs. Ordinary deferred scaffolds keep their
+existing contract.
+
 Wrapper block for HTML-comment files (indent = picked element's leading whitespace; original reindented under `indent+'    '` preserving relative depth):
 ```
 <indent><!-- impeccable-variants-start ID -->
@@ -1857,6 +1917,17 @@ Revision dirs: on every `done` reply for a component session the server copies a
 Sweeps: shutdown/exit removes whole `node_modules/.impeccable-live` and legacy `.impeccable/live/previews`; startup removes session dirs (not `__*`) not in active snapshot list, and the root when nothing kept.
 
 #### 9. Accept pipeline (`live-accept.mjs`, `live/accept-css.mjs`, `live/accept-verify.mjs`)
+
+Before any source range replacement or removal, accept and discard require
+variant and carbonize marker comments for the session to occupy their own
+lines, with only surrounding whitespace. HTML and JSX comments are accepted.
+A shared marker line returns stdout
+`{"handled":false,"mode":"error","error":"markers_share_line","file":...,"hint":"Put each marker comment on its own line, then accept again."}`
+and exits 0 (like `source_locked`, so live-poll reads it and the poll
+instructions name the repair) without changing source or writing a receipt. This is checked
+again on the source reread under the mutation lock. Carbonize markers are
+also searched when no variant start marker exists. Normal standalone-marker
+wrappers keep the existing behavior.
 
 Order in `live-accept.mjs`: receipt check → find `impeccable-variants-start <id>` in a template file (skip node_modules/.git/.impeccable/dist/build) → else find svelte manifest → neither: stdout `{"handled":false,"error":"Session markers not found for id: <id>"}` exit 0.
 

@@ -122,6 +122,10 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     };
     let rel = |path: &str| jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[path]));
     let (file, m) = match resolved {
+        Resolution::Inline(path) => {
+            eprintln(io, &json_compact(&element_inline_error(&rel(&path))));
+            return 1;
+        }
         Resolution::Match(file, m) => (file, m),
         // A lone candidate without the text is still the element; its text may come from props.
         Resolution::TextNotInFile(file, candidates) if candidates.len() == 1 => (file, candidates[0]),
@@ -221,6 +225,11 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
+    if file.isolation.is_some() && should_use_svelte_component_injection(&file.path, &env) {
+        eprintln(io, &json_compact(&element_inline_error(&rel(&file.path))));
+        return 1;
+    }
+    let isolation = file.isolation;
     let target_file = file.path;
     let lines = file.lines;
 
@@ -404,7 +413,14 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     if svelte_session.is_some() {
         insert_line = 1;
     } else if defer_source_write {
-        deferred_wrapper = Some((wrapper_lines.join("\n"), start_line + 1, end_line + 1));
+        deferred_wrapper = Some(if let Some((rs, re, split_end)) = isolation {
+            let mut block = lines[rs..start_line].to_vec();
+            block.extend(wrapper_lines.iter().cloned());
+            block.extend_from_slice(&lines[end_line + 1..split_end + 1]);
+            (block.join("\n"), rs + 1, re + 1)
+        } else {
+            (wrapper_lines.join("\n"), start_line + 1, end_line + 1)
+        });
         insert_line = start_line + 6 + (original_lines.len() - 1) + 1;
     } else {
         let mut new_lines: Vec<String> = Vec::new();

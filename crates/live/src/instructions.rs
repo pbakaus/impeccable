@@ -140,6 +140,14 @@ pub fn instructions_for_event(event: &Map<String, Value>, self_cmd: &str) -> Opt
                         id,
                         complete
                     )
+                } else if err == "markers_share_line" {
+                    format!(
+                        "Discard wrote nothing: a marker comment for {} shares its line with other markup. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), re-run {} --id {} --discard until it reports handled, then run {} and poll again.",
+                        id,
+                        script_cmd(self_cmd, "live-accept"),
+                        id,
+                        complete
+                    )
                 } else {
                     format!(
                         "Discard did NOT restore the source: {}. If the impeccable-variants wrapper for {} is still in source, replace it with the original element by hand (the VCS diff shows what it replaced). Once no impeccable-variants marker for {} remains in source, run {} and poll again.",
@@ -288,15 +296,20 @@ fn svelte_component_instructions(event: &Map<String, Value>, scaffold: &Value) -
     )
 }
 
-fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+fn scaffold_is_insertion(scaffold: &Value) -> bool {
     let start = crate::util::js_number(scaffold.get("replaceStartLine"));
     let end = crate::util::js_number(scaffold.get("replaceEndLine"));
-    let insert_note = match (start, end) {
-        (Some(s), Some(e)) if e < s => format!(
+    matches!((start, end), (Some(s), Some(e)) if e < s)
+}
+
+fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+    let insert_note = if scaffold_is_insertion(scaffold) {
+        format!(
             " (replaceEndLine < replaceStartLine: this is an INSERTION at line {}; remove nothing)",
             js_str(scaffold.get("replaceStartLine"))
-        ),
-        _ => String::new(),
+        )
+    } else {
+        String::new()
     };
     format!(
         "The wrapper is NOT in source yet. In ONE edit to {}: splice preview CSS plus all {} variants into scaffold.wrapperBlock at the \"Variants: insert below this line\" marker, then replace lines {}-{}{} with the result. Two separate writes reload the framework mid-publish and strand the browser at 0/N. Author CSS per the returned cssAuthoring contract; each variant div holds exactly ONE top-level element (same tag as the original); first visible, others display: none. On JSX/TSX wrap the <style> content in a template literal and use className / style={{{{...}}}}.",
@@ -337,11 +350,23 @@ fn insert_scaffold_instructions(event: &Map<String, Value>, self_cmd: &str) -> S
     }
     if let Some(s) = scaffold {
         if s.get("sourceWritten") == Some(&Value::Bool(false)) {
+            let edit = if scaffold_is_insertion(s) {
+                format!(
+                    "insert at line {} of {}, remove nothing",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("file"))
+                )
+            } else {
+                format!(
+                    "replace lines [{}, {}] of {} with the result",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("replaceEndLine")),
+                    js_str(s.get("file"))
+                )
+            };
             return format!(
-                "{} Splice your variants into scaffold.wrapperBlock at the marker and insert the result at line {} of {} in ONE edit.",
-                base,
-                js_str(s.get("replaceStartLine")),
-                js_str(s.get("file"))
+                "{} Splice your variants into scaffold.wrapperBlock at the marker and {} in ONE edit.",
+                base, edit
             );
         }
     }
@@ -416,6 +441,9 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         if err == Some("source_locked") {
             return format!("{}The source file is briefly locked by a publisher. Re-run the exact same live-accept command (idempotent); do NOT hand-edit the file, and do not poll past this.", prefix);
         }
+        if err == Some("markers_share_line") {
+            return format!("{}A marker comment for this session shares its line with other markup in {}, so accept refused and wrote nothing. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), then re-run the same live-accept command.", prefix, js_str(result.get("file")));
+        }
         if err == Some("accept_receipt_conflict") {
             let prior = match result.get("priorOperation") {
                 Some(v) if truthy(Some(v)) => js_str(Some(v)),
@@ -465,6 +493,22 @@ mod tests {
             m.insert("origin".into(), json!(o));
         }
         m
+    }
+
+    #[test]
+    fn deferred_insert_instructions_respect_the_replacement_range() {
+        for (end, expected) in [
+            (4, "replace lines [4, 4] of index.html with the result"),
+            (3, "insert at line 4 of index.html, remove nothing"),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("scaffold".into(), json!({
+                "sourceWritten": false, "file": "index.html",
+                "replaceStartLine": 4, "replaceEndLine": end
+            }));
+            let instructions = insert_scaffold_instructions(&event, "impeccable");
+            assert!(instructions.contains(expected), "{instructions}");
+        }
     }
 
     #[test]
@@ -518,8 +562,29 @@ mod tests {
         assert!(locked.contains("Re-run impeccable live-accept --id ab12cd34 --discard"), "{locked}");
         assert!(locked.contains("do NOT hand-edit"), "{locked}");
         assert!(locked.contains("impeccable live-complete --id ab12cd34 --discarded"), "{locked}");
+        let shared = instructions_for_event(
+            &event(json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" })),
+            "impeccable",
+        )
+        .unwrap();
+        assert!(shared.contains("onto a line of its own"), "{shared}");
+        assert!(shared.contains("re-run impeccable live-accept --id ab12cd34 --discard"), "{shared}");
         let restored = instructions_for_event(&event(json!({ "handled": true, "file": "src/App.tsx" })), "impeccable").unwrap();
         assert!(restored.starts_with("Original restored"), "{restored}");
+    }
+
+    #[test]
+    fn a_shared_marker_line_on_accept_names_the_repair() {
+        let mut event = Map::new();
+        event.insert("type".into(), json!("accept"));
+        event.insert("id".into(), json!("ab12cd34"));
+        event.insert("_acceptResult".into(), json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" }));
+        event.insert("_completionAck".into(), json!({ "ok": true, "type": "error" }));
+        let text = instructions_for_event(&event, "impeccable").unwrap();
+        assert!(text.contains("src/App.tsx"), "{text}");
+        assert!(text.contains("onto a line of its own"), "{text}");
+        assert!(text.contains("re-run the same live-accept command"), "{text}");
+        assert!(!text.contains("Accept failed"), "{text}");
     }
 }
 
