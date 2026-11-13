@@ -600,13 +600,10 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             )
         }
     };
-    // The poster goes first: if the film then fails to move, the poster this run just placed
-    // is removed too, so a failure leaves nothing of this run behind.
-    let placed = std::fs::rename(&poster_tmp, &poster).and_then(|_| {
-        std::fs::rename(&film_tmp, &film).inspect_err(|_| {
-            let _ = std::fs::remove_file(&poster);
-        })
-    });
+    // A film rename replaces the old film atomically or leaves it alone, but the poster goes
+    // first, so an earlier poster is set aside and put back if either move fails: a failure
+    // leaves the outputs exactly as they were.
+    let placed = place_pair(&poster_tmp, &poster, &film_tmp, &film, &out_dir.join(format!(".{stem}.poster.prev")));
     if let Err(e) = placed {
         return discard(
             io,
@@ -709,12 +706,83 @@ mod tests {
         assert_eq!(clock(4_000), "0:04");
         assert_eq!(clock(125_900), "2:05");
     }
+
+    #[test]
+    fn a_failed_film_move_puts_the_earlier_poster_back() {
+        let dir = std::env::temp_dir().join(format!("walk-place-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("clip.mp4")).unwrap();
+        std::fs::write(dir.join("clip.mp4").join("keep"), b"x").unwrap();
+        std::fs::write(dir.join("clip.png"), b"old").unwrap();
+        std::fs::write(dir.join(".new.png"), b"new").unwrap();
+        std::fs::write(dir.join(".new.mp4"), b"film").unwrap();
+        let prev = dir.join(".clip.poster.prev");
+        let out = place_pair(
+            &dir.join(".new.png"),
+            &dir.join("clip.png"),
+            &dir.join(".new.mp4"),
+            &dir.join("clip.mp4"),
+            &prev,
+        );
+        assert!(out.is_err());
+        assert_eq!(std::fs::read(dir.join("clip.png")).unwrap(), b"old");
+        assert!(!prev.exists());
+        std::fs::remove_dir_all(dir.join("clip.mp4")).unwrap();
+        std::fs::write(dir.join(".new.png"), b"new").unwrap();
+        place_pair(
+            &dir.join(".new.png"),
+            &dir.join("clip.png"),
+            &dir.join(".new.mp4"),
+            &dir.join("clip.mp4"),
+            &prev,
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(dir.join("clip.png")).unwrap(), b"new");
+        assert_eq!(std::fs::read(dir.join("clip.mp4")).unwrap(), b"film");
+        assert!(!prev.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Move the new poster and film into place together. An existing poster is moved to `prev`
+/// first and restored when either move fails; it is deleted only once both moves succeeded.
+fn place_pair(
+    poster_tmp: &Path,
+    poster: &Path,
+    film_tmp: &Path,
+    film: &Path,
+    prev: &Path,
+) -> std::io::Result<()> {
+    let kept = match std::fs::rename(poster, prev) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    let restore = || {
+        if kept {
+            let _ = std::fs::rename(prev, poster);
+        }
+    };
+    if let Err(e) = std::fs::rename(poster_tmp, poster) {
+        restore();
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(film_tmp, film) {
+        let _ = std::fs::remove_file(poster);
+        restore();
+        return Err(e);
+    }
+    if kept {
+        let _ = std::fs::remove_file(prev);
+    }
+    Ok(())
 }
 
 /// The turn one run holds on a film and poster name while it makes them: an exclusive lock
-/// on a hidden file beside them, removed when the run ends.
+/// on a hidden file beside them. The file stays when the run ends and the kernel releases
+/// the lock: unlinking it would let a third run lock a fresh file while a second still waits
+/// on the old one.
 struct OutputTurn {
-    path: PathBuf,
     _file: std::fs::File,
 }
 
@@ -727,12 +795,7 @@ impl OutputTurn {
             .write(true)
             .open(&path)?;
         file.lock()?;
-        Ok(OutputTurn { path, _file: file })
+        Ok(OutputTurn { _file: file })
     }
 }
 
-impl Drop for OutputTurn {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
