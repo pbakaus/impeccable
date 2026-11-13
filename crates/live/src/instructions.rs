@@ -125,6 +125,14 @@ pub fn instructions_for_event(event: &Map<String, Value>, self_cmd: &str) -> Opt
                         id,
                         complete
                     )
+                } else if err == "markers_share_line" {
+                    format!(
+                        "Discard wrote nothing: a marker comment for {} shares its line with other markup. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), re-run {} --id {} --discard until it reports handled, then run {} and poll again.",
+                        id,
+                        script_cmd(self_cmd, "live-accept"),
+                        id,
+                        complete
+                    )
                 } else {
                     format!(
                         "Discard did NOT restore the source: {}. If the impeccable-variants wrapper for {} is still in source, replace it with the original element by hand (the VCS diff shows what it replaced). Once no impeccable-variants marker for {} remains in source, run {} and poll again.",
@@ -401,6 +409,9 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         if err == Some("source_locked") {
             return format!("{}The source file is briefly locked by a publisher. Re-run the exact same live-accept command (idempotent); do NOT hand-edit the file, and do not poll past this.", prefix);
         }
+        if err == Some("markers_share_line") {
+            return format!("{}A marker comment for this session shares its line with other markup in {}, so accept refused and wrote nothing. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), then re-run the same live-accept command.", prefix, js_str(result.get("file")));
+        }
         if err == Some("accept_receipt_conflict") {
             let prior = match result.get("priorOperation") {
                 Some(v) if truthy(Some(v)) => js_str(Some(v)),
@@ -503,7 +514,28 @@ mod tests {
         assert!(locked.contains("Re-run impeccable live-accept --id ab12cd34 --discard"), "{locked}");
         assert!(locked.contains("do NOT hand-edit"), "{locked}");
         assert!(locked.contains("impeccable live-complete --id ab12cd34 --discarded"), "{locked}");
+        let shared = instructions_for_event(
+            &event(json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" })),
+            "impeccable",
+        )
+        .unwrap();
+        assert!(shared.contains("onto a line of its own"), "{shared}");
+        assert!(shared.contains("re-run impeccable live-accept --id ab12cd34 --discard"), "{shared}");
         let restored = instructions_for_event(&event(json!({ "handled": true, "file": "src/App.tsx" })), "impeccable").unwrap();
         assert!(restored.starts_with("Original restored"), "{restored}");
+    }
+
+    #[test]
+    fn a_shared_marker_line_on_accept_names_the_repair() {
+        let mut event = Map::new();
+        event.insert("type".into(), json!("accept"));
+        event.insert("id".into(), json!("ab12cd34"));
+        event.insert("_acceptResult".into(), json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" }));
+        event.insert("_completionAck".into(), json!({ "ok": true, "type": "error" }));
+        let text = instructions_for_event(&event, "impeccable").unwrap();
+        assert!(text.contains("src/App.tsx"), "{text}");
+        assert!(text.contains("onto a line of its own"), "{text}");
+        assert!(text.contains("re-run the same live-accept command"), "{text}");
+        assert!(!text.contains("Accept failed"), "{text}");
     }
 }

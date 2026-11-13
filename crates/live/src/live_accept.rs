@@ -361,7 +361,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     let rel_file = jsp::relative("/", &cwd, &target_file);
     if check_marker_lines(&id, &lines).is_err() {
         println(io, &json_compact(&marker_failure(&rel_file)));
-        return 1;
+        return 0;
     }
     let preview_block = find_marker_block(&id, &lines);
     let source_shadow = preview_block.is_some() && read_source_shadow_preview_meta(&content, &id);
@@ -423,7 +423,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                     Err(err) => {
                         if err == MARKERS_SHARE_LINE {
                             println(io, &json_compact(&marker_failure(m["file"].as_str().unwrap_or_default())));
-                            return 1;
+                            return 0;
                         }
                         m.insert("handled".into(), Value::Bool(false));
                         m.insert("error".into(), Value::String(err));
@@ -476,7 +476,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             Ok(Err(err)) => {
                 if err == MARKERS_SHARE_LINE {
                     println(io, &json_compact(&marker_failure(&rel_file)));
-                    return 1;
+                    return 0;
                 }
                 // JS: `{ handled: true, file, ...result }` with result.handled false.
                 let mut m = Map::new();
@@ -647,8 +647,10 @@ fn check_marker_lines(id: &str, lines: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// A structured refusal on stdout with exit 0, like `source_locked`: live-poll
+/// reads stdout only on exit 0, so a non-zero exit would hide the hint.
 fn marker_failure(file: &str) -> Value {
-    json!({ "handled": false, "error": MARKERS_SHARE_LINE, "file": file,
+    json!({ "handled": false, "mode": "error", "error": MARKERS_SHARE_LINE, "file": file,
         "hint": "Put each marker comment on its own line, then accept again." })
 }
 
@@ -1427,10 +1429,11 @@ mod discard_tests {
                         let (mut io, captured) = Io::captured("", dir.clone(), Default::default());
                         let args: Vec<String> = if discard { vec!["--id", "ab12cd34", "--discard"] }
                             else { vec!["--id", "ab12cd34", "--variant", "1"] }.into_iter().map(String::from).collect();
-                        assert_eq!(run(&args, &mut io), 1);
+                        assert_eq!(run(&args, &mut io), 0);
                         drop(io);
                         let result: Value = serde_json::from_slice(&captured.stdout.borrow()).unwrap();
                         assert_eq!(result["error"], MARKERS_SHARE_LINE);
+                        assert_eq!(result["mode"], "error");
                         assert_eq!(result["handled"], false);
                         assert_eq!(result["hint"], "Put each marker comment on its own line, then accept again.");
                         assert_eq!(std::fs::read_to_string(&file).unwrap(), source);

@@ -1,7 +1,7 @@
 {
-  "stdout": "{\"handled\":false,\"error\":\"markers_share_line\",\"file\":\"index.html\",\"hint\":\"Put each marker comment on its own line, then accept again.\"}\n",
+  "stdout": "{\"handled\":false,\"mode\":\"error\",\"error\":\"markers_share_line\",\"file\":\"index.html\",\"hint\":\"Put each marker comment on its own line, then accept again.\"}\n",
   "stderr": "",
-  "exit": 1,
+  "exit": 0,
   "signal": null,
   "files": {
     ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",

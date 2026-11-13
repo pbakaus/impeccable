@@ -281,7 +281,7 @@ Event: `{id, variantId, _acceptResult, _completionAck}`. The poll script already
 - `handled: true, carbonize: false`: nothing to do; poll again.
 - `handled: true, carbonize: true`: required cleanup below; `_acceptResult.todo`, `_completionAck.requiresComplete`, and the stderr banner all point at it.
 - `handled: false, mode: "fallback"`: the session lived in a generated file; you already wrote true source in fallback Step 3; clean the temporary wrapper and poll.
-- `handled: false, mode: "error"`: **do not hand-edit the file.** `source_locked`: rerun the same `impeccable live-accept` command (idempotent) until the publisher releases. `accept_receipt_conflict`: the session already resolved as `priorOperation`; run `impeccable live-status` and tell the user. Anything else: report briefly, run `impeccable live-status` first.
+- `handled: false, mode: "error"`: **do not hand-edit the file**, with one exception. `source_locked`: rerun the same `impeccable live-accept` command (idempotent) until the publisher releases. `markers_share_line`: a session marker comment shares its line with other markup and nothing was written; move each marker onto a line of its own (the only edit allowed), then rerun the same command. `accept_receipt_conflict`: the session already resolved as `priorOperation`; run `impeccable live-status` and tell the user. Anything else: report briefly, run `impeccable live-status` first.
 - `handled: false` without `mode`: manual cleanup: read file, find markers, edit.
 
 ### Required after accept (carbonize)

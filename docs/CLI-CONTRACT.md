@@ -1899,8 +1899,9 @@ Before any source range replacement or removal, accept and discard require
 variant and carbonize marker comments for the session to occupy their own
 lines, with only surrounding whitespace. HTML and JSX comments are accepted.
 A shared marker line returns stdout
-`{"handled":false,"error":"markers_share_line","file":...,"hint":"Put each marker comment on its own line, then accept again."}`
-and exits 1 without changing source or recording success. This is checked
+`{"handled":false,"mode":"error","error":"markers_share_line","file":...,"hint":"Put each marker comment on its own line, then accept again."}`
+and exits 0 (like `source_locked`, so live-poll reads it and the poll
+instructions name the repair) without changing source or writing a receipt. This is checked
 again on the source reread under the mutation lock. Carbonize markers are
 also searched when no variant start marker exists. Normal standalone-marker
 wrappers keep the existing behavior.

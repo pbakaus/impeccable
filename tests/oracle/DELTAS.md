@@ -7358,3 +7358,7 @@ A picked element with no id and no class (a fresh page's `<h1>`) could not be wr
 ## Recorded 2026-11-12: live-wrap isolates an element that shares its line; accept refuses shared marker lines
 
 A picked element in the middle of a line (a minified or one-line page) used to answer `element_not_found`, and a hand-written wrapper on such a line lost the rest of the line on accept. `live-wrap` and `live-insert` now split the line around a block-level element (and any element in JSX) before wrapping, and answer `element_inline` where a split could change rendering. `live-accept` answers `markers_share_line` and writes nothing when a marker shares its line with other content. No existing golden changed; 20 cases added (`live-wrap-same-line-*`, `live-insert-same-line-*`, `live-accept-shared-*`).
+
+## Recorded 2026-11-12: a shared marker line on accept exits 0 with mode "error"
+
+`live-accept` answered `markers_share_line` with exit 1, and `live-poll` reads an accept's stdout only on exit 0, so the poll replaced the refusal with a generic `Command failed` and the agent never saw the hint. The refusal now carries `mode: "error"` and exits 0, the same shape as `source_locked`, and the poll instructions name the repair (move each marker onto a line of its own, rerun the command). Source and receipts are still untouched. The 8 `live-accept-shared-*` goldens changed in `exit` (1 to 0) and in `stdout` (the added `mode` field) only; no other golden changed.
