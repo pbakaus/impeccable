@@ -305,7 +305,7 @@ export function runCase(c, { impl = 'js', bin = process.env.IMPECCABLE_BIN } = {
   }
 }
 
-function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
+export function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
   const cwd = path.join(ws, c.cwd || '.');
   let argv;
   if (impl === 'js') {
@@ -324,6 +324,7 @@ function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
     FORCE_COLOR: '0',
     IMPECCABLE_NO_UPDATE_CHECK: '1',
     IMPECCABLE_NO_TELEMETRY: '1',
+    IMPECCABLE_NO_TASTE: '1',
     DO_NOT_TRACK: '1',
     // Seed references are salted per user; a pinned salt keeps goldens stable.
     IMPECCABLE_SEED_SALT: 'oracle',
