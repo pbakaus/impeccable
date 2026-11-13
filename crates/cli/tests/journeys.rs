@@ -172,7 +172,7 @@ fn nothing_is_asked_of_the_service_signed_out_or_on_bad_usage() {
 
 #[test]
 fn the_skill_is_written_where_agents_read_skills() {
-    // Catches: the journeys skill landing in one agent's folder only, or needing a sign-in to install.
+    // Catches: the journeys skill landing in one agent's folder only, needing a sign-in to install, or losing the rule that an agent never signs in for the person.
     let fake = Fake::start();
     let env = fake.env("journeys-skill");
     let out = impeccable(&env, &["journeys", "skill"]).output().unwrap();
@@ -180,5 +180,7 @@ fn the_skill_is_written_where_agents_read_skills() {
     for home in [".claude/skills", ".agents/skills"] {
         let text = std::fs::read_to_string(format!("{}/{home}/impeccable-journeys/SKILL.md", env["HOME"])).unwrap();
         assert!(text.starts_with("---\nname: impeccable-journeys\n"), "{home}");
+        // The rule the skill must carry: an agent never signs in for the person.
+        assert!(text.contains("Never open the sign-in link, approve, accept terms or type a password"), "{home}");
     }
 }
