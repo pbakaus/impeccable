@@ -27,8 +27,9 @@ let issuer = PRODUCTION;
 const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }) => {
   if (issuerAllowed(accountServer, UNPACKED)) issuer = accountServer;
 }, () => undefined).then(() => session.recover()).catch(() => undefined);
-// Signed in, the toolbar icon opens the side panel rather than the popup: from the worker's start, read from disk alone.
-void chosen.then(() => session.signedIn()).then(pointToolbar, () => undefined);
+// Signed in with Impeccable Pro, the toolbar icon opens the side panel rather than the popup: from the worker's start,
+// by the server's word (`status`); out of its reach, by the sign-in kept on disk.
+void chosen.then(() => status()).catch(() => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -42,7 +43,8 @@ const session = createSession({
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
-  pointToolbar(signedIn);
+  // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
+  pointToolbar(signedIn && answer.pro !== false);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
 }
@@ -54,7 +56,7 @@ async function account() {
   if (!(await session.available())) return { ok: true, available: false, ...server };
   if (!(await session.signedIn())) return { ok: true, available: true, signedIn: false, ...server };
   const me = await session.me();
-  return me ? { ok: true, available: true, signedIn: true, email: me.email, ...server } : { ok: true, available: true, signedIn: await session.signedIn(), ...server };
+  return me ? { ok: true, available: true, signedIn: true, email: me.email, pro: me.pro, ...server } : { ok: true, available: true, signedIn: await session.signedIn(), ...server };
 }
 
 /** The socket's origin for a walk the account server `at` starts: its fixed pair, as walks/handoff.js holds it too. */

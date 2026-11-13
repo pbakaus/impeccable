@@ -27,6 +27,7 @@
 
   // The sign-in window takes the focus, which closes this popup; the worker finishes it and switches the icon.
   button.addEventListener('click', async () => {
+    if (status?.signedIn === true && status.pro === false) { say(WORDS.notPro); return; }
     if (status?.signedIn === true) {
       const tab = (await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []))[0];
       if (tab) await chrome.sidePanel?.open({ tabId: tab.id }).catch(() => undefined);

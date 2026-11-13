@@ -318,6 +318,14 @@ describe('account worker', () => {
     startServer(() => json(404, {}));
     await ask({ account: 'status' }, fromPopup);
     assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
+    // Signed in, and the server says the account has no Impeccable Pro: the popup alone, until it says otherwise.
+    const served = globalThis.fetch;
+    globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: false }) : served(url, init));
+    assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false);
+    assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+    globalThis.fetch = served;
+    await ask({ account: 'status' }, fromPopup);
+    assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
     await ask({ account: 'sign-out' }, fromPopup);
     assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
     records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
@@ -329,6 +337,7 @@ describe('account worker', () => {
     ['hands the server’s block and the tab to the walk, and nothing of the sign-in', () => json(201, { handoff: HANDOFF }), { ok: true, panel: true }],
     ['says walks are not there yet when the door answers 404', () => json(404, {}), { ok: false, why: 'unavailable' }],
     ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
+    ['says the account has no Pro when the server refuses it', () => json(403, { error: 'not-pro' }), { ok: false, why: 'not-pro' }],
     ['hands nothing over for a socket off the server’s pair', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }],
   ]) {
     it(`walks the person’s tab: ${label}`, async () => {

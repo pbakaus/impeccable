@@ -76,6 +76,8 @@ function planOf(plan) {
 }
 /** Why creating a persona did not happen, by the server's answer. */
 const CREATE_WHY = { 404: 'unavailable', 409: 'limit', 429: 'quota' };
+/** The server's refusal of a person whose account has no Impeccable Pro: it decides on every request, never this code. */
+const notPro = (answer) => answer?.status === 403 && answer.json?.error === 'not-pro';
 
 /**
  * A session against the server `issuer()` names. `fetch` and `store` are the network and the disk; `launch` opens
@@ -250,10 +252,10 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     /** Asks the server in use again to end what it has yet to (not waited for). */
     retry() { void retire(issuer()); },
 
-    /** Who is signed in: `{ email, name }`, or null. */
+    /** Who is signed in: `{ email, name, pro }`, or null. `pro` is the server's word alone: false only when it says so. */
     async me() {
       const me = await read(issuer(), '/me');
-      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '' } : null;
+      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro !== false } : null;
     },
 
     /** The signed-in person's personas: `[{ name, role, slug?, mine? }]`, or null. */
@@ -275,6 +277,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (typeof made?.name === 'string' && SLUG.test(made.slug)) return { ok: true, persona: personaOf({ ...made, mine: true }) };
       if (answer?.status === 400 && answer.json?.field === 'description') return { ok: false, why: 'short' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 409 && Number.isInteger(answer.json?.max)) return { ok: false, why: 'limit', max: answer.json.max };
       return { ok: false, why: CREATE_WHY[answer?.status] ?? 'failed' };
     },
@@ -294,6 +297,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async startWalk(body) {
       const answer = await call(issuer(), '/walks', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
+      if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
       const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
       if (!handoff || typeof handoff !== 'object') return { ok: false, why: answer?.json?.error === 'bad-plan' ? 'plan' : 'failed' };
@@ -305,6 +309,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async planWalk(body) {
       const answer = await call(issuer(), '/walks/plan', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
+      if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
       const plan = answer && answer.status >= 200 && answer.status < 300 ? planOf(answer.json?.plan) : null;
       return plan ? { ok: true, plan } : { ok: false, why: 'failed' };

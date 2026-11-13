@@ -8,5 +8,6 @@ globalThis.IMPECCABLE_WORDS = {
     signedOut: 'Not signed in.',
     signOut: 'Sign out',
     failed: 'Couldn’t sign in. Try again.',
+    notPro: 'This account doesn’t have Impeccable Pro.',
   },
 };

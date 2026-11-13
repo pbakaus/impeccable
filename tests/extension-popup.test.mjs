@@ -282,6 +282,8 @@ for (const [label, account, asked, store] of [
 for (const [label, status, asks] of [
   ['the server takes sign-ins', { ok: true, available: true, signedIn: false }, true],
   ['a build loaded unpacked, before the server takes sign-ins', { ok: true, available: false, unpacked: true, server: 'https://api.impeccable.style' }, false],
+  // Signed in, and the server says the account has no Impeccable Pro: no side panel, and no second sign-in.
+  ['an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, false],
 ]) {
   test(`Impeccable Pro signs in: ${label}`, async () => {
     const h = await popup({ account: { status, 'sign-in': { ok: false } } });
@@ -407,10 +409,13 @@ for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' },
 for (const [label, status, offers] of [
   ['signed out', { ok: true, available: true, signedIn: false }, 'sign-in'],
   ['a server that takes no sign-ins', { ok: true, available: false }, 'copy'],
+  // The server says who has Impeccable Pro: without it the panel offers nothing and asks for no personas.
+  ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, null],
 ]) {
   test(`with no walk running, the side panel offers ${offers}: ${label}`, async () => {
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
-    assert.deepEqual(h.acts(), [offers]);
+    assert.deepEqual(h.acts(), offers ? [offers] : []);
+    if (!offers) assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
     if (offers !== 'sign-in') return;
     await h.press(offers);
     assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');

@@ -16,6 +16,8 @@ export const COPY = {
   idle: { line: 'No walk running.', how: 'Start one from your terminal:' },
   copy: { action: 'Copy command', done: 'Copied' },
 
+  /** Signed in, and the server says the account has no Impeccable Pro. */
+  notPro: { line: 'This account doesn’t have Impeccable Pro.' },
   signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.' },
   top: { walking: 'Walking', noSite: 'Open a web page to walk it.' },
 
@@ -31,6 +33,7 @@ export const COPY = {
     tab: 'This tab can’t be walked. Open a web page first.',
     unavailable: 'Walks from the extension aren’t available yet.',
     scope: 'Sign in again to start walks.',
+    'not-pro': 'This account doesn’t have Impeccable Pro.',
     plan: 'That plan ran out. Send the task again.',
     failed: 'Couldn’t do that. Try again.',
   },
