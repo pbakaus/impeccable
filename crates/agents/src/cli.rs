@@ -173,7 +173,7 @@ pub(super) fn operate(verb: &str, s: &Spec) -> Result<Value, (&'static str, Stri
     })();
     result
 }
-fn agents_home() -> Result<PathBuf, (&'static str, String, i32)> {
+pub(super) fn agents_home() -> Result<PathBuf, (&'static str, String, i32)> {
     std::env::var_os("IMPECCABLE_AGENTS_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".impeccable/agents")))

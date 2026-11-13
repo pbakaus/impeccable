@@ -193,7 +193,7 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     let result = login(&env, &mut open, timeout);
     match result {
         Ok(done) => {
-            io.err(&format!("Signed in to {}.\n", done.account.display_host()));
+            io.err(&format!("Signed in to {}.\n", done.account.display_name()));
             match &done.entitlement {
                 Ok(Entitlement { pro: true, .. }) => {
                     let outcome = pro::refresh(&done.account, &pro::verify::pinned_keys(&env));
@@ -242,7 +242,7 @@ pub fn run_logout(args: &[String], io: &mut Io) -> i32 {
     }
     match logout(&io.env.clone()) {
         Ok(Some(account)) => {
-            io.err(&format!("Signed out of {}.\n", account.display_host()));
+            io.err(&format!("Signed out of {}.\n", account.display_name()));
             0
         }
         Ok(None) => {
@@ -318,11 +318,14 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     }
     match result {
         Ok(e) => {
-            io.out(&format!("Signed in to {}.\n", account.display_host()));
+            io.out(&format!("Signed in to {}.\n", account.display_name()));
             match &plan {
                 Some(p) => io.out(&plan_lines(p)),
                 None if e.pro => io.out("Pro rules: included.\n"),
                 None => io.out("Pro rules: not included with this account.\n"),
+            }
+            if !e.pro {
+                io.out(&format!("{}\n", pro::PRICING));
             }
             0
         }
@@ -337,7 +340,7 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
         Err(e) => {
             io.err(&format!(
                 "Signed in to {}, but couldn't reach it: {e}.\n",
-                account.display_host()
+                account.display_name()
             ));
             1
         }

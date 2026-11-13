@@ -925,6 +925,8 @@ mod tests {
         assert_eq!(label("\tname"), None);
         assert_eq!(label("a\u{E0001}b"), None);
         assert_eq!(label("a\u{200B}b"), None);
+        // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
+        assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
