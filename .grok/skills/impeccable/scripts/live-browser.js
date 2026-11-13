@@ -7513,8 +7513,25 @@
   let liveBarHiddenByHelper = false;
 
   function applyLiveBarPreference(hidden) {
+    const wasHidden = liveBarHiddenByHelper;
     liveBarHiddenByHelper = hidden === true;
     setLiveBarHidden(liveBarHiddenByHelper);
+    // A hidden bar has no Pick or Insert control, so a choice remembered
+    // from a visible session stops capturing the page's clicks until the
+    // bar is back. The stored prefs stay as they are.
+    if (liveBarHiddenByHelper && !wasHidden && state === 'PICKING') {
+      clearInsertPicking();
+      hideHighlight();
+      setLiveState('IDLE');
+      syncPageInteractionCursor();
+    } else if (!liveBarHiddenByHelper && wasHidden) {
+      enterPickingIfArmed();
+      syncPageInteractionCursor();
+    }
+  }
+
+  function enterPickingIfArmed() {
+    if (state === 'IDLE' && (pickActive || insertActive) && !liveBarHiddenByHelper) setLiveState('PICKING');
   }
 
   // A plain live session must never notice this code: hiding remembers the
@@ -7833,7 +7850,7 @@
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
           recoverMissedGenerationCompletion(msg.activeSessions);
-          if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
+          enterPickingIfArmed();
           syncPageInteractionCursor();
           syncPageChatFocus('sse-connected');
           break;
@@ -13872,7 +13889,7 @@ void main() {
       scout.observe(document.body, { childList: true, subtree: true });
     }
 
-    if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
+    enterPickingIfArmed();
     syncPageInteractionCursor();
     syncPageChatFocus('init-complete');
   }
