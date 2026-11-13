@@ -364,6 +364,10 @@ pub(crate) fn after_login(io: &mut Io) {
     }
     let names = waiting.join(" and ");
     if !(io.stdin_is_tty && std::io::stdout().is_terminal()) {
+        // The service's Next line already said this command: once is enough.
+        if impeccable_account::setup_status::named_loop_connect() {
+            return;
+        }
         io.err(&format!(
             "Loop is installed. Connect {names} to it: impeccable loop connect\n"
         ));

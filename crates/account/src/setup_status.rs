@@ -13,6 +13,14 @@ use serde_json::Value;
 const PATH: &str = "/cli/v1/setup";
 /// The project this folder is, sent in a header so no log carries it.
 const PROJECT_HEADER: &str = "Impeccable-Project";
+/// Set when login's setup lines already named `impeccable loop connect`, so the
+/// CLI's own Loop sentence doesn't print the same command twice.
+static NAMED_LOOP_CONNECT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the setup lines this process printed after login named `loop connect`.
+pub fn named_loop_connect() -> bool {
+    NAMED_LOOP_CONNECT.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 /// The read, for the folder at `cwd`. The project key goes along when the
 /// folder has one, so that project comes back marked `current`.
@@ -111,7 +119,11 @@ pub fn after_login(io: &mut Io, account: &Account) {
     let cwd = io.cwd.to_string_lossy().into_owned();
     if let Ok(v) = read(&mut session, &cwd, &io.env) {
         if usable(&v) {
-            io.err(&lines(&v));
+            let text = lines(&v);
+            if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
+                NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            io.err(&text);
         }
     }
 }
