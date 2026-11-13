@@ -40,8 +40,10 @@ const session = createSession({
 /** What the popup is told of the account. */
 async function status() {
   const answer = await account();
-  pointToolbar(await session.signedIn().catch(() => false));
-  return answer;
+  const signedIn = await session.signedIn().catch(() => false);
+  pointToolbar(signedIn);
+  // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
+  return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
 }
 
 async function account() {
