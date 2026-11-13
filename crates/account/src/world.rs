@@ -27,13 +27,13 @@ Starts this project from a world: a finished visual direction, with its type,
 color, spacing and components. Copy the id from the world in the Impeccable
 worlds catalog.
 
-Writes DESIGN.md and .impeccable/design.json beside PRODUCT.md (at the project
-root when there is none), and your agent builds every page in that world. It
-never overwrites: if the project already has a design system, it writes nothing
-and tells you how to merge.
+Writes DESIGN.md beside PRODUCT.md (at the project root when there is none)
+and .impeccable/design.json at the project root, and your agent builds every
+page in that world. It never overwrites: if the project already has a design
+system, it writes nothing and tells you how to merge.
 
-  --print   Print the world's DESIGN.md instead of writing it, to merge into
-            the one you have.
+  --print   Print the seed as JSON instead of writing it (its DESIGN.md is in
+            design_md), to merge into the design system you have.
 
 Needs an Impeccable account (impeccable login). Some worlds need Pro.
 ";
