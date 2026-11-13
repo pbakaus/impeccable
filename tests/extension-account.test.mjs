@@ -406,7 +406,7 @@ describe('account worker', () => {
     assert.equal(made.at(-1).body.requestId, 'kept-0123456789');
   });
 
-  // The side panel's home asks for the personas itself (REN-1857), and is told whether signing in again would help.
+  // The side panel's home asks for the personas itself, and is told whether signing in again would help.
   for (const [label, personas, token, answer] of [
     ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
     ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],
