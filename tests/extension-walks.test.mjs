@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import { readHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
+import { listen } from '../extension/walks/panel/voice.js';
 import { WALK_PERMISSIONS, firefoxManifest, isStoreFile, moduleReferences, stageFirefox, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -108,6 +109,50 @@ describe('walk result link', () => {
       assert.equal(resultLink(link, socket), shown ? link : null);
     });
   }
+});
+
+// Talk to type, against a stand-in for the browser's speech recognition: what the person says lands in the box after
+// what was there, interim words included, and nothing is sent when they stop.
+describe('talk to type', () => {
+  class Speech {
+    static last;
+    constructor() { Speech.last = this; this.calls = []; }
+    start() { this.calls.push('start'); this.onstart?.(); }
+    stop() { this.calls.push('stop'); this.hear(['try signing up'], true); this.onend?.(); }
+    abort() { this.calls.push('abort'); }
+    hear(parts, final = false) { this.onresult?.({ results: parts.map((transcript) => Object.assign([{ transcript }], { isFinal: final })) }); }
+  }
+  const run = (base) => {
+    const seen = { text: [], ended: [], started: 0 };
+    const control = listen(Speech, { base, lang: 'en-GB', onStart: () => { seen.started += 1; }, onText: (text) => seen.text.push(text), onEnd: (why) => seen.ended.push(why) });
+    return { seen, control, rec: Speech.last };
+  };
+
+  it('listens once with interim words, writes them after the box’s text, and keeps them when stopped', () => {
+    const { seen, control, rec } = run('On the pricing page ');
+    assert.deepEqual([rec.continuous, rec.interimResults, rec.lang, seen.started], [false, true, 'en-GB', 1]);
+    rec.hear(['try sign']);
+    control.stop();
+    assert.deepEqual(seen.text, ['On the pricing page try sign', 'On the pricing page try signing up']);
+    assert.deepEqual(seen.ended, [null]);
+  });
+
+  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['network', 'network'], ['no-speech', null], ['aborted', null]]) {
+    it(`ends once on ${error}, saying ${ended ?? 'nothing'}`, () => {
+      const { seen, rec } = run('');
+      rec.onerror({ error });
+      rec.onend?.();
+      assert.deepEqual(seen.ended, [ended]);
+    });
+  }
+
+  it('drops at once on Send: no more words and no end called back', () => {
+    const { seen, control, rec } = run('');
+    control.drop();
+    rec.onresult?.({ results: [[{ transcript: 'late' }]] });
+    rec.onend?.();
+    assert.deepEqual([seen.text, seen.ended, rec.calls], [[], [], ['start', 'abort']]);
+  });
 });
 
 describe('walk guard', () => {
