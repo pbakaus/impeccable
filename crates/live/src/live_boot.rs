@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn boot_page_and_framework_signals_keep_config_missing() {
-        for marker in ["index.html", "public/nested/other.html", "package.json", "vite.config.js", "remix.config.js"] {
+        for marker in ["index.html", "INDEX.HTML", "page.htm", "public/nested/other.html", "package.json", "vite.config.js", "remix.config.js"] {
             let f = Fixture::new();
             std::fs::remove_dir_all(f.0.join(".impeccable")).unwrap();
             std::fs::remove_file(f.0.join("index.html")).unwrap();

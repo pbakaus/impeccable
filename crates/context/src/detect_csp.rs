@@ -163,7 +163,7 @@ fn walk(root: &str, dir: &str, depth: usize, hits: &mut Hits) {
             continue;
         }
         let ext = jsp::extname(&e.name);
-        hits.has_html |= ext == ".html";
+        hits.has_html |= ext.eq_ignore_ascii_case(".html") || ext.eq_ignore_ascii_case(".htm");
         if !SCAN_EXTS.contains(&ext.as_str()) && !LAYOUT_EXTS.contains(&ext.as_str()) {
             continue;
         }
