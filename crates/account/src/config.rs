@@ -148,6 +148,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn context_and_account_agree_on_the_expected_issuer() {
+        let mut env = HashMap::from([("IMPECCABLE_HOME".into(), "/unused".into())]);
+        for override_url in [None, Some(" https://API.example.test:443/ "), Some("http://api.localhost:8787/"), Some("https://bad.test/path"), Some("")] {
+            env.remove("IMPECCABLE_ACCOUNT_URL");
+            if let Some(raw) = override_url { env.insert("IMPECCABLE_ACCOUNT_URL".into(), raw.into()); }
+            assert_eq!(impeccable_context::taste::expected_issuer(&env), Account::from_env(&env).ok().map(|a| a.issuer));
+        }
+    }
+
+    #[test]
     fn origins_accept_https_and_loopback_http_only() {
         for (raw, want) in [
             (
