@@ -5,6 +5,7 @@ import { COPY } from '../panel/copy.js';
 
 const words = COPY.mic;
 const app = document.getElementById('app');
+const done = () => { show('on'); setTimeout(() => { chrome.tabs.getCurrent((tab) => { if (tab) void chrome.tabs.remove(tab.id).catch(() => undefined); }); }, 1200); };
 
 function el(tag, props = {}, ...children) {
   const made = document.createElement(tag);
@@ -27,7 +28,7 @@ function show(state) {
     : state === 'dismissed' ? el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'again', text: words.again, onclick: () => { void ask(); } }) : null;
   app.replaceChildren(el('div', { class: 'mid' },
     el('h2', { class: 'hd', text: words.title }),
-    el('p', { class: state === 'blocked' || state === 'none' ? 'act err' : 'act', role: 'status', text: line }),
+    el('p', { class: 'act', role: 'status', text: line }),
     small ? el('p', { class: 'task', text: small }) : null,
     action));
 }
@@ -37,12 +38,13 @@ async function ask() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     for (const track of stream.getTracks()) track.stop();
-    show('on');
-    setTimeout(() => { chrome.tabs.getCurrent((tab) => { if (tab) void chrome.tabs.remove(tab.id).catch(() => undefined); }); }, 1200);
+    done();
   } catch (error) {
     if (error?.name === 'NotFoundError') { show('none'); return; }
     const mic = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
     show(mic?.state === 'denied' ? 'blocked' : 'dismissed');
+    // Allowed later, in Chrome's settings: this page has done its job.
+    if (mic) mic.onchange = () => { if (mic.state === 'granted') { mic.onchange = null; done(); } };
   }
 }
 

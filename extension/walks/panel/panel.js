@@ -176,11 +176,13 @@ async function talk() {
   if (voice) { voice.stop(); return; }
   const mic = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
   if (!mic || mic.state === 'granted') { hear(); return; }
-  if (mic.state === 'denied') { pre.note = COPY.voice['not-allowed']; render(); }
+  const blocked = () => { pre.note = COPY.voice['not-allowed']; render(); };
+  if (mic.state === 'denied') blocked();
+  // Until it is given: a refusal says so, and an Allow later (on the page, or in Chrome's settings) starts listening.
   mic.onchange = () => {
+    if (mic.state !== 'granted') { blocked(); return; }
     mic.onchange = null;
-    if (mic.state === 'granted' && screen() === 'home' && !voice) hear();
-    else if (mic.state === 'denied') { pre.note = COPY.voice['not-allowed']; render(); }
+    if (screen() === 'home' && !voice) hear();
   };
   void chrome.tabs.create({ url: chrome.runtime.getURL('walks/mic/mic.html'), active: true, ...(here ? { openerTabId: here } : {}) }).catch(() => undefined);
 }
