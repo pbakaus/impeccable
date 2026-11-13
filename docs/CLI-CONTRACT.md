@@ -2329,6 +2329,48 @@ Existing pins cannot be overwritten with a different digest.
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
 
+## Walkthrough
+
+`impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
+turns a screen recording (anything the system's ffmpeg reads: WebM, GIF, MOV,
+MP4) into what a Needs you walkthrough card takes. It always prints one JSON
+object on stdout and exits 0 on success, 1 otherwise.
+
+- **Tools.** `ffmpeg` and `ffprobe` are found in `IMPECCABLE_FFMPEG_DIR` when
+  set (the only place looked then), else on `PATH`, else in `/opt/homebrew/bin`,
+  `/usr/local/bin` and `/usr/bin`. Without them: `{ok:false,
+  error:"ffmpeg_missing", message}`, the message naming the install command
+  for this OS.
+- **Checks before any write.** No recording named is `usage`; a missing file
+  is `not_found`; a file ffprobe can't read is `unreadable`; a recording over
+  2:00 is `too_long` (a recording whose container states no length, as a
+  browser's MediaRecorder WebM often doesn't, is converted first and the same
+  limits are then checked on the film); a chapter
+  that isn't `M:SS=Text` (also `H:MM:SS` or plain seconds; text 1 to 200
+  characters on one line), more than 12 chapters, two chapters at the same
+  moment, or a chapter after the end is `bad_chapter`. `--ship` is the approve
+  button's label, 1 to 40 characters, `Looks right` by default.
+- **Film.** `<out>/<stem>.mp4`: H.264 (`libx264`, `yuv420p`), no audio,
+  `+faststart`, even dimensions, at most 1920 px wide and never upscaled. Over
+  50 MB it is encoded again at 1280 px wide with a higher quality factor; still
+  over is `convert_failed`. The result is probed and must be H.264 without
+  audio.
+- **Poster.** `<out>/<stem>.png`, at most 1280 px wide, cut at the first
+  chapter's time, and never earlier than one second in (a first frame is
+  usually blank); one second in when there are no chapters.
+- **Output folder.** `--out`, else `.impeccable/walkthroughs/` under the
+  working directory; only that default folder gets a self-ignoring
+  `.gitignore`. Files are built under names private to the run and renamed
+  into place, so a failure removes only what the run made. The recording is
+  never the output: when `<stem>.mp4` or `<stem>.png` would be the recording
+  itself, the stem gains `-walkthrough`. `<stem>` is the
+  recording's name with anything but letters, digits, `-` and `_` turned into `-`.
+- **Success.** `{ok:true, film:{path, format:"mp4", bytes, sha256, durationMs,
+  width, height}, poster:{path, format:"png", bytes, atMs}, chapters:[{at,
+  text}], post:{attachments, interaction}, _instructions}`. `sha256` is
+  base64url without padding. Chapters are sorted, in milliseconds. `post` is
+  ready to merge into a `needs_you.post` call: attachment ids `film` and
+  `poster`, and `interaction: {kind:"walkthrough", film, shot, ship:{label}, chapters}`.
 ## World seed
 
 Exact output strings:
