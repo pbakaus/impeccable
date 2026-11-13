@@ -79,6 +79,17 @@ describe('skill reference authoring contracts', () => {
     assert.match(critique, /write `not applicable \(native platform\)` instead/);
   });
 
+  it('keeps critique a fresh review that reads the earlier snapshot last', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const assessmentA = critique.match(/### Assessment A: Design Review\n([\s\S]*?)\n### Assessment B/)?.[1] ?? '';
+    const sinceLastRun = critique.match(/### Deliver the Report\n[\s\S]*?\n### Since Last Run\n([\s\S]*?)\n### Persist the Snapshot/)?.[1] ?? '';
+
+    assert.match(assessmentA, /every defect as its own finding/);
+    assert.doesNotMatch(assessmentA, /snapshot|\.impeccable\/critique/);
+    assert.match(critique, /#### All Findings\n/);
+    assert.match(sinceLastRun, /`closed: true`/, 'the earlier snapshot is opened after the report is delivered and before this run is saved');
+  });
+
   it('keeps reduced-motion guidance on the animation build path', () => {
     const animate = readFileSync(join(ROOT, 'skill/reference/animate.md'), 'utf-8').replace(/\r\n?/g, '\n');
     const accessibility = animate.match(/## Accessibility and control\n([\s\S]*?)\n## Verify/)?.[1] ?? '';
