@@ -7396,3 +7396,4 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 ## Recorded 2026-11-13: explicit redesign requests override a seeded world
 
 - `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.
+- On worlds/settled-world-roll the code-present and no-code `SEEDED_WORLD` variants both name the replacement door, a redesign whose direction roll passes `--replace-world`, after the explicit-request override; the three seeded-world goldens were re-recorded with it.
