@@ -1807,23 +1807,38 @@ refuse as `element_ambiguous`, and a `--text` that matches none refuses the
 same way; it never wraps the minified line whole. A tag-only locator still weighs every
 candidate.
 
-HTML-like sources refuse splitting in pre, textarea, script and style, or
-next to non-whitespace text. Otherwise splitting requires a block-level tag,
-a direct body child, or block-level neighboring tags. The fixed block list is
-address, article, aside, blockquote, details, dialog, div, dl, fieldset,
-figcaption, figure, footer, form, h1-h6, header, hgroup, hr, li, main, nav,
-ol, p, section, table, ul. JSX/TSX allow shared-line isolation only where the element
-touches a tag, an expression container (`{`, `}`) or the line's edge on each
-side: next to text, a space or a JS token such as `return`, where a newline
-would change rendered whitespace or end the statement, they refuse. Unsafe boundaries return stderr JSON with
-`error:'element_inline', fallback:'agent-driven', file, hint` and exit 1,
-without writing source. With `--defer-source-write`, `wrapperBlock` includes
-the isolated prefix and suffix as well as the scaffold, and replacement line
-numbers refer to the original unsplit source. Applying that single replacement
-produces the same content as an immediate write; scaffold line numbers refer
-to that resulting content. Svelte component preview refuses a split with
-`element_inline` because its retained anchor line numbers describe unchanged
-source. Ordinary deferred scaffolds keep their existing contract.
+HTML-like sources (including Vue, Svelte, Astro and MDX) refuse splitting
+an element that is, or is inside, pre, textarea, script or style, or whose
+boundary is next to non-whitespace text. Each boundary must independently
+have only whitespace to the line's edge, have whitespace immediately next
+to the element, or have both the selected element and the nearest neighboring
+tag on that line in the fixed block list. A direct body child alone is not
+sufficient. The fixed block list is address, article, aside, blockquote,
+details, dialog, div, dl, fieldset, figcaption, figure, footer, form, h1-h6,
+header, hgroup, hr, li, main, nav, ol, p, section, table, ul, body. Block names
+are case-insensitive in HTML and case-sensitive in component-capable files.
+All extensions classified as JSX by `Dialect::of` (.jsx, .tsx, .js, .mjs,
+.cjs, .ts, .mts and .cts) instead require, outside those protected elements,
+that the prefix contain only whitespace or end immediately in `>` or `}`,
+and that the suffix contain only whitespace or start immediately with `<`
+or `{`. Adjacent text, spaces separating markup, or JS tokens such as
+`return` fail this guard. Locator strength is ranked across files before
+text or shared-line filtering: an id match outranks a class or tag match,
+so a stronger shared-line hit cannot be discarded in favor of a weaker
+match in another file. Unsafe splits return stderr JSON with
+`error:'element_ambiguous', fallback:'agent-driven', reason:'shared_line', file, candidates:[{startLine,endLine}], hint`
+and exit 1 without writing source. The line resolver's remaining tag-only
+shared-boundary refusals use the same fallback. With `--defer-source-write`,
+`wrapperBlock` includes the isolated prefix and suffix as well as the scaffold,
+and replacement line numbers refer to the original unsplit source. Applying
+that single replacement produces the same content as an immediate write;
+scaffold line numbers refer to that resulting content. Wrap and insert still
+emit `error:'element_inline', fallback:'agent-driven', file, hint` and exit 1
+without writing source when Svelte component preview would require a split,
+because its retained anchor line numbers describe unchanged source. Their
+other `element_inline_error` call sites handle `Resolution::Inline`, which
+no current resolver constructs. Ordinary deferred scaffolds keep their
+existing contract.
 
 Wrapper block for HTML-comment files (indent = picked element's leading whitespace; original reindented under `indent+'    '` preserving relative depth):
 ```
