@@ -66,11 +66,20 @@ const UNCLOSED = {
   snap: ['src/**'], setup: (ws) => write(ws, 'src/void.html', '<main>\n  <img class="void-hero" src="/a.png">\n  <img class="void-hero" src="/b.png" />\n</main>\n'),
 };
 
+// Elements with no id and no class: a tag alone has to find them.
+const BARE = {
+  snap: ['src/**'], setup: (ws) => write(ws, 'src/bare.html', '<main>\n  <header>Top</header>\n  <h1>Harbor Coffee</h1>\n  <h2>First</h2>\n  <h2>Second</h2>\n  <h2>Same</h2>\n  <h2>Same</h2>\n</main>\n'),
+};
+
 export default [
   // --- argument / usage paths ---
   W('live-wrap-help', 'live-html', ['--help']),
   W('live-wrap-missing-id', 'live-html', ['--classes', 'hero-title']),
-  W('live-wrap-missing-locator', 'live-html', ['--id', 'ab12cd34', '--tag', 'h1']),
+  W('live-wrap-missing-locator', 'live-html', ['--id', 'ab12cd34']),
+  // --- a bare element, located by its tag ---
+  W('live-wrap-tag-only', 'live-html', ['--id', 'ab12cd34', '--tag', 'h1', '--text', 'Harbor Coffee', '--file', 'src/bare.html'], BARE),
+  W('live-wrap-tag-only-text-picks-second', 'live-html', ['--id', 'ab12cd34', '--tag', 'h2', '--text', 'Second', '--file', 'src/bare.html'], BARE),
+  W('live-wrap-tag-only-ambiguous', 'live-html', ['--id', 'ab12cd34', '--tag', 'h2', '--text', 'Same', '--file', 'src/bare.html'], BARE),
   W('live-wrap-target-missing-value', 'live-html', ['--id', 'ab12cd34', '--classes', 'x', '--target']),
   W('live-wrap-element-not-found', 'live-html', ['--id', 'ab12cd34', '--classes', 'no-such-class']),
   W('live-wrap-element-not-in-source', 'live-html', ['--id', 'ab12cd34', '--classes', 'built-title']),

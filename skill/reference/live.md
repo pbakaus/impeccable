@@ -67,7 +67,9 @@ Output JSON: `{ ok, serverPort, serverToken, configCreated, pageFiles, roots, ta
 
 A plain page needs no setup: when the app root holds an `index.html` page shell (Vite, React, or a plain HTML folder) with no CSP, the boot writes the one-line config itself and reports `configCreated: true`. Tell the user once that `.impeccable/live/config.json` was added, and carry on.
 
-If output is `{ ok: false, error: "config_missing" | "config_invalid", path }`, the boot could not decide alone. A static folder whose page has another name takes one step: when `{{scripts_path}}/impeccable detect-csp` reports `shape: null`, write `{"files":["<page>.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}` at the boot's reported `path` and boot again. Anything else (another framework, a CSP, several HTML files): read [live-setup.md](live-setup.md) and follow it. If the output carries a non-null `configDrift`, tell the user once which HTML files are uncovered and suggest adding them or switching `files` to a glob; never auto-edit the config.
+If output is `{ ok: false, error: "config_invalid", message, path }`, the config at `path` exists but `message` names what is wrong with it: repair that field in the existing file ([live-setup.md](live-setup.md) describes each field), keep every other field as it is, and boot again. Never replace the file with the common-case config below.
+
+If output is `{ ok: false, error: "config_missing", path }`, the boot could not decide alone. A static folder whose page has another name takes one step: when `{{scripts_path}}/impeccable detect-csp` reports `shape: null`, write `{"files":["<page>.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}` at the boot's reported `path` and boot again. Anything else (another framework, a CSP, several HTML files): read [live-setup.md](live-setup.md) and follow it. If the output carries a non-null `configDrift`, tell the user once which HTML files are uncovered and suggest adding them or switching `files` to a glob; never auto-edit the config.
 
 ## Recovery commands
 
@@ -119,7 +121,15 @@ When `event.scaffold` is present, the helper already found the source and comput
 {{scripts_path}}/impeccable live-wrap --id EVENT_ID --count EVENT_COUNT --element-id "ELEMENT_ID" --classes "class1,class2" --tag "div" --text "TEXT_SNIPPET"
 ```
 
-Flag mapping (keep separate, never collapse into `--query`): `--element-id` ← `event.element.id`; `--classes` ← classes joined with commas; `--tag` ← tagName; `--text` ← first ~80 chars of textContent, **every call**: it disambiguates repeated sibling components, without it wrap lands on the first match. If `event.pageUrl` implies the file, pass `--file PATH`. If `--text` still matches several candidates, wrap exits `{ error: "element_ambiguous", candidates, fallback: "agent-driven" }`: pick the right range from page context and write the wrapper manually per the fallback flow. An element with neither an id nor classes (a bare `<h1>`, the usual first pick on a fresh page) is located by its tag: pass `--tag` and `--text` and leave the empty flags out. Short text settles it only when it is one element's whole text; when several elements of the tag remain, wrap answers `element_ambiguous` as above and never picks the first.
+Flag mapping (keep separate, never collapse into `--query`): `--element-id` ← `event.element.id`; `--classes` ← classes joined with commas; `--tag` ← tagName; `--text` ← first ~80 chars of textContent, **every call**: it disambiguates repeated sibling components, and without it a class locator lands on the first match. If `event.pageUrl` implies the file, pass `--file PATH`. If `--text` still matches several candidates, wrap exits `{ error: "element_ambiguous", candidates, fallback: "agent-driven" }`: pick the right range from page context and write the wrapper manually per the fallback flow.
+
+An element with neither an id nor classes (a bare `<h1>`, the usual first pick on a fresh page) leaves both flags out; the tag alone locates it:
+
+```bash
+{{scripts_path}}/impeccable live-wrap --id EVENT_ID --count EVENT_COUNT --tag "h1" --text "TEXT_SNIPPET"
+```
+
+A tag alone never lands on the first match: when the tag repeats and `--text` does not single out one element, or the element shares a source line with other markup (`reason: "shared_line"`), wrap exits `element_ambiguous`; follow the fallback flow as above. Short text settles it only when it is one element's whole text.
 
 Success output: `{ file, insertLine, commentSyntax, styleMode, styleTag, cssSelectorPrefixExamples, cssAuthoring }` (plus the `sourceWritten: false` fields above on source-preview targets). Run directly with no preflight scaffold, it writes the wrapper itself and you splice variants at `insertLine`. `styleMode` controls how preview CSS must be authored. Treat it as a detected capability mode, not a framework guess: `scoped` means `@scope ([data-impeccable-variant="N"])` rules; `astro-global-prefixed` means explicit `[data-impeccable-variant="N"]` prefixes with the exact returned `styleTag`. Use `cssAuthoring` as the source of truth for the current file (styleTag, selector strategy, requirements, forbidden patterns); apply no framework-specific exception unless it says to.
 
