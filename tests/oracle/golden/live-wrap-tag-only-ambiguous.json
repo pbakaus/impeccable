@@ -1,0 +1,11 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"file\":\"src/bare.html\",\"candidates\":[{\"startLine\":4,\"endLine\":4},{\"startLine\":5,\"endLine\":5},{\"startLine\":6,\"endLine\":6},{\"startLine\":7,\"endLine\":7}],\"hint\":\"Multiple source elements match both classes/tag and textContent. Pass --element-id, a more specific --text, or write the wrapper manually. See \\\"Handle fallback\\\" in live.md.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/bare.html": "<main>\n  <header>Top</header>\n  <h1>Harbor Coffee</h1>\n  <h2>First</h2>\n  <h2>Second</h2>\n  <h2>Same</h2>\n  <h2>Same</h2>\n</main>\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n"
+  }
+}
