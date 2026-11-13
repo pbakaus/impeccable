@@ -20,6 +20,7 @@ pub mod plans;
 pub mod pro;
 pub mod session;
 pub mod setup;
+pub mod setup_status;
 mod stale_grant;
 pub mod store;
 pub mod taste;
@@ -217,6 +218,7 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
                 }
                 Err(_) => report_entitlement(io, &done.entitlement),
             }
+            setup_status::after_login(io, &done.account);
             0
         }
         Err(e) => {

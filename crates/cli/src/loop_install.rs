@@ -364,23 +364,23 @@ pub(crate) fn after_login(io: &mut Io) {
     }
     let names = waiting.join(" and ");
     if !(io.stdin_is_tty && std::io::stdout().is_terminal()) {
-        io.out(&format!(
+        io.err(&format!(
             "Loop is installed. Connect {names} to it: impeccable loop connect\n"
         ));
         return;
     }
-    io.out(&format!("Loop is installed. Connect {names} to it now? [Y/n] "));
-    let _ = std::io::Write::flush(&mut io.stdout);
+    io.err(&format!("Loop is installed. Connect {names} to it now? [Y/n] "));
+    let _ = std::io::Write::flush(&mut io.stderr);
     let mut line = String::new();
     let yes = std::io::stdin()
         .read_line(&mut line)
         .is_ok_and(|n| connect_answer(n, &line));
     if !yes {
-        io.out("Later: impeccable loop connect\n");
+        io.err("Later: impeccable loop connect\n");
         return;
     }
     match crate::loop_connect::connect(io) {
-        Ok(message) => io.out(&message),
+        Ok(message) => io.err(&message),
         Err(e) => io.err(&format!(
             "{e}\nYou're signed in. Run impeccable loop connect again once that is sorted.\n"
         )),

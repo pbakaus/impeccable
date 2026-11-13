@@ -77,6 +77,8 @@ pub struct Record {
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
     pub setups: Vec<serde_json::Value>,
+    /// The `Impeccable-Project` header of each setup read (`GET /cli/v1/setup`).
+    pub setup_projects: Vec<Option<String>>,
     pub designs: Vec<serde_json::Value>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
@@ -297,6 +299,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .routes
         .get(&(method.clone(), path.to_string()))
         .cloned();
+    if method == "GET" && path == "/cli/v1/setup" {
+        record.lock().unwrap().setup_projects.push(headers.get("impeccable-project").cloned());
+    }
     let (status, extra, out): (u16, Vec<(String, String)>, Vec<u8>) = if let Some(c) = custom {
         let authorized = bearer
             .as_ref()
