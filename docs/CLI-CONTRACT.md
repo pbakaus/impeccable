@@ -2237,8 +2237,13 @@ Exact output strings:
 `impeccable world <id>` seeds the current directory's design system from a
 catalog world. An id is 1 to 64 lowercase letters, digits and single inner
 dashes; anything else exits 1 without a request. When `DESIGN.md`,
-`DESIGN.json` or `.impeccable/design.json` exists (a symlink counts), it
-writes nothing, makes no request, prints the merge line on stdout and exits 0.
+`DESIGN.json` or `.impeccable/design.json` exists (a symlink counts), or
+`context` run from the same directory would read a DESIGN.md somewhere else
+(the context reader's own resolver: `docs/` or `.agents/context/`, a
+workspace's repo root, or `IMPECCABLE_CONTEXT_DIR`), it writes nothing, makes
+no request, prints the merge line on stdout and exits 0. The merge line names
+the file it found, relative to the current directory (`docs/DESIGN.md`,
+`../../DESIGN.md`).
 
 Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
 token (scope `worlds:read`, which `login` requests whenever the service lists
