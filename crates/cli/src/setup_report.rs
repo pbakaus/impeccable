@@ -8,11 +8,21 @@ pub fn schedule(io: &Io) {
     if !impeccable_account::setup::wanted(io) {
         return;
     }
+    spawn_refresh(io, "setup-report");
+}
+
+pub fn schedule_taste(io: &Io) {
+    if impeccable_account::taste::wanted(io) {
+        spawn_refresh(io, "taste-refresh");
+    }
+}
+
+fn spawn_refresh(io: &Io, verb: &str) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
     let mut cmd = Command::new(exe);
-    cmd.arg("setup-report")
+    cmd.arg(verb)
         .current_dir(&io.cwd)
         .envs(&io.env)
         .stdin(Stdio::null())

@@ -38,6 +38,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             | "check"
     ) {
         crate::setup_report::schedule(io);
+        crate::setup_report::schedule_taste(io);
     }
     match verb {
         "--help" | "-h" => {
@@ -77,6 +78,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
         "critiques" => impeccable_account::critiques::run(rest, io),
@@ -288,6 +290,7 @@ const KNOWN_VERBS: &[&str] = &[
     "health-design-refresh",
     "critiques",
     "critiques-refresh",
+    "taste-refresh",
     "pro-refresh",
     "agents",
     "loop",
@@ -336,6 +339,11 @@ fn url_engine() -> &'static impeccable_browser::BrowserEngine {
 
 #[cfg(test)]
 mod verb_tests {
+    #[test]
+    fn taste_refresh_is_a_known_internal_verb() {
+        assert!(super::KNOWN_VERBS.contains(&"taste-refresh"));
+    }
+
     /// Catches (review, Greptile and Cursor): a verb `run` handles by name but
     /// missing from `KNOWN_VERBS`, so a same-named path in the working
     /// directory sends it through Pro dispatch as if it were a scan.

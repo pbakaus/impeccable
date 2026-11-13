@@ -234,6 +234,18 @@ const cases = [
   // ======================================================================
   // context
   // ======================================================================
+  {
+    id: 'context-taste-ready', verb: 'context', workspace: 'ctx-empty',
+    env: env({ IMPECCABLE_HOME: '<WS>/.oracle-taste', IMPECCABLE_ACCOUNT_URL: 'https://api.impeccable.style', IMPECCABLE_NO_TASTE: null }),
+    setup: (ws) => write(ws, '.oracle-taste/taste.json', JSON.stringify({
+      version: 1, fetchedAt: Math.floor(Date.now() / 1000), etag: '"taste-1"',
+      issuer: 'https://api.impeccable.style', state: 'ready',
+      rules: [
+        { id: 'square', direction: 'prefer', text: 'Keep corners square: 0 to 2px radius on buttons, cards, inputs and images.' },
+        { id: 'kickers', direction: 'avoid', text: 'Small uppercase kicker labels above headings.' },
+      ],
+    })),
+  },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).

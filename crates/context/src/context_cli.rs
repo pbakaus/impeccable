@@ -894,6 +894,7 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
+        append_taste(&mut parts, &env);
         io.out(&parts.render());
         return 0;
     }
@@ -935,8 +936,25 @@ pub fn run_with_hook_repair(
     if let Some(u) = update_directive {
         parts.push(u);
     }
+    append_taste(&mut parts, &env);
     io.out(&parts.render());
     0
+}
+
+fn append_taste(parts: &mut Parts, env: &Env) {
+    if let Some(block) = crate::taste::block(env) {
+        insert_taste(parts, block);
+    }
+}
+
+fn insert_taste(parts: &mut Parts, block: String) {
+    let index = parts.0.iter().position(|p| {
+        let text = p.text();
+        text.starts_with("# PRODUCT.md\n") || text.starts_with("# DESIGN.md\n")
+            || text.starts_with("# SURFACE BRIEF ")
+            || text.starts_with("# NATIVE PLATFORM REFERENCE:")
+    }).unwrap_or(parts.0.len());
+    parts.0.insert(index, Part::Text(block));
 }
 
 /// One part of the context output.
@@ -1000,6 +1018,26 @@ impl Parts {
 #[cfg(test)]
 mod skill_version_tests {
     use super::parse_skill_frontmatter_version as v;
+    use super::{insert_taste, Part, Parts};
+
+    #[test]
+    fn taste_preserves_sized_directives_and_document_order() {
+        let mut parts = Parts::default();
+        parts.push("FIRST".into());
+        parts.sized("RESOLVED_CONTEXT: full".into(), "RESOLVED_CONTEXT: compact".into());
+        parts.sized("SURFACE_CONTEXT_AVAILABLE: full".into(), "SURFACE_CONTEXT_AVAILABLE: compact".into());
+        parts.doc("# PRODUCT.md".into(), "PRODUCT.md", "product");
+        parts.push("TAIL".into());
+        insert_taste(&mut parts, "TASTE".into());
+        assert_eq!(parts.0.iter().map(Part::text).collect::<Vec<_>>(), vec![
+            "FIRST", "RESOLVED_CONTEXT: full", "SURFACE_CONTEXT_AVAILABLE: full",
+            "TASTE", "# PRODUCT.md\n\nproduct", "TAIL",
+        ]);
+        let mut parts = Parts::default();
+        parts.sized("DIRECTIVE".into(), "compact".into());
+        insert_taste(&mut parts, "TASTE".into());
+        assert_eq!(parts.0.iter().map(Part::text).collect::<Vec<_>>(), vec!["DIRECTIVE", "TASTE"]);
+    }
 
     /// Values recorded from origin/main's `parseSkillFrontmatterVersion` (#703).
     #[test]
