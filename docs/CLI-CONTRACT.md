@@ -1793,13 +1793,24 @@ spaces when a prefix precedes it; suffix content gets its own line. Only the
 selected element or anchor is isolated. The normal line-based scaffold then
 uses those lines.
 
+The contents of script, style and textarea are text, not markup: a tag
+inside them is never a candidate and never nests the element around them.
+Void names (img, input, link, ...) fold case only in HTML-like files; in
+.jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
+component that keeps its children. A class, id or query locator with one
+match on lines of its own and others on shared lines (a minified copy) takes
+the lone match, as the line resolver would; a tag-only locator still weighs
+every candidate.
+
 HTML-like sources refuse splitting in pre, textarea, script and style, or
 next to non-whitespace text. Otherwise splitting requires a block-level tag,
 a direct body child, or block-level neighboring tags. The fixed block list is
 address, article, aside, blockquote, details, dialog, div, dl, fieldset,
 figcaption, figure, footer, form, h1-h6, header, hgroup, hr, li, main, nav,
-ol, p, section, table, ul. JSX/TSX allow shared-line isolation regardless of
-inline formatting. Unsafe boundaries return stderr JSON with
+ol, p, section, table, ul. JSX/TSX allow shared-line isolation only where the element
+touches a tag, an expression container (`{`, `}`) or the line's edge on each
+side: next to text, a space or a JS token such as `return`, where a newline
+would change rendered whitespace or end the statement, they refuse. Unsafe boundaries return stderr JSON with
 `error:'element_inline', fallback:'agent-driven', file, hint` and exit 1,
 without writing source. With `--defer-source-write`, `wrapperBlock` includes
 the isolated prefix and suffix as well as the scaffold, and replacement line

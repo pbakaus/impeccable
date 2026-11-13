@@ -1061,15 +1061,27 @@ mod tests {
             ("Hello <b>world</b>!", "b", "world"),
             ("<div><span>9</span><span>/mo</span></div>", "span", "/mo"),
             ("<pre><div>raw</div></pre>", "div", "raw"),
-            ("<textarea><div>raw</div></textarea>", "div", "raw"),
-            ("<script><div>raw</div></script>", "div", "raw"),
-            ("<style><div>raw</div></style>", "div", "raw"),
         ] {
             for insert in [false, true] {
                 let project = TagProject::new("index.html", source);
                 let (code, _, err) = project.run(insert, &["--tag", tag, "--text", text]);
                 assert_eq!(code, 1, "{err}");
                 assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline");
+                assert_eq!(project.source("index.html"), source);
+            }
+        }
+        // Markup inside a raw-text element is text, not an element: the
+        // isolation pass never offers it as a candidate, so nothing is written.
+        for source in [
+            "<textarea><div>raw</div></textarea>",
+            "<script><div>raw</div></script>",
+            "<style><div>raw</div></style>",
+        ] {
+            for insert in [false, true] {
+                let project = TagProject::new("index.html", source);
+                let (code, _, err) = project.run(insert, &["--tag", "div", "--text", "raw"]);
+                assert_eq!(code, 1, "{err}");
+                assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_not_found");
                 assert_eq!(project.source("index.html"), source);
             }
         }
@@ -1090,6 +1102,65 @@ mod tests {
             let (code, out, err) = project.run(false, &locator);
             assert_eq!(code, 0, "{out} {err}");
             assert!(!project.source(file).split("Variants: insert below").next().unwrap().contains("<p>x</p>"));
+        }
+    }
+
+    #[test]
+    fn same_line_jsx_refuses_splits_that_change_meaning() {
+        // A newline after `return` ends the statement, and JSX keeps a space
+        // next to text but drops whitespace that holds a newline.
+        for (file, source, locator) in [
+            ("App.jsx", "function App() { return <h1>Title</h1>; }", vec!["--tag", "h1"]),
+            ("App.jsx", "<div>Hello <b id=\"picked\">world</b>!</div>", vec!["--element-id", "picked"]),
+            ("App.tsx", "<p><span>A</span> <span id=\"picked\">B</span></p>", vec!["--element-id", "picked"]),
+        ] {
+            for insert in [false, true] {
+                let project = TagProject::new(file, source);
+                let (code, out, err) = project.run(insert, &locator);
+                assert_eq!(code, 1, "{source:?} {out} {err}");
+                assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_inline", "{source:?}");
+                assert_eq!(project.source(file), source);
+            }
+        }
+    }
+
+    #[test]
+    fn same_line_component_tags_named_like_void_elements_keep_their_children() {
+        for (file, source) in [
+            ("App.jsx", "<nav><Link to=\"/\">Home</Link><p>x</p></nav>"),
+            ("Page.vue", "<template><nav><Link to=\"/\">Home</Link><p>x</p></nav></template>"),
+            ("Page.astro", "<nav><Link to=\"/\">Home</Link><p>x</p></nav>"),
+        ] {
+            let project = TagProject::new(file, source);
+            let (code, out, err) = project.run(false, &["--tag", "Link", "--text", "Home"]);
+            assert_eq!(code, 0, "{file} {out} {err}");
+            let written = project.source(file);
+            let line = written.lines().find(|l| l.contains("<Link")).unwrap();
+            assert_eq!(line.trim(), "<Link to=\"/\">Home</Link>", "{written}");
+        }
+        // HTML void names still fold case.
+        let project = TagProject::new("index.html", "<main><IMG id=\"picked\" src=\"a.png\"><p>x</p></main>");
+        let (code, out, err) = project.run(false, &["--element-id", "picked"]);
+        assert_eq!(code, 0, "{out} {err}");
+        let written = project.source("index.html");
+        assert_eq!(written.lines().find(|l| l.contains("<IMG")).unwrap().trim(), "<IMG id=\"picked\" src=\"a.png\">", "{written}");
+    }
+
+    #[test]
+    fn same_line_minified_copy_does_not_shadow_a_lone_class_match() {
+        let pretty = "<main>\n  <h1 class=\"picked\">Title</h1>\n</main>\n";
+        let minified = "<main><h1 class=\"picked\">Title</h1><p>x</p></main>\n";
+        for (first, second, pretty_name) in [("a.html", "b.html", "a.html"), ("a.html", "b.html", "b.html")] {
+            let minified_name = if pretty_name == first { second } else { first };
+            let project = TagProject::new(pretty_name, pretty);
+            std::fs::write(project.0.join(minified_name), minified).unwrap();
+            for locator in [vec!["--classes", "picked"], vec!["--classes", "picked", "--text", "Title"]] {
+                let (code, out, err) = project.run(false, &locator);
+                assert_eq!(code, 0, "{pretty_name} {out} {err}");
+                assert!(project.source(pretty_name).contains("data-impeccable-variants="));
+                assert_eq!(project.source(minified_name), minified);
+                std::fs::write(project.0.join(pretty_name), pretty).unwrap();
+            }
         }
     }
 
@@ -1325,15 +1396,19 @@ mod tests {
     }
 
     #[test]
-    fn tag_only_refuses_a_range_that_shares_its_line_with_other_markup() {
+    fn tag_only_never_wraps_a_range_that_shares_its_line_with_other_markup() {
+        // A tag-only locator on a shared line is either isolated onto lines of
+        // its own (the neighbours stay outside the wrapper) or refused; the
+        // line resolver never wraps the whole shared line.
+        enum Want { Ambiguous, Inline, Isolated(&'static str) }
         for insert in [false, true] {
-            for (source, text) in [
-                ("<h2>First</h2><h2>Second</h2>\n", None),
-                ("<h2>First</h2><h2>Second</h2>\n", Some("Second")),
-                ("<h2>First</h2><h2>Second</h2>\n", Some("Second heading")),
-                ("<main>\n  <h2>First</h2><p>Keep</p>\n</main>\n", None),
-                ("<h2>\n  First\n</h2><p>Keep</p>\n", None),
-                ("Intro <h2>First</h2>\n", None),
+            for (source, text, want) in [
+                ("<h2>First</h2><h2>Second</h2>\n", None, Want::Ambiguous),
+                ("<h2>First</h2><h2>Second</h2>\n", Some("Second"), Want::Isolated("<h2>First</h2>")),
+                ("<h2>First</h2><h2>Second</h2>\n", Some("Second heading"), Want::Ambiguous),
+                ("<main>\n  <h2>First</h2><p>Keep</p>\n</main>\n", None, Want::Isolated("<p>Keep</p>")),
+                ("<h2>\n  First\n</h2><p>Keep</p>\n", None, Want::Isolated("<p>Keep</p>")),
+                ("Intro <h2>First</h2>\n", None, Want::Inline),
             ] {
                 for explicit in [false, true] {
                     let project = TagProject::new("index.html", source);
@@ -1345,15 +1420,42 @@ mod tests {
                         args.extend(["--file", "index.html"]);
                     }
                     let (code, out, err) = project.run(insert, &args);
-                    assert_eq!(code, 1, "{source:?} {out} {err}");
-                    let error: Value = serde_json::from_str(err.trim()).unwrap();
-                    assert_eq!(error["error"], "element_ambiguous", "{source:?}");
-                    assert_eq!(error["reason"], "shared_line", "{source:?}");
-                    assert_eq!(error["fallback"], "agent-driven");
-                    assert_eq!(project.source("index.html"), source);
+                    match want {
+                        Want::Ambiguous | Want::Inline => {
+                            assert_eq!(code, 1, "{source:?} {out} {err}");
+                            let error: Value = serde_json::from_str(err.trim()).unwrap();
+                            let name = if matches!(want, Want::Inline) { "element_inline" } else { "element_ambiguous" };
+                            assert_eq!(error["error"], name, "{source:?}");
+                            assert_eq!(error["fallback"], "agent-driven");
+                            assert_eq!(project.source("index.html"), source);
+                        }
+                        Want::Isolated(neighbour) => {
+                            assert_eq!(code, 0, "{source:?} {out} {err}");
+                            let written = project.source("index.html");
+                            let line = written.lines().find(|l| l.contains(neighbour)).unwrap();
+                            assert_eq!(line.trim(), neighbour, "{written}");
+                            assert!(written.contains("data-impeccable-variants="), "{written}");
+                        }
+                    }
                 }
             }
         }
+    }
+
+    #[test]
+    fn line_resolver_match_on_a_shared_line_becomes_a_refusal() {
+        // The fallback behind isolation: a tag-only line match whose lines hold
+        // other markup is refused instead of wrapped.
+        let file = |text: &str| SourceFile { isolation: None, path: "index.html".into(), lines: lines(&[text]) };
+        let m = ElementMatch { start_line: 0, end_line: Some(0) };
+        let queries = build_search_queries(None, None, Some("h2"), None);
+        let shared = refuse_shared_lines(Resolution::Match(file("<h2>A</h2><p>Keep</p>"), m), &queries, Some("h2"));
+        assert!(matches!(shared, Resolution::SharedLine(_, _)));
+        let lone = refuse_shared_lines(Resolution::Match(file("<h2>A</h2>"), m), &queries, Some("h2"));
+        assert!(matches!(lone, Resolution::Match(_, _)));
+        let error = element_shared_line_error("index.html", m);
+        assert_eq!(error["error"], "element_ambiguous");
+        assert_eq!(error["reason"], "shared_line");
     }
 
     #[test]

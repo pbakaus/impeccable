@@ -18,7 +18,10 @@ fn raw(name: &str) -> bool {
     matches!(name, "pre" | "textarea" | "script" | "style")
 }
 
-fn tokens(source: &str) -> Vec<Token> {
+/// `fold_case` is true for plain HTML, where `<IMG>` is the void `img`. In a
+/// file that can hold components (JSX, Vue, Svelte, Astro) `<Link>` and
+/// `<Input>` are components, so only a lowercase name is an HTML void.
+fn tokens(source: &str, fold_case: bool) -> Vec<Token> {
     let bytes = source.as_bytes();
     let mut out: Vec<Token> = Vec::new();
     let mut stack: Vec<usize> = Vec::new();
@@ -61,14 +64,24 @@ fn tokens(source: &str) -> Vec<Token> {
         if i >= bytes.len() { break; }
         i += 1;
         let lower = name.to_ascii_lowercase();
+        let html_name = if fold_case { lower.as_str() } else { name.as_str() };
         let single = source[start..i].trim_end_matches('>').trim_end().ends_with('/')
-            || matches!(lower.as_str(), "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr");
+            || matches!(html_name, "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr");
         let parent = stack.last().copied();
         if close {
             if let Some(p) = stack.iter().rposition(|p| out[*p].name.eq_ignore_ascii_case(&name)) { stack.truncate(p); }
         }
+        let raw_text = !close && !single && matches!(html_name, "script" | "style" | "textarea");
         out.push(Token { start, end: i, name, close, single, parent });
         if !close && !single { stack.push(out.len() - 1); }
+        // Raw-text contents are not markup: skip to the element's own close.
+        if raw_text {
+            let closer = format!("</{}", lower);
+            let rest = source[i..].to_ascii_lowercase();
+            i = rest.match_indices(&closer)
+                .find(|(n, _)| rest[n + closer.len()..].starts_with(|c: char| c == '>' || c.is_whitespace() || c == '/'))
+                .map_or(bytes.len(), |(n, _)| i + n);
+        }
     }
     out
 }
@@ -97,9 +110,21 @@ struct Candidate {
 /// Otherwise the established line resolver and its output remain unchanged.
 pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&str>, text: Option<&str>) -> Result<Resolution, Vec<SourceFile>> {
     let mut candidates = Vec::new();
+    let tag_only = is_tag_only_search(queries, tag);
     for (fi, file) in files.iter().enumerate() {
         let source = file.lines.join("\n");
-        let ts = tokens(&source);
+        // A file that cannot hold the locator is never tokenized.
+        if !queries.iter().any(|q| source.contains(q.as_str()) || matches_query(&source, q, tag)) {
+            continue;
+        }
+        let ext = jsp::extname(&file.path);
+        let jsx = matches!(ext.as_str(), ".jsx" | ".tsx");
+        let components = jsx || matches!(ext.as_str(), ".vue" | ".svelte" | ".astro");
+        let ts = tokens(&source, !components);
+        // The query that matches an opening tag, found once per file.
+        let opener_query = queries.iter().find(|q| ts.iter().any(|n| !n.close
+            && tag.map_or(true, |tag| tag.eq_ignore_ascii_case(&n.name))
+            && matches_query(&source[n.start..n.end], q, tag)));
         for (ti, t) in ts.iter().enumerate().filter(|(_, t)| !t.close) {
             if tag.map_or(false, |tag| !tag.eq_ignore_ascii_case(&t.name)) { continue; }
             if source[t.start..t.end].contains("data-impeccable-variant") { continue; }
@@ -119,9 +144,6 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
                 }
                 let Some(end) = end else { continue }; end
             };
-            let opener_query = queries.iter().find(|q| ts.iter().any(|n| !n.close
-                && tag.map_or(true, |tag| tag.eq_ignore_ascii_case(&n.name))
-                && matches_query(&source[n.start..n.end], q, tag)));
             let query_matches = if let Some(q) = opener_query {
                 matches_query(&source[t.start..t.end], q, tag)
             } else {
@@ -147,9 +169,16 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
                 .map_or(true, |n| block(&n.name.to_ascii_lowercase()))
                 && ts.iter().find(|n| n.start >= end && n.start < le)
                     .map_or(true, |n| block(&n.name.to_ascii_lowercase()));
-            let jsx = matches!(jsp::extname(&file.path).as_str(), ".jsx" | ".tsx");
-            let safe = jsx || (!protected && text_before.is_empty() && text_after.is_empty()
-                && (block(&t.name.to_ascii_lowercase()) || t.parent.map_or(false, |p| ts[p].name.eq_ignore_ascii_case("body")) || neighbours_block));
+            // JSX drops whitespace that holds a newline, so a split is safe only
+            // where the element touches a tag or an expression container (or the
+            // line's edge): never next to text, a space, or a JS keyword such as
+            // `return`, where a newline would end the statement.
+            let jsx_left = before.trim().is_empty() || before.ends_with('>') || before.ends_with('}');
+            let jsx_right = after.trim().is_empty() || after.starts_with('<') || after.starts_with('{');
+            let safe = if jsx { !protected && jsx_left && jsx_right } else {
+                !protected && text_before.is_empty() && text_after.is_empty()
+                    && (block(&t.name.to_ascii_lowercase()) || t.parent.map_or(false, |p| ts[p].name.eq_ignore_ascii_case("body")) || neighbours_block)
+            };
             candidates.push(Candidate { file: fi, start: t.start, end,
                 range: ElementMatch { start_line: source[..t.start].matches('\n').count(), end_line: Some(source[..end].matches('\n').count()) }, shared, safe });
         }
@@ -167,9 +196,17 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         if !filtered.is_empty() {
             candidates = candidates.into_iter().enumerate().filter_map(|(i, c)| filtered.contains(&i).then_some(c)).collect();
         } else if candidates.len() > 1 {
+            if !tag_only && candidates.iter().any(|c| !c.shared) { return Err(files); }
             let hits = candidates.iter().map(|c| (files[c.file].path.clone(), vec![c.range])).collect();
             return Ok(Resolution::TextInNoFile(hits));
         }
+    }
+    // A class, id or query locator keeps the line resolver's first hit in
+    // ordinary source: a minified copy elsewhere does not make it ambiguous.
+    // A tag alone must still weigh every candidate.
+    if !tag_only && candidates.len() > 1 && candidates.iter().any(|c| !c.shared) {
+        candidates.retain(|c| !c.shared);
+        if candidates.len() != 1 { return Err(files); }
     }
     if candidates.len() != 1 {
         let hits = candidates.iter().map(|c| (files[c.file].path.clone(), vec![c.range])).collect();
