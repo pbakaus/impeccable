@@ -91,7 +91,7 @@ pub fn login(
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
         // A new sign-in may be another person: their taste is never the last one's.
-        let _ = std::fs::remove_file(account.home.join("taste.json"));
+        store.clear_taste(&lock);
         let state = State {
             foundations: tokens.foundations,
             taste: tokens.taste,

@@ -53,3 +53,37 @@ fn the_refresh_worker_clears_the_copy_when_its_own_renewal_drops_the_grant() {
     assert!(!Store::new(&account).state().unwrap().taste);
     assert!(!path.exists());
 }
+
+#[test]
+fn another_issuer_under_the_same_home_never_clears_this_ones_copy() {
+    let (production, staging) = (Fake::start(), Fake::start());
+    let (_io, prod) = signed_in(&production, "taste-shared-home");
+    staging.knobs.lock().unwrap().taste = true;
+    let mut env = staging.env("taste-shared-home-staging");
+    env.insert("IMPECCABLE_HOME".into(), prod.home.to_string_lossy().into_owned());
+    // Signing in to staging under the shared home leaves production's copy.
+    let path = cached(&prod);
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    assert!(path.exists(), "a sign-in to another issuer keeps this issuer's copy");
+    let stage = Account::from_env(&env).unwrap();
+    assert_eq!(stage.home, prod.home);
+
+    // Staging renewal without taste:read, and staging's worker on a 403.
+    staging.knobs.lock().unwrap().refresh_drops = vec!["taste:read"];
+    Session::load(&stage).unwrap().refresh().unwrap();
+    assert!(path.exists(), "another issuer's renewal keeps this issuer's copy");
+    staging.knobs.lock().unwrap().refresh_drops = vec![];
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    assert!(path.exists());
+    staging.route("GET", "/cli/v1/taste", 403, vec![], "");
+    let (mut io, _) = Io::captured("", stage.home.clone(), env.clone());
+    taste::run_refresh(&[], &mut io);
+    assert!(path.exists(), "another issuer's 403 keeps this issuer's copy");
+    impeccable_account::logout(&env).unwrap();
+    assert!(path.exists(), "another issuer's logout keeps this issuer's copy");
+
+    // Production's own renewal without the grant still clears it.
+    production.knobs.lock().unwrap().refresh_drops = vec!["taste:read"];
+    Session::load(&prod).unwrap().refresh().unwrap();
+    assert!(!path.exists());
+}

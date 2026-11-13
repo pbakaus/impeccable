@@ -95,6 +95,9 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         }
         Held::Current => {}
     }
+    // Another issuer under this home shares the file: order with its changes.
+    let Ok(taste_lock) = Store::taste_lock_for(&account.home, std::time::Duration::from_secs(3))
+        else { return 0; };
     if !reply_is_current(snapshot.as_ref(), taste::read(&path).as_ref()) {
         return 0;
     }
@@ -102,7 +105,7 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         Ok((200, etag, body)) => cache(&body, &account.issuer, etag),
         Ok((304, _, _)) => previous.map(|mut v| { v["fetchedAt"] = now().into(); v }),
         Err(SessionError::Api(ApiError::Status { status: 403 | 404, .. })) => {
-            let _ = std::fs::remove_file(path);
+            store.clear_taste_holding(&taste_lock);
             return 0;
         }
         _ => None,
