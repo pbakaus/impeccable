@@ -7354,3 +7354,7 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-12: `impeccable context` prints the person's taste from a local copy
 
 A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the shared invocation environment pins `IMPECCABLE_NO_TASTE` for every case (the isolated `context-taste-ready` case explicitly unsets it) so a developer's own copy never reaches a golden. New case: `context-taste-ready`.
+
+## Recorded 2026-11-12: the live boot names the next step when no dev server answers
+
+With `--dev-url` and no server found, the boot used to say "Open the app URL that serves a pageFiles entry" although no such URL existed. It now reports `pageUrls` (ready `file://` URLs) for a static folder, or `devCommand` for a project with a dev script, and `_instructions` say which to do. Output with a found `devUrl`, and without the flag, is unchanged. New cases: `live-boot-no-dev-server-static`, `live-boot-no-dev-server-dev-script`.
