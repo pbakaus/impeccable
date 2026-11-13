@@ -193,7 +193,8 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
-  personHas(view.state === 'takeover');
+  // Taken over, or a question standing: the film takes nothing of it (the badge shows the question, badge.js `hidden`).
+  personHas(view.state === 'takeover' || Boolean(view.ask));
   // A question the walk no longer stands behind is over, unanswered.
   if (answering && !view.ask) settle('void');
   // Only the person's own take-over at a sign-in opens the sign-in pages to the tab: a page can fake a sign-in
