@@ -114,7 +114,7 @@ fn tool(io: &Io, name: &str) -> Option<PathBuf> {
         // An explicit folder is the only place looked: tests and locked-down setups rely on it.
         return Some(PathBuf::from(dir).join(&file)).filter(|p| p.is_file());
     }
-    if let Some(path) = io.env("PATH") {
+    if let Some(path) = search_path(&io.env, cfg!(windows)) {
         dirs.extend(std::env::split_paths(path).filter(|d| d.is_absolute()));
     }
     for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
@@ -123,6 +123,18 @@ fn tool(io: &Io, name: &str) -> Option<PathBuf> {
     dirs.into_iter()
         .map(|d| d.join(&file))
         .find(|p| p.is_file())
+}
+
+/// The search path. Windows names it case-insensitively and usually spells it
+/// `Path`, which a plain `PATH` lookup in the env map would miss.
+fn search_path(env: &std::collections::HashMap<String, String>, windows: bool) -> Option<&str> {
+    if windows {
+        let mut keys: Vec<&String> = env.keys().filter(|k| k.eq_ignore_ascii_case("PATH")).collect();
+        keys.sort();
+        keys.first().map(|k| env[*k].as_str())
+    } else {
+        env.get("PATH").map(String::as_str)
+    }
 }
 
 fn install_hint() -> &'static str {
@@ -657,6 +669,17 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_path_reads_windows_path_in_any_case() {
+        let env = |k: &str| std::collections::HashMap::from([(k.to_string(), "C:\\ffmpeg\\bin".to_string())]);
+        assert_eq!(search_path(&env("Path"), true), Some("C:\\ffmpeg\\bin"));
+        assert_eq!(search_path(&env("PATH"), true), Some("C:\\ffmpeg\\bin"));
+        assert_eq!(search_path(&env("path"), true), Some("C:\\ffmpeg\\bin"));
+        // Posix names are case-sensitive.
+        assert_eq!(search_path(&env("Path"), false), None);
+        assert_eq!(search_path(&env("PATH"), false), Some("C:\\ffmpeg\\bin"));
+    }
 
     #[test]
     fn chapters_read_the_ways_people_write_times() {
