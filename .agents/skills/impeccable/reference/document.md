@@ -68,7 +68,7 @@ Omit irrelevant sections rather than filling them with invented rules. Put respo
 - An existing `DESIGN.md` is stale (the design has drifted).
 - Before a large redesign, to capture the current state as a reference.
 
-If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file first. Ask with Codex's structured user-input/question tool when available, or directly in chat if it is not, and wait for the answer before continuing. The choice is refresh, overwrite, or merge.
+If a `DESIGN.md` already exists, **do not silently overwrite it**. Show the user the existing file first. Ask with Codex's structured user-input/question tool when available, or directly in chat if it is not, and wait for the answer before continuing. The choice is refresh, overwrite, or merge. The one exception is the first build on a seeded world (below): the choice is refresh, with no question.
 
 A DESIGN.md written by `impeccable world` carries a `world: "<id>"` line in its frontmatter, and its sidecar carries a `seededFrom` object. Both name the catalog world this system grew from, and both survive every choice: copy the `world:` line into the new frontmatter unchanged, and copy `seededFrom` into the regenerated sidecar. They are the one frontmatter key and the one sidecar key kept outside the schemas below.
 
