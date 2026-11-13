@@ -27,8 +27,9 @@ let signInFailed = false;
 let seen = true;
 let intro = false;
 /**
- * The tab this panel's window shows (undefined on a stand-in, which draws every state). A walk that is over is drawn
- * on its own tab alone: on any other, the panel is as it is with no walk, so an old result never reads as this page's.
+ * The tab this panel's window shows (undefined on a stand-in, which draws every state). A finished walk's result is
+ * drawn on its own tab alone: on any other, the panel is as it is with no walk, so an old result never reads as this
+ * page's. A walk stopped or failed still says why wherever the panel is, with the way to start again.
  */
 let here;
 
@@ -338,7 +339,7 @@ function toNewest() {
 
 function render() {
   const live = ['walking', 'paused', 'takeover'].includes(view.state);
-  const state = isLive(view) || here === undefined || view.tab === here ? view.state : view.linked ? 'idle' : 'signed-out';
+  const state = view.state !== 'done' || here === undefined || view.tab === here ? view.state : view.linked ? 'idle' : 'signed-out';
   // A control that was pressed is often gone once it worked (Pause becomes Resume): focus stays in its place.
   const acts = () => [...app.querySelectorAll('[data-act]')];
   const focused = document.activeElement?.getAttribute?.('data-act');
@@ -393,7 +394,7 @@ async function start() {
       view = changes.view.newValue ?? emptyView(false);
       render();
     });
-    chrome.tabs.onActivated.addListener(() => { void look().then(() => { if (!isLive(view)) render(); }); });
+    chrome.tabs.onActivated.addListener(() => { void look().then(() => { if (view.state === 'done') render(); }); });
     const [{ view: kept }, { onboarded }] = await Promise.all([chrome.storage.session.get('view'), chrome.storage.local.get('onboarded'), look()]);
     if (kept?.v === 1) view = kept;
     seen = onboarded === true;

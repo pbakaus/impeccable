@@ -348,7 +348,8 @@ describe('walk worker', () => {
   after(async () => { if (opened) await (await opened).ops.close(); });
 
   it('takes and tells nothing of the page while paused, and films again once it goes on', async () => {
-    const { ops, command } = await walked();
+    const { ops, command, current } = await walked();
+    assert.equal(current().tab, 11, 'the view knows the walked tab, where the panel shows its result');
     await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
     await settle(150);
     assert.ok(since(0, 'Page.captureScreenshot') > 0, 'the film is rolling');

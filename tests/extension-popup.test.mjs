@@ -497,7 +497,7 @@ test('the first walk ever shows its intro in the side panel, once, and opens no 
   assert.equal(later.intro(), false, 'not in a panel opened later');
 });
 
-test('the side panel shows a walk that is over on its own tab alone, and a site’s root as no page', async () => {
+test('the side panel shows a finished walk on its own tab alone, and a site’s root as no page', async () => {
   const { reduce } = await import('../extension/walks/view.js');
   const issues = [{ step: 5, page: '/edit.html', what: 'Not saved' }, { step: 8, page: '/', what: 'Gone at once' }];
   const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome: { finished: true, issues } }].reduce(reduce, STUBS.waiting);
