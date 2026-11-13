@@ -1571,6 +1571,40 @@ mod tests {
     }
 
     #[test]
+    fn isolation_refuses_modules_without_jsx_scaffold_support() {
+        for ext in ["js", "mjs", "cjs", "ts", "mts", "cts"] {
+            for insert in [false, true] {
+                let file = format!("App.{ext}");
+                let source = "<main><span>A</span><span id=\"picked\">B</span></main>";
+                let project = TagProject::new(&file, source);
+                let (code, out, err) = project.run(insert, &["--file", &file, "--element-id", "picked"]);
+                assert_eq!(code, 1, "{file}, insert={insert}: {out} {err}");
+                let error: Value = serde_json::from_str(&err).unwrap();
+                assert_eq!(error["error"], "element_ambiguous");
+                assert_eq!(error["reason"], "shared_line");
+                assert_eq!(std::fs::read(project.0.join(&file)).unwrap(), source.as_bytes());
+            }
+        }
+    }
+
+    #[test]
+    fn isolation_preserves_jsx_scaffold_support() {
+        for file in ["App.jsx", "App.tsx"] {
+            for insert in [false, true] {
+                let source = "<main><span>A</span><span id=\"picked\">B</span></main>";
+                let project = TagProject::new(file, source);
+                let (code, out, err) = project.run(insert, &["--file", file, "--element-id", "picked"]);
+                assert_eq!(code, 0, "{file}, insert={insert}: {out} {err}");
+                let result = project.source(file);
+                assert!(result.starts_with("<main><span>A</span>\n"), "{result}");
+                assert!(result.contains("{/* impeccable-variants-start"), "{result}");
+                assert!(result.contains("<span id=\"picked\">B</span>"), "{result}");
+                assert!(!result.contains("<!--"), "{result}");
+            }
+        }
+    }
+
+    #[test]
     fn isolation_text_after_child_belongs_to_parent() {
         for paragraph in ["<p><b>x</b> Pricing</p>", "<p><b>x</b> Pricing <i>y</i></p>"] {
             for insert in [false, true] {

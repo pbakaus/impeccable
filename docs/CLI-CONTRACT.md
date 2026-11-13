@@ -1817,8 +1817,11 @@ sufficient. The fixed block list is address, article, aside, blockquote,
 details, dialog, div, dl, fieldset, figcaption, figure, footer, form, h1-h6,
 header, hgroup, hr, li, main, nav, ol, p, section, table, ul, body. Block names
 are case-insensitive in HTML and case-sensitive in component-capable files.
-All extensions classified as JSX by `Dialect::of` (.jsx, .tsx, .js, .mjs,
-.cjs, .ts, .mts and .cts) instead require, outside those protected elements,
+JSX isolation is limited to .jsx and .tsx, where the lexer and scaffold
+classifications agree. The .js, .mjs, .cjs, .ts, .mts and .cts module
+extensions do not isolate; shared-line matches fall back to the refusal
+below without changing source. The .jsx and .tsx extensions require,
+outside those protected elements,
 that the prefix contain only whitespace or end immediately in `>` or `}`,
 and that the suffix contain only whitespace or start immediately with `<`
 or `{`. Adjacent text, spaces separating markup, or JS tokens such as

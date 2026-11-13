@@ -125,6 +125,9 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         }
         let dialect = Dialect::of(&file.path);
         let jsx = dialect == Dialect::Jsx;
+        // Isolation must not admit JSX that the scaffold would emit as HTML.
+        let scaffold_supported = !jsx
+            || crate::inject::resolve_source_traits(&file.path).comment_syntax == "jsx";
         let components = dialect != Dialect::Html;
         // Tokens are read from the masked source, whose byte offsets match
         // `source`; when the lexer cannot finish, from `source` itself.
@@ -195,7 +198,7 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
             // `return`, where a newline would end the statement.
             let jsx_left = before.trim().is_empty() || before.ends_with('>') || before.ends_with('}');
             let jsx_right = after.trim().is_empty() || after.starts_with('<') || after.starts_with('{');
-            let safe = if jsx { !protected && jsx_left && jsx_right } else {
+            let safe = scaffold_supported && if jsx { !protected && jsx_left && jsx_right } else {
                 !protected && text_before.is_empty() && text_after.is_empty()
                     && left_safe && right_safe
             };
