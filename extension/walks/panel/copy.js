@@ -100,7 +100,7 @@ export const COPY = {
         ['cursor', 'It acts in your browser, signed in as you.', 'What it clicks and types counts as you.'],
         ['camera', 'It takes screenshots of the pages it walks.', 'Keep it off private sites, like banking or health.'],
         ['warn', 'Pages can hide instructions.', 'Text you can’t see can try to steer it somewhere you didn’t ask.'],
-        ['shield', 'You approve the plan first.', 'Steps that can’t be undone are marked !. Anything risky that isn’t on the plan is skipped.'],
+        ['shield', 'You approve the plan first.', 'Steps that can’t be undone are marked !. Anything risky that isn’t on the plan is skipped.'],
       ],
       next: 'Got it',
     },
