@@ -193,9 +193,16 @@ impl Session {
             &state.scopes,
         ) {
             Ok(tokens) => {
+                // A renewal that drops `taste:read` takes the cached rules with
+                // it, under this lock and before the grant is saved: a crash in
+                // between costs a refetch, never rules nothing would refresh.
+                if !tokens.taste {
+                    self.store.clear_taste(lock);
+                }
                 let generation = state.generation + 1;
                 let next_state = State {
                     foundations: tokens.foundations,
+                    taste: tokens.taste,
                     scopes: tokens.scopes.unwrap_or_else(|| state.scopes.clone()),
                     generation,
                     ..state
@@ -332,6 +339,7 @@ mod upload_refresh_tests {
         let state = State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: 1,
@@ -473,6 +481,7 @@ mod review_regressions {
         let state = State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: 3,
@@ -521,6 +530,29 @@ mod review_regressions {
         assert!(!session.matches_upload(&original), "logout lineage changed");
         std::fs::remove_dir_all(account.home).unwrap();
     }
+    #[test]
+    fn taste_loader_keeps_renewal_noninteractive() {
+        let fake = crate::test_fake::Fake::start();
+        fake.knobs.lock().unwrap().taste = true;
+        let env = fake.env("taste-noninteractive");
+        crate::login(&env, &mut |url| crate::test_fake::browser(url), std::time::Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let store = Store::new(&account);
+        let state = store.state().unwrap();
+        assert_eq!(state.backend, Backend::File);
+        let mut secret = store.secret(&state).unwrap();
+        let mut session = crate::taste::load_session(&account).unwrap();
+        assert!(session.noninteractive);
+        let lock = store.lock().unwrap();
+        secret.generation += 1;
+        store.save(&lock, &state, &secret).unwrap();
+        // Renewal must reject a replacement secret before making a request.
+        assert!(matches!(session.refresh_holding(&lock), Err(SessionError::NotSignedIn)));
+        drop(lock);
+        assert!(crate::taste::load_session(&account).is_none());
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
+
     #[test]
     fn setup_locked_loader_is_noninteractive_and_rejects_mismatched_generations() {
         let (account, state, mut secret) = fixture();

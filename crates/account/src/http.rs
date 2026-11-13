@@ -109,6 +109,22 @@ impl Client {
         json_body(req.call())
     }
 
+    /// Conditional taste read. A 304 has no JSON body.
+    pub fn get_taste(
+        &self, url: &str, bearer: &str, etag: Option<&str>,
+    ) -> Result<(u16, Option<String>, serde_json::Value), ApiError> {
+        self.checked(url)?;
+        let mut req = self.agent.get(url)
+            .set("accept", "application/json")
+            .set("authorization", &bearer_header(bearer)?);
+        if let Some(etag) = etag { req = req.set("if-none-match", etag); }
+        let resp = req.call().map_err(classify)?;
+        let status = resp.status();
+        let etag = resp.header("etag").map(str::to_string);
+        let body = if status == 304 { serde_json::Value::Null } else { json_body(Ok(resp))? };
+        Ok((status, etag, body))
+    }
+
     pub fn post_form(
         &self,
         url: &str,
