@@ -424,19 +424,19 @@ describe('account worker', () => {
   }
 
   // A sign-in from the extension opens the Pro welcome page; that page's button (welcome.js) opens the side panel on its tab.
-  it('opens the Pro welcome page on the server’s website after a sign-in, and the side panel when that page alone asks', async () => {
+  it('opens the Pro welcome page on the server’s website after the first sign-in only, and the side panel when that page alone asks', async () => {
     await loaded;
     startServer(() => json(404, {}));
     chrome.identity.launchWebAuthFlow = async ({ url }) => `${REDIRECT}?${new URLSearchParams({ code: 'code-0123456789', state: new URL(url).searchParams.get('state'), iss: ISSUER })}`;
     const tabs = opened.length;
-    assert.equal((await ask({ account: 'sign-in' }, fromPanel)).signedIn, true);
+    for (let n = 0; n < 2; n += 1) assert.equal((await ask({ account: 'sign-in' }, fromPanel)).signedIn, true);
     assert.deepEqual(opened.slice(tabs).map((tab) => tab.url), ['https://impeccable.reviews/pro/welcome']);
-    const page = { id: 'ext', frameId: 0, url: 'https://impeccable.reviews/pro/welcome', tab: { id: 12, windowId: 1 } };
+    const page = { id: 'ext', frameId: 0, url: 'https://impeccable.reviews/pro/welcome', tab: { id: 12, windowId: 3 } };
     const before = panels.length;
-    for (const sender of [{ ...page, url: 'https://impeccable.reviews/pricing' }, { ...page, id: 'other' }, { ...page, frameId: 2 }, page]) {
-      for (const listener of listeners) listener({ welcome: 'open-panel' }, sender, () => undefined);
+    for (const sender of [{ ...page, url: 'https://impeccable.reviews/pricing' }, { ...page, url: 'https://evil.example/pro/welcome' }, { ...page, id: 'other' }, page]) {
+      for (const listener of listeners) listener({ panel: 'open' }, sender, () => undefined);
     }
-    assert.deepEqual(panels.slice(before), [{ tabId: 12 }]);
+    assert.deepEqual(panels.slice(before), [{ windowId: 3 }]);
   });
 });
 
@@ -454,6 +454,6 @@ describe('welcome page', () => {
       click(event);
       return event.prevented;
     };
-    assert.deepEqual([press(false), press(true), JSON.parse(JSON.stringify(sent))], [false, true, [{ welcome: 'open-panel' }]]);
+    assert.deepEqual([press(false), press(true), JSON.parse(JSON.stringify(sent))], [false, true, [{ panel: 'open' }]]);
   });
 });

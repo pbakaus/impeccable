@@ -351,7 +351,7 @@ function screen() {
   return pre.screen;
 }
 
-const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, home, planning, plan: planned, scan };
+const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, home, planning, plan: planned, scan, before: beforeYouStart, 'tab-group': tabGroup };
 
 function render() {
   const shown = screen();
@@ -368,7 +368,6 @@ function render() {
   app.replaceChildren(...SCREENS[shown]().filter(Boolean));
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
-Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {

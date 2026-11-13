@@ -5,5 +5,5 @@ document.documentElement.dataset.impeccableExtension = 'ready';
 document.addEventListener('click', (event) => {
   if (!event.target?.closest?.('[data-impeccable-open-panel]')) return;
   event.preventDefault();
-  void chrome.runtime.sendMessage({ welcome: 'open-panel' }).catch(() => undefined);
+  void chrome.runtime.sendMessage({ panel: 'open' }).catch(() => undefined);
 }, true);

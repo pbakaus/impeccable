@@ -6,7 +6,7 @@
 // and how making or removing a persona went. A walk the person starts on their tab goes to the walks (walks/link.js)
 // as the server's block and the tab's id alone. The welcome page (welcome.js) may ask one thing: to open the side panel.
 import { BUILD } from '../shared/build.js';
-import { adopt } from '../walks/link.js';
+import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
 import { signedIn as pointToolbar } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
@@ -66,12 +66,17 @@ function siteOf(at) {
 /** The socket's origin for a walk the account server `at` starts: its website's, over a socket. */
 const socketOf = (at) => siteOf(at)?.replace(/^http/, 'ws') ?? null;
 
-/** After a sign-in with Impeccable Pro, its welcome page, on the website of the server signed in to. */
-function welcome(answer) {
+/** After the first sign-in with Impeccable Pro, its welcome page, on the website of the server signed in to; once (`welcomeSeen`). */
+async function welcome(answer) {
   const site = answer.signedIn === true && answer.pro !== false ? siteOf(issuer) : null;
-  if (site) void chrome.tabs.create({ url: `${site}/pro/welcome`, active: true }).catch(() => undefined);
+  if (!site || (await chrome.storage.local.get('welcomeSeen').catch(() => ({}))).welcomeSeen) return answer;
+  await chrome.storage.local.set({ welcomeSeen: true }).catch(() => undefined);
+  void chrome.tabs.create({ url: `${site}/pro/welcome`, active: true }).catch(() => undefined);
   return answer;
 }
+/** The welcome page's button (welcome.js) opens the panel as our outing page's does: on the website signed in to alone. */
+const isWelcomePage = (url) => { try { const at = new URL(url); return at.origin === siteOf(issuer) && /^\/pro\/welcome\/?$/.test(at.pathname); } catch { return false; } };
+opensPanel(isWelcomePage);
 
 /** The presets' ids, as popup/words.js lists them (that file is the popup's alone): the server holds each one's card. */
 const PRESETS = ['ines', 'kofi', 'priya', 'tomasz', 'hana', 'noor'];
@@ -169,13 +174,6 @@ const ANSWERS = {
     return status();
   },
 };
-
-// The welcome page's button (welcome.js): the side panel opens on that tab. At once, while Chrome still counts the click.
-chrome.runtime.onMessage.addListener((message, sender) => {
-  if (message?.welcome !== 'open-panel' || sender?.id !== chrome.runtime.id || sender.frameId !== 0 || !Number.isInteger(sender.tab?.id)) return false;
-  if (/^\/pro\/welcome\/?$/.test(new URL(sender.url).pathname)) void chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => undefined);
-  return false;
-});
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.account !== 'string') return false;
