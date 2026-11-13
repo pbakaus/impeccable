@@ -7359,13 +7359,32 @@ A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the 
 
 With `--dev-url` and no server found, the boot used to say "Open the app URL that serves a pageFiles entry" although no such URL existed. It now reports `pageUrls` (ready `file://` URLs) for a static folder, or `devCommand` for a project with a dev script, and `_instructions` say which to do. Output with a found `devUrl`, and without the flag, is unchanged. New cases: `live-boot-no-dev-server-static`, `live-boot-no-dev-server-dev-script`.
 
+
 ## Recorded 2026-11-12: live-wrap and live-insert locate a bare element by its tag
 
 A picked element with no id and no class (a fresh page's `<h1>`) could not be wrapped: preflight skipped it as `insufficient_locator` and the command the event printed failed with `Need at least one of: --element-id, --classes, --query`. A tag alone now locates it (`docs/CLI-CONTRACT.md`, live-wrap args). `live-wrap-missing-locator` and `live-insert-missing-locator` change to the new message (the wrap case now passes no locator at all, since `--tag h1` is one), both help goldens gain the "a tag alone is enough" line, and three new cases pin the behavior: `live-wrap-tag-only`, `live-wrap-tag-only-text-picks-second` (a short text that is one element's whole text) and `live-wrap-tag-only-ambiguous` (two elements with the same text give `element_ambiguous`, never the first match).
 
+## Recorded 2026-11-12: live-wrap isolates an element that shares its line; accept refuses shared marker lines
+
+A picked element in the middle of a line (a minified or one-line page) used to answer `element_not_found`, and a hand-written wrapper on such a line lost the rest of the line on accept. `live-wrap` and `live-insert` now split the line around a block-level element (and any element in JSX) before wrapping, and answer `element_inline` where a split could change rendering. `live-accept` answers `markers_share_line` and writes nothing when a marker shares its line with other content. No existing golden changed; 20 cases added (`live-wrap-same-line-*`, `live-insert-same-line-*`, `live-accept-shared-*`).
+
+## Recorded 2026-11-12: a shared marker line on accept exits 0 with mode "error"
+
+`live-accept` answered `markers_share_line` with exit 1, and `live-poll` reads an accept's stdout only on exit 0, so the poll replaced the refusal with a generic `Command failed` and the agent never saw the hint. The refusal now carries `mode: "error"` and exits 0, the same shape as `source_locked`, and the poll instructions name the repair (move each marker onto a line of its own, rerun the command). Source and receipts are still untouched. The 8 `live-accept-shared-*` goldens changed in `exit` (1 to 0) and in `stdout` (the added `mode` field) only; no other golden changed.
+
 ## Recorded 2026-11-12: live-wrap never matches inside a comment, script, style or textarea
 
 The line resolver searched comment and raw-text contents like markup, so `live-wrap --query hero-hook` on the `live-html` fixture matched the `.hero-hook` CSS rule and wrapped the page's `<style>` block in `<head>`. The element scans now read tags through one lexer that skips comments, raw-text contents and quoted attribute values, and matches HTML tag names case-insensitively; comment and raw-text contents are blanked before the search, so the query lands on `<p class="hero-hook">` in the body. `live-wrap-html-by-query` changed in `stdout` (startLine 14, endLine 22, originalLineCount 1) and in the written `index.html`; no other golden changed.
+
+## Recorded 2026-11-13: unsafe inline isolation uses the shared-line fallback
+
+- `live-wrap-same-line-text-inline`, `live-insert-same-line-text-inline`,
+  `live-wrap-same-line-inline-spans`, `live-insert-same-line-inline-spans`:
+  unsafe isolation now reports `element_ambiguous` with `reason: "shared_line"`,
+  the candidate line range, and the existing shared-line manual-wrapper hint
+  instead of `element_inline`. This keeps whitespace-sensitive refusals on the
+  fallback the agent already handles. Reviewed all four decoded goldens:
+  only stderr changes; exit 1, empty stdout, and source files stay unchanged.
 
 ## Recorded 2026-11-13: a seeded world outranks starter CSS; `world` refuses on any design file the context reader finds
 
