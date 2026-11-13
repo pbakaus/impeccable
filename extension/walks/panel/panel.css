@@ -30,7 +30,7 @@ b { font-weight: 500; }
 
 #app { min-height: 100%; display: flex; flex-direction: column; padding: 16px 20px 20px; }
 
-/* ---------- faces: src/admin-ui/face.ts FACE_CSS ---------- */
+/* ---------- faces: one cell of a face sheet, cropped as the web app crops it ---------- */
 .face { --face-cx: .5; --face-cy: .4; --face-zoom: 1.82; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; overflow: hidden;
   background-color: var(--paper-deep); border: 1px solid var(--rule);
   background-image: var(--face, none); background-repeat: no-repeat; background-size: calc(100% * var(--face-zoom));

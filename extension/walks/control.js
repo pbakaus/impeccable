@@ -80,7 +80,7 @@ let answering = null;
  * walking first (paused, taken over, ended). Nothing else the walk asks is done meanwhile (`clear`).
  */
 function consent(ask) {
-  // The approved plan approved its steps up front, another site among them (the person's word, REN-1838).
+  // The approved plan approved its steps up front, another site among them.
   if (plannedWalk) return Promise.resolve('yes');
   if (!dispatch({ type: 'ask', ask })) return Promise.resolve('void');
   return new Promise((resolve) => {

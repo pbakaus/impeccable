@@ -71,7 +71,7 @@ function icon(name) {
 
 /**
  * A persona's face: one cell of its face sheet (six moods, three across and two down), cropped as the app crops it
- * (src/admin-ui/face.ts): tight under 60px, head and shoulders above. No picture: the initial in the same circle.
+ * in its own pages: tight under 60px, head and shoulders above. No picture: the initial in the same circle.
  */
 const CELLS = ['neutral', 'curious', 'confident', 'confused', 'frustrated', 'delighted'];
 function face(person, size, mood = 'neutral', cls = '') {
@@ -326,7 +326,8 @@ async function knowAccount() {
   const was = account?.signedIn === true;
   account = answer?.ok === true && answer.available === true ? answer : null;
   if (account?.signedIn === true && (!was || pre.personas === null)) void loadPersonas();
-  if (!isLive(view) && pre.screen === 'home') render();
+  // Drawn again only when the sign-in changed: a redraw would take the task box from under the person's typing.
+  if (was !== (account?.signedIn === true) && !isLive(view)) render();
 }
 
 /** The walk's results page, as the worker kept it: only on the walk's own server (handoff.js `resultLink`). */
