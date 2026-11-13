@@ -465,8 +465,8 @@ pub enum Dialect {
     /// HTML: `<!-- -->` comments, tag names in any case, so `<Textarea>`
     /// holds raw text like `<textarea>`.
     Html,
-    /// Vue, Svelte and Astro: HTML comments plus `{...}` expressions, and a
-    /// component name (`Script`) only as written.
+    /// Vue, Svelte, Astro and MDX: HTML comments plus `{...}` expressions,
+    /// and a component name (`Script`) only as written.
     Components,
     /// JS and TS modules: the file is JS, and markup is the JSX inside it.
     /// Strings, template literals and comments there are no markup.
@@ -483,7 +483,7 @@ impl Dialect {
             .unwrap_or_default();
         match ext.as_str() {
             "jsx" | "tsx" | "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" => Dialect::Jsx,
-            "vue" | "svelte" | "astro" => Dialect::Components,
+            "vue" | "svelte" | "astro" | "mdx" => Dialect::Components,
             _ => Dialect::Html,
         }
     }
@@ -1792,6 +1792,10 @@ mod tests {
             ");",
         ]);
         assert_eq!(find_all_elements(&page, "<h1", Some("h1"), Dialect::Jsx).iter().map(|m| m.start_line).collect::<Vec<_>>(), vec![0, 4]);
+        // MDX is markup with JSX expressions, so `{/* */}` is a comment there.
+        let doc = lines(&["{/* <h1>Old</h1> */}", "<h1>Real</h1>"]);
+        let found = find_all_elements(&doc, "<h1", Some("h1"), Dialect::of("docs/Intro.mdx"));
+        assert_eq!(found.iter().map(|m| m.start_line).collect::<Vec<_>>(), vec![1]);
         // Wrapping a tsx component end to end.
         for insert in [false, true] {
             let source = "const m = \"<!--\";\nexport default function Page() {\n  return (\n    <h1 id=\"picked\">Title</h1>\n  );\n}\n";
