@@ -256,6 +256,13 @@ fn each_check_passes_and_fails_on_its_own_evidence() {
         ("slop markup in components only", vec![("src/App.tsx", NESTED_CARDS.into()), ("src/app.css", ".card { padding: 1rem; }\n".into())], false, "no-generic-ai-patterns", None),
         ("tailwind from a CDN", vec![("index.html", "<!doctype html><html><head><script src=\"https://cdn.tailwindcss.com\"></script></head><body class=\"bg-white\"><p class=\"text-gray-200\">Faint</p></body></html>".into())], false, "readable-contrast", None),
         ("styles from a remote stylesheet", vec![("index.html", "<!doctype html><html><head><link rel=\"stylesheet\" href=\"https://example.com/site.css\"></head><body><p class=\"faint\">Faint</p></body></html>".into())], false, "readable-contrast", None),
+        ("styles from an imported remote stylesheet", vec![("index.html", "<!doctype html><html><head><style>@import url(\"https://example.com/site.css\");</style></head><body><p class=\"faint\">Faint</p></body></html>".into())], false, "readable-contrast", None),
+        ("a local stylesheet imports a remote one", vec![("index.html", "<!doctype html><html><head><link rel=\"stylesheet\" href=\"site.css\"></head><body><p class=\"faint\">Faint</p></body></html>".into()), ("site.css", "@import 'https://example.com/theme.css';\n".into())], false, "readable-contrast", None),
+        ("a local import is no outside style", vec![("index.html", "<!doctype html><html><head><link rel=\"stylesheet\" href=\"site.css\"></head><body><p>Hello</p></body></html>".into()), ("site.css", "@import './base.css';\n".into()), ("base.css", "p { color: #111; }\n".into())], false, "readable-contrast", Some("checked")),
+        ("styles set by an inline script", vec![("index.html", "<!doctype html><html><body><p id=\"p\">Faint</p><script>document.getElementById('p').style.color = '#eee';</script></body></html>".into())], false, "readable-contrast", None),
+        ("a JSON-LD block runs nothing", vec![("index.html", "<!doctype html><html><head><script type=\"application/ld+json\">{\"@type\":\"WebSite\"}</script></head><body><p>Hello</p></body></html>".into())], false, "readable-contrast", Some("checked")),
+        ("a script named json.js still runs", vec![("index.html", "<!doctype html><html><head><script src=\"json.js\"></script><script id=\"importmap-loader\">document.body.style.color = '#eee';</script></head><body><p>Hello</p></body></html>".into())], false, "readable-contrast", None),
+        ("an import map runs nothing", vec![("index.html", "<!doctype html><html><head><script type='importmap'>{\"imports\":{}}</script></head><body><p>Hello</p></body></html>".into())], false, "readable-contrast", Some("checked")),
         ("a suppressed contrast finding", vec![("index.html", "<!doctype html><html><body><!-- impeccable-disable low-contrast --><p style=\"color:#bbb;background:#fff\">Faint</p></body></html>".into())], false, "readable-contrast", None),
         ("a vite library", vec![("package.json", r#"{"devDependencies":{"vite":"6.0.0"}}"#.into()), ("vite.config.ts", "export default {};\n".into()), ("src/index.ts", "export const x = 1;\n".into())], false, "app-icons", None),
         ("an expo app is not a site", vec![("package.json", r#"{"dependencies":{"expo":"52.0.0","react-native":"0.76.0","expo-router":"4.0.0"}}"#.into()), ("app.json", "{\"expo\":{}}\n".into()), ("app/index.tsx", "export default function I() {}\n".into())], false, "app-icons", None),
@@ -370,4 +377,26 @@ fn an_empty_folder_claims_nothing() {
     let got = foundations(&dir);
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(got, serde_json::json!({ "items": {}, "next": null }));
+}
+
+#[test]
+fn a_capped_walk_proves_no_detector_pass() {
+    // Catches: a "none found" pass for contrast or generic patterns when the
+    // walk stopped at its file cap and so left pages unseen.
+    let dir =
+        std::env::temp_dir().join(format!("impeccable-foundations-cap-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("notes")).unwrap();
+    std::fs::write(
+        dir.join("index.html"),
+        "<!doctype html><html><body><p>Hello</p></body></html>",
+    )
+    .unwrap();
+    for i in 0..20_001 {
+        std::fs::write(dir.join(format!("notes/{i}.txt")), "").unwrap();
+    }
+    let got = foundations(&dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    for id in ["readable-contrast", "no-generic-ai-patterns"] {
+        assert_eq!(got["items"].get(id), None, "{id}: {}", got["items"]);
+    }
 }
