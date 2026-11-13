@@ -205,6 +205,10 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
+        Resolution::SharedLine(file, m) => {
+            eprintln(io, &json_compact(&element_shared_line_error(&jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[&file.path])), m)));
+            return 1;
+        }
         Resolution::AmbiguousFiles(hits) => {
             eprintln(
                 io,
