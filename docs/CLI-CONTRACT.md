@@ -2545,6 +2545,8 @@ statuses and malformed responses preserve it. A 200 in paused, plan or empty
 state replaces the cache at once, so the next boot prints none of the old
 rules. Logout removes taste.json, and so does every new sign-in (it may be
 another person);
+so does a token renewal whose grant no longer includes taste:read, under the
+same lock;
 a late refresh cannot restore it after logout or replace a newer sign-in's
 cache. Under the write lock, every reply is discarded if the cache differs
 from the snapshot taken before fetching, including a deletion or pause.

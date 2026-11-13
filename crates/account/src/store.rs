@@ -367,6 +367,12 @@ impl Store {
         write_private(&self.dir.join("state.json"), &bytes)
     }
 
+    /// Drop the cached taste rules (caller holds the lock), for a sign-in
+    /// that no longer holds `taste:read`.
+    pub fn clear_taste(&self, _lock: &Lock) {
+        let _ = fs::remove_file(self.account.home.join("taste.json"));
+    }
+
     /// The tombstone: signed out under a new generation, then the secret
     /// removed from every backend (caller holds the lock).
     pub fn sign_out(

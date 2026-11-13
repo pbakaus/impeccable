@@ -193,6 +193,12 @@ impl Session {
             &state.scopes,
         ) {
             Ok(tokens) => {
+                // A renewal that drops `taste:read` takes the cached rules with
+                // it, under this lock and before the grant is saved: a crash in
+                // between costs a refetch, never rules nothing would refresh.
+                if !tokens.taste {
+                    self.store.clear_taste(lock);
+                }
                 let generation = state.generation + 1;
                 let next_state = State {
                     foundations: tokens.foundations,

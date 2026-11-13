@@ -2,7 +2,7 @@
 use crate::config::Account;
 use crate::http::ApiError;
 use crate::session::{now, Session, SessionError};
-use crate::store::{write_private, Store};
+use crate::store::{write_private, State, Store};
 use impeccable_common::Io;
 use impeccable_context::taste;
 use serde_json::{json, Value};
@@ -52,6 +52,25 @@ fn reply_is_current(previous: Option<&Value>, current: Option<&Value>) -> bool {
     previous == current
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Held {
+    /// Signed out or signed in again: the copy belongs to that sign-in now.
+    Replaced,
+    /// The same sign-in lost `taste:read` (a renewal dropped it): its copy goes.
+    Revoked,
+    Current,
+}
+
+/// What the worker may do with the copy once it holds the lock.
+fn held(before: &State, now: Option<&State>) -> Held {
+    match now {
+        Some(s) if s.signed_in && s.login == before.login => {
+            if s.taste { Held::Current } else { Held::Revoked }
+        }
+        _ => Held::Replaced,
+    }
+}
+
 /// Hidden detached worker: silent and best effort, including argument errors.
 pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     if !args.is_empty() || opted_out(io) { return 0; }
@@ -67,9 +86,14 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     let url = format!("{}/cli/v1/taste?limit=12", account.issuer);
     let answer = session.call(|c, token| c.get_taste(&url, token, etag));
     // Order installation/deletion with logout and reject a replaced sign-in.
-    let Ok(_lock) = store.lock() else { return 0; };
-    if !store.state().is_some_and(|s| s.signed_in && s.taste && s.login == state.login) {
-        return 0;
+    let Ok(lock) = store.lock() else { return 0; };
+    match held(&state, store.state().as_ref()) {
+        Held::Replaced => return 0,
+        Held::Revoked => {
+            store.clear_taste(&lock);
+            return 0;
+        }
+        Held::Current => {}
     }
     if !reply_is_current(snapshot.as_ref(), taste::read(&path).as_ref()) {
         return 0;
@@ -92,6 +116,25 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_lost_grant_clears_only_the_same_sign_ins_copy() {
+        let state = |signed_in: bool, login: u64, taste: bool| -> State {
+            serde_json::from_value(json!({
+                "schema": 1, "issuer": "https://i.invalid", "generation": 4,
+                "signed_in": signed_in, "backend": "file", "token_endpoint": "",
+                "login": login, "taste": taste,
+            }))
+            .unwrap()
+        };
+        let before = state(true, 2, true);
+        assert_eq!(held(&before, Some(&state(true, 2, true))), Held::Current);
+        assert_eq!(held(&before, Some(&state(true, 2, false))), Held::Revoked);
+        assert_eq!(held(&before, Some(&state(true, 3, false))), Held::Replaced);
+        assert_eq!(held(&before, Some(&state(true, 3, true))), Held::Replaced);
+        assert_eq!(held(&before, Some(&state(false, 2, false))), Held::Replaced);
+        assert_eq!(held(&before, None), Held::Replaced);
+    }
 
     #[test]
     fn late_replies_cannot_replace_changed_or_deleted_copies() {
