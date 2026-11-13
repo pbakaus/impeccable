@@ -24,6 +24,7 @@ pub mod list_rules;
 pub mod profiler;
 pub mod project_tokens;
 pub mod regex_matchers;
+pub mod sarif;
 pub mod skills;
 pub mod util;
 

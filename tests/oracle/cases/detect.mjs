@@ -160,6 +160,32 @@ function Thumb({ url }: { url?: string }) {
       setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
       args: ['--no-config', '--github', 'ok.css'],
     },
+    { id: 'detect-sarif-json', verb: 'detect', args: ['--sarif', '--json'] },
+    {
+      id: 'detect-sarif', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(
+        path.join(ws, 'card.html'),
+        '<div style="border-left: 4px solid #ff0000; border-radius: 10px">x</div>\n',
+      ),
+      args: ['--no-config', '--sarif', 'card.html'],
+      // driver.version is the crate version. The lookahead keeps the SARIF
+      // log version (2.1.0, which is followed by "runs") pinned.
+      normalize: [[
+        '"version": "\\d+\\.\\d+\\.\\d+"(?=,\\s+"informationUri")',
+        '',
+        '"version": "<ENGINE>"',
+      ]],
+    },
+    {
+      id: 'detect-sarif-clean', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
+      args: ['--no-config', '--sarif', 'ok.css'],
+      normalize: [[
+        '"version": "\\d+\\.\\d+\\.\\d+"(?=,\\s+"informationUri")',
+        '',
+        '"version": "<ENGINE>"',
+      ]],
+    },
     { id: 'detect-list-rules', verb: 'detect', args: ['--list-rules'] },
     { id: 'detect-list-rules-json', verb: 'detect', args: ['--list-rules', '--json'] },
     { id: 'detect-list-rules-quiet', verb: 'detect', args: ['--list-rules', '--quiet'] },
