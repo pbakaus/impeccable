@@ -41,6 +41,8 @@ pub struct Knobs {
     pub routes: HashMap<(String, String), (u16, Vec<(String, String)>, Vec<u8>)>,
     /// Paths whose answers wait until their gate opens (see [`Fake::hold`]).
     pub gates: HashMap<String, Arc<Gate>>,
+    /// Scopes the next token renewals no longer grant.
+    pub refresh_drops: Vec<&'static str>,
 }
 
 /// Holds a response until [`Gate::open`].
@@ -721,9 +723,9 @@ fn token(
     {
         return json(400, serde_json::json!({ "error": "invalid_target" }));
     }
-    let (ttl, omit_scope) = {
+    let (ttl, omit_scope, drops) = {
         let k = knobs.lock().unwrap();
-        (k.access_ttl, k.omit_token_scope)
+        (k.access_ttl, k.omit_token_scope, k.refresh_drops.clone())
     };
     let mut r = record.lock().unwrap();
     let grant = match form.get("grant_type").map(String::as_str) {
@@ -756,6 +758,10 @@ fn token(
             }
             let grant = r.grant_of.get(&t).copied().unwrap_or(0);
             r.spent_refresh.insert(t);
+            if let Some(scope) = r.grant_scopes.get_mut(&grant) {
+                *scope = scope.split_whitespace().filter(|s| !drops.contains(s))
+                    .collect::<Vec<_>>().join(" ");
+            }
             grant
         }
         _ => {
