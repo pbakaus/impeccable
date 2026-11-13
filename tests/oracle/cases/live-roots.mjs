@@ -19,6 +19,7 @@ const CSP_QUOTE_STYLES_HTML = '<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv
 
 export default [
   // --- live.mjs (boot) ---
+  { id: 'live-boot-empty-folder', verb: 'live', args: ['--allow-missing-context', '--dev-url', '--auto-config'], files: F },
   { id: 'live-help', verb: 'live', workspace: 'live-html', args: ['--help'] },
   { id: 'live-target-missing-value', verb: 'live', workspace: 'live-html', args: ['--target'] },
   { id: 'live-boot-html-config-missing', verb: 'live', workspace: 'live-html', setup: (ws) => rm(ws, CFG), files: F },

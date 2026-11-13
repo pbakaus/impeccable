@@ -7385,3 +7385,14 @@ The line resolver searched comment and raw-text contents like markup, so `live-w
   instead of `element_inline`. This keeps whitespace-sensitive refusals on the
   fallback the agent already handles. Reviewed all four decoded goldens:
   only stderr changes; exit 1, empty stdout, and source files stay unchanged.
+
+## Recorded 2026-11-13: a seeded world outranks starter CSS; `world` refuses on any design file the context reader finds
+
+New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to be dropped whenever the project read as having a visual implementation, which a scaffold's starter `globals.css` with three custom properties already does, so the boot treated boilerplate as the incumbent world. The line now fires whenever DESIGN.md names a seeded world, with a variant for a project that has code: the world outranks the styles in code, starter styles are no incumbent world, and the reference-image step applies until a build has resolved the world. The no-PRODUCT.md boot with code and a seeded world no longer prints `EXISTING_VISUAL_SYSTEM` or `SCOPED_EXISTING_ALLOWED`. `impeccable world <id>` now also refuses when `context` from the same directory would read a DESIGN.md elsewhere (`docs/`, `.agents/context/`, a workspace's repo root, `IMPECCABLE_CONTEXT_DIR`), and the merge line names that file. Existing goldens are unchanged.
+
+- `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: the seeded world with starter CSS, without and with PRODUCT.md.
+- `world-refuses-docs-design`: `docs/DESIGN.md already exists, so nothing was written. ...`, exit 0, nothing written, no request.
+
+## Recorded 2026-11-13: explicit redesign requests override a seeded world
+
+- `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.

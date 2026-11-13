@@ -1996,9 +1996,9 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
   1. Workspace monorepo selection (`resolveTargetSelection`, only when no target, cwd is a workspace/monorepo root with discoverable children): `{ok:false, error:'target_selection_required', targetPath:null, projectRoot, repoRoot, targetCandidates:[{name, path, targetExample, …context summary}], hint:'Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.', skippedNonUiWorkspaces?}` (the count only when > 0, as in `context`).
   2. `resolveRoots` selection → `{ok:false, error:'target_selection_required', targetCandidates:[{name,path}], hint:'Several apps with a dev-server config exist. Ask the user which one to use, then rerun with --target <path into that app>.'}`.
   3. Missing/unreadable/empty PRODUCT.md or DESIGN.md → `{ok:false, error:'context_missing', missing:['PRODUCT.md'?,'DESIGN.md'?], nextCommand:'init'|'document', targetPath, projectRoot, repoRoot, productPath:rel|null, designPath:rel|null}`. With `--allow-missing-context` the boot continues instead, and only then the success payload gains `contextMissing:[...]` (the same names; `[]` when nothing is missing) and `contextNote` (a sentence telling the agent to extract the identity from the page and never run init or document mid-session; `null` when nothing is missing), with `hasProduct`/`hasDesign` false and `product`/`design` null for the missing ones.
-  4. `writeRootsManifest(roots)`.
+  4. Before writing anything, a missing config with no HTML file in the existing auto-config CSP scan (same depth and excluded directories), no package.json, and no recognized framework signal returns compact `{ok:false,error:"no_page",path:<appRoot>}`, exit 1. It creates no `.impeccable/` directory or roots manifest. Otherwise, `writeRootsManifest(roots)`.
   5. `node live-inject.mjs --check` (cwd appRoot, 15 s): not ok → print that JSON (`{ok:false,error:'config_missing'|'config_invalid',path,message?}` or `{ok:false,error:'check_failed',raw}`) + `targetPath, projectRoot, repoRoot`, exit 0.
-     With `--auto-config` (opt-in on `live`, passed through to `live-inject --check --auto-config`; without it a missing config is reported as before and nothing is written), a missing config is created only if no framework config file (`svelte.config.*`, `nuxt.config.*`, `next.config.*`, `astro.config.*`, `app.config.*`, `remix.config.*`) sits in appRoot, appRoot contains an `index.html` file containing the literal, case-sensitive `</body>` anchor used by injection, the existing live framework resolver selects static HTML or generic Vite (not SvelteKit, Nuxt, Next, Astro, or TanStack Start), and `detect-csp` reports `shape: null`. The exact file content is `{"files":["index.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}`. The path is the same resolved path used by `config_missing`, including `IMPECCABLE_LIVE_CONFIG` and `--target`. Continue boot after creation; the successful check and boot payloads add `configCreated: true` only when that invocation created the file. Existing configs are never overwritten. All other missing-config cases retain the existing payload. With `--dev-url` and a discovered `devUrl`, boot `_instructions` name that URL as the page origin to open. With no discovered URL, they name the first static `pageUrls` entry or tell the agent to start `devCommand` in the background, wait for its printed URL, and run boot again. Without `--dev-url`, the instructions are unchanged.
+     With `--auto-config` (opt-in on `live`, passed through to `live-inject --check --auto-config`; without it a missing config is reported as before and nothing is written), a missing config is created only if no framework config file (`svelte.config.*`, `nuxt.config.*`, `next.config.*`, `astro.config.*`, `app.config.*`, `remix.config.*`) sits in appRoot, appRoot contains an `index.html` file containing the literal, case-sensitive `</body>` anchor used by injection, the existing live framework resolver selects static HTML or generic Vite (not SvelteKit, Nuxt, Next, Astro, or TanStack Start), and `detect-csp` reports `shape: null`. The exact file content is `{"files":["index.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}`. The path is the same resolved path used by `config_missing`, including `IMPECCABLE_LIVE_CONFIG` and `--target`. Continue boot after creation; the successful check and boot payloads add `configCreated: true` only when that invocation created the file. Existing configs are never overwritten. Apart from `no_page` above, all other missing-config cases retain the existing payload. With `--dev-url` and a discovered `devUrl`, boot `_instructions` name that URL as the page origin to open. With no discovered URL, they name the first static `pageUrls` entry or tell the agent to start `devCommand` in the background, wait for its printed URL, and run boot again. Without `--dev-url`, the instructions are unchanged.
   6. Reuse server if `server.json` pid alive, else `node live-server.mjs --background`; failure → `{ok:false,error:'server_start_failed'}` exit 1.
   7. `node live-inject.mjs --port P --token T`; not ok → `{ok:false,error:'inject_failed',detail:<json|raw>,serverPort}` exit 1.
   8. Drift scan: `.html` files under `public, src, app, pages` (skipping ignored dirs/dot-dirs) not in resolved files and not user-excluded → `configDrift = {orphans:[≤20], orphanCount, hint:'N HTML file(s) exist but aren\'t in config.files. Consider adding them, or use a glob pattern like "public/**/*.html".'}` else `null`.
@@ -2371,6 +2371,88 @@ object on stdout and exits 0 on success, 1 otherwise.
   base64url without padding. Chapters are sorted, in milliseconds. `post` is
   ready to merge into a `needs_you.post` call: attachment ids `film` and
   `poster`, and `interaction: {kind:"walkthrough", film, shot, ship:{label}, chapters}`.
+## World seed
+
+Exact output strings:
+
+- `Usage: impeccable world <id> [--print]`
+- `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
+- `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
+- `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
+- `Using a world needs your Impeccable account. Run impeccable login, then try again.`
+- `Your sign-in expired. Run impeccable login, then try again.`
+- `Using a world needs a fresh sign-in. Run impeccable login, then try again.`
+- `The world <id> needs Pro. See impeccable.style/pricing`
+- `No world has the id <id>. Copy the id from the world in the Impeccable worlds catalog.`
+- `Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.`
+
+`impeccable world <id>` seeds the current directory's design system from a
+catalog world. An id is 1 to 64 lowercase letters, digits and single inner
+dashes; anything else exits 1 without a request. When `DESIGN.md`,
+`DESIGN.json` or `.impeccable/design.json` exists in the chosen destination
+or project root (a symlink counts), or
+`context` run from the same directory would read a DESIGN.md somewhere else
+(the context reader's own resolver: `docs/` or `.agents/context/`, a
+workspace's repo root, or `IMPECCABLE_CONTEXT_DIR`), it writes nothing, makes
+no request, prints the merge line on stdout and exits 0. The merge line names
+the file it found, relative to the current directory (`docs/DESIGN.md`,
+`../../DESIGN.md`).
+
+Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
+token (scope `worlds:read`, which `login` requests whenever the service lists
+it in `scopes_supported`; plan-gated by the service). A 200 answer must be
+`{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
+to 120 characters without control characters, a non-blank `design_md` and an
+object `sidecar`, each at most 256 KiB; anything else, a 200 body that is
+not JSON included, is the "can't read" line. The written `DESIGN.md` names
+its world in a frontmatter `world: "<id>"` line, the one every later boot and
+`concept-seed` roll reads: a frontmatter without one gets it as its first key,
+a seed with no frontmatter gets one holding only that line, and a frontmatter
+that names another world, holds an id the reader rejects, or never closes is
+refused before anything is written, with `The DESIGN.md your Impeccable
+account sent for <id> can't record which world it came from, so nothing was
+written. Update the Impeccable CLI and try again.` on stderr, exit 1. It
+writes `.impeccable/design.json` at the resolved project root (the sidecar plus
+`seededFrom: {world, name}`) and then `DESIGN.md`. The destination is resolved once with context from cwd:
+
+1. No PRODUCT.md resolves: write DESIGN.md at the project root (cwd as a fallback).
+2. PRODUCT.md is inside the project root, including `docs/` or `.agents/context/`:
+   write beside it, opening each folder from the pinned project root with the
+   same no-symlink and Windows reparse-point checks as `.impeccable`.
+3. PRODUCT.md is in `IMPECCABLE_CONTEXT_DIR`: write beside it. Opening this
+   explicitly configured external directory by path is allowed.
+4. PRODUCT.md is outside the project root and not in `IMPECCABLE_CONTEXT_DIR`:
+   write nothing and exit 1. One plain message names its folder relative to cwd,
+   explains that a workspace seed would hide that PRODUCT.md and a seed beside
+   it would apply to every workspace, and offers running `impeccable world <id>`
+   from that folder to seed the whole repository or `impeccable world <id> --print`
+   and saving it where it belongs.
+
+The sidecar stays at the project root, where context reads it for that design,
+including local fallback and explicitly configured context folders.
+Each file is create-new, so an
+existing file or symlink is never followed or replaced. Both are created
+relative to directory handles held open (on Unix), so a `.impeccable` that
+is a symlink is refused and one swapped after the check cannot redirect a
+write or a rollback. Elsewhere `.impeccable` must be a real folder, not a
+symlink, junction or other reparse point, rechecked before each create and
+remove in it. A file this run created but could not fill (a full
+disk) is removed again; if `DESIGN.md` loses
+that race the sidecar it wrote is removed and the merge line is printed.
+401 after a refresh is the expired line, 403 `insufficient_scope` the fresh
+sign-in line, any other 403 the Pro line, 404 the unknown-id line; network
+failures say the account couldn't be reached. Every failure exits 1 and
+writes nothing.
+
+On success, when stdout is a terminal, `COLORTERM` is `truecolor` or `24bit`,
+`NO_COLOR` is unset or empty and `TERM` is not `dumb`, a row of up to 12
+24-bit colour swatches follows the first line: the `#rgb`, `#rrggbb` and
+`oklch()` values in the seed's DESIGN.md frontmatter `colors:` block, in
+order. Pipes and agents never see escape codes.
+
+`--print` skips the existence check and the writes and prints the answer as
+one JSON line `{id, name, design_md, sidecar}` on stdout, for an agent to
+merge into an existing design system.
 
 ## Setup status
 

@@ -1,0 +1,9 @@
+{
+  "stdout": "docs/DESIGN.md already exists, so nothing was written. To merge this world into it, run impeccable world kinpaku --print and fold its DESIGN.md into yours.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "docs/DESIGN.md": "# Ours\n"
+  }
+}

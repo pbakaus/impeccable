@@ -32,6 +32,8 @@ pub struct Knobs {
     pub design_denied: bool,
     pub critiques: bool,
     pub critiques_denied: bool,
+    /// `scopes_supported` lists `worlds:read`.
+    pub worlds: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -324,6 +326,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.taste { scopes.push("taste:read"); }
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
+                        if k.worlds { scopes.push("worlds:read"); }
                         scopes
                     }),
                 }),
@@ -343,6 +346,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "foundations:write" => k.foundations,
                         "taste:read" => k.taste,
                         "design:write" => k.design,
+                        "worlds:read" => k.worlds,
                         _ => false,
                     })
                 };

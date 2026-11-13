@@ -31,21 +31,24 @@ Modes:
 Output (JSON):
   { ok, file, inserted|removed, config? }";
 
-/// Create only the common HTML/Vite config, using the same detectors as the
-/// injection and detect-csp verbs. Exclusive creation preserves an existing file.
-fn auto_configure(cwd: &str, path: &str) -> bool {
-    use std::io::Write;
-    // A framework's own config file means its adapter or setup guide decides, even when
-    // the framework resolver can't confirm it yet (dependencies not installed, say).
-    let framework_config = std::fs::read_dir(cwd).is_ok_and(|entries| {
+pub(crate) fn has_framework_config(cwd: &str) -> bool {
+    std::fs::read_dir(cwd).is_ok_and(|entries| {
         entries.flatten().any(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
             ["svelte.config.", "nuxt.config.", "next.config.", "astro.config.", "app.config.", "remix.config."]
                 .iter()
                 .any(|prefix| name.starts_with(prefix))
         })
-    });
-    if framework_config {
+    })
+}
+
+/// Create only the common HTML/Vite config, using the same detectors as the
+/// injection and detect-csp verbs. Exclusive creation preserves an existing file.
+fn auto_configure(cwd: &str, path: &str) -> bool {
+    use std::io::Write;
+    // A framework's own config file means its adapter or setup guide decides, even when
+    // the framework resolver can't confirm it yet (dependencies not installed, say).
+    if has_framework_config(cwd) {
         return false;
     }
     if !std::path::Path::new(&jsp::join(&[cwd, "index.html"])).is_file()
