@@ -993,19 +993,46 @@ fn lex_markup(
 /// line. When the lexer loses its place, `lines` come back unmasked: the
 /// search before masking, rather than elements hidden by a misread.
 pub(crate) fn mask_markup(lines: &[String], dialect: Dialect) -> Vec<String> {
-    let mut out: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
+    masked_chars(lines, dialect).map_or_else(
+        || lines.to_vec(),
+        |out| out.into_iter().map(|l| l.into_iter().map(|(c, hidden)| if hidden { ' ' } else { c }).collect()).collect(),
+    )
+}
+
+/// `lines` joined with `\n`, masked like `mask_markup` but byte for byte (a
+/// hidden multibyte char becomes as many spaces), so byte offsets into the
+/// joined source still hold. None when the lexer loses its place.
+pub(crate) fn mask_source(lines: &[String], dialect: Dialect) -> Option<String> {
+    let out = masked_chars(lines, dialect)?;
+    let mut source = String::new();
+    for (i, line) in out.into_iter().enumerate() {
+        if i > 0 {
+            source.push('\n');
+        }
+        for (c, hidden) in line {
+            if hidden {
+                source.extend(std::iter::repeat(' ').take(c.len_utf8()));
+            } else {
+                source.push(c);
+            }
+        }
+    }
+    Some(source)
+}
+
+/// Each char of `lines` and whether the lexer hid it; None when the lexer
+/// loses its place.
+fn masked_chars(lines: &[String], dialect: Dialect) -> Option<Vec<Vec<(char, bool)>>> {
+    let mut out: Vec<Vec<(char, bool)>> = lines.iter().map(|l| l.chars().map(|c| (c, false)).collect()).collect();
     let clean = lex_markup(lines, 0, dialect, false, false, |event| {
         if let Lexed::Hidden { line, from, to } = event {
             for c in &mut out[line][from..to] {
-                *c = ' ';
+                c.1 = true;
             }
         }
         false
     });
-    if !clean {
-        return lines.to_vec();
-    }
-    out.into_iter().map(|l| l.into_iter().collect()).collect()
+    clean.then_some(out)
 }
 
 /// JS: detectCommentSyntax(filePath) → (open, close)
@@ -1556,6 +1583,23 @@ mod tests {
                 assert_eq!(code, 0, "{source:?} {out} {err}");
                 assert!(!out.contains("shared_line"), "{out}");
                 assert!(project.source("index.html").contains("data-impeccable-variants="), "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_js_string_comment_opener_keeps_same_line_targets() {
+        // PRRT_kwDOQWgufc62_DwB: a `"<!--"` or `"{/*"` in a module's code
+        // opens no comment, so a target sharing its line is still isolated.
+        for code in [r#"const m = "<!--";"#, r#"const m = "{/*";"#] {
+            let source = format!("{code}\nexport default function Page() {{\n  return (\n    <main>\n      <p>Intro</p><h1 id=\"picked\">Title</h1>\n    </main>\n  );\n}}\n");
+            for insert in [false, true] {
+                let project = TagProject::new("Page.tsx", &source);
+                let (code, out, err) = project.run(insert, &["--element-id", "picked", "--tag", "h1"]);
+                assert_eq!(code, 0, "{source:?} {out} {err}");
+                let written = project.source("Page.tsx");
+                assert!(written.contains("<p>Intro</p>"), "{written}");
+                assert!(written.contains("data-impeccable-variant"), "{written}");
             }
         }
     }

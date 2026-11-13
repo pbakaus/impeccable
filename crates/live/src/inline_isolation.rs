@@ -21,7 +21,10 @@ fn raw(name: &str) -> bool {
 /// `fold_case` is true for plain HTML, where `<IMG>` is the void `img`. In a
 /// file that can hold components (JSX, Vue, Svelte, Astro) `<Link>` and
 /// `<Input>` are components, so only a lowercase name is an HTML void.
-fn tokens(source: &str, fold_case: bool) -> Vec<Token> {
+/// `skip_comments` is false for a source `mask_source` already blanked: its
+/// lexer knows which `<!--` or `{/*` opens a comment and which sits in a JS
+/// string.
+fn tokens(source: &str, fold_case: bool, skip_comments: bool) -> Vec<Token> {
     let bytes = source.as_bytes();
     let mut out: Vec<Token> = Vec::new();
     let mut stack: Vec<usize> = Vec::new();
@@ -31,12 +34,12 @@ fn tokens(source: &str, fold_case: bool) -> Vec<Token> {
         if let Some(end) = source[4..].find("\n---") { i = end + 8; }
     }
     while i < bytes.len() {
-        if source.is_char_boundary(i) && source[i..].starts_with("{/*") {
+        if skip_comments && source.is_char_boundary(i) && source[i..].starts_with("{/*") {
             i = source[i + 3..].find("*/}").map_or(bytes.len(), |n| i + 3 + n + 3);
             continue;
         }
         if bytes[i] != b'<' { i += 1; continue; }
-        if source[i..].starts_with("<!--") {
+        if skip_comments && source[i..].starts_with("<!--") {
             i = source[i + 4..].find("-->").map_or(bytes.len(), |n| i + 4 + n + 3);
             continue;
         }
@@ -123,7 +126,12 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         // A configured .js/.ts/.mdx extension holds JSX too.
         let components = jsx || matches!(ext.as_str(), ".vue" | ".svelte" | ".astro"
             | ".js" | ".mjs" | ".cjs" | ".ts" | ".mdx");
-        let ts = tokens(&source, !components);
+        // Tokens are read from the masked source, whose byte offsets match
+        // `source`; when the lexer cannot finish, from `source` itself.
+        let ts = match mask_source(&file.lines, Dialect::of(&file.path)) {
+            Some(masked) => tokens(&masked, !components, false),
+            None => tokens(&source, !components, true),
+        };
         // The query that matches an opening tag, found once per file.
         let opener_query = queries.iter().find(|q| ts.iter().any(|n| !n.close
             && tag.map_or(true, |tag| tag.eq_ignore_ascii_case(&n.name))
