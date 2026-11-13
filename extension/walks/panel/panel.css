@@ -61,8 +61,12 @@ b { font-weight: 500; }
 .btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
 .pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pair .btn { width: 100%; }
-.mic { position: relative; width: 40px; height: 40px; flex: none; display: inline-grid; place-items: center; border-radius: 10px; border: 1.5px dashed var(--gold-deep); color: var(--gold-deep); }
-.mic em { position: absolute; top: -8px; right: -8px; font-family: var(--mono); font-style: normal; font-size: 9px; letter-spacing: .06em; padding: 1px 4px; border-radius: 4px; background: var(--ink); color: var(--paper-raised); }
+.mic { width: 40px; height: 40px; flex: none; display: inline-grid; place-items: center; border-radius: 10px; color: var(--gold-deep); }
+.mic:hover { background: var(--gray); color: var(--ink); }
+.mic .ic { width: 18px; height: 18px; }
+.mic[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--gold-wash); animation: listen 1.4s var(--ease) infinite; }
+@keyframes listen { 0%, 100% { box-shadow: 0 0 0 4px var(--gold-wash); } 50% { box-shadow: 0 0 0 7px var(--gold-wash); } }
+.mic-page #app { max-width: 420px; margin: 0 auto; }
 .err { font-size: 13px; line-height: 18px; color: var(--vermilion); text-wrap: balance; }
 .dots { display: inline-flex; gap: 4px; }
 .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: pulse 1.4s infinite; }

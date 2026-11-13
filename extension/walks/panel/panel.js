@@ -10,6 +10,7 @@ import { COPY } from './copy.js';
 import { resultLink } from '../handoff.js';
 import { emptyView, isLive, reduce } from '../view.js';
 import { BUILD } from '../../shared/build.js';
+import { listen, speechCtor } from './voice.js';
 
 const params = new URLSearchParams(location.search);
 const app = document.getElementById('app');
@@ -34,6 +35,9 @@ let walker = null;
 let walkUrl = null;
 /** Set once the person opened a walk's results: the panel goes home. A new walk clears it. */
 let ended = false;
+/** Talk to type (voice.js): the browser's speech recognition, none where it has none; and the listening under way. */
+const Speech = speechCtor();
+let voice = null;
 
 /* ------------------------------ building blocks ------------------------------ */
 
@@ -143,9 +147,9 @@ function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
   box.value = pre.task;
-  const send = () => { pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
+  const send = () => { hush(); pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
   return [
     top(hereUrl, { tools: true }),
@@ -157,11 +161,47 @@ function home() {
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
       el('div', { class: 'field' }, box, el('div', { class: 'row' },
-        el('span', { class: 'mic', title: COPY.home.mic, 'aria-label': COPY.home.mic }, icon('mic'), el('em', { text: 'V2' })),
+        Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
         el('span', { class: 'grow' }),
         button('send', COPY.home.send, 'gold', send))),
     ),
   ];
+}
+
+/**
+ * The mic: press to talk, press again to stop. Without the microphone yet, its own page asks for it in a tab (a side
+ * panel can't show Chrome's prompt), and listening starts once it is given.
+ */
+async function talk() {
+  if (voice) { voice.stop(); return; }
+  const mic = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
+  if (!mic || mic.state === 'granted') { hear(); return; }
+  if (mic.state === 'denied') { pre.note = COPY.voice['not-allowed']; render(); }
+  mic.onchange = () => {
+    mic.onchange = null;
+    if (mic.state === 'granted' && screen() === 'home' && !voice) hear();
+    else if (mic.state === 'denied') { pre.note = COPY.voice['not-allowed']; render(); }
+  };
+  void chrome.tabs.create({ url: chrome.runtime.getURL('walks/mic/mic.html'), active: true, ...(here ? { openerTabId: here } : {}) }).catch(() => undefined);
+}
+
+/** Listens once: the words go into the box as they come, after what is there, and stay there to edit until Send. */
+function hear() {
+  pre.note = '';
+  voice = listen(Speech, {
+    base: pre.task,
+    lang: navigator.language || 'en-US',
+    onText: (text) => { pre.task = text; const box = app.querySelector('textarea.text'); if (box) box.value = text; },
+    onEnd: (error) => { voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
+  });
+  render();
+}
+
+/** Ends listening at once, keeping the words so far: on Send, and when the panel leaves the box. */
+function hush() {
+  const was = voice;
+  voice = null;
+  was?.drop();
 }
 
 const WHY = COPY.why;
@@ -368,6 +408,7 @@ const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut
 
 function render() {
   const shown = screen();
+  if (shown !== 'home') hush();
   const focused = document.activeElement?.getAttribute?.('data-act');
   const body = document.body;
   body.dataset.state = view.state;
