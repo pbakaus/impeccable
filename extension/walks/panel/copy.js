@@ -26,6 +26,8 @@ export const COPY = {
     mic: 'Talk to type (coming in V2)',
     none: 'No personas yet.',
     failed: 'Couldn’t load your personas.',
+    retry: 'Try again',
+    signIn: 'Sign in again',
   },
   why: {
     tab: 'This tab can’t be walked. Open a web page first.',

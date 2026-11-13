@@ -128,13 +128,21 @@ const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? {
 async function loadPersonas() {
   const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
+  pre.failed = answer?.why ?? null;
   if (!isLive(view)) render();
+}
+
+/** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
+function unloaded() {
+  if (pre.failed !== 'signed-out') return button('retry', COPY.home.retry, 'gold', () => { pre.personas = undefined; render(); void loadPersonas(); });
+  const again = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'sign-in', text: COPY.home.signIn, onclick: () => { void signIn(again); } });
+  return again;
 }
 
 function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
-  if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }))];
+  if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
   box.value = pre.task;
   const send = () => { pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };

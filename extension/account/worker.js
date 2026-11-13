@@ -151,11 +151,15 @@ async function create({ description }) {
   return making.done;
 }
 
-/** The personas, and the description of one still being made (or sent and never answered), for the popup to wait on. */
+/**
+ * The personas, and the description of one still being made (or sent and never answered), for the popup to wait on.
+ * None: `signed-out` when no sign-in is kept any more (the server ended it), else `personas`.
+ */
 async function personas() {
   const [list, was] = await Promise.all([session.personas(), making ? null : kept()]);
   const creating = making?.description ?? (was?.open ? was.description : null);
-  return list ? { ok: true, personas: list, ...(creating ? { creating } : {}) } : { ok: false, why: 'personas' };
+  if (list) return { ok: true, personas: list, ...(creating ? { creating } : {}) };
+  return { ok: false, why: (await session.signedIn().catch(() => true)) ? 'personas' : 'signed-out' };
 }
 
 const ANSWERS = {

@@ -406,6 +406,25 @@ describe('account worker', () => {
     assert.equal(made.at(-1).body.requestId, 'kept-0123456789');
   });
 
+  // The side panel's home asks for the personas itself (REN-1857), and is told whether signing in again would help.
+  for (const [label, personas, token, answer] of [
+    ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
+    ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],
+    ['says sign in again when the server ended the sign-in', () => json(401, {}), () => json(400, { error: 'invalid_grant' }), { ok: false, why: 'signed-out' }],
+  ]) {
+    it(`answers the side panel’s personas: ${label}`, async () => {
+      await loaded;
+      session.personaCreate = null;
+      globalThis.fetch = async (url) => {
+        if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+        if (url === META.token_endpoint) return token();
+        return url === `${ISSUER}/extension/v1/personas` ? personas() : json(404, {});
+      };
+      assert.deepEqual(await ask({ account: 'personas' }, fromPanel), answer);
+      records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
+    });
+  }
+
   it('sends nothing for a description under eight characters', async () => {
     await loaded;
     startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
