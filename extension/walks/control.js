@@ -51,7 +51,7 @@ async function clear(name) {
   let waited = false;
   for (;;) {
     const { state } = current();
-    if (stopped) throw fail('Stopped', 'the person stopped this walk');
+    if (stopped) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
     const signIn = await signInNow();
@@ -71,7 +71,7 @@ async function clear(name) {
  * `close` and the panel's ops do.
  */
 const ACTS = new Set(['mouse', 'keyboard']);
-const overtaken = () => fail('Paused', 'the walk was paused before this was done; look again');
+const overtaken = () => fail('Paused', 'the journey was paused before this was done; look again');
 
 /* ------------------------------ asking the person first ------------------------------ */
 
@@ -119,7 +119,7 @@ for (const [name, run] of Object.entries(ops)) {
       if (!(await clear(name)) && at === fenced()) {
         if (!agreed) {
           // Another site the person let the walk go to is only looked at: no deed is asked for there.
-          if (lookOnly()) throw fail('NotAllowed', 'on another site a walk only looks');
+          if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');
           if (said !== 'yes' || at !== fenced()) throw overtaken();
@@ -137,7 +137,7 @@ for (const [name, run] of Object.entries(ops)) {
 }
 const open = ops.open;
 ops.open = (req) => {
-  if (stopped) throw fail('Stopped', 'the person stopped this walk');
+  if (stopped) throw fail('Stopped', 'the person stopped this journey');
   return open(req);
 };
 

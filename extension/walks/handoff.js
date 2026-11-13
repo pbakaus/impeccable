@@ -121,7 +121,7 @@ function startedSocket(socket, outing) {
 export function readStartedHandoff(text) {
   const read = readBlock(text, startedSocket, (url) => {
     const origin = webOrigin(url);
-    if (!origin || isOwnPage(url)) throw new Error('not walkable');
+    if (!origin || isOwnPage(url)) throw new Error('no journey can start here');
     return { origin };
   });
   return read.ok && read.handoff.allow.length > 0 ? no('allow') : read;
