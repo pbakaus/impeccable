@@ -359,6 +359,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
 
     let (target_file, content, lines) = found.unwrap();
     let rel_file = jsp::relative("/", &cwd, &target_file);
+    if check_marker_lines(&id, &lines).is_err() {
+        println(io, &json_compact(&marker_failure(&rel_file)));
+        return 0;
+    }
     let preview_block = find_marker_block(&id, &lines);
     let source_shadow = preview_block.is_some() && read_source_shadow_preview_meta(&content, &id);
     if source_shadow {
@@ -417,6 +421,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 match result {
                     Ok(()) => {}
                     Err(err) => {
+                        if err == MARKERS_SHARE_LINE {
+                            println(io, &json_compact(&marker_failure(m["file"].as_str().unwrap_or_default())));
+                            return 0;
+                        }
                         m.insert("handled".into(), Value::Bool(false));
                         m.insert("error".into(), Value::String(err));
                     }
@@ -466,6 +474,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 );
             }
             Ok(Err(err)) => {
+                if err == MARKERS_SHARE_LINE {
+                    println(io, &json_compact(&marker_failure(&rel_file)));
+                    return 0;
+                }
                 // JS: `{ handled: true, file, ...result }` with result.handled false.
                 let mut m = Map::new();
                 m.insert("handled".into(), Value::Bool(false));
@@ -614,6 +626,34 @@ fn scrub_manual_edits_against_original_block(
 // Discard / Accept
 // ---------------------------------------------------------------------------
 
+const MARKERS_SHARE_LINE: &str = "markers_share_line";
+
+fn check_marker_lines(id: &str, lines: &[String]) -> Result<(), String> {
+    for line in lines {
+        for kind in ["variants-start", "variants-end", "carbonize-start", "carbonize-end"] {
+            let marker = format!("impeccable-{} {}", kind, id);
+            if line.contains(&marker) {
+                let line = line.trim();
+                let clean = [("<!--", "-->"), ("{/*", "*/}")].iter().any(|(open, close)| {
+                    line.strip_prefix(*open).and_then(|body| body.strip_suffix(*close))
+                        .map_or(false, |body| body.trim() == marker)
+                });
+                if !clean {
+                    return Err(MARKERS_SHARE_LINE.to_string());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A structured refusal on stdout with exit 0, like `source_locked`: live-poll
+/// reads stdout only on exit 0, so a non-zero exit would hide the hint.
+fn marker_failure(file: &str) -> Value {
+    json!({ "handled": false, "mode": "error", "error": MARKERS_SHARE_LINE, "file": file,
+        "hint": "Put each marker comment on its own line, then accept again." })
+}
+
 struct MarkerBlock {
     start: usize,
     end: usize,
@@ -655,6 +695,7 @@ fn comment_syntax_for(path: &str) -> (&'static str, &'static str) {
 
 /// JS: handleDiscardUnlocked → Ok(()) or Err(error)
 fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Result<(), String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -800,6 +841,7 @@ fn handle_accept_unlocked(
     param_values: Option<&Map<String, Value>>,
     bake: Option<&BakeRequest>,
 ) -> Result<AcceptOutcome, String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -1352,7 +1394,9 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
         &extensions,
         &skip,
         &|_| true,
-    )?;
+    ).or_else(|| find_source_file(
+        &format!("impeccable-carbonize-start {}", id), cwd, &extensions, &skip, &|_| true,
+    ))?;
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
@@ -1361,6 +1405,53 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
 #[cfg(test)]
 mod discard_tests {
     use super::*;
+
+    #[test]
+    fn shared_marker_lines_refuse_accept_and_discard_without_writes() {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        for jsx in [false, true] {
+            for kind in ["variants", "carbonize"] {
+                for boundary in ["start", "end"] {
+                    for discard in [false, true] {
+                        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let dir = std::env::temp_dir().join(format!("impeccable-shared-marker-{}-{n}", std::process::id()));
+                        std::fs::create_dir_all(&dir).unwrap();
+                        std::fs::write(dir.join("package.json"), "{}").unwrap();
+                        let file = dir.join(if jsx { "App.jsx" } else { "index.html" });
+                        let (co, cc) = if jsx { ("{/*", "*/}") } else { ("<!--", "-->") };
+                        let source = format!("{co} impeccable-{kind}-start ab12cd34 {cc}{}\n<div data-impeccable-variant=\"original\"><h1>Old</h1></div>\n<div data-impeccable-variant=\"1\"><h1>New</h1></div>\n{}{co} impeccable-{kind}-end ab12cd34 {cc}\n",
+                            if boundary == "start" { "<p>Keep</p>" } else { "" },
+                            if boundary == "end" { "<p>Keep</p>" } else { "" });
+                        std::fs::write(&file, &source).unwrap();
+                        let lines: Vec<String> = source.split('\n').map(String::from).collect();
+                        assert_eq!(handle_discard_unlocked("ab12cd34", &lines, file.to_str().unwrap()).unwrap_err(), MARKERS_SHARE_LINE);
+                        assert!(matches!(handle_accept_unlocked("ab12cd34", "1", &lines, file.to_str().unwrap(), None, None), Err(e) if e == MARKERS_SHARE_LINE));
+                        let (mut io, captured) = Io::captured("", dir.clone(), Default::default());
+                        let args: Vec<String> = if discard { vec!["--id", "ab12cd34", "--discard"] }
+                            else { vec!["--id", "ab12cd34", "--variant", "1"] }.into_iter().map(String::from).collect();
+                        assert_eq!(run(&args, &mut io), 0);
+                        drop(io);
+                        let result: Value = serde_json::from_slice(&captured.stdout.borrow()).unwrap();
+                        assert_eq!(result["error"], MARKERS_SHARE_LINE);
+                        assert_eq!(result["mode"], "error");
+                        assert_eq!(result["handled"], false);
+                        assert_eq!(result["hint"], "Put each marker comment on its own line, then accept again.");
+                        assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
+                        std::fs::remove_dir_all(dir).unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn standalone_marker_comments_allow_whitespace() {
+        for (co, cc) in [("<!--", "-->"), ("{/*", "*/}")] {
+            let lines = [format!("  {co} impeccable-variants-start ab12cd34 {cc}  "),
+                format!("\t{co}   impeccable-variants-end ab12cd34\t {cc}\r")];
+            assert!(check_marker_lines("ab12cd34", &lines).is_ok());
+        }
+    }
 
     #[test]
     fn discard_restores_the_original_without_blank_lines_around_it() {

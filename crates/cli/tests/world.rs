@@ -24,6 +24,9 @@ fn run(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Output {
     c.args(args)
         .env_clear()
         .envs(env)
+        .env("IMPECCABLE_NO_STALENESS_CHECK", "1")
+        .env("IMPECCABLE_NO_UPDATE_CHECK", "1")
+        .env("IMPECCABLE_NO_TELEMETRY", "1")
         .current_dir(cwd)
         .stdin(Stdio::null());
     for key in ["PATH", "SystemRoot", "TEMP", "TMP"] {
@@ -53,6 +56,172 @@ fn seed_body() -> String {
 
 fn text(b: &[u8]) -> String {
     String::from_utf8_lossy(b).into_owned()
+}
+
+fn monorepo(name: &str) -> (PathBuf, PathBuf) {
+    let dir = project(name);
+    let cwd = dir.join("apps/web/src");
+    std::fs::create_dir_all(&cwd).unwrap();
+    std::fs::write(dir.join("package.json"), r#"{"workspaces":["apps/*"]}"#).unwrap();
+    std::fs::write(dir.join("apps/web/package.json"), r#"{"name":"web"}"#).unwrap();
+    (dir, cwd)
+}
+
+#[test]
+fn seeds_workspace_root_from_nested_cwd_and_context_reads_it() {
+    let (f, env) = signed_in("world-workspace");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace");
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(dir.join("apps/web/DESIGN.md").exists());
+    assert!(dir.join("apps/web/.impeccable/design.json").exists());
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert!(text(&out.stdout).contains("Wrote ../DESIGN.md and ../.impeccable/design.json."));
+    let out = run(&env, &cwd, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("SEEDED_WORLD:"), "{}", text(&out.stdout));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn seeds_beside_fallback_product(folder: &str, env_override: bool) {
+    let (f, mut env) = signed_in("world-fallback-product");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("fallback-product");
+    let context_dir = if folder == "../external-context" {
+        project("external-context")
+    } else {
+        dir.join(folder)
+    };
+    std::fs::create_dir_all(&context_dir).unwrap();
+    let product = "# PRODUCT.md\n\nA catalog for independent goldsmiths.\n";
+    std::fs::write(context_dir.join("PRODUCT.md"), product).unwrap();
+    if env_override {
+        env.insert("IMPECCABLE_CONTEXT_DIR".into(), context_dir.to_string_lossy().into_owned());
+    }
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    // Boot from the same cwd must retain product truth as well as the world.
+    let out = run(&env, &dir, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let boot = text(&out.stdout);
+    assert!(boot.contains(product.trim()), "{boot}");
+    assert!(!boot.contains("NO_PRODUCT_MD"), "{boot}");
+    assert!(boot.contains("SEEDED_WORLD:"), "{boot}");
+    assert!(context_dir.join("DESIGN.md").exists());
+    let sidecar: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(dir.join(".impeccable/design.json")).unwrap(),
+    ).unwrap();
+    assert_eq!(sidecar["seededFrom"]["world"], "kinpaku");
+    assert!(!dir.join("DESIGN.md").exists());
+    assert!(!context_dir.join(".impeccable/design.json").exists());
+    assert_eq!(std::fs::read_to_string(context_dir.join("PRODUCT.md")).unwrap(), product);
+    if !context_dir.starts_with(&dir) {
+        std::fs::remove_dir_all(context_dir).unwrap();
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn seeds_beside_docs_product_and_context_reads_both() {
+    seeds_beside_fallback_product("docs", false);
+}
+
+#[test]
+fn seeds_beside_agents_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product(".agents/context", false);
+}
+
+#[test]
+fn seeds_beside_env_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product("custom-context", true);
+}
+
+#[test]
+fn inherited_repository_product_refuses_workspace_seed() {
+    let (f, env) = signed_in("world-inherited-product");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, _) = monorepo("inherited-product");
+    let cwd = dir.join("apps/web");
+    std::fs::write(dir.join("PRODUCT.md"), "# Shared product\n").unwrap();
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert_eq!(out.status.code(), Some(1));
+    let message = text(&out.stderr);
+    assert!(message.contains("../.."), "{message}");
+    assert!(message.contains("hide that PRODUCT.md"), "{message}");
+    assert!(message.contains("every workspace"), "{message}");
+    assert!(message.contains("impeccable world kinpaku --print"), "{message}");
+    assert_eq!(f.hits(SEED), 0);
+    for folder in [&dir, &cwd] {
+        assert!(!folder.join("DESIGN.md").exists());
+        assert!(!folder.join(".impeccable").exists());
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn legacy_design_beside_fallback_product_blocks_seed() {
+    for folder in ["docs", ".agents/context", "custom-context"] {
+        let (f, mut env) = signed_in("world-legacy-fallback");
+        f.route("GET", SEED, 200, vec![], seed_body());
+        let dir = project("legacy-fallback");
+        let destination = dir.join(folder);
+        std::fs::create_dir_all(&destination).unwrap();
+        std::fs::write(destination.join("PRODUCT.md"), "# Product\n").unwrap();
+        std::fs::write(destination.join("DESIGN.json"), "{}").unwrap();
+        if folder == "custom-context" {
+            env.insert("IMPECCABLE_CONTEXT_DIR".into(), destination.to_string_lossy().into_owned());
+        }
+        let out = run(&env, &dir, &["world", "kinpaku"]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        assert!(text(&out.stdout).contains("DESIGN.json already exists"));
+        assert_eq!(f.hits(SEED), 0);
+        assert!(!destination.join("DESIGN.md").exists());
+        assert!(!dir.join(".impeccable").exists());
+        assert_eq!(std::fs::read_to_string(destination.join("DESIGN.json")).unwrap(), "{}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn symlinked_docs_product_folder_is_refused() {
+    let (f, env) = signed_in("world-symlink-docs");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("symlink-docs");
+    let outside = project("outside-docs");
+    std::fs::write(outside.join("PRODUCT.md"), "# Product\n").unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join("docs")).unwrap();
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("docs is not a folder"));
+    assert!(!outside.join("DESIGN.md").exists());
+    assert!(!outside.join(".impeccable").exists());
+    assert!(!dir.join(".impeccable").exists());
+    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(outside).unwrap();
+}
+
+#[test]
+fn explicit_external_context_product_still_seeds_and_reads_both() {
+    seeds_beside_fallback_product("../external-context", true);
+}
+
+#[test]
+fn existing_workspace_sidecar_blocks_seed_from_nested_cwd() {
+    let (f, env) = signed_in("world-workspace-existing");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace-existing");
+    let sidecar = dir.join("apps/web/.impeccable/design.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    std::fs::write(&sidecar, "{}").unwrap();
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).starts_with("../.impeccable/design.json already exists"));
+    assert_eq!(f.hits(SEED), 0);
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert_eq!(std::fs::read_to_string(sidecar).unwrap(), "{}");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
