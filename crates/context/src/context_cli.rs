@@ -247,13 +247,17 @@ fn append_image_gen_directive(parts: &mut Parts, env: &Env, provider: &Provider)
     ].join(" "));
 }
 
-/// A world the person chose is the visual authority before any code carries it. Without
-/// this line the boot reads as "no visual authority", and an agent rolls a new world.
+/// A world the person chose is the visual authority, before any code carries it and
+/// after. Without this line the boot reads as "no visual authority", and an agent
+/// rolls a new world. With code in the project the line still fires: the engine
+/// cannot tell a scaffold's starter CSS from a build in the world, and concept-seed
+/// settles on the world either way, so the boot says the world outranks the code.
 fn append_seeded_world_directive(parts: &mut Parts, ctx: &Ctx) {
+    let Some(id) = seeded_world(ctx.design.as_deref()) else { return };
     if ctx.has_visual_implementation {
+        parts.push(format!("SEEDED_WORLD: DESIGN.md names the catalog world `{id}`, seeded by `impeccable world`. The person chose this world, so it is this project's visual authority, above the styles already in code: code built in it extends it, and styles that predate the seed, such as a starter template's CSS, are no incumbent world to inherit or preserve. Never roll, re-pick, or replace it. Until a build has resolved it, build inside it per the seeded-world case in reference/new-work.md, and download the `Reference image:` named in DESIGN.md into the workspace and look at it before designing, on a code-led build too: it is the one picture of this world. Once a build carries it and `document` has recorded it, it is the established world."));
         return;
     }
-    let Some(id) = seeded_world(ctx.design.as_deref()) else { return };
     parts.push(format!("SEEDED_WORLD: DESIGN.md was seeded from the catalog world `{id}` by `impeccable world`, and no code carries it yet. The person chose this world, so it is this project's visual authority: build inside it per the seeded-world case in reference/new-work.md, and never roll, re-pick, or replace it. Before designing, download the `Reference image:` named in DESIGN.md into the workspace and look at it, on a code-led build too: it is the one picture of this world."));
 }
 
@@ -857,7 +861,14 @@ pub fn run_with_hook_repair(
     let cmd = &provider.command;
 
     if !ctx.has_product {
-        let lines = if ctx.has_visual_implementation {
+        let lines = if ctx.has_visual_implementation && seeded_world(ctx.design.as_deref()).is_some() {
+            // The seeded world below outranks the code, so the boot never calls
+            // that code the incumbent authority.
+            vec![
+                format!("NO_PRODUCT_MD: This project has no PRODUCT.md yet. Its DESIGN.md names the seeded world below, and the styles in code do not outrank it. For `init`, `teach`, `shape`, or any request to create a new surface, load reference/init.md and create PRODUCT.md with the user first; then reference/new-work.md builds the surface inside the seeded world. Other narrow refinement commands may proceed against the existing code without blocking, then offer `{} init` as a follow-up.", cmd),
+                "BUILD_INIT_REQUIRED: Before shape or any new-surface/redesign flow, init must capture PRODUCT.md with the human or structured simulated user. Init writes product truth only; reference/new-work.md owns every visual decision.".to_string(),
+            ]
+        } else if ctx.has_visual_implementation {
             vec![
                 format!("NO_PRODUCT_MD: This project has no PRODUCT.md yet, but it does have an incumbent visual implementation. For `init`, `teach`, `shape`, or any request to create a new surface or replacement visual world, load reference/init.md and create PRODUCT.md with the user first. After init writes PRODUCT.md, reference/new-work.md preserves and documents the incumbent system for an extension or replaces it with the user for a redesign/rebrand. Other narrow refinement commands may read the CSS, tokens, components, and assets and proceed without blocking, then offer `{} init` as a follow-up.", cmd),
                 "BUILD_INIT_REQUIRED: Before shape or any new-surface/redesign flow, init must capture PRODUCT.md with the human or structured simulated user. Init writes product truth only; reference/new-work.md owns every visual decision.".to_string(),
@@ -1709,5 +1720,50 @@ mod seeded_world_tests {
         assert_eq!(seeded_world(Some("# X\nworld: \"kinpaku\"\n")), None);
         assert_eq!(seeded_world(Some("---\nworld: \"../etc\"\n---\n")), None);
         assert_eq!(seeded_world(None), None);
+    }
+
+    const SEED: &str = "---\nname: \"Seedbed Lobes\"\nworld: \"sd-seedbed-lobes\"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n";
+    // A create-next-app globals.css: three custom properties, enough to read as
+    // a visual implementation.
+    const STARTER_CSS: &str = ":root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n\nbody {\n  color: var(--foreground);\n  background: var(--background);\n}\n";
+
+    fn boot(product: bool) -> String {
+        let root = std::env::temp_dir().join(format!("impeccable-seeded-starter-{}-{product}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let project = root.join("project");
+        std::fs::create_dir_all(project.join(".git")).unwrap();
+        std::fs::create_dir_all(project.join("app")).unwrap();
+        std::fs::create_dir_all(root.join("home")).unwrap();
+        std::fs::write(project.join("DESIGN.md"), SEED).unwrap();
+        std::fs::write(project.join("app/globals.css"), STARTER_CSS).unwrap();
+        if product {
+            std::fs::write(project.join("PRODUCT.md"), "# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nA starter.\n").unwrap();
+        }
+        assert!(crate::context::has_visual_implementation(&project.to_string_lossy()), "the starter CSS must read as a visual implementation");
+        let home = root.join("home").to_string_lossy().into_owned();
+        let mut env = crate::util::Env::new();
+        for (k, v) in [("HOME", home.as_str()), ("USERPROFILE", home.as_str()), ("IMPECCABLE_NO_UPDATE_CHECK", "1"), ("IMPECCABLE_NO_STALENESS_CHECK", "1"), ("IMPECCABLE_NO_TELEMETRY", "1")] {
+            env.insert(k.to_string(), v.to_string());
+        }
+        let (mut io, cap) = impeccable_common::Io::captured("", project.clone(), env);
+        assert_eq!(super::run(&[], &mut io), 0);
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        out
+    }
+
+    #[test]
+    fn a_seeded_world_outranks_starter_css() {
+        // Catches: a scaffold's globals.css silencing SEEDED_WORLD, so the boot
+        // reads boilerplate as the incumbent world and a roll replaces the world
+        // the person just chose.
+        for product in [false, true] {
+            let out = boot(product);
+            assert!(out.contains("SEEDED_WORLD: DESIGN.md names the catalog world `sd-seedbed-lobes`"), "product={product}: {out}");
+            assert!(out.contains("Never roll, re-pick, or replace it"), "product={product}: {out}");
+            assert!(!out.contains("no code carries it yet"), "product={product}: {out}");
+            // The no-PRODUCT.md boot must not also call the starter CSS the incumbent authority.
+            assert!(!out.contains("code and assets are incumbent design authority"), "product={product}: {out}");
+        }
     }
 }

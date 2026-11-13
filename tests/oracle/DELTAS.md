@@ -7354,3 +7354,10 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-12: `impeccable context` prints the person's taste from a local copy
 
 A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the shared invocation environment pins `IMPECCABLE_NO_TASTE` for every case (the isolated `context-taste-ready` case explicitly unsets it) so a developer's own copy never reaches a golden. New case: `context-taste-ready`.
+
+## Recorded 2026-11-13: a seeded world outranks starter CSS; `world` refuses on any design file the context reader finds
+
+New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to be dropped whenever the project read as having a visual implementation, which a scaffold's starter `globals.css` with three custom properties already does, so the boot treated boilerplate as the incumbent world. The line now fires whenever DESIGN.md names a seeded world, with a variant for a project that has code: the world outranks the styles in code, starter styles are no incumbent world, and the reference-image step applies until a build has resolved the world. The no-PRODUCT.md boot with code and a seeded world no longer prints `EXISTING_VISUAL_SYSTEM` or `SCOPED_EXISTING_ALLOWED`. `impeccable world <id>` now also refuses when `context` from the same directory would read a DESIGN.md elsewhere (`docs/`, `.agents/context/`, a workspace's repo root, `IMPECCABLE_CONTEXT_DIR`), and the merge line names that file. Existing goldens are unchanged.
+
+- `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: the seeded world with starter CSS, without and with PRODUCT.md.
+- `world-refuses-docs-design`: `docs/DESIGN.md already exists, so nothing was written. ...`, exit 0, nothing written, no request.

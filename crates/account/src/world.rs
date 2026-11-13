@@ -108,6 +108,17 @@ fn existing(root: &Path) -> Option<&'static str> {
         .find(|t| root.join(t).symlink_metadata().is_ok())
 }
 
+/// The DESIGN.md `context` would read from this directory, by the reader's own
+/// resolver (`docs/`, `.agents/context/`, a workspace or repo root above, or
+/// `IMPECCABLE_CONTEXT_DIR`), named relative to it. A seed written beside a
+/// design system found there would shadow it on every later boot.
+fn resolved_design(root: &Path, env: &std::collections::HashMap<String, String>) -> Option<String> {
+    use impeccable_context::{context::resolve_context, jsp, target_args::TargetOptions};
+    let cwd = jsp::resolve(&root.to_string_lossy(), &[]);
+    let found = resolve_context(&cwd, &TargetOptions::default(), env).design_path?;
+    Some(jsp::relative(&cwd, &cwd, &found).replace('\\', "/"))
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut id = None;
     let mut print = false;
@@ -143,7 +154,10 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     let root = io.cwd.clone();
     // Checked before any request, so an existing design system costs nothing.
     if !print {
-        if let Some(found) = existing(&root) {
+        let found = existing(&root)
+            .map(str::to_string)
+            .or_else(|| resolved_design(&root, &io.env));
+        if let Some(found) = found {
             io.out(&format!(
                 "{found} already exists, so nothing was written. To merge this world into it, run impeccable world {id} --print and fold its DESIGN.md into yours.\n"
             ));
@@ -629,6 +643,43 @@ mod tests {
             "---\nname: K\n",
         ] {
             assert_eq!(w(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_design_file_the_context_reader_finds_anywhere_is_refused() {
+        // Catches: a design system in docs/ or .agents/context/ (or the folder
+        // IMPECCABLE_CONTEXT_DIR names) missed, so a new root DESIGN.md shadows it
+        // on every later boot instead of the merge line offering --print.
+        for (rel, extra_env) in [
+            ("docs/DESIGN.md", None),
+            (".agents/context/DESIGN.md", None),
+            ("ctx/DESIGN.md", Some(("IMPECCABLE_CONTEXT_DIR", "ctx"))),
+        ] {
+            let base = std::env::temp_dir().join(format!("world-resolved-{}", crate::oauth::random_b64(9)));
+            let (root, home) = (base.join("project"), base.join("home"));
+            std::fs::create_dir_all(root.join(rel).parent().unwrap()).unwrap();
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::write(root.join(rel), "# Ours\n").unwrap();
+            let home = home.to_string_lossy().into_owned();
+            let mut env = std::collections::HashMap::new();
+            for (k, v) in [("HOME", home.as_str()), ("USERPROFILE", home.as_str()), ("IMPECCABLE_CREDENTIAL_STORE", "file")] {
+                env.insert(k.to_string(), v.to_string());
+            }
+            if let Some((k, v)) = extra_env {
+                env.insert(k.to_string(), v.to_string());
+            }
+            let (mut io, cap) = Io::captured("", root.clone(), env);
+            assert_eq!(run(&["kinpaku".to_string()], &mut io), 0, "{rel}");
+            let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+            assert_eq!(
+                out,
+                format!("{rel} already exists, so nothing was written. To merge this world into it, run impeccable world kinpaku --print and fold its DESIGN.md into yours.\n"),
+                "{rel}"
+            );
+            assert!(root.join("DESIGN.md").symlink_metadata().is_err(), "{rel}");
+            assert!(root.join(".impeccable").symlink_metadata().is_err(), "{rel}");
+            let _ = std::fs::remove_dir_all(&base);
         }
     }
 
