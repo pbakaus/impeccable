@@ -10,7 +10,7 @@
 //! Disconnect stops Loop waking, then removes the hooks. It never removes an MCP server:
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
-use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, Spec};
+use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -56,6 +56,10 @@ const MCP_NAME: &str = "impeccable";
 const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
+/// The instruction connect keeps in the agent's own rule file (~/.claude/CLAUDE.md,
+/// ~/.codex/AGENTS.md) as an engine-managed block, so agents bring questions to Loop
+/// instead of waiting in a terminal. Disconnect removes the block with the hooks.
+const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
 const APP: &str = "Applications/Impeccable Loop.app";
 const HELPER: &str = "Contents/MacOS/loop-hook";
 /// Where Loop's helper keeps its state (the old name stays until Loop migrates it).
@@ -96,6 +100,48 @@ struct Agent {
 
 /// `loop connect`.
 pub(crate) fn connect(io: &Io) -> Result<String> {
+    connect_only(io, None)
+}
+
+/// `loop connect [--agent claude|codex]`: the full text report, sign-in and follow-up
+/// steps included, for every agent or just the one named.
+pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
+    let (out, connected, failed, _) = connect_agents(io, only)?;
+    if connected == 0 && failed == 0 {
+        if let Some(harness) = only {
+            return Err(format!("{}: not found.", label(harness)));
+        }
+        return Err(format!(
+            "{out}No coding agent found to connect (Claude Code or Codex)."
+        ));
+    }
+    if failed > 0 {
+        return Err(out.trim_end().to_string());
+    }
+    Ok(out)
+}
+
+/// `loop connect [--agent claude|codex] --json`, for Loop's own Settings and first-run
+/// panel: never asks anything, and always answers one JSON object on stdout. The bool
+/// is whether every agent asked for connected.
+pub(crate) fn connect_json(io: &Io, only: Option<&str>) -> (Value, bool) {
+    match connect_agents(io, only) {
+        Ok((_, connected, failed, agents)) => (
+            json!({ "ok": failed == 0 && connected > 0, "agents": agents }),
+            failed == 0 && connected > 0,
+        ),
+        Err(e) => (json!({ "ok": false, "error": e, "agents": [] }), false),
+    }
+}
+
+/// Connects each agent (or just `only`), returning the text report, how many connected
+/// and failed, and one JSON row per agent. Errors are the reasons nothing was tried.
+fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, Vec<Value>)> {
+    if let Some(h) = only {
+        if !AGENTS.iter().any(|(a, _)| *a == h) {
+            return Err(format!("Unknown agent: {h}. Use claude or codex."));
+        }
+    }
     init_mcp_url(io)?;
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
@@ -106,10 +152,15 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
     let mut out = String::new();
+    let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
     for (harness, label) in AGENTS {
+        if only.is_some_and(|h| h != harness) {
+            continue;
+        }
         let Some(agent) = agent(io, &home, harness) else {
             out.push_str(&format!("{label}: not found, skipped.\n"));
+            rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
             continue;
         };
         match connect_one(&agent, &helper, &support) {
@@ -122,25 +173,131 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
                 if !manual.is_empty() {
                     out.push_str(&format!("  Then in {label}: {}.\n", manual.join("; ")));
                 }
+                rows.push(json!({
+                    "agent": harness, "label": label, "result": "connected",
+                    "signIn": sign_in(harness), "then": manual,
+                }));
             }
             Err(e) => {
                 failed += 1;
                 out.push_str(&format!("{label}: not connected: {e}\n"));
+                rows.push(json!({ "agent": harness, "label": label, "result": "failed", "error": e }));
             }
         }
-    }
-    if connected == 0 && failed == 0 {
-        return Err(format!(
-            "{out}No coding agent found to connect (Claude Code or Codex)."
-        ));
     }
     if connected > 0 {
         out.push_str("To check it works, ask your agent to post a test question to Needs you.\n");
     }
-    if failed > 0 {
-        return Err(out.trim_end().to_string());
+    Ok((out, connected, failed, rows))
+}
+
+/// `loop status [--json]`: what Loop and each agent look like right now, read only.
+/// Nothing is written and no lock is taken; the agents' CLIs are never run.
+pub(crate) fn status(io: &Io) -> Result<Value> {
+    init_mcp_url(io)?;
+    let home = home(io)?;
+    let helper = home.join(APP).join(HELPER);
+    let loop_installed = helper.is_file();
+    let version = helper
+        .parent()
+        .and_then(Path::parent)
+        .and_then(|c| {
+            Command::new("/usr/bin/plutil")
+                .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+                .arg(c.join("Info.plist"))
+                .stdin(Stdio::null())
+                .stderr(Stdio::null())
+                .output()
+                .ok()
+        })
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let support = SUPPORT
+        .iter()
+        .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
+    let installed = installed_specs(OWNER).map(|f| f.committed).unwrap_or_default();
+    let mut agents = Vec::new();
+    for (harness, label) in AGENTS {
+        let Some(agent) = agent(io, &home, harness) else {
+            agents.push(json!({ "agent": harness, "label": label, "detected": false }));
+            continue;
+        };
+        let mcp = match read_entry(&agent) {
+            Entry::Exact => "registered",
+            Entry::Absent => "absent",
+            Entry::Other(_) => "different",
+        };
+        // Hooks count only when the engine installed them for this very config folder and
+        // every resource is still as written: a journal alone says nothing once a hook was
+        // removed by hand. A folder with no installation is answered without touching the
+        // engine's folder at all.
+        let hooks = loop_installed
+            && installed.iter().any(|s| s.harness == harness && s.root == agent.root)
+            && run_spec("status", &spec(&agent, &helper)).is_ok_and(|s| {
+                s["installed"] == true
+                    && s["resources"]
+                        .as_array()
+                        .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
+            });
+        let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
+        let shadow = root_override(harness, &agent.root);
+        // Present only where the agent reads it: under an override, the override must carry it.
+        let instruction = fs::read_to_string(shadow.as_deref().unwrap_or(&rules))
+            .is_ok_and(|t| t.contains(INSTRUCTION));
+        // The wake record is shared per agent; it speaks for this folder only when it names it.
+        let root = agent.root.display().to_string();
+        let connected = read_record(&support, harness).is_some_and(|r| {
+            r["enabled"] == true
+                && (r["configDir"].as_str() == Some(root.as_str())
+                    || r["accounts"]
+                        .as_array()
+                        .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(root.as_str()))))
+        });
+        agents.push(json!({
+            "agent": harness, "label": label, "detected": true,
+            "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
+            "instructionShadowed": shadow.is_some() && !instruction,
+        }));
     }
-    Ok(out)
+    Ok(json!({
+        "loop": { "installed": loop_installed, "version": version },
+        "agents": agents,
+    }))
+}
+
+/// The plain-text form of `status`.
+pub(crate) fn status_text(v: &Value) -> String {
+    let mut out = match v["loop"]["version"].as_str() {
+        Some(ver) if v["loop"]["installed"] == true => format!("Loop {ver}: installed.\n"),
+        _ if v["loop"]["installed"] == true => "Loop: installed.\n".to_string(),
+        _ => "Loop: not installed. Run impeccable loop install.\n".to_string(),
+    };
+    for a in v["agents"].as_array().into_iter().flatten() {
+        let label = a["label"].as_str().unwrap_or("Agent");
+        if a["detected"] != true {
+            out.push_str(&format!("{label}: not found.\n"));
+        } else if a["connected"] == true
+            && a["hooks"] == true
+            && a["instruction"] == true
+            && a["mcp"] == "registered"
+        {
+            out.push_str(&format!("{label}: connected.\n"));
+        } else {
+            out.push_str(&format!(
+                "{label}: not connected (MCP server {}, hooks {}, instruction {}). Run impeccable loop connect.\n",
+                a["mcp"].as_str().unwrap_or("absent"),
+                if a["hooks"] == true { "present" } else { "missing" },
+                if a["instruction"] == true {
+                    "present"
+                } else if a["instructionShadowed"] == true {
+                    "hidden by AGENTS.override.md"
+                } else {
+                    "missing"
+                },
+            ));
+        }
+    }
+    out
 }
 
 /// One agent. A failure after the hooks were newly installed undoes them; an earlier,
@@ -257,7 +414,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
         ));
     }
-    Ok(status["manualActions"]
+    let mut manual: Vec<String> = status["manualActions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -265,7 +422,26 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
                 .map(str::to_owned)
                 .collect()
         })
-        .unwrap_or_default())
+        .unwrap_or_default();
+    // The engine wrote the instruction, but Codex reads AGENTS.override.md in its place.
+    if status["effective"] == false {
+        manual.push(shadowed_advice(&agent.root));
+    }
+    Ok(manual)
+}
+
+/// Codex reads `AGENTS.override.md` instead of `AGENTS.md` when both exist, so the
+/// instruction connect wrote never reaches it.
+fn root_override(harness: &str, root: &Path) -> Option<PathBuf> {
+    let p = root.join("AGENTS.override.md");
+    (harness == "codex" && p.exists()).then_some(p)
+}
+
+fn shadowed_advice(root: &Path) -> String {
+    format!(
+        "add this line to {}, which Codex reads instead of AGENTS.md: {INSTRUCTION}",
+        root.join("AGENTS.override.md").display()
+    )
 }
 
 /// `loop disconnect`: every installation connect made (from the engine's journals, not
@@ -550,7 +726,13 @@ fn read_entry(agent: &Agent) -> Entry {
     let Some(table) = entry.as_table_like() else {
         return Entry::Other(SETTINGS_DIFFER.into());
     };
-    let keys: Vec<&str> = table.iter().map(|(k, _)| k).collect();
+    // The approval mode is connect's own (through the engine's mcp_approvals), so a
+    // server it already set up still counts as exactly its own.
+    let keys: Vec<&str> = table
+        .iter()
+        .map(|(k, _)| k)
+        .filter(|k| *k != "default_tools_approval_mode")
+        .collect();
     if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(mcp_url()) {
         Entry::Exact
     } else {
@@ -595,7 +777,9 @@ fn add_server(agent: &Agent) -> Result<()> {
         };
     }
     let mut child = cli(agent, &["mcp", "add", MCP_NAME, "--url", mcp_url()])
-        .stdout(Stdio::inherit())
+        // Codex's own messages go to this command's stderr, never its stdout: a person
+        // still sees them, and `--json` keeps exactly one object on stdout.
+        .stdout(std::io::stderr())
         .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -636,6 +820,28 @@ fn quote(path: &Path) -> String {
 }
 
 /// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
+/// Whether the Loop that owns `helper` (…/Contents/MacOS/loop-hook) is 0.1.1 or later,
+/// read from its bundle's CFBundleShortVersionString. Unknown counts as no.
+fn supports_context(helper: &Path) -> bool {
+    let Some(plist) = helper
+        .parent()
+        .and_then(Path::parent)
+        .map(|c| c.join("Info.plist"))
+    else {
+        return false;
+    };
+    Command::new("/usr/bin/plutil")
+        .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
+        .arg(plist)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| semver::Version::parse(String::from_utf8_lossy(&o.stdout).trim()).ok())
+        .is_some_and(|v| v >= semver::Version::new(0, 1, 1))
+}
+
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let harness = agent.harness;
     let command = |kind: &str| format!("{} {harness} {kind}", quote(helper));
@@ -647,7 +853,7 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         run_async: wake.then_some(true),
         async_rewake: wake.then_some(true),
     };
-    let hooks = if harness == "claude" {
+    let mut hooks = if harness == "claude" {
         vec![
             hook("SessionStart", None, "lifecycle", 86400, true),
             hook("Stop", None, "lifecycle", 86400, true),
@@ -661,6 +867,12 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
             hook("PostToolUse", None, "register", 10, false),
         ]
     };
+    // Tells a new session that Loop will wake it, so it stops polling for answers.
+    // Synchronous: it prints at most one line within its own 400 ms probe and always
+    // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
+    if supports_context(helper) {
+        hooks.push(hook("SessionStart", None, "context", 5, false));
+    }
     Spec {
         version: 1,
         owner: OWNER.into(),
@@ -668,8 +880,17 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         root: agent.root.clone(),
         hooks,
         mcp_servers: vec![],
-        mcp_approvals: vec![],
-        instruction: None,
+        // Codex asks before every tool call of a new server; Loop's questions should
+        // reach the person without a prompt in the terminal first.
+        mcp_approvals: if harness == "codex" {
+            vec![McpApproval {
+                server: MCP_NAME.into(),
+                mode: "approve".into(),
+            }]
+        } else {
+            vec![]
+        },
+        instruction: Some(INSTRUCTION.into()),
     }
 }
 
