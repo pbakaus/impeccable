@@ -1049,6 +1049,17 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
+      /function enterPickingIfArmed\(\) \{\s*if \(state === 'IDLE' && \(pickActive \|\| insertActive\) && !liveBarHiddenByHelper\) setLiveState\('PICKING'\);/,
+      'a Pick remembered from a visible session never captures clicks behind a hidden bar, where nothing can turn it off',
+    );
+    assert.ok(!/\(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\)/.test(SOURCE), 'every resume into Pick goes through the hidden-bar guard');
+    assert.match(
+      SOURCE,
+      /if \(liveBarHiddenByHelper && !wasHidden && state === 'PICKING'\) \{\s*clearInsertPicking\(\);\s*hideHighlight\(\);\s*setLiveState\('IDLE'\);/,
+      'a bar hidden mid-Pick drops out of Pick at once',
+    );
+    assert.match(
+      SOURCE,
       /return \{ pickActive: false, insertActive: false, firstRun: true \};/,
       'a browser with no stored prefs does not start Pick before it knows the bar is visible',
     );
