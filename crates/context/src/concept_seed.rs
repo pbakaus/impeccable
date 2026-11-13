@@ -398,6 +398,9 @@ pub struct SeedArgs {
     /// The engine generated `key` itself this run (no `--from`, no
     /// `IMPECCABLE_CONCEPT_SEED`), so it has no ledger to look for.
     pub fresh_key: bool,
+    /// `--replace-world`: the user asked to replace a seeded world, so this
+    /// direction roll deals catalog worlds instead of settling on it.
+    pub replace_world: bool,
 }
 
 fn unit(scope: &str, salt: &str, key: &str) -> f64 {
@@ -453,6 +456,9 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     if register.is_some() && scope != "direction" {
         return Err("concept-seed: --register applies to direction rounds only".into());
     }
+    if a.replace_world && scope != "direction" {
+        return Err("concept-seed: --replace-world applies to direction rounds only".into());
+    }
     let mode: Option<&str> = match &a.mode {
         None => None,
         Some(Some(m)) if SEED_MODES.contains(&m.as_str()) => Some(m.as_str()),
@@ -498,9 +504,18 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     let dealt_str = dealt.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ");
 
     let ctx = load_context(cwd, &TargetOptions::default(), env);
-    let settled_world = crate::context::seeded_world(ctx.design.as_deref())
-        .map(|id| format!("{id}, seeded from the catalog"))
-        .map(|label| format!("WORLD: settled ({label}). The structures below are dealt inside it; do not roll, re-pick or replace the world.\n"));
+    // A seeded world settles every roll until the user asks to replace it;
+    // that one direction roll passes --replace-world and deals worlds again.
+    let seeded = crate::context::seeded_world(ctx.design.as_deref());
+    let settled_world = seeded.as_ref().filter(|_| !a.replace_world).map(|id| {
+        let exit = if scope == "direction" { t::SETTLED_REPLACE_EXIT } else { "" };
+        format!("WORLD: settled ({id}, seeded from the catalog). The structures below are dealt inside it; do not roll, re-pick or replace the world.{exit}\n")
+    });
+    let replacing = seeded.as_ref().filter(|_| a.replace_world).map(|id| fill(t::REPLACING_WORLD, &[("WORLD", id)])).unwrap_or_default();
+    // Bolder deals foreign worlds, which a settled world never shows: the
+    // round runs as a plain re-roll of structures and says so.
+    let settled_bolder = settled_world.is_some() && register == Some("bolder");
+    let round_register = if settled_bolder { None } else { register };
     let compositions_enabled = env.get("IMPECCABLE_COMPOSITIONS").map(|v| v == "1").unwrap_or(false);
 
     // data resolution
@@ -564,7 +579,7 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
 
     let mode_flag = mode.map(|m| format!(" --mode {}", m)).unwrap_or_default();
     let reroll_flag = if reroll > 0 { format!(" --reroll {}", reroll) } else { String::new() };
-    let register_flag = register.map(|r| format!(" --register {}", r)).unwrap_or_default();
+    let register_flag = register.map(|r| format!(" --register {}", r)).unwrap_or_default() + if a.replace_world { " --replace-world" } else { "" };
     let mode_or_unscoped = mode.unwrap_or("unscoped").to_string();
     let scope_upper = scope.to_uppercase();
     let build_index_s = build_index.to_string();
@@ -583,7 +598,7 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     ];
     let promoted = if scope == "direction" { fill(t::PROMOTED_DIRECTION, &common) } else { fill(t::PROMOTED_SURFACE, &common) };
     let challenger_instruction = if scope == "direction" { t::CHALLENGER_DIRECTION.to_string() } else { t::CHALLENGER_SURFACE.to_string() };
-    let authority = if scope == "direction" { t::AUTHORITY_DIRECTION.to_string() } else { t::AUTHORITY_SURFACE.to_string() };
+    let authority = replacing + if scope == "direction" { t::AUTHORITY_DIRECTION } else { t::AUTHORITY_SURFACE };
     // MODE RULES ride after RICHNESS (after AUTHORITY on the degraded paths,
     // which carry no RICHNESS), on every round including re-rolls.
     let mode_block = mode.map(|m| format!("\n{}", mode_rules_block(env, cwd, m))).unwrap_or_default();
@@ -644,9 +659,10 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
         String::new()
     };
     let reroll_block = if reroll > 0 {
-        let tag = register.map(|r| format!(" ({} REGISTER, user-requested)", r.to_uppercase())).unwrap_or_default();
-        let derive = if register.is_some() { "" } else { t::REROLL_DERIVE_TEXT };
-        fill(t::REROLL_BLOCK, &[("REROLL", &reroll.to_string()), ("REROLL_REGISTER_TAG", &tag), ("REROLL_DERIVE", derive)])
+        let tag = round_register.map(|r| format!(" ({} REGISTER, user-requested)", r.to_uppercase())).unwrap_or_default();
+        let derive = if round_register.is_some() { "" } else { t::REROLL_DERIVE_TEXT };
+        let unavailable = if settled_bolder { t::SETTLED_BOLDER } else { "" };
+        format!("{unavailable}{}", fill(t::REROLL_BLOCK, &[("REROLL", &reroll.to_string()), ("REROLL_REGISTER_TAG", &tag), ("REROLL_DERIVE", derive)]))
     } else {
         String::new()
     };
@@ -657,18 +673,18 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     } else {
         String::new()
     };
-    let assigned_block = match register {
+    let assigned_block = match round_register {
         None => fill(t::ASSIGNED_BLOCK, &[("ASSIGNED_OR_DEALT", &assigned_or_dealt), ("PROMOTEDINSTRUCTION", &promoted)]),
         Some("safer") => t::SAFER_BLOCK.to_string(),
         _ => t::BOLDER_BLOCK.to_string(),
     };
-    let round_challenger_instruction = if register == Some("bolder") { t::BOLDER_CHALLENGER.to_string() } else { challenger_instruction };
+    let round_challenger_instruction = if round_register == Some("bolder") { t::BOLDER_CHALLENGER.to_string() } else { challenger_instruction };
     // The safer register spends its hand unseen, so it prints no challenger
     // and records no world.
     let mut worlds: Vec<Value> = Vec::new();
     let challenger_section = if let Some(world) = &settled_world {
         format!("{}{}", world, composition_block)
-    } else if register == Some("safer") {
+    } else if round_register == Some("safer") {
         String::new()
     } else {
         for c in &data.challengers {
@@ -685,7 +701,7 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
             ],
         )
     };
-    let restated = match register {
+    let restated = match round_register {
         None => restated_assigned_or_dealt,
         Some(r) => fill(t::RESTATED_REGISTER, &[("REGISTER", r), ("KEY", key)]),
     };
@@ -803,6 +819,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         candidate_count: num(val("--candidate-count")).unwrap_or(7.0),
         build_path: crate::context_cli::recorded_build_path(&ctx, &cwd),
         fresh_key,
+        replace_world: idx("--replace-world").is_some(),
     };
     match render_concept_seed(&env, &cwd, &mut budget, &seed) {
         Ok((text, meta)) => {
@@ -931,7 +948,7 @@ mod tests {
             assert!(record.get("worlds").is_none());
             let (code, direction) = seed(&proj, &skill, true, &["--scope", "direction", "--from", "k1"]);
             assert_eq!(code, 0);
-            assert!(direction.contains(&world));
+            assert!(direction.contains(&world.replace(".\n", &format!(".{}\n", t::SETTLED_REPLACE_EXIT))), "{direction}");
             assert!(!direction.contains("CHALLENGERS:\n"));
         }
         // Once code carries a seeded world, its catalog id still names it.
@@ -939,6 +956,47 @@ mod tests {
         let (code, out) = seed(&proj, &skill, true, &args);
         assert_eq!(code, 0);
         assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."));
+    }
+
+    #[test]
+    fn a_settled_bolder_round_runs_as_a_plain_reroll_inside_the_world() {
+        // Catches: BOLDER_BLOCK forbidding grounded directions while the
+        // settled world removed every challenger, leaving an empty hand.
+        let (proj, skill) = fixture("settled-bolder", &[("mode-persuade", MODE_FILE)]);
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "1", "--register", "bolder"]);
+        assert_eq!(code, 0);
+        assert!(out.contains(t::SETTLED_BOLDER), "{out}");
+        assert!(out.contains("ASSIGNED INDEX: "), "{out}");
+        assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."), "{out}");
+        for forbidden in [t::BOLDER_BLOCK, t::BOLDER_CHALLENGER, "(BOLDER REGISTER, user-requested)", "REGISTER (restated", "CHALLENGERS:\n"] {
+            assert!(!out.contains(forbidden), "{forbidden}\n{out}");
+        }
+        // The rerun line still reproduces the round the user asked for.
+        assert!(out.contains("--reroll 1 --register bolder --candidate-count"), "{out}");
+    }
+
+    #[test]
+    fn replace_world_deals_worlds_again_and_says_what_the_rewrite_drops() {
+        let (proj, skill) = fixture("replace-world", &[("mode-persuade", MODE_FILE)]);
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let args = ["--scope", "direction", "--mode", "persuade", "--from", "k1", "--replace-world"];
+        let (code, out) = seed(&proj, &skill, true, &args);
+        assert_eq!(code, 0);
+        assert!(out.contains(&fill(t::REPLACING_WORLD, &[("WORLD", "teletext-service")])), "{out}");
+        assert!(out.contains("CHALLENGERS:\n"), "{out}");
+        assert!(!out.contains("WORLD: settled"), "{out}");
+        assert!(out.contains("--from k1 --replace-world --candidate-count"), "{out}");
+        // Bolder works again once the world is up for replacement.
+        let (_, bolder) = seed(&proj, &skill, true, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "bolder", "--replace-world"]);
+        assert!(bolder.contains(t::BOLDER_BLOCK) && !bolder.contains(t::SETTLED_BOLDER), "{bolder}");
+        // A surface roll never replaces the world.
+        let (code, _) = seed(&proj, &skill, true, &["--scope", "surface", "--from", "k1", "--replace-world"]);
+        assert_eq!(code, 1);
+        // With no seeded world the flag changes nothing but the rerun line.
+        std::fs::remove_file(proj.join("DESIGN.md")).unwrap();
+        let (_, plain) = seed(&proj, &skill, true, &args);
+        assert!(!plain.contains("WORLD: replacing") && plain.contains("CHALLENGERS:\n"), "{plain}");
     }
 
     #[test]
