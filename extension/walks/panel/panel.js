@@ -312,7 +312,7 @@ function terminal() {
 
 /* ------------------------------ first run ------------------------------ */
 
-/** The first time the panel is signed in, before the home: two screens, then never again (chrome.storage.local `onboarded`). */
+/** The first time the panel is signed in, before the home: two screens, then never again (chrome.storage.local `firstRunSeen`). */
 const foot = (on, action, text, onclick) => el('div', { class: 'fr-foot' },
   el('div', { class: 'fr-dots', 'aria-hidden': true }, [0, 1].map((i) => el('i', { class: i === on ? 'on' : '' }))),
   button(action, text, 'gold full tall', onclick));
@@ -335,7 +335,7 @@ function tabGroup() {
         el('div', { class: 'tg-strip' }, el('span', { class: 'tg-chip', text: COPY.tabGroup(person.name) }), el('span', { class: 'tg-tab in' }, icon('tab'), words.site), el('span', { class: 'tg-tab out' }, icon('tab'), words.other)),
         el('div', { class: 'tg-page' }, el('span', { class: 'tg-line' }), el('span', { class: 'tg-line s' }), el('span', { class: 'tg-pill' }, face(person, 18), `${COPY.badge.here(person.name)} · ${COPY.badge.step(2)}`))),
       el('h2', { class: 'hd', text: words.title }), el('p', { class: 'fr-p', text: words.line })),
-    foot(1, 'start-walking', words.next, () => { pre.screen = 'home'; void chrome.storage.local.set({ onboarded: true }).catch(() => undefined); render(); }),
+    foot(1, 'start-walking', words.next, () => { pre.screen = 'home'; void chrome.storage.local.set({ firstRunSeen: true }).catch(() => undefined); render(); }),
   ];
 }
 
@@ -418,7 +418,7 @@ async function start() {
     chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; if (pre.screen === 'home' && !isLive(view)) render(); } });
     const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
-    if (!(await chrome.storage.local.get('onboarded').catch(() => ({}))).onboarded) pre.screen = 'before';
+    if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
     if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.
