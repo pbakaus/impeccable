@@ -26,6 +26,11 @@ let signInFailed = false;
 /** The first-walk intro: whether it was ever shown (chrome.storage.local `onboarded`), and whether it is up now. */
 let seen = true;
 let intro = false;
+/**
+ * The tab this panel's window shows (undefined on a stand-in, which draws every state). A walk that is over is drawn
+ * on its own tab alone: on any other, the panel is as it is with no walk, so an old result never reads as this page's.
+ */
+let here;
 
 /* ------------------------------ building blocks ------------------------------ */
 
@@ -291,11 +296,15 @@ function doneLine() {
 function issues() {
   const list = view.outcome?.issues ?? [];
   if (list.length === 0) return null;
-  return el('ul', { class: 'issues' }, list.map((issue) => el('li', { class: 'finding-item' },
-    el('div', { class: 'finding-row' }, el('span', { class: 'ks-tag', text: COPY.done.step(issue.step) }), el('span', { class: 'finding-selector', text: issue.page })),
-    el('span', { class: 'finding-detail', text: issue.what }),
-    issue.said ? el('span', { class: 'finding-description', text: issue.said }) : null,
-  )));
+  return el('ul', { class: 'issues' }, list.map((issue) => {
+    // The server names a site's root `/`: beside the step it reads as a stray slash, so the step stands alone.
+    const page = issue.page.replace(/\/$/, '');
+    return el('li', { class: 'finding-item' },
+      el('div', { class: 'finding-row' }, el('span', { class: 'ks-tag', text: COPY.done.step(issue.step) }), page ? el('span', { class: 'finding-selector', text: page }) : null),
+      el('span', { class: 'finding-detail', text: issue.what }),
+      issue.said ? el('span', { class: 'finding-description', text: issue.said }) : null,
+    );
+  }));
 }
 
 const SCREENS = {
@@ -329,6 +338,7 @@ function toNewest() {
 
 function render() {
   const live = ['walking', 'paused', 'takeover'].includes(view.state);
+  const state = isLive(view) || here === undefined || view.tab === here ? view.state : view.linked ? 'idle' : 'signed-out';
   // A control that was pressed is often gone once it worked (Pause becomes Resume): focus stays in its place.
   const acts = () => [...app.querySelectorAll('[data-act]')];
   const focused = document.activeElement?.getAttribute?.('data-act');
@@ -342,20 +352,26 @@ function render() {
     void chrome.storage.local.set({ onboarded: true }).catch(() => undefined);
   }
   if (!live) intro = false;
-  body.dataset.state = view.state;
+  body.dataset.state = state;
   body.dataset.account = account ? (account.signedIn === true ? 'signed-in' : 'signed-out') : 'off';
   body.dataset.variant = live ? variant : '';
   body.dataset.steps = String(view.steps.length);
   body.dataset.device = view.who?.device ?? '';
   body.dataset.held = view.state === 'paused' ? view.held ?? '' : '';
   body.dataset.ask = view.ask?.kind ?? '';
-  body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
-  body.dataset.issues = view.state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
+  body.dataset.reason = state === 'failed' ? view.failure?.reason ?? '' : '';
+  body.dataset.issues = state === 'done' ? String(view.outcome?.issues.length ?? 0) : '';
   app.className = live ? `walk walk-${variant}` : 'screen';
-  app.replaceChildren(...(live ? [intro ? introNote() : null, ...ARRANGED[variant]()] : (SCREENS[view.state] ?? SCREENS.idle)()).filter(Boolean));
+  app.replaceChildren(...(live ? [intro ? introNote() : null, ...ARRANGED[variant]()] : (SCREENS[state] ?? SCREENS.idle)()).filter(Boolean));
   for (const details of app.querySelectorAll('details')) if (open.includes(details.className)) details.open = true;
   if (focused) (app.querySelector(`[data-act="${focused}"]`) ?? acts()[place])?.focus();
   if (live && follow) toNewest(); else if (scroller()) scroller().scrollTop = at;
+}
+
+/** Which tab this panel's window shows: asked when the panel opens and each time another tab comes to the front. */
+async function look() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+  here = tab?.id ?? null;
 }
 
 async function knowAccount() {
@@ -377,7 +393,8 @@ async function start() {
       view = changes.view.newValue ?? emptyView(false);
       render();
     });
-    const [{ view: kept }, { onboarded }] = await Promise.all([chrome.storage.session.get('view'), chrome.storage.local.get('onboarded')]);
+    chrome.tabs.onActivated.addListener(() => { void look().then(() => { if (!isLive(view)) render(); }); });
+    const [{ view: kept }, { onboarded }] = await Promise.all([chrome.storage.session.get('view'), chrome.storage.local.get('onboarded'), look()]);
     if (kept?.v === 1) view = kept;
     seen = onboarded === true;
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.

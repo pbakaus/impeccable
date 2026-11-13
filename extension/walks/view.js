@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -51,10 +51,10 @@ function step(view, action) {
     case 'handoff':
       if (live) return view;
       return { ...fresh(view), linked: true, state: 'waiting', who: whoOf(action.handoff.persona), workflow: workflowOf(action.handoff.errand), site: action.handoff.site ?? null };
-    // The tab is open and the debugger is on it.
+    // The tab is open and the debugger is on it. Once the walk is over, the panel shows its end on that tab alone.
     case 'opened':
       if (onTab) return view;
-      return { ...(view.state === 'waiting' ? view : fresh(view)), state: 'walking', who: view.state === 'waiting' && view.who?.name ? view.who : whoOf({ name: action.name }), site: action.site ?? view.site };
+      return { ...(view.state === 'waiting' ? view : fresh(view)), state: 'walking', who: view.state === 'waiting' && view.who?.name ? view.who : whoOf({ name: action.name }), site: action.site ?? view.site, tab: action.tab ?? null };
     // The server says more about who is walking and what for.
     case 'brief':
       if (!live) return view;

@@ -203,7 +203,7 @@ onView((view) => {
 
 hooks.opened.push((tab) => {
   resultBeside = tab.adopted ? tab.tabId : null;
-  dispatch({ type: 'opened', name: tab.name, site: tab.origin });
+  dispatch({ type: 'opened', name: tab.name, site: tab.origin, tab: tab.tabId });
 });
 hooks.closed.push((why) => {
   dispatch(why === 'stopped' ? { type: 'stop' } : detachAction(why));

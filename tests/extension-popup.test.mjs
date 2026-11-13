@@ -437,7 +437,7 @@ test('Remove asks first, and Keep keeps them', async () => {
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1 } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -462,6 +462,8 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
   const local = { onboarded };
   const session = { view };
   const changed = [];
+  const activated = [];
+  let front = tab;
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
   Object.assign(globalThis, {
     document, location: { search: '' }, addEventListener() {},
@@ -469,7 +471,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
       runtime: { async sendMessage(message) { sent.push(message); return message.account === 'status' ? status : message.account === 'sign-in' ? signIn : undefined; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
-      tabs: { async create(tab) { opened.push(tab); } },
+      tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
     },
   });
   await import(`${pathToFileURL(path.join(root, 'walks/panel/panel.js')).href}?n=${panels += 1}`);
@@ -477,7 +479,8 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
   const acts = () => app.querySelectorAll('[data-act]').map((node) => node.attributes['data-act']);
   const show = async (next) => { for (const listener of changed) listener({ view: { newValue: next } }); await tick(); };
   const press = async (act) => { for (const listener of app.querySelector(`[data-act="${act}"]`).listeners.click) listener({}); for (let n = 0; n < 3; n += 1) await tick(); };
-  return { app, body: document.body, sent, opened, local, session, acts, show, press, intro: () => app.querySelector('.intro') !== null };
+  const switchTo = async (id) => { front = id; for (const listener of activated) listener({ tabId: id }); for (let n = 0; n < 3; n += 1) await tick(); };
+  return { app, body: document.body, sent, opened, local, session, acts, show, press, switchTo, intro: () => app.querySelector('.intro') !== null };
 }
 
 test('the first walk ever shows its intro in the side panel, once, and opens no tab', async () => {
@@ -492,6 +495,23 @@ test('the first walk ever shows its intro in the side panel, once, and opens no 
   assert.equal(h.intro(), false, 'not on the next walk');
   const later = await sidePanel({ view: STUBS.walking, status: signedIn, onboarded: true });
   assert.equal(later.intro(), false, 'not in a panel opened later');
+});
+
+test('the side panel shows a walk that is over on its own tab alone, and a site’s root as no page', async () => {
+  const { reduce } = await import('../extension/walks/view.js');
+  const issues = [{ step: 5, page: '/edit.html', what: 'Not saved' }, { step: 8, page: '/', what: 'Gone at once' }];
+  const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome: { finished: true, issues } }].reduce(reduce, STUBS.waiting);
+  const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
+  assert.deepEqual([h.body.dataset.state, h.app.querySelectorAll('.finding-selector').map((node) => node.textContent)], ['done', ['/edit.html']]);
+  await h.switchTo(8);
+  assert.deepEqual([h.body.dataset.state, h.acts().includes('personas')], ['idle', true]);
+  await h.show({ ...STUBS.walking, tab: 7 });
+  assert.equal(h.body.dataset.state, 'walking', 'a walk under way shows on every tab');
+  await h.show(ended);
+  await h.switchTo(7);
+  assert.equal(h.body.dataset.state, 'done');
+  const later = await sidePanel({ view: ended, status: signedIn, tab: 8 });
+  assert.equal(later.body.dataset.state, 'idle', 'opened later on another tab');
 });
 
 // No walk running: never a dead end. With the account the popup uses, the panel signs in or points at Personas.
