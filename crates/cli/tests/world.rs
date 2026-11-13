@@ -341,3 +341,23 @@ fn signed_out_and_bad_ids_never_reach_the_service() {
     );
     assert_eq!(f.hits(SEED), 0);
 }
+
+#[test]
+fn help_says_what_a_world_is_without_signing_in() {
+    // Catches: `world --help` printing only the usage line, so a newcomer never
+    // learns what a world is or what the verb writes.
+    let dir = project("world-help");
+    let env: HashMap<String, String> = [
+        ("IMPECCABLE_HOME".to_string(), dir.join("home").to_string_lossy().into_owned()),
+        ("IMPECCABLE_CREDENTIAL_STORE".to_string(), "file".to_string()),
+    ]
+    .into();
+    let out = run(&env, &dir, &["world", "--help"]);
+    assert!(out.status.success());
+    let help = text(&out.stdout);
+    assert!(help.starts_with("Usage: impeccable world <id> [--print]\n"), "{help}");
+    assert!(help.contains("Writes DESIGN.md"), "{help}");
+    assert!(help.contains("never overwrites"), "{help}");
+    assert!(!text(&out.stderr).contains("impeccable login, then"), "no sign-in error");
+    assert!(!dir.join("DESIGN.md").exists());
+}
