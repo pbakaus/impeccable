@@ -262,6 +262,22 @@ fn the_recording_itself_is_never_overwritten_or_deleted() {
     );
     // A folder the person named is theirs: no ignore file is written into it.
     assert!(!dir.join(".gitignore").exists());
+    // Catches: a recording from elsewhere replacing the person's own take.png in a
+    // folder they named; the pair goes to the -walkthrough names instead.
+    std::fs::create_dir_all(dir.join("rec")).unwrap();
+    std::fs::copy(&clip, dir.join("rec").join("take.mp4")).unwrap();
+    std::fs::write(dir.join("take.png"), "mine").unwrap();
+    let (out, v) = run(&dir, ffmpeg.parent(), &["rec/take.mp4", "--out", "."]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(std::fs::read_to_string(dir.join("take.png")).unwrap(), "mine");
+    assert!(!dir.join("take.mp4").exists());
+    assert_eq!(v["film"]["path"], dir.join("take-walkthrough.mp4").to_str().unwrap());
+    assert_eq!(v["poster"]["path"], dir.join("take-walkthrough.png").to_str().unwrap());
+    // And the fallback pair is the person's once it exists: the next run numbers forward.
+    let (out, v) = run(&dir, ffmpeg.parent(), &["rec/take.mp4", "--out", "."]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    assert_eq!(v["film"]["path"], dir.join("take-walkthrough-2.mp4").to_str().unwrap());
+    assert!(dir.join("take-walkthrough.mp4").exists());
     // A failing conversion leaves the recording and removes only its own scratch files.
     std::fs::write(dir.join("broken.mp4"), "not a video").unwrap();
     let (_, v) = run(&dir, ffmpeg.parent(), &["broken.mp4", "--out", "."]);
