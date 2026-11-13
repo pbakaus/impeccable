@@ -88,6 +88,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "loop" => crate::loop_install::run(rest, io),
+        "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
@@ -294,6 +295,7 @@ const KNOWN_VERBS: &[&str] = &[
     "pro-refresh",
     "agents",
     "loop",
+    "walkthrough",
     "skills",
     "help",
     "install",
