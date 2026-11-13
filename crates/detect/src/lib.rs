@@ -79,6 +79,7 @@ Commands:
   world <id> [--print]             Seed this project's DESIGN.md from a world in the Impeccable catalog
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
   foundations [path]               Check which product foundations this project has in place
+  journeys <workflow-or-goal>      Someone from your app's cast takes a journey through it and reports what they hit
 
 Options:
   --help       Show this help message

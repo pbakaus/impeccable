@@ -15,6 +15,7 @@ pub mod critiques;
 mod design_read;
 pub mod health;
 pub mod http;
+pub mod journeys;
 pub mod oauth;
 pub mod plans;
 pub mod pro;
@@ -369,7 +370,7 @@ Options:
 
 /// Start the system browser on `url`. Never through a shell: the URL is an
 /// argument, so `&` and quotes in it are inert.
-fn open_browser(url: &str) -> bool {
+pub(crate) fn open_browser(url: &str) -> bool {
     let mut cmd = if cfg!(target_os = "macos") {
         std::process::Command::new("open")
     } else if cfg!(windows) {
