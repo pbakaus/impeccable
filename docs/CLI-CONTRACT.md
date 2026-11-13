@@ -2271,6 +2271,45 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
+  `impeccable` MCP server, Loop's hooks and an engine-managed instruction block in
+  its rule file (`CLAUDE.md` or `AGENTS.md` in the agent's config folder): "When you
+  need a person's decision or input, use needs_you.post (Impeccable) instead of
+  asking in chat or a built-in question tool. If needs_you says Loop isn't
+  connected, ask normally." For Codex it also sets
+  `default_tools_approval_mode = "approve"` on `[mcp_servers.impeccable]`. When the
+  installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
+  synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
+  session that Loop will wake it. An older or unreadable bundle gets no such hook.
+  An existing `[mcp_servers.impeccable]` that differs only in its approval mode
+  still counts as connect's own. `impeccable loop disconnect` removes the hooks,
+  the block and the approval through the same engine journal, and leaves the MCP
+  server in place, printing the command that removes it.
+- After a successful `impeccable loop install`, the agents are connected only
+  when asked: `--connect` runs `loop connect` at once; a person at a terminal
+  (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
+  Loop now? [Y/n]`, where Enter means yes; otherwise, and with `--no-connect`
+  never, nothing is changed and install prints `Next: impeccable loop connect,
+  so your agents bring their questions to Loop.` A connect that fails after
+  the install exits 1 and says Loop is installed and to run `loop connect`
+  again. The two flags go with `install` only, one at a time.
+- `impeccable loop status [--json]` reads, and never writes: whether Loop is
+  installed and its version, and per agent `detected`, `mcp`
+  (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
+  `hooks` is true only when the engine installed them for the selected config
+  folder and every resource is still as written; `connected` only when the
+  wake record names that folder. A home with nothing installed is answered
+  without creating any file. The text form says connected only when the MCP
+  server, the hooks, the instruction block and the record all hold.
+  The JSON form is `{loop:{installed, version}, agents:[{agent, label, detected,
+  mcp, hooks, instruction, connected}]}`.
+- `impeccable loop connect --agent claude|codex` connects only that agent. Its text
+  report keeps the sign-in and follow-up lines. An agent CLI's own output goes
+  to stderr, so stdout carries the report or the one JSON object and nothing else.
+  `--json` never prompts and prints one object on stdout,
+  `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
+  error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
+  unknown agent). It exits 0 only when every agent asked for connected.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
