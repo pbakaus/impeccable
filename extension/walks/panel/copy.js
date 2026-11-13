@@ -71,6 +71,7 @@ export const COPY = {
     found: (name, n) => `${name || 'Your walker'} found ${issues(n)}`,
     beforeStop: 'before you stopped the walk',
     saidNo: (name, n) => `You said No at step ${n}, so ${name || 'your walker'} didn’t get it done.`,
+    home: 'Done',
     see: (name) => `See ${name ? `${name}’s` : 'the'} walk`,
   },
 

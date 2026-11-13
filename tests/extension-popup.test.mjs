@@ -294,7 +294,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1, personas = [], plan = { ok: false } } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, onboarded = false, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true } } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -325,7 +325,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, onboarded = fal
   Object.assign(globalThis, {
     document, location: { search: '' }, addEventListener() {},
     chrome: {
-      runtime: { async sendMessage(message) { sent.push(message); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk: { ok: true } }[message.account]; } },
+      runtime: { async sendMessage(message) { sent.push(message); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -374,7 +374,19 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   assert.deepEqual([h.body.dataset.screen, h.app.querySelector('textarea').value], ['home', 'Add a to-do, then delete it.']);
   await h.press('send');
   await h.press('start');
-  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId]), [[{ mine: 'alex' }, 'p-1', 7]]);
+  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId, m.walker.name]), [[{ mine: 'alex' }, 'p-1', 7, 'Alex']]);
+  const expired = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], plan: { ok: true, plan }, walk: { ok: false, why: 'plan' } });
+  expired.app.querySelector('textarea').value = 'Add a to-do.';
+  await expired.press('send');
+  await expired.press('start');
+  assert.equal(expired.body.dataset.screen, 'home', 'a plan the server refuses goes back to the box');
+});
+
+test('a walk that ended with no results page to open offers the way home', async () => {
+  const h = await sidePanel({ view: STUBS.stopped, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  assert.deepEqual([h.body.dataset.screen, h.acts().includes('results')], ['end', false]);
+  await h.press('home');
+  assert.equal(h.body.dataset.screen, 'home');
 });
 
 // The steps as the server lands them after a No: that deed and each one after it marked `no`; a deed the walk could not

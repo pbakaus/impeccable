@@ -89,7 +89,10 @@ async function plan(message) {
   return ask.body ? session.planWalk(ask.body) : { ok: false, why: ask.why };
 }
 
-async function walk({ plan: approved, ...message }, panel = Promise.resolve(false)) {
+/** Who walks, as the side panel picked them: a name, and the face sheet's address when there is one. */
+const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: typeof who.face === 'string' && /^https?:\/\//.test(who.face) ? who.face.slice(0, 2048) : null } : null);
+
+async function walk({ plan: approved, walker, ...message }, panel = Promise.resolve(false)) {
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };
   if (approved !== undefined && !PLAN_ID.test(approved)) return { ok: false, why: 'failed' };
@@ -102,7 +105,8 @@ async function walk({ plan: approved, ...message }, panel = Promise.resolve(fals
   if (!taken?.ok) return { ok: false, why: 'failed' };
   // An approved plan approved its steps: the walk asks nothing mid-way, and its results wait behind the panel's button.
   planned(Boolean(approved));
-  await chrome.storage.session.set({ walkUrl: started.walkUrl ?? null }).catch(() => undefined);
+  // After the hand-off, which forgot the last walk's (control.js `rearm`): this walk's page and walker only.
+  await chrome.storage.session.set({ walkUrl: started.walkUrl ?? null, walker: walkerOf(walker) }).catch(() => undefined);
   return { ok: true, panel: await panel };
 }
 

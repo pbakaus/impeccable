@@ -23,7 +23,12 @@ const release = () => { for (const go of held.splice(0)) go(); };
 let stopped = false;
 /** Set once a walk starts on a plan the person approved in the side panel: it asks nothing mid-way. A new hand-off clears it. */
 let plannedWalk = false;
-export function rearm() { stopped = false; plannedWalk = false; }
+export function rearm() {
+  stopped = false;
+  plannedWalk = false;
+  // The last walk's results page and walker are not this one's.
+  void chrome.storage.session.remove(['walkUrl', 'walker']).catch(() => undefined);
+}
 export function planned(on) { plannedWalk = on; }
 
 /**

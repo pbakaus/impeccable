@@ -154,10 +154,11 @@ async function go(start) {
   start.disabled = true;
   walker = { name: person.name, face: person.face ?? null };
   ended = false;
-  await chrome.storage.session.set({ walker }).catch(() => undefined);
-  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker }).catch(() => null);
   if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
   pre.note = WHY[answer?.why] ?? COPY.why.failed;
+  // A plan the server no longer takes (expired, or for another task or site): back to the box, to send again.
+  if (answer?.why === 'plan') { pre.screen = 'home'; pre.plan = null; }
   render();
 }
 
@@ -233,9 +234,11 @@ function end() {
   const saidNo = view.outcome && !view.outcome.finished ? view.steps.find((step) => step.refused === 'no')?.n : undefined;
   const head = state === 'done' ? COPY.end.done(name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
   const label = n > 0 ? COPY.end.found(name(), n) : COPY.end.see(name());
-  const results = el('button', { class: 'btn btn-gold btn-big', type: 'button', 'data-act': 'results', 'data-issues': String(n), disabled: !link,
+  // No results page to open (a walk from the terminal that ended early): the way home instead.
+  const results = link ? el('button', { class: 'btn btn-gold btn-big', type: 'button', 'data-act': 'results', 'data-issues': String(n),
     onclick: () => { void chrome.tabs.create({ url: link, active: true }).catch(() => undefined); ended = true; render(); } },
-  el('span', { class: 'big-t' }, el('b', { text: label }), n > 0 && state === 'stopped' ? el('small', { text: COPY.end.beforeStop }) : null), icon('out'));
+  el('span', { class: 'big-t' }, el('b', { text: label }), n > 0 && state === 'stopped' ? el('small', { text: COPY.end.beforeStop }) : null), icon('out'))
+    : button('home', COPY.end.home, 'sec full', () => { ended = true; render(); });
   return [
     top(view.site ?? hereUrl),
     el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
@@ -333,7 +336,7 @@ async function knowAccount() {
 /** The walk's results page, as the worker kept it: only on the walk's own server (handoff.js `resultLink`). */
 async function knowWalk() {
   const { walker: kept, walkUrl: url, handoff } = await chrome.storage.session.get(['walker', 'walkUrl', 'handoff']).catch(() => ({}));
-  walker = kept ?? walker;
+  walker = kept ?? null;
   walkUrl = typeof url === 'string' && handoff?.socket ? resultLink(url, handoff.socket) : null;
 }
 
