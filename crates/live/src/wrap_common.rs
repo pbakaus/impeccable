@@ -1339,12 +1339,31 @@ mod tests {
     fn same_line_minified_copy_is_never_wrapped_whole_when_the_pretty_file_is_ambiguous() {
         let minified = "<main><h1 class=\"picked\">Title</h1><p>x</p></main>\n";
         let pretty = "<main>\n  <h1 class=\"picked\">Title</h1>\n  <h1 class=\"picked\">Other</h1>\n</main>\n";
+        let twins = "<main>\n  <h1 class=\"picked\">Pricing plans</h1>\n  <h1 class=\"picked\">Pricing plans</h1>\n</main>\n";
         for (min_name, pretty_name) in [("a.html", "b.html"), ("b.html", "a.html")] {
             for locator in [vec!["--classes", "picked"], vec!["--classes", "picked", "--text", "Nope"]] {
                 let project = TagProject::new(min_name, minified);
                 std::fs::write(project.0.join(pretty_name), pretty).unwrap();
                 let (_, out, err) = project.run(false, &locator);
                 assert_eq!(project.source(min_name), minified, "{min_name} {locator:?} {out} {err}");
+            }
+            // Several lone hits, with or without a --text that matches them
+            // all, stay ambiguous: the first one never wins by walk order.
+            for (other, locator) in [
+                (pretty, vec!["--classes", "picked"]),
+                (twins, vec!["--classes", "picked", "--text", "Pricing plans"]),
+            ] {
+                let project = TagProject::new(min_name, minified);
+                std::fs::write(project.0.join(pretty_name), other).unwrap();
+                let (code, out, err) = project.run(false, &locator);
+                // With the pretty file first, the line resolver answers as it
+                // always has; isolation only decides when the minified hit leads.
+                if min_name == "a.html" {
+                    assert_eq!(code, 1, "{min_name} {locator:?} {out} {err}");
+                    assert_eq!(serde_json::from_str::<Value>(&err).unwrap()["error"], "element_ambiguous", "{err}");
+                    assert_eq!(project.source(pretty_name), other);
+                }
+                assert_eq!(project.source(min_name), minified);
             }
         }
     }

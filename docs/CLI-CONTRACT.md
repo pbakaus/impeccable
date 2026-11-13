@@ -1801,9 +1801,10 @@ Void names (img, input, link, ...) fold case only in HTML-like files; in
 .jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
 component that keeps its children. A class, id or query locator whose
 first hit in walk order sits on a shared line (a minified copy) while another
-hit stands on lines of its own takes the first such lone hit, and with a
-`--text` that matches none of them refuses as `element_ambiguous`; it never
-wraps the minified line whole. A tag-only locator still weighs every
+hit stands on lines of its own drops the shared hits: a single surviving
+lone hit wins, several (with or without a `--text` that matches them all)
+refuse as `element_ambiguous`, and a `--text` that matches none refuses the
+same way; it never wraps the minified line whole. A tag-only locator still weighs every
 candidate.
 
 HTML-like sources refuse splitting in pre, textarea, script and style, or

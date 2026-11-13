@@ -214,10 +214,10 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
     // A tag alone must still weigh every candidate.
     if !tag_only && candidates.len() > 1 && candidates.iter().any(|c| !c.shared) {
         // The line resolver would take the first hit in walk order, which may
-        // be the minified line; take the first lone hit here instead.
+        // be the minified line. Drop the shared hits instead; only a single
+        // surviving lone hit may win, and several stay ambiguous.
         if !candidates[0].shared { return Err(files); }
         candidates.retain(|c| !c.shared);
-        candidates.truncate(1);
     }
     if candidates.len() != 1 {
         let hits = candidates.iter().map(|c| (files[c.file].path.clone(), vec![c.range])).collect();
