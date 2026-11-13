@@ -75,7 +75,10 @@ Commands:
   login                            Sign in to your Impeccable account
   logout                           Sign out on this machine
   whoami                           Show the signed-in account and whether it includes Pro rules
+  walkthrough <recording>          Turn a screen recording into a Needs you walkthrough (MP4, poster, chapters)
+  world <id> [--print]             Seed this project's DESIGN.md from a world in the Impeccable catalog
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  foundations [path]               Check which product foundations this project has in place
   journeys <workflow-or-goal>      Someone from your app's cast takes a journey through it and reports what they hit
 
 Options:

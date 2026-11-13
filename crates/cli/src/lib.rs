@@ -13,6 +13,7 @@ pub mod capture_service;
 pub mod reviewed_entry;
 
 mod font_render;
+mod foundations;
 mod router;
 pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,6 +22,7 @@ mod loop_connect;
 mod loop_install;
 
 mod setup_report;
+mod walkthrough;
 
 /// Schedule the setup worker after an open binary's Pro scan dispatch.
 #[doc(hidden)]

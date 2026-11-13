@@ -30,8 +30,11 @@ pub struct Metadata {
     pub health: bool,
     pub setup: bool,
     pub foundations: bool,
+    pub taste: bool,
     pub design: bool,
     pub critiques: bool,
+    /// `worlds:read`, for `impeccable world` (`crate::world`).
+    pub worlds: bool,
     /// `journeys:start`, for `impeccable journeys` (`crate::journeys`).
     pub journeys: bool,
 }
@@ -82,6 +85,8 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == "setup:write")),
             foundations,
+            taste: doc.get("scopes_supported").and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == TASTE_READ_SCOPE)),
             design: doc
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
@@ -90,6 +95,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == CRITIQUES_SCOPE)),
+            worlds: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == WORLDS_SCOPE)),
             journeys: doc
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
@@ -106,8 +115,14 @@ pub const CRITIQUES_SCOPE: &str = "critiques:write";
 pub const HEALTH_SCOPE: &str = "health:write";
 pub const DESIGN_SCOPE: &str = "design:write";
 
+/// Reading standing design preferences.
+pub const TASTE_READ_SCOPE: &str = "taste:read";
+
 /// Uploading foundations evidence, separately consented from detector counts.
 pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
+
+/// Reading a catalog world's seed (`crate::world`).
+pub const WORLDS_SCOPE: &str = "worlds:read";
 
 /// Starting and following journeys (`crate::journeys`).
 pub const JOURNEYS_SCOPE: &str = "journeys:start";
@@ -121,6 +136,8 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.foundations, FOUNDATIONS_SCOPE),
         (meta.design, DESIGN_SCOPE),
         (meta.critiques, CRITIQUES_SCOPE),
+        (meta.taste, TASTE_READ_SCOPE),
+        (meta.worlds, WORLDS_SCOPE),
         (meta.journeys, JOURNEYS_SCOPE),
     ] {
         if offered {
@@ -369,6 +386,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 pub struct Tokens {
     pub setup: bool,
     pub foundations: bool,
+    pub taste: bool,
     pub scopes: Option<Vec<String>>,
     pub access_token: String,
     pub refresh_token: String,
@@ -409,6 +427,7 @@ fn tokens(v: serde_json::Value, fallback: &[String]) -> Result<Tokens, ApiError>
             Ok(Tokens {
                 setup: scopes.iter().any(|s| s == "setup:write"),
                 foundations: scopes.iter().any(|s| s == FOUNDATIONS_SCOPE),
+                taste: scopes.iter().any(|s| s == TASTE_READ_SCOPE),
                 scopes: Some(scopes),
                 access_token,
                 refresh_token,
@@ -478,7 +497,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..64 {
+        for mask in 0..256 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -488,7 +507,9 @@ mod scope_tests {
                 foundations: mask & 4 != 0,
                 design: mask & 8 != 0,
                 critiques: mask & 16 != 0,
-                journeys: mask & 32 != 0,
+                taste: mask & 32 != 0,
+                worlds: mask & 64 != 0,
+                journeys: mask & 128 != 0,
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
@@ -499,7 +520,9 @@ mod scope_tests {
                 (4, FOUNDATIONS_SCOPE),
                 (8, DESIGN_SCOPE),
                 (16, CRITIQUES_SCOPE),
-                (32, JOURNEYS_SCOPE),
+                (32, TASTE_READ_SCOPE),
+                (64, WORLDS_SCOPE),
+                (128, JOURNEYS_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }
@@ -513,6 +536,7 @@ mod scope_tests {
             .unwrap();
             assert_eq!(granted.setup, meta.setup);
             assert_eq!(granted.foundations, meta.foundations);
+            assert_eq!(granted.taste, meta.taste);
             assert_eq!(
                 granted
                     .scopes
@@ -537,15 +561,17 @@ mod omitted_scope_regressions {
             FOUNDATIONS_SCOPE,
             DESIGN_SCOPE,
             CRITIQUES_SCOPE,
+            TASTE_READ_SCOPE,
         ] {
             let fallback = vec![scope.to_string()];
             let grant = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer"}), &fallback).unwrap();
             assert_eq!(grant.scopes.as_ref(), Some(&fallback), "{scope}");
             assert_eq!(grant.setup, scope == "setup:write");
             assert_eq!(grant.foundations, scope == FOUNDATIONS_SCOPE);
+            assert_eq!(grant.taste, scope == TASTE_READ_SCOPE);
             let narrowed = tokens(serde_json::json!({"access_token":"test-access", "refresh_token":"test-refresh", "expires_in":900, "token_type":"Bearer", "scope":""}), &fallback).unwrap();
             assert_eq!(narrowed.scopes, Some(vec![]));
-            assert!(!narrowed.setup && !narrowed.foundations);
+            assert!(!narrowed.setup && !narrowed.foundations && !narrowed.taste);
         }
     }
 }

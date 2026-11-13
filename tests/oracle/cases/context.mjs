@@ -234,6 +234,18 @@ const cases = [
   // ======================================================================
   // context
   // ======================================================================
+  {
+    id: 'context-taste-ready', verb: 'context', workspace: 'ctx-empty',
+    env: env({ IMPECCABLE_HOME: '<WS>/.oracle-taste', IMPECCABLE_ACCOUNT_URL: 'https://api.impeccable.style', IMPECCABLE_NO_TASTE: null }),
+    setup: (ws) => write(ws, '.oracle-taste/taste.json', JSON.stringify({
+      version: 1, fetchedAt: Math.floor(Date.now() / 1000), etag: '"taste-1"',
+      issuer: 'https://api.impeccable.style', state: 'ready',
+      rules: [
+        { id: 'square', direction: 'prefer', text: 'Keep corners square: 0 to 2px radius on buttons, cards, inputs and images.' },
+        { id: 'kickers', direction: 'avoid', text: 'Small uppercase kicker labels above headings.' },
+      ],
+    })),
+  },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).
@@ -398,6 +410,15 @@ const cases = [
   // was recorded.
   { id: 'context-lowercase-product-name', platforms: ['darwin', 'win32'], verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'product.md', '# lower\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nLowercase filename.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-design-only', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Only\n---\n# Design: Only\n\n## Colors\n- **Ink** (#111): Text.\n'), env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-seeded-world', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\ncolors:\n  ground: "#82cc5c"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'), env: env(), files: IMPECCABLE_FILES },
+  // A seeded world outranks a scaffold's starter CSS: SEEDED_WORLD still fires
+  // when that CSS reads as a visual implementation, and the no-PRODUCT.md boot
+  // never calls the starter CSS the incumbent authority.
+  { id: 'context-seeded-world-starter-css', verb: 'context', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\ncolors:\n  ground: "#82cc5c"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'); write(ws, 'app/globals.css', ':root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n\nbody {\n  color: var(--foreground);\n  background: var(--background);\n}\n'); }, env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-seeded-world-starter-css-with-product', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'); write(ws, 'app/globals.css', ':root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n'); }, env: env(), files: IMPECCABLE_FILES },
+  // `impeccable world` refuses on any DESIGN.md the context reader would read,
+  // not just a root one, and names it; no request is made, so this runs offline.
+  { id: 'world-refuses-docs-design', verb: 'world', workspace: 'ctx-empty', setup: (ws) => write(ws, 'docs/DESIGN.md', '# Ours\n'), args: ['kinpaku'], env: env({ IMPECCABLE_CREDENTIAL_STORE: 'file' }), files: [...IMPECCABLE_FILES, 'docs/**'] },
   { id: 'context-empty-platform-section', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\n## Positioning\nEmpty platform section.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-android', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nAndroid\n\n## Positioning\nNative android.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-adaptive-word', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nadaptive\n\n## Positioning\nAdaptive keyword.\n'), env: env(), files: IMPECCABLE_FILES },
@@ -779,6 +800,33 @@ const cases = [
   { id: 'seed-platform-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--from', 'k1', '--platform', 'tv'], env: seedEnv() },
   { id: 'seed-candidate-count-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'k1', '--candidate-count', '9'], env: seedEnv() },
   { id: 'seed-no-product-gate', verb: 'concept-seed', workspace: 'ctx-visual-only', args: ['--scope', 'direction', '--from', 'k1'], env: seedEnv() },
+  {
+    id: 'seed-surface-settled-world', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'surface', '--mode', 'persuade', '--from', 'oracle-key-1'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
+  {
+    id: 'seed-direction-settled-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1', '--register', 'bolder'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
+  {
+    id: 'seed-direction-replace-world', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--replace-world'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
   { id: 'seed-direction-local', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '2', '--register', 'bolder'], env: seedEnv() },
