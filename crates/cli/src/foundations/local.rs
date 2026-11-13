@@ -505,11 +505,17 @@ impl Project {
         // Any script can restyle the page, inline or loaded; data blocks
         // (JSON-LD, import maps) run nothing.
         let script = re(&SCRIPT, r"(?is)<script\b[^>]*>");
+        static KIND: OnceLock<Regex> = OnceLock::new();
+        let kind = re(&KIND, r#"(?i)\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#);
         let import = re(&IMPORT, r#"(?i)@import\s+(?:url\(\s*)?["']?(?:https?:)?//"#);
         let runs = |t: &str| {
             script.find_iter(t).any(|m| {
-                let tag = m.as_str().to_ascii_lowercase();
-                !(tag.contains("json") || tag.contains("importmap"))
+                // Only the type attribute marks a data block: a `src` or `id`
+                // that merely says "json" still loads and runs a script.
+                let Some(c) = kind.captures(m.as_str()) else { return true };
+                let value = c.get(1).or(c.get(2)).or(c.get(3)).map_or("", |v| v.as_str());
+                let value = value.trim().to_ascii_lowercase();
+                !(value == "importmap" || value == "application/json" || value.ends_with("+json"))
             })
         };
         let (mut ignores, mut unresolved) = (false, false);
