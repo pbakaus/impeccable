@@ -156,6 +156,7 @@ fn refusal_line(code: &str, c: &Ctx) -> Option<String> {
         "not-built" => "Impeccable can't do that yet. Try again after an update.".into(),
         "bad-device" => "Journeys run on a phone, a tablet or a desktop. Pick one or more of those with --device.".into(),
         "no-terms" => "This workspace hasn't accepted Impeccable's terms yet. Ask an owner to accept them in the app, then try again.".into(),
+        "not-pro" => format!("Journeys come with Impeccable Pro, and this account doesn't include it. {}", crate::pro::PRICING),
         _ => return None,
     })
 }

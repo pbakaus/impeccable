@@ -125,7 +125,7 @@ fn an_agent_starts_one_detached_reads_where_it_stands_and_calls_it_off() {
 
 #[test]
 fn each_way_a_journey_cannot_start_has_its_code_and_exit() {
-    // Catches: a refusal read as "unreachable" (an agent would retry it forever), a missing journeys scope not sending the person to sign in, and a page on another site being accepted.
+    // Catches: a refusal read as "unreachable" (an agent would retry it forever), a missing journeys scope not sending the person to sign in, an account without Pro not pointed at the pricing page, and a page on another site being accepted.
     let (fake, env) = signed_in("journeys-refused");
     let run = || {
         impeccable(&env, &["journeys", "add a todo", "--url", "http://localhost:5173", "--repo", "acme/storefront", "--json"])
@@ -135,6 +135,7 @@ fn each_way_a_journey_cannot_start_has_its_code_and_exit() {
     for (status, body, error, exit) in [
         (404, Value::Null, "not-enabled", 2),
         (409, json!({ "error": "no-cast" }), "no-cast", 2),
+        (403, json!({ "error": "not-pro" }), "not-pro", 2),
         (403, json!({ "error": "insufficient_scope" }), "not-signed-in", 4),
         (500, json!({}), "unreachable", 2),
         (418, json!({ "error": "a-new-code" }), "unknown", 2),
@@ -146,6 +147,8 @@ fn each_way_a_journey_cannot_start_has_its_code_and_exit() {
         assert_eq!(stdout_json(&out)["error"], error, "{status}");
         assert_eq!(out.status.code(), Some(exit), "{status}");
         assert!(!out.stderr.is_empty(), "{status}: no line saying what to do");
+        // An account without Pro is pointed at the plans, not told to sign in again.
+        assert_eq!(error == "not-pro", String::from_utf8_lossy(&out.stderr).contains("impeccable.style/pricing"), "{status}");
     }
     assert_eq!(fake.hits(ONE), 0);
 }

@@ -2882,7 +2882,10 @@ Requests, all on the account service with the CLI grant:
   `POST /cli/v1/workflows` saves one for `--save` and answers `{errand}`.
 
 A refusal is `{error: <code>}` and gets one fixed line; no sentence of the
-service's is printed. A bare 404 reads as journeys not being on. A 5xx or no
+service's is printed. A 403 `{error: "not-pro"}` (the account has no
+Impeccable Pro) exits 2 like any refusal, and its line ends with
+`See impeccable.style/pricing`, the pointer `whoami` gives an account without
+Pro. A bare 404 reads as journeys not being on. A 5xx or no
 answer is `unreachable`; while following, five in a row end the command. Any
 other code is `unknown`, and an answer whose shape this version cannot read
 is `outdated`: both say to update the CLI.
