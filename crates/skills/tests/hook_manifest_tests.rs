@@ -1039,8 +1039,9 @@ fn antigravity_user_install_writes_the_global_manifest_and_prunes_a_dead_project
     assert_eq!(project_after["lint"]["Stop"][0]["command"], "./lint.sh");
 
     // An entry naming a launcher elsewhere may still run: kept.
-    let elsewhere = jsp::join(&[&root, "vendor", "impeccable", "scripts", "impeccable"]);
+    let elsewhere = jsp::join(&[&root, "vendor", "skills", "impeccable", "scripts", "impeccable"]);
     let custom = impeccable_context::hook_wiring::antigravity_manifest_for_command(&format!("[ ! -f '{elsewhere}' ] || '{elsewhere}' hook"));
+    assert!(value_has_impeccable_hook_marker(&custom), "the custom entry must read as ours, or the prune would skip it anyway");
     write(&project_manifest, &custom.to_string());
     copy_provider_hooks(&sys, &bundle, &project, &[".agent"], false, Some(&home), Some(&project)).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&read(&project_manifest)).unwrap(), custom);
