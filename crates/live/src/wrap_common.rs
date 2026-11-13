@@ -156,7 +156,8 @@ fn matches_query(line: &str, query: &str, tag: Option<&str>) -> bool {
 /// a second opener of the tag on the opening line (a sibling or a nested
 /// element of the same tag), text before the opener, or anything after the
 /// element's own end. Wrap and accept replace whole lines, so such a range
-/// would take its neighbours with it.
+/// would take its neighbours with it. `lines` come from `mask_markup`, so
+/// markup inside a comment or a script is no neighbour.
 fn shares_boundary_line(lines: &[String], m: ElementMatch, tag: &str) -> bool {
     let html_tag = is_html_tag(tag);
     let start_text = &lines[m.start_line];
@@ -195,11 +196,11 @@ fn refuse_shared_lines(resolved: Resolution, queries: &[String], tag: Option<&st
         return resolved;
     };
     match resolved {
-        Resolution::Match(file, m) if shares_boundary_line(&file.lines, m, tag) => {
+        Resolution::Match(file, m) if shares_boundary_line(&mask_markup(&file.lines), m, tag) => {
             Resolution::SharedLine(file, m)
         }
         Resolution::TextNotInFile(file, candidates)
-            if candidates.len() == 1 && shares_boundary_line(&file.lines, candidates[0], tag) =>
+            if candidates.len() == 1 && shares_boundary_line(&mask_markup(&file.lines), candidates[0], tag) =>
         {
             Resolution::SharedLine(file, candidates[0])
         }
@@ -267,8 +268,10 @@ fn skip_line(line: &str) -> bool {
 
 /// JS: findElement(lines, query, tag)
 pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<ElementMatch> {
+    // Markup inside a comment or a script is no match.
+    let masked = mask_markup(lines);
     for (i, line) in lines.iter().enumerate() {
-        if !matches_query(line, query, tag) {
+        if !matches_query(&masked[i], query, tag) {
             continue;
         }
         if skip_line(line) {
@@ -277,12 +280,12 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<
         if line.contains("data-impeccable-variant") {
             continue;
         }
-        let Some(opener) = find_opener_line(lines, i, tag) else {
+        let Some(opener) = find_opener_line(&masked, i, tag) else {
             continue;
         };
         return Some(ElementMatch {
             start_line: opener,
-            end_line: find_closing_line(lines, opener),
+            end_line: find_closing_line(&masked, opener),
         });
     }
     None
@@ -292,8 +295,9 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>) -> Option<
 pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Vec<ElementMatch> {
     let mut out = Vec::new();
     let mut seen: Vec<usize> = Vec::new();
+    let masked = mask_markup(lines);
     for (i, line) in lines.iter().enumerate() {
-        if !matches_query(line, query, tag) {
+        if !matches_query(&masked[i], query, tag) {
             continue;
         }
         if skip_line(line) {
@@ -302,7 +306,7 @@ pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Ve
         if line.contains("data-impeccable-variant") {
             continue;
         }
-        let Some(opener) = find_opener_line(lines, i, tag) else {
+        let Some(opener) = find_opener_line(&masked, i, tag) else {
             continue;
         };
         if seen.contains(&opener) {
@@ -311,7 +315,7 @@ pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>) -> Ve
         seen.push(opener);
         out.push(ElementMatch {
             start_line: opener,
-            end_line: find_closing_line(lines, opener),
+            end_line: find_closing_line(&masked, opener),
         });
     }
     out
@@ -447,108 +451,269 @@ pub fn find_closing_line(lines: &[String], start: usize) -> Option<usize> {
 /// `<tag_name` leads line `start`. Returns the line where the depth first sits
 /// at zero at a line's end (`find_closing_line`'s answer), and the line and
 /// char index just past the `>` where the depth first reaches zero. With
-/// `void`, the opener's own `>` ends the element.
+/// `void`, the opener's own `>` ends the element. Tags are read by
+/// `lex_markup`, so comments, raw text and quoted values never count.
 fn scan_element(lines: &[String], start: usize, tag_name: &str, void: bool) -> (Option<usize>, Option<(usize, usize)>) {
-    // Scan chars with state carried across lines: an opening tag can span
-    // lines and hold `>` inside a quoted value or a `{...}` prop (`=>`).
-    let name: Vec<char> = tag_name.chars().collect();
+    let fold = folds_tag_case(tag_name);
+    let same = |name: &str| if fold { name.eq_ignore_ascii_case(tag_name) } else { name == tag_name };
     let mut first_zero: Option<(usize, usize)> = None;
     let mut opener_open = true;
     let mut depth: i64 = 0;
-    let mut in_tag = false;
-    let mut braces = 0usize;
-    let mut quote: Option<char> = None;
-    // A closing tag whose `>` sits on the next line (`</section` / `>`).
-    let mut pending_close = false;
-    for (i, line) in lines.iter().enumerate().skip(start) {
-        let chars: Vec<char> = line.chars().collect();
-        if std::mem::take(&mut pending_close) {
-            if let Some(gt) = chars.iter().position(|c| !is_js_whitespace(*c)).filter(|&k| chars[k] == '>') {
+    let mut result = (None, None);
+    lex_markup(lines, start, |event| {
+        match event {
+            Lexed::Open { name } if same(name) => depth += 1,
+            Lexed::OpenEnd { name, line, col, self_closing } if same(name) => {
+                if self_closing {
+                    depth -= 1;
+                    if depth <= 0 && first_zero.is_none() {
+                        first_zero = Some((line, col));
+                    }
+                } else if void && std::mem::take(&mut opener_open) && first_zero.is_none() {
+                    result = (None, Some((line, col)));
+                    return true;
+                }
+                opener_open = false;
+            }
+            Lexed::Close { name, line, col } if same(name) => {
                 depth -= 1;
                 if depth <= 0 && first_zero.is_none() {
-                    first_zero = Some((i, gt + 1));
+                    first_zero = Some((line, col));
                 }
             }
+            Lexed::LineEnd { line } if depth <= 0 => {
+                result = (Some(line), first_zero);
+                return true;
+            }
+            _ => {}
         }
+        false
+    });
+    if result.0.is_none() && result.1.is_none() {
+        result.1 = first_zero;
+    }
+    result
+}
+
+/// Whether a tag name matches case-insensitively. HTML names do; a JSX
+/// component (`Card`, an uppercase letter followed by lowercase ones) keeps
+/// its exact case.
+fn folds_tag_case(name: &str) -> bool {
+    name.is_ascii()
+        && !(name.starts_with(|c: char| c.is_ascii_uppercase()) && name.bytes().any(|b| b.is_ascii_lowercase()))
+}
+
+/// Elements whose contents are text, not markup.
+const RAW_TEXT_TAGS: [&str; 3] = ["script", "style", "textarea"];
+
+/// What `lex_markup` reports. Columns are char indices; `col` is just past
+/// the tag's `>`.
+enum Lexed<'a> {
+    /// `<name` opened a tag.
+    Open { name: &'a str },
+    /// The open tag's `>`.
+    OpenEnd { name: &'a str, line: usize, col: usize, self_closing: bool },
+    /// `</name>`, its `>` possibly on the next line.
+    Close { name: &'a str, line: usize, col: usize },
+    /// Chars `from..to` of `line` are comment or raw-text contents.
+    Hidden { line: usize, from: usize, to: usize },
+    LineEnd { line: usize },
+}
+
+enum LexMode {
+    Text,
+    Tag { braces: usize, quote: Option<char> },
+    HtmlComment,
+    JsxComment,
+    Raw(String),
+}
+
+/// The one markup reader the element scans share. From line `start` it
+/// reports tags in order while skipping what is not markup: `<!-- -->` and
+/// `{/* */}` comments, the contents of script, style and textarea, and quoted
+/// attribute values and `{...}` props inside a tag (where `>` and `<` are
+/// text). A tag name matches `[A-Za-z][A-Za-z0-9.:_-]*` followed by
+/// whitespace, `/`, `>` or the line's end. `on` returns true to stop.
+fn lex_markup(lines: &[String], start: usize, mut on: impl FnMut(Lexed) -> bool) {
+    fn name_end(chars: &[char], from: usize) -> usize {
+        let mut k = from;
+        while k < chars.len() && (chars[k].is_ascii_alphanumeric() || matches!(chars[k], '.' | ':' | '_' | '-')) {
+            k += 1;
+        }
+        k
+    }
+    let mut mode = LexMode::Text;
+    let mut tag_name = String::new();
+    let mut pending_close: Option<String> = None;
+    for (i, line) in lines.iter().enumerate().skip(start) {
+        let chars: Vec<char> = line.chars().collect();
+        let n = chars.len();
+        let mut j = 0;
+        if let Some(name) = pending_close.take() {
+            if let Some(k) = chars.iter().position(|c| !is_js_whitespace(*c)).filter(|&k| chars[k] == '>') {
+                if on(Lexed::Close { name: &name, line: i, col: k + 1 }) {
+                    return;
+                }
+                j = k + 1;
+            }
+        }
+        let mut hidden_from = 0;
         let mut escaped = false;
-        for (j, &c) in chars.iter().enumerate() {
-            if in_tag {
-                if let Some(q) = quote {
-                    // A JS string takes backslash escapes; an attribute value
-                    // does not.
-                    if escaped {
-                        escaped = false;
-                    } else if braces > 0 && c == '\\' {
-                        escaped = true;
-                    } else if c == q {
-                        quote = None;
+        while j < n {
+            let c = chars[j];
+            match &mut mode {
+                LexMode::Text => {
+                    if c == '<' && chars[j + 1..].starts_with(&['!', '-', '-']) {
+                        mode = LexMode::HtmlComment;
+                        j += 4;
+                        hidden_from = j;
+                        continue;
                     }
-                } else if c == '{' {
-                    braces += 1;
-                } else if c == '}' {
-                    braces = braces.saturating_sub(1);
-                } else if c == '"' || c == '\'' || c == '`' {
-                    // Outside `{...}` a quote opens an attribute value. Inside,
-                    // a backtick opens a template literal, and `"` or `'` open
-                    // a JS string only when it closes on this line and is no
-                    // contraction: an apostrophe in a comment or in text is not
-                    // a delimiter.
-                    let opens = if braces == 0 {
-                        c != '`'
-                    } else {
-                        c == '`'
-                            || chars[j + 1..].contains(&c)
-                                && !(c == '\'' && j > 0 && chars[j - 1].is_alphanumeric())
-                    };
-                    if opens {
-                        quote = Some(c);
+                    if c == '{' && chars[j + 1..].starts_with(&['/', '*']) {
+                        mode = LexMode::JsxComment;
+                        j += 3;
+                        hidden_from = j;
+                        continue;
                     }
-                } else if braces == 0 && c == '>' {
-                    in_tag = false;
-                    if j > 0 && chars[j - 1] == '/' {
-                        depth -= 1;
-                        if depth <= 0 && first_zero.is_none() {
-                            first_zero = Some((i, j + 1));
-                        }
-                    } else if void && std::mem::take(&mut opener_open) && first_zero.is_none() {
-                        return (None, Some((i, j + 1)));
-                    }
-                    opener_open = false;
-                }
-            } else if c == '<' {
-                let rest = &chars[j + 1..];
-                if rest.first() == Some(&'/') && rest[1..].starts_with(&name) {
-                    let after = &rest[1 + name.len()..];
-                    match after.iter().position(|c| !is_js_whitespace(*c)) {
-                        Some(k) if after[k] == '>' => {
-                            depth -= 1;
-                            if depth <= 0 && first_zero.is_none() {
-                                // `<` + `/` + name + the whitespace before `>`.
-                                first_zero = Some((i, j + 2 + name.len() + k + 1));
+                    if c == '<' && chars.get(j + 1) == Some(&'/') && chars.get(j + 2).map_or(false, |c| c.is_ascii_alphabetic()) {
+                        let end = name_end(&chars, j + 2);
+                        let name: String = chars[j + 2..end].iter().collect();
+                        match chars[end..].iter().position(|c| !is_js_whitespace(*c)) {
+                            Some(k) if chars[end + k] == '>' => {
+                                if on(Lexed::Close { name: &name, line: i, col: end + k + 1 }) {
+                                    return;
+                                }
+                                j = end + k + 1;
+                                continue;
                             }
+                            None => {
+                                pending_close = Some(name);
+                                j = n;
+                                continue;
+                            }
+                            _ => {}
                         }
-                        None => pending_close = true,
-                        _ => {}
+                    } else if c == '<' && chars.get(j + 1).map_or(false, |c| c.is_ascii_alphabetic()) {
+                        let end = name_end(&chars, j + 1);
+                        if end >= n || is_js_whitespace(chars[end]) || chars[end] == '/' || chars[end] == '>' {
+                            tag_name = chars[j + 1..end].iter().collect();
+                            if on(Lexed::Open { name: &tag_name }) {
+                                return;
+                            }
+                            mode = LexMode::Tag { braces: 0, quote: None };
+                            j = end;
+                            continue;
+                        }
                     }
-                } else if rest.starts_with(&name) {
-                    // JS: `(?=[\s/>]|$)`, so `<legend` does not match `<legendary`.
-                    let k = name.len();
-                    if k >= rest.len()
-                        || is_js_whitespace(rest[k])
-                        || rest[k] == '/'
-                        || rest[k] == '>'
-                    {
-                        depth += 1;
-                        in_tag = true;
+                }
+                LexMode::Tag { braces, quote } => {
+                    if let Some(q) = *quote {
+                        // A JS string takes backslash escapes; an attribute
+                        // value does not.
+                        if escaped {
+                            escaped = false;
+                        } else if *braces > 0 && c == '\\' {
+                            escaped = true;
+                        } else if c == q {
+                            *quote = None;
+                        }
+                    } else if c == '{' {
+                        *braces += 1;
+                    } else if c == '}' {
+                        *braces = braces.saturating_sub(1);
+                    } else if c == '"' || c == '\'' || c == '`' {
+                        // Outside `{...}` a quote opens an attribute value.
+                        // Inside, a backtick opens a template literal, and `"`
+                        // or `'` open a JS string only when it closes on this
+                        // line and is no contraction: an apostrophe in a
+                        // comment or in text is not a delimiter.
+                        let opens = if *braces == 0 {
+                            c != '`'
+                        } else {
+                            c == '`'
+                                || chars[j + 1..].contains(&c)
+                                    && !(c == '\'' && j > 0 && chars[j - 1].is_alphanumeric())
+                        };
+                        if opens {
+                            *quote = Some(c);
+                        }
+                    } else if *braces == 0 && c == '>' {
+                        let self_closing = j > 0 && chars[j - 1] == '/';
+                        if on(Lexed::OpenEnd { name: &tag_name, line: i, col: j + 1, self_closing }) {
+                            return;
+                        }
+                        let raw = tag_name.to_ascii_lowercase();
+                        mode = if !self_closing && RAW_TEXT_TAGS.contains(&raw.as_str()) {
+                            hidden_from = j + 1;
+                            LexMode::Raw(raw)
+                        } else {
+                            LexMode::Text
+                        };
+                    }
+                }
+                LexMode::HtmlComment => {
+                    if chars[j..].starts_with(&['-', '-', '>']) {
+                        if on(Lexed::Hidden { line: i, from: hidden_from, to: j }) {
+                            return;
+                        }
+                        mode = LexMode::Text;
+                        j += 3;
+                        continue;
+                    }
+                }
+                LexMode::JsxComment => {
+                    if chars[j..].starts_with(&['*', '/']) {
+                        if on(Lexed::Hidden { line: i, from: hidden_from, to: j }) {
+                            return;
+                        }
+                        mode = LexMode::Text;
+                        j += if chars.get(j + 2) == Some(&'}') { 3 } else { 2 };
+                        continue;
+                    }
+                }
+                LexMode::Raw(raw) => {
+                    if c == '<' && chars.get(j + 1) == Some(&'/') {
+                        let end = name_end(&chars, j + 2);
+                        let name: String = chars[j + 2..end].iter().collect();
+                        let bounded = end >= n || is_js_whitespace(chars[end]) || chars[end] == '>' || chars[end] == '/';
+                        if bounded && name.eq_ignore_ascii_case(raw) {
+                            if on(Lexed::Hidden { line: i, from: hidden_from, to: j }) {
+                                return;
+                            }
+                            // The close itself is read in text mode.
+                            mode = LexMode::Text;
+                            continue;
+                        }
                     }
                 }
             }
+            j += 1;
         }
-        if depth <= 0 {
-            return (Some(i), first_zero);
+        if matches!(mode, LexMode::HtmlComment | LexMode::JsxComment | LexMode::Raw(_)) && hidden_from < n {
+            if on(Lexed::Hidden { line: i, from: hidden_from, to: n }) {
+                return;
+            }
+        }
+        if on(Lexed::LineEnd { line: i }) {
+            return;
         }
     }
-    (None, first_zero)
+}
+
+/// `lines` with the contents of comments and raw-text elements blanked to
+/// spaces, char for char, so line numbers and char columns still hold. The
+/// delimiters stay, so a comment still reads as something on its line.
+pub(crate) fn mask_markup(lines: &[String]) -> Vec<String> {
+    let mut out: Vec<Vec<char>> = lines.iter().map(|l| l.chars().collect()).collect();
+    lex_markup(lines, 0, |event| {
+        if let Lexed::Hidden { line, from, to } = event {
+            for c in &mut out[line][from..to] {
+                *c = ' ';
+            }
+        }
+        false
+    });
+    out.into_iter().map(|l| l.into_iter().collect()).collect()
 }
 
 /// JS: detectCommentSyntax(filePath) → (open, close)
@@ -1251,6 +1416,62 @@ mod tests {
         // No end in sight: refuse rather than guess.
         assert!(shares_boundary_line(&lines(&["<Card>A", "more"]), m(0, 1), "Card"));
         assert!(shares_boundary_line(&lines(&["<Card>A"]), ElementMatch { start_line: 0, end_line: None }, "Card"));
+    }
+
+    #[test]
+    fn element_scan_folds_html_case_and_keeps_component_case() {
+        let cases = [
+            // HTML names match whatever their case (PRRT_kwDOQWgufc629ma3).
+            ("<div>\n  Outer intro\n  <DIV>Child</DIV>\n</div>\n<p>a</p>\n", Some(3)),
+            ("<div>\n  Outer intro\n  <DIV>Child</div>\n</div>\n<p>a</p>\n", Some(3)),
+            ("<DIV>\n  Outer intro\n  <div>Child</DIV>\n</Div>\n<p>a</p>\n", Some(3)),
+            // A component keeps its exact case: `<card>` is another element.
+            ("<Card>\n  <card>x</card>\n  <Card>y</Card>\n</Card>\n<p>a</p>\n", Some(3)),
+        ];
+        for (src, end) in cases {
+            let lines: Vec<String> = src.lines().map(String::from).collect();
+            assert_eq!(find_closing_line(&lines, 0), end, "{src}");
+        }
+        let page = lines(&["<main>", "<div>", "  Outer intro", "  <DIV>Child</div>", "</div>", "</main>"]);
+        assert_eq!(find_element(&page, "Outer intro", Some("div")).and_then(|m| m.end_line), Some(4));
+        assert!(!shares_boundary_line(&mask_markup(&page), ElementMatch { start_line: 1, end_line: Some(4) }, "div"));
+    }
+
+    #[test]
+    fn element_scan_skips_comments_raw_text_and_quoted_values() {
+        let cases = [
+            ("<div>\n  <!-- </div> -->\n  x\n</div>\n<p>a</p>\n", Some(3)),
+            ("<div>\n  <!--\n  </div>\n  -->\n</div>\n<p>a</p>\n", Some(4)),
+            ("<div>\n  {/* </div> */}\n</div>\n<p>a</p>\n", Some(2)),
+            ("<div>\n  <script>const t = '</div>';</script>\n</div>\n<p>a</p>\n", Some(2)),
+            ("<div>\n  <style>\n  </div>\n  </style>\n</div>\n<p>a</p>\n", Some(4)),
+            ("<div>\n  <p title=\"</div>\">x</p>\n</div>\n<p>a</p>\n", Some(2)),
+        ];
+        for (src, end) in cases {
+            let lines: Vec<String> = src.lines().map(String::from).collect();
+            assert_eq!(find_closing_line(&lines, 0), end, "{src}");
+        }
+        // A commented-out or scripted heading is no match; the real one after
+        // it is.
+        let page = lines(&[
+            "<!-- <script> -->",
+            "<p title=\"<script>\">x</p>",
+            "<!-- <h1>Old</h1> -->",
+            "<script>const h = '<h1>';</script>",
+            "<h1>Real</h1>",
+        ]);
+        assert_eq!(find_element(&page, "<h1", Some("h1")).map(|m| m.start_line), Some(4));
+        assert_eq!(find_all_elements(&page, "<h1", Some("h1")).len(), 1);
+        // Markup inside a comment or a script within the element is no
+        // neighbour; a comment after its end still is.
+        let m = ElementMatch { start_line: 0, end_line: Some(0) };
+        for lone in [
+            "<div>A<!-- </div> --></div>",
+            "<div><script>const t = '<div>';</script></div>",
+        ] {
+            assert!(!shares_boundary_line(&mask_markup(&lines(&[lone])), m, "div"), "{lone}");
+        }
+        assert!(shares_boundary_line(&mask_markup(&lines(&["<div>A</div><!-- x -->"])), m, "div"));
     }
 
     #[test]
