@@ -101,9 +101,9 @@ pub struct Report {
     pub empty: bool,
     /// A UI file carries an inline detector ignore, which can hide a finding.
     pub inline_ignores: bool,
-    /// A page runs a script or takes styles from another host (a linked or
-    /// imported stylesheet), so its styles aren't all in the files the
-    /// detector read.
+    /// A page runs a script, takes styles from another host (a linked or
+    /// imported stylesheet) or links a local stylesheet that isn't there, so
+    /// its styles aren't all in the files the detector read.
     pub unresolved_pages: bool,
     /// The walk or the reads hit a cap: some file went unseen.
     pub incomplete: bool,
@@ -492,8 +492,8 @@ impl Project {
     }
 
     /// Inline detector ignores in UI files, and HTML pages whose styles
-    /// come from outside the files (a remote stylesheet, any script).
-    /// Unread files count as both, so a pass is never assumed.
+    /// come from outside the files (a remote stylesheet, a linked local one
+    /// that isn't there to read, any script). Unread files count as both, so a pass is never assumed.
     fn page_hints(&self) -> (bool, bool) {
         static OUTSIDE: OnceLock<Regex> = OnceLock::new();
         static SCRIPT: OnceLock<Regex> = OnceLock::new();
@@ -527,6 +527,15 @@ impl Project {
             match ext(f) {
                 "html" | "htm" => {
                     unresolved |= outside.is_match(&t) || runs(&t) || import.is_match(&t);
+                    // A linked local stylesheet the detector can't read (one a build
+                    // hasn't produced yet) leaves the page's colors unseen; the
+                    // engine's own test, so the two never disagree.
+                    if !unresolved && t.to_ascii_lowercase().contains("<link") {
+                        let page = self.root.join(f);
+                        let dir = page.parent().unwrap_or(&self.root);
+                        let doc = impeccable_html::dom::StaticDocument::parse(&t);
+                        unresolved |= impeccable_html::cascade::has_unread_stylesheet(&doc, dir);
+                    }
                 }
                 "css" | "scss" | "sass" | "less" => unresolved |= import.is_match(&t),
                 _ => {}
