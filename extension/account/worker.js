@@ -7,6 +7,7 @@
 // as the server's block and the tab's id alone.
 import { BUILD } from '../shared/build.js';
 import { adopt } from '../walks/link.js';
+import { signedIn as pointToolbar } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { createSession, idbStore } from './session.js';
 
@@ -25,6 +26,8 @@ let issuer = PRODUCTION;
 const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }) => {
   if (issuerAllowed(accountServer, UNPACKED)) issuer = accountServer;
 }, () => undefined).then(() => session.recover()).catch(() => undefined);
+// Signed in, the toolbar icon opens the side panel rather than the popup: from the worker's start, read from disk alone.
+void chosen.then(() => session.signedIn()).then(pointToolbar, () => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -36,6 +39,12 @@ const session = createSession({
 
 /** What the popup is told of the account. */
 async function status() {
+  const answer = await account();
+  pointToolbar(await session.signedIn().catch(() => false));
+  return answer;
+}
+
+async function account() {
   await chosen;
   session.retry();
   const server = UNPACKED ? { server: issuer, unpacked: true } : {};

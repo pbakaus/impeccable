@@ -17,8 +17,8 @@ export const WALK_PERMISSIONS = ['debugger', 'tabs', 'tabGroups', 'sidePanel', '
 
 const under = (folder, file) => file === folder || file.startsWith(`${folder}/`);
 const isWalkFile = (file) => under('walks', file);
-/** Main's parts its store build and Firefox leave out: the account and its half of the popup. */
-const isAccountFile = (file) => under('account', file) || ['popup/account.js', 'popup/words.js'].includes(file);
+/** Main's parts its store build and Firefox leave out: the account, its half of the popup and its options page. */
+const isAccountFile = (file) => under('account', file) || ['popup/account.js', 'popup/words.js', 'popup/settings.html', 'popup/settings.js'].includes(file);
 const notListing = (rel) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel));
 const onlyStoreHosts = (entries) => entries
   .map((entry) => ({ ...entry, matches: entry.matches.filter((match) => STORE_HOSTS.some((host) => match.startsWith(host))) }))
@@ -26,7 +26,7 @@ const onlyStoreHosts = (entries) => entries
 
 /** The store manifest: no key, no `identity` (the store build does not sign in), content scripts on production hosts only. */
 export function storeManifest(source) {
-  const { key: _key, content_scripts: scripts = [], ...rest } = source;
+  const { key: _key, content_scripts: scripts = [], options_ui: _options, ...rest } = source;
   const kept = onlyStoreHosts(scripts.filter((entry) => !entry.js.some(isAccountFile)));
   return { ...rest, permissions: source.permissions.filter((permission) => permission !== 'identity'), ...(kept.length ? { content_scripts: kept } : {}) };
 }
@@ -37,11 +37,11 @@ export const isStoreFile = (rel) => notListing(rel) && !isAccountFile(rel);
 /** Whether a path in extension/ goes into the Firefox build: the store's files without walks or the module worker that loads them. */
 const isFirefoxFile = (rel) => isStoreFile(rel) && !isWalkFile(rel) && !['background/chrome-worker.js', 'shared/build.js'].includes(rel);
 
-/** The lines of popup.html that load the account's half, which main's store build drops with its files. */
-const POPUP_ACCOUNT = '  <script src="words.js"></script>\n  <script src="account.js"></script>\n';
+/** The lines of popup.html that are the account's half (the Impeccable Pro button and its scripts), which main's store build drops with its files. */
+const POPUP_ACCOUNT = /  <footer class="pro">[^\n]*\n([\s\S]*?)  <script src="words\.js"><\/script>\n  <script src="account\.js"><\/script>\n/;
 /** The lines the store build changes so that what it switches off is never loaded. */
 const STORE_LINES = {
-  'popup/popup.html': [POPUP_ACCOUNT, ''],
+  'popup/popup.html': [POPUP_ACCOUNT, '$1'],
   'shared/build.js': ['export const BUILD = { account: true, devHosts: true };', 'export const BUILD = { account: false, devHosts: false };'],
   'background/chrome-worker.js': ["import '../account/worker.js';\n", ''],
 };
@@ -49,7 +49,8 @@ const STORE_LINES = {
 /** Replaces `line` in `file` with `instead`; a line not found exactly as written stops the build. */
 function rewrite(file, [line, instead]) {
   const text = fs.readFileSync(file, 'utf-8');
-  if (!text.includes(line)) throw new Error(`${file}: the store build expects the line ${JSON.stringify(line)}`);
+  const found = typeof line === 'string' ? text.includes(line) : line.test(text);
+  if (!found) throw new Error(`${file}: the store build expects the line ${String(line)}`);
   fs.writeFileSync(file, text.replace(line, instead));
 }
 
@@ -89,7 +90,7 @@ export function moduleReferences(dir, entry) {
 /** Copies extension/ (`from`) to `to` as the Firefox build has it: the detector's files, with the Firefox manifest. */
 export function stageFirefox(from, to) {
   const manifest = stage(from, to, isFirefoxFile, firefoxManifest(sourceManifest(from)));
-  rewrite(path.join(to, 'popup/popup.html'), [POPUP_ACCOUNT, '']);
+  rewrite(path.join(to, 'popup/popup.html'), [POPUP_ACCOUNT, '$1']);
   return manifest;
 }
 
@@ -98,7 +99,7 @@ export function stageFirefox(from, to) {
  * universally-supported path on Gecko), and `browser_specific_settings.gecko` is added for AMO signing.
  */
 export function firefoxManifest(source) {
-  const { key: _key, content_scripts: _scripts, side_panel: _panel, ...rest } = source;
+  const { key: _key, content_scripts: _scripts, side_panel: _panel, options_ui: _options, ...rest } = source;
   return {
     ...rest,
     // Gecko supports MV3 via non-persistent event pages. Declaring `scripts`

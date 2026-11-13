@@ -88,6 +88,7 @@ function manifestReferences(manifest) {
   add(manifest.devtools_page);
   add(manifest.side_panel?.default_path);
   add(manifest.action?.default_popup);
+  add(manifest.options_ui?.page);
   for (const icon of Object.values(manifest.action?.default_icon || {})) add(icon);
   for (const icon of Object.values(manifest.icons || {})) add(icon);
   for (const entry of manifest.content_scripts || []) {

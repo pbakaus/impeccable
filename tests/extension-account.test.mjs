@@ -247,20 +247,22 @@ describe('account worker', () => {
   /** The tabs the worker opened, and the side panels. */
   const opened = [];
   const panels = [];
+  /** What the toolbar icon was pointed at, in order. */
+  const toolbar = [];
   const session = {};
   const local = {};
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
   const none = { addListener() {} };
   globalThis.chrome = {
     runtime: {
-      id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({}), onMessage: { addListener: (listener) => listeners.push(listener) }, onConnect: none,
+      id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({ action: { default_popup: 'popup/popup.html' } }), onMessage: { addListener: (listener) => listeners.push(listener) }, onConnect: none,
       async sendMessage() {},
     },
     storage: { local: area(local), session: area(session), sync: { async get(defaults) { return defaults; } } },
     tabs: { onCreated: none, onUpdated: none, onRemoved: none, async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
     debugger: { onEvent: none, onDetach: none },
-    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} },
-    sidePanel: { async open(where) { panels.push(where); } },
+    action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {}, async setPopup({ popup }) { toolbar.push({ popup }); } },
+    sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
   const loaded = import('../extension/account/worker.js');
@@ -310,6 +312,17 @@ describe('account worker', () => {
       return json(404, {});
     };
   };
+  // Before any walk (a walk under way keeps the icon on its panel too).
+  it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
+    await loaded;
+    startServer(() => json(404, {}));
+    await ask({ account: 'status' }, fromPopup);
+    assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
+    await ask({ account: 'sign-out' }, fromPopup);
+    assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+    records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
+  });
+
   const start = (tabId = 7) => ask({ account: 'walk', persona: { preset: 'ines' }, task: ' Read the top story. ', tabId }, fromPopup);
 
   for (const [label, walks, answer] of [
@@ -407,4 +420,5 @@ describe('account worker', () => {
       assert.deepEqual(made.at(-1), { url: `${ISSUER}/extension/v1/personas/mine/rosa`, method: 'DELETE', body: null });
     });
   }
+
 });

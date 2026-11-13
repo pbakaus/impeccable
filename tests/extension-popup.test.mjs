@@ -33,9 +33,9 @@ async function popup({ initial = state(), deferState = false, account, root = SO
     ...props,
   });
   // The page as popup.html marks it up: everything account.js finds hidden at first is hidden.
-  const HIDDEN = ['account-tabs', 'tab-personas', 'panel-personas', 'panel-settings', 'scan-error', 'sign-in'];
+  const HIDDEN = [];
   const node = id => {
-    if (!nodes.has(id)) nodes.set(id, element({ id, disabled: id === 'btn-copy-all', hidden: HIDDEN.includes(id) }));
+    if (!nodes.has(id)) nodes.set(id, element({ id, disabled: ['btn-copy-all', 'btn-toggle'].includes(id), hidden: HIDDEN.includes(id) }));
     return nodes.get(id);
   };
   const listeners = {};
@@ -46,6 +46,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
   const body = element();
   const context = vm.createContext({
     document: { getElementById: node, createElement: () => element(), body },
+    setTimeout, clearTimeout,
     navigator: { clipboard: { async writeText(text) {
       if (h.copyGate) await h.copyGate;
       if (h.rejectCopy) throw new Error('Clipboard blocked');
@@ -86,7 +87,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
   return h;
 }
 
-test('popup copies all active-tab findings with its URL and a visible success message', async () => {
+test('popup copies all active-tab findings with its URL and says it did', async () => {
   const h = await popup();
   assert.equal(h.node('btn-copy-all').disabled, false);
   await h.click('btn-copy-all');
@@ -94,7 +95,7 @@ test('popup copies all active-tab findings with its URL and a visible success me
   assert.match(h.writes[0], /URL: https:\/\/example.test\/page\n/);
   assert.match(h.writes[0], /Total findings: 2/);
   assert.match(h.writes[0], /## Advisories \(1\)/);
-  assert.match(h.node('copy-status').textContent, /Copied/);
+  assert.equal(h.node('copy-label').textContent, 'Copied');
 });
 
 test('popup distinguishes a clean scan from no scan or a failed scan', async () => {
@@ -144,7 +145,7 @@ for (const [label, change] of [
     await h.click('btn-copy-all');
     assert.equal(h.writes.length, 0);
     assert.equal(h.node('btn-copy-all').disabled, true);
-    assert.match(h.node('copy-status').textContent, /Scan/);
+    assert.match(h.node('scan-error').textContent, /Scan/);
   });
 }
 
@@ -167,12 +168,12 @@ test('clipboard rejection gives a visible retry message and keeps findings avail
   const h = await popup();
   h.rejectCopy = true;
   await h.click('btn-copy-all');
-  assert.match(h.node('copy-status').textContent, /Couldn.*copy.*Try again/i);
+  assert.match(h.node('scan-error').textContent, /Couldn.*copy.*Try again/i);
   assert.equal(h.node('btn-copy-all').disabled, false);
   h.rejectCopy = false;
   await h.click('btn-copy-all');
   assert.equal(h.writes.length, 1);
-  assert.match(h.node('copy-status').textContent, /Copied/);
+  assert.equal(h.node('copy-label').textContent, 'Copied');
 });
 
 
@@ -197,7 +198,7 @@ test('an old clipboard completion cannot mark a newer report copied', async () =
   h.broadcast({ action: 'findings-updated', tabId: 7, ...state([]) });
   release();
   await copying;
-  assert.equal(h.node('copy-status').textContent, '');
+  assert.equal(h.node('copy-label').textContent, 'Copy all');
   assert.equal(h.node('btn-copy-all').disabled, false);
 });
 
@@ -221,19 +222,18 @@ test('partial findings stay visible but cannot be copied before the visual pass 
 for (const url of ['', 'https://example.test/previous']) {
   test(`restores hidden overlays without trusting stale scan URL ${url}`, async () => {
     const h = await popup({ initial: { ...state(), url, overlaysVisible: false } });
-    assert.equal(h.node('btn-toggle').textContent, 'Show overlays');
+    assert.equal(h.node('toggle-label').textContent, 'Show outlines');
     assert.equal(h.node('btn-copy-all').disabled, true);
     h.broadcast({ action: 'findings-updated', tabId: 7, ...state() });
-    assert.equal(h.node('btn-toggle').textContent, 'Show overlays');
+    assert.equal(h.node('toggle-label').textContent, 'Show outlines');
     await h.click('btn-toggle');
-    assert.equal(h.node('btn-toggle').textContent, 'Hide overlays');
+    assert.equal(h.node('toggle-label').textContent, 'Hide outlines');
   });
 }
 
 test('reopening restores scan progress and a failed scan message without old findings', async () => {
   const pending = await popup({ initial: { findings: [], url: '', scanComplete: false, scanning: true } });
   assert.equal(pending.node('count-number').textContent, '0');
-  assert.equal(pending.node('btn-scan').textContent, 'Restart scan');
   assert.equal(pending.node('btn-scan').disabled, false);
   assert.equal(pending.node('btn-copy-all').disabled, true);
   await pending.click('btn-scan');
@@ -247,13 +247,11 @@ test('reopening restores scan progress and a failed scan message without old fin
   assert.equal(failed.node('btn-copy-all').disabled, true);
   assert.equal(failed.node('btn-scan').disabled, false);
   assert.equal(failed.node('scan-error').textContent, 'Snapshot failed');
-  assert.equal(failed.node('scan-error').hidden, false);
   failed.broadcast({ action: 'scan-started', tabId: 7 });
-  assert.equal(failed.node('scan-error').hidden, true);
+  assert.equal(failed.node('scan-error').textContent, '');
 });
 
 const signedIn = { ok: true, available: true, signedIn: true, email: 'mira@example.com' };
-const personas = { ok: true, personas: [{ name: 'Ines', role: 'A retired teacher' }, { name: 'Kofi', role: '' }] };
 
 const stages = [];
 after(() => { for (const dir of stages) rmSync(dir, { recursive: true, force: true }); });
@@ -273,166 +271,25 @@ for (const [label, account, asked, store] of [
   test(`the popup is the detector alone in ${label}`, async () => {
     const h = await popup({ account, ...(store ? { root: stagedStore() } : {}) });
     assert.equal(h.messages.some((m) => m.account), asked);
-    assert.equal(h.node('account-tabs').hidden, true);
-    assert.equal(h.node('panel-scan').hidden, false);
+    if (store) assert.equal(readFileSync(path.join(stagedStore(), 'popup/popup.html'), 'utf8').includes('btn-pro'), false, 'no Impeccable Pro button');
     // The detector works as it always has.
     await h.click('btn-copy-all');
     assert.match(h.writes[0], /Total findings: 2/);
   });
 }
 
-// A build loaded unpacked shows its account screens before the server takes sign-ins: Sign in then asks nothing.
+// Impeccable Pro, at the popup's foot: signed out it signs in, through the worker; before the server takes sign-ins it says so on the line.
 for (const [label, status, asks] of [
   ['the server takes sign-ins', { ok: true, available: true, signedIn: false }, true],
   ['a build loaded unpacked, before the server takes sign-ins', { ok: true, available: false, unpacked: true, server: 'https://api.impeccable.style' }, false],
 ]) {
-  test(`signed out, the popup offers Settings and Sign in under every tab, and no Personas: ${label}`, async () => {
+  test(`Impeccable Pro signs in: ${label}`, async () => {
     const h = await popup({ account: { status, 'sign-in': { ok: false } } });
-    assert.deepEqual([h.node('account-tabs').hidden, h.node('tab-personas').hidden, h.node('sign-in').hidden], [false, true, false]);
-    assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
-    h.click('tab-settings');
-    assert.deepEqual([h.node('panel-settings').hidden, h.node('panel-scan').hidden, h.node('sign-in').hidden, h.node('btn-sign-out').hidden], [false, true, false, true]);
-    assert.equal(h.body.dataset.account, 'signed-out');
-    await h.click('btn-sign-in');
+    await h.click('btn-pro');
     assert.equal(h.messages.some((m) => m.account === 'sign-in'), asks);
-    assert.equal(h.node('account-error').hidden, false, 'it says why nothing happened');
+    assert.notEqual(h.node('scan-error').textContent, '', 'it says why nothing happened');
   });
 }
-
-test('signed in, the popup shows the email and lists the personas', async () => {
-  const h = await popup({ account: { status: signedIn, personas } });
-  assert.equal(h.node('tab-personas').hidden, false);
-  assert.equal(h.node('panel-scan').hidden, false, 'Scan is open first');
-  h.click('tab-settings');
-  assert.deepEqual([h.node('account-email').textContent, h.node('sign-in').hidden, h.node('btn-sign-out').hidden], ['mira@example.com', true, false]);
-  h.click('tab-personas');
-  await tick();
-  assert.equal(h.node('panel-personas').hidden, false);
-  assert.deepEqual(h.node('persona-list').children.map((row) => row.children[0].textContent), ['Ines', 'Kofi']);
-  assert.equal(h.node('tab-personas').attributes['aria-selected'], 'true');
-});
-
-test('the side panel’s Open personas opens the popup on Personas, once', async () => {
-  const session = { popupTab: 'personas' };
-  const h = await popup({ account: { status: signedIn, personas }, session });
-  await tick();
-  assert.deepEqual([h.node('panel-personas').hidden, h.node('panel-scan').hidden, session.popupTab], [false, true, undefined]);
-});
-
-test('signed in with no personas, the Personas tab shows its note and nothing else', async () => {
-  const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [] } } });
-  h.click('tab-personas');
-  await tick();
-  assert.deepEqual([h.node('persona-list').children.length, h.node('personas-note').hidden], [0, false]);
-  assert.equal(h.node('personas-note').textContent, vm.runInNewContext(`${readFileSync(path.join(SOURCE, 'popup/words.js'), 'utf8')}; IMPECCABLE_WORDS.popup.noPersonas`, {}));
-});
-
-// "Walk this tab": each persona with a slug, and every preset, starts a walk of the tab the popup was opened on.
-for (const [label, answer, state] of [
-  ['started', { ok: true }, 'started'],
-  ['before the server has the door', { ok: false, why: 'unavailable' }, 'unavailable'],
-]) {
-  test(`a persona walks this tab from the Personas tab: ${label}`, async () => {
-    const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [{ name: 'Ada', role: '', slug: 'ada' }, { name: 'Bo', role: '' }] }, walk: answer } });
-    h.click('tab-personas');
-    await tick();
-    const walks = (list) => h.node(list).children.map((row) => row.children.find((child) => child.dataset.walk)?.dataset.walk ?? null);
-    assert.deepEqual([...walks('persona-list')], ['own:ada', null], 'a persona the server gave no slug cannot be walked');
-    assert.deepEqual([...walks('preset-list')], ['preset:ines', 'preset:kofi', 'preset:priya', 'preset:tomasz', 'preset:hana', 'preset:noor']);
-    const row = h.node('preset-list').children[0];
-    row.children.find((child) => child.dataset.walk).listeners.click();
-    const form = row.children.find((child) => child.className === 'walk-form');
-    assert.equal(form.hidden, false);
-    form.children.find((child) => child.className === 'walk-task').value = '  Read the top story.  ';
-    await form.listeners.submit({ preventDefault() {} });
-    assert.deepEqual(JSON.parse(JSON.stringify(h.messages.filter((m) => m.account === 'walk'))), [{ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7 }]);
-    assert.equal(form.dataset.state, state);
-  });
-}
-
-// Create a persona, at the top of the Personas tab: each state the form can be in, as the worker answers.
-const ROSA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
-async function personasTab(account) {
-  const h = await popup({ account: { status: signedIn, personas: { ok: true, personas: [] }, ...account } });
-  h.click('tab-personas');
-  await tick();
-  const [button, form] = h.node('persona-create').children;
-  const [, box, buttons, note] = form.children;
-  return { h, button, form, box, go: buttons.children[1], note };
-}
-for (const [label, typed, answer, state] of [
-  ['empty', '  ', null, 'empty'],
-  ['too short', 'Nurse', null, 'short'],
-  ['at the limit', 'A night-shift nurse.', { ok: false, why: 'limit', max: 3 }, 'limit'],
-  ['out of today’s quota', 'A night-shift nurse.', { ok: false, why: 'quota' }, 'quota'],
-  ['signed in before creating could be asked for', 'A night-shift nurse.', { ok: false, why: 'scope' }, 'scope'],
-  ['not available yet', 'A night-shift nurse.', { ok: false, why: 'unavailable' }, 'unavailable'],
-  ['failed', 'A night-shift nurse.', { ok: false, why: 'failed' }, 'failed'],
-]) {
-  test(`Create a persona: ${label}`, async () => {
-    const { h, button, form, box, note } = await personasTab({ create: answer });
-    button.listeners.click();
-    assert.deepEqual([form.hidden, button.hidden], [false, true]);
-    box.value = typed;
-    await form.listeners.submit({ preventDefault() {} });
-    await tick();
-    assert.equal(form.dataset.state, state);
-    assert.equal(h.messages.some((m) => m.account === 'create'), answer !== null, 'a description under eight characters is never sent');
-    assert.equal(note.hidden, false, 'it says why');
-    // The limit is the server's, never the popup's own number.
-    if (answer?.max) assert.match(note.textContent, /three/);
-  });
-}
-
-test('Create a persona: working, then done, with the new row first and its task box open', async () => {
-  let release;
-  let made = false;
-  const { h, form, box, go, button } = await personasTab({
-    create: () => new Promise((done) => { release = () => { made = true; done({ ok: true, persona: ROSA }); }; }),
-    personas: () => ({ ok: true, personas: [{ name: 'Ada', role: '', slug: 'ada', mine: true }, ...(made ? [ROSA] : []), { name: 'Mira', role: '', slug: 'mira' }] }),
-  });
-  button.listeners.click();
-  box.value = '  A night-shift nurse checking opening hours.  ';
-  await form.listeners.submit({ preventDefault() {} });
-  assert.deepEqual([form.dataset.state, go.disabled, box.disabled], ['working', true, true]);
-  assert.deepEqual(h.messages.filter((m) => m.account === 'create').map((m) => m.description), ['A night-shift nurse checking opening hours.']);
-  release();
-  await tick(); await tick();
-  assert.deepEqual([form.dataset.state, form.hidden, button.hidden], ['done', true, false]);
-  const rows = h.node('persona-list').children;
-  const walkOf = (row) => row.children.find((child) => child.dataset?.walk)?.dataset.walk;
-  assert.deepEqual(rows.map(walkOf), ['mine:rosa', 'mine:ada', 'own:mira']);
-  assert.equal(rows[0].children.find((child) => child.className === 'walk-form')?.hidden, false, 'the task box is open under it');
-  const task = rows[0].children.find((child) => child.className === 'walk-form');
-  task.children.find((child) => child.className === 'walk-task').value = 'Find the opening hours.';
-  await task.listeners.submit({ preventDefault() {} });
-  assert.deepEqual(JSON.parse(JSON.stringify(h.messages.filter((m) => m.account === 'walk').map((m) => m.persona))), [{ mine: 'rosa' }]);
-});
-
-test('a popup opened while a persona is being made waits for it', async () => {
-  const { h, form, box } = await personasTab({ personas: { ok: true, personas: [], creating: 'A night-shift nurse.' }, create: new Promise(() => {}) });
-  assert.deepEqual([form.dataset.state, box.value], ['working', 'A night-shift nurse.']);
-  assert.deepEqual(h.messages.filter((m) => m.account === 'create').map((m) => m.description), ['A night-shift nurse.']);
-});
-
-test('Remove asks first, and Keep keeps them', async () => {
-  let gone = false;
-  const { h } = await personasTab({ personas: () => ({ ok: true, personas: gone ? [] : [ROSA, { name: 'Mira', role: '', slug: 'mira' }] }), remove: () => { gone = true; return { ok: true }; } });
-  const [mine, app] = h.node('persona-list').children;
-  assert.equal(app.children.some((child) => child.className === 'persona-remove'), false, 'only the person’s own can be removed');
-  const remove = mine.children.find((child) => child.className === 'persona-remove');
-  const confirm = mine.children.find((child) => child.className === 'persona-confirm');
-  const act = (name) => confirm.children[1].children.find((child) => child.dataset.act === name);
-  remove.listeners.click();
-  assert.deepEqual([confirm.hidden, remove.hidden], [false, true]);
-  act('keep').listeners.click();
-  assert.deepEqual([confirm.hidden, h.messages.some((m) => m.account === 'remove')], [true, false]);
-  remove.listeners.click();
-  await act('remove').listeners.click();
-  await tick();
-  assert.deepEqual(h.messages.filter((m) => m.account === 'remove').map((m) => m.slug), ['rosa']);
-  assert.equal(h.node('persona-list').children.length, 0, 'the list is read again');
-});
 
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
