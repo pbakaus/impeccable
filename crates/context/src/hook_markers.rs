@@ -294,6 +294,14 @@ pub fn merge_named_hooks(
     use serde_json::Value;
     let mut merged = strip_named_hooks(existing, strip);
     for (name, hook) in fresh {
+        // A user's `enabled: false` is their switch, not ours: keep it even
+        // when stripping our entries emptied (and dropped) that hook.
+        let disabled = existing.get(name).and_then(|h| h.get("enabled")) == Some(&Value::Bool(false));
+        if disabled {
+            if let (Some(Value::Object(current)), true) = (merged.get_mut(name), is_named_hook(hook)) {
+                current.insert("enabled".into(), Value::Bool(false));
+            }
+        }
         match (merged.get_mut(name), hook) {
             (Some(Value::Object(current)), Value::Object(added)) if is_named_hook(hook) => {
                 for (event, entries) in added {
@@ -306,7 +314,13 @@ pub fn merge_named_hooks(
                 }
             }
             _ => {
-                merged.insert(name.clone(), hook.clone());
+                let mut added = hook.clone();
+                if disabled {
+                    if let Value::Object(fields) = &mut added {
+                        fields.insert("enabled".into(), Value::Bool(false));
+                    }
+                }
+                merged.insert(name.clone(), added);
             }
         }
     }

@@ -502,7 +502,21 @@ pub fn prune_dead_project_antigravity_hook(sys: &Sys, home_root: &str, project_r
     if util::exists(&jsp::join(&[project_root, ".agent", "skills", "impeccable", "scripts", "impeccable"])) {
         return Ok(());
     }
-    prune_impeccable_hook_from_manifest(&jsp::join(&[project_root, ".agents", "hooks.json"]))?;
+    // Only the workspace form is dead here. An entry pointing at any other
+    // launcher (an absolute path, a custom location) may still run.
+    let manifest = jsp::join(&[project_root, ".agents", "hooks.json"]);
+    let Some((root, _)) = read_manifest(&manifest) else { return Ok(()) };
+    let Some(hooks) = manifest_hook_subtree(&root) else { return Ok(()) };
+    let mut commands = Vec::new();
+    collect_impeccable_hook_commands(&hooks, &mut commands);
+    let workspace_form = |c: &&str| {
+        let c = c.replace('\\', "/");
+        c.contains("../.agent/skills/impeccable/scripts/impeccable") && !c.contains("/../.agent/")
+    };
+    if commands.is_empty() || !commands.iter().all(workspace_form) {
+        return Ok(());
+    }
+    prune_impeccable_hook_from_manifest(&manifest)?;
     Ok(())
 }
 

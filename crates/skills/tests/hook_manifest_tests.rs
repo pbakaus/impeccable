@@ -1038,10 +1038,30 @@ fn antigravity_user_install_writes_the_global_manifest_and_prunes_a_dead_project
     assert!(!value_has_impeccable_hook_marker(&project_after), "{project_after}");
     assert_eq!(project_after["lint"]["Stop"][0]["command"], "./lint.sh");
 
+    // An entry naming a launcher elsewhere may still run: kept.
+    let elsewhere = jsp::join(&[&root, "vendor", "impeccable", "scripts", "impeccable"]);
+    let custom = impeccable_context::hook_wiring::antigravity_manifest_for_command(&format!("[ ! -f '{elsewhere}' ] || '{elsewhere}' hook"));
+    write(&project_manifest, &custom.to_string());
+    copy_provider_hooks(&sys, &bundle, &project, &[".agent"], false, Some(&home), Some(&project)).unwrap();
+    assert_eq!(serde_json::from_str::<Value>(&read(&project_manifest)).unwrap(), custom);
+
     // A project that ships its own Antigravity skill keeps its shared entry.
     write(&project_manifest, &agy_bundle_manifest().to_string());
     write(&skill_launcher(&project, ".agent"), "#!/bin/sh\n");
     copy_provider_hooks(&sys, &bundle, &project, &[".agent"], false, Some(&home), Some(&project)).unwrap();
     assert!(value_has_impeccable_hook_marker(&serde_json::from_str::<Value>(&read(&project_manifest)).unwrap()));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn antigravity_merge_keeps_a_users_disabled_switch() {
+    let mut existing = agy_bundle_manifest();
+    existing["impeccable"]["enabled"] = json!(false);
+    let merged = merge_hook_manifests(&existing, &agy_bundle_manifest());
+    assert_eq!(merged["impeccable"]["enabled"], json!(false), "{merged}");
+    assert!(value_has_impeccable_hook_marker(&merged));
+    // Without the switch, nothing is added.
+    let merged = merge_hook_manifests(&agy_bundle_manifest(), &agy_bundle_manifest());
+    assert!(merged["impeccable"].get("enabled").is_none());
+    assert_eq!(merged, agy_bundle_manifest());
 }
