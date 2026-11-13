@@ -85,7 +85,10 @@ fn seeds_workspace_root_from_nested_cwd_and_context_reads_it() {
 }
 
 fn seeds_beside_fallback_product(folder: &str, env_override: bool) {
-    let (f, mut env) = signed_in("world-fallback-product");
+    // One home per caller: the four callers run in parallel, and a shared home
+    // lets one test's setup delete another's sign-in.
+    let home = format!("world-fallback-product-{}", folder.replace(['/', '.'], "-"));
+    let (f, mut env) = signed_in(&home);
     f.route("GET", SEED, 200, vec![], seed_body());
     let dir = project("fallback-product");
     let context_dir = if folder == "../external-context" {
