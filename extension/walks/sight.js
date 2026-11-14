@@ -77,7 +77,8 @@ export async function seenAs(data, format = 'png', quality) {
   const pixels = ctx.getImageData(0, 0, width, height);
   recolour(pixels.data, look);
   ctx.putImageData(pixels, 0, 0);
-  label(ctx, COPY.seenAs[sight], width, height);
+  // A small picture (one element's clip) is all page: no room for the label.
+  if (width >= 400 && height >= 120) label(ctx, COPY.seenAs[sight], width, height);
   const blob = await canvas.convertToBlob({ type: `image/${format}`, ...(quality === undefined ? {} : { quality: quality / 100 }) });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let text = '';
