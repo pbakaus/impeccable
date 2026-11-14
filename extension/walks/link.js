@@ -19,7 +19,7 @@
 // opens another, which starts the worker; it finds its ticket spent and asks the page for a fresh one.
 import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
-import { adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
+import { DEVICES, adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
 import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
@@ -90,7 +90,7 @@ export async function whereTo() {
     grant(handoff.allow);
     openIn(handoff.windowId);
     watchedFromTerminal(handoff.terminal ? handoff.tabId : null);
-    adoptIn(typeof handoff.adopt === 'number' ? { tabId: handoff.adopt, site: handoff.site } : null);
+    adoptIn(typeof handoff.adopt === 'number' ? { tabId: handoff.adopt, site: handoff.site, device: handoff.device } : null);
     return { socket: handoff.socket, ticket: handoff.ticket };
   }
   const own = await builtIn();
@@ -167,10 +167,11 @@ async function take(text, sender) {
 }
 
 /**
- * A walk of the person's own tab, which main started (contact.js): its block, and the tab. Kept as `adopt`, never as
+ * A walk of the person's own tab, which main started (contact.js): its block, the tab, and the width it runs at
+ * (driver.js `DEVICES`; anything else keeps the tab's own). Kept as `adopt`, never as
  * `tabId`: there is no page of ours to reload for a fresh ticket, so a spent one ends the walk.
  */
-export async function adopt(text, tabId) {
+export async function adopt(text, tabId, device) {
   await ready;
   const read = readStartedHandoff(text);
   if (!read.ok) return read;
@@ -179,7 +180,7 @@ export async function adopt(text, tabId) {
   try { at = new URL(tab?.url ?? '').origin; } catch { /* no address */ }
   if (at !== read.handoff.site) return { ok: false, why: 'tab' };
   if (isLive(current())) return { ok: false, why: 'busy' };
-  await chrome.storage.session.set({ handoff: { ...read.handoff, adopt: tabId, windowId: tab.windowId } });
+  await chrome.storage.session.set({ handoff: { ...read.handoff, adopt: tabId, windowId: tab.windowId, ...(Object.hasOwn(DEVICES, device) ? { device } : {}) } });
   await chrome.storage.local.set({ linked: true });
   rearm();
   dispatch({ type: 'handoff', handoff: read.handoff });
