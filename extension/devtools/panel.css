@@ -422,7 +422,7 @@ h1 {
 }
 
 .empty-hint {
-  font-size: var(--ks-type-micro);
+  font-size: var(--ks-type-label);
   color: var(--ks-text-muted);
 }
 
