@@ -83,6 +83,9 @@
   const raf = () => new Promise(resolve => requestAnimationFrame(resolve));
   const flush = async () => { await raf(); collect(); await raf(); collect(); };
   const rect = r => [r.x, r.y, r.width, r.height];
+  // The parent across a shadow boundary: a shadow root's direct child has no
+  // parentElement, but its host's opacity, overflow and animations still apply.
+  const up = n => n.parentElement || (n.parentNode instanceof ShadowRoot ? n.parentNode.host : null);
   const intersect = (a,b) => {
     const x = Math.max(a[0],b[0]), y = Math.max(a[1],b[1]);
     return [x,y,Math.max(0,Math.min(a[0]+a[2],b[0]+b[2])-x),Math.max(0,Math.min(a[1]+a[3],b[1]+b[3])-y)];
@@ -96,14 +99,14 @@
       const inRegion = intersect(box, region);
       if (!inRegion[2] || !inRegion[3]) { outsideIds.push(id(el)); continue; }
       let clip = box.slice(), opacity = Number(cs.opacity);
-      for (let p = el.parentElement; p; p = p.parentElement) {
+      for (let p = up(el); p; p = up(p)) {
         const style = getComputedStyle(p), r = rect(p.getBoundingClientRect());
         opacity *= Number(style.opacity);
         if (style.overflowX !== 'visible') clip = intersect(clip, [r[0],clip[1],r[2],clip[3]]);
         if (style.overflowY !== 'visible') clip = intersect(clip, [clip[0],r[1],clip[2],r[3]]);
       }
       const ancestors = [];
-      for (let p=el.parentElement;p;p=p.parentElement) ancestors.push(id(p));
+      for (let p=up(el);p;p=up(p)) ancestors.push(id(p));
       elements.push({id:id(el), ancestors, selector:selector(el), box, opacity, clip,
         clipPath:cs.clipPath, zIndex:cs.zIndex, viewTransitionName:cs.viewTransitionName,
         boxShadow: transitionActive
