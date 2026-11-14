@@ -44,6 +44,11 @@ export IMPECCABLE_CREDENTIAL_STORE=file
 unset CI IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
 
 failed=0
+# The Home and MCP URLs the CLI names for staging's issuer; another issuer skips those checks.
+case "$ISSUER" in
+  https://api.staging.impeccable.style) HOME_URL=https://app.staging.impeccable.style/app; MCP_URL=https://api.staging.impeccable.style/mcp ;;
+  *) HOME_URL=""; MCP_URL="" ;;
+esac
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1${2:+: $2}"; failed=1; }
 check() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
@@ -83,8 +88,10 @@ for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2;
 if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "still running 620 s after the approval"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
-if [ $health = 1 ]; then
-  check "setup: the sign-in's first scan names Home" 'grep -q "^Added this repository to your account: .*See it on your Home: https://app.staging.impeccable.style/app$" "$H/login.err"'
+if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
+  info "setup: the Home link check runs against staging's issuer only"
+elif [ $health = 1 ]; then
+  check "setup: the sign-in's first scan names Home" 'grep -qF "See it on your Home: $HOME_URL" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
 
@@ -202,7 +209,8 @@ check "sibling: B refreshes again" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/
 
 # 5b. Still signed in: status reads the account's setup, and a second login opens nothing.
 (cd "$R2" && exec "$BIN" status) > "$H/status.out" 2> "$H/status.err"; rc=$?
-check "setup: status reads the account's setup" '[ $rc = 0 ] && grep -q "^Next: " "$H/status.err" "$H/status.out"'
+# A finished setup has no Next line, so any of the setup read's lines will do.
+check "setup: status reads the account's setup" '[ $rc = 0 ] && grep -qE "^(Connected|Not connected yet|Next): " "$H/status.err" "$H/status.out"'
 [ $rc = 0 ] || info "setup: status said: $(head -2 "$H/status.err" | tr '\n' ' ' | cut -c1-200)"
 # A second login must neither print a link nor wait: bounded at 30 s.
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login3.out" 2> "$H/login3.err" &
@@ -232,10 +240,14 @@ printf '%s\t' "$@" >> "$HOME/claude.calls"; echo >> "$HOME/claude.calls"
 if [ "$1" = mcp ] && [ "$2" = add-json ]; then printf '{"mcpServers":{"%s":%s}}\n' "$5" "$6" > "$HOME/.claude.json"; fi
 SH
 chmod +x "$H/bin/claude"
-HOME="$AH" PATH="$H/bin:$PATH" IMPECCABLE_CLAUDE_BIN="$H/bin/claude" IMPECCABLE_CODEX_BIN="$H/bin/no-codex" \
+env -u CLAUDE_CONFIG_DIR HOME="$AH" PATH="$H/bin:$PATH" IMPECCABLE_CLAUDE_BIN="$H/bin/claude" IMPECCABLE_CODEX_BIN="$H/bin/no-codex" \
   "$BIN" loop connect --mcp-only --agent claude --json > "$H/mcp.out" 2> "$H/mcp.err"; rc=$?
 check "setup: --mcp-only connects Claude Code without Loop" '[ $rc = 0 ] && [ "$(jq -r ".agents[0].result" "$H/mcp.out" 2>/dev/null)" = connected ]'
-check "setup: the server is staging's" 'grep -q "https://api.staging.impeccable.style/mcp" "$AH/.claude.json" 2>/dev/null'
+if [ -n "$MCP_URL" ]; then
+  check "setup: the server is staging's" 'grep -qF "$MCP_URL" "$AH/.claude.json" 2>/dev/null'
+else
+  info "setup: the MCP URL check runs against staging's issuer only"
+fi
 [ $rc = 0 ] || info "setup: --mcp-only said: $(cat "$H/mcp.out" "$H/mcp.err" | tr '\n' ' ' | cut -c1-300)"
 
 finish

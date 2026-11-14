@@ -483,11 +483,17 @@ pub(crate) fn after_login(io: &mut Io) {
         io.err("Later: impeccable loop connect\n");
         return;
     }
-    match crate::loop_connect::connect(io) {
+    // As `loop connect` does: the agents this run connected are offered the taste block.
+    let (result, connected) = crate::loop_connect::connect_text(io, None);
+    match result {
         Ok(message) => io.err(&message),
         Err(e) => io.err(&format!(
             "{e}\nYou're signed in. Run impeccable loop connect again once that is sorted.\n"
         )),
+    }
+    if !connected.is_empty() {
+        let (lines, _) = crate::loop_connect::offer_taste(io, &connected, crate::loop_connect::Taste::Ask);
+        io.err(&lines);
     }
 }
 

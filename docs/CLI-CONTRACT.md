@@ -2391,11 +2391,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   Connect <agents> to it now? [Y/n]` (Enter means yes; no prints `Later:
   impeccable loop connect`); otherwise nothing is changed and login prints
   `Loop is installed. Connect <agents> to it: impeccable loop connect`. All of
-  it goes to stderr, after the setup lines. A
-  failed connect is reported on stderr and login still exits 0. Without Loop,
+  it goes to stderr, after the setup lines. A yes connects as `loop connect`
+  does, taste block offer included. A failed connect is reported on stderr and login still exits 0. Without Loop,
   or with every agent connected, login prints nothing about Loop.
-- **Taste block.** After a connect (text, `--agent`, `--json`, or the one after
-  `loop install`), each agent the engine now holds a committed installation for
+- **Taste block.** After a connect (text, `--agent`, `--json`, the one after
+  `loop install`, or a yes to login's offer), each agent the engine now holds a committed installation for
   gets a fixed three-line block in the rule file it reads (`CLAUDE.md` in the
   Claude config folder, `$CLAUDE_CONFIG_DIR` when set; `AGENTS.md` in
   `CODEX_HOME` for Codex, with a line saying to copy it when
