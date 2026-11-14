@@ -32,15 +32,18 @@ test('Vue preview → Tune → Accept → Reload preserves style and behavior', 
     const { page, tmp } = session;
     await waitForHandshake(page);
     const source = readFileSync(join(tmp, 'src/App.vue'), 'utf8');
+    const originalState = await page.locator('section.card').evaluateHandle(el => el.__vueParentComponent.setupState);
     await pickElement(page, 'section.card', { position: { x: 4, y: 4 } });
     await clickGo(page);
     await waitForCycling(page, 3);
     assert.equal(readFileSync(join(tmp, 'src/App.vue'), 'utf8'), source, 'generation must not rewrite source');
+    assert.equal(await page.locator('section.card input').inputValue(), '0', 'local v-model ref starts from the live binding');
     await page.locator('section.card input').evaluate(input => {
       input.value = '7';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await page.waitForFunction(() => document.querySelector('section.card p').textContent.includes('Imports: 7'));
+    assert.equal(await originalState.evaluate(state => state.count), 0, 'editing preview v-model must not mutate the original instance');
     await openTunePanel(page);
     await setTuneRange(page, 'Space', 23);
     await closeTunePanel(page);

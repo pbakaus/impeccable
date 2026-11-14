@@ -609,6 +609,12 @@ fn vue_unsupported_scaffolds_use_deferred_normal_preview() {
     }
     for source in [
         SOURCE.replace("<style scoped>", "<style scoped lang=\"scss\">"),
+        SOURCE
+            .replace(
+                "const count = ref(0);",
+                "const count = ref(0); const form = ref({ label: '' });",
+            )
+            .replace("<p>", "<p><input v-model=\"form.label\" />"),
         format!("{SOURCE}\n<i18n>{{}}</i18n>"),
         SOURCE.replace("<script>", "<script src=\"./external.js\">"),
         SOURCE.replace("</template>", "</template><template>duplicate</template>"),
