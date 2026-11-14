@@ -9,8 +9,10 @@ use std::process::{Command, Stdio};
 fn impeccable(env: &std::collections::HashMap<String, String>, args: &[&str]) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_impeccable"));
     cmd.args(args).env_clear().envs(env).stdin(Stdio::null());
+    // What a child needs from this process (Windows can't open a socket without
+    // SystemRoot), unless the test chose its own.
     for key in ["PATH", "SystemRoot", "TEMP", "TMP"] {
-        if let Ok(v) = std::env::var(key) {
+        if let (false, Ok(v)) = (env.contains_key(key), std::env::var(key)) {
             cmd.env(key, v);
         }
     }
@@ -142,12 +144,8 @@ fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
 /// what followed the link on stdout, and stderr.
 fn login_output(env: &std::collections::HashMap<String, String>, cwd: &std::path::Path) -> (String, String) {
     use std::io::Read;
-    let mut child = Command::new(env!("CARGO_BIN_EXE_impeccable"))
-        .args(["login", "--no-browser"])
+    let mut child = impeccable(env, &["login", "--no-browser"])
         .current_dir(cwd)
-        .env_clear()
-        .envs(env)
-        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
