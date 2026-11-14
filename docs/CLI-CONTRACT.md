@@ -2727,6 +2727,25 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `start [--yes] [--json]`
+
+`impeccable start` sets Impeccable up in one go by running, in order, the verbs
+that already do each part: `skills install -y`, the sign-in (skipped when a
+usable one is stored, as for `login`), the MCP server for each coding agent
+`loop connect` finds (an entry already there is kept), the repository's first
+scan, and, only with `--yes` on macOS, `loop install`. Each step keeps its own
+rules; running `start` again redoes nothing.
+
+Exit codes: **0** set up; **1** a step failed (later steps still ran);
+**2** no coding agent was found; **3** the sign-in did not finish (declined,
+timed out or refused), and nothing after it ran.
+
+`--json` prints one line on stdout, `{"ok":bool,"exit":n,"steps":[{"step","result"}]}`,
+with `step` one of `skills`, `sign_in`, `mcp`, `scan`, `loop` and `result` one
+of `done`, `already` (sign-in), `no_agents` (mcp), `skipped` (loop) or
+`failed`. The steps' own lines are held back, except the sign-in's link and
+outcome, which go to stderr.
+
 ## `login` when already signed in
 
 `impeccable login` on a machine whose stored sign-in to this account is still

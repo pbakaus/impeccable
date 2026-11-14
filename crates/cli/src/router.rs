@@ -78,6 +78,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             }
             code
         }
+        // One command that sets everything up (`crate::start`).
+        "start" => crate::start::run(rest, io, &engines, pack.rule_pack),
         "setup" => impeccable_account::setup::run(rest, io),
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
@@ -240,7 +242,7 @@ fn detect(
 /// is in the person's account at once (its foundations upload founds a Pro
 /// or Team city). Only the local detector runs; the person sees one line,
 /// and nothing here changes the sign-in's exit code.
-fn scan_after_login(
+pub(crate) fn scan_after_login(
     io: &mut Io,
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
@@ -357,6 +359,7 @@ const KNOWN_VERBS: &[&str] = &[
     "ignores",
     "ignore",
     "login",
+    "start",
     "logout",
     "whoami",
     "world",
