@@ -37,8 +37,8 @@ fn fixture_flag_and_pass_cases() {
     let html = std::fs::read_to_string(&fixture).unwrap();
     let snippets = leading_snippets(&html, &fixture);
 
-    // The five should-flag cases, each set at a ratio of its own.
-    for ratio in ["1.25", "1.20", "1.17", "1.14", "1.10"] {
+    // The eight should-flag cases, each set at a ratio of its own.
+    for ratio in ["1.25", "1.20", "1.17", "1.14", "1.10", "1.16", "1.15", "1.22"] {
         assert!(
             snippets.iter().any(|s| s.contains(ratio)),
             "expected a tight-leading finding at {ratio}x, got {snippets:?}"
@@ -77,8 +77,8 @@ fn fixture_flag_and_pass_cases() {
     // in the browser only, since the static engine cannot see the items.
     assert_eq!(
         snippets.len(),
-        15,
-        "expected ten flags plus the five documented static hits, got {snippets:?}"
+        18,
+        "expected thirteen flags plus the five documented static hits, got {snippets:?}"
     );
 }
 
@@ -194,4 +194,53 @@ fn source_text_is_never_measured() {
         ),
     ));
     assert!(hits.is_empty(), "non-rendered text has no leading to judge: {hits:?}");
+}
+
+/// Each case has a stylesheet and a line height ratio. The finding must
+/// show this ratio for the paragraph. If there must be no finding, the
+/// ratio is `None`.
+fn assert_leading(cases: &[(&str, Option<&str>)]) {
+    for (css, expected) in cases {
+        let hits = scan(&page(css, &format!("<div class=\"q\"><p>{COPY}</p></div>")));
+        let want: Vec<String> =
+            expected.iter().map(|r| format!("line-height {r}x (need >=1.3)")).collect();
+        assert_eq!(hits, want, "{css}");
+    }
+}
+
+#[test]
+fn inherited_unitless_leading_scales_with_the_elements_own_font_size() {
+    assert_leading(&[
+        ("body { font-size: 16px; line-height: 1.6; } p { font-size: 20px; }", None),
+        (".q { font-size: 16px; line-height: 1.4; } p { font-size: 20px; }", None),
+        (".q { font-size: 16px; line-height: 1.4; } p { font-size: 18px; }", None),
+        ("body { font-size: 14px; line-height: 1.5; } p { font-size: 20px; }", None),
+        ("html { font-size: 16px; line-height: 1.6; } .q { font-size: 18px; } p { font-size: 20px; }", None),
+        ("body { font: 16px/1.6 sans-serif; } p { font-size: 20px; }", None),
+        (":root { --leading: 1.6; } body { font-size: 16px; line-height: var(--leading); } p { font-size: 20px; }", None),
+        ("body { font-size: 1rem; line-height: 1.6; } p { font-size: 1.25rem; }", None),
+        (".q { font-size: 16px; line-height: 1.6; } p { font-size: 20px; line-height: inherit; }", None),
+        ("body { font-size: 16px; line-height: 1.6 !important; } p { font-size: 20px; }", None),
+        ("body { font-size: 16px; line-height: 1.16; } p { font-size: 18px; }", Some("1.16")),
+        ("body { font-size: 16px; line-height: 1.1; } p { font-size: 12px; }", Some("1.10")),
+    ]);
+}
+
+#[test]
+fn children_inherit_the_computed_px_of_a_length_line_height() {
+    assert_leading(&[
+        ("body { font-size: 16px; line-height: 25.6px; } p { font-size: 20px; }", Some("1.28")),
+        ("body { font-size: 16px; line-height: 1.6em; } p { font-size: 20px; }", Some("1.28")),
+        ("body { font-size: 16px; line-height: 160%; } p { font-size: 20px; }", Some("1.28")),
+    ]);
+}
+
+#[test]
+fn declared_unitless_line_height_uses_the_final_font_size() {
+    assert_leading(&[
+        ("p { font-size: 20px; line-height: 1.4; }", None),
+        ("p { line-height: 1.4; font-size: 20px; }", None),
+        ("p { font-size: 20px; line-height: 1.2; }", Some("1.20")),
+        ("p { line-height: 1.2; font-size: 20px; }", Some("1.20")),
+    ]);
 }

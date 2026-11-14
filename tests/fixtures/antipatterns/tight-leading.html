@@ -33,10 +33,21 @@
     .bold-clipped-summary { display: flow-root; overflow: hidden; max-height: 48px; width: 260px; font-size: 14px; line-height: 16px; font-weight: 700; }
     .clamped-regular-blurb { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; width: 260px; font-size: 15px; line-height: 18px; font-weight: 400; }
 
+    .inherits-tight-parent { font-size: 16px; line-height: 1.16; }
+    .inherits-tight { width: 300px; font-size: 18px; margin: 0; }
+    .inherits-px-parent { font-size: 16px; line-height: 23px; }
+    .inherits-px { width: 300px; font-size: 20px; margin: 0; }
+    .declared-unitless-tight { width: 300px; font-size: 18px; line-height: 1.22; margin: 0; }
+
     .flex-long-run { display: flex; flex-wrap: wrap; column-gap: 10px; width: 260px; font-size: 12px; line-height: 14px; margin: 0; }
     .run-sep { width: 1px; height: 12px; background: #cbd5e1; }
 
     /* Should pass: display type, heading text, single lines, non-rendered. */
+    .inherits-unitless-parent { font-size: 16px; line-height: 1.6; }
+    .inherits-unitless { width: 300px; font-size: 20px; margin: 0; }
+    .inherits-quote-parent { font-size: 16px; line-height: 1.4; }
+    .inherits-quote { width: 300px; font-size: 18px; margin: 0; }
+    .declared-unitless { width: 300px; font-size: 20px; line-height: 1.4; margin: 0; }
     .display-statement { width: 560px; font-size: 32px; line-height: 36px; margin: 0; }
     .headline-link { font-size: 30px; line-height: 34px; text-decoration: none; color: #1a1a1a; }
     .card-title-role { font-size: 22px; line-height: 28px; font-weight: 600; display: block; width: 320px; }
@@ -106,6 +117,19 @@
            floor. -->
       <div class="bold-clipped-summary">The whole summary is set in bold and runs on well past three lines in this column, but a max-height with overflow hidden shows only the first three of them to the reader.</div>
 
+      <h3>Unitless 1.16 inherited into larger text</h3>
+      <div class="inherits-tight-parent">
+        <p class="inherits-tight">This paragraph inherits a unitless line height. The number applies to its own 18px font size. The line height is less than the 1.3 minimum.</p>
+      </div>
+
+      <h3>Pixel line height inherited into larger text at 1.15</h3>
+      <div class="inherits-px-parent">
+        <p class="inherits-px">This paragraph inherits a line height in pixels. The value does not change with its 20px font size. The line height is less than the 1.3 minimum.</p>
+      </div>
+
+      <h3>Unitless 1.22 declared on the paragraph</h3>
+      <p class="declared-unitless-tight">This paragraph declares its own unitless line height. The line height is less than the 1.3 minimum for body text of this length.</p>
+
       <h3>Flex row whose long text item wraps at 1.17</h3>
       <!-- A flex row that holds its text as separate runs is measured run by
            run: this first run is longer than the row is wide, so it wraps
@@ -115,6 +139,22 @@
 
     <div class="col" data-col="pass">
       <h2>Should pass</h2>
+
+      <h3>Unitless 1.6 inherited into larger text</h3>
+      <!-- SHOULD PASS: The paragraph inherits the unitless 1.6 as a number. It renders at 1.6 at its 20px font size. -->
+      <div class="inherits-unitless-parent">
+        <p class="inherits-unitless">This paragraph inherits a unitless line height of 1.6 from its parent. It renders at the same ratio at its 20px font size.</p>
+      </div>
+
+      <h3>Unitless 1.4 inherited into larger text</h3>
+      <!-- SHOULD PASS: The paragraph inherits the unitless 1.4 as a number. It renders at 1.4 at its 18px font size. -->
+      <div class="inherits-quote-parent">
+        <p class="inherits-quote">This paragraph inherits a unitless line height of 1.4 from its parent. It keeps that ratio at its 18px font size. The line height is more than the 1.3 minimum.</p>
+      </div>
+
+      <h3>Unitless 1.4 declared on the paragraph</h3>
+      <!-- SHOULD PASS: The paragraph declares a line height of 1.4. The line height is more than the 1.3 minimum. -->
+      <p class="declared-unitless">This paragraph declares a unitless line height of 1.4. The line height is more than the 1.3 minimum at its 20px font size.</p>
 
       <h3>Display statement set on a paragraph</h3>
       <!-- SHOULD PASS: 32px display type, where tight leading is craft. The
