@@ -320,7 +320,7 @@ describe('account worker', () => {
       return json(404, {});
     };
   };
-  it('checks in on the alarm, shows each journey an agent asked for once, and opens only our outing page on Start or tells the server Not now (REN-1909)', async () => {
+  it('checks in on the alarm, shows each journey an agent asked for once, opens only our outing page on Start, and tells the server Not now until it hears (REN-1909)', async () => {
     await loaded;
     const page = 'https://app.impeccable.style/app/acme/outings/o7';
     const journeys = [
@@ -328,22 +328,24 @@ describe('account worker', () => {
       { id: 'o8', page: 'https://evil.example.com/app/acme/outings/o8', persona: 'Eve', site: 'evil.example.com', task: 'Sign up.', at: '2026-11-14T10:00:00Z' },
     ];
     const asked = [];
+    let down = false;
     globalThis.fetch = async (url, init = {}) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-in', refresh_token: 'refresh-walk', expires_in: 900 });
       if (url === `${ISSUER}/extension/v1/me`) return json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: true });
-      if (url.startsWith(`${ISSUER}/extension/v1/waiting`)) { asked.push({ path: url.slice(ISSUER.length), method: init.method ?? 'GET', auth: init.headers.authorization }); return init.method ? json(204, null) : json(200, { journeys }); }
+      if (url.startsWith(`${ISSUER}/extension/v1/waiting`)) { asked.push([url.slice(ISSUER.length), init.method ?? 'GET', init.headers.authorization]); return init.method ? json(down ? 503 : 204, null) : json(200, { journeys }); }
       return json(404, {});
     };
-    // Signed in with Pro: the alarm is kept, once a minute.
+    // Signed in with Pro: the alarm is kept, every half minute.
     await ask({ account: 'status' }, fromPopup);
-    assert.deepEqual(alarms.get('check-in'), { periodInMinutes: 1 });
-    const tick = () => Promise.all(heard.alarm.map((listener) => listener({ name: 'check-in' })));
+    assert.deepEqual(alarms.get('check-in'), { periodInMinutes: 0.5 });
+    const tick = () => Promise.all(heard.alarm.map((listener) => listener({ name: 'check-in' }))).then(settle);
     await tick();
     await tick();
-    await settle();
-    assert.deepEqual(asked.map(({ path, method, auth }) => [path, method, auth]), [['/extension/v1/waiting', 'GET', 'Bearer access-in'], ['/extension/v1/waiting', 'GET', 'Bearer access-in']]);
-    // Twice asked, one notice: never the page that isn't ours.
+    const GET = ['/extension/v1/waiting', 'GET', 'Bearer access-in'];
+    const no = (id) => [`/extension/v1/waiting/${id}/decline`, 'POST', 'Bearer access-in'];
+    // Twice asked, one notice: never the page that isn't ours, which the server is told No for, so no agent waits on it.
+    assert.deepEqual(asked, [GET, no('o8'), GET]);
     assert.deepEqual(notices.map(({ id, buttons }) => [id, buttons.length]), [['journey:o7', 2]]);
     assert.match(notices[0].message, /Dana.*shop\.example\.com.*Buy a mug\./);
     const press = (id, button) => Promise.all(heard.button.map((listener) => listener(id, button))).then(settle);
@@ -351,8 +353,14 @@ describe('account worker', () => {
     await press('journey:o7', 0);
     assert.deepEqual(opened.slice(-1), [{ url: page, active: true }]);
     assert.equal(opened.filter((tab) => tab.url.includes('evil')).length, 0);
+    // A Not now the server doesn't hear is told again at the next check-in, and only until it hears.
+    down = true;
     await press('journey:o7', 1);
-    assert.deepEqual(asked.at(-1), { path: '/extension/v1/waiting/o7/decline', method: 'POST', auth: 'Bearer access-in' });
+    down = false;
+    await tick();
+    await tick();
+    assert.deepEqual(asked.slice(3), [no('o7'), GET, no('o7'), GET]);
+    assert.equal(notices.length, 1);
   });
 
   // Before any walk (a walk under way keeps the icon on its panel too).
@@ -552,27 +560,40 @@ describe('account worker', () => {
 // The welcome page's script (manifest.json), on a stub page: the mark the page reads, and its button.
 describe('agent check-in', () => {
   // A worker Chrome ended and started again: the same session storage and alarms, a new check-in.
-  it('never shows a journey twice, nor puts the alarm off, across a worker started again (REN-1909)', async () => {
+  it('never shows a journey twice across a worker started again, and shows a server its own journeys alone (REN-1909)', async () => {
     const { checkIns } = await import('../extension/account/waiting.js');
     const kept = {};
     const made = [];
     const notices = [];
+    const cleared = [];
     const alarms = new Map();
     const chrome = {
       runtime: { getURL: (file) => `chrome-extension://ext/${file}` },
-      storage: { session: { async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); } } },
+      storage: { session: { async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } } },
       alarms: { async get(name) { return alarms.get(name); }, async create(name, info) { made.push(name); alarms.set(name, info); }, async clear(name) { alarms.delete(name); } },
-      notifications: { async create(id) { notices.push(id); } },
+      notifications: { async create(id) { notices.push(id); }, async getAll() { return { 'journey:o7': true, other: true }; }, async clear(id) { cleared.push(id); } },
     };
     const session = { async waiting() { return [{ id: 'o7', page: 'https://app.impeccable.style/app/acme/outings/o7', persona: 'Dana', site: 'shop.example.com', task: 'Buy a mug.' }]; } };
+    let server = 'https://api.impeccable.style';
+    const worker = () => checkIns({ session, chrome, issuer: () => server });
     for (let start = 0; start < 2; start++) {
-      const worker = checkIns({ session, chrome });
-      await worker.keep(true);
-      await Promise.all([worker.checkIn(), worker.checkIn({ start: true })]);
+      const again = worker();
+      await again.keep(true);
+      await Promise.all([again.checkIn(), again.checkIn({ start: true })]);
     }
     assert.deepEqual(notices, ['journey:o7']);
     assert.deepEqual(made, ['check-in']);
-    await checkIns({ session, chrome }).keep(false);
+    // Another server, then signed out: each starts from nothing, and only our notices are cleared.
+    server = 'http://api.localhost:8787';
+    await worker().checkIn();
+    await worker().forget();
+    await worker().checkIn();
+    assert.deepEqual(notices, ['journey:o7', 'journey:o7', 'journey:o7']);
+    assert.deepEqual(cleared, ['journey:o7']);
+    // The server out of reach leaves the alarm; signed out or no Pro drops it.
+    await worker().keep(null);
+    assert.equal(alarms.size, 1);
+    await worker().keep(false);
     assert.equal(alarms.size, 0);
   });
 });

@@ -21,7 +21,7 @@ export const COPY = {
   /** Chrome's notice when an agent asks for a journey (account/waiting.js): who, where and what, in one line. */
   agent: {
     title: 'Your agent wants to start a journey',
-    line: ({ persona, site, task }) => `${persona || 'A persona'} on ${site}: ${task}`,
+    line: ({ persona, site, task }) => [`${persona || 'A persona'}${site ? ` on ${site}` : ''}`, task].filter(Boolean).join(': '),
     start: 'Start',
     later: 'Not now',
   },

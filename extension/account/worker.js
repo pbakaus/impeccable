@@ -31,7 +31,7 @@ const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }
 // Signed in with Impeccable Pro, the toolbar icon opens the side panel rather than the popup: from the worker's start,
 // by the server's word (`status`); out of its reach, by the sign-in kept on disk.
 // The worker's start is also a check-in for journeys an agent asked for (waiting.js).
-void chosen.then(() => status()).then((answer) => (answer.signedIn && answer.pro === true ? agent.checkIn({ start: true }) : undefined)).catch(() => undefined);
+void chosen.then(() => status()).then((answer) => checkedIn(answer, { start: true })).catch(() => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -41,10 +41,15 @@ const session = createSession({
   redirectUri: chrome.identity.getRedirectURL('callback'),
 });
 
-const agent = checkIns({ session, chrome });
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) void chosen.then(() => agent.checkIn()); });
-chrome.notifications.onButtonClicked.addListener((notice, button) => { void chosen.then(() => agent.pressed(notice, button)).catch(() => undefined); });
-chrome.notifications.onClicked.addListener((notice) => { void chosen.then(() => agent.pressed(notice)).catch(() => undefined); });
+const agent = checkIns({ session, chrome, issuer: () => issuer });
+// A build without these permissions has no such APIs: the rest of the worker (the detector, walks) still starts.
+chrome.alarms?.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) void chosen.then(() => agent.checkIn()); });
+chrome.notifications?.onButtonClicked.addListener((notice, button) => { void chosen.then(() => agent.pressed(notice, button)).catch(() => undefined); });
+chrome.notifications?.onClicked.addListener((notice) => { void chosen.then(() => agent.pressed(notice)).catch(() => undefined); });
+/** Signed in with Pro, by the server's word now: true, false, or null when it is not known (out of reach). */
+const proOf = (answer) => (answer.signedIn === false || answer.pro === false ? false : answer.signedIn === true && answer.pro === true ? true : null);
+/** A check-in for an `answer` that says signed in with Pro (waiting.js). */
+const checkedIn = (answer, how) => { if (proOf(answer) === true) void agent.checkIn(how); return answer; };
 
 /** What the popup is told of the account. */
 async function status() {
@@ -52,7 +57,7 @@ async function status() {
   const signedIn = await session.signedIn().catch(() => false);
   // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
   pointToolbar(signedIn && answer.pro !== false);
-  void agent.keep(signedIn && answer.pro !== false).catch(() => undefined);
+  void agent.keep(signedIn ? proOf(answer) : false).catch(() => undefined);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
 }
@@ -202,13 +207,14 @@ const ANSWERS = {
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,
-  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(welcome) : { ok: false, why: done.why }; },
-  async 'sign-out'() { await session.signOut(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
+  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(checkedIn).then(welcome) : { ok: false, why: done.why }; },
+  async 'sign-out'() { await session.signOut(); await agent.forget(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };
+    if (server !== issuer) await agent.forget();
     issuer = server;
     await chrome.storage.local.set({ accountServer: server });
-    return status();
+    return status().then(checkedIn);
   },
 };
 

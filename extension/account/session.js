@@ -279,9 +279,10 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async waiting() {
       const list = await read(issuer(), '/waiting');
       const rows = Array.isArray(list?.journeys) ? list.journeys : null;
-      const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+      // Short enough for one line of a notice.
+      const text = (value, max) => (typeof value !== 'string' ? '' : value.length > max ? `${value.slice(0, max - 1)}…` : value);
       return rows?.filter((j) => typeof j?.id === 'string' && WAITING_ID.test(j.id) && typeof j.page === 'string' && j.page.length <= 2048).slice(0, 3)
-        .map((j) => ({ id: j.id, page: j.page, persona: text(j.persona, 120), site: text(j.site, 255), task: text(j.task, 200) })) ?? null;
+        .map((j) => ({ id: j.id, page: j.page, persona: text(j.persona, 40), site: text(j.site, 60), task: text(j.task, 120) })) ?? null;
     },
 
     /** Tells the server the person said Not now to a waiting journey. A 404 is one already gone. `{ ok }`. */
