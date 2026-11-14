@@ -3,7 +3,7 @@
 use crate::artifact_schema::*;
 use crate::context::{BriefSummary, Ctx, TargetCandidate};
 use crate::jsp;
-use crate::util::{exists, js_trim, mtime_ms, read_json};
+use crate::util::{exists, js_trim, read_json};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -267,22 +267,22 @@ pub fn check_design_sidecar(design_path: Option<&str>, sidecar_candidates: &[Str
         }
     }
     if let Some(dp) = design_path {
-        let dm = mtime_ms(dp);
-        let sm = mtime_ms(present);
-        if let (Some(d), Some(s)) = (dm, sm) {
-            if d > s {
-                out.push(finding(
-                    "design-sidecar-stale",
-                    "design.json",
-                    Some(rel_present.clone()),
-                    "mention",
-                    format!(
-                        "DESIGN.md was edited after {} was generated, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.",
-                        rel_present
-                    ),
-                    "Offer `document` to refresh the sidecar, preserving DESIGN.md.".to_string(),
-                ));
-            }
+        let source = std::fs::read(dp).ok();
+        let verified = source.as_deref().and_then(|bytes| {
+            crate::design_sidecar::matches_source(sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")), bytes)
+        });
+        match verified {
+            Some(true) => {},
+            Some(false) => out.push(finding(
+                "design-sidecar-stale", "design.json", Some(rel_present.clone()), "mention",
+                format!("DESIGN.md content differs from the fingerprint recorded in {}, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.", rel_present),
+                "Offer `document` to refresh the sidecar, preserving DESIGN.md.".to_string(),
+            )),
+            None => out.push(finding(
+                "design-sidecar-unverified", "design.json", Some(rel_present.clone()), "mention",
+                format!("{} has no verifiable DESIGN.md content fingerprint; file timestamps cannot establish whether it is current.", rel_present),
+                "Offer `document` to review or regenerate the sidecar against DESIGN.md, then stamp its fingerprint. Do not stamp an unchecked sidecar just to dismiss this notice.".to_string(),
+            )),
         }
     }
     out

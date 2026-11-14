@@ -1126,23 +1126,19 @@ pub fn normalize_design_system(
     out
 }
 
-fn mtime_ms(p: &str) -> Option<f64> {
-    let meta = std::fs::metadata(p).ok()?;
-    let m = meta.modified().ok()?;
-    let d = m.duration_since(std::time::UNIX_EPOCH).ok()?;
-    Some(d.as_secs_f64() * 1000.0)
-}
-
 /// JS: design-system.mjs#loadDesignSystemForCwd
 pub fn load_design_system_for_cwd(cwd: &str) -> Option<DesignSystem> {
     let md = resolve_design_md_path(cwd)?;
-    let md_stat = mtime_ms(&md.path);
     let text = read_text(&md.path)?;
     let frontmatter = parse_frontmatter(&text)?;
     let sidecar_path = resolve_design_sidecar_path(cwd, &md.context_dir);
     let sidecar = sidecar_path.as_deref().and_then(read_json);
-    let sidecar_stat = sidecar_path.as_deref().and_then(mtime_ms);
-    let md_newer = matches!((md_stat, sidecar_stat), (Some(m), Some(s)) if m > s + 1000.0);
+    // Keep the compatibility flag, but only a content mismatch proves staleness.
+    // Missing provenance is reported as unverified by context/doctor.
+    let md_newer = impeccable_common::design_fingerprint::matches_source(
+        sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")),
+        text.as_bytes(),
+    ) == Some(false);
     let mut ds = normalize_design_system(
         Some(&frontmatter),
         sidecar.as_ref(),
