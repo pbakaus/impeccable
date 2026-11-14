@@ -218,7 +218,7 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
     // Taken second, as --mcp-only takes it alone, so the two never add at once.
-    let _mcp_lock = mcp_lock(&home)?;
+    let _mcp_lock = mcp_lock(io)?;
     let mut out = String::new();
     let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
@@ -427,7 +427,7 @@ pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value
         }
         init_mcp_url(io)?;
         let home = home(io)?;
-        let _lock = mcp_lock(&home)?;
+        let _lock = mcp_lock(io)?;
         let (mut out, mut rows, mut connected, mut failed) = (String::new(), Vec::new(), 0, 0);
         for (harness, label) in AGENTS {
             if only.is_some_and(|h| h != harness) {
@@ -1097,9 +1097,11 @@ fn lock(support: &Path) -> Result<fs::File> {
 }
 
 /// One change to the agents' MCP servers at a time, with or without Loop: kept under
-/// ~/.impeccable so `--mcp-only` makes no Loop folder on a machine without Loop.
-fn mcp_lock(home: &Path) -> Result<fs::File> {
-    let dir = home.join(".impeccable");
+/// the engine's own folder (IMPECCABLE_HOME, else ~/.impeccable) so `--mcp-only` makes
+/// no Loop folder on a machine without Loop.
+fn mcp_lock(io: &Io) -> Result<fs::File> {
+    let dir = impeccable_account::config::impeccable_home(&io.env)
+        .ok_or("HOME is not set to an absolute path.")?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     lock_at(&dir.join(".mcp-connect.lock"))
 }
