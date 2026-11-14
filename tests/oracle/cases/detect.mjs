@@ -160,6 +160,20 @@ function Thumb({ url }: { url?: string }) {
       setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
       args: ['--no-config', '--github', 'ok.css'],
     },
+    {
+      // One live file-level waiver, one stale file-level waiver, a partial
+      // multi-rule line waiver, a stale next-line, a live next-line, and a
+      // file-level `*` on a clean component. See
+      // crates/detect/tests/fixtures/unused-ignores/.
+      id: 'detect-unused-ignores', verb: 'detect',
+      args: [
+        '--no-design-system', '--json', '--report-unused-ignores',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/page.html',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/brand.css',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/Quiet.tsx',
+      ],
+      isolateHome: false,
+    },
     { id: 'detect-list-rules', verb: 'detect', args: ['--list-rules'] },
     { id: 'detect-list-rules-json', verb: 'detect', args: ['--list-rules', '--json'] },
     { id: 'detect-list-rules-quiet', verb: 'detect', args: ['--list-rules', '--quiet'] },

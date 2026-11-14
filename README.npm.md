@@ -41,6 +41,8 @@ npx impeccable detect --json src/
 npx impeccable detect --github src/
 # Catalog of detector rules (no scan)
 npx impeccable detect --list-rules
+# Inline ignore comments that no longer waive a finding
+npx impeccable detect --report-unused-ignores src/
 ```
 
 `npx impeccable skills <command>` is the legacy namespace and still works.
@@ -80,6 +82,8 @@ impeccable detect [options] [file-or-dir-or-url...]
   --json        Output findings as JSON
   --github      Write GitHub Actions annotations for each finding
   --list-rules  Print the detector rule catalog and exit
+  --report-unused-ignores
+                Report inline ignore comments that waived no finding
   --scope       Only report rules in a design domain (type, layout)
   --help        Show help
 ```

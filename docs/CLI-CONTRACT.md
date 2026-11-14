@@ -105,6 +105,7 @@ Notation: `stdout>` / `stderr>` are literal writes; `exit N`; template strings u
 | `--gpt`, `--gemini` | deprecated, ignored; `stderr> Note: --gpt and --gemini are deprecated and ignored. Generated-UI tells now run by default.\n` |
 | `--no-config` | `configEnabled=false`: detectionConfig = `{ignoreRules:[],ignoreFiles:[],ignoreValues:[]}`; also disables design system and inline ignores |
 | `--no-inline-ignores` | `inlineIgnoresEnabled = configEnabled && !flag` |
+| `--report-unused-ignores` | After a file scan, each inline directive rule that waived no finding is a primary finding (`unused-ignore`, severity `warning`, name `Unused inline ignore`, `category` null). It is not a catalog rule: `--list-rules` does not show it, and `ignoreRules` does not drop it. `line` is the comment's 1-based line; `snippet` is `impeccable-<variant> <rule>` (`impeccable-disable *` for `*` or a bare `impeccable-disable`). One finding per unused rule in a multi-rule comment. A `*` directive is unused only when it waived nothing at all. Only a rule that could fire on this run is judged: an id no loaded rule answers to (a typo, or a word from a reason written without a `:` or `--` separator) is never reported, and neither are `design-system-*` ids when the scan loaded no design system (`--no-design-system`, `detector.designSystem.enabled: false`, or no DESIGN.md), since those waivers would only be stale for this run. A finding counts as a use when `isInlineIgnored` would waive it. Advisories count, and so does a finding that `--scope` or `ignoreRules` later drops. Engines run with inline ignores off; the CLI applies `applyInlineIgnores` itself, so waived findings stay out exactly as without the flag. `--json`, `--github` (`::warning`, title `Unused inline ignore`) and `--quiet` carry them on their existing streams; exit 2 when any remain. The text and `--quiet` summary counts them apart from anti-patterns: `N unused inline ignores found.` when they are all there is, `M anti-patterns and N unused inline ignores found.` alongside other findings, and the usual `M anti-patterns found.` when there are none. `--scope` does not drop them. Combined with `--no-inline-ignores` or `--no-config`, checked after `--help` and `--list-rules` → `stderr> Error: --report-unused-ignores needs inline ignores enabled\n`, `exit 1`. URL and `--cdp` scans accept the flag and report nothing (no source text). Without the flag, output and exit codes are unchanged |
 | `--no-design-system` | `designSystemEnabled = configEnabled && !flag && detectionConfig.designSystem?.enabled !== false` |
 | `--scope <v>` / `--scope=<v>` | comma-split, trimmed, filtered; repeated occurrences accumulate; the flag+value are spliced out of `args`. Value missing or starting with `--` → `stderr> Error: --scope requires a value. Valid scopes: ${[...RULE_SCOPES].join(', ')}\n`, `exit 1`. Unknown → `stderr> Error: unknown --scope value(s): ${unknown.join(', ')}. Valid scopes: ...\n`, `exit 1`. `RULE_SCOPES` = union of rules' `scopes` = `type`, `layout` (in insertion order: `type` first from `overused-font`, then `layout` from `nested-cards`). |
 | `--viewport <WxH>` / `--viewport=WxH` | regex `/^(\d{2,5})x(\d{2,5})$/i`; failure → `stderr> Error: --viewport requires a WxH value, e.g. --viewport 390x844\n`, `exit 1`. Sets `baseScanOptions.viewport = {width,height}` (browser scans only). Spliced out. |
@@ -132,6 +133,10 @@ Options:
   --no-config         Do not apply project config, detector ignores, inline
                       ignore comments, or DESIGN.md
   --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
+  --report-unused-ignores
+                      Report inline ignore comments that waived no
+                      finding. Not with --no-inline-ignores or
+                      --no-config
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
   --no-advisory       Suppress advisory findings entirely (e.g. em-dash overuse)
   --no-consent-hiding URL scans: keep known consent managers' banners
@@ -178,6 +183,10 @@ Inline ignores:
     // impeccable-disable-next-line bounce-easing: intentional bounce
   impeccable-disable applies to the whole file; -line / -next-line are scoped.
   List one or more rule ids (comma-separated), or omit them / use * for all.
+  --report-unused-ignores lists each rule in those comments that waived
+  nothing, as a warning (unused-ignore) on the same findings stream. A *
+  waiver is listed only when it waived no finding at all. Advisory findings
+  count as a use. URL and --cdp scans have no source text and report none.
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -195,6 +204,7 @@ Examples:
   impeccable detect --json .
   impeccable detect --github src/
   impeccable detect --list-rules
+  impeccable detect --report-unused-ignores src/
   impeccable detect --no-config src/
 ```
 
@@ -306,8 +316,9 @@ Optional keys added later by engines (appended after the above): `ignoreValue` (
 - `TRAILING_CLOSER_RE = /\s*(?:\*\/\}?|--+>|\*\}|#\}|%>|\}\})\s*$/` stripped from the remainder; then reason cut at first `/\s*(?:--+|:)\s*/`; tokens split on `/[\s,]+/`, lowercased; empty or containing `*` → `['*']`.
 - Lines split on `'\n'` only (CRLF-safe since `\r` excluded from capture). `disable` → file set; `disable-line` on line i (1-based) → `line.get(i)`; `disable-next-line` on line i → `nextLine.get(i+1)`.
 - `isInlineIgnored(finding)`: rule = lowercased `finding.antipattern`; file set match (`*` or rule) → true; if `line > 0`, `line`/`nextLine` set match → true. Line-less findings (static HTML, browser) match **only** whole-file directives.
-- Applied inside `detectText` and `detectHtml` at the end unless `options.inlineIgnores === false` (set by `--no-config` or `--no-inline-ignores`). Not applied to URL scans.
+- Applied inside `detectText` and `detectHtml` at the end unless `options.inlineIgnores === false` (set by `--no-config` or `--no-inline-ignores`). Not applied to URL scans. `--report-unused-ignores` also runs the engines with `inlineIgnores === false` and applies this step in the CLI, so it can see the raw findings; the waivers still drop the same findings.
 - Fast path: skip unless `/impeccable-disable/i` occurs.
+- **`--report-unused-ignores`**: see the flag table. Line-scoped directives waive regex findings (CSS, JSX, TSX), which carry a line. Static HTML findings have `line: 0`, so only a whole-file `impeccable-disable` can waive them; a `-line` or `-next-line` in an HTML file that matches nothing is unused. Stdin is scanned when its text is in hand (`<stdin>`, or a hook payload's file). A directive is unused per rule id; `overused-font, bounce-easing` reports only the ids that matched nothing.
 - **DOM-scoped ignore** (`rules/checks.mjs scopedIgnoreActive`): attribute `data-impeccable-ignore="rule-a rule-b"` (split on `/[\s,]+/`, lowercased; empty value or `*` = all) on an element waives matching findings for it and its subtree in browser, extension, and static engines. In `detectHtml`'s html-patterns pass, selector-backed findings are dropped when every element matched by the (pseudo-stripped) selector is under a waiver; unmatched selectors keep the finding.
 - Tests: `tests/inline-ignores.test.mjs`; fixture `scoped-ignore.html`.
 
