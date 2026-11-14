@@ -18,8 +18,8 @@
 //! a stripe.
 
 use crate::checks::css_scan::{
-    collect_css_custom_props, css_length_to_px, parse_css_decl_block, selector_is_state_indicator,
-    CustomProps, PatternFinding, CSS_RULE_BLOCK_SOURCE,
+    collect_css_custom_props, css_length_to_px, selector_is_state_indicator, CustomProps, DeclMap,
+    PatternFinding, CSS_RULE_BLOCK_SOURCE,
 };
 use crate::checks::measures::resolve_var_refs;
 use crate::checks::rules::{extract_shadow_lengths, find_shadow_color};
@@ -385,6 +385,27 @@ fn box_value<'a>(values: &[&'a str], family_sides: &[usize], side: usize) -> Opt
     values.get(at.min(n - 1)).copied()
 }
 
+/// A rule's declarations as its own cascade leaves them: a later
+/// declaration wins unless an earlier one is `!important`.
+fn cascade_decl_block(block: &str) -> DeclMap {
+    let mut decls = DeclMap::new();
+    let mut important: Vec<String> = Vec::new();
+    for part in block.split(';') {
+        let Some((prop, value)) = part.split_once(':') else { continue };
+        let prop = js::to_lower_case(js::trim(prop));
+        let priority = IMPORTANT_RE.is_match(js::trim(value));
+        let value = IMPORTANT_RE.replace(js::trim(value), "").into_owned();
+        if prop.is_empty() || value.is_empty() || (!priority && important.contains(&prop)) {
+            continue;
+        }
+        if priority {
+            important.push(prop.clone());
+        }
+        decls.set(&prop, value);
+    }
+    decls
+}
+
 /// A side border that is a stripe: `(property, thickness, edge, alone)`,
 /// `alone` when no other side is drawn. `block` is the rule's declarations
 /// as written: a later declaration wins unless an earlier one is
@@ -531,7 +552,7 @@ pub fn scan_css_text_for_row_stripe(content: &str, tokens: Option<&CustomProps>)
         if kept.is_empty() {
             continue;
         }
-        let decls = parse_css_decl_block(&m[2]);
+        let decls = cascade_decl_block(&m[2]);
         if decls
             .get("width")
             .and_then(|w| css_length_to_px(&resolve_var_refs(w, &lookup, 0)))
@@ -620,6 +641,7 @@ mod tests {
             "tr.is-error td, tr:hover td { box-shadow: inset 3px 0 0 red; }",
             // An important side border outlasts a later shared reset.
             "td.is-x { border-left: 3px solid #d0342c !important; border-style: none; }",
+            "td.is-x { box-shadow: inset 3px 0 0 #d0342c !important; box-shadow: none; }",
             // A shared colour paints only the side the stripe draws.
             ".cell { border-color: #d0342c; border-left-width: 3px; border-left-style: solid; }",
             // A plain branch beside a status branch leaves the status branch.
@@ -694,6 +716,10 @@ mod tests {
             // An important shared reset outlasts a later side border.
             "td.is-x { border-style: none !important; border-left: 3px solid #d0342c; }",
             "td.is-x { border-left-style: none !important; border-left: 3px solid #d0342c; }",
+            // An important `none` outlasts a later shadow, an important
+            // background a later reset.
+            "td.is-x { box-shadow: none !important; box-shadow: inset 3px 0 0 #d0342c; }",
+            "td { box-shadow: inset 3px 0 0 #d0342c; background: #fff !important; background: none; }",
             // A plain cell edged on the other side too paints more than the stripe.
             ".cell { border-left: 3px solid #d0342c; border-right: 1px solid #ccc; }",
             "td { border-left: 3px solid #d0342c; border-inline-end: 1px solid #ccc; }",

@@ -7,6 +7,20 @@ import { compileProviderBlocks } from '../scripts/lib/utils.js';
 const ROOT = process.cwd();
 
 describe('live reference authoring contract', () => {
+  it('documents live-inject check as read-only unless auto-config is requested', () => {
+    const contract = readFileSync(join(ROOT, 'docs/CLI-CONTRACT.md'), 'utf-8');
+    const inject = contract.split('#### `live-inject.mjs`')[1].split('\n#### ')[0];
+    assert.match(inject, /`--check` \(read-only/);
+    assert.match(inject, /only `--check --auto-config` may create/);
+    assert.match(inject, /configCreated: true/);
+  });
+
+  it('documents the literal auto-config body anchor requirement', () => {
+    const contract = readFileSync(join(ROOT, 'docs/CLI-CONTRACT.md'), 'utf-8');
+    const boot = contract.split('#### `live.mjs`')[1].split('\n#### ')[0];
+    assert.ok(boot.includes('`index.html` file containing the literal, case-sensitive `</body>`'));
+  });
+
   it('keeps setup guidance focused on routing live to its reference', () => {
     const skillSrc = readFileSync(join(ROOT, 'skill/SKILL.src.md'), 'utf-8');
     const liveMd = readFileSync(join(ROOT, 'skill/reference/live.md'), 'utf-8');
@@ -27,7 +41,7 @@ describe('live reference authoring contract', () => {
     assert.doesNotMatch(skillSrc, /TARGET_SELECTION_REQUIRED/);
     assert.doesNotMatch(skillSrc, /productStatus/);
     assert.doesNotMatch(skillSrc, /designStatus/);
-    assert.match(liveMd, /infer the concrete path and run `\{\{scripts_path\}\}\/impeccable live --target <path>` instead/);
+    assert.match(liveMd, /infer the concrete path and add `--target <path>`/);
     assert.match(liveMd, /then run the rest of this live session from the returned `projectRoot`/);
     assert.doesNotMatch(liveMd, /target_selection_required/);
     assert.doesNotMatch(liveMd, /rerun with the chosen app path as `--target`/);
@@ -40,7 +54,8 @@ describe('live reference authoring contract', () => {
     const manualAgentMd = readFileSync(join(ROOT, 'skill/agents/impeccable-manual-edit-applier.md'), 'utf-8');
     const openingContract = liveMd.split('\n').slice(0, 60).join('\n');
 
-    assert.match(liveMd, /1\. `impeccable live`: boot\./);
+    // The boot always carries the flags that make a first run work without a setup detour.
+    assert.match(liveMd, /1\. `impeccable live --allow-missing-context --dev-url[^`]*`: boot \(always with/);
     assert.match(liveMd, /3\. Poll loop with the default long timeout \(600000 ms\)\. Run `impeccable live-poll` again immediately.*Codex runs this one-shot poll in the foreground\./);
     assert.match(openingContract, /## Poll loop/);
     assert.match(openingContract, /No step skipped, no step reordered\./);
@@ -180,6 +195,12 @@ describe('live reference authoring contract', () => {
     for (const action of readVisualActions()) {
       assert.match(generateMd, new RegExp('`' + action + '`'), `generate.md must name \`${action}\``);
     }
+  });
+
+  it('discloses the Apply subprocess route in the README', () => {
+    const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8');
+    assert.match(readme, /--permission-mode bypassPermissions/);
+    assert.match(readme, /IMPECCABLE_LIVE_COPY_AGENT=chat/);
   });
 });
 

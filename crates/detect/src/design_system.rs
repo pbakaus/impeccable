@@ -922,6 +922,11 @@ fn add_clamp_endpoints(out: &mut DesignSystem, raw: &str) -> bool {
 }
 
 fn split_top_level_args(s: &str) -> Vec<String> {
+    split_top_level(s, |ch| ch == ',')
+}
+
+/// Splits on `is_sep` outside parens and quotes; each part is trimmed.
+fn split_top_level(s: &str, is_sep: impl Fn(char) -> bool) -> Vec<String> {
     let mut args = Vec::new();
     let mut depth = 0i32;
     let mut current = String::new();
@@ -947,7 +952,7 @@ fn split_top_level_args(s: &str) -> Vec<String> {
         } else if quote.is_none() && ch == ')' {
             depth -= 1;
         }
-        if ch == ',' && depth == 0 && quote.is_none() {
+        if is_sep(ch) && depth == 0 && quote.is_none() {
             args.push(js::trim(&current).to_string());
             current.clear();
             continue;
@@ -1858,19 +1863,25 @@ fn check_font_stack(
     )]
 }
 
-re!(SLASH_WS_RE, format!("{WS}*/{WS}*"));
-
 /// JS: design-system.mjs#extractRadiusTokens
+/// A function is not a literal radius and is dropped whole, so calc()/min()
+/// operands are never judged (#1168); var() still yields its fallback (#687).
 pub fn extract_radius_tokens(value: &str) -> Vec<String> {
-    let replaced = SLASH_WS_RE.replace_all(value, " ");
-    WS_RUN_RE
-        .split(&replaced)
-        // JS-PARITY: extractRadiusTokens strips a trailing `)+` (regex /\)+$/)
-        // after trim so a var() fallback's closing paren (`8px)`) is not parsed
-        // as unitless 8rem. (upstream 1bcdf80f / #687)
-        .map(|t| js::trim(t).trim_end_matches(')').to_string())
-        .filter(|t| !t.is_empty())
-        .collect()
+    let mut tokens = Vec::new();
+    let value = IMPORTANT_TAIL_RE.replace(value, "");
+    for part in split_top_level(&value, |ch| js::is_js_whitespace(ch) || ch == '/') {
+        let is_var = part
+            .get(..4)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("var("));
+        if is_var && part.ends_with(')') {
+            if let Some((_, fallback)) = part[4..part.len() - 1].split_once(',') {
+                tokens.extend(extract_radius_tokens(fallback));
+            }
+        } else if !part.is_empty() && !part.contains(['(', ')']) {
+            tokens.push(part);
+        }
+    }
+    tokens
 }
 
 fn check_radius_value(
@@ -2676,6 +2687,32 @@ mod tests {
         assert_eq!(
             got,
             vec![("design-system-radius".to_string(), Some("18px".to_string()))]
+        );
+    }
+
+    // #1168: operands of calc()/min()/max()/clamp() are not literal radii.
+    #[test]
+    fn math_function_radius_operands_are_not_judged() {
+        let md = "---\nrounded:\n  md: \"8px\"\n---\nbody";
+        let fm = parse_frontmatter(md).unwrap();
+        let ds = normalize_design_system(Some(&fm), None, None, None, false);
+        let css = ".a {\n  border-radius: calc(var(--radius) * 2);\n}\n.b {\n  border-radius: min(12px, 2vw);\n}\n.c {\n  border-radius: 18px clamp(4px, 1vw, 40px);\n}\n.d {\n  border-radius: -webkit-calc(8px * 2);\n}\n.e {\n  border-radius: var(--r, 20px)!important;\n}\n";
+        let f = check_source_design_system(css, "/tmp/radius-math.css", Some(&ds));
+        let got: Vec<(String, Option<String>)> = f
+            .iter()
+            .map(|item| {
+                (
+                    item.antipattern.clone(),
+                    item.extras.get("ignoreValue").and_then(|v| v.as_str().map(String::from)),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("design-system-radius".to_string(), Some("18px".to_string())),
+                ("design-system-radius".to_string(), Some("20px".to_string())),
+            ]
         );
     }
 

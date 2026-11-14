@@ -149,6 +149,7 @@ This is a test skill body.`;
     transformers.transformGemini(skills, DIST_DIR, patterns);
     transformers.transformCodex(skills, DIST_DIR, patterns);
     transformers.transformOmp(skills, DIST_DIR, patterns);
+    transformers.transformDevin(skills, DIST_DIR, patterns);
     transformers.transformAntigravity(skills, DIST_DIR, patterns);
 
     // Verify Cursor outputs
@@ -254,6 +255,37 @@ Do not redesign the approved crop.`;
     expect(cursorAgent).not.toContain('maxTurns:');
   });
 
+  test('integration: subagents keep every tool unless a harness can deny some (#1328)', () => {
+    // A `tools` allowlist cuts a subagent off from MCP tools. Writers declare
+    // nothing and inherit everything; a reviewer denies writes where the
+    // harness documents a denylist (Claude Code) and inherits elsewhere.
+    fs.mkdirSync(path.join(TEST_DIR, 'skill/agents'), { recursive: true });
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/SKILL.src.md'), '---\nname: test-skill\ndescription: A test skill\n---\n\nBody.');
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/agents/reviewer.md'), '---\nname: reviewer\ndescription: Reviews a build\ndisallowed-tools: Write, Edit, NotebookEdit\nmodel: inherit\n---\n\nReview only.');
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/agents/writer.md'), '---\nname: writer\ndescription: Writes assets\nmodel: inherit\n---\n\nWrite assets.');
+
+    const DIST_DIR = path.join(TEST_DIR, 'dist');
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGrok(skills, DIST_DIR, patterns);
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+
+    const read = (rel) => fs.readFileSync(path.join(DIST_DIR, rel), 'utf-8');
+    const claudeReviewer = read('claude-code/.claude/agents/reviewer.md');
+    expect(claudeReviewer).toContain('disallowedTools: Write, Edit, NotebookEdit');
+    expect(claudeReviewer).not.toContain('tools: ');
+    expect(read('claude-code/.claude/agents/writer.md')).not.toMatch(/^(tools|disallowedTools):/m);
+
+    // Grok documents no frontmatter denylist, so its reviewer inherits all tools.
+    const grokReviewer = read('grok/.grok/agents/reviewer.md');
+    expect(grokReviewer).not.toMatch(/^(tools|disallowedTools):/m);
+
+    // Cursor enforces read-only itself; the denylist still marks the reviewer.
+    expect(read('cursor/.cursor/agents/reviewer.md')).toContain('readonly: true');
+    expect(read('cursor/.cursor/agents/writer.md')).not.toContain('readonly:');
+  });
+
   test('integration: verify transformations are correct', () => {
     const skillContent = `---
 name: audit
@@ -346,7 +378,7 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     transformCodexSpy.mockRestore();
   });
 
-  test('should include agents, omp, and kiro transformers', () => {
+  test('should include agents, omp, devin, and kiro transformers', () => {
     const { skills } = utils.readSourceFiles(TEST_DIR);
     const patterns = utils.readPatterns(TEST_DIR);
     const DIST_DIR = path.join(TEST_DIR, 'dist');
@@ -354,12 +386,14 @@ Please audit {{target}} for technical quality. Ask {{model}} for help.`;
     // These should not throw
     transformers.transformAgents(skills, DIST_DIR, patterns);
     transformers.transformOmp(skills, DIST_DIR, patterns);
+    transformers.transformDevin(skills, DIST_DIR, patterns);
     transformers.transformGitHub(skills, DIST_DIR, patterns);
     transformers.transformKiro(skills, DIST_DIR, patterns);
 
     // Verify outputs
     expect(fs.existsSync(path.join(DIST_DIR, 'agents/.agents/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'omp/.omp/skills'))).toBe(true);
+    expect(fs.existsSync(path.join(DIST_DIR, 'devin/.devin/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'github/.github/skills'))).toBe(true);
     expect(fs.existsSync(path.join(DIST_DIR, 'kiro/.kiro/skills'))).toBe(true);
   });
@@ -478,6 +512,10 @@ describe('degraded-mode fallback reference generation', () => {
     expect(content).toContain('This harness has no subagent capability, so you are running this role inline.');
     // Distinctive phrase from the agent body proves the source body was inlined.
     expect(content).toContain('material_fixes');
+  });
+
+  test('the disclosure stays out of the output contract (#1245)', () => {
+    expect(readDegraded('codex', '.codex', 'manual-edit-applier')).toContain('outside the output contract');
   });
 
   test('generated fallbacks pass through provider-block compilation (codex keeps its block, others strip it)', () => {

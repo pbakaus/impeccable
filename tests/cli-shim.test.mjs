@@ -4,9 +4,14 @@
  * The shim is the last resort in the binary lookup, and it caches what it
  * fetches, so it has to fail closed the same way the skill launcher
  * (`skill/scripts/impeccable`) and `impeccable install`
- * (`crates/skills/src/engine_binary.rs`) do: a `.sha256` sidecar that cannot
- * be fetched, is empty, or disagrees with the payload refuses the download and
- * leaves nothing in the cache dir.
+ * (`crates/skills/src/engine_binary.rs`) do: the digest comes from
+ * `skill/scripts/engine-checksums.txt`, never from the release server. No line
+ * for the version and asset refuses before any request, a payload that
+ * disagrees refuses after the fetch, and both leave nothing in the cache dir.
+ * A cached binary is hashed against the same line and then trusted through
+ * its `.verified` stamp, but only while the stamp holds that digest and the
+ * binary's size and is not older than the binary; a cached binary that fails
+ * the hash is downloaded again.
  *
  * Two things keep these cases honest about which lookup arm they exercise.
  * First, the shim runs from a staged copy (`<tmp>/cli/bin/cli.js` beside a
@@ -46,27 +51,17 @@ const ASSET_PATH = `/engine-v${VERSION}/${ASSET}`;
 const PAYLOAD = Buffer.from('#!/bin/sh\necho "fake-engine $*"\n');
 const DIGEST = createHash('sha256').update(PAYLOAD).digest('hex');
 
-/** What the server answers for `<asset>.sha256` on the next request. */
-let sidecar = { status: 200, body: `${DIGEST}  ${ASSET}\n` };
 /** Every path the server was asked for since the last test started. */
 let requests = [];
 let server;
 let base;
+let responseStatus = 200;
 
 before(async () => {
   server = http.createServer((req, res) => {
     requests.push(req.url);
-    if (req.url === `${ASSET_PATH}.sha256`) {
-      if (sidecar.status !== 200) {
-        res.writeHead(sidecar.status);
-        res.end('');
-        return;
-      }
-      res.writeHead(200, { 'content-type': 'text/plain' });
-      res.end(sidecar.body);
-      return;
-    }
     if (req.url === ASSET_PATH) {
+      if (responseStatus !== 200) { res.writeHead(responseStatus); res.end(); return; }
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       res.end(PAYLOAD);
       return;
@@ -80,16 +75,20 @@ before(async () => {
 
 after(() => new Promise((resolve) => server.close(resolve)));
 
-beforeEach(() => { requests = []; });
+beforeEach(() => { requests = []; responseStatus = 200; });
 
 /**
  * A throwaway copy of the shim at `<tmp>/cli/bin/cli.js`, with the repo's
- * package.json where the shim reads it from (`../../package.json`) and no
- * node_modules on the lookup path above it.
+ * package.json where the shim reads it from (`../../package.json`), a manifest
+ * holding `line` at `<tmp>/skill/scripts/engine-checksums.txt` (the path the
+ * published package ships it at), and no node_modules on the lookup path
+ * above it.
  */
-function stageShim() {
+function stageShim(line = `${VERSION} ${ASSET} ${DIGEST}`) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-shim-'));
   fs.mkdirSync(path.join(dir, 'cli', 'bin'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'skill', 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'skill', 'scripts', 'engine-checksums.txt'), `# test manifest\n\n${line}\n`);
   fs.copyFileSync(PKG_PATH, path.join(dir, 'package.json'));
   fs.copyFileSync(path.join(REPO, 'cli', 'bin', 'cli.js'), path.join(dir, 'cli', 'bin', 'cli.js'));
   return { dir, shim: path.join(dir, 'cli', 'bin', 'cli.js') };
@@ -111,11 +110,28 @@ function run(shim, args, env) {
   });
 }
 
-/** Stage a shim and run it with its own cache dir. */
-async function runShim(args = ['engine-probe']) {
-  const { dir, shim } = stageShim();
+/**
+ * Stage a shim and run it with its own cache dir, optionally pre-filled with a
+ * binary that is unstamped, or stamped with `stamp` and aged `stampAge` ms.
+ * `nodeOptions` and `exe` let a case pose as another platform.
+ */
+async function runShim(args = ['engine-probe'], { line, cached, stamp, stampAge = 0, exe = 'impeccable', nodeOptions } = {}) {
+  const { dir, shim } = stageShim(line);
+  if (cached) {
+    const bin = path.join(dir, 'bin', VERSION, exe);
+    fs.mkdirSync(path.dirname(bin), { recursive: true });
+    fs.writeFileSync(bin, cached, { mode: 0o755 });
+    if (stamp !== undefined) {
+      fs.writeFileSync(`${bin}.verified`, stamp);
+      if (stampAge) {
+        const past = new Date(Date.now() - stampAge);
+        fs.utimesSync(`${bin}.verified`, past, past);
+      }
+    }
+  }
   const env = { ...process.env, IMPECCABLE_HOME: dir, IMPECCABLE_DOWNLOAD_BASE: base };
   delete env.IMPECCABLE_BIN;
+  if (nodeOptions) env.NODE_OPTIONS = nodeOptions;
   return { ...(await run(shim, args, env)), home: dir };
 }
 
@@ -136,42 +152,116 @@ function cacheEntries(home) {
 }
 
 describe('npm shim download verification', { skip: process.platform === 'win32' ? 'posix only' : false }, () => {
-  it('caches and runs a download whose sidecar matches', async () => {
-    sidecar = { status: 200, body: `${DIGEST}  ${ASSET}\n` };
+  const cachedEntries = [path.join(VERSION, 'impeccable'), path.join(VERSION, 'impeccable.verified')];
+
+  it('attributes GitHub storage outages to GitHub', async () => {
+    const mock = "globalThis.fetch = async () => ({ ok: false, status: 504, url: 'https://release-assets.githubusercontent.com/asset' });";
+    const res = await runShim([], { nodeOptions: `--import=data:text/javascript,${encodeURIComponent(mock)}` });
+    assert.equal(res.status, 127);
+    assert.equal(res.stderr.split('\n')[0], `impeccable: could not download engine ${VERSION}: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`);
+  });
+
+  it('attributes a 503 to the download host', async () => {
+    responseStatus = 503;
+    const res = await runShim();
+    assert.equal(res.status, 127);
+    assert.ok(res.stderr.includes("impeccable: could not download engine " + VERSION + ": 127.0.0.1 is failing right now (HTTP 503), a server error on 127.0.0.1's side. Try again later.\n"), res.stderr);
+    assert.match(res.stderr, /no binary for/);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), []);
+  });
+
+  it('caches and runs a download whose hash matches the manifest, and stamps it', async () => {
     const res = await runShim(['hello']);
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /fake-engine hello/);
-    assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
-    assert.deepEqual(cacheEntries(res.home), [path.join(VERSION, 'impeccable')]);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), cachedEntries);
   });
 
-  it('refuses when the sidecar is missing', async () => {
-    sidecar = { status: 404, body: '' };
-    const res = await runShim();
+  it('refuses before any request when the manifest has no line for the version', async () => {
+    const res = await runShim(['hello'], { line: `0.0.0-other ${ASSET} ${DIGEST}` });
     assert.equal(res.status, 127);
-    assert.match(res.stderr, /sidecar unavailable or empty/);
+    assert.match(res.stderr, /no checksum for engine /);
     assert.match(res.stderr, /refusing the unverified download/);
-    assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
+    assert.deepEqual(requests, []);
     assert.deepEqual(cacheEntries(res.home), []);
   });
 
-  it('refuses when the sidecar is empty', async () => {
-    sidecar = { status: 200, body: '   \n' };
-    const res = await runShim();
-    assert.equal(res.status, 127);
-    assert.match(res.stderr, /sidecar unavailable or empty/);
-    assert.match(res.stderr, /refusing the unverified download/);
-    assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
-    assert.deepEqual(cacheEntries(res.home), []);
-  });
-
-  it('refuses when the sidecar hash does not match', async () => {
-    sidecar = { status: 200, body: `${'0'.repeat(64)}  ${ASSET}\n` };
-    const res = await runShim();
+  it('refuses when the downloaded bytes do not match the manifest digest', async () => {
+    const res = await runShim(['hello'], { line: `${VERSION} ${ASSET} ${'0'.repeat(64)}` });
     assert.equal(res.status, 127);
     assert.match(res.stderr, /checksum mismatch downloading/);
-    assert.deepEqual(requests, [ASSET_PATH, `${ASSET_PATH}.sha256`]);
+    assert.deepEqual(requests, [ASSET_PATH]);
     assert.deepEqual(cacheEntries(res.home), []);
+  });
+
+  it('hashes an unstamped cached binary once, stamps it and never downloads', async () => {
+    const res = await runShim(['hi'], { cached: PAYLOAD });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.deepEqual(requests, []);
+    assert.deepEqual(cacheEntries(res.home), cachedEntries);
+  });
+
+  it('downloads again when an unstamped cached binary does not match the manifest', async () => {
+    const res = await runShim(['hi'], { cached: Buffer.from('#!/bin/sh\necho "tampered $*"\n') });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stderr, /cannot verify the cached engine/);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), cachedEntries);
+    assert.deepEqual(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable')), PAYLOAD);
+  });
+
+  for (const [what, stamp] of [['is empty', ''], ['holds another digest', `${'0'.repeat(64)} ${PAYLOAD.length}`], ['predates the size field', DIGEST]]) {
+    it(`rehashes a cached binary whose stamp ${what}, rewrites it and never downloads`, async () => {
+      const res = await runShim(['hi'], { cached: PAYLOAD, stamp });
+      assert.equal(res.status, 0, res.stderr);
+      assert.match(res.stdout, /fake-engine hi/);
+      assert.deepEqual(requests, []);
+      assert.deepEqual(cacheEntries(res.home), cachedEntries);
+      assert.equal(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable.verified'), 'utf8').trim(), `${DIGEST} ${PAYLOAD.length}`);
+    });
+  }
+
+  const tampered = Buffer.from('#!/bin/sh\necho "tampered $*"\n');
+  for (const [how, stamp, stampAge] of [
+    ['written after its stamp', `${DIGEST} ${tampered.length}\n`, 60000],
+    ['moved in with an older mtime', `${DIGEST} ${PAYLOAD.length}\n`, 0],
+  ]) {
+    it(`downloads again when a cached binary was ${how}`, async () => {
+      const res = await runShim(['hi'], { cached: tampered, stamp, stampAge });
+      assert.equal(res.status, 0, res.stderr);
+      assert.match(res.stderr, /cannot verify the cached engine/);
+      assert.match(res.stdout, /fake-engine hi/);
+      assert.deepEqual(requests, [ASSET_PATH]);
+      assert.deepEqual(cacheEntries(res.home), cachedEntries);
+      assert.deepEqual(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable')), PAYLOAD);
+    });
+  }
+
+  it('runs a cached binary on a good stamp without hashing it', async () => {
+    const digest = '1'.repeat(64);
+    const res = await runShim(['hi'], { line: `${VERSION} ${ASSET} ${digest}`, cached: PAYLOAD, stamp: `${digest} ${PAYLOAD.length}\n` });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.equal(res.stderr, '');
+    assert.deepEqual(requests, []);
+  });
+
+  it('accepts the x64 digest for a cached engine on Windows on ARM, like the launchers', async () => {
+    const posing = "Object.defineProperty(process,'platform',{value:'win32'});Object.defineProperty(process,'arch',{value:'arm64'});";
+    const res = await runShim(['hi'], {
+      line: `${VERSION} impeccable-windows-x64.exe ${DIGEST}`,
+      cached: PAYLOAD,
+      exe: 'impeccable.exe',
+      nodeOptions: `--import=data:text/javascript,${encodeURIComponent(posing)}`,
+    });
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /fake-engine hi/);
+    assert.deepEqual(requests, []);
+    assert.equal(fs.readFileSync(path.join(res.home, 'bin', VERSION, 'impeccable.exe.verified'), 'utf8').trim(), `${DIGEST} ${PAYLOAD.length}`);
   });
 
   it('answers --version and -v from its own package.json without touching a binary', async () => {
@@ -186,7 +276,6 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
   });
 
   it('prefers IMPECCABLE_BIN and never downloads', async () => {
-    sidecar = { status: 404, body: '' };
     const { dir, shim } = stageShim();
     const bin = path.join(dir, 'preinstalled');
     fs.writeFileSync(bin, '#!/bin/sh\necho "preinstalled $*"\n', { mode: 0o755 });
@@ -199,12 +288,11 @@ describe('npm shim download verification', { skip: process.platform === 'win32' 
     assert.deepEqual(cacheEntries(dir), []);
   });
 
-  // The precedence the four cases above depend on being absent: with the
+  // The precedence the download cases above depend on being absent: with the
   // optional dependency installed, the shim never reaches the cache or the
   // download. Those packages ship with every engine release, so a shim run
   // from a tree that has them takes this arm instead.
   it('prefers an installed platform package and never downloads', async () => {
-    sidecar = { status: 404, body: '' };
     const { dir, shim } = stageShim();
     const pkgDir = path.join(dir, 'node_modules', PLATFORM_PKG);
     fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });

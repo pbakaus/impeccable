@@ -8,8 +8,8 @@ use impeccable_common::Io;
 /// keep in sync with the public repo).
 pub const COMMAND_METADATA_JSON: &str = include_str!("command-metadata.json");
 
-const HARNESS_DIRS: [&str; 19] = [
-    ".claude", ".cursor", ".dsh", ".gemini", ".codex", ".agents", ".agent", ".github", ".grok", ".hermes", ".trae", ".trae-cn",
+const HARNESS_DIRS: [&str; 20] = [
+    ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".codex", ".agents", ".agent", ".github", ".grok", ".hermes", ".trae", ".trae-cn",
     ".pi", ".omp", ".opencode", ".kiro", ".rovodev", ".vibe", ".qoder",
 ];
 const CODEX_HARNESSES: [&str; 2] = [".codex", ".agents"];

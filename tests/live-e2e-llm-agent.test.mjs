@@ -125,6 +125,42 @@ describe('live-e2e LLM agent provider config', () => {
 });
 
 describe('live-e2e LLM agent createLlmAgent', () => {
+  for (const provider of ['anthropic', 'deepseek']) {
+    it(`serializes supported sampling parameters for ${provider} edit requests`, async (t) => {
+      const requests = [];
+      t.mock.method(globalThis, 'fetch', async (_url, options) => {
+        requests.push(JSON.parse(options.body));
+        return new Response(JSON.stringify({
+          type: 'error', error: { type: 'invalid_request_error', message: 'request captured' },
+        }), { status: 400, headers: { 'content-type': 'application/json' } });
+      });
+      const agent = await createLlmAgent({
+        config: { provider, model: 'test-model', apiKey: 'test-key' },
+        includeLiveSpec: false,
+      });
+      const tmp = createSourceKeyReplayProject('apply');
+      try {
+        for (const invoke of [
+          () => agent.generateVariants({ element: { tag: 'h1', outerHtml: '<h1>Title</h1>' } }),
+          () => agent.applyManualEdits({ id: 'sampling-test', batch: sourceKeyReplayBatch('apply') }, { tmp }),
+        ]) {
+          requests.length = 0;
+          await assert.rejects(invoke, /request captured/);
+          assert.ok(requests.length > 0);
+          for (const request of requests) {
+            if (provider === 'anthropic') {
+              assert.equal(Object.hasOwn(request, 'temperature'), false);
+            } else {
+              assert.equal(request.temperature, 0);
+            }
+          }
+        }
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  }
+
   it('uses an explicit opts.config without re-reading env', async () => {
     const agent = await createLlmAgent({
       config: {

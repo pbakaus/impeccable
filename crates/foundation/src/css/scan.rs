@@ -546,11 +546,20 @@ fn axis_travels(a: TranslateAxis, b: TranslateAxis) -> bool {
 fn keyframes_move_or_resize(body: &str) -> bool {
     let mut translations: Vec<[TranslateAxis; 3]> = Vec::new();
     let mut sizes: Vec<(String, Option<String>)> = Vec::new();
+    // Per step: the offsets, margins and box size it declares.
+    let mut offsets: Vec<Vec<(&'static str, String)>> = Vec::new();
     for step in KEYFRAME_STEP_BLOCK_RE.captures_iter(body) {
         let decls = parse_css_decl_block(&step[2]);
         if let Some(t) = step_translation(&decls) {
             translations.push(t);
         }
+        let mut step_offsets: Vec<(&'static str, String)> = Vec::new();
+        for &prop in PULSE_OFFSET_PROPS.iter().chain(["width", "height"].iter()) {
+            if let Some(v) = decls.get(prop) {
+                step_offsets.push((prop, js::to_lower_case(&v.split_ascii_whitespace().collect::<Vec<_>>().join(" "))));
+            }
+        }
+        offsets.push(step_offsets);
         if let Some(h) = decls.get("height") {
             let norm = |v: &str| js::to_lower_case(&v.split_ascii_whitespace().collect::<String>());
             sizes.push((norm(h), decls.get("width").map(|w| norm(w))));
@@ -571,7 +580,139 @@ fn keyframes_move_or_resize(body: &str) -> bool {
     };
     let resizes = sizes.iter().any(|(h, _)| !same(h, &sizes[0].0))
         && sizes.iter().all(|(_, w)| same_opt(w, &sizes[0].1));
-    travels || resizes
+    // An offset that changes between steps moves the box along its
+    // containing block: zcad.ai's connector dot runs `left: 0px` to
+    // `left: calc(100% - 4px)` (observations-1010 row 11). Two px lengths
+    // under [`PULSE_TRAVEL_MIN_PX`] apart are a breath, not travel; values
+    // that cannot both be read in px travel when they differ. An offset that
+    // changes with the box's size, or with the offset on its opposite side,
+    // keeps a growing dot centred: that is a ripple, not travel.
+    let changed = |a: &[(&'static str, String)], b: &[(&'static str, String)], prop: &str| -> bool {
+        let get = |s: &[(&'static str, String)]| s.iter().find(|(p, _)| *p == prop).map(|(_, v)| v.clone());
+        match (get(a), get(b)) {
+            (Some(va), Some(vb)) => match (offset_px(&va), offset_px(&vb)) {
+                (Some(x), Some(y)) => (x - y).abs() >= PULSE_TRAVEL_MIN_PX,
+                _ => va != vb,
+            },
+            _ => false,
+        }
+    };
+    let offset_travels = offsets.iter().any(|a| {
+        offsets.iter().any(|b| {
+            if changed(a, b, "width") || changed(a, b, "height") {
+                return false;
+            }
+            PULSE_OFFSET_PROPS
+                .iter()
+                .any(|&prop| changed(a, b, prop) && !changed(a, b, pulse_opposite_offset(prop)))
+        })
+    });
+    travels || resizes || offset_travels
+}
+
+/// An offset or margin in px: a length [`css_length_to_px`] reads, or a
+/// bare `0`.
+fn offset_px(v: &str) -> Option<f64> {
+    if is_zero_length(v) {
+        return Some(0.0);
+    }
+    css_length_to_px(v)
+}
+
+/// Whether `v` is a zero in any unit (`0`, `0px`, `0%`, `-0.0em`): zero is
+/// zero whatever its unit, so `left: 0` to `left: 0%` is no move.
+fn is_zero_length(v: &str) -> bool {
+    let v = js::trim(v);
+    let digits = v.trim_start_matches(['-', '+']);
+    let end = digits.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(digits.len());
+    let (number, unit) = digits.split_at(end);
+    !number.is_empty()
+        && number.chars().any(|c| c.is_ascii_digit())
+        && number.chars().all(|c| c == '0' || c == '.')
+        && unit.chars().all(|c| c.is_ascii_alphabetic() || c == '%')
+}
+
+/// The box offsets and margins a keyframe step can move a dot with: one
+/// side each. A shorthand that sets every side (`inset`, `margin`) moves
+/// all four at once, which keeps a dot in place.
+const PULSE_OFFSET_PROPS: [&str; 16] = [
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "inset-inline-start",
+    "inset-inline-end",
+    "inset-block-start",
+    "inset-block-end",
+    "margin-left",
+    "margin-right",
+    "margin-top",
+    "margin-bottom",
+    "margin-inline-start",
+    "margin-inline-end",
+    "margin-block-start",
+    "margin-block-end",
+];
+
+/// The offset on the other side of the box from `prop`.
+fn pulse_opposite_offset(prop: &str) -> &'static str {
+    match prop {
+        "left" => "right",
+        "right" => "left",
+        "top" => "bottom",
+        "bottom" => "top",
+        "inset-inline-start" => "inset-inline-end",
+        "inset-inline-end" => "inset-inline-start",
+        "inset-block-start" => "inset-block-end",
+        "inset-block-end" => "inset-block-start",
+        "margin-left" => "margin-right",
+        "margin-right" => "margin-left",
+        "margin-top" => "margin-bottom",
+        "margin-bottom" => "margin-top",
+        "margin-inline-start" => "margin-inline-end",
+        "margin-inline-end" => "margin-inline-start",
+        "margin-block-start" => "margin-block-end",
+        _ => "margin-block-start",
+    }
+}
+
+re!(
+    SCALE_FN_RE,
+    format!(
+        r"{B}({}(?:{}|{}|{}|3{})?)\(",
+        ci("scale"),
+        ci("x"),
+        ci("y"),
+        ci("z"),
+        ci("d")
+    )
+);
+
+/// Whether every scale the keyframes declare in a `transform` runs along
+/// one axis (all `scaleX()` or all `scaleY()`): an eye that blinks
+/// (looot.ai's `asblink`, `scaleY(1)` to `scaleY(.1)`) or a bar that fills,
+/// not a dot that swells. A body with no scale, or any `scale()`,
+/// `scale3d()` or `scale:` property, is not.
+fn scales_on_one_axis(body: &str) -> bool {
+    let mut axis: Option<String> = None;
+    for step in KEYFRAME_STEP_BLOCK_RE.captures_iter(body) {
+        let decls = parse_css_decl_block(&step[2]);
+        if decls.get("scale").is_some_and(|v| js::trim(v) != "none") {
+            return false;
+        }
+        let Some(t) = decls.get("transform") else { continue };
+        for m in SCALE_FN_RE.captures_iter(t) {
+            let name = js::to_lower_case(&m[1]);
+            if name != "scalex" && name != "scaley" {
+                return false;
+            }
+            match &axis {
+                Some(a) if *a != name => return false,
+                _ => axis = Some(name),
+            }
+        }
+    }
+    axis.is_some()
 }
 
 /// JS: checks.mjs#collectPulseKeyframes (Map name -> pulses?)
@@ -584,7 +725,7 @@ pub fn collect_pulse_keyframes(content: &str) -> JsMap<bool> {
         let body = brace_body(content, after, i, closed);
         let pulses = (OPACITY_DECL_RE.is_match(body)
             || BOX_SHADOW_DECL_RE.is_match(body)
-            || TRANSFORM_SCALE_RE.is_match(body))
+            || (TRANSFORM_SCALE_RE.is_match(body) && !scales_on_one_axis(body)))
             && !keyframes_move_or_resize(body);
         let name = &m[1];
         if !map.has(name) || pulses {

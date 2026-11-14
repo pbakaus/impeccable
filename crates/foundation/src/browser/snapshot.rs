@@ -501,6 +501,18 @@ pub struct Snapshot {
     /// shadow trees.
     #[serde(rename = "shadow", default)]
     pub shadow_trees_recorded: bool,
+    /// [`Dom::text_wrap_pretty_supported`], `__snapTextWrapPrettySupported()`
+    /// in `15-snapshot.js`.
+    #[serde(rename = "prettyWrap", default)]
+    pub pretty_wrap: Option<bool>,
+    /// [`Dom::document_font_faces`], `__snapFontFaces()` in
+    /// `15-snapshot.js`. Absent in captures older than it.
+    #[serde(rename = "fontFaces", default, skip_serializing_if = "Option::is_none")]
+    pub font_faces: Option<Vec<(String, String)>>,
+    /// [`Dom::rendered_faces`], `__snapRenderedFaces()` in
+    /// `15-snapshot.js`. Absent in captures older than it.
+    #[serde(rename = "renderedFaces", default, skip_serializing_if = "Option::is_none")]
+    pub rendered_faces: Option<Vec<(String, bool)>>,
     /// Derived on load: column index per style property name.
     #[serde(skip)]
     style_index: HashMap<String, usize>,
@@ -834,6 +846,15 @@ impl Dom for SnapshotDom {
     }
     fn hostname(&self) -> String {
         self.snap.hostname.clone()
+    }
+    fn text_wrap_pretty_supported(&self) -> Option<bool> {
+        self.snap.pretty_wrap
+    }
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        self.snap.font_faces.clone()
+    }
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        self.snap.rendered_faces.clone()
     }
     fn element_from_point(&self, x: f64, y: f64) -> Option<ElId> {
         self.hit(x, y).and_then(|(top, _)| top)
@@ -1270,6 +1291,27 @@ mod tests {
         assert!(!d.contains(3, 6));
         assert!(!snap(SMALL).shadow_trees_recorded());
         assert_eq!(snap(SMALL).flat_parent(5), Some(4));
+    }
+
+    /// The wire name is `prettyWrap`; a capture without it, or with `null`,
+    /// did not ask, and nothing else pins the spelling both sides agree on.
+    #[test]
+    fn the_pretty_wrap_flag_rides_the_capture() {
+        let json = SMALL.replacen("\"v\": 1,", "\"v\": 1, \"prettyWrap\": false,", 1);
+        assert_eq!(snap(&json).text_wrap_pretty_supported(), Some(false));
+        assert_eq!(snap(SMALL).text_wrap_pretty_supported(), None);
+        // `fontFaces` (taste call r12-t2): absent or `null` is unknown.
+        let json = SMALL.replacen("\"v\": 1,", "\"v\": 1, \"fontFaces\": [[\"Inter\", \"error\"], [\"Lora\", \"loaded\"]],", 1);
+        assert_eq!(
+            snap(&json).document_font_faces(),
+            Some(vec![("Inter".to_string(), "error".to_string()), ("Lora".to_string(), "loaded".to_string())])
+        );
+        assert_eq!(snap(SMALL).document_font_faces(), None);
+        let json = SMALL.replacen("\"v\": 1,", "\"v\": 1, \"fontFaces\": null,", 1);
+        assert_eq!(snap(&json).document_font_faces(), None);
+        let json = SMALL.replacen("\"v\": 1,", "\"v\": 1, \"renderedFaces\": [[\"Inter\", false]],", 1);
+        assert_eq!(snap(&json).rendered_faces(), Some(vec![("Inter".to_string(), false)]));
+        assert_eq!(snap(SMALL).rendered_faces(), None);
     }
 
     const SMALL: &str = r#"{

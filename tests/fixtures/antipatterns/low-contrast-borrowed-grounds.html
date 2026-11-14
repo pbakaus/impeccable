@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contrast grounds borrowed from a scrim, a parked sweep, a dot grid, an underline and a ghost word: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for low-contrast verdicts scored on a ground the reader does
+       not see, and for ghost words (observations-1010 rows 8 and 10, taste
+       call r14-t3).
+
+       - A dialog panel with a translucent fill over a sibling `bg-black/80`
+         scrim: its light title reads on the scrim, not on the pale page the
+         walk finds under the panel. Without the scrim the same title fails.
+       - A sweep `::before` parked a full width off a button inside
+         `overflow: hidden` is not the button's ground; at translate 0 it is,
+         and the dark label fails on it.
+       - A 3px dot every 8px over a box's fill is texture: the grey copy is
+         scored on the fill. Opaque stripes in 24px cells are a surface, and
+         the copy fails on the darker ones.
+       - A hover underline parked at `background-size: 0 1px` in the ink
+         colour paints no ground; drawn at `100% 100%` it is the ground. This
+         one is the pixel pass's (`css_plan`), pinned by its unit tests.
+       - A 200px word set aside (`aria-hidden`, no pointer events or behind a
+         negative `z-index`) and shown faint (opacity 0.25 or less, or 1.5:1
+         or less) is a ghost word and reports as advisory whatever it says.
+         The same word not set aside, or shown at 0.4 and above 1.5:1, keeps
+         its warning. So does a set-aside word that is part of the page's
+         sr-only heading, and a word whose wrapper, not itself, takes no
+         pointer events.
+       - A chip `::before` moved but still under its text (centred with
+         `translate(-50%, -50%)`, turned 2deg, skewed 10deg, scaled 1.04) is
+         still the text's ground, and the dark label fails on it.
+       - A mesh of pinholes and a dense halftone are surfaces, not sparse
+         dots: the copy fails on them.
+
+       The static HTML engine reads no layers, no pseudo faces and no
+       sampled gradients: it scores both dialog titles on the page, the
+       sweep labels on the button's own fill (they pass), neither textured
+       box or dense pattern, the drawn underline as a gradient, and the four
+       chips on their `::before`. It never reads the ghost word shape, so
+       every ghost word keeps its warning. The URL behavior
+       is pinned by crates/browser/tests/borrowed_grounds.rs. Every case uses
+       its own text colour or id so a finding names the case. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #111111; background: #fafafa; }
+    h1 { font: 600 28px/1.2 system-ui, sans-serif; margin: 0; padding: 16px 20px 8px; color: #111111; }
+    .row { display: flex; gap: 40px; padding: 0 20px; margin: 0 0 24px; }
+
+    /* Dialogs: a page, a scrim over it, a translucent panel over both. */
+    .stage { position: relative; width: 560px; height: 220px; }
+    .stage .page { position: absolute; inset: 0; background: #fafafa; }
+    .stage .scrim { position: absolute; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.8); }
+    .stage .panel { position: absolute; left: 40px; top: 30px; width: 480px; height: 160px; z-index: 50; padding: 24px; background: rgba(235, 230, 224, 0.3); }
+    .stage h2 { margin: 0; font: 600 24px/32px system-ui, sans-serif; }
+    #pass-light-title-on-scrimmed-panel { color: #f7f5f3; }
+    #flag-light-title-on-bare-panel { color: #f7f5f4; }
+
+    /* Sweep buttons: a half-transparent cream fill, a green face that slides
+       in on hover. */
+    .sweep { position: relative; overflow: hidden; display: inline-block; width: 220px; height: 48px; padding: 12px 20px; border: 0;
+      background: rgba(253, 252, 250, 0.5); font: 500 16px/24px system-ui, sans-serif; }
+    .sweep::before { content: ""; position: absolute; left: 0; top: 0; width: 220px; height: 48px; background: #2d6a4f; z-index: -1; }
+    .sweep.parked::before { transform: translateX(-101%); }
+    .sweep.hidden-face::before { visibility: hidden; }
+    .sweep { isolation: isolate; }
+    #pass-dark-label-over-parked-sweep { color: #2a1e10; }
+    #pass-dark-label-over-hidden-sweep { color: #2a1e11; }
+    #flag-dark-label-on-sweep-in-place { color: #2a1e12; }
+
+    /* Textured boxes: a dot grid, and opaque stripes. */
+    .textured { width: 560px; padding: 20px; }
+    .dots { background-color: #f8f7f4; background-image: radial-gradient(circle, rgba(26, 26, 31, 0.13) 3px, transparent 3px); background-size: 8px 8px; }
+    .stripes { background-color: #f8f7f4; background-image: linear-gradient(90deg, #e3e2e0 50%, #f8f7f4 50%); background-size: 24px 24px; }
+    .textured span { font: 400 14px/20px system-ui, sans-serif; }
+    #pass-grey-on-dotted-ground { color: #74716a; }
+    #flag-grey-on-stripes { color: #74716b; }
+
+    /* A hover underline, parked and drawn. */
+    .underline { background-image: linear-gradient(#5d666c, #5d666c); background-repeat: no-repeat; background-position: 0 100%; }
+    .underline.parked { background-size: 0 1px; }
+    .underline.drawn { background-size: 100% 100%; }
+    .tip { display: inline-block; padding: 8px 12px; font: 400 16px/24px system-ui, sans-serif; }
+    #pass-ink-over-parked-underline { color: #5d666c; }
+    #flag-ink-on-drawn-underline { color: #5d666d; }
+
+    /* Ghost words. */
+    .ghost-ground { position: relative; width: 560px; height: 260px; overflow: hidden; background: #000f28; }
+    .ghost-ground.light { background: #fbf9f4; }
+    .ghost { position: absolute; left: 20px; top: 10px; margin: 0; font: 700 200px/240px system-ui, sans-serif; white-space: nowrap; }
+    #advisory-faint-word-aria-hidden { color: #c0a080; opacity: 0.2; }
+    #flag-faint-word-not-set-aside { color: #a0c080; opacity: 0.2; }
+    #advisory-dark-word-behind-slide { color: #002859; z-index: -10; pointer-events: none; }
+    .ghost-ground.isolated { isolation: isolate; }
+    #flag-dark-word-not-set-aside { color: #00285a; }
+    #flag-word-shown-at-forty { color: #333333; opacity: 0.4; }
+
+    /* Chips moved but still under their text. */
+    .chips { position: relative; z-index: 0; }
+    .chip { position: relative; display: inline-block; padding: 14px 28px; font: 600 18px/24px system-ui, sans-serif; }
+    .chip::before { content: ""; position: absolute; z-index: -1; background: #1a1a1a; left: 0; top: 0; width: 100%; height: 100%; }
+    .chip.centred::before { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .chip.turned::before { transform: rotate(-2deg); }
+    .chip.skewed::before { transform: skewX(-10deg); }
+    .chip.scaled::before { transform: scale(1.04); }
+    #flag-dark-label-on-centred-chip { color: #333331; }
+    #flag-dark-label-on-turned-chip { color: #333332; }
+    #flag-dark-label-on-skewed-chip { color: #333333; }
+    #flag-dark-label-on-scaled-chip { color: #333334; }
+
+    /* Dense dot patterns. */
+    .mesh { background-color: #ffffff; background-image: radial-gradient(circle, transparent 1px, #111111 1.5px); background-size: 4px 4px; }
+    .halftone { background-color: #ffffff; background-image: radial-gradient(circle, #222222 3px, transparent 3px); background-size: 7px 7px; }
+    #flag-dark-copy-on-pinhole-mesh { color: #333335; }
+    #flag-grey-copy-on-dense-halftone { color: #666667; }
+
+    /* A ghost of the page's own heading, and a wrapper that passes clicks. */
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .passes-clicks { pointer-events: none; }
+    #flag-ghost-of-hidden-heading { color: #80a0c0; opacity: 0.2; }
+    #flag-word-in-click-through-wrapper { color: #c080a0; opacity: 0.2; }
+  </style>
+</head>
+<body>
+  <h1>Borrowed contrast grounds</h1>
+
+  <div class="row">
+    <div class="stage">
+      <div class="page"></div>
+      <div class="scrim"></div>
+      <div class="panel" role="dialog"><h2 id="pass-light-title-on-scrimmed-panel">Light title over a scrim</h2></div>
+    </div>
+    <div class="stage">
+      <div class="page"></div>
+      <div class="panel" role="dialog"><h2 id="flag-light-title-on-bare-panel">Light title on a bare panel</h2></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button class="sweep parked" id="pass-dark-label-over-parked-sweep">Parked sweep label</button>
+    <button class="sweep hidden-face" id="pass-dark-label-over-hidden-sweep">Hidden sweep label</button>
+    <button class="sweep" id="flag-dark-label-on-sweep-in-place">Sweep in place label</button>
+  </div>
+
+  <div class="row">
+    <div class="textured dots"><span id="pass-grey-on-dotted-ground">Grey copy on a dotted ground</span></div>
+  </div>
+  <div class="row">
+    <div class="textured stripes"><span id="flag-grey-on-stripes">Grey copy on opaque stripes</span></div>
+  </div>
+
+  <div class="row">
+    <span class="underline parked"><span class="tip" id="pass-ink-over-parked-underline">Parked underline tip</span></span>
+    <span class="underline drawn"><span class="tip" id="flag-ink-on-drawn-underline">Drawn underline tip</span></span>
+  </div>
+
+  <div class="row">
+    <div class="ghost-ground light"><div aria-hidden="true"><p class="ghost" id="advisory-faint-word-aria-hidden">oo</p></div></div>
+    <div class="ghost-ground light"><p class="ghost" id="flag-faint-word-not-set-aside">oo</p></div>
+  </div>
+  <div class="row">
+    <div class="ghost-ground isolated"><p class="ghost" id="advisory-dark-word-behind-slide">效率</p></div>
+    <div class="ghost-ground"><p class="ghost" id="flag-dark-word-not-set-aside">效率</p></div>
+  </div>
+  <div class="row">
+    <div class="ghost-ground light" aria-hidden="true"><p class="ghost" id="flag-word-shown-at-forty">Ab</p></div>
+  </div>
+  <div class="row chips">
+    <span class="chip centred" id="flag-dark-label-on-centred-chip">Centred chip label</span>
+    <span class="chip turned" id="flag-dark-label-on-turned-chip">Turned chip label</span>
+    <span class="chip skewed" id="flag-dark-label-on-skewed-chip">Skewed marker label</span>
+    <span class="chip scaled" id="flag-dark-label-on-scaled-chip">Scaled chip label</span>
+  </div>
+
+  <div class="row">
+    <div class="textured mesh"><span id="flag-dark-copy-on-pinhole-mesh">Dark copy on a pinhole mesh</span></div>
+  </div>
+  <div class="row">
+    <div class="textured halftone"><span id="flag-grey-copy-on-dense-halftone">Grey copy on a dense halftone</span></div>
+  </div>
+
+  <h2 class="sr-only">Northwind Studio</h2>
+  <div class="row">
+    <div class="ghost-ground light"><div aria-hidden="true"><p class="ghost" id="flag-ghost-of-hidden-heading">Northwind</p></div></div>
+    <div class="ghost-ground light"><div class="passes-clicks"><p class="ghost" id="flag-word-in-click-through-wrapper">Harbor</p></div></div>
+  </div>
+</body>
+</html>

@@ -40,6 +40,21 @@
 //!   point (a fixed `section.intro` hero the content scrolls over is the page). A fill counts as opaque when it
 //!   is a colour at alpha 0.9 or more or a gradient whose every stop is (for
 //!   preloaders too). Corpus run 1006: tirionai.com's `div.cine-intro`.
+//!   An intro can also go unnamed: a layer that passes the same tests,
+//!   carries `aria-hidden="true"` itself, and is playing a finite animation
+//!   (a CSS animation or transition with an end; an infinite one does not
+//!   count) and has no way through of its own (`cursor: pointer`, an
+//!   `onclick`) is one too. It must stand in front of a page as a named
+//!   intro does, except that while its animation runs and for
+//!   [`INTRO_GRACE_MS`] after, the wait drops the outside-text minimum (a
+//!   sparse page under it still counts; a fixed hero the page scrolls over
+//!   does not), and
+//!   once seen it stays one after its animations end, so a page script
+//!   that removes it a moment later is still waited for. Hidden, once the
+//!   wait runs out, only in front of a page with the full test. Corpus run
+//!   1010: articulation-hub.vercel.app's `div.spl` brand intro (fixed,
+//!   `inset-0`, an opaque gradient, "MOTOR SPEECH LAB", a 5.6s animation and
+//!   a 500ms fade) covered every capture.
 //! - **Splash gates** by structure (`splashes()` in [`preloader_js`]): a
 //!   fixed layer covering the first screen and on top of it, with an opaque
 //!   fill, at most 60 characters of text that ask the visitor to enter
@@ -147,6 +162,11 @@ pub const INTRO_WORDS: &[&str] = &["intro", "splash", "splashscreen"];
 pub const INTRO_MAX_TEXT: usize = 120;
 /// How long the engine waits for an intro to go on its own.
 pub const INTRO_WAIT_MS: u64 = 12000;
+/// How long after an unnamed intro's last finite animation the wait still
+/// counts it where too little of a page shows outside it to hide it: the
+/// page's script fades or removes it once its animation ends, and a probe
+/// can fall between the two.
+pub const INTRO_GRACE_MS: u64 = 1000;
 
 /// Words a splash gate's text uses to let the visitor in. A splash is
 /// hidden, not clicked: a full-screen layer whose one action is to go away
@@ -210,11 +230,13 @@ pub fn preloader_js() -> String {
   // under it at one of the probe points (text of its own, a replaced
   // element, or a box smaller than the screen). A hero the content scrolls
   // over from 100vh, or a one-screen site, has nothing under it.
-  const frontsPage = (el, points) => {{
+  // `relaxText`: skip only the outside-text minimum (an unnamed intro still
+  // animating over a sparse page); the h1 and hit tests still apply.
+  const frontsPage = (el, points, relaxText) => {{
     const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
     if (el.querySelector('h1')) return false;
     const chars = n => (n.innerText || '').replace(/\s+/g, ' ').trim().length;
-    if (!document.body || chars(document.body) - chars(el) < {min_outside}) return false;
+    if (!document.body || (!relaxText && chars(document.body) - chars(el) < {min_outside})) return false;
     const big = r => {{
       const w = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
       const h = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
@@ -238,7 +260,26 @@ pub fn preloader_js() -> String {
     const words = t.toLowerCase().split(/[^\p{{L}}\p{{N}}]+/u).filter(Boolean);
     return words.some(w => enterWords.includes(w)) || enterWords.some(w => /[^\x00-\x7f]/.test(w) && t.includes(w));
   }};
-  const preloaders = () => {{
+  // An unnamed intro: a layer that hides itself from assistive technology
+  // and plays a finite animation (a CSS animation or transition that ends)
+  // while it covers the page. Seen once, it stays one after its animations
+  // end, so the page's own script removing it a beat later is still waited
+  // for and a layer that never leaves can still be hidden.
+  // Each seen layer maps to the last time it was seen animating.
+  const introsSeen = window.__impeccableIntrosSeen || (window.__impeccableIntrosSeen = new WeakMap());
+  const playsFinite = el => {{
+    try {{
+      return el.getAnimations({{ subtree: true }}).some(a => {{
+        if (a.playState !== 'running' || !a.effect) return false;
+        const end = a.effect.getComputedTiming().endTime;
+        return typeof end === 'number' && Number.isFinite(end);
+      }});
+    }} catch (e) {{ return false; }}
+  }};
+  // `waiting`: the wait probe asks, not the hide step. An unnamed intro
+  // still animating counts while the probe waits even where nothing of a
+  // page shows outside it yet; it is hidden only in front of a page.
+  const preloaders = waiting => {{
     const vw = window.innerWidth || 0, vh = window.innerHeight || 0;
     if (!vw || !vh) return [];
     const covers = r => {{
@@ -253,9 +294,16 @@ pub fn preloader_js() -> String {
       const el = all[i];
       const tokens = [el.id].concat(Array.from(el.classList || [])).filter(Boolean);
       const loader = tokens.some(namesLoader);
-      if (!loader && !tokens.some(namesIntro)) continue;
+      const named = loader || tokens.some(namesIntro);
+      const seen = !named && introsSeen.has(el);
+      if (!named && !seen && el.getAttribute('aria-hidden') !== 'true') continue;
+      // Many icons are aria-hidden: the cheap cover test goes first for them.
+      if (!named && !covers(el.getBoundingClientRect())) continue;
       let cs;
       try {{ cs = getComputedStyle(el); }} catch (e) {{ continue; }}
+      // An unnamed layer with a way through of its own (`cursor: pointer`,
+      // an `onclick`) is a gate, whatever its text says.
+      if (!named && (cs.cursor === 'pointer' || el.hasAttribute('onclick'))) continue;
       if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility !== 'visible' || parseFloat(cs.opacity) <= 0.05) continue;
       try {{ if (el.checkVisibility && !el.checkVisibility({{ opacityProperty: true, visibilityProperty: true }})) continue; }} catch (e) {{}}
       if (!covers(el.getBoundingClientRect())) continue;
@@ -299,12 +347,22 @@ pub fn preloader_js() -> String {
       // (an age gate or a consent choice), which stays.
       if (!loader && enterText(shown) && /\b(18|21)\b|\+18|\bage\b|\bâge\b|\balter\b|\bedad\b|\bidade\b|cookie|accept|agree/i.test(shown)) continue;
       // An intro fronts a page that is already there; a fixed hero is the page.
-      if (!loader && !frontsPage(el, points)) continue;
+      if (!named) {{
+        const running = playsFinite(el);
+        if (running) introsSeen.set(el, performance.now());
+        else if (!seen) continue;
+        // It must stand in front of a page, as a named intro. While it
+        // animates, and for {grace}ms after (the page's script starting its
+        // fade), the wait drops only the outside-text minimum: a sparse page
+        // still under it counts, a fixed hero the page scrolls over does not.
+        const lately = performance.now() - introsSeen.get(el) < {grace};
+        if (!frontsPage(el, points, waiting && lately)) continue;
+      }} else if (!loader && !frontsPage(el, points)) continue;
       // The outermost match stands for the ones inside it.
       if (found.some(f => f.el.contains(el))) continue;
-      const names = loader ? namesLoader : namesIntro;
+      const names = loader ? namesLoader : named ? namesIntro : (c => /^[A-Za-z_][\w-]*$/.test(c));
       const cls = Array.from(el.classList || []).find(names);
-      const name = el.tagName.toLowerCase() + (el.id && names(el.id) ? '#' + el.id : cls ? '.' + cls : el.id ? '#' + el.id : '');
+      const name = el.tagName.toLowerCase() + (el.id && (!named || names(el.id)) ? '#' + el.id : cls ? '.' + cls : el.id ? '#' + el.id : '');
       found.push({{ el, name, kind: loader ? 'preloader' : 'intro' }});
     }}
     return found;
@@ -376,13 +434,14 @@ pub fn preloader_js() -> String {
         intro_max_text = INTRO_MAX_TEXT,
         splash_max_text = SPLASH_MAX_TEXT,
         min_outside = SPLASH_MIN_OUTSIDE_TEXT,
+        grace = INTRO_GRACE_MS,
     )
 }
 
 /// The wait probe: the preloaders and intros covering the page now, each as
 /// `<kind> <name>` (`preloader div#preloader`, `intro div.cine-intro`).
 pub fn preloader_probe_js() -> String {
-    format!("(() => {{\n  {}\n  return preloaders().map(p => p.kind + ' ' + p.name);\n}})()", preloader_js())
+    format!("(() => {{\n  {}\n  return preloaders(true).map(p => p.kind + ' ' + p.name);\n}})()", preloader_js())
 }
 
 fn tours_json() -> Value {
@@ -480,7 +539,7 @@ pub fn hide_js() -> String {
     if (name && !out.hidden.some(h => h.kind === kind && h.name === name)) out.hidden.push({{ kind, name }});
   }}
   let hidLoader = false;
-  for (const {{ el, name, kind }} of preloaders().concat(splashes())) {{
+  for (const {{ el, name, kind }} of preloaders(false).concat(splashes())) {{
     el.setAttribute(MARK, name);
     if (kind !== 'preloader') el.setAttribute(KIND_MARK, kind);
     el.style.setProperty('display', 'none', 'important');

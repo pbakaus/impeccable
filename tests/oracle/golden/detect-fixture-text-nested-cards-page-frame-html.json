@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/nested-cards-page-frame.html\n  [nested-cards] Card inside card (aside)\n    → Cards inside cards create visual noise and excessive depth. Flatten the hierarchy — use spacing, typography, and dividers instead of nesting containers.\n\n1 anti-pattern found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

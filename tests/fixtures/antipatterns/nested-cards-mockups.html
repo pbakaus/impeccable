@@ -10,11 +10,19 @@
   title-bar dots, a device frame tilted in 3D or scaled down, a frame
   under a wrapper that carries the scale), when it is that window itself, or when it sits under an HTML role="img". Every row reports; the column says at which severity.
 
+  A dotted window whose text is mostly code is no mockup (decision
+  r14-t7), so a card inside it keeps failing.
+
   Bordered cards in a bordered panel outside any mockup (paseo.sh) keep
   failing, and so does a window with two dots, which is not window chrome.
   A class that names a mockup is not read for this rule: "illustration"
   names a feature tile's picture as often as a mockup, and r4-p17 keeps such
   a tile failing.
+
+  Round 14 (decision r14-t1): a window whose title bar follows an
+  aria-hidden glow, and a drawn phone (a portrait frame with an h:mm clock
+  in its top 50px) are mock context too. A phone-shaped shell that holds the
+  page's h1 is the page's own and keeps failing.
 
   The utility classes on each box are what the static engine reads card
   shape from; it has no layout, so the framed demo is read from its title
@@ -33,6 +41,14 @@
   .panel { width: 420px; margin: 0 0 32px; background: #ffffff; border: 1px solid #e4e4e7; border-radius: 14px; padding: 16px; }
   p { margin: 0; font-size: 14px; line-height: 20px; }
   .foot { padding: 8px 16px; border-top: 1px solid #e4e4e7; }
+  .glowing { position: relative; }
+  .glow { position: absolute; top: 0; left: 0; width: 420px; height: 100%; }
+  .phone { width: 240px; height: 480px; margin: 0 0 32px; border-radius: 36px; background-color: #ffffff; border: 1px solid #d0d7de; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2); padding: 10px; box-sizing: border-box; }
+  .status { height: 24px; padding: 8px 18px 0; font-size: 11px; }
+  .phone .inner { width: 190px; }
+  .phone h1 { font-size: 16px; margin: 8px 10px; }
+  .status { display: flex; justify-content: space-between; box-sizing: border-box; }
+  .battery { display: inline-block; width: 20px; height: 9px; border: 1px solid #111; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -64,6 +80,19 @@
       <div class="pane"><p>Stage three of five is mapping fields.</p><p>A second line makes it a surface, not a label.</p></div>
       <p class="foot">An example project mid-migration, one customer's data.</p>
     </div>
+  </div>
+
+  <!-- round 14: a phone-shaped shell that holds the page's h1 -->
+  <div class="phone border rounded-3xl shadow-lg" id="fail-shell">
+    <div class="status"><span>9:41</span><i class="battery"></i></div>
+    <h1>Departures</h1>
+    <div class="inner border rounded-xl" id="fail-shell-inner"><p>Gate B12, boarding at 10:40.</p><p>A second line makes it a surface, not a label.</p></div>
+  </div>
+
+  <!-- decision r14-t7: a dotted window that holds a code sample -->
+  <div class="shot border rounded-xl shadow-lg" id="fail-code-window" style="font-family: ui-monospace, Menlo, monospace">
+    <div class="bar"><span class="lights"><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div>
+    <div class="pane"><div class="inner border rounded-xl" id="fail-code-inner"><p>retries = 2</p><p>timeout_ms = 3000  # raise on slow networks</p></div></div>
   </div>
 
   <!-- a class that names a mockup is not read -->
@@ -111,6 +140,20 @@
       <div class="pane"><p>Campaign D is spending under its budget.</p><p>A second line makes it a surface, not a label.</p></div>
       <p class="foot">Illustrative example. Figures shown are not customer data.</p>
     </div>
+  </div>
+
+  <!-- round 14: a window whose title bar follows an aria-hidden glow
+       (cursorhelper.vercel.app) -->
+  <div class="shot border rounded-xl shadow-lg glowing" id="adv-glow-window">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="bar"><span class="lights"><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div>
+    <div class="pane"><div class="inner border rounded-xl" id="adv-glow-inner"><p>Context Router picked three skills</p><p>A second line makes it a surface, not a label.</p></div></div>
+  </div>
+
+  <!-- round 14: a phone with a status clock (aproov.es) -->
+  <div class="phone border rounded-3xl shadow-lg" id="adv-phone">
+    <div class="status"><span>9:41</span><i class="battery"></i></div>
+    <div class="inner border rounded-xl" id="adv-phone-inner"><p>Newsletter, 4.2k readers</p><p>A second line makes it a surface, not a label.</p></div>
   </div>
 
   <!-- an HTML subtree the author marked as a picture -->
