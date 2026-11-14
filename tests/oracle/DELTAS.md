@@ -7401,3 +7401,7 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 
 - `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.
 - On worlds/settled-world-roll the code-present and no-code `SEEDED_WORLD` variants both name the replacement door, a redesign whose direction roll passes `--replace-world`, after the explicit-request override; the three seeded-world goldens were re-recorded with it.
+
+## Recorded 2026-11-14: two cases from main take the `detect --changed` detector line
+
+`context-taste-ready` and `context-seeded-world-starter-css-with-product` arrived from main after this branch changed the `MANUAL_DETECTOR_REQUIRED` line to name `detect --json --changed`. Both were re-recorded from the branch binary and reviewed by hand: only that one stdout line changes in each; exit, stderr and files are unchanged.
