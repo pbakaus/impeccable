@@ -147,4 +147,10 @@ Keep P3s few: a long tail of minor issues buries the ones that matter.
 
 ## Save the Report
 
-After the report is delivered, save a copy so the findings outlive this conversation: write it, from the score table through Recommended Actions, to a temp file, then run `{{scripts_path}}/impeccable audit-storage write "<resolved target, or . for the whole project>" <temp-file>` and delete the temp file. The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.
+After the report is delivered, save a copy so the findings outlive this conversation: write it, from the score table through Recommended Actions, to a temp file, then run the write command with the scores as metadata and delete the temp file:
+
+```bash
+IMPECCABLE_REPORT_META='{"target":"<user phrasing, or .>","total_score":<n>,"max_score":20,"p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
+  {{scripts_path}}/impeccable audit-storage write "<resolved target, or . for the whole project>" <temp-file>
+```
+ The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.

@@ -590,6 +590,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "heuristics",
                         "counts",
                         "body",
+                        "kind",
                     ];
                     assert!(v
                         .as_object()
@@ -599,7 +600,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["version"], 1);
                     let na = v["na"].as_array().unwrap();
                     let max = v["score"]["max"].as_u64().unwrap();
-                    assert_eq!(max, 4 * (10 - na.len() as u64));
+                    // As the service parses it: an audit is out of 20 with nothing n/a.
+                    match v.get("kind").and_then(|k| k.as_str()) {
+                        Some("audit") => assert!(max == 20 && na.is_empty()),
+                        None => assert_eq!(max, 4 * (10 - na.len() as u64)),
+                        Some(other) => panic!("unknown kind {other}"),
+                    }
                     assert!(v["score"]["total"].as_u64().unwrap() <= max);
                     for k in ["p0", "p1"] {
                         assert!(v["counts"][k].as_u64().unwrap() <= 100);
