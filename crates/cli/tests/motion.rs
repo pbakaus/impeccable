@@ -72,6 +72,19 @@ fn motion_fixture(name: &str, expected: Option<&str>) {
             "{report}"
         );
     }
+    if name == "web-component" {
+        // Animations inside an open shadow root are captured, and the two
+        // components' inner #card elements keep separate selectors.
+        assert!((report["durationMs"].as_f64().unwrap() - 600.).abs() < 1., "{report}");
+        let cards: Vec<&str> = frames[1]["elements"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|e| e["selector"].as_str())
+            .filter(|s| s.ends_with("#card"))
+            .collect();
+        assert_eq!(cards, ["#one >>> #card", "#two >>> #card"], "{report}");
+    }
     if name == "pseudo-twins" {
         for selector in ["#first::before", "#second::before"] {
             assert!(
@@ -143,6 +156,10 @@ fn motion_fixture(name: &str, expected: Option<&str>) {
                 "{report}"
             );
         }
+        if name == "smooth" {
+            // `animation-duration: 0.001ms` is instant, not a motion to sample.
+            assert_eq!(report["durationMs"], 0., "{report}");
+        }
         if name == "smooth" || name == "playback-rate" {
             assert!(
                 report["findings"].as_array().unwrap().is_empty(),
@@ -191,3 +208,39 @@ fixture!(motion_playback_reverse, "playback-reverse", None);
 fixture!(motion_pseudo_twins, "pseudo-twins", None);
 
 fixture!(motion_grid_gap, "grid-gap", None);
+fixture!(motion_web_component, "web-component", Some("end-jump"));
+
+#[test]
+fn motion_setup_reaches_the_open_state_before_an_exit() {
+    let _lock = CAPTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let output = std::env::temp_dir().join(format!("impeccable-motion-setup-{}", std::process::id()));
+    std::fs::create_dir_all(&output).unwrap();
+    let setup = output.join("setup.json");
+    std::fs::write(&setup, r##"[{"click":"#go"}]"##).unwrap();
+    let file = root.join("tests/fixtures/motion/exit-panel.html").canonicalize().unwrap();
+    let url = url::Url::from_file_path(&file).unwrap().to_string();
+    let result = Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .args(["motion-capture", &url, "--click", "#go", "--region", "#region", "--setup"])
+        .arg(&setup)
+        .arg("--out-dir")
+        .arg(output.join("exit"))
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(output.join("exit").join("report.json")).unwrap()).unwrap();
+    print_findings("exit-panel", &report);
+    assert_eq!(report["setup"], serde_json::json!([{"click":"#go"}]), "{report}");
+    assert!((report["durationMs"].as_f64().unwrap() - 600.).abs() < 1., "{report}");
+    let frames = report["frames"].as_array().unwrap();
+    let width = |frame: &serde_json::Value| {
+        frame["elements"].as_array().unwrap().iter().find(|e| e["selector"] == "#panel").unwrap()["box"][2]
+            .as_f64()
+            .unwrap()
+    };
+    // The before frame is the settled open panel; the capture is its exit.
+    assert!((width(&frames[0]) - 320.).abs() < 1., "{report}");
+    assert!((width(frames.last().unwrap()) - 120.).abs() < 1., "{report}");
+    std::fs::remove_dir_all(output).unwrap();
+}

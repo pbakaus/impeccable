@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "Usage: impeccable motion-capture <url> --click <selector> | --steps <json-file> --out-dir <dir> [--region <selector|[x,y,width,height]>] [--frames 7] [--reduced-motion]\nSteps: [{\"click\":\"#toggle\"},{\"hover\":\"#card\"},{\"press\":\"Enter\"},{\"wait\":100}]\n";
+const HELP: &str = "Usage: impeccable motion-capture <url> --click <selector> | --steps <json-file> --out-dir <dir> [--setup <json-file>] [--region <selector|[x,y,width,height]>] [--frames 7] [--reduced-motion]\nSteps: [{\"click\":\"#toggle\"},{\"hover\":\"#card\"},{\"press\":\"Enter\"},{\"wait\":100}]\nSetup takes the same steps and lets them settle before capture starts, e.g. opening a panel to capture its exit.\n";
 const STATE: &str = "globalThis.__impeccableMotion";
 fn err(e: impl std::fmt::Display) -> CdpError {
     CdpError::new(e.to_string())
@@ -23,6 +23,7 @@ fn number(v: &Value) -> f64 {
 struct Options {
     url: String,
     steps: Vec<Value>,
+    setup: Vec<Value>,
     region: Option<String>,
     out: PathBuf,
     frames: usize,
@@ -32,6 +33,7 @@ fn options(args: &[String], cwd: &Path) -> Result<Options, CdpError> {
     let mut o = Options {
         url: args.first().cloned().ok_or_else(|| err(HELP))?,
         steps: vec![],
+        setup: vec![],
         region: None,
         out: PathBuf::new(),
         frames: 7,
@@ -59,6 +61,13 @@ fn options(args: &[String], cwd: &Path) -> Result<Options, CdpError> {
                 o.steps = serde_json::from_slice(&std::fs::read(cwd.join(value)).map_err(err)?)
                     .map_err(err)?
             }
+            "--setup" if o.setup.is_empty() => {
+                o.setup = serde_json::from_slice(&std::fs::read(cwd.join(value)).map_err(err)?)
+                    .map_err(err)?;
+                if o.setup.is_empty() {
+                    return Err(err("--setup needs at least one step"));
+                }
+            }
             "--out-dir" => o.out = cwd.join(value),
             "--region" => o.region = Some(value.clone()),
             "--frames" => o.frames = value.parse().map_err(err)?,
@@ -68,11 +77,12 @@ fn options(args: &[String], cwd: &Path) -> Result<Options, CdpError> {
     if o.out.as_os_str().is_empty()
         || o.steps.is_empty()
         || o.steps.len() > 20
+        || o.setup.len() > 20
         || !(3..=15).contains(&o.frames)
     {
         return Err(err(HELP));
     }
-    for step in &o.steps {
+    for step in o.setup.iter().chain(&o.steps) {
         let obj = step
             .as_object()
             .ok_or_else(|| err("Each step must be an object"))?;
@@ -176,8 +186,15 @@ fn record(
     page.set_reduced_motion(reduce)?;
     page.goto(&o.url, "load", Duration::from_secs(30))?;
     page.evaluate_value("document.fonts.ready.then(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))")?;
-    // Capture the resting state, not an unrelated entrance half-way through.
-    page.evaluate_value("Promise.race([Promise.all(document.getAnimations().filter(a=>a.playState==='running').map(a=>a.finished.catch(()=>{}))),new Promise((_,reject)=>setTimeout(()=>reject(Error('Page did not reach rest before the interaction')),10000))])")?;
+    // Setup reaches the state the interaction starts from, such as an open
+    // panel whose exit is the motion under review.
+    for step in &o.setup {
+        action(&mut page, step)?;
+    }
+    // Capture the resting state, not an unrelated entrance or a setup
+    // animation half-way through. Open shadow roots hold animations
+    // document.getAnimations() leaves out.
+    page.evaluate_value("new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))).then(()=>{const all=new Set(document.getAnimations());const walk=n=>{for(const e of n.children||[]){if(e.shadowRoot){for(const a of e.shadowRoot.getAnimations())all.add(a);walk(e.shadowRoot)}walk(e)}};walk(document);return Promise.race([Promise.all([...all].filter(a=>a.playState==='running'||a.playState==='pending').map(a=>a.finished.catch(()=>{}))),new Promise((_,reject)=>setTimeout(()=>reject(Error('Page did not reach rest before the interaction')),10000))])})")?;
     let region=match &o.region {
         None=>json!([0,0,1000,760]),
         Some(s)=>match serde_json::from_str::<Value>(s) {
@@ -732,7 +749,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         if let Some(base) = &baseline {
             findings.extend(reduced_findings(&capture, base));
         }
-        let report = json!({"schemaVersion":1,"reducedMotion":o.reduce,"viewport":{"width":1000,"height":760},"region":capture.region,"interaction":o.steps,"durationMs":capture.meta["duration"],"animations":capture.meta["animations"],"baselineDurationMs":baseline.as_ref().map(|b|&b.meta["duration"]),"frames":capture.frames,"findings":findings,"limitations":["Fixed viewport and region; sampled frames are evidence, not a proof of smoothness.","View Transition pseudo-element boxes are computed-style estimates; inspect the filmstrip for actual paint.","JavaScript timers are not scrubbed. Long-running and newly chained animations require a separate capture.","Clip paths, masks, canvas, cross-origin frames and closed shadow roots require visual review."]});
+        let report = json!({"schemaVersion":1,"reducedMotion":o.reduce,"viewport":{"width":1000,"height":760},"region":capture.region,"setup":o.setup,"interaction":o.steps,"durationMs":capture.meta["duration"],"animations":capture.meta["animations"],"baselineDurationMs":baseline.as_ref().map(|b|&b.meta["duration"]),"frames":capture.frames,"findings":findings,"limitations":["Fixed viewport and region; sampled frames are evidence, not a proof of smoothness.","View Transition pseudo-element boxes are computed-style estimates; inspect the filmstrip for actual paint.","JavaScript timers are not scrubbed. Long-running and newly chained animations require a separate capture.","Clip paths, masks, canvas, cross-origin frames and closed shadow roots require visual review."]});
         write_evidence(&o.out, &capture, &report)?;
         io.out(&format!(
             "{}\n",

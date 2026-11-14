@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>web-component</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}</style>
+<button id="go">Run motion</button><div id="region"><motion-card id="one"></motion-card><motion-card id="two"></motion-card></div>
+<script>
+customElements.define('motion-card', class extends HTMLElement {
+  constructor() { super(); this.attachShadow({mode:'open'}).innerHTML = '<style>#card{width:180px;height:80px;margin-bottom:20px;background:#eedcc5}#card.lift{transform:translateY(-12px)}</style><div id="card">Card</div>'; }
+});
+document.querySelector('#go').onclick = () => {
+  const c = document.querySelector('#one').shadowRoot.querySelector('#card');
+  const a = c.animate([{width:'180px'},{width:'280px'}], {duration:600, fill:'forwards'});
+  a.onfinish = () => { c.classList.add('lift'); };
+};
+</script>

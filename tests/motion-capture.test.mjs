@@ -68,3 +68,10 @@ test('pausing preserves position and resolves a pending pause on a frozen timeli
   assert.notEqual(result, 'pending');
   assert.equal(result.duration, 120);
 });
+
+test('an animation shorter than a millisecond is instant, not sampled', async () => {
+  const { motion, create } = harness();
+  const animation = create();
+  animation.playbackRate = 1000;
+  assert.equal((await motion.ready()).duration, 0);
+});

@@ -3,31 +3,42 @@
   const animations = new Map();
   const identities = new WeakMap();
   const pseudoIdentities = new Map();
-  const initial = new Map(document.getAnimations().map(a => [a, {state:a.playState, time:a.currentTime}]));
-  let prepared = false, sampledTime = 0, beforeElements = null, transitionActive = false;
-  let oldNamed = new Map(), newNamed = new Map();
   const nodesIn = root => {
     const nodes = [];
     const walk = node => { for (const el of node.children || []) { nodes.push(el); walk(el); if (el.shadowRoot) walk(el.shadowRoot); } };
     walk(root);
     return nodes;
   };
+  // document.getAnimations() leaves out animations inside shadow roots; open
+  // ones are read from each root (closed roots stay a stated limitation).
+  const allAnimations = () => {
+    const all = new Set(document.getAnimations());
+    for (const el of nodesIn(document)) if (el.shadowRoot) for (const a of el.shadowRoot.getAnimations()) all.add(a);
+    return [...all];
+  };
+  const initial = new Map(allAnimations().map(a => [a, {state:a.playState, time:a.currentTime}]));
+  let prepared = false, sampledTime = 0, beforeElements = null, transitionActive = false;
+  let oldNamed = new Map(), newNamed = new Map();
   let nextId = 0, collecting = true, viewTransition = false, unsupported = null;
   const id = el => {
     if (!identities.has(el)) identities.set(el, ++nextId);
     return identities.get(el);
   };
+  // Inside a shadow tree the selector is qualified by its host's, so two
+  // components that both hold a #button stay two elements.
   const selector = el => {
-    if (el.id) return '#' + CSS.escape(el.id);
+    const root = el.getRootNode?.();
+    const host = typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot ? selector(root.host) + ' >>> ' : '';
+    if (el.id) return host + '#' + CSS.escape(el.id);
     const parts = [];
     for (let p = el; p && p.nodeType === 1; p = p.parentElement) {
-      parts.unshift(p.localName + ':nth-child(' + (Array.from(p.parentElement?.children || [p]).indexOf(p) + 1) + ')');
+      parts.unshift(p.localName + ':nth-child(' + (Array.from((p.parentElement || p.parentNode)?.children || [p]).indexOf(p) + 1) + ')');
     }
-    return parts.join(' > ');
+    return host + parts.join(' > ');
   };
   const collect = () => {
     if (!collecting) return;
-    for (const a of document.getAnimations()) {
+    for (const a of allAnimations()) {
       if (!animations.has(a)) {
         const prior = initial.get(a);
         if (prior && prior.state === a.playState && prior.time === a.currentTime) continue;
@@ -215,6 +226,10 @@
         meta.playbackRate = a.playbackRate;
         meta.wallDuration = a.playbackRate === 0 ? 0 : Math.max(0,
           (a.playbackRate < 0 ? meta.origin : meta.end - meta.origin) / Math.abs(a.playbackRate));
+        // Under a millisecond no frame can show the motion: the common
+        // reduced-motion `animation-duration: 0.01ms` is instant, and sampling
+        // it would read its start keyframe as the animated frames.
+        if (meta.wallDuration < 1) meta.wallDuration = 0;
         if (!Number.isFinite(meta.wallDuration) || meta.wallDuration > 10000) unsupported = 'Motion capture requires finite playback no longer than 10 seconds';
       }
       prepared = true;
@@ -239,7 +254,7 @@
       await new Promise(resolve=>setTimeout(resolve,250));
       await raf(); await raf();
       transitionActive = false;
-      const running=document.getAnimations().filter(a=>a.playState==='running' || a.playState==='pending');
+      const running=allAnimations().filter(a=>a.playState==='running' || a.playState==='pending');
       if (running.length) throw Error('Motion did not settle: new or ongoing animations remain after completion');
     }
   };
