@@ -458,6 +458,11 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // A connect that stopped part way is rolled back first, so its hooks are either
     // gone or committed (and then undone below).
     let found = installed_specs(OWNER).map_err(|(_, m)| m)?;
+    // The taste block goes before the engine's undo, so the engine finds each rule file
+    // exactly as it wrote it and cleans up after itself (a file it created goes too).
+    let every: Vec<&Spec> = found.pending.iter().chain(&found.committed).collect();
+    let (taste_ok, emptied) = remove_taste(&home, &support, &every, &mut out);
+    failed |= !taste_ok;
     let mut rolled_back = Vec::new();
     for spec in &found.pending {
         let label = label(&spec.harness);
@@ -486,8 +491,6 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         ));
     }
     let specs = found.committed;
-    let mut taste_specs: Vec<&Spec> = rolled_back.clone();
-    taste_specs.extend(specs.iter());
     // A rolled-back first connect has no journal left, but may have added the MCP
     // server and Loop's record: stop the waking and say how to remove the server.
     for spec in rolled_back {
@@ -534,9 +537,13 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         }
         out.push_str(&mcp_stays(&support, spec));
     }
-    // After the engine's undo, which leaves this block alone: it is not the engine's.
-    if !remove_taste(&home, &support, &taste_specs, &mut out) {
-        failed = true;
+    // A rule file the engine created holds nothing once both blocks are out, but the
+    // engine keeps it because the taste block changed it after the engine wrote it.
+    // Only an empty plain file goes: never a link, never one with anything left in it.
+    for file in emptied {
+        if fs::symlink_metadata(&file).is_ok_and(|m| m.is_file() && m.len() == 0) {
+            let _ = fs::remove_file(&file);
+        }
     }
     if out.is_empty() {
         out.push_str("Nothing to disconnect.\n");
@@ -1104,11 +1111,10 @@ pub(crate) enum Taste {
 /// `"off"` (declined). The rule file itself never carries it.
 const TASTE_KEY: &str = "taste";
 
-/// The rule file an agent reads for this config folder: Codex reads
-/// `AGENTS.override.md` in place of `AGENTS.md` when it is there.
+/// The agent's user-level rule file in this config folder, the one the engine's
+/// instruction block lives in.
 fn rule_file(harness: &str, root: &Path) -> PathBuf {
-    root_override(harness, root)
-        .unwrap_or_else(|| root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" }))
+    root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
 }
 
 fn tilde(home: &Path, path: &Path) -> String {
@@ -1176,7 +1182,15 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
         Taste::Ask | Taste::Skip => None,
     };
     // The answer was taken without the lock; the files and the note change under it.
-    let Ok(_lock) = lock(&support) else { return (out, rows) };
+    let _lock = match lock(&support) {
+        Ok(l) => l,
+        Err(e) => {
+            if yes.is_some() || !present.is_empty() {
+                out.push_str(&format!("Taste: nothing changed: {e}\n"));
+            }
+            return (out, rows);
+        }
+    };
     let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
     if !note[TASTE_KEY].is_object() {
         note[TASTE_KEY] = json!({});
@@ -1217,6 +1231,12 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
                 Ok(()) => {
                     record(file, "on");
                     out.push_str(&format!("Taste: added to {shown}.\n"));
+                    if let Some(over) = file.parent().and_then(|root| root_override("codex", root)).filter(|_| file.ends_with("AGENTS.md")) {
+                        out.push_str(&format!(
+                            "  Codex reads {} instead; copy the taste lines there too.\n",
+                            tilde(&home, &over)
+                        ));
+                    }
                     rows.push(row(file, "added"));
                 }
                 Err(e) => {
@@ -1248,25 +1268,33 @@ fn yes_answer(bytes_read: usize, line: &str) -> bool {
 
 /// Disconnect: take the taste block out of every rule file connect put it in, and of
 /// the rule files of the installations being removed, then forget every answer so a
-/// later connect asks again. Called with the connect lock held.
-fn remove_taste(home: &Path, support: &Path, specs: &[&Spec], out: &mut String) -> bool {
+/// later connect asks again. Called with the connect lock held. Returns whether all
+/// went well and the files the block came out of.
+fn remove_taste(
+    home: &Path,
+    support: &Path,
+    specs: &[&Spec],
+    out: &mut String,
+) -> (bool, Vec<PathBuf>) {
     let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
     let mut files: Vec<PathBuf> = note[TASTE_KEY]
         .as_object()
         .map(|m| m.keys().map(PathBuf::from).collect())
         .unwrap_or_default();
     for spec in specs {
-        let own = if spec.harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" };
-        for file in [spec.root.join(own), spec.root.join("AGENTS.override.md")] {
-            if !files.contains(&file) {
-                files.push(file);
-            }
+        let file = rule_file(&spec.harness, &spec.root);
+        if !files.contains(&file) {
+            files.push(file);
         }
     }
     let mut ok = true;
+    let mut taken = Vec::new();
     for file in &files {
         match loop_taste::take_out(file) {
-            Ok(true) => out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file))),
+            Ok(true) => {
+                out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));
+                taken.push(file.clone());
+            }
             Ok(false) => {}
             Err(e) => {
                 ok = false;
@@ -1284,7 +1312,7 @@ fn remove_taste(home: &Path, support: &Path, specs: &[&Spec], out: &mut String) 
             out.push_str(&format!("  Couldn't forget the taste answers: {e}\n"));
         }
     }
-    ok
+    (ok, taken)
 }
 
 fn sign_in(harness: &str) -> &'static str {

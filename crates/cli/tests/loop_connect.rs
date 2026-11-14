@@ -966,6 +966,12 @@ fn taste_blocks(p: &Path) -> usize {
 fn taste_is_added_once_keeps_the_file_and_goes_on_disconnect() {
     // Catches: a second connect appending a second block, a 0600 rule file left
     // world-readable, a disconnect that leaves the block or eats the person's lines.
+    // What a round trip without taste leaves in Codex's folder, to compare with.
+    let plain = Box::new("taste-roundtrip-plain");
+    plain.install_loop();
+    assert!(plain.run(&["loop", "connect"]).status.success());
+    assert!(plain.run(&["loop", "disconnect"]).status.success());
+    let plain_codex = fs::read(plain.home().join(".codex/AGENTS.md")).ok();
     let b = Box::new("taste-roundtrip");
     b.install_loop();
     let claude_md = b.home().join(".claude/CLAUDE.md");
@@ -991,7 +997,10 @@ fn taste_is_added_once_keeps_the_file_and_goes_on_disconnect() {
     assert!(out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
     assert_eq!(read(&claude_md), "# mine\nkeep this\n", "back to the person's own bytes");
-    assert_eq!(taste_blocks(&codex_md), 0);
+    assert_eq!(fs::read(&codex_md).ok(), plain_codex, "as a round trip without taste leaves it");
+    assert!(!text(&out).contains("left in place"), "{}", text(&out));
+    assert!(text(&out).contains("Claude Code: disconnected.\n"), "{}", text(&out));
+    assert!(text(&out).contains("Codex: disconnected.\n"), "{}", text(&out));
     assert_eq!(
         fs::metadata(&claude_md).unwrap().permissions().mode() & 0o777,
         0o600
@@ -1109,6 +1118,16 @@ fn connect_at_a_terminal(b: &Box, answer: &str) -> String {
     let mut seen = Vec::new();
     let mut buf = [0u8; 4096];
     let mut stdin = child.stdin.take();
+    // A lost answer must fail the test, not hang CI: end this exact child after 30 s.
+    let pid = child.id();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = done.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        if !flag.load(std::sync::atomic::Ordering::SeqCst) {
+            let _ = Command::new("/bin/kill").args(["-9", &pid.to_string()]).status();
+        }
+    });
     loop {
         let n = std::io::Read::read(&mut stdout, &mut buf).unwrap_or(0);
         if n == 0 {
@@ -1124,6 +1143,7 @@ fn connect_at_a_terminal(b: &Box, answer: &str) -> String {
     }
     drop(stdin);
     child.wait().unwrap();
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
     String::from_utf8_lossy(&seen).into_owned()
 }
 
@@ -1148,4 +1168,22 @@ fn a_person_at_a_terminal_is_asked_once_naming_each_file() {
     assert!(out.contains("Taste: added to ~/.claude/CLAUDE.md."), "{out}");
     assert_eq!(taste_blocks(&claude_md), 1);
     assert_eq!(taste_blocks(&b.home().join(".codex/AGENTS.md")), 1);
+}
+
+#[test]
+fn a_symlinked_rule_file_stays_a_link_and_its_target_comes_back_exact() {
+    // Catches: a rename over the link, which would cut a dotfiles setup loose.
+    let b = Box::new("taste-symlink");
+    b.install_loop();
+    let target = b.root.join("dotfiles/CLAUDE.md");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, "# from my dotfiles\n").unwrap();
+    let link = b.home().join(".claude/CLAUDE.md");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    assert!(b.run(&["loop", "connect", "--agent", "claude", "--taste"]).status.success());
+    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert_eq!(taste_blocks(&target), 1);
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert_eq!(read(&target), "# from my dotfiles\n");
 }

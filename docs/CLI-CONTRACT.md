@@ -2297,8 +2297,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
 - **Taste block.** After a connect (text, `--agent`, `--json`, or the one after
   `loop install`), each agent the engine now holds a committed installation for
   gets a fixed three-line block in the rule file it reads (`CLAUDE.md` in the
-  Claude config folder, `$CLAUDE_CONFIG_DIR` when set; Codex `AGENTS.md`, or
-  `AGENTS.override.md` when that exists), between `<!-- impeccable:taste -->` and
+  Claude config folder, `$CLAUDE_CONFIG_DIR` when set; `AGENTS.md` in
+  `CODEX_HOME` for Codex, with a line saying to copy it when
+  `AGENTS.override.md` shadows that file), between `<!-- impeccable:taste -->` and
   `<!-- /impeccable:taste -->`, telling the agent to call the MCP's `taste.get`
   once per task and record design calls with `taste.note`. It never holds rules,
   taste or ids. A file whose block is there is rewritten in place (no question).
@@ -2318,8 +2319,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   added|removed|declined|skipped|failed, error?}` is added only when a file was
   touched or asked about. `loop disconnect` takes the block out of every file
   recorded and every rule file of the installations it removes (printing
-  `  Removed the taste lines from <file>.`), removes a file left empty, and
-  forgets every answer. The two flags go with `connect` or `install`, one at a
+  `  Removed the taste lines from <file>.`) before the engine's undo, so the
+  engine finds each file as it wrote it, then forgets every answer. A plain
+  (not symlinked) rule file left empty after both blocks are out is removed. The two flags go with `connect` or `install`, one at a
   time.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`

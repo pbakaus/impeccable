@@ -60,9 +60,9 @@ pub(crate) fn upsert(text: &str) -> Result<String> {
     Ok(out)
 }
 
-/// `text` without the block or its markers, and without the line break and blank
-/// line `upsert` added around it, so an append followed by a removal gives back the
-/// bytes that were there. `None` when there is no block.
+/// `text` without the block or its markers, and without the line break after it and
+/// one blank line before it, so an append followed by a removal gives back the bytes
+/// that were there. `None` when there is no block.
 pub(crate) fn remove(text: &str) -> Result<Option<String>> {
     let Some((a, b)) = span(text)? else {
         return Ok(None);
@@ -72,14 +72,23 @@ pub(crate) fn remove(text: &str) -> Result<Option<String>> {
         .strip_prefix("\r\n")
         .or_else(|| after.strip_prefix('\n'))
         .unwrap_or(after);
+    // One blank line before the block goes with it, wherever it stands, as with the
+    // engine's own block: the two may end up in either order in the same file.
     let mut before = &text[..a];
-    if after.is_empty() {
-        for sep in ["\r\n\r\n", "\n\n"] {
-            if before.ends_with(sep) {
-                before = &before[..before.len() - sep.len() / 2];
-                break;
-            }
+    for sep in ["\r\n\r\n", "\n\n"] {
+        if before.ends_with(sep) {
+            before = &before[..before.len() - sep.len() / 2];
+            break;
         }
+    }
+    // At the top of the file (nothing but line breaks before it, as the engine leaves
+    // when it moves its own block below this one), those and the blank line after it go.
+    if before.chars().all(|c| c == '\n' || c == '\r') {
+        before = "";
+        after = after
+            .strip_prefix("\r\n")
+            .or_else(|| after.strip_prefix('\n'))
+            .unwrap_or(after);
     }
     Ok(Some(format!("{before}{after}")))
 }
@@ -145,8 +154,8 @@ pub(crate) fn add(path: &Path) -> Result<()> {
     write(path, after.as_bytes())
 }
 
-/// Take the block out of `path`. `Ok(false)` when there was none. A file left empty
-/// (one connect created for the block) is removed.
+/// Take the block out of `path`. `Ok(false)` when there was none. The file itself
+/// stays, even when nothing is left in it.
 pub(crate) fn take_out(path: &Path) -> Result<bool> {
     let Some(before) = read(path)? else {
         return Ok(false);
@@ -154,11 +163,7 @@ pub(crate) fn take_out(path: &Path) -> Result<bool> {
     let Some(after) = remove(&before)? else {
         return Ok(false);
     };
-    if after.is_empty() {
-        fs::remove_file(physical(path)?).map_err(|e| e.to_string())?;
-    } else {
-        write(path, after.as_bytes())?;
-    }
+    write(path, after.as_bytes())?;
     Ok(true)
 }
 
@@ -176,6 +181,20 @@ mod tests {
             let back = remove(&with).unwrap().unwrap();
             let expected = if original == "mine" { "mine\n" } else { original };
             assert_eq!(back, expected, "{original:?}");
+        }
+    }
+
+    #[test]
+    fn a_block_between_two_others_takes_one_blank_line_with_it() {
+        let text = format!("mine\n\n{START}\n{BODY}\n{END}\n\n<!-- other -->\n");
+        assert_eq!(remove(&text).unwrap().unwrap(), "mine\n\n<!-- other -->\n");
+    }
+
+    #[test]
+    fn a_block_at_the_top_takes_the_blank_line_after_it() {
+        for lead in ["", "\n"] {
+            let text = format!("{lead}{START}\n{BODY}\n{END}\n\n<!-- other -->\n");
+            assert_eq!(remove(&text).unwrap().unwrap(), "<!-- other -->\n");
         }
     }
 

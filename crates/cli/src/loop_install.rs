@@ -416,7 +416,18 @@ fn with_taste(
     use crate::loop_connect::Taste;
     let taste = if taste == Taste::Ask { Taste::Skip } else { taste };
     let (mut value, ok) = crate::loop_connect::connect_json(io, only);
-    let (_, rows) = crate::loop_connect::offer_taste(io, only, taste);
+    // Only the agents this run connected.
+    let connected: Vec<String> = value["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|a| a["result"] == "connected")
+        .filter_map(|a| a["agent"].as_str().map(str::to_owned))
+        .collect();
+    let mut rows = Vec::new();
+    for harness in &connected {
+        rows.extend(crate::loop_connect::offer_taste(io, Some(harness), taste).1);
+    }
     if !rows.is_empty() {
         value["taste"] = serde_json::Value::Array(rows);
     }
