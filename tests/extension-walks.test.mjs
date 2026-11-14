@@ -137,7 +137,7 @@ describe('talk to type', () => {
     assert.deepEqual(seen.ended, [null]);
   });
 
-  // Chrome ends a session by itself after a pause or about a minute of talk (#1893): a new one starts, its words
+  // Chrome ends a session by itself after a pause or about a minute of talk: a new one starts, its words
   // follow the earlier ones once (last interim words kept), and only a long silence ends listening.
   it('starts again when Chrome ends a session, without doubling or losing words', () => {
     const { seen, control, rec: first } = run('');
