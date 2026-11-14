@@ -162,7 +162,20 @@ describe('talk to type', () => {
     assert.deepEqual([seen.started, seen.ended], [2, [null]]);
   });
 
-  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['network', 'network'], ['aborted', null]]) {
+  it('starts again when the connection drops, and says so after two failures in a row', () => {
+    const { seen, rec: first } = run('');
+    first.hear(['open pricing'], true);
+    first.onerror({ error: 'network' });
+    first.onend();
+    Speech.last.onerror({ error: 'network' });
+    Speech.last.onend();
+    assert.deepEqual(seen.ended, []);
+    Speech.last.onerror({ error: 'network' });
+    Speech.last.onend();
+    assert.deepEqual([seen.started, seen.ended, seen.text.at(-1)], [3, ['network'], 'open pricing']);
+  });
+
+  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['audio-capture', 'audio-capture'], ['aborted', null]]) {
     it(`ends once on ${error}, saying ${ended ?? 'nothing'}`, () => {
       const { seen, rec } = run('');
       rec.onerror({ error });

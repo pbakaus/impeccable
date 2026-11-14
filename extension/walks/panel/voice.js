@@ -10,6 +10,8 @@ export const speechCtor = (scope = globalThis) => scope.SpeechRecognition || sco
 
 /** Errors that end listening with nothing to say: silence, or the person stopping it. */
 const QUIET = new Set(['no-speech', 'aborted']);
+/** Errors after which a new session starts: silence, and a dropped connection to Google's speech service. */
+const AGAIN = new Set(['no-speech', 'network']);
 /** Chrome ends a session on its own after a pause or about a minute; after this many in a row with no words, stop. */
 const EMPTY = 2;
 
@@ -55,7 +57,7 @@ export function listen(Ctor, { base = '', lang = 'en-US', onStart = () => {}, on
       // The last words shown stay, interim or not: Chrome can end a session before it marks them final.
       if (said) kept = `${kept} ${said}`.trim();
       empty = said ? 0 : empty + 1;
-      if (stopping || (failed && !QUIET.has(failed)) || failed === 'aborted' || empty >= EMPTY) { finish(failed); return; }
+      if (stopping || (failed && !AGAIN.has(failed)) || empty >= EMPTY) { finish(failed); return; }
       session();
     };
     try { now.start(); } catch { finish('failed'); }
