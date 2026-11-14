@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>playback-reverse</title>
+<style>
+body { font: 18px system-ui; margin: 40px; }
+button { margin-bottom: 20px; }
+#region { position: relative; width: 500px; height: 400px; }
+#card { position: relative; width: 180px; height: 100px; padding: 20px; box-sizing: border-box; background: #eedcc5; view-transition-name: card; }
+::view-transition-group(card) { animation-duration: 600ms; animation-timing-function: linear; }
+#card { transform: translateX(100px); }
+</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Reverse playback</div></div>
+<script>
+go.onclick = () => { const a = card.animate([{transform:'translateX(0px)'}, {transform:'translateX(100px)'}], {duration:600, fill:'both'}); a.currentTime = 600; a.playbackRate = -2; };
+</script>

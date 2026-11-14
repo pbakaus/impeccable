@@ -12,7 +12,7 @@ impeccable-detect = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order", "float_roundtrip"] }
 tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
 png = "0.18"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 base64 = "0.22"
 url = "2"
 percent-encoding = "2"

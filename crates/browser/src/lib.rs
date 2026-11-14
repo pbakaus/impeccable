@@ -34,6 +34,7 @@
 //! passes over a recorded capture with no browser, so a rule change can be
 //! measured against saved pages.
 
+pub mod motion;
 pub mod attach;
 pub mod cdp;
 pub mod consent;
