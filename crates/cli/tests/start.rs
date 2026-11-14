@@ -30,12 +30,12 @@ fn steps(out: &std::process::Output) -> (i32, HashMap<String, String>) {
 }
 
 // Catches start opening a second sign-in over a working one, going on past a sign-in that never finished
-// (exit 3, nothing after it), and a machine without an agent reading as set up (exit 2).
+// (exit 3, nothing after it), and an MCP step refused before any agent was looked at (here: a test account
+// URL) reading as "no agents" (exit 2) with its reason hidden, instead of a failure (exit 1) that says why.
 #[test]
 fn start_stops_at_an_unfinished_sign_in_and_skips_a_finished_one() {
     let fake = Fake::start();
     let mut env = fake.env("start");
-    // No agent CLI on this PATH: the MCP step finds none.
     env.insert("PATH".into(), String::new());
     env.insert("IMPECCABLE_NO_BROWSER".into(), "1".into());
     env.insert("IMPECCABLE_LOGIN_TIMEOUT".into(), "1".into());
@@ -54,6 +54,7 @@ fn start_stops_at_an_unfinished_sign_in_and_skips_a_finished_one() {
     assert!(child.wait().unwrap().success());
     let out = impeccable(&env, &["start", "--json"]).output().unwrap();
     let (code, s) = steps(&out);
-    assert_eq!((code, s["sign_in"].as_str(), s["mcp"].as_str()), (2, "already", "no_agents"));
+    assert_eq!((code, s["sign_in"].as_str(), s["mcp"].as_str()), (1, "already", "failed"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("IMPECCABLE_ACCOUNT_URL"));
     assert!(Path::new(&env["IMPECCABLE_HOME"]).exists());
 }

@@ -61,28 +61,44 @@ pub(crate) fn run(
     if signed == LoginOutcome::Failed {
         return finish(io, json, &steps, 3);
     }
+    // As `login` does: the setup report goes up in the background after a sign-in.
+    crate::setup_report::schedule(io);
 
     // 3. The MCP server for each agent; an entry already there is kept.
     let (mcp, rows, _) = crate::loop_connect::connect_mcp(io, None);
-    let found = rows["agents"].as_array().is_some_and(|a| a.iter().any(|r| r["result"] != "not_found"));
+    let agents = rows["agents"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let found = agents.iter().any(|r| r["result"] != "not_found");
+    // An error before any agent was looked at (a refused account URL, a lock) is a
+    // failure, not "no agents"; its message reaches stderr even under --json.
+    let before_search = mcp.is_err() && agents.is_empty();
     match &mcp {
         Ok(text) if !json => io.err(text),
-        Err(e) if !json => io.err(&format!("{e}\n")),
+        Err(e) => io.err(&format!("{e}\n")),
         _ => {}
     }
-    record(&mut steps, "mcp", if !found { "no_agents" } else if mcp.is_ok() { "done" } else { "failed" });
-    failed |= found && mcp.is_err();
+    let mcp_failed = mcp.is_err() && (found || before_search);
+    record(&mut steps, "mcp", if mcp_failed { "failed" } else if !found { "no_agents" } else { "done" });
+    failed |= mcp_failed;
+    let no_agents = !found && !before_search;
 
     // 4. The repository's first scan (once per repository; says nothing when not wanted).
+    let mut scan = "skipped";
     quiet(io, json, |io| {
-        crate::router::scan_after_login(io, engines, rule_pack);
+        scan = crate::router::scan_after_login(io, engines, rule_pack);
         0
     });
-    record(&mut steps, "scan", "done");
+    record(&mut steps, "scan", scan);
+    failed |= scan == "failed";
 
     // 5. Loop, on a Mac and only when asked: it installs an app.
     if cfg!(target_os = "macos") && yes {
-        let code = quiet(io, json, |io| crate::loop_install::run(&["install".into()], io));
+        // The MCP step already connected the agents, so Loop's install doesn't ask
+        // again; under --json it doesn't open the app either.
+        let mut install: Vec<String> = vec!["install".into(), "--no-connect".into()];
+        if json {
+            install.push("--no-open".into());
+        }
+        let code = quiet(io, json, |io| crate::loop_install::run(&install, io));
         record(&mut steps, "loop", if code == 0 { "done" } else { "failed" });
         failed |= code != 0;
     } else {
@@ -92,7 +108,7 @@ pub(crate) fn run(
         }
     }
 
-    let code = if !found { 2 } else if failed { 1 } else { 0 };
+    let code = if failed { 1 } else if no_agents { 2 } else { 0 };
     finish(io, json, &steps, code)
 }
 

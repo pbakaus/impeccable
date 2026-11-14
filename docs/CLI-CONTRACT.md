@@ -2736,15 +2736,23 @@ usable one is stored, as for `login`), the MCP server for each coding agent
 scan, and, only with `--yes` on macOS, `loop install`. Each step keeps its own
 rules; running `start` again redoes nothing.
 
-Exit codes: **0** set up; **1** a step failed (later steps still ran);
-**2** no coding agent was found; **3** the sign-in did not finish (declined,
-timed out or refused), and nothing after it ran.
+After a sign-in it schedules the setup report, as `login` does. Loop's install
+runs with `--no-connect` (the MCP step already connected the agents) and, under
+`--json`, `--no-open`.
+
+Exit codes: **0** set up; **1** a step failed (later steps still ran),
+including an MCP step stopped before it looked for agents (a refused
+`IMPECCABLE_ACCOUNT_URL`, a held lock) and a first scan that failed or could
+not be added to the account; **2** no coding agent was found; **3** the
+sign-in did not finish (declined, timed out or refused), and nothing after it
+ran.
 
 `--json` prints one line on stdout, `{"ok":bool,"exit":n,"steps":[{"step","result"}]}`,
 with `step` one of `skills`, `sign_in`, `mcp`, `scan`, `loop` and `result` one
-of `done`, `already` (sign-in), `no_agents` (mcp), `skipped` (loop) or
-`failed`. The steps' own lines are held back, except the sign-in's link and
-outcome, which go to stderr.
+of `done`, `already` (sign-in; scan when this repository was scanned before),
+`no_agents` (mcp), `skipped` (scan when not wanted or not in a repository;
+loop) or `failed`. The steps' own lines are held back, except the sign-in's
+link and outcome and an MCP error, which go to stderr.
 
 ## `login` when already signed in
 
