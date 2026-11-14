@@ -883,3 +883,38 @@ fn github_user_scope_install_points_the_project_hook_at_the_home_skill() {
     assert_eq!(kept["hooks"]["postToolUse"][0]["bash"], GITHUB_PORTABLE);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn partial_shared_settings_never_prune_the_project_hook() {
+    let dir = tmp_dir("partial-shared");
+    let root = dir.join("project").to_string_lossy().into_owned();
+    let bundle = dir.join("bundle").to_string_lossy().into_owned();
+    let home = dir.join("home").to_string_lossy().into_owned();
+    let sys = sys_with_home(&home);
+    let target = impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == ".claude").unwrap();
+    let fresh = (target.manifest)();
+    write(&format!("{bundle}/.claude/settings.json"), &fresh.to_string());
+    write(&format!("{root}/.claude/settings.local.json"), &fresh.to_string());
+    let mut partial = fresh;
+    partial["hooks"].as_object_mut().unwrap().remove("Stop");
+    write(&format!("{root}/.claude/settings.json"), &partial.to_string());
+    copy_provider_hooks(&sys, &bundle, &root, &[".claude"], false, None, None).unwrap();
+    assert!(std::path::Path::new(&format!("{root}/.claude/settings.local.json")).exists());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn partial_user_settings_never_prune_the_project_hook() {
+    let dir = tmp_dir("partial-user");
+    let root = dir.join("project").to_string_lossy().into_owned();
+    let home = dir.join("home").to_string_lossy().into_owned();
+    let sys = sys_with_home(&home);
+    write(&format!("{home}/.claude/skills/impeccable/scripts/impeccable"), "");
+    let command = user_claude_hook_command(&home, cfg!(windows)).unwrap();
+    write(&format!("{home}/.claude/settings.json"), &json!({"hooks":{"Stop":[{"hooks":[{"type":"command","command":command}]}]}}).to_string());
+    let local = format!("{root}/.claude/settings.local.json");
+    write(&local, &json!({"hooks":{"Stop":[{"hooks":[{"type":"command","command":command}]}]}}).to_string());
+    prune_duplicate_claude_hooks(&sys, &home, &root).unwrap();
+    assert!(std::path::Path::new(&local).exists());
+    let _ = std::fs::remove_dir_all(dir);
+}

@@ -20,9 +20,10 @@ function panel() {
     return node;
   };
   const writes = [];
+  const ids = {};
   const context = vm.createContext({
-    document: { getElementById: element, createElement: element, documentElement: element() },
-    elements, writes,
+    document: { getElementById: id => ids[id] ||= element(), createElement: element, documentElement: element() },
+    elements, writes, ids,
     navigator: { clipboard: { writeText: async text => { writes.push(text); } } },
     setTimeout() {},
     window: { addEventListener() {} },
@@ -40,6 +41,7 @@ function panel() {
     fetch: () => new Promise(() => {}),
     setInterval() {},
   });
+  vm.runInContext(readFileSync(new URL('../extension/shared/findings-report.js', import.meta.url), 'utf8'), context);
   vm.runInContext(readFileSync(new URL('../extension/devtools/panel.js', import.meta.url), 'utf8'), context);
   return context;
 }
@@ -78,8 +80,11 @@ test('mixed reports preserve existing categories and suggestions for other rules
 
 test('empty reports and the existing unknown-rule fallback still work', async () => {
   const context = panel();
-  assert.equal(await context.formatFindingsForCopy([]), 'Impeccable found no anti-patterns on this page.');
-  assert.equal(context.fixSkillFor({ type: 'unknown-rule' }), '/polish');
+  const report = await context.formatFindingsForCopy([]);
+  assert.match(report, /URL: https:\/\/example.test\//);
+  assert.match(report, /Total findings: 0/);
+  assert.match(report, /Impeccable found no anti-patterns on this page\./);
+  assert.equal(context.ImpeccableReport.fixSkillFor({ type: 'unknown-rule' }), '/polish');
 });
 
 test('advisory presentation follows metadata for any rule and registry row', async () => {
@@ -89,8 +94,8 @@ test('advisory presentation follows metadata for any rule and registry row', asy
     { type: 'future-slop-rule', category: 'slop', advisory: true },
     { id: 'future-settings-rule', category: 'quality', severity: 'advisory' },
   ]) {
-    assert.equal(context.presentationCategory(advisory), 'advisory');
-    assert.equal(context.fixSkillFor(advisory), '');
+    assert.equal(context.ImpeccableReport.presentationCategory(advisory), 'advisory');
+    assert.equal(context.ImpeccableReport.fixSkillFor(advisory), '');
     const finding = { ...advisory, name: 'Review this choice', detail: 'example' };
     const report = await context.formatFindingsForCopy([item([finding])]);
     assert.match(report, /## Advisories \(1\)/);
@@ -98,16 +103,16 @@ test('advisory presentation follows metadata for any rule and registry row', asy
     const single = await context.formatSingleFindingForCopy(item([finding]), finding);
     assert.doesNotMatch(single, /Suggested Impeccable skill/);
   }
-  assert.equal(context.presentationCategory({ type: 'hard-offset-shadow', category: 'quality' }), 'quality');
-  assert.equal(context.fixSkillFor({ type: 'side-tab', advisory: false }), '/distill, /polish');
+  assert.equal(context.ImpeccableReport.presentationCategory({ type: 'hard-offset-shadow', category: 'quality' }), 'quality');
+  assert.equal(context.ImpeccableReport.fixSkillFor({ type: 'side-tab', advisory: false }), '/distill, /polish');
 });
 
 test('advisories keep a mapped fix command and drop only the generic fallback', async () => {
   const context = panel();
-  assert.equal(context.fixSkillFor({ type: 'bounce-easing', category: 'slop', advisory: true }), '/animate');
-  assert.equal(context.fixSkillFor({ type: 'straggler', category: 'quality', severity: 'advisory' }), '/typeset');
-  assert.equal(context.fixSkillFor({ type: 'unbalanced-heading', category: 'quality', severity: 'advisory' }), '/typeset');
-  assert.equal(context.fixSkillFor(shadow), '');
+  assert.equal(context.ImpeccableReport.fixSkillFor({ type: 'bounce-easing', category: 'slop', advisory: true }), '/animate');
+  assert.equal(context.ImpeccableReport.fixSkillFor({ type: 'straggler', category: 'quality', severity: 'advisory' }), '/typeset');
+  assert.equal(context.ImpeccableReport.fixSkillFor({ type: 'unbalanced-heading', category: 'quality', severity: 'advisory' }), '/typeset');
+  assert.equal(context.ImpeccableReport.fixSkillFor(shadow), '');
   const finding = { type: 'bounce-easing', category: 'slop', advisory: true, name: 'Bounce easing', detail: 'cubic-bezier' };
   const report = await context.formatFindingsForCopy([item([finding])]);
   assert.match(report, /## Advisories \(1\)/);
@@ -136,3 +141,16 @@ for (const [label, finding, expected] of [
     else assert.doesNotMatch(context.writes[0], /Suggested Impeccable skill|\/polish/);
   });
 }
+
+
+test('rendered DevTools copy-all button uses the shared report', async () => {
+  const context = panel();
+  context.renderFindings([item([shadow])]);
+  context.ids['btn-copy-all'].listeners.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(context.writes.length, 1);
+  assert.match(context.writes[0], /URL: https:\/\/example.test\//);
+  assert.match(context.writes[0], /Total findings: 1/);
+  assert.match(context.writes[0], /## Advisories \(1\)/);
+  assert.doesNotMatch(context.writes[0], /\/polish/);
+});

@@ -359,6 +359,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
 
     let (target_file, content, lines) = found.unwrap();
     let rel_file = jsp::relative("/", &cwd, &target_file);
+    if check_marker_lines(&id, &lines).is_err() {
+        println(io, &json_compact(&marker_failure(&rel_file)));
+        return 0;
+    }
     let preview_block = find_marker_block(&id, &lines);
     let source_shadow = preview_block.is_some() && read_source_shadow_preview_meta(&content, &id);
     if source_shadow {
@@ -417,6 +421,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 match result {
                     Ok(()) => {}
                     Err(err) => {
+                        if err == MARKERS_SHARE_LINE {
+                            println(io, &json_compact(&marker_failure(m["file"].as_str().unwrap_or_default())));
+                            return 0;
+                        }
                         m.insert("handled".into(), Value::Bool(false));
                         m.insert("error".into(), Value::String(err));
                     }
@@ -466,6 +474,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 );
             }
             Ok(Err(err)) => {
+                if err == MARKERS_SHARE_LINE {
+                    println(io, &json_compact(&marker_failure(&rel_file)));
+                    return 0;
+                }
                 // JS: `{ handled: true, file, ...result }` with result.handled false.
                 let mut m = Map::new();
                 m.insert("handled".into(), Value::Bool(false));
@@ -614,6 +626,34 @@ fn scrub_manual_edits_against_original_block(
 // Discard / Accept
 // ---------------------------------------------------------------------------
 
+const MARKERS_SHARE_LINE: &str = "markers_share_line";
+
+fn check_marker_lines(id: &str, lines: &[String]) -> Result<(), String> {
+    for line in lines {
+        for kind in ["variants-start", "variants-end", "carbonize-start", "carbonize-end"] {
+            let marker = format!("impeccable-{} {}", kind, id);
+            if line.contains(&marker) {
+                let line = line.trim();
+                let clean = [("<!--", "-->"), ("{/*", "*/}")].iter().any(|(open, close)| {
+                    line.strip_prefix(*open).and_then(|body| body.strip_suffix(*close))
+                        .map_or(false, |body| body.trim() == marker)
+                });
+                if !clean {
+                    return Err(MARKERS_SHARE_LINE.to_string());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A structured refusal on stdout with exit 0, like `source_locked`: live-poll
+/// reads stdout only on exit 0, so a non-zero exit would hide the hint.
+fn marker_failure(file: &str) -> Value {
+    json!({ "handled": false, "mode": "error", "error": MARKERS_SHARE_LINE, "file": file,
+        "hint": "Put each marker comment on its own line, then accept again." })
+}
+
 struct MarkerBlock {
     start: usize,
     end: usize,
@@ -655,6 +695,7 @@ fn comment_syntax_for(path: &str) -> (&'static str, &'static str) {
 
 /// JS: handleDiscardUnlocked → Ok(()) or Err(error)
 fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Result<(), String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -672,8 +713,9 @@ fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Res
     Ok(())
 }
 
-/// The opening `<style>` tag of a carbonize block in `target_file`: the file
-/// type's own `styleTag` with the session id filled in.
+/// The opening `<style>` tag of a carbonize block in `target_file` and its
+/// matching close: the file type's own `styleTag` with the session id filled
+/// in, and the close that pairs with it (`</component>` on `.vue`).
 ///
 /// On `.astro` that tag carries `is:inline`, exactly like the variants block
 /// it replaces. A bare `<style>` there is a different thing: Astro compiles
@@ -682,23 +724,23 @@ fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Res
 /// when the cleanup deletes it. Astro's dev server answers the reload of
 /// that vanished index with a 500 (7.3.6 and later) or serves the wrong
 /// block's CSS under the surviving index (7.3.5 and earlier).
-fn carbonize_style_open(target_file: &str, id: &str) -> String {
-    resolve_source_traits(target_file)
-        .style_tag
-        .replace("SESSION_ID", id)
+fn carbonize_style_tags(target_file: &str, id: &str) -> (String, &'static str) {
+    let traits = resolve_source_traits(target_file);
+    (traits.style_tag.replace("SESSION_ID", id), traits.style_close)
 }
 
 /// JS: buildCarbonizeReplacement({...})
 ///
-/// `style_open` is the opening `<style>` tag for the carbonize block. It is
-/// the same tag the variants block was authored with for this file type
-/// (`carbonize_style_open`), so accept never changes how the framework's
+/// `style_open` / `style_close` are the tags around the carbonize block's CSS.
+/// They are the same pair the variants block was authored with for this file
+/// type (`carbonize_style_tags`), so accept never changes how the framework's
 /// compiler treats the block.
 fn build_carbonize_replacement(
     indent: &str,
     cs: (&str, &str),
     is_jsx: bool,
     style_open: &str,
+    style_close: &str,
     id: &str,
     variant_num: &str,
     css: Option<&[String]>,
@@ -734,7 +776,7 @@ fn build_carbonize_replacement(
         lines.push(format!(
             "{}{}",
             body_indent,
-            if is_jsx { "`}</style>" } else { "</style>" }
+            if is_jsx { "`}</style>" } else { style_close }
         ));
         if let Some(pv) = param_values {
             if !pv.is_empty() {
@@ -799,6 +841,7 @@ fn handle_accept_unlocked(
     param_values: Option<&Map<String, Value>>,
     bake: Option<&BakeRequest>,
 ) -> Result<AcceptOutcome, String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -806,6 +849,7 @@ fn handle_accept_unlocked(
     let is_jsx = cs.0 == "{/*";
     let (rs, re) = expand_replace_range(&block, lines, is_jsx, id);
     let indent = leading_ws(&lines[rs]);
+    let (style_open, style_close) = carbonize_style_tags(target_file, id);
     let Some(variant_content) = extract_variant(lines, &block, variant_num) else {
         return Err(format!("Variant {} not found", variant_num));
     };
@@ -855,7 +899,8 @@ fn handle_accept_unlocked(
         &indent,
         cs,
         is_jsx,
-        &carbonize_style_open(target_file, id),
+        &style_open,
+        style_close,
         id,
         variant_num,
         css_content.as_deref(),
@@ -1056,13 +1101,25 @@ fn expand_replace_range(
     (start, end)
 }
 
-static STYLE_FULL_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?-u:\b)[^>]*>.*?</style{}*>", WS)).unwrap());
-static STYLE_SELF_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(&format!(r"<style(?-u:\b)[^>]*/{}*>", WS)).unwrap());
-static STYLE_OPEN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<style(?-u:\b)").unwrap());
-static STYLE_CLOSE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(&format!(r"</style{}*>", WS)).unwrap());
+/// The variants block's preview style element: `<style>`, or
+/// `<component is="style">` on `.vue` (`SourceTraits::style_tag`). Every
+/// opener also requires `data-impeccable-css` inside the tag: `<component>`
+/// is also Vue's dynamic component, so the name alone would match the user's
+/// own markup.
+const STYLE_EL: &str = "(?:style|component)";
+static STYLE_FULL_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(r"(?s)<{STYLE_EL}(?-u:\b)[^>]*data-impeccable-css[^>]*>.*?</{STYLE_EL}{WS}*>")).unwrap()
+});
+static STYLE_SELF_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(r"<{STYLE_EL}(?-u:\b)[^>]*data-impeccable-css[^>]*/{WS}*>")).unwrap()
+});
+// No closing `>`: the opening tag may continue on the next line.
+static STYLE_OPEN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"<{STYLE_EL}(?-u:\b)[^>]*data-impeccable-css")).unwrap());
+static STYLE_CLOSE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(&format!(r"</{STYLE_EL}{WS}*>")).unwrap());
+static STYLE_SAME_LINE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(r"(?s)<{STYLE_EL}(?-u:\b)[^>]*data-impeccable-css[^>]*>(.*?)</{STYLE_EL}{WS}*>")).unwrap()
+});
 
 /// JS: stripStyleAndJoin(lines, block)
 fn strip_style_and_join(lines: &[String], block: &MarkerBlock) -> String {
@@ -1086,15 +1143,29 @@ fn strip_style_and_join(lines: &[String], block: &MarkerBlock) -> String {
     out.join("\n")
 }
 
+// The opener must not end in `/`: a self-closing JSX `<style ... />` has no
+// text to blank, and pairing it with a later `</style>` would hide a slot.
+static PLAIN_STYLE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?:(?-u:\b)[^>]*[^/>])?>.*?</style{WS}*>")).unwrap());
+
 /// JS: extractInnerByAttr(text, attrMatch) with `attrMatch` a literal.
+///
+/// The user's own `<style>` elements are blanked (same byte length) before
+/// tags are counted, so CSS text such as `content: "</div>"` cannot close a
+/// slot early; the returned slice still comes from `text`.
 fn extract_inner_by_attr(text: &str, attr: &str) -> Option<String> {
+    let mut masked = text.as_bytes().to_vec();
+    for m in PLAIN_STYLE_RE.find_iter(text) {
+        masked[m.start()..m.end()].fill(b' ');
+    }
+    let masked = String::from_utf8(masked).ok()?;
     // /<([A-Za-z][A-Za-z0-9]*)\b[^>]*ATTR[^>]*>/
     let opener_re = Regex::new(&format!(
         r"<([A-Za-z][A-Za-z0-9]*)(?-u:\b)[^>]*{}[^>]*>",
         regex::escape(attr)
     ))
     .ok()?;
-    let m = opener_re.captures(text)?;
+    let m = opener_re.captures(&masked)?;
     let tag_name = m[1].to_string();
     let whole = m.get(0).unwrap();
     let inner_start = whole.end();
@@ -1105,7 +1176,7 @@ fn extract_inner_by_attr(text: &str, attr: &str) -> Option<String> {
     .ok()?;
     let self_close_re = Regex::new(&format!(r"/{}*>$", WS)).unwrap();
     let mut depth = 1i64;
-    for t in tag_re.find_iter(&text[inner_start..]) {
+    for t in tag_re.find_iter(&masked[inner_start..]) {
         let s = t.as_str();
         let is_close = s.starts_with("</");
         let is_self_close = !is_close && self_close_re.is_match(s);
@@ -1210,9 +1281,6 @@ fn extract_variant(
     }
 }
 
-static STYLE_SAME_LINE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(&format!(r"(?s)<style(?-u:\b)[^>]*>(.*?)</style{}*>", WS)).unwrap());
-
 /// JS: extractCss(lines, block, id)
 fn extract_css(lines: &[String], block: &MarkerBlock, id: &str) -> Option<Vec<String>> {
     let style_attr = format!("data-impeccable-css=\"{}\"", id);
@@ -1235,7 +1303,7 @@ fn extract_css(lines: &[String], block: &MarkerBlock, id: &str) -> Option<Vec<St
             continue;
         }
         if in_style {
-            if line.contains("</style>") {
+            if STYLE_CLOSE_RE.is_match(line) {
                 break;
             }
             content.push(line.clone());
@@ -1326,7 +1394,9 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
         &extensions,
         &skip,
         &|_| true,
-    )?;
+    ).or_else(|| find_source_file(
+        &format!("impeccable-carbonize-start {}", id), cwd, &extensions, &skip, &|_| true,
+    ))?;
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
@@ -1335,6 +1405,53 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
 #[cfg(test)]
 mod discard_tests {
     use super::*;
+
+    #[test]
+    fn shared_marker_lines_refuse_accept_and_discard_without_writes() {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        for jsx in [false, true] {
+            for kind in ["variants", "carbonize"] {
+                for boundary in ["start", "end"] {
+                    for discard in [false, true] {
+                        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let dir = std::env::temp_dir().join(format!("impeccable-shared-marker-{}-{n}", std::process::id()));
+                        std::fs::create_dir_all(&dir).unwrap();
+                        std::fs::write(dir.join("package.json"), "{}").unwrap();
+                        let file = dir.join(if jsx { "App.jsx" } else { "index.html" });
+                        let (co, cc) = if jsx { ("{/*", "*/}") } else { ("<!--", "-->") };
+                        let source = format!("{co} impeccable-{kind}-start ab12cd34 {cc}{}\n<div data-impeccable-variant=\"original\"><h1>Old</h1></div>\n<div data-impeccable-variant=\"1\"><h1>New</h1></div>\n{}{co} impeccable-{kind}-end ab12cd34 {cc}\n",
+                            if boundary == "start" { "<p>Keep</p>" } else { "" },
+                            if boundary == "end" { "<p>Keep</p>" } else { "" });
+                        std::fs::write(&file, &source).unwrap();
+                        let lines: Vec<String> = source.split('\n').map(String::from).collect();
+                        assert_eq!(handle_discard_unlocked("ab12cd34", &lines, file.to_str().unwrap()).unwrap_err(), MARKERS_SHARE_LINE);
+                        assert!(matches!(handle_accept_unlocked("ab12cd34", "1", &lines, file.to_str().unwrap(), None, None), Err(e) if e == MARKERS_SHARE_LINE));
+                        let (mut io, captured) = Io::captured("", dir.clone(), Default::default());
+                        let args: Vec<String> = if discard { vec!["--id", "ab12cd34", "--discard"] }
+                            else { vec!["--id", "ab12cd34", "--variant", "1"] }.into_iter().map(String::from).collect();
+                        assert_eq!(run(&args, &mut io), 0);
+                        drop(io);
+                        let result: Value = serde_json::from_slice(&captured.stdout.borrow()).unwrap();
+                        assert_eq!(result["error"], MARKERS_SHARE_LINE);
+                        assert_eq!(result["mode"], "error");
+                        assert_eq!(result["handled"], false);
+                        assert_eq!(result["hint"], "Put each marker comment on its own line, then accept again.");
+                        assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
+                        std::fs::remove_dir_all(dir).unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn standalone_marker_comments_allow_whitespace() {
+        for (co, cc) in [("<!--", "-->"), ("{/*", "*/}")] {
+            let lines = [format!("  {co} impeccable-variants-start ab12cd34 {cc}  "),
+                format!("\t{co}   impeccable-variants-end ab12cd34\t {cc}\r")];
+            assert!(check_marker_lines("ab12cd34", &lines).is_ok());
+        }
+    }
 
     #[test]
     fn discard_restores_the_original_without_blank_lines_around_it() {
@@ -1527,6 +1644,11 @@ mod carbonize_tests {
     use super::*;
 
     fn wrapped(style_open: &str) -> Vec<String> {
+        let style_close = if style_open.trim_start().starts_with("<component") {
+            "      </component>"
+        } else {
+            "      </style>"
+        };
         [
             "  <main>",
             "    <!-- impeccable-variants-start ab12cd34 -->",
@@ -1539,7 +1661,7 @@ mod carbonize_tests {
             style_open,
             "        [data-impeccable-variant=\"1\"] > h1 { font-weight: 300; }",
             "        [data-impeccable-variant=\"2\"] > h1 { font-weight: 900; }",
-            "      </style>",
+            style_close,
             "      <div data-impeccable-variant=\"1\">",
             "        <h1 class=\"hero-title\">Title</h1>",
             "      </div>",
@@ -1625,6 +1747,154 @@ mod carbonize_tests {
             style_tags(&out),
             vec!["<style data-impeccable-css=\"ab12cd34\">", "<style>"],
             "{out}"
+        );
+    }
+
+    /// Vue drops a `<style>` element inside `<template>`, so a `.vue`
+    /// carbonize block is `<component is="style">`, closed by `</component>`.
+    #[test]
+    fn a_vue_carbonize_block_uses_the_component_tag() {
+        let out = carbonize(
+            "Hero.vue",
+            "      <component is=\"style\" data-impeccable-css=\"ab12cd34\">",
+        );
+        let lines: Vec<&str> = out.lines().map(str::trim).collect();
+        let open = lines
+            .iter()
+            .position(|l| *l == "<component is=\"style\" data-impeccable-css=\"ab12cd34\">")
+            .unwrap_or_else(|| panic!("no component open tag: {out}"));
+        assert_eq!(lines[open + 1], "[data-impeccable-variant=\"1\"] > h1 { font-weight: 300; }", "{out}");
+        assert_eq!(lines[open + 3], "</component>", "{out}");
+        assert_eq!(style_tags(&out), vec!["<style>"], "{out}");
+        assert_eq!(out.matches("</style>").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn css_is_extracted_from_a_component_style_block_up_to_its_close() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <component is=\"style\" data-impeccable-css=\"ab12cd34\">",
+            "    .a { color: red; }",
+            "  </component>",
+            "  <p>after</p>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+        assert_eq!(
+            extract_css(&lines, &block, "ab12cd34"),
+            Some(vec!["    .a { color: red; }".to_string()])
+        );
+        let one_line = vec![
+            "<component is=\"style\" data-impeccable-css=\"ab12cd34\">.a { color: red; }</component>".to_string(),
+        ];
+        let block = MarkerBlock { start: 0, end: 0 };
+        assert_eq!(
+            extract_css(&one_line, &block, "ab12cd34"),
+            Some(vec![".a { color: red; }".to_string()])
+        );
+    }
+
+    /// A user's own `<style>` inside a slot is kept, and its CSS text is not
+    /// read as markup when the slot's closing tag is found.
+    #[test]
+    fn a_users_own_style_in_a_slot_is_kept_and_not_counted_as_tags() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <div data-impeccable-variant=\"original\">",
+            "    <style>.x::after { content: \"</div>\"; }</style>",
+            "    <p>kept</p>",
+            "  </div>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+        assert_eq!(
+            extract_original(&lines, &block).expect("original slot"),
+            vec![
+                "    <style>.x::after { content: \"</div>\"; }</style>".to_string(),
+                "    <p>kept</p>".to_string(),
+            ]
+        );
+    }
+
+    /// A self-closing JSX `<style />` has no text to blank and must not pair
+    /// with the next slot's `</style>`.
+    #[test]
+    fn a_self_closing_style_does_not_mask_the_next_slot() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <div data-impeccable-variant=\"original\">",
+            "    <style dangerouslySetInnerHTML={{ __html: css }} />",
+            "  </div>",
+            "  <div data-impeccable-variant=\"1\">",
+            "    <style>{`.x { color: red; }`}</style>",
+            "  </div>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+        assert_eq!(
+            extract_original(&lines, &block).expect("original slot"),
+            vec!["    <style dangerouslySetInnerHTML={{ __html: css }} />".to_string()]
+        );
+        assert_eq!(
+            extract_variant(&lines, &block, "1").expect("variant 1"),
+            vec!["    <style>{`.x { color: red; }`}</style>".to_string()]
+        );
+    }
+
+    /// `<component>` is also Vue's dynamic component. Only the preview element
+    /// (the one carrying `data-impeccable-css`) is plumbing; the user's own
+    /// `<component :is>` lines, self-closing or paired, must survive.
+    #[test]
+    fn vue_dynamic_components_are_not_mistaken_for_the_preview_style() {
+        let lines: Vec<String> = [
+            "<div data-impeccable-variants=\"ab12cd34\">",
+            "  <div data-impeccable-variant=\"original\">",
+            "    <component :is=\"Icon\" class=\"x\" />",
+            "  </div>",
+            "  <component is=\"style\" data-impeccable-css=\"ab12cd34\">",
+            "    .secret { color: red; }",
+            "  </component>",
+            "  <div data-impeccable-variant=\"1\">",
+            "    <component :is=\"Icon\" class=\"x\" />",
+            "    <component :is=\"Card\">",
+            "      <p>inside</p>",
+            "    </component>",
+            "    <p>after</p>",
+            "  </div>",
+            "</div>",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let block = MarkerBlock { start: 0, end: lines.len() - 1 };
+
+        let stripped = strip_style_and_join(&lines, &block);
+        assert!(!stripped.contains(".secret"), "{stripped}");
+        assert!(!stripped.contains("data-impeccable-css"), "{stripped}");
+        assert_eq!(stripped.matches("<component :is=\"Icon\" class=\"x\" />").count(), 2, "{stripped}");
+
+        let original = extract_original(&lines, &block).expect("original slot");
+        assert_eq!(original, vec!["    <component :is=\"Icon\" class=\"x\" />".to_string()]);
+
+        let variant = extract_variant(&lines, &block, "1").expect("variant 1");
+        assert_eq!(
+            variant,
+            vec![
+                "    <component :is=\"Icon\" class=\"x\" />".to_string(),
+                "    <component :is=\"Card\">".to_string(),
+                "      <p>inside</p>".to_string(),
+                "    </component>".to_string(),
+                "    <p>after</p>".to_string(),
+            ]
         );
     }
 }

@@ -55,11 +55,13 @@ const DIGEST = createHash('sha256').update(PAYLOAD).digest('hex');
 let requests = [];
 let server;
 let base;
+let responseStatus = 200;
 
 before(async () => {
   server = http.createServer((req, res) => {
     requests.push(req.url);
     if (req.url === ASSET_PATH) {
+      if (responseStatus !== 200) { res.writeHead(responseStatus); res.end(); return; }
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       res.end(PAYLOAD);
       return;
@@ -73,7 +75,7 @@ before(async () => {
 
 after(() => new Promise((resolve) => server.close(resolve)));
 
-beforeEach(() => { requests = []; });
+beforeEach(() => { requests = []; responseStatus = 200; });
 
 /**
  * A throwaway copy of the shim at `<tmp>/cli/bin/cli.js`, with the repo's
@@ -151,6 +153,23 @@ function cacheEntries(home) {
 
 describe('npm shim download verification', { skip: process.platform === 'win32' ? 'posix only' : false }, () => {
   const cachedEntries = [path.join(VERSION, 'impeccable'), path.join(VERSION, 'impeccable.verified')];
+
+  it('attributes GitHub storage outages to GitHub', async () => {
+    const mock = "globalThis.fetch = async () => ({ ok: false, status: 504, url: 'https://release-assets.githubusercontent.com/asset' });";
+    const res = await runShim([], { nodeOptions: `--import=data:text/javascript,${encodeURIComponent(mock)}` });
+    assert.equal(res.status, 127);
+    assert.equal(res.stderr.split('\n')[0], `impeccable: could not download engine ${VERSION}: GitHub's downloads are failing right now (HTTP 504 from release-assets.githubusercontent.com). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`);
+  });
+
+  it('attributes a 503 to the download host', async () => {
+    responseStatus = 503;
+    const res = await runShim();
+    assert.equal(res.status, 127);
+    assert.ok(res.stderr.includes("impeccable: could not download engine " + VERSION + ": 127.0.0.1 is failing right now (HTTP 503), a server error on 127.0.0.1's side. Try again later.\n"), res.stderr);
+    assert.match(res.stderr, /no binary for/);
+    assert.deepEqual(requests, [ASSET_PATH]);
+    assert.deepEqual(cacheEntries(res.home), []);
+  });
 
   it('caches and runs a download whose hash matches the manifest, and stamps it', async () => {
     const res = await runShim(['hello']);

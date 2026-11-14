@@ -305,6 +305,13 @@ struct Ctx<'a> {
     /// Local files that went to the regex engine instead of the static HTML
     /// engine, so the run can say its findings are an undercount (#884).
     regex_only_files: usize,
+    /// Local files the engines read, for design health.
+    files_scanned: usize,
+    /// Of those, the UI files (markup, styles, components) and the ones the
+    /// static HTML engine read, for foundations.
+    ui_files_scanned: usize,
+    html_files_scanned: usize,
+    regex_component_files: usize,
     /// Their extensions, lowercased and sorted, for the note.
     regex_only_exts: BTreeSet<String>,
     /// Each scanned directory's framework dev-server port, deduplicated, so
@@ -484,13 +491,86 @@ fn file_url_to_local_path(url: &str) -> Option<String> {
 /// JS: main.mjs#detectCli. `args` are the argv after the `detect` verb (the
 /// leading `detect` the JS strips itself is also stripped here).
 pub fn run_detect(args: &[String], io: &mut Io, engines: &Engines) -> i32 {
-    match detect_cli(args, io, engines) {
+    run_detect_with_pack(args, io, engines, None)
+}
+
+/// A completed scan of one whole local directory, as design health uploads
+/// it (`impeccable_account::health`). Only a scan that could be the whole
+/// project produces one: the working directory or a single directory target,
+/// with no `--scope`, no `--cdp`, no stdin, no URL and no file left unscanned.
+/// Whether `root` is the top of a git work tree is the caller's check.
+#[derive(Debug, Clone)]
+pub struct FullScan {
+    /// The scanned directory, absolute.
+    pub root: String,
+    pub files_scanned: usize,
+    /// Scanned markup, style and component files (not plain .js/.ts).
+    pub ui_files_scanned: usize,
+    /// Scanned files the static HTML engine read, the only local files the
+    /// element rules (low contrast among them) run on.
+    pub html_files_scanned: usize,
+    /// Scanned non-style files (components, scripts) that only the regex
+    /// engine read, so element rules never judged any markup in them.
+    pub regex_component_files: usize,
+    /// What detect reported, after the config, ignores and `--no-advisory`.
+    pub findings: Vec<Finding>,
+    /// Everything besides the engine that decides which findings can exist:
+    /// each enabled rule id (sorted), then each setting as `name=value`.
+    /// Formatting flags are left out.
+    pub ruleset: Vec<String>,
+}
+
+/// Markup, style and component files: the scannable ones besides plain scripts.
+fn is_ui_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [
+        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx", ".vue", ".svelte",
+        ".astro", ".blade.php",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
+}
+
+fn is_style_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [".css", ".scss", ".sass", ".less"].iter().any(|ext| lower.ends_with(ext))
+}
+
+/// [`run_detect_with_pack`] that also hands back a [`FullScan`] when the run
+/// was one. Output and exit code are the same either way.
+pub fn run_detect_reporting(
+    args: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    report: &mut Option<FullScan>,
+) -> i32 {
+    match detect_cli(args, io, engines, rule_pack, Some(report)) {
         Ok(code) => code,
         Err(Exit(code)) => code,
     }
 }
 
-fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32, Exit> {
+/// CLI scanning with a build-supplied source/browser hook.
+pub fn run_detect_with_pack(
+    args: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
+    match detect_cli(args, io, engines, rule_pack, None) {
+        Ok(code) => code,
+        Err(Exit(code)) => code,
+    }
+}
+
+fn detect_cli(
+    args_in: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    report: Option<&mut Option<FullScan>>,
+) -> Result<i32, Exit> {
     let mut args: Vec<String> = args_in
         .iter()
         .map(|a| match a.as_str() {
@@ -638,7 +718,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         profile: None,
         // The `impeccable` binary installs no rule pack; a library caller that
         // does sets this before handing the options to an engine.
-        rule_pack: None,
+        rule_pack,
         keep_consent_banners: has(&args, "--no-consent-hiding"),
         keep_overlays: has(&args, "--no-overlay-hiding"),
         unreported_rules: unreported_rules(&detection_config.ignore_rules, &scopes),
@@ -707,6 +787,10 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         stdin_tty,
         had_operational_failure: false,
         regex_only_files: 0,
+        files_scanned: 0,
+        ui_files_scanned: 0,
+        html_files_scanned: 0,
+        regex_component_files: 0,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
@@ -798,6 +882,88 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
     all = filter_by_scopes(all, &scope_refs, |f: &Finding| f.antipattern.as_str());
     if no_advisory {
         all.retain(|f| !is_advisory(f));
+    }
+    if let Some(report) = report {
+        // One local directory, the whole of it, with nothing skipped.
+        let whole = cdp.is_none()
+            && (stdin_tty || !targets.is_empty())
+            && targets.len() <= 1
+            && scopes.is_empty()
+            && !ctx.had_operational_failure;
+        let root = match targets.first() {
+            None => Some(cwd.clone()),
+            Some(t) if !URL_RE.is_match(t) => Some(jsp::resolve(&cwd, &[t.as_str()])),
+            Some(_) => None,
+        };
+        if let Some(root) = root.filter(|r| whole && std::path::Path::new(r).is_dir()) {
+            let mut ruleset: Vec<String> = impeccable_core::registry::all_antipatterns()
+                .map(|ap| ap.id.to_string())
+                .filter(|id| !ctx.config.ignore_rules.iter().any(|r| normalize_ignore_rule(r) == *id))
+                .collect();
+            ruleset.sort();
+            ruleset.dedup();
+            let mut files = ctx.config.ignore_files.clone();
+            files.sort();
+            // Only what decides a match: when or why a value was ignored doesn't.
+            let mut values: Vec<String> = ctx
+                .config
+                .ignore_values
+                .iter()
+                .map(|v| serde_json::json!([v.rule, v.value, v.files]).to_string())
+                .collect();
+            values.sort();
+            let mut extensions: Vec<String> = ctx
+                .config
+                .extensions
+                .iter()
+                .map(|e| serde_json::json!([e.ext, e.engine]).to_string())
+                .collect();
+            extensions.sort();
+            // The design systems the scan read decide matches too (allowed
+            // colors, fonts, radii): a changed DESIGN.md is a new ruleset, not
+            // a round of fixes. Paths are left out so every checkout agrees.
+            let mut design_systems: Vec<String> = ctx
+                .cache
+                .iter()
+                .filter_map(|(key, ds)| {
+                    let mut ds = (**ds.as_ref()?).clone();
+                    ds.source_path = None;
+                    ds.sidecar_path = None;
+                    // A timestamp comparison that only feeds the edit
+                    // hook's staleness note; it decides no finding.
+                    ds.md_newer_than_json = false;
+                    let dir = key.strip_prefix("root:").unwrap_or(key);
+                    let dir = std::path::Path::new(dir)
+                        .strip_prefix(&root)
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        // Discovery stops at the repo's own .git, so a root
+                        // outside it isn't expected; never hash its path.
+                        .unwrap_or_else(|_| "<outside>".to_string());
+                    Some(format!("design-system:{dir}={ds:?}"))
+                })
+                .collect();
+            design_systems.sort();
+            ruleset.extend(design_systems);
+            ruleset.extend([
+                format!("config={config_enabled}"),
+                format!("inline-ignores={inline_ignores_enabled}"),
+                format!("design-system={design_system_enabled}"),
+                format!("no-advisory={no_advisory}"),
+                format!("advisory-rules={}", ctx.config.advisory_rules.as_deref().unwrap_or("")),
+                format!("ignore-files={}", serde_json::json!(files)),
+                format!("ignore-values={}", serde_json::json!(values)),
+                format!("extensions={}", serde_json::json!(extensions)),
+            ]);
+            *report = Some(FullScan {
+                root,
+                files_scanned: ctx.files_scanned,
+                ui_files_scanned: ctx.ui_files_scanned,
+                html_files_scanned: ctx.html_files_scanned,
+                regex_component_files: ctx.regex_component_files,
+                findings: all.clone(),
+                ruleset,
+            });
+        }
     }
     let (primary, advisory) = partition_advisory(&all);
     let (primary_len, advisory_len) = (primary.len(), advisory.len());
@@ -1087,6 +1253,19 @@ fn scan_targets(
                 let mut file_findings = match ctx.detect_local_file(file, &opts) {
                     Ok(f) => {
                         ctx.note_scanned(&opts);
+                        ctx.files_scanned += 1;
+                        if uses_html_engine(file, &ctx.config.extensions) {
+                            ctx.html_files_scanned += 1;
+                            ctx.ui_files_scanned += 1;
+                        } else {
+                            if is_ui_file(file) {
+                                ctx.ui_files_scanned += 1;
+                            }
+                            // Plain .js/.ts can hold JSX too.
+                            if !is_style_file(file) {
+                                ctx.regex_component_files += 1;
+                            }
+                        }
                         f
                     }
                     Err(e) => {

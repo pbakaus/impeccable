@@ -1,7 +1,6 @@
 ---
 name: impeccable-documenter
 description: Records DESIGN.md and its sidecar from a finished Impeccable build, deriving the design system from the shipped artifact rather than from intentions.
-tools: Read, Write, Bash, Glob, Grep
 model: inherit
 effort: medium
 maxTurns: 30
@@ -14,7 +13,7 @@ Complete the check within your turn ceiling. Batch Reads, take `reference/docume
 
 ## Input Contract
 
-Expect: the project root; the artifact path(s); the direction contract text (THESIS, OWN-WORLD, STORY, FIRST VIEWPORT, FORM); PRODUCT.md path; the path to the skill's `reference/document.md`; the boundary to write at (project or app root); and, when a DESIGN.md already exists there, the user's choice for it (refresh, overwrite, or merge), the answer `reference/document.md` requires before any rewrite, which the parent collects. A merge preserves confirmed incumbent decisions and reconciles them with the build.
+Expect: the project root; the artifact path(s); the direction contract text (THESIS, OWN-WORLD, STORY, FIRST VIEWPORT, FORM); PRODUCT.md path; the path to the skill's `reference/document.md`; the boundary to write at (project or app root); and, when a DESIGN.md already exists there, the user's choice for it (refresh, overwrite, or merge), the answer `reference/document.md` requires before any rewrite, which the parent collects. On a seeded world's first build the parent passes refresh without asking; that counts as the choice. A merge preserves confirmed incumbent decisions and reconciles them with the build.
 
 ## Workflow
 

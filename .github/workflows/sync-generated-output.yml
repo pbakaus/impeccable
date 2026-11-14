@@ -51,7 +51,7 @@ env:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,9 +67,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
