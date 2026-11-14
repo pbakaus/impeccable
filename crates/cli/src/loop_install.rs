@@ -337,6 +337,60 @@ fn after_install(io: &mut Io, connect: bool) -> i32 {
     }
 }
 
+/// After a successful `impeccable login`: when Loop is on this Mac and an agent here is
+/// not connected to it yet, offer that step, so Loop never needs a door of its own. A
+/// person at a terminal is asked once (Enter means yes); anything else gets one sentence
+/// and nothing is changed. The sign-in already succeeded, so nothing here fails it.
+pub(crate) fn after_login(io: &mut Io) {
+    use std::io::IsTerminal;
+    if check_platform(std::env::consts::OS).is_err() {
+        return;
+    }
+    let Ok(status) = crate::loop_connect::status(io) else {
+        return;
+    };
+    if status["loop"]["installed"] != true {
+        return;
+    }
+    let waiting: Vec<&str> = status["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|a| a["detected"] == true && !crate::loop_connect::agent_connected(a))
+        .filter_map(|a| a["label"].as_str())
+        .collect();
+    if waiting.is_empty() {
+        return;
+    }
+    let names = waiting.join(" and ");
+    if !(io.stdin_is_tty && std::io::stdout().is_terminal()) {
+        // The service's Next line already said this command: once is enough.
+        if impeccable_account::setup_status::named_loop_connect() {
+            return;
+        }
+        io.err(&format!(
+            "Loop is installed. Connect {names} to it: impeccable loop connect\n"
+        ));
+        return;
+    }
+    io.err(&format!("Loop is installed. Connect {names} to it now? [Y/n] "));
+    let _ = std::io::Write::flush(&mut io.stderr);
+    let mut line = String::new();
+    let yes = std::io::stdin()
+        .read_line(&mut line)
+        .is_ok_and(|n| connect_answer(n, &line));
+    if !yes {
+        io.err("Later: impeccable loop connect\n");
+        return;
+    }
+    match crate::loop_connect::connect(io) {
+        Ok(message) => io.err(&message),
+        Err(e) => io.err(&format!(
+            "{e}\nYou're signed in. Run impeccable loop connect again once that is sorted.\n"
+        )),
+    }
+}
+
 fn connect_answer(bytes_read: usize, line: &str) -> bool {
     bytes_read > 0
         && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")

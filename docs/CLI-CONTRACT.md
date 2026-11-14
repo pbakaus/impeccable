@@ -2261,6 +2261,32 @@ Exit status remains 127. The npm shim still follows that line with its existing
 for these outages. Other failures retain the existing download and setup
 diagnostics; the POSIX wget fallback retains those diagnostics for every failure.
 
+## Setup status
+
+- `impeccable status [--json]` reads the account service's one setup read,
+  `GET /cli/v1/setup`, with the CLI bearer. When the working directory is in
+  a git repository, its project key (the same SHA-256 the health and critique
+  uploads use) goes along in the `Impeccable-Project` header, never in the
+  URL. Text output: `Signed in to <account>.`, then `This project: <name>.`
+  (with the repository URL when the service has matched one) for the project
+  the service marks `current`, then the setup lines below. `--json` prints
+  the service's answer as it came. Exit 1, with one line on stderr, when not
+  signed in, when the service has no such read (404: `this account service
+  doesn't offer it yet`), or when the answer isn't `version: 1` with a
+  `places` list.
+- The setup lines are at most three: `Connected: ...` (places `on`, and
+  `quiet` marked so), `Not connected yet: ...` (`off`, and `needs-pro`
+  marked `(Pro)`), and `Next: <label>[: <command or https url>]` from the
+  service's `next`. The places print in the service's order under the names
+  Your agent, Agent tools, Loop, Chrome extension and GitHub pull requests;
+  an unknown kind prints as sent, and an `unavailable` place or an unknown
+  state is left out. The CLI never computes a next step and never rewrites a
+  label. Control characters in the service's strings are dropped, and a url
+  that isn't https is not shown.
+- After a successful `impeccable login`, the same lines follow on stderr
+  (stdout keeps only the sign-in link with `--no-browser`). A failed read
+  prints nothing more and login still exits 0.
+
 ## Loop macOS app
 
 - `impeccable loop install [--version X.Y.Z] [--no-open]` installs the highest
@@ -2294,6 +2320,17 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   so your agents bring their questions to Loop.` A connect that fails after
   the install exits 1 and says Loop is installed and to run `loop connect`
   again. The two flags go with `install` only, one at a time.
+- After a successful `impeccable login` on macOS, when Loop is installed and an
+  agent found on this machine is not fully connected (`loop status` row not
+  `connected` with MCP, hooks and instruction in place), login offers that
+  step for the agents still waiting, named as `Claude Code`, `Codex` or
+  `Claude Code and Codex`. A person at a terminal is asked `Loop is installed.
+  Connect <agents> to it now? [Y/n]` (Enter means yes; no prints `Later:
+  impeccable loop connect`); otherwise nothing is changed and login prints
+  `Loop is installed. Connect <agents> to it: impeccable loop connect`. All of
+  it goes to stderr, after the setup lines. A
+  failed connect is reported on stderr and login still exits 0. Without Loop,
+  or with every agent connected, login prints nothing about Loop.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
   (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.

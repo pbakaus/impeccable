@@ -497,14 +497,31 @@ pub(crate) fn critique_repo(
 ) -> Option<(String, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
-    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
-        .and_then(|r| normalize_remote(&r));
+    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
+    repo_identity(&top, remote, env)
+}
+
+/// The key and label from the remote read's outcome. A read that timed out is
+/// not a repo without a remote: falling back to the local id then would name a
+/// different project, so it sends no key.
+fn repo_identity(
+    top: &str,
+    remote: Result<Option<String>, ()>,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    let remote = remote.ok()?.and_then(|r| normalize_remote(&r));
     let label = remote.as_deref().and_then(repo_label);
-    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
 
 fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    git_run(dir, args, timeout).ok().flatten()
+}
+
+/// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
+/// answered with a failure or nothing.
+fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -512,7 +529,7 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
+        .map_err(|_| ())?;
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -523,14 +540,17 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(());
             }
         }
     };
     let mut out = String::new();
-    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
+    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
+        return Ok(None);
+    }
     let s = out.trim().to_string();
-    (status.success() && !s.is_empty()).then_some(s)
+    Ok((status.success() && !s.is_empty()).then_some(s))
 }
 
 /// A repo with no `origin` gets a random id, kept under `IMPECCABLE_HOME`
@@ -1012,5 +1032,30 @@ mod taste_notice_tests {
         let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
         assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
         std::fs::remove_dir_all(account.home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod repo_identity_tests {
+    use super::*;
+
+    #[test]
+    fn a_timed_out_remote_sends_no_key_and_a_missing_one_keeps_the_local_id() {
+        // Catches: a slow `git config` read under load fell back to the local id, so one
+        // repo was reported as another project.
+        let home = std::env::temp_dir().join(format!("impeccable-repo-identity-{}", std::process::id()));
+        let top = home.join("repo");
+        std::fs::create_dir_all(&top).unwrap();
+        let env: std::collections::HashMap<String, String> =
+            [("IMPECCABLE_HOME".to_string(), home.join(".impeccable").display().to_string())].into();
+        let top = top.to_string_lossy().into_owned();
+        assert_eq!(repo_identity(&top, Err(()), &env), None);
+        let local = repo_identity(&top, Ok(None), &env).expect("local id");
+        assert_eq!(local.1, None);
+        assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
+        let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
+        assert_ne!(remote.0, local.0);
+        assert!(remote.1.is_some());
+        std::fs::remove_dir_all(home).unwrap();
     }
 }
