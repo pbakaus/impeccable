@@ -94,6 +94,27 @@ pub struct Ctx {
     pub is_monorepo: bool,
 }
 
+/// The catalog world id a DESIGN.md was seeded from: the `world:` line `impeccable world`
+/// writes into its frontmatter. `impeccable world` checks its own output with it, so the
+/// writer and every reader agree on one rule.
+pub fn seeded_world(design: Option<&str>) -> Option<String> {
+    let mut lines = design?.lines();
+    if lines.next()?.trim_end() != "---" {
+        return None;
+    }
+    for line in lines {
+        if line.trim_end() == "---" {
+            return None;
+        }
+        if let Some(value) = line.strip_prefix("world:") {
+            let id = value.trim().trim_matches(|c| c == '"' || c == '\'');
+            let ok = !id.is_empty() && id.len() <= 80 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            return ok.then(|| id.to_string());
+        }
+    }
+    None
+}
+
 pub fn resolve_context_dir(cwd: &str, options: &TargetOptions, env: &Env) -> String {
     resolve_context(cwd, options, env).context_dir
 }

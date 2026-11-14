@@ -23,6 +23,23 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         return 0;
     };
     let rest = &args[1..];
+    // A small allowlist excludes every hook and internal verb. All I/O beyond
+    // the cheap daily gate belongs to a detached process.
+    if matches!(
+        verb,
+        "context"
+            | "detect"
+            | "doctor"
+            | "whoami"
+            | "agents"
+            | "skills"
+            | "install"
+            | "update"
+            | "check"
+    ) {
+        crate::setup_report::schedule(io);
+        crate::setup_report::schedule_taste(io);
+    }
     match verb {
         "--help" | "-h" => {
             io.out(impeccable_detect::ROOT_USAGE);
@@ -47,16 +64,31 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             0
         }
         "detect" => detect(rest, io, &engines, pack.rule_pack),
+        "foundations" => crate::foundations::run(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
-        "login" => impeccable_account::run_login(rest, io),
+        "login" => {
+            let code = impeccable_account::run_login(rest, io);
+            if code == 0 {
+                crate::setup_report::schedule(io);
+            }
+            code
+        }
+        "setup" => impeccable_account::setup::run(rest, io),
+        "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
+        "world" => impeccable_account::world::run(rest, io),
+        "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
+        "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
+        "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "loop" => crate::loop_install::run(rest, io),
+        "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
@@ -65,7 +97,19 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
         "surface-brief" => impeccable_context::run_surface_brief(rest, io),
-        "critique-storage" => impeccable_context::run_critique_storage(rest, io),
+        "critique-storage" => {
+            let mut saved = None;
+            let code = impeccable_context::critique_storage::run_with_saved(rest, io, &mut |s| {
+                saved = Some(s)
+            });
+            if let Some(snapshot) = saved {
+                let quiet = rest
+                    .iter()
+                    .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
+                impeccable_account::critiques::after_save(io, &snapshot, quiet);
+            }
+            code
+        }
         "audit-storage" => impeccable_context::run_audit_storage(rest, io),
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
@@ -173,27 +217,44 @@ fn detect(
     if let Some(full) = report {
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();
-        let scan = impeccable_account::health::Scan {
-            root: full.root,
-            files_scanned: full.files_scanned,
-            hits: full
-                .findings
-                .into_iter()
-                .map(|f| impeccable_account::health::Hit {
-                    advisory: f.advisory == Some(true),
-                    rule: f.antipattern,
-                    file: f.file,
-                    snippet: f.snippet,
-                })
-                .collect(),
-            ruleset: full.ruleset,
-            engine_version: VERSION.to_string(),
-            started,
-        };
-        let quiet = args.iter().any(|a| a == "--quiet");
+        let foundations = crate::foundations::from_scan(
+            &full.root,
+            &full,
+            impeccable_account::health::foundations_wanted(io),
+        );
+        let scan = health_scan(full, foundations, started);
+        let quiet = args
+            .iter()
+            .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
         impeccable_account::health::after_scan(io, &scan, quiet);
     }
     code
+}
+
+/// Design health's view of a full scan, with its foundations states.
+pub(crate) fn health_scan(
+    full: impeccable_detect::cli::FullScan,
+    foundations: std::collections::BTreeMap<String, String>,
+    started: std::time::SystemTime,
+) -> impeccable_account::health::Scan {
+    impeccable_account::health::Scan {
+        foundations,
+        root: full.root,
+        files_scanned: full.files_scanned,
+        hits: full
+            .findings
+            .into_iter()
+            .map(|f| impeccable_account::health::Hit {
+                advisory: f.advisory == Some(true),
+                rule: f.antipattern,
+                file: f.file,
+                snippet: f.snippet,
+            })
+            .collect(),
+        ruleset: full.ruleset,
+        engine_version: VERSION.to_string(),
+        started,
+    }
 }
 
 /// Whether this invocation is a scan the Pro engine may take over: the
@@ -227,10 +288,19 @@ const KNOWN_VERBS: &[&str] = &[
     "login",
     "logout",
     "whoami",
+    "world",
     "health",
+    "foundations",
+    "setup",
+    "setup-report",
+    "health-design-refresh",
+    "critiques",
+    "critiques-refresh",
+    "taste-refresh",
     "pro-refresh",
     "agents",
     "loop",
+    "walkthrough",
     "skills",
     "help",
     "install",
@@ -276,6 +346,11 @@ fn url_engine() -> &'static impeccable_browser::BrowserEngine {
 
 #[cfg(test)]
 mod verb_tests {
+    #[test]
+    fn taste_refresh_is_a_known_internal_verb() {
+        assert!(super::KNOWN_VERBS.contains(&"taste-refresh"));
+    }
+
     /// Catches (review, Greptile and Cursor): a verb `run` handles by name but
     /// missing from `KNOWN_VERBS`, so a same-named path in the working
     /// directory sends it through Pro dispatch as if it were a scan.
@@ -286,11 +361,16 @@ mod verb_tests {
         let mut named = Vec::new();
         for line in body.lines() {
             let line = line.trim_start();
-            let Some((arm, _)) = line.split_once("=>") else { continue };
+            let Some((arm, _)) = line.split_once("=>") else {
+                continue;
+            };
             if !arm.starts_with('"') {
                 continue;
             }
-            named.extend(arm.split('|').map(|v| v.trim().trim_matches('"').to_string()));
+            named.extend(
+                arm.split('|')
+                    .map(|v| v.trim().trim_matches('"').to_string()),
+            );
         }
         assert!(named.len() > 30, "parsed {named:?}");
         let scans = ["detect", "hook", "hook-before-edit"];
@@ -298,7 +378,10 @@ mod verb_tests {
             .iter()
             .filter(|v| !scans.contains(&v.as_str()) && !super::KNOWN_VERBS.contains(&v.as_str()))
             .collect();
-        assert!(missing.is_empty(), "verbs run handles but KNOWN_VERBS lacks: {missing:?}");
+        assert!(
+            missing.is_empty(),
+            "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
+        );
     }
 
     /// The wiring check runs no rules, so it never goes to a Pro build that

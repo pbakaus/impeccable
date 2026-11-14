@@ -130,6 +130,23 @@ fn an_expired_lease_runs_the_open_rules() {
 }
 
 #[test]
+fn a_48_hour_lease_renews_in_its_last_day_not_on_every_scan() {
+    // Catches (decider, 10 Nov 2026: 48-hour leases): renewing whenever less than two
+    // days are left, so a 48-hour lease asks the service again every ten minutes.
+    let s = setup("renew-window");
+    let exp = unix_now() + 2 * DAY;
+    ready(&s, b"pro build", exp);
+    let renew = |at: u64| match decide(&s.account, &s.keys, at) {
+        Decision::Pro { renew, .. } => renew,
+        other => panic!("expected Pro, got {other:?}"),
+    };
+    assert!(!renew(exp - 2 * DAY + 3600), "47 hours left: no renewal yet");
+    assert!(!renew(exp - DAY - 60), "just over a day left: still none");
+    assert!(renew(exp - DAY + 60), "under a day left: renew");
+    assert!(renew(exp - 3600), "last hour: renew");
+}
+
+#[test]
 fn an_unknown_lease_key_is_refetched_once() {
     // Catches: a lease-key rotation breaking renewals, or a lease from an unpublished key being accepted.
     let s = setup("unknown-kid");
