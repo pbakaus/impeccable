@@ -39,7 +39,7 @@ export const CLOSE_MARKER = '<!-- impeccable-sheriff:auto-close -->';
 const DEFAULT_MAINTAINERS = ['pbakaus'];
 const DEFAULT_REGULAR_CONTRIBUTORS = ['pbakaus', 'abdulwahabone'];
 const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
-// Authors whose PRs the sheriff labels but never warns or closes, even with
+// Authors whose PRs the sheriff labels but never marks stale, warns or closes, even with
 // --auto-close-regulars. The decider approved their PRs without an issue first.
 const DEFAULT_NEVER_CLOSE_AUTHORS = ['mvanhorn'];
 const DEFAULT_TRUSTED_MARKER_AUTHORS = ['github-actions', 'github-actions[bot]'];
@@ -280,7 +280,8 @@ export function evaluatePullRequest(pr, options = {}) {
     if (blocker.label) desiredLabels.add(blocker.label);
   }
 
-  const staleEligible = contributorActionRequired && waitingDays >= warningDays;
+  const neverCloseAuthor = neverCloseAuthors.has(author);
+  const staleEligible = contributorActionRequired && waitingDays >= warningDays && !neverCloseAuthor;
   if (staleEligible) desiredLabels.add('stale');
 
   const warningPostedAt = latestMarkerAt(pr.comments, WARNING_MARKER, trustedMarkerAuthors);
@@ -290,8 +291,7 @@ export function evaluatePullRequest(pr, options = {}) {
   const exemptFromClose = [...labels]
     .some((label) => exemptLabels.has(normalizeLabelName(label)));
   const regularContributor = regularContributors.has(author);
-  const neverCloseAuthor = neverCloseAuthors.has(author);
-  const shouldWarn = staleEligible && !warningAlreadyPosted && !neverCloseAuthor;
+  const shouldWarn = staleEligible && !warningAlreadyPosted;
   const shouldClose = contributorActionRequired
     && waitingDays >= closeDays
     && warningAlreadyPosted

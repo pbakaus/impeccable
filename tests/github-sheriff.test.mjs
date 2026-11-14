@@ -872,6 +872,7 @@ describe('github sheriff', () => {
 
     assert.equal(warnPlan.contributorActionRequired, true);
     assert.ok(warnPlan.labelsToAdd.includes('waiting on contributor'));
+    assert.ok(!warnPlan.desiredLabels.includes('stale'));
     assert.equal(warnPlan.shouldWarn, false);
     assert.equal(warnPlan.shouldClose, false);
     assert.equal(closePlan.shouldClose, false);
