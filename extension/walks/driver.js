@@ -4,6 +4,7 @@
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
+import { seenAs } from './sight.js';
 
 /** What filming a wait needs, and nothing that closes or steers a target. */
 const CDP_METHODS = new Set(['Page.startScreencast', 'Page.stopScreencast', 'Page.screencastFrameAck']);
@@ -221,7 +222,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         asked.catch(() => undefined);
         const shot = await Promise.race([asked, sleep(FILM_SHOT_MS).then(() => null)]);
         if (!shot) continue;
-        const frame = await smaller(shot.data, Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
+        const frame = await smaller(await seenAs(shot.data, 'jpeg', 80), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
         // Taken as the walk was paused or taken over: never sent.
         if (hush || theirs) continue;
@@ -775,7 +776,7 @@ export const ops = {
   // Page.captureScreenshot alone: no Page.bringToFront, so the person's own tab stays in front.
   async screenshot({ format, quality, clip }) {
     const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: false });
-    return { value: { data } };
+    return { value: { data: await seenAs(data, format, quality) } };
   },
 
   async mouse({ action, x, y }) {
