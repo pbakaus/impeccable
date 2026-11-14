@@ -1174,3 +1174,177 @@ fn stale_design_and_foundations_grants_require_current_service_offering() {
         );
     }
 }
+
+/// `login` run from `cwd`; returns what it printed to stderr.
+fn login_in(env: &HashMap<String, String>, cwd: &Path) -> String {
+    let mut child = impeccable(env, cwd, &["login", "--no-browser"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut url)
+        .unwrap();
+    browser(url.trim());
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+#[test]
+fn the_first_sign_in_inside_a_repo_scans_and_adds_it_once() {
+    // Catches: a new sign-in leaving the repository off the account until a second command, and rescans on every sign-in.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.foundations = true;
+    }
+    let env = fake.env("first-signin");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let err = login_in(&env, &root);
+    assert!(err.contains("Added this repository to your account"), "{err}");
+    assert!(err.contains("Find it under Repositories"), "{err}");
+    assert_eq!(scans(&fake).len(), 1);
+    assert_eq!(fake.hits("/cli/v1/foundations"), 1);
+    // Nothing is written into the work tree.
+    assert!(!root.join(".impeccable").exists());
+
+    let again = login_in(&env, &root);
+    assert!(!again.contains("Added this repository"), "{again}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "no rescan on a later sign-in");
+    assert_eq!(fake.hits("/cli/v1/foundations"), 1);
+
+    // From a subdirectory the repository is the same one.
+    login_in(&env, &root.join("sub"));
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+
+    // Forget clears the mark, so the next sign-in adds the repository again.
+    assert!(run(&env, &root, &["health", "forget"]).status.success());
+    assert!(run(&env, &root, &["health", "on"]).status.success());
+    let back = login_in(&env, &root);
+    assert!(back.contains("Added this repository"), "{back}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 2);
+}
+
+#[test]
+fn a_sign_in_outside_a_repo_scans_nothing_and_says_so() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let env = fake.env("first-signin-outside");
+    let err = login_in(&env, Path::new(&env["IMPECCABLE_HOME"]));
+    assert!(err.contains("Not in a repository, so nothing was scanned"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn a_sign_in_under_ci_or_with_sync_off_scans_nothing() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let env = fake.env("first-signin-ci");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let mut ci = env.clone();
+    ci.insert("CI".into(), "true".into());
+    let err = login_in(&ci, &root);
+    assert!(!err.contains("Scanning"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+    assert!(run(&env, &root, &["health", "off"]).status.success());
+    let err = login_in(&env, &root);
+    assert!(!err.contains("Scanning"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn a_failed_upload_keeps_the_sign_in_and_tries_again_next_time() {
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let route = ("POST".to_string(), "/cli/v1/health/scans".to_string());
+    fake.knobs.lock().unwrap().routes.insert(route.clone(), (500, vec![], vec![]));
+    let env = fake.env("first-signin-fail");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let err = login_in(&env, &root);
+    assert!(err.contains("couldn't add it to your account just now"), "{err}");
+    fake.knobs.lock().unwrap().routes.remove(&route);
+    let err = login_in(&env, &root);
+    assert!(err.contains("Added this repository"), "{err}");
+}
+
+#[test]
+fn a_sign_in_the_service_gave_no_recording_scope_scans_nothing() {
+    // Catches: scanning a whole repository for an upload the grant can't make.
+    let fake = Fake::start();
+    let env = fake.env("first-signin-noscope");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let err = login_in(&env, &root);
+    assert!(!err.contains("Scanning") && !err.contains("Not in a repository"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn a_repo_already_added_by_detect_is_not_scanned_again_at_sign_in() {
+    // Catches: an existing user's repository being rescanned on their next sign-in.
+    let (fake, env) = signed_in("first-signin-after-detect");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    let err = login_in(&env, &root);
+    assert!(!err.contains("Scanning"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+}
+
+#[test]
+fn a_telemetry_opt_out_still_gets_the_sign_in_scan_and_is_told_what_was_sent() {
+    // Signing in is the consent for this one scan; the line says what left the machine.
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let mut env = fake.env("first-signin-dnt");
+    env.insert("DO_NOT_TRACK".into(), "1".into());
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let err = login_in(&env, &root);
+    assert!(err.contains("Sent its name, finding counts and foundations checks, never your code or file names."), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    // Later scans still honor the opt-out.
+    run(&env, &root, &["detect", "--json", "."]);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+}
+
+#[test]
+fn the_sign_in_scan_leaves_design_md_to_detect() {
+    // Catches: file contents uploading during sign-in with their one-time notice swallowed.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.design = true;
+    }
+    let env = fake.env("first-signin-design");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
+    login_in(&env, &root);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    assert_eq!(fake.hits("/cli/v1/design"), 0);
+    let out = run(&env, &root, &["detect", "."]);
+    assert_eq!(fake.hits("/cli/v1/design"), 1);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Uploaded your DESIGN.md"));
+}
+
+#[test]
+fn foundations_alone_landing_counts_as_added() {
+    // The foundations request is the one that founds the city.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.foundations = true;
+        k.routes.insert(("POST".into(), "/cli/v1/health/scans".into()), (500, vec![], vec![]));
+    }
+    let env = fake.env("first-signin-foundations");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    let err = login_in(&env, &root);
+    assert!(err.contains("Added this repository"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/foundations"), 1);
+    fake.knobs.lock().unwrap().routes.clear();
+    login_in(&env, &root);
+    assert_eq!(fake.hits("/cli/v1/foundations"), 1, "marked, no rescan");
+}

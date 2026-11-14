@@ -73,6 +73,16 @@ pub struct Scan {
 /// keychain, git or the network). `CI`, a telemetry opt-out in the working
 /// directory, sync off (or an unreadable `health.json`) or no sign-in: no.
 pub fn wanted(io: &Io) -> bool {
+    if !wanted_at_sign_in(io) {
+        return false;
+    }
+    let cwd = io.cwd.to_string_lossy();
+    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+}
+
+/// [`wanted`] without the telemetry opt-out, which a sign-in's one scan of
+/// its repository doesn't need: signing in is the consent for it.
+pub fn wanted_at_sign_in(io: &Io) -> bool {
     if !io.env.get("CI").is_none_or(|v| v.is_empty()) {
         return false;
     }
@@ -88,8 +98,7 @@ pub fn wanted(io: &Io) -> bool {
     {
         return false;
     }
-    let cwd = io.cwd.to_string_lossy();
-    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+    true
 }
 
 /// Whether the signed-in grant includes foundations consent, from the saved
@@ -104,25 +113,75 @@ pub fn foundations_wanted(io: &Io) -> bool {
         .is_some_and(|s| s.signed_in && s.foundations)
 }
 
+/// Whether the saved grant lets a scan add a repository to the account:
+/// `health:write` or foundations consent. From the saved sign-in state
+/// alone, so a sign-in the service gave neither scope never scans.
+pub fn can_record(io: &Io) -> bool {
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    crate::store::Store::new(&account).state().is_some_and(|s| {
+        s.signed_in && (s.foundations || s.scopes.iter().any(|x| x == crate::oauth::HEALTH_SCOPE))
+    })
+}
+
+/// What [`after_scan`] got the service to record.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Synced {
+    /// The foundations states landed, which also founds a Pro or Team
+    /// city and records the repository.
+    pub foundations: bool,
+    /// The health counts landed, which records the repository too.
+    pub health: bool,
+}
+
+impl Synced {
+    /// Whether the repository is now in the person's account.
+    pub fn recorded(&self) -> bool {
+        self.foundations || self.health
+    }
+}
+
 /// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
 /// and hint off stderr. The caller has checked [`wanted`].
-pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // The scanned root's own config may opt out too (an off anywhere wins).
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
-        return;
+        return Synced::default();
     }
     design::after_scan(io, scan, quiet);
+    upload(io, scan, quiet)
+}
+
+/// The uploads for the one scan a sign-in makes of its repository. Signing
+/// in is the consent for this scan, so a telemetry opt-out doesn't stop it;
+/// DESIGN.md contents are never part of it (the next `detect` syncs them).
+/// The caller has checked [`wanted_at_sign_in`] and [`can_record`].
+pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
+    upload(io, scan, true)
+}
+
+fn upload(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
+    let synced = upload_inner(io, scan, quiet);
+    if synced.recorded() {
+        mark_first_scan(&io.env, &scan.root);
+    }
+    synced
+}
+
+fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
+    let mut synced = Synced::default();
     let Ok(account) = Account::from_env(&io.env) else {
-        return;
+        return synced;
     };
     let Ok(mut session) = Session::load(&account) else {
-        return;
+        return synced;
     };
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
-        return;
+        return synced;
     };
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
-        return;
+        return synced;
     };
     // A token refresh, when one is due, goes through the ordinary sign-in
     // path and client, exactly as `whoami` does: a short timeout there could
@@ -130,13 +189,13 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // A busy sign-in (another command mid-refresh) skips this upload rather
     // than holding detect on the lock.
     let Ok(token) = session.access_token_within(std::time::Duration::ZERO) else {
-        return;
+        return synced;
     };
     // The one-time notice and hint belong to this sign-in on this service.
     let marker = format!("{} {}", account.issuer, session.state.login);
     // `off` or `forget` may have run while the scan did.
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
-        return;
+        return synced;
     }
     if !session.state.taste && !impeccable_context::taste::disabled(&io.env) {
         crate::stale_grant::emit(
@@ -162,11 +221,13 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         if let Some(label) = &repo.label {
             foundation_body["label"] = label.clone().into();
         }
-        let _ = Client::with_deadline(&account, Duration::from_secs(2)).post_json(
-            &format!("{}/cli/v1/foundations", account.issuer),
-            &token,
-            foundation_body,
-        );
+        synced.foundations = Client::with_deadline(&account, Duration::from_secs(2))
+            .post_json(
+                &format!("{}/cli/v1/foundations", account.issuer),
+                &token,
+                foundation_body,
+            )
+            .is_ok();
     } else {
         crate::stale_grant::emit(
             io,
@@ -182,13 +243,14 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // The foundations request may have been in flight when another
     // terminal saved `off` or `forget`. Do not start a second upload then.
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
-        return;
+        return synced;
     }
     // One request, one deadline, no retry: a 401 waits for the next scan.
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
         Ok(_) => {
+            synced.health = true;
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
                 io.err(&format!(
@@ -210,6 +272,42 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             );
         }
         Err(_) => {}
+    }
+    synced
+}
+
+/// The key a first sign-in scan is remembered under: the service and the
+/// repository's opaque key, never its path or remote.
+fn first_scan_key(env: &std::collections::HashMap<String, String>, root: &str) -> Option<String> {
+    let account = Account::from_env(env).ok()?;
+    let repo = Repo::of(root, env)?;
+    Some(hex(&hash(&[&account.issuer, &repo.key])))
+}
+
+/// Whether the repository at `root` (its top level) already had the scan a
+/// sign-in runs, on this service, from this machine. Unknown counts as done,
+/// so a git that can't answer never scans on every sign-in.
+pub fn first_scan_done(env: &std::collections::HashMap<String, String>, root: &str) -> bool {
+    let Some(key) = first_scan_key(env, root) else {
+        return true;
+    };
+    Local::read(env).is_none_or(|l| l.first_scans.contains(&key))
+}
+
+/// The top level of the git work tree `dir` is in, or `None` outside one
+/// (or when git can't answer in time).
+pub fn repo_top(dir: &str) -> Option<String> {
+    git(dir, &["rev-parse", "--show-toplevel"])
+}
+
+/// Remember that the repository at `root` had its sign-in scan.
+pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &str) {
+    if let Some(key) = first_scan_key(env, root) {
+        let _ = Local::update(env, |l| {
+            if !l.first_scans.contains(&key) {
+                l.first_scans.push(key);
+            }
+        });
     }
 }
 
@@ -312,6 +410,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             match result {
                 Ok(_) => {
                     design::forget(io);
+                    // Deleted at the service, so a later sign-in may add them again.
+                    let _ = Local::update(&env, |l| l.first_scans.clear());
                     io.out(&format!(
                         "Design health: deleted everything saved on {}, and turned sync off.\n",
                         account.display_host()
@@ -354,6 +454,8 @@ struct Local {
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
+    /// Opaque keys of the repositories a sign-in already scanned.
+    first_scans: Vec<String>,
 }
 
 impl Local {
@@ -380,6 +482,11 @@ impl Local {
                 .unwrap_or(0),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
+            first_scans: v
+                .get("firstScans")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
+                .unwrap_or_default(),
         })
     }
     fn sync(&self) -> bool {
@@ -440,6 +547,9 @@ impl Local {
         }
         if let Some(h) = local.hinted {
             m.insert("hinted".into(), h.into());
+        }
+        if !local.first_scans.is_empty() {
+            m.insert("firstScans".into(), local.first_scans.into());
         }
         let saved = crate::store::write_private(&path, Value::Object(m).to_string().as_bytes());
         drop(lock);
