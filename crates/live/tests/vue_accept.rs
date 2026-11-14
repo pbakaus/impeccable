@@ -538,23 +538,29 @@ fn audit_vue_scaffold_rejects_incompatible_existing_session() {
 }
 
 fn wrap(fixture: &Fixture) -> (i32, Value) {
+    wrap_mode(fixture, true)
+}
+
+fn wrap_mode(fixture: &Fixture, deferred: bool) -> (i32, Value) {
     let env = HashMap::from([("IMPECCABLE_LIVE_VUE_COMPONENT".into(), "1".into())]);
     let (mut io, cap) = Io::captured("", fixture.0.clone(), env);
+    let mut args = vec![
+        "--id",
+        "ab12cd34",
+        "--count",
+        "1",
+        "--file",
+        "StatusCard.vue",
+        "--classes",
+        "card",
+        "--tag",
+        "section",
+    ];
+    if deferred {
+        args.push("--defer-source-write");
+    }
     let code = impeccable_live::live_wrap::run(
-        &[
-            "--id",
-            "ab12cd34",
-            "--count",
-            "1",
-            "--file",
-            "StatusCard.vue",
-            "--classes",
-            "card",
-            "--tag",
-            "section",
-            "--defer-source-write",
-        ]
-        .map(str::to_owned),
+        &args.into_iter().map(str::to_owned).collect::<Vec<_>>(),
         &mut io,
     );
     let text = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
@@ -647,4 +653,38 @@ fn vue_missing_compiler_uses_normal_preview_and_preserves_source() {
     assert!(block.contains("@click=\"increment\""));
     assert!(block.contains("{{ label }}: {{ count }}"));
     assert_eq!(fixture.source(), SOURCE);
+}
+
+#[test]
+fn vue_missing_compiler_fallback_can_publish_and_accept_an_ordinary_variant() {
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules")).unwrap();
+    let (code, result) = wrap_mode(&fixture, false);
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(
+        result["previewFallback"]["from"], "vue-component",
+        "{result}"
+    );
+    let wrapped = fixture.source();
+    assert!(wrapped.contains("data-impeccable-variants=\"ab12cd34\""));
+    let marker = "<!-- Variants: insert below this line -->";
+    assert!(wrapped.contains(marker), "{wrapped}");
+    fs::write(fixture.0.join("StatusCard.vue"), wrapped.replace(marker,
+        &format!("{marker}\n<div data-impeccable-variant=\"1\"><section class=\"card chosen\">ordinary preview</section></div>"))).unwrap();
+    let (code, accepted) = fixture.accept("1");
+    assert_eq!(code, 0, "{accepted}");
+    assert_eq!(accepted["handled"], true, "{accepted}");
+    assert_ne!(accepted["mode"], "error", "{accepted}");
+    let source = fixture.source();
+    assert!(source.contains("ordinary preview"), "{source}");
+    assert!(!source.contains("data-impeccable-"), "{source}");
+    assert!(!source.contains("impeccable-variants-"), "{source}");
+    assert_eq!(
+        source.split("<template>").next(),
+        SOURCE.split("<template>").next()
+    );
+    assert_eq!(
+        source.split("<style scoped>").nth(1),
+        SOURCE.split("<style scoped>").nth(1)
+    );
 }
