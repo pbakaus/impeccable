@@ -694,3 +694,219 @@ fn vue_missing_compiler_fallback_can_publish_and_accept_an_ordinary_variant() {
         SOURCE.split("<style scoped>").nth(1)
     );
 }
+
+fn replace_fixture_markup(fixture: &Fixture, markup: &str) {
+    let file = fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34/manifest.json");
+    let mut manifest: Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+    manifest["originalMarkup"] = json!(markup);
+    fs::write(file, manifest.to_string()).unwrap();
+}
+
+#[test]
+fn review_vue_preserves_native_behavior_attributes() {
+    if !compiler_configured() {
+        return;
+    }
+    let markup = "  <section class=\"card\" @click=\"increment\">\n    <form action=\"/submit\" method=\"post\"><input type=\"checkbox\" name=\"consent\" value=\"yes\" required v-model=\"enabled\" /></form>\n  </section>";
+    let source = SOURCE.replace(MARKUP, markup).replace(
+        "const count = ref(0);",
+        "const count = ref(0); const enabled = ref(false);",
+    );
+    for (from, to) in [
+        ("type=\"checkbox\"", "type=\"text\""),
+        ("name=\"consent\"", "name=\"other\""),
+        ("value=\"yes\"", "value=\"no\""),
+        ("action=\"/submit\"", "action=\"/other\""),
+        ("method=\"post\"", "method=\"get\""),
+        (" required", ""),
+    ] {
+        let selected = variant("scoped").replace(MARKUP, &markup.replace(from, to));
+        let fixture = Fixture::new(&source, &selected);
+        replace_fixture_markup(&fixture, markup);
+        let (_, result) = fixture.accept("1");
+        assert_eq!(result["mode"], "error", "changed {from}: {result}");
+        assert_eq!(fixture.source(), source);
+    }
+}
+
+#[test]
+fn review_vue_rejects_nested_rules_and_keeps_top_level_media() {
+    if !compiler_configured() {
+        return;
+    }
+    for css in [
+        ".card { :deep(.child) { color: red } }",
+        ".card { ::v-global(body) { color: red } }",
+        ".card { @media (min-width: 1px) { :global(body) { color: red } } }",
+    ] {
+        let selected = format!("<template>\n{MARKUP}\n</template><style scoped>{css}</style>");
+        let fixture = Fixture::new(SOURCE, &selected);
+        let (_, result) = fixture.accept("1");
+        assert_eq!(result["mode"], "error", "nested CSS accepted: {result}");
+        assert_eq!(fixture.source(), SOURCE);
+    }
+    let selected = format!("<template>\n{MARKUP}\n</template><style scoped>@media (min-width: 1px) {{ .card {{ color: red; }} }}</style>");
+    let fixture = Fixture::new(SOURCE, &selected);
+    let (_, result) = fixture.accept("1");
+    assert_eq!(result["handled"], true, "{result}");
+}
+
+#[test]
+fn review_vue_padded_variants_use_canonical_parameter_defaults() {
+    if !compiler_configured() {
+        return;
+    }
+    for number in ["01", "001"] {
+        for values in ["{}", "{\"space\":23,\"face\":\"serif\",\"bold\":true}"] {
+            let selected = variant("scoped").replace("</style>", ".card[data-p-face=\"serif\"] { font-family: serif; }\n.card[data-p-bold] { font-weight: 700; }\n</style>");
+            let fixture = Fixture::new(SOURCE, &selected);
+            fs::write(
+                fixture
+                    .0
+                    .join("node_modules/.impeccable-live/ab12cd34/params.json"),
+                json!({"1":[
+                    {"id":"space","kind":"range","default":8},
+                    {"id":"face","kind":"steps","default":"serif"},
+                    {"id":"bold","kind":"toggle","default":true}
+                ]})
+                .to_string(),
+            )
+            .unwrap();
+            let (_, result) = fixture.accept_params(number, values);
+            assert_eq!(result["handled"], true, "{number}: {result}");
+            let source = fixture.source();
+            assert!(
+                source.contains(if values == "{}" {
+                    "calc(8 * 1px)"
+                } else {
+                    "calc(23 * 1px)"
+                }),
+                "{source}"
+            );
+            assert!(source.contains("font-family: serif"), "{source}");
+            assert!(source.contains("font-weight: 700"), "{source}");
+            assert!(!source.contains("data-p-"), "{source}");
+        }
+    }
+}
+
+fn link_directory(target: &std::path::Path, link: &std::path::Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(link.to_string_lossy().replace('/', "\\"))
+            .arg(target.to_string_lossy().replace('/', "\\"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+fn discard(fixture: &Fixture) -> Value {
+    let (mut io, cap) = Io::captured("", fixture.0.clone(), HashMap::new());
+    live_accept::run(
+        &["--id", "ab12cd34", "--discard"].map(str::to_owned),
+        &mut io,
+    );
+    serde_json::from_slice(&cap.stdout.borrow()).unwrap()
+}
+
+#[test]
+fn review_vue_discard_rejects_parent_alias_without_deleting_data() {
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    let root = fixture.0.join("node_modules/.impeccable-live");
+    let target = fixture.0.join("components");
+    fs::rename(&root, &target).unwrap();
+    fs::write(target.join("ab12cd34/user.txt"), "unrelated data").unwrap();
+    link_directory(&target, &root);
+    let result = discard(&fixture);
+    assert!(
+        target.join("ab12cd34/user.txt").exists(),
+        "discard deleted unrelated data: {result}"
+    );
+    assert_eq!(result["mode"], "error", "{result}");
+    assert_eq!(fixture.source(), SOURCE);
+}
+
+#[test]
+fn review_vue_discard_rejects_session_alias_without_deleting_data() {
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    let session = fixture.0.join("node_modules/.impeccable-live/ab12cd34");
+    let target = fixture.0.join("components");
+    fs::rename(&session, &target).unwrap();
+    fs::write(target.join("user.txt"), "unrelated data").unwrap();
+    link_directory(&target, &session);
+    let result = discard(&fixture);
+    assert_eq!(
+        fs::read_to_string(target.join("user.txt")).unwrap(),
+        "unrelated data"
+    );
+    assert_eq!(result["mode"], "error", "{result}");
+    assert_eq!(fixture.source(), SOURCE);
+}
+
+#[test]
+fn review_vue_compiler_resolves_from_app_root_in_another_directory() {
+    if !compiler_configured() {
+        return;
+    }
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    assert_ne!(std::env::current_dir().unwrap(), fixture.0);
+    let parsed = impeccable_live::vue_component::analyze(
+        SOURCE,
+        "StatusCard.vue",
+        fixture.0.to_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(parsed["ok"], true);
+    assert!(parsed["bindings"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("count")));
+}
+
+#[test]
+fn review_vue_object_writing_events_use_ordinary_preview() {
+    if !compiler_configured() {
+        return;
+    }
+    for event in [
+        "form.count++",
+        "form.count = 2",
+        "form.items.push(1)",
+        "() => form.count++",
+        "Object.assign(form, { count: 2 })",
+    ] {
+        let source = SOURCE
+            .replace("import { ref }", "import { ref, reactive }")
+            .replace(
+                "const count = ref(0);",
+                "const count = ref(0); const form = reactive({ count: 0, items: [] });",
+            )
+            .replace("@click=\"increment\"", &format!("@click=\"{event}\""));
+        let fixture = Fixture::new(&source, &variant("scoped"));
+        fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+        let (code, result) = wrap(&fixture);
+        assert_eq!(code, 0, "{event}: {result}");
+        assert_eq!(
+            result["previewFallback"]["from"], "vue-component",
+            "{event}: {result}"
+        );
+        assert!(result["wrapperBlock"].as_str().unwrap().contains(event));
+        assert_eq!(fixture.source(), source);
+    }
+    let source = SOURCE.replace("@click=\"increment\"", "@click=\"increment()\"");
+    let fixture = Fixture::new(&source, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+    let (_, result) = wrap(&fixture);
+    assert_eq!(result["previewMode"], "vue-component", "{result}");
+}
