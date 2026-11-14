@@ -204,7 +204,13 @@ function hear() {
   const heard = listen(Speech, {
     base: pre.task,
     lang: navigator.language || 'en-US',
-    onText: (text) => { pre.task = text; const box = app.querySelector('textarea.text'); if (box) box.value = text; },
+    // The box holds 2000 characters, as typing does: a longer talk stops there and says so, rather than going on unseen.
+    onText: (text) => {
+      pre.task = text.slice(0, 2000);
+      const box = app.querySelector('textarea.text');
+      if (box) box.value = pre.task;
+      if (text.length > 2000 && voice) { pre.note = COPY.voice.full; voice.stop(); }
+    },
     onEnd: (error) => { ended = true; voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
   });
   // A recognizer that failed to start has already ended: keep no dead handle, or the button stays pressed.
