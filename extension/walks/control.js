@@ -70,7 +70,7 @@ async function clear(name) {
  * with a navigation, which a sign-in on that page pauses. Letting go of the film passes through a pause, as `open`,
  * `close` and the panel's ops do.
  */
-const ACTS = new Set(['mouse', 'keyboard']);
+const ACTS = new Set(['mouse', 'keyboard', 'upload']);
 const overtaken = () => fail('Paused', 'the journey was paused before this was done; look again');
 
 /* ------------------------------ asking the person first ------------------------------ */
