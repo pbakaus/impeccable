@@ -1731,6 +1731,33 @@ impl<'a> Page<'a> {
         width: f64,
         height: f64,
     ) -> CdpResult<String> {
+        let beyond = !self.attached;
+        self.screenshot_clip_with(x, y, width, height, beyond)
+    }
+
+    /// [`Page::screenshot_clip`] for a clip inside the viewport, read off the
+    /// surface as it is. A beyond-viewport capture lays the page out again at
+    /// the clip's size, and that relayout skips a running view transition
+    /// (`document.activeViewTransition` ends while its animations are
+    /// paused), so a motion capture must never take one.
+    pub fn screenshot_clip_in_viewport(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> CdpResult<String> {
+        self.screenshot_clip_with(x, y, width, height, false)
+    }
+
+    fn screenshot_clip_with(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        beyond: bool,
+    ) -> CdpResult<String> {
         // Page.screenshot: roundRectangle(normalizeRectangle(clip)).
         let (x, width) = if width < 0.0 {
             (x + width, -width)
@@ -1754,7 +1781,7 @@ impl<'a> Page<'a> {
                 // A beyond-viewport capture lays the page out at the size of
                 // the clip for the shot, which an attached app's window would
                 // show: it reads what is on screen instead.
-                "captureBeyondViewport": !self.attached,
+                "captureBeyondViewport": beyond,
             }),
             timeout,
         )?;

@@ -275,7 +275,7 @@ fn sample(
     if screenshots {
         capture
             .images
-            .push(page.screenshot_clip(clip.0, clip.1, clip.2, clip.3)?);
+            .push(page.screenshot_clip_in_viewport(clip.0, clip.1, clip.2, clip.3)?);
     }
     Ok(())
 }
