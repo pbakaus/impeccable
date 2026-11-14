@@ -714,12 +714,13 @@ fn compute_styles(
                 let hv = hover_values.get_or_insert_with(|| values.clone());
                 hv.insert(prop.to_string(), next);
             }
-            // The image the hover paints and how it is tiled, so the hover
-            // contrast check reads the hover's surface: a
-            // `:hover { background: none }` that removes a resting image, or
-            // a hover that shrinks a gradient to an underline, changes what
-            // the text sits on even when no color changes.
-            for prop in ["backgroundImage", "backgroundSize", "backgroundRepeat"] {
+            // The image the hover paints, so the hover contrast check reads
+            // the hover's surface: a `:hover { background: none }` that
+            // removes a resting image changes what the text sits on even when
+            // no color changes. (`background-size` and `background-repeat`
+            // longhands are not in the static cascade at all; tiling is read
+            // from the shorthand text that `backgroundImage` carries.)
+            for prop in ["backgroundImage"] {
                 let Some(decl) = hover_map.get(prop) else {
                     continue;
                 };

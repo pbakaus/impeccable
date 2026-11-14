@@ -425,3 +425,20 @@ div.card:hover { background: none; }
         "{findings:#?}"
     );
 }
+
+#[test]
+fn a_hover_photo_over_a_resting_icon_is_not_read_past() {
+    // The resting icon is a small SVG; the hover swaps in a full photo, so
+    // the hover text sits on pixels this engine cannot read and is not
+    // scored against the page.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.card { background: #111111 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3C/svg%3E") no-repeat right center; color: #ffffff; font-size: 16px; }
+div.card:hover { background: url(dark-photo.jpg) center / cover no-repeat; color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        !findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
