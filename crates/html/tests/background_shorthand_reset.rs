@@ -458,3 +458,14 @@ div.card:hover { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3
         "{findings:#?}"
     );
 }
+
+#[test]
+fn an_inline_shorthand_after_an_inline_color_wins() {
+    // The later inline `background: url(...)` resets the inline
+    // `background-color`, so the dark text is not scored against the #111111
+    // the shorthand removed.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head></head><body style="background:#ffffff"><div style="background-color:#111111; background:url(photo.jpg); color:#222222; font-size:16px">Read the full report</div></body></html>"#,
+    );
+    assert!(findings.is_empty(), "{findings:#?}");
+}
