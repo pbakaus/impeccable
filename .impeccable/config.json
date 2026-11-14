@@ -3,6 +3,7 @@
     "ignoreRules": [],
     "ignoreFiles": [
       "tests/fixtures/**",
+      "crates/*/tests/fixtures/**",
       "tests/framework-fixtures/**",
       "tests/detect-antipatterns.test.js"
     ],
