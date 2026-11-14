@@ -138,9 +138,10 @@ function executedUpdateCommands(trace) {
 // heuristic score (in a tool call's input or in the agent's own text).
 const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
 const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-// A score: an N/4 mark, a /40 or /32 total, or a bare 0-4 table cell.
+// A score: an N/4 mark, a /40 or /32 total, or a 0-4 or n/a cell right after a
+// named heuristic (the template's # column and its ? cells do not count).
 const scoresHeuristics = (text) => /heuristic/i.test(text)
-  && (/\b\d{1,2}\s*\/\s*(?:4|40|32)\b/.test(text) || /\|\s*(?:[0-4]|n\/a)\s*\|/i.test(text));
+  && (/\b\d{1,2}\s*\/\s*(?:4|40|32)\b/.test(text) || /\|[^|\n]*[a-z][^|\n]*\|\s*(?:[0-4]|n\/a)\s*\|/i.test(text));
 const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
   || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''))
   || scoresHeuristics(JSON.stringify(call.input ?? ''));
@@ -168,6 +169,8 @@ it('scenario 24 helpers: a part read after scoring or after the first write is a
   const table = { text: '| # | Heuristic | Score |\n|---|---|---|\n| 1 | Visibility of system status | 3 |', callsBefore: 0 };
   assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [table] }, 'critique-rubric.md'));
   assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [{ text: 'Heuristics total: 31/40', callsBefore: 0 }] }, 'critique-rubric.md'));
+  const template = { text: '| # | Heuristic | Score | Key Issue |\n|---|---|---|---|\n| 1 | Visibility of System Status | ? | |', callsBefore: 0 };
+  assert.ok(partLoadedInTime({ toolCalls: [read], textSteps: [template] }, 'critique-rubric.md'));
 });
 
 for (const modelId of resolveModelList()) {
