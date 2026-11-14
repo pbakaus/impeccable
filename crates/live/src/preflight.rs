@@ -125,7 +125,7 @@ pub struct PreflightCommand {
 }
 
 /// JS: buildGenerationPreflight(event, scriptsDir, { cache }). None when the
-/// event is not a generate with an id, or carries neither id nor classes
+/// event is not a generate with an id, or carries no id, classes, or tag
 /// (`insufficient_locator`).
 pub fn build_generation_preflight(
     event: &Map<String, Value>,
@@ -139,7 +139,7 @@ pub fn build_generation_preflight(
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())?;
     let (is_insert, target) = event_target(event);
-    if target.element_id.is_none() && target.classes.is_none() {
+    if target.element_id.is_none() && target.classes.is_none() && target.tag.is_none() {
         return None;
     }
     let count = match event.get("count") {
@@ -232,6 +232,25 @@ mod tests {
     fn sig(element: Value) -> String {
         let event = json!({ "mode": "replace", "pageUrl": "/a", "element": element });
         target_signature(event.as_object().unwrap())
+    }
+
+    #[test]
+    fn bare_element_builds_wrap_and_insert_preflight() {
+        for insert in [false, true] {
+            let target = json!({ "tagName": "h1", "textContent": "Harbor Coffee", "id": "", "classes": [] });
+            let mut event = json!({ "type": "generate", "id": "ab12cd34", "element": target });
+            if insert {
+                event["mode"] = json!("insert");
+                event["insert"] = json!({ "anchor": event["element"].clone(), "position": "after" });
+            }
+            let command = build_generation_preflight(event.as_object().unwrap(), None).unwrap();
+            assert_eq!(command.verb, if insert { "live-insert" } else { "live-wrap" });
+            assert!(command.args.windows(2).any(|a| a == ["--tag", "h1"]));
+            assert!(command.args.windows(2).any(|a| a == ["--text", "Harbor Coffee"]));
+            assert!(!command.args.iter().any(|a| a == "--element-id" || a == "--classes"));
+        }
+        let empty = json!({ "type": "generate", "id": "ab12cd34", "element": {} });
+        assert!(build_generation_preflight(empty.as_object().unwrap(), None).is_none());
     }
 
     #[test]

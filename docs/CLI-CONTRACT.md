@@ -525,10 +525,11 @@ retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNI
 #### `concept-seed.mjs` -> `node {{scripts_path}}/concept-seed.mjs`
 
 - **Invoked from**: `reference/new-work.md:37` "`node {{scripts_path}}/concept-seed.mjs --scope surface --mode <mode>`" and `:46` "4. Run `node {{scripts_path}}/concept-seed.mjs --scope direction --mode <mode>` and follow what it prints. No substitute, no skip". Header usage lines: `--scope direction --mode persuade`, `--scope surface --mode operate --from <key>`, `--grain flow`, `--candidate-count 6`, `--from <key> --reroll 1 [--register bolder]`, `--chosen <challenger-id> --kind challenger --from <key> --scope direction`, `--kind assigned --from <key> --scope direction`.
-- **Args** (each read as `args[idx+1]` after `indexOf`): `--scope` (`surface` default | `direction`), `--from <key>` (default `IMPECCABLE_CONCEPT_SEED` env or `crypto.randomBytes(4).toString('hex')`), `--reroll <n>` (Number, default 0), `--register safer|bolder`, `--mode persuade|operate|read|experience`, `--grain product|flow|view|region`, `--platform web|ios|android`, `--candidate-count 5..7` (default 7), `--chosen <id>`, `--kind assigned|pick|challenger|canon`.
+- **Args** (each read as `args[idx+1]` after `indexOf`): `--scope` (`surface` default | `direction`), `--from <key>` (default `IMPECCABLE_CONCEPT_SEED` env or `crypto.randomBytes(4).toString('hex')`), `--reroll <n>` (Number, default 0), `--register safer|bolder`, `--replace-world` (flag, direction only; binary only), `--mode persuade|operate|read|experience`, `--grain product|flow|view|region`, `--platform web|ios|android`, `--candidate-count 5..7` (default 7), `--chosen <id>`, `--kind assigned|pick|challenger|canon`.
 - **Env**: `IMPECCABLE_CONCEPT_SEED`, `IMPECCABLE_CATALOG_DIR` (default = script dir; local catalog files `concept-ingredients.json`, `concept-reviews.json`, `composition-ingredients.json`, `composition-reviews.json`; invalid/missing → treated as absent), `IMPECCABLE_API_URL` (default `https://impeccable.style/api`, trailing `/` stripped), `IMPECCABLE_API_TIMEOUT` (ms, default 4000, one shared deadline for all API calls in the run), `IMPECCABLE_NO_TELEMETRY`, `DO_NOT_TRACK`, `IMPECCABLE_CARD_BASE` (default `https://impeccable.style/worlds/cards`), `IMPECCABLE_COMPOSITIONS=1` (renders composition block; otherwise compositions are dealt but not printed).
-- **Validation errors** (stderr, `exitCode 1`): `concept-seed: --scope must be direction or surface`; `--reroll must be a non-negative integer`; `--register must be safer or bolder`; `--register steers a re-roll round; pass --reroll <n> with it`; `--register applies to direction rounds only`; `--mode must be persuade, operate, read, or experience`; `--grain must be one of product, flow, view, region`; `--platform must be one of web, ios, android`; `--candidate-count must be an integer from 5 to 7`; `concept-seed: every challenger tier needs at least one approved concept` (local catalog).
+- **Validation errors** (stderr, `exitCode 1`): `concept-seed: --scope must be direction or surface`; `--reroll must be a non-negative integer`; `--register must be safer or bolder`; `--register steers a re-roll round; pass --reroll <n> with it`; `--register applies to direction rounds only`; `--replace-world applies to direction rounds only`; `--mode must be persuade, operate, read, or experience`; `--grain must be one of product, flow, view, region`; `--platform must be one of web, ios, android`; `--candidate-count must be an integer from 5 to 7`; `concept-seed: every challenger tier needs at least one approved concept` (local catalog).
 - **Init gate** (render path only): imports `./context.mjs` `loadContext(cwd)`; if `!hasProduct` → `stdout> NO_PRODUCT_MD: the dice stay in the cup until product truth exists. Complete the init ask round and write PRODUCT.md first (reference/init.md), then re-run this exact command. Challengers fuse their form with facts from PRODUCT.md; without it every direction is ungrounded.\n`, `exit 1`.
+- **Seeded world** (binary only): when DESIGN.md's frontmatter has a `world:` id accepted by the boot's `seeded_world` reader, surface and direction rolls replace the catalog world candidates, palettes and card references with `WORLD: settled (<id>, seeded from the catalog). The structures below are dealt inside it; do not roll, re-pick or replace the world.` (a direction roll appends ` Only when the user asks to replace it, rerun this roll with --replace-world.`) and skip the request that would only fetch them. Every other block is unchanged, except that a `--register bolder` round, whose register deals only foreign worlds, prints `BOLDER REGISTER UNAVAILABLE: ...` before the `RE-ROLL ROUND` line and then runs as a plain re-roll (no register tag, the plain assigned block, the plain restated line); its rerun command keeps `--register bolder`. `--replace-world` lifts the settlement for that direction roll: the catalog challengers return, `WORLD: replacing <id>, seeded from the catalog, at the user's request.` and the note that the documented replacement drops DESIGN.md's `world:` line and the sidecar's `seededFrom` open the authority instructions, and the rerun command carries ` --replace-world` after any `--register`. Without a seeded world the flag changes only the rerun command. A project with its own design system and no seeded world rolls as before, challengers included. With no local catalog and `IMPECCABLE_COMPOSITIONS` off, a seeded roll makes no roll request and its header reads `source: settled`.
 - **Assigned index math**: `unit(salt) = sha256(`${scope}:${salt}:${key}`).readUInt32BE(0)/0xffffffff`; `indexSalt = reroll===0 ? 'index' : `index:reroll-${reroll}``; `buildIndex = 3 + floor(unit(indexSalt)*(candidateCount-2))` (3..candidateCount). Surface scope deals `dealtIndices=[buildIndex]` plus up to 2 more distinct in 1..candidateCount via `unit(`${indexSalt}:deal-${draw}`)` (fills sequentially after 64 draws).
 - **Data resolution**: local catalog → `source:'local'` (challengers via `selectApprovedChallengers`, compositions via `selectApprovedCompositions`, both in `lib/roll-selection.mjs`, hash = Node sha256 hex; `poolRevision` = first 12 hex of sha256 over sorted approved `familyId:id:strength:form:spark:JSON(system):webLeverage` lines); else **roll API** `GET ${API_BASE}/roll?scope=&key=&reroll=[&mode=][&grain=][&platform=]` (`URLSearchParams` order: scope, key, reroll, mode, grain, platform), raced against the shared budget; non-ok, timeout, or `challengers` empty → null; response fields used: `poolRevision, approvedCount, catalogCount, challengers, compositions|stagings|staging`; else **degraded**.
 - **Selection algorithm** (roll-selection): challengers: approved concepts; per `wellTier` in `['graphic','interaction','atmosphere']` (all three must be non-empty), optional `minRating` gate, `mode` gate (`review.allowedModes` absent = all; a tier the gate would empty keeps its full pool, except under a mode with tier quotas, where that tier's quota moves to `graphic` and the tier is not refilled; `graphic` itself always falls back), strength filter (`direction` wants `world|dual`, `surface` wants `composition|dual`; per-tier fallback to full pool). Per-tier quota: `TIER_QUOTAS = { operate: { graphic: 5, interaction: 1, atmosphere: 0 } }`, every other mode (and no mode) 2 per tier. Tier order ranked by digests of `${scope}:${key}:tiers${salt}:${tierId}` desc; a zero-quota tier is skipped without shifting `index`; per tier tickets (`breadth==='niche'` excluded; tickets by rating `{1:1,2:2,3:2}`, default 2) ranked by `${scope}:${key}:challenger-${index}${salt}:${id}#${ticket}`; take `quota` picks in ranked order, each the first concept of a `familyId` not yet picked in that tier, else the next distinct id (at quota 2: first pick + first of a different family) → 6 picks when every tier can fill its quota, fewer on a thin catalog; re-roll round n excludes all earlier picks (fallback to the full tier pool if exhausted; under a quota, when fewer than `quota` unseen concepts remain, deal those first, then top up from the rest of the tier ranked with the same salt); `salt = round===0 ? '' : `:reroll-${round}``. Compositions: approved, non-niche (fallback all), `surface===mode` (empty → none), platform hard filter (`platforms` absent = all), tickets ranked with salt `${scope}:${key}:staging[:reroll-${round}]`, grain-preferred stable partition, distinct `familyId` first then top-up, count 3; `match = {grain, atGrain, grainAvailable, platform, platformExcluded}`.
@@ -1753,7 +1754,7 @@ Browser handling of `done`: for svelte-component sessions → re-read manifest v
 #### 6.3 Agent poll: `GET /poll`
 Query: `token`, `timeout` (ms, default 600000), `leaseMs` (default 30000; live-poll.mjs sends 600000), `types` (comma list filter), `id` (only that session's events; `live-generate` collects its own generate event with `types=generate&id=<sessionId>` and leaves every other session's queue alone; a parked poll keeps the filter). Records `lastPollAt`. If an available (unleased or lease-expired, type-allowed, id-matching) event exists: lease it (see below) and answer 200 with the event JSON. Else park; on timeout answer `{"type":"timeout"}`; on shutdown `{"type":"exit"}`. Selection order: priority 0 `accept|discard|exit`, 1 `manual_edit_apply|steer|carbonize_cleanup`, 2 `generate`, 3 others; then by `seq`. Queue dedupes by (id,type) (mount failures also by variant).
 
-Lease: `leaseUntil = now+leaseMs`; for `generate` events not yet `scaffoldAttempted`: record agent phases `picked_up`, `scaffolding`, run preflight (spawns `live-wrap.mjs`/`live-insert.mjs --defer-source-write …` with 15 s timeout, see 7), then event gets `scaffoldAttempted:true, scaffoldDurationMs, scaffold:{…helper JSON}` or `scaffoldError:'<last stderr line or message ≤500>'` (`insufficient_locator` when neither id nor classes), phase `source_ready`/`scaffold_fallback` `{durationMs, previewMode}`; re-stamp lease; add `generationReadyAt` and phase `generation_ready`; broadcast `agent_polling`. Events without an id (`exit`) are removed from the queue when leased.
+Lease: `leaseUntil = now+leaseMs`; for `generate` events not yet `scaffoldAttempted`: record agent phases `picked_up`, `scaffolding`, run preflight (spawns `live-wrap.mjs`/`live-insert.mjs --defer-source-write …` with 15 s timeout, see 7), then event gets `scaffoldAttempted:true, scaffoldDurationMs, scaffold:{…helper JSON}` or `scaffoldError:'<last stderr line or message ≤500>'` (`insufficient_locator` when the target has no id, no classes and no tag), phase `source_ready`/`scaffold_fallback` `{durationMs, previewMode}`; re-stamp lease; add `generationReadyAt` and phase `generation_ready`; broadcast `agent_polling`. Events without an id (`exit`) are removed from the queue when leased.
 
 Delivered event = the stored browser event (minus nothing; `token` is stripped only in the journal's `pendingEvent`) plus server additions. `live-poll.mjs` adds `_instructions` (see per-script). Types needing an agent reply: `generate, steer, manual_edit_apply, carbonize_cleanup, variant_mount_failed`.
 
@@ -1793,6 +1794,66 @@ Reducer per event type (`updatedAt = entry.ts`):
 - unknown → diagnostic `unknown_event_type`.
 
 #### 7. Wrap / scaffold contract (source-preview path)
+
+When a unique locator match shares its opening or closing line with other
+markup, wrap and insert first isolate its exact byte range in memory. The
+range ends at the matching same-name closing tag (nested tags counted), or
+at the opening tag's end for void and self-closing elements. Existing source
+extension selection is unchanged. Prefix content, with trailing whitespace
+trimmed, gets its own line; the element uses the original indent plus two
+spaces when a prefix precedes it; suffix content gets its own line. Only the
+selected element or anchor is isolated. The normal line-based scaffold then
+uses those lines.
+
+The contents of script, style and textarea are text, not markup: a tag
+inside them is never a candidate and never nests the element around them,
+in the isolation pass and in the line resolver behind it alike, so a locator
+that only matches a JS or CSS string is refused and nothing is written.
+Void names (img, input, link, ...) fold case only in HTML-like files; in
+.jsx, .tsx, .vue, .svelte and .astro a capitalized `<Link>` or `<Input>` is a
+component that keeps its children. A class, id or query locator whose
+first hit in walk order sits on a shared line (a minified copy) while another
+hit stands on lines of its own drops the shared hits: a single surviving
+lone hit wins, several (with or without a `--text` that matches them all)
+refuse as `element_ambiguous`, and a `--text` that matches none refuses the
+same way; it never wraps the minified line whole. A tag-only locator still weighs every
+candidate.
+
+HTML-like sources (including Vue, Svelte, Astro and MDX) refuse splitting
+an element that is, or is inside, pre, textarea, script or style, or whose
+boundary is next to non-whitespace text. Each boundary must independently
+have only whitespace to the line's edge, have whitespace immediately next
+to the element, or have both the selected element and the nearest neighboring
+tag on that line in the fixed block list. A direct body child alone is not
+sufficient. The fixed block list is address, article, aside, blockquote,
+details, dialog, div, dl, fieldset, figcaption, figure, footer, form, h1-h6,
+header, hgroup, hr, li, main, nav, ol, p, section, table, ul, body. Block names
+are case-insensitive in HTML and case-sensitive in component-capable files.
+JSX isolation is limited to .jsx and .tsx, where the lexer and scaffold
+classifications agree. The .js, .mjs, .cjs, .ts, .mts and .cts module
+extensions do not isolate; shared-line matches fall back to the refusal
+below without changing source. The .jsx and .tsx extensions require,
+outside those protected elements,
+that the prefix contain only whitespace or end immediately in `>` or `}`,
+and that the suffix contain only whitespace or start immediately with `<`
+or `{`. Adjacent text, spaces separating markup, or JS tokens such as
+`return` fail this guard. Locator strength is ranked across files before
+text or shared-line filtering: an id match outranks a class or tag match,
+so a stronger shared-line hit cannot be discarded in favor of a weaker
+match in another file. Unsafe splits return stderr JSON with
+`error:'element_ambiguous', fallback:'agent-driven', reason:'shared_line', file, candidates:[{startLine,endLine}], hint`
+and exit 1 without writing source. The line resolver's remaining tag-only
+shared-boundary refusals use the same fallback. With `--defer-source-write`,
+`wrapperBlock` includes the isolated prefix and suffix as well as the scaffold,
+and replacement line numbers refer to the original unsplit source. Applying
+that single replacement produces the same content as an immediate write;
+scaffold line numbers refer to that resulting content. Wrap and insert still
+emit `error:'element_inline', fallback:'agent-driven', file, hint` and exit 1
+without writing source when Svelte component preview would require a split,
+because its retained anchor line numbers describe unchanged source. Their
+other `element_inline_error` call sites handle `Resolution::Inline`, which
+no current resolver constructs. Ordinary deferred scaffolds keep their
+existing contract.
 
 Wrapper block for HTML-comment files (indent = picked element's leading whitespace; original reindented under `indent+'    '` preserving relative depth):
 ```
@@ -1869,6 +1930,17 @@ Sweeps: shutdown/exit removes whole `node_modules/.impeccable-live` and legacy `
 
 #### 9. Accept pipeline (`live-accept.mjs`, `live/accept-css.mjs`, `live/accept-verify.mjs`)
 
+Before any source range replacement or removal, accept and discard require
+variant and carbonize marker comments for the session to occupy their own
+lines, with only surrounding whitespace. HTML and JSX comments are accepted.
+A shared marker line returns stdout
+`{"handled":false,"mode":"error","error":"markers_share_line","file":...,"hint":"Put each marker comment on its own line, then accept again."}`
+and exits 0 (like `source_locked`, so live-poll reads it and the poll
+instructions name the repair) without changing source or writing a receipt. This is checked
+again on the source reread under the mutation lock. Carbonize markers are
+also searched when no variant start marker exists. Normal standalone-marker
+wrappers keep the existing behavior.
+
 Order in `live-accept.mjs`: receipt check → find `impeccable-variants-start <id>` in a template file (skip node_modules/.git/.impeccable/dist/build) → else find svelte manifest → neither: stdout `{"handled":false,"error":"Session markers not found for id: <id>"}` exit 0.
 
 **Svelte-component accept** (under source lock `accept:<id>` on the route file, wait 1000 ms): read `v<N>.svelte` (`{handled:false, error:'Variant N not found', …}`), split script/markup/style; insert manifests → `inlineSvelteComponentInsertAccept` (empty → `Accepted Svelte insert variant is empty`; `data-impeccable-*` attrs → `Accepted Svelte insert variant contains preview-only data-impeccable attributes`; splice markup at `insertLine` reindented, bake+merge CSS). Replace: merge original root's attributes onto variant root (class union, missing attrs appended); restore props→expressions via AST (contract v2) or textual swap (v1); replace source lines `[sourceStartLine, sourceEndLine]` with reindented markup; collect pre-existing unused selectors (compiler warnings `css_unused_selector`); read `params.json[variant]`; sanitize any `data-impeccable-variant`/`@scope`/`:scope` selectors (defensive); `bakeParamValues` (see below); `mergeCssIntoSvelteSource` (reconcile into last `<style>` block, or create one); remove seeded selectors not re-declared and not used by markup outside the replaced region (`superseded`); `pruneUnusedSelectors` (up to 3 compiler passes); postcondition: any pre-accept selector missing that wasn't pruned/superseded → `{handled:false, mode:'error', error:'CSS reconciliation would lose selectors from the existing style block: … . Source not modified; accept the variant manually.'}`; write; remove session dir; `verifyAcceptedSource`. Result `{handled:true, css:{replaced, appended, pruned:[], superseded:[]}, verify:{clean, findings}, file, sourceFile, previewMode:'svelte-component', componentDir, carbonize:false}`. Discard: remove component dir → `{handled:true, file, carbonize:false, previewMode, componentDir}`.
@@ -1936,12 +2008,13 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
   1. Workspace monorepo selection (`resolveTargetSelection`, only when no target, cwd is a workspace/monorepo root with discoverable children): `{ok:false, error:'target_selection_required', targetPath:null, projectRoot, repoRoot, targetCandidates:[{name, path, targetExample, …context summary}], hint:'Ask the user which app Impeccable should use, then rerun live from that child app cwd. Use --target <path> only as a fallback or explicit path diagnostic.', skippedNonUiWorkspaces?}` (the count only when > 0, as in `context`).
   2. `resolveRoots` selection → `{ok:false, error:'target_selection_required', targetCandidates:[{name,path}], hint:'Several apps with a dev-server config exist. Ask the user which one to use, then rerun with --target <path into that app>.'}`.
   3. Missing/unreadable/empty PRODUCT.md or DESIGN.md → `{ok:false, error:'context_missing', missing:['PRODUCT.md'?,'DESIGN.md'?], nextCommand:'init'|'document', targetPath, projectRoot, repoRoot, productPath:rel|null, designPath:rel|null}`. With `--allow-missing-context` the boot continues instead, and only then the success payload gains `contextMissing:[...]` (the same names; `[]` when nothing is missing) and `contextNote` (a sentence telling the agent to extract the identity from the page and never run init or document mid-session; `null` when nothing is missing), with `hasProduct`/`hasDesign` false and `product`/`design` null for the missing ones.
-  4. `writeRootsManifest(roots)`.
+  4. Before writing anything, a missing config with no HTML file in the existing auto-config CSP scan (same depth and excluded directories), no package.json, and no recognized framework signal returns compact `{ok:false,error:"no_page",path:<appRoot>}`, exit 1. It creates no `.impeccable/` directory or roots manifest. Otherwise, `writeRootsManifest(roots)`.
   5. `node live-inject.mjs --check` (cwd appRoot, 15 s): not ok → print that JSON (`{ok:false,error:'config_missing'|'config_invalid',path,message?}` or `{ok:false,error:'check_failed',raw}`) + `targetPath, projectRoot, repoRoot`, exit 0.
+     With `--auto-config` (opt-in on `live`, passed through to `live-inject --check --auto-config`; without it a missing config is reported as before and nothing is written), a missing config is created only if no framework config file (`svelte.config.*`, `nuxt.config.*`, `next.config.*`, `astro.config.*`, `app.config.*`, `remix.config.*`) sits in appRoot, appRoot contains an `index.html` file containing the literal, case-sensitive `</body>` anchor used by injection, the existing live framework resolver selects static HTML or generic Vite (not SvelteKit, Nuxt, Next, Astro, or TanStack Start), and `detect-csp` reports `shape: null`. The exact file content is `{"files":["index.html"],"insertBefore":"</body>","commentSyntax":"html","cspChecked":true}`. The path is the same resolved path used by `config_missing`, including `IMPECCABLE_LIVE_CONFIG` and `--target`. Continue boot after creation; the successful check and boot payloads add `configCreated: true` only when that invocation created the file. Existing configs are never overwritten. Apart from `no_page` above, all other missing-config cases retain the existing payload. With `--dev-url` and a discovered `devUrl`, boot `_instructions` name that URL as the page origin to open. With no discovered URL, they name the first static `pageUrls` entry or tell the agent to start `devCommand` in the background, wait for its printed URL, and run boot again. Without `--dev-url`, the instructions are unchanged.
   6. Reuse server if `server.json` pid alive, else `node live-server.mjs --background`; failure → `{ok:false,error:'server_start_failed'}` exit 1.
   7. `node live-inject.mjs --port P --token T`; not ok → `{ok:false,error:'inject_failed',detail:<json|raw>,serverPort}` exit 1.
   8. Drift scan: `.html` files under `public, src, app, pages` (skipping ignored dirs/dot-dirs) not in resolved files and not user-excluded → `configDrift = {orphans:[≤20], orphanCount, hint:'N HTML file(s) exist but aren\'t in config.files. Consider adding them, or use a glob pattern like "public/**/*.html".'}` else `null`.
-  9. Success: `{ok:true, serverPort, serverToken, pageFiles:[…resolved], liveConfigPath, configDrift, targetPath, projectRoot:appRoot, repoRoot, roots:{manifest}, hasProduct:true, product:<text>, productPath:rel, hasDesign:true, design:<text>, designPath:rel, hasSurfaceBrief, surfaceBrief:<text|null>, surfaceBriefPath:rel|null, _instructions:'Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run node <scripts>/live-poll.mjs immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.'}`. Surface brief resolved from `.impeccable/surfaces` under appRoot, contextRoot, repoRoot (first hit). With `--no-live-bar` the boot POSTs `/live-bar` `{token, hidden:true}` to the (started or reused) helper and the payload carries `liveBarHidden` (true when the helper acknowledged); the helper then hides the overlay's global bar in every tab for its lifetime. With `--dev-url` (and only then) the payload also carries `devUrl`, the origin of the dev server serving this app right now, found by fetching `/` on the candidate origins (`http://127.0.0.1:<p>/` and `http://localhost:<p>/` for p in 5173, 3000, 4321, 8080, 4173, 3001, 5174, 8000, 4200, 5000, 1234, probed in parallel with sub-second timeouts; `IMPECCABLE_DEV_URL_CANDIDATES` replaces the list with a comma-separated one) and keeping the first whose document contains the injected `live.js?token=<serverToken>` tag; `null` when none does. Without either flag the payload and the boot's work are exactly as before: no probe runs and neither key appears.
+  9. Success: `{ok:true, serverPort, serverToken, pageFiles:[…resolved], liveConfigPath, configDrift, targetPath, projectRoot:appRoot, repoRoot, roots:{manifest}, hasProduct:true, product:<text>, productPath:rel, hasDesign:true, design:<text>, designPath:rel, hasSurfaceBrief, surfaceBrief:<text|null>, surfaceBriefPath:rel|null, _instructions:'Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run node <scripts>/live-poll.mjs immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.'}`. Surface brief resolved from `.impeccable/surfaces` under appRoot, contextRoot, repoRoot (first hit). With `--no-live-bar` the boot POSTs `/live-bar` `{token, hidden:true}` to the (started or reused) helper and the payload carries `liveBarHidden` (true when the helper acknowledged); the helper then hides the overlay's global bar in every tab for its lifetime. With `--dev-url` (and only then) the payload also carries `devUrl`, the origin of the dev server serving this app right now, found by fetching `/` on the candidate origins (`http://127.0.0.1:<p>/` and `http://localhost:<p>/` for p in 5173, 3000, 4321, 8080, 4173, 3001, 5174, 8000, 4200, 5000, 1234, probed in parallel with sub-second timeouts; `IMPECCABLE_DEV_URL_CANDIDATES` replaces the list with a comma-separated one) and keeping the first whose document contains the injected `live.js?token=<serverToken>` tag; `null` when none does. Only when `--dev-url` is passed and no server answers, boot checks `appRoot/package.json` for a string-valued `scripts.dev`, then `scripts.start`, then `scripts.serve`. If found, `devCommand` gives the command: `pnpm <script>` when `pnpm-lock.yaml` exists in appRoot or repoRoot, else `yarn <script>` for `yarn.lock`, else `bun run <script>` for `bun.lock` or `bun.lockb`, otherwise `npm run <script>`. The engine never starts the dev server. Only when appRoot has no `package.json` at all is the project treated as static: `pageUrls` lists absolute `file://` URLs for existing `.html`/`.htm` files in `pageFiles` contained under appRoot, in entry order, with path characters percent-encoded (including spaces) and forward slashes (`file:///C:/...` on Windows). Empty `pageUrls` is omitted. If appRoot has a `package.json` but no recognized string-valued startup script (including an unreadable or invalid package file), neither `pageUrls` nor `devCommand` appears and `_instructions` retain the generic app URL text. Neither fallback key appears when a dev server is found or `--dev-url` is absent. Without either flag the payload and the boot's work are exactly as before: no probe runs and neither key appears.
 - Tests: `tests/live-target-context.test.mjs`, `tests/live-roots.test.mjs`, `tests/live-e2e.test.mjs` (`session.liveBoot` for `appDir` fixtures), `tests/live-recovery-commands.test.mjs`.
 
 #### `live-server.mjs` -> `impeccable live-server`
@@ -1985,7 +2058,7 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 
 #### `live-wrap.mjs` -> `impeccable wrap`
 - Invoked from live.md Handle generate step 2 and preflight (`--defer-source-write`).
-- Args: `--id ID` (req), `--count N` (default 3), `--element-id`, `--classes "a,b"` (comma or space separated), `--tag`, `--query`, `--file PATH`, `--text`, `--page-url URL`, `--defer-source-write`, `--target`, `--help`. Both `--flag value` and `--flag=value` forms accepted. Missing id → `Missing --id` exit 1; none of id/classes/query → `Need at least one of: --element-id, --classes, --query` exit 1.
+- Args: `--id ID` (req), `--count N` (default 3), `--element-id`, `--classes "a,b"` (comma or space separated), `--tag`, `--query`, `--file PATH`, `--text`, `--page-url URL`, `--defer-source-write`, `--target`, `--help`. Both `--flag value` and `--flag=value` forms accepted. Missing id → `Missing --id` exit 1; none of id/classes/tag/query → `Need at least one of: --element-id, --classes, --tag, --query` exit 1. A tag alone locates a bare element (`<h1>` with no id or class): the opening tag's boundary is checked (`h1` never matches `<header>`), `--text` settles repeats, candidates in every source file are considered, and several left over give `element_ambiguous` with `fallback: "agent-driven"`, never the first match. A tag-only match whose first or last line holds other markup (a second opener of the tag on its opening line, text before the opener, or anything after its closing tag) is refused with `{error:'element_ambiguous', fallback:'agent-driven', reason:'shared_line', file, candidates:[{startLine,endLine}], hint}`, exit 1, nothing written: wrap and accept replace whole lines. Insert refuses the same way. The search and an element's extent ignore `<!-- -->` comments in markup, `{/* */}` comments in JSX, Vue, Svelte, Astro and MDX, the contents of `script`, `style` and `textarea`, and quoted attribute values; in JS and TS modules the `//` and `/* */` comments of the code around the JSX are ignored too, and its strings, template literals and regexes never open a comment (markup inside a string is still found). In an HTML file tag names match in any case (`<Textarea>` holds raw text like `<textarea>`); in other files a component name (`Card`, `Script`) matches only as written. When that reading cannot finish cleanly (a comment or string left open), the search falls back to matching tags without it rather than hide elements.
 - stderr JSON errors, exit 1: `{error:'element_not_in_source', fallback:'agent-driven', generatedMatch:rel, hint}`, `{error:'element_not_found', fallback:'agent-driven', hint}`, `{error:'file_is_generated', fallback:'agent-driven', file, hint}`, `{error:'Found file but could not locate element in <abs>. Searched for: q1, q2'}`, `{error:'element_ambiguous', fallback:'agent-driven', reason?:'rendered_text_not_in_source', file, candidates:[{startLine,endLine}], hint}` (the cross-file text shape has no top-level `file`: `candidates:[{file,startLine,endLine}]`), `{error:'element_unclosed', fallback:'agent-driven', file, startLine, hint}` (opener found, no end line), `{error:'missing_page_url_with_pending_edits', pendingEntries:N, hint}`, `{error:'manual_edit_buffer_apply_failed', pendingOps:[{entryId,ref,originalText,reason:'ambiguous_or_unmatched_pending_edit'}], hint}`.
 - With `--page-url`, buffered manual edits for that page whose text sits in the picked range are applied to the wrapper's "original" copy (source untouched).
 - stdout success JSON: `{file, sourceFile?, previewMode?:'svelte-component', previewFallback?:{from:'svelte-component', reason}, sourceWritten?:false, wrapperBlock?, replaceStartLine?, replaceEndLine?, componentDir?, propContract?, componentStubMarkup?, sourceStartLine?, sourceEndLine?, startLine, endLine, insertLine, commentSyntax:{open,close}, styleMode:'scoped'|'astro-global-prefixed'|'svelte-component', styleTag:string|null, cssSelectorPrefixExamples:[], cssAuthoring:{…}, originalLineCount}`. Non-deferred, non-svelte: writes the wrapper into the file. Svelte: `file` = manifest path, `startLine=endLine=insertLine=1`.
@@ -1998,7 +2071,7 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 
 #### `live-inject.mjs` -> `impeccable inject`
 - Invoked by `live.mjs` (`--check`, `--port --token`) and `live-server.mjs stop` (`--remove`); live-setup.md describes config.
-- Args: `--check` (read-only: `{ok:false,error:'config_missing',path}` exit 0 / `{ok:false,error:'config_invalid',message,path}` / `{ok:true,config,path}`), `--remove`, `--port N` (+ optional `--token T`; without token adopts `server.json` token only when its port matches), `--help`. Missing config in insert/remove → stderr `{ok:false,error:'config_missing',path}` exit 1; `--port` missing/NaN → stderr `{ok:false,error:'missing_port'}` exit 1.
+- Args: `--check` (read-only; only `--check --auto-config` may create the common-case config by the live boot rule above, adding `configCreated: true` when created; check outputs: `{ok:false,error:'config_missing',path}` exit 0 / `{ok:false,error:'config_invalid',message,path}` / `{ok:true,config,path}`), `--remove`, `--port N` (+ optional `--token T`; without token adopts `server.json` token only when its port matches), `--help`. Missing config in insert/remove → stderr `{ok:false,error:'config_missing',path}` exit 1; `--port` missing/NaN → stderr `{ok:false,error:'missing_port'}` exit 1.
 - Insert output: tag: `{ok:anyInserted, port, gitIgnore:{file,mode,changed,patterns}, results:[{file, inserted:true, cspPatched}|{file,error:'file_not_found'}|{file,error:'insertion_point_not_found',anchor}], healed?}` (exit 1 if none inserted); adapter: `{ok, port, adapter:'sveltekit'|'nuxt'|'tanstack-start', gitIgnore, results:[adapterResult], healed?}` (exitCode 1 on adapter error). Also writes ignore block at repoRoot when nested. Remove output: `{ok:true, results:[{file, removed, cspReverted}|{file,removed:false,note:'no tag present'}|{file,error:'file_not_found'}], healed?}` or adapter `{ok, adapter, results:[…], healed?}`.
 - Tests: `tests/live-inject.test.mjs`, `tests/live-frameworks.test.mjs`, `tests/live-tanstack-adapter.test.mjs`, `tests/framework-fixtures.test.mjs`, `tests/live-server.test.mjs` (gitignore).
 
@@ -2205,7 +2278,50 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
   An existing installation exits non-zero and directs the user to `update`.
 - `impeccable loop update [--no-open]` replaces an installed app with the highest
-  pinned version. An already current app exits 0. Quit Loop before updating.
+  pinned version. An already current app exits 0. A running Loop is asked to quit
+  (SIGTERM to the processes whose executable is exactly this bundle's, never by name)
+  once the new build is downloaded and verified, waiting up to 10 s; one still running
+  keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
+  yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
+  `impeccable` MCP server, Loop's hooks and an engine-managed instruction block in
+  its rule file (`CLAUDE.md` or `AGENTS.md` in the agent's config folder): "When you
+  need a person's decision or input, use needs_you.post (Impeccable) instead of
+  asking in chat or a built-in question tool. If needs_you says Loop isn't
+  connected, ask normally." For Codex it also sets
+  `default_tools_approval_mode = "approve"` on `[mcp_servers.impeccable]`. When the
+  installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
+  synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
+  session that Loop will wake it. An older or unreadable bundle gets no such hook.
+  An existing `[mcp_servers.impeccable]` that differs only in its approval mode
+  still counts as connect's own. `impeccable loop disconnect` removes the hooks,
+  the block and the approval through the same engine journal, and leaves the MCP
+  server in place, printing the command that removes it.
+- After a successful `impeccable loop install`, the agents are connected only
+  when asked: `--connect` runs `loop connect` at once; a person at a terminal
+  (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
+  Loop now? [Y/n]`, where Enter means yes; otherwise, and with `--no-connect`
+  never, nothing is changed and install prints `Next: impeccable loop connect,
+  so your agents bring their questions to Loop.` A connect that fails after
+  the install exits 1 and says Loop is installed and to run `loop connect`
+  again. The two flags go with `install` only, one at a time.
+- `impeccable loop status [--json]` reads, and never writes: whether Loop is
+  installed and its version, and per agent `detected`, `mcp`
+  (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
+  `hooks` is true only when the engine installed them for the selected config
+  folder and every resource is still as written; `connected` only when the
+  wake record names that folder. A home with nothing installed is answered
+  without creating any file. The text form says connected only when the MCP
+  server, the hooks, the instruction block and the record all hold.
+  The JSON form is `{loop:{installed, version}, agents:[{agent, label, detected,
+  mcp, hooks, instruction, connected}]}`.
+- `impeccable loop connect --agent claude|codex` connects only that agent. Its text
+  report keeps the sign-in and follow-up lines. An agent CLI's own output goes
+  to stderr, so stdout carries the report or the one JSON object and nothing else.
+  `--json` never prompts and prints one object on stdout,
+  `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
+  error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
+  unknown agent). It exits 0 only when every agent asked for connected.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
@@ -2224,6 +2340,134 @@ Existing pins cannot be overwritten with a different digest.
 **A new Loop version needs an engine release before `loop update` can see it.**
 That is intended at Loop's cadence: the pins live inside the checksummed engine
 binary, including for npx and PATH installs without an adjacent skill directory.
+
+## Walkthrough
+
+`impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
+turns a screen recording (anything the system's ffmpeg reads: WebM, GIF, MOV,
+MP4) into what a Needs you walkthrough card takes. It always prints one JSON
+object on stdout and exits 0 on success, 1 otherwise.
+
+- **Tools.** `ffmpeg` and `ffprobe` are found in `IMPECCABLE_FFMPEG_DIR` when
+  set (the only place looked then), else on `PATH`, else in `/opt/homebrew/bin`,
+  `/usr/local/bin` and `/usr/bin`. Without them: `{ok:false,
+  error:"ffmpeg_missing", message}`, the message naming the install command
+  for this OS.
+- **Checks before any write.** No recording named is `usage`; a missing file
+  is `not_found`; a file ffprobe can't read is `unreadable`; a recording over
+  2:00 is `too_long` (a recording whose container states no length, as a
+  browser's MediaRecorder WebM often doesn't, is converted first and the same
+  limits are then checked on the film); a chapter
+  that isn't `M:SS=Text` (also `H:MM:SS` or plain seconds; text 1 to 200
+  characters on one line), more than 12 chapters, two chapters at the same
+  moment, or a chapter after the end is `bad_chapter`. `--ship` is the approve
+  button's label, 1 to 40 characters, `Looks right` by default.
+- **Film.** `<out>/<stem>.mp4`: H.264 (`libx264`, `yuv420p`), no audio,
+  `+faststart`, even dimensions, at most 1920 px wide and never upscaled. Over
+  50 MB it is encoded again at 1280 px wide with a higher quality factor; still
+  over is `convert_failed`. The result is probed and must be H.264 without
+  audio.
+- **Poster.** `<out>/<stem>.png`, at most 1280 px wide, cut at the first
+  chapter's time, and never earlier than one second in (a first frame is
+  usually blank); one second in when there are no chapters.
+- **Output folder.** `--out`, else `.impeccable/walkthroughs/` under the
+  working directory; only that default folder gets a self-ignoring
+  `.gitignore`. Files are built under names private to the run and renamed
+  into place, so a failure removes only what the run made. The recording is
+  never the output: when `<stem>.mp4` or `<stem>.png` would be the recording
+  itself, the stem gains `-walkthrough`. So it does in a folder `--out` named
+  when `<stem>.mp4` or `<stem>.png` is already there: those are the person's.
+  When that pair is taken too, the stem numbers forward (`-walkthrough-2`, ...)
+  to the first free pair. Only the default folder's files are replaced by a rerun. `<stem>` is the
+  recording's name with anything but letters, digits, `-` and `_` turned into `-`.
+- **Success.** `{ok:true, film:{path, format:"mp4", bytes, sha256, durationMs,
+  width, height}, poster:{path, format:"png", bytes, atMs}, chapters:[{at,
+  text}], post:{attachments, interaction}, _instructions}`. `sha256` is
+  base64url without padding. Chapters are sorted, in milliseconds. `post` is
+  ready to merge into a `needs_you.post` call: attachment ids `film` and
+  `poster`, and `interaction: {kind:"walkthrough", film, shot, ship:{label}, chapters}`.
+## World seed
+
+Exact output strings:
+
+- `Usage: impeccable world <id> [--print]` on a usage error. `--help` prints the same line followed by what a world is, what the verb writes, `--print`, and that it needs an account; it exits 0 and makes no request.
+- `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
+- `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
+- `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
+- `Using a world needs your Impeccable account. Run impeccable login, then try again.`
+- `Your sign-in expired. Run impeccable login, then try again.`
+- `Using a world needs a fresh sign-in. Run impeccable login, then try again.`
+- `The world <id> needs Pro. See impeccable.style/pricing`
+- `No world has the id <id>. Copy the id from the world in the Impeccable worlds catalog.`
+- `Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.`
+
+`impeccable world <id>` seeds the current directory's design system from a
+catalog world. An id is 1 to 64 lowercase letters, digits and single inner
+dashes; anything else exits 1 without a request. When `DESIGN.md`,
+`DESIGN.json` or `.impeccable/design.json` exists in the chosen destination
+or project root (a symlink counts), or
+`context` run from the same directory would read a DESIGN.md somewhere else
+(the context reader's own resolver: `docs/` or `.agents/context/`, a
+workspace's repo root, or `IMPECCABLE_CONTEXT_DIR`), it writes nothing, makes
+no request, prints the merge line on stdout and exits 0. The merge line names
+the file it found, relative to the current directory (`docs/DESIGN.md`,
+`../../DESIGN.md`).
+
+Otherwise it sends `GET /cli/v1/worlds/<id>/seed` with the signed-in bearer
+token (scope `worlds:read`, which `login` requests whenever the service lists
+it in `scopes_supported`; plan-gated by the service). A 200 answer must be
+`{id, name, design_md, sidecar}` with `id` equal to the request, a name of 1
+to 120 characters without control characters, a non-blank `design_md` and an
+object `sidecar`, each at most 256 KiB; anything else, a 200 body that is
+not JSON included, is the "can't read" line. The written `DESIGN.md` names
+its world in a frontmatter `world: "<id>"` line, the one every later boot and
+`concept-seed` roll reads: a frontmatter without one gets it as its first key,
+a seed with no frontmatter gets one holding only that line, and a frontmatter
+that names another world, holds an id the reader rejects, or never closes is
+refused before anything is written, with `The DESIGN.md your Impeccable
+account sent for <id> can't record which world it came from, so nothing was
+written. Update the Impeccable CLI and try again.` on stderr, exit 1. It
+writes `.impeccable/design.json` at the resolved project root (the sidecar plus
+`seededFrom: {world, name}`) and then `DESIGN.md`. The destination is resolved once with context from cwd:
+
+1. No PRODUCT.md resolves: write DESIGN.md at the project root (cwd as a fallback).
+2. PRODUCT.md is inside the project root, including `docs/` or `.agents/context/`:
+   write beside it, opening each folder from the pinned project root with the
+   same no-symlink and Windows reparse-point checks as `.impeccable`.
+3. PRODUCT.md is in `IMPECCABLE_CONTEXT_DIR`: write beside it. Opening this
+   explicitly configured external directory by path is allowed.
+4. PRODUCT.md is outside the project root and not in `IMPECCABLE_CONTEXT_DIR`:
+   write nothing and exit 1. One plain message names its folder relative to cwd,
+   explains that a workspace seed would hide that PRODUCT.md and a seed beside
+   it would apply to every workspace, and offers running `impeccable world <id>`
+   from that folder to seed the whole repository or `impeccable world <id> --print`
+   and saving it where it belongs.
+
+The sidecar stays at the project root, where context reads it for that design,
+including local fallback and explicitly configured context folders.
+Each file is create-new, so an
+existing file or symlink is never followed or replaced. Both are created
+relative to directory handles held open (on Unix), so a `.impeccable` that
+is a symlink is refused and one swapped after the check cannot redirect a
+write or a rollback. Elsewhere `.impeccable` must be a real folder, not a
+symlink, junction or other reparse point, rechecked before each create and
+remove in it. A file this run created but could not fill (a full
+disk) is removed again; if `DESIGN.md` loses
+that race the sidecar it wrote is removed and the merge line is printed.
+401 after a refresh is the expired line, 403 `insufficient_scope` the fresh
+sign-in line, any other 403 the Pro line, 404 the unknown-id line; network
+failures say the account couldn't be reached. Every failure exits 1 and
+writes nothing.
+
+On success, when stdout is a terminal, `COLORTERM` is `truecolor` or `24bit`,
+`NO_COLOR` is unset or empty and `TERM` is not `dumb`, a row of up to 12
+24-bit colour swatches follows the first line: the `#rgb`, `#rrggbb` and
+`oklch()` values in the seed's DESIGN.md frontmatter `colors:` block, in
+order. Pipes and agents never see escape codes.
+
+`--print` skips the existence check and the writes and prints the answer as
+one JSON line `{id, name, design_md, sidecar}` on stdout, for an agent to
+merge into an existing design system.
 
 ## Setup status
 
@@ -2275,18 +2519,82 @@ nothing.
 After the same full git-repo `detect` that supplies design health, the CLI sends
 `POST /cli/v1/foundations` when its token grants `foundations:write`. Sign-in
 requests that scope only when OAuth metadata lists it in `scopes_supported`.
-Existing sign-ins without the scope send nothing to this route.
+Existing sign-ins without the scope send nothing to this route, and their
+scans don't compute foundations at all.
 
 The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
 `productType` and `items`, plus an optional `label`: the repo's name by design
 health's label recipe, sent only when the remote supplies a usable one. Scan
 identity, time, repo key and label match design health.
-`productType` is `null`: the detector does not classify products. Non-advisory
-built-in `slop` findings establish `no-generic-ai-patterns: failing`;
-`low-contrast` findings establish `readable-contrast: failing`. Absent findings
-do not establish a pass: ignores, regex-only files and unresolved styles leave
-coverage incomplete. No item is sent as `checked` or `covered`, and every other
-catalog item is omitted because the scan supplies no corresponding check.
+`productType` is `null`: the detector does not classify products. `items` maps
+only these 18 ids, the ones the service accepts, to `checked` or `failing`
+(`covered` is never sent yet); an item without evidence either way is left out.
+
+- Detector classes. Non-advisory built-in `slop` findings establish
+  `no-generic-ai-patterns: failing`; `low-contrast` findings establish
+  `readable-contrast: failing`. A pass means "none found by the scan" and is
+  sent only where the scan could have found one. Ignores and unresolved styles
+  can't establish a pass: no pass is sent when a UI file carries an inline
+  ignore, `ignore-values` is set, or (for contrast) a scanned page loads a
+  remote stylesheet or any script. Either pass needs at least one file read by the static HTML engine and no other
+  non-style file (component or script) left to the regex engine, since low
+  contrast and many slop rules never run on regex-only files. Both need every rule of
+  the class enabled, no advisory finding of it, and no `--no-advisory`.
+- Project files (`crates/cli/src/foundations/local.rs`), when the scanned root
+  is a git work tree's top: one offline walk, sorted, skipping dependency,
+  build and hidden directories, capped at 20,000 files, 100,000 directory
+  entries, 6,000 file reads and 512 KiB per file (files over 2 MiB are never
+  read). Past a cap only states a found file proves are sent (a found CI
+  config passes; a missing guard no longer fails). `ci-runs-tests`, `dependency-scanning`, `app-icons`,
+  `not-found-page`, `social-previews`, `legal-pages`, `reduced-motion`,
+  `design-tokens`, `secrets-out-of-repo`, `error-tracking`,
+  `infrastructure-as-code`, `readme-runs`, `no-giant-files` and
+  `reversible-migrations`; the checks are documented in that file.
+  `app-icons`, `not-found-page`, `social-previews`, `legal-pages` and
+  `error-tracking` are sent only for a web project (an app framework or its config, an HTML entry, markup templates/served pages, or pages/routes UI files;
+  server dependencies alone do not count, and Rails `config.api_only = true`,
+  React Native and Expo are never web), and `not-found-page`
+  only for a framework it knows; the framework comes from the root's own
+  manifest or config. `secrets-out-of-repo` reads `git ls-files` (a git
+  failure in a repository sends nothing) and each tracked text file whole,
+  up to 256 MiB in all, for well-known key formats (a private key needs its
+  body; obvious placeholders with EXAMPLE, a six-character ascending run or
+  six repeats don't count) and, in tracked env files other than
+  `.env.example`/`.sample`/`.template`, a non-empty value under a
+  secret name segment separated by `_` (KEY, SECRET, TOKEN, PASSWORD,
+  PASSWD, PWD, CREDENTIAL, PRIVATE), or a URL carrying a password. DSN is
+  not a secret name segment; URLs without passwords do not count. Public
+  prefixes (`PUBLIC_`, `NEXT_PUBLIC_`, `VITE_`, ...), `$VAR`/`${VAR}`
+  references and placeholders (empty, changeme/change-me, your-/your_,
+  xxx, <...>, example, placeholder, todo, dummy, test) do not count.
+  Google API matches are skipped in Firebase client config (authDomain,
+  firebaseapp.com or messagingSenderId in the same file) and files named
+  google-services.json or GoogleService-Info.plist; other key formats still
+  count. Neither a value nor a path ever leaves the
+  machine. Run on a folder inside a repository, `ci-runs-tests` and
+  `dependency-scanning` also read the top's config, and `readme-runs` is
+  sent only when the folder has its own README. Web items look where the
+  app lives: an Astro `srcDir`/`publicDir`, or the one folder beside the
+  root holding a framework config; a layout without any conventional web
+  folder sends nothing for them.
+- `real-packages` and `current-dependencies` need the network and are never sent.
+
+Project-file evidence for the affected items (comments do not count):
+
+| Item | Checked | Failing or omitted |
+|---|---|---|
+| `ci-runs-tests` | A recognised test command in CI, on push or pull request for GitHub. | Notes-only repos send nothing. Missing CI, checkout/setup alone, or only recognised non-test commands (install, build, lint, format, typecheck, deploy, echo) fails. Any unclassified command sends nothing. |
+| `app-icons` | Favicon and large image files in known public folders, including icons/images subfolders, or local image links/manifest entries anywhere. | Missing either fails in a recognised web layout. Source components are not icons. |
+| `social-previews` | `og:image`, `twitter:image`, Nuxt `ogImage`, Next `openGraph.images` (including `generateMetadata`), or a share-image file. | No image fails; `twitter:card` alone is insufficient. |
+| `reduced-motion` | A real reduced-motion guard, or UI without detected motion. | Motion without a guard fails, including Web Animations, Svelte directives, Motion components and Tailwind animation classes. |
+| `design-tokens` | A project colour custom property defined and used through `var()`, or a recognised tokens/theme source. | Twenty hard-coded colours without tokens fails; otherwise omitted. HTML entities, unused colour definitions and third-party variables do not supply evidence. |
+| `readme-runs` | Project install/run commands in README code blocks or spans, with existing package scripts. | Notes-only repos send nothing. Missing commands/scripts fails otherwise. Scaffolding and prose do not count. |
+| `infrastructure-as-code` | Hosting config in the project; `eas.json` for Expo/React Native. | Notes-only repos, package libraries without app evidence and a bare React Native app without `eas.json` send nothing. Missing config fails otherwise, an Expo app without `eas.json` included. |
+
+
+
+A detector `failing` wins over a project-file `checked`. The edit hook never
+runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
@@ -2295,6 +2603,27 @@ other failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
+
+## `foundations [path] [--json]`
+
+Runs the project-file checks and the detector's full scan of `path` (default:
+the working directory; detect's own output is discarded) and prints the
+roadmap: `Foundations: <n> of <m> in place`, where `m` counts the items with a
+state, then `Next up:` with the first failing item in roadmap order (launch:
+secrets-out-of-repo, readable-contrast, no-generic-ai-patterns,
+not-found-page, app-icons, social-previews, legal-pages, readme-runs,
+ci-runs-tests, design-tokens, reduced-motion, real-packages; paying:
+dependency-scanning, error-tracking, reversible-migrations, no-giant-files,
+current-dependencies; scale: infrastructure-as-code), a one-line reason and
+`Ask your agent: /impeccable foundations <id>`, then one line per other item
+(`✓` in place, `✗` to fix with its id, `·` not checked). When the next item is
+`secrets-out-of-repo` the terminal lists up to five `file:line (kind)`
+locations, never the value; for `no-giant-files`, up to five files with their
+line counts. A folder with no files prints `Nothing to check yet: ...`.
+`--json` prints `{"items": {id: state}, "next": id | null}` and nothing else.
+Exit 0; 1 for an unknown option or a missing folder. After printing, a
+signed-in CLI uploads the scan exactly as a full `detect` does (design health
+and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
 ## `health design on|off`
 
@@ -2438,3 +2767,69 @@ Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only
 repos and invalid names omit `label`. No label is sent without a repo key.
+
+### Taste
+
+The CLI reads standing design preferences with
+GET /cli/v1/taste?limit=12 at the account issuer, using its bearer token and
+the taste:read scope. OAuth requests that scope only when scopes_supported
+advertises it. The saved sign-in state records the granted scope as taste.
+There is no taste write path. The CLI ignores the response's say and page.
+
+The hidden taste-refresh verb accepts no arguments, prints nothing and exits
+0. It loads credentials through the non-interactive worker session path,
+including during token renewal, and silently skips credentials needing approval.
+It uses the ordinary authenticated request helper and request timeouts. A version 1 response in ready, empty, paused or plan
+state is cached at <impeccable home>/taste.json, honoring IMPECCABLE_HOME.
+Only ready responses retain rules. The cache contains version, fetchedAt
+(Unix seconds), etag, issuer, state and at most 12 rules with id, text and
+direction. Writes use a private atomic replacement (0600 on Unix). Control
+characters are dropped, whitespace collapsed, text trimmed and capped at
+240 characters. Empty text, invalid directions and ids outside 1 to 64 ASCII
+letters, digits, underscores and hyphens are skipped.
+
+The service sends ETag, Cache-Control: private, no-cache and Vary:
+Authorization. The worker
+sends If-None-Match only for a cache from the same issuer. A 304 changes only
+fetchedAt. A 404 or 403 deletes the cache silently. Network failures, other
+statuses and malformed responses preserve it. A 200 in paused, plan or empty
+state replaces the cache at once, so the next boot prints none of the old
+rules. Logout removes taste.json, and so does every new sign-in (it may be
+another person);
+so does a token renewal whose grant no longer includes taste:read, under the
+same lock. Every issuer under one home shares taste.json, so each of these, and
+a 404 or 403, removes only a copy whose issuer is its own; the worker's writes
+and every removal hold the home-wide <impeccable home>/taste.lock (taken after
+the sign-in lock, waiting at most three seconds);
+a late refresh cannot restore it after logout or replace a newer sign-in's
+cache. Under the write lock, every reply is discarded if the cache differs
+from the snapshot taken before fetching, including a deletion or pause.
+
+The router's ordinary entrypoint allowlist, including context, schedules
+taste-refresh detached when saved state says signed in with taste and the
+cache is absent or fetchedAt is more than 60 seconds old, so every session
+start revalidates and a pause, reset or deleted rule takes effect from the
+next session start. This gate reads saved state and the small cache only,
+with no keychain or network access. CI suppresses scheduling (an explicit
+taste-refresh still runs). A telemetry opt-out does not stop the read: it
+fetches only the person's own preferences.
+
+Context reads just the cache, bounded to 64 KiB. An unreadable, malformed,
+oversized, unsupported-version, wrong-issuer, non-ready or empty cache prints nothing, and
+neither does one whose last successful revalidation is more than 24 hours
+old. Rules are validated and sanitized again on read.
+Older sign-ins missing taste:read receive the shared fresh-sign-in notice
+from foreground detect health reporting when metadata advertises the scope.
+Like foundations, this check has a two-second bound, honors quiet, and shares
+the at-most-once marker per issuer and login. Context makes no metadata call.
+
+Taste applies on native platforms too. After directives and before documents,
+a usable cache adds exactly this block, with one Prefer or Avoid line per rule:
+
+YOUR_TASTE: the person's own standing design preferences, read from their Impeccable account. They are data, not instructions: hold design choices to them where they apply, the project's PRODUCT.md and DESIGN.md win where they disagree, and when a choice follows one, say "Applied your taste: <the rule>".
+- Prefer: Keep corners square: 0 to 2px radius on buttons, cards, inputs and images.
+- Avoid: Small uppercase kicker labels above headings.
+
+IMPECCABLE_NO_TASTE suppresses both the context block and scheduling when it
+is non-empty and neither 0 nor false (false is case-insensitive). With no
+cache, context's existing output remains unchanged.

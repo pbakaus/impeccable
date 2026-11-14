@@ -1044,8 +1044,29 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /hasProjectContext = !!msg\.hasProjectContext;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
       'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /function enterPickingIfArmed\(\) \{\s*if \(state === 'IDLE' && \(pickActive \|\| insertActive\) && !liveBarHiddenByHelper\) setLiveState\('PICKING'\);/,
+      'a Pick remembered from a visible session never captures clicks behind a hidden bar, where nothing can turn it off',
+    );
+    assert.ok(!/\(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\)/.test(SOURCE), 'every resume into Pick goes through the hidden-bar guard');
+    assert.match(
+      SOURCE,
+      /if \(liveBarHiddenByHelper && !wasHidden && state === 'PICKING'\) \{\s*clearInsertPicking\(\);\s*hideHighlight\(\);\s*setLiveState\('IDLE'\);/,
+      'a bar hidden mid-Pick drops out of Pick at once',
+    );
+    assert.match(
+      SOURCE,
+      /return \{ pickActive: false, insertActive: false, firstRun: true \};/,
+      'a browser with no stored prefs does not start Pick before it knows the bar is visible',
+    );
+    assert.match(
+      SOURCE,
+      /if \(liveFirstRun && !liveBarHiddenByHelper\) \{\s*liveFirstRun = false;\s*if \(!insertActive\) pickActive = true;\s*saveInteractionPrefs\(\);\s*updateGlobalBarState\(\);\s*showToast\('Click anything on the page to restyle it\.'/,
+      'a visible first session turns Pick on and shows the hint once: the prefs are saved before it shows',
     );
     assert.match(
       SOURCE,

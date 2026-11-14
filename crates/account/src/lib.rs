@@ -3,6 +3,13 @@
 //! (storage, lock, generation, logout tombstone). docs/RUNTIME-ENV.md (Account sign-in) has the
 //! whole contract. Tokens are never printed or logged.
 
+// Reuse the integration fake issuer in unit tests, including its Pro helpers.
+#[cfg(test)]
+extern crate self as impeccable_account;
+#[cfg(test)]
+#[path = "../tests/support/fake.rs"]
+mod test_fake;
+
 pub mod config;
 pub mod critiques;
 mod design_read;
@@ -15,7 +22,9 @@ pub mod session;
 pub mod setup;
 mod stale_grant;
 pub mod store;
+pub mod taste;
 mod upload_notice;
+pub mod world;
 
 use config::Account;
 use impeccable_common::Io;
@@ -82,8 +91,11 @@ pub fn login(
             .as_ref()
             .and_then(|s| Some((s.revocation_endpoint.clone()?, store.secret(s)?)));
         let generation = previous.as_ref().map(|s| s.generation).unwrap_or(0) + 1;
+        // A new sign-in may be another person: their taste is never the last one's.
+        store.clear_taste(&lock);
         let state = State {
             foundations: tokens.foundations,
+            taste: tokens.taste,
             scopes: tokens.scopes.unwrap_or_default(),
             schema: 1,
             issuer: account.issuer.clone(),
@@ -193,7 +205,7 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     let result = login(&env, &mut open, timeout);
     match result {
         Ok(done) => {
-            io.err(&format!("Signed in to {}.\n", done.account.display_host()));
+            io.err(&format!("Signed in to {}.\n", done.account.display_name()));
             match &done.entitlement {
                 Ok(Entitlement { pro: true, .. }) => {
                     let outcome = pro::refresh(&done.account, &pro::verify::pinned_keys(&env));
@@ -242,7 +254,7 @@ pub fn run_logout(args: &[String], io: &mut Io) -> i32 {
     }
     match logout(&io.env.clone()) {
         Ok(Some(account)) => {
-            io.err(&format!("Signed out of {}.\n", account.display_host()));
+            io.err(&format!("Signed out of {}.\n", account.display_name()));
             0
         }
         Ok(None) => {
@@ -318,11 +330,14 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     }
     match result {
         Ok(e) => {
-            io.out(&format!("Signed in to {}.\n", account.display_host()));
+            io.out(&format!("Signed in to {}.\n", account.display_name()));
             match &plan {
                 Some(p) => io.out(&plan_lines(p)),
                 None if e.pro => io.out("Pro rules: included.\n"),
                 None => io.out("Pro rules: not included with this account.\n"),
+            }
+            if !e.pro {
+                io.out(&format!("{}\n", pro::PRICING));
             }
             0
         }
@@ -337,7 +352,7 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
         Err(e) => {
             io.err(&format!(
                 "Signed in to {}, but couldn't reach it: {e}.\n",
-                account.display_host()
+                account.display_name()
             ));
             1
         }
