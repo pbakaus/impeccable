@@ -11,7 +11,7 @@ const increment = () => count.value++;
   <main>
     <h1>Import status</h1>
     <section class="card" @click="increment">
-      <p>{{ label }}: {{ count }}</p>
+      <p>{{ label }}: {{ count }}</p><input aria-label="Count" v-model.number="count" />
     </section>
     <aside class="unrelated">Outside the selected component</aside>
   </main>

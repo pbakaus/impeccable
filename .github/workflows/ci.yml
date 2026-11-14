@@ -185,7 +185,7 @@ jobs:
           node-version: 24
       - name: Install Vue regression compiler
         run: |
-          npm install --prefix "$RUNNER_TEMP/vue-compiler" --no-audit --no-fund @vue/compiler-sfc@3.5.44
+          npm install --prefix "$RUNNER_TEMP/vue-compiler" --ignore-scripts --no-audit --no-fund @vue/compiler-sfc@3.5.44
           echo "IMPECCABLE_TEST_VUE_MODULES=$RUNNER_TEMP/vue-compiler/node_modules" >> "$GITHUB_ENV"
 
       # rust-toolchain.toml names the channel; `rustup show` installs it.
@@ -218,7 +218,7 @@ jobs:
       - name: Install Vue regression compiler
         shell: pwsh
         run: |
-          npm install --prefix "$env:RUNNER_TEMP/vue-compiler" --no-audit --no-fund @vue/compiler-sfc@3.5.44
+          npm install --prefix "$env:RUNNER_TEMP/vue-compiler" --ignore-scripts --no-audit --no-fund @vue/compiler-sfc@3.5.44
           "IMPECCABLE_TEST_VUE_MODULES=$env:RUNNER_TEMP/vue-compiler/node_modules" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Install the pinned toolchain
         run: rustup show

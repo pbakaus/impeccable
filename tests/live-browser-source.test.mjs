@@ -9,6 +9,24 @@ const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('component preview remount parameters', () => {
+  it('persists the generation phase for a Svelte session', () => {
+    const source = SOURCE.match(/function saveSession\(\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(source);
+    let saved;
+    const context = {
+      currentSessionId: 'ab12cd34', APP_ROOT: '/app', state: 'GENERATING',
+      selectedAction: 'polish', selectedCount: 3, expectedVariants: 3, arrivedVariants: 1,
+      visibleVariant: 1, currentSourceFile: 'Card.svelte', currentPreviewFile: 'manifest.json',
+      currentPreviewMode: 'svelte-component', location: { pathname: '/', hash: '', search: '' },
+      paramsCurrentValues: { space: 23 }, parameterGenerationState: 'ready', generationPhase: 'first_reviewable',
+      sessionOrigin: null, insertPlaceholderSnapshot: null, pickedAnchorSnapshot: null, pickedAnchorViewportTop: null,
+      sessionState: { saveSession(value) { saved = JSON.parse(JSON.stringify(value)); } },
+    };
+    runInNewContext(`${source}\nsaveSession()`, context);
+    assert.equal(saved.generationPhase, 'first_reviewable');
+    assert.equal(saved.previewMode, 'svelte-component');
+    assert.equal(saved.paramValues.space, 23);
+  });
   for (const deferred of [false, true]) {
     for (const sameVariant of [false, true]) {
       it(`preserves edits only on the same variant (deferred=${deferred}, same=${sameVariant})`, async () => {

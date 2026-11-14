@@ -5559,8 +5559,13 @@
       const values = {};
       for (const entry of manifest.propContract || []) {
         const name = entry.expr;
-        const value = instance.setupState?.[name] ?? instance.props?.[name] ?? instance.ctx?.[name];
-        values[entry.prop] = typeof value === 'function' && !/^[A-Z]/.test(name) ? () => {} : value;
+        const own = (object) => object && Object.prototype.hasOwnProperty.call(object, name);
+        const value = own(instance.setupState) ? instance.setupState[name]
+          : own(instance.props) ? instance.props[name] : instance.ctx?.[name];
+        if (typeof value === 'function' && entry.kind === 'vue-callable-mixed') {
+          throw new Error('Vue preview cannot snapshot a function used for both rendering and events.');
+        }
+        values[entry.prop] = typeof value === 'function' && entry.kind === 'vue-handler' ? () => {} : value;
       }
       return values;
     }

@@ -46,21 +46,58 @@ try {
     return { ...block(style), scoped: !!style.scoped, compiled: compiled.code };
   });
   const behaviors = [];
-  const walk = (node) => {
-    if (node.type === 5) behaviors.push('text:' + node.content.content.trim());
+  const eventBindings = new Set();
+  const renderBindings = new Set();
+  const modelBindings = new Set();
+  const references = (expression, names) => {
+    if (!expression) return;
+    const options = { sourceType: 'module', plugins: ['typescript'], allowAwaitOutsideFunction: true };
+    let ast;
+    try { ast = compiler.babelParse(`(${expression})`, options); }
+    catch { ast = compiler.babelParse(expression, options); }
+    compiler.walkIdentifiers(ast, id => { if (Object.hasOwn(bindings, id.name)) names.add(id.name); });
+  };
+  // Ownership matters: an unchanged expression on a different element or in a
+  // different loop/slot scope is not the same component behavior.
+  const walk = (node, location = '') => {
+    const record = value => behaviors.push(JSON.stringify({ location, value }));
+    if (node.type === 5) {
+      record('text:' + node.content.content.trim());
+      references(node.content.content, renderBindings);
+    }
     if (node.type === 1) {
-      if (node.tagType === 1) behaviors.push('component:' + node.tag);
-      for (const prop of node.props || []) if (prop.type === 6 && ['ref', 'key'].includes(prop.name)) {
-        behaviors.push(JSON.stringify({ attribute: prop.name, value: prop.value?.content }));
+      if (node.tagType === 1 || node.tagType === 2) record('component:' + node.tag);
+      for (const prop of node.props || []) if (prop.type === 6 &&
+          (['ref', 'key'].includes(prop.name) || ((node.tagType === 1 || node.tagType === 2) && !['class', 'style'].includes(prop.name)))) {
+        record({ attribute: prop.name, value: prop.value?.content });
       }
       for (const prop of node.props || []) if (prop.type === 7) {
-        behaviors.push(JSON.stringify({ name: prop.name, arg: prop.arg?.content, exp: prop.exp?.content?.trim(), modifiers: (prop.modifiers || []).map(m => typeof m === 'string' ? m : m.content) }));
+        record({ name: prop.name, arg: prop.arg?.content, exp: prop.exp?.content?.trim(), modifiers: (prop.modifiers || []).map(m => typeof m === 'string' ? m : m.content) });
+        if (prop.name === 'model') {
+          const ast = compiler.babelParse(`(${prop.exp?.content || ''})`, { sourceType: 'module', plugins: ['typescript'] });
+          const target = ast.program.body[0]?.expression;
+          // Member writes could mutate objects owned by the original component.
+          // Use the ordinary source preview for those rather than sharing them.
+          if (target?.type !== 'Identifier') throw new Error('Vue component preview requires a simple v-model binding.');
+          modelBindings.add(target.name);
+        }
+        if (prop.name !== 'slot') {
+          const expression = prop.name === 'for'
+            ? prop.exp?.content?.match(/\s(?:in|of)\s+([\s\S]*)$/)?.[1]
+            : prop.exp?.content;
+          references(expression, prop.name === 'on' ? eventBindings : renderBindings);
+        }
       }
     }
-    for (const child of node.children || []) walk(child);
+    let elementIndex = 0;
+    let expressionIndex = 0;
+    for (const child of node.children || []) {
+      if (child.type === 1) walk(child, `${location}/${elementIndex++}:${child.tag}`);
+      else if (child.type === 5) walk(child, `${location}/text:${expressionIndex++}`);
+    }
   };
   walk(descriptor.template.ast);
-  console.log(JSON.stringify({ ok: true, template: block(descriptor.template), styles, bindings: Object.keys(bindings).filter(k => !k.startsWith('__')), behaviors,
+  console.log(JSON.stringify({ ok: true, template: block(descriptor.template), styles, bindings: Object.keys(bindings).filter(k => !k.startsWith('__')), behaviors, eventBindings: [...eventBindings], renderBindings: [...renderBindings], modelBindings: [...modelBindings],
     scripts: [descriptor.script, descriptor.scriptSetup].filter(Boolean).map(block) }));
 } catch (error) {
   console.log(JSON.stringify({ ok: false, error: error.message || String(error) }));

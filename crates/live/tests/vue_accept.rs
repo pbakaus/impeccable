@@ -10,6 +10,14 @@ use std::{
 
 const SOURCE: &str = include_str!("../../../tests/fixtures/live-vue-accept/StatusCard.vue");
 const MARKUP: &str = "  <section class=\"card\" @click=\"increment\">\n    <p>{{ label }}: {{ count }}</p>\n  </section>";
+fn compiler_configured() -> bool {
+    if std::env::var_os("IMPECCABLE_TEST_VUE_MODULES").is_none() {
+        eprintln!("skip: IMPECCABLE_TEST_VUE_MODULES is unset; Vue compiler integration test requires @vue/compiler-sfc");
+        return false;
+    }
+    true
+}
+
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture(PathBuf);
@@ -92,6 +100,9 @@ fn variant(style: &str) -> String {
 
 #[test]
 fn vue_accept_preserves_tuned_values_scripts_and_bindings() {
+    if !compiler_configured() {
+        return;
+    }
     let fixture = Fixture::new(
         SOURCE,
         &variant("scoped").replace("class=\"card\"", "class=\"card chosen\""),
@@ -121,6 +132,9 @@ fn vue_accept_preserves_tuned_values_scripts_and_bindings() {
 
 #[test]
 fn vue_accept_keeps_global_styles_and_writes_to_a_scoped_block() {
+    if !compiler_configured() {
+        return;
+    }
     for source in [
         SOURCE.replace("<style scoped>", "<style>"),
         format!("{SOURCE}\n<style>body {{ margin: 0; }}</style>\n"),
@@ -141,6 +155,9 @@ fn vue_accept_keeps_global_styles_and_writes_to_a_scoped_block() {
 
 #[test]
 fn vue_accept_refuses_unscoped_variant_css_without_writing() {
+    if !compiler_configured() {
+        return;
+    }
     let fixture = Fixture::new(SOURCE, &variant(""));
     let (_, result) = fixture.accept("1");
     assert_eq!(result["mode"], "error", "{result}");
@@ -153,6 +170,9 @@ fn vue_accept_refuses_unscoped_variant_css_without_writing() {
 
 #[test]
 fn vue_accept_refuses_style_preprocessors_without_writing() {
+    if !compiler_configured() {
+        return;
+    }
     for lang in ["sass", "scss", "less", "stylus"] {
         let fixture = Fixture::new(SOURCE, &variant(&format!("scoped lang=\"{lang}\"")));
         let (_, result) = fixture.accept("1");
@@ -167,6 +187,9 @@ fn vue_accept_refuses_style_preprocessors_without_writing() {
 
 #[test]
 fn vue_accept_rejects_stale_source_without_writing() {
+    if !compiler_configured() {
+        return;
+    }
     let fixture = Fixture::new(SOURCE, &variant("scoped"));
     let changed = SOURCE.replace("{{ count }}", "{{ count + 1 }}");
     fs::write(fixture.0.join("StatusCard.vue"), &changed).unwrap();
@@ -192,6 +215,9 @@ fn vue_accept_rejects_variant_zero() {
 
 #[test]
 fn vue_accept_rejects_script_edits_and_missing_behavior() {
+    if !compiler_configured() {
+        return;
+    }
     for selected in [
         format!(
             "{}\n<script setup>const count = 99;</script>",
@@ -214,6 +240,9 @@ fn vue_accept_rejects_script_edits_and_missing_behavior() {
 
 #[test]
 fn vue_accept_rejects_global_css_escape_without_writing() {
+    if !compiler_configured() {
+        return;
+    }
     let selected = variant("scoped").replace(".card {", ":global(body) {");
     let fixture = Fixture::new(SOURCE, &selected);
     let (_, result) = fixture.accept("1");
@@ -238,6 +267,9 @@ fn vue_accept_rejects_malformed_parameters_without_using_defaults() {
 
 #[test]
 fn vue_accept_bakes_range_steps_and_toggle_without_preview_selectors() {
+    if !compiler_configured() {
+        return;
+    }
     let selected = variant("scoped").replace("</style>", ".card[data-p-face=\"serif\"] { font-family: serif; }\n.card[data-p-bold] { font-weight: 700; }\n</style>");
     let fixture = Fixture::new(SOURCE, &selected);
     fs::write(
@@ -263,6 +295,9 @@ fn vue_accept_bakes_range_steps_and_toggle_without_preview_selectors() {
 
 #[test]
 fn vue_accept_refuses_multiple_scoped_blocks_without_reordering_css() {
+    if !compiler_configured() {
+        return;
+    }
     let source = format!("{SOURCE}\n<style scoped>.other {{ color: blue; }}</style>");
     let fixture = Fixture::new(&source, &variant("scoped"));
     let (_, result) = fixture.accept("1");
@@ -279,6 +314,9 @@ fn vue_accept_refuses_multiple_scoped_blocks_without_reordering_css() {
 
 #[test]
 fn vue_accept_preserves_unicode_source_offsets() {
+    if !compiler_configured() {
+        return;
+    }
     let source = SOURCE.replace("<script>\n", "<script>\n// 状態 🚀\n");
     let fixture = Fixture::new(&source, &variant("scoped"));
     let (_, result) = fixture.accept("1");
@@ -293,6 +331,9 @@ fn vue_accept_preserves_unicode_source_offsets() {
 
 #[test]
 fn vue_scaffold_is_opt_in_and_preserves_source() {
+    if !compiler_configured() {
+        return;
+    }
     use impeccable_live::{live_wrap, svelte_component};
     let fixture = Fixture::new(SOURCE, &variant("scoped"));
     fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
@@ -338,8 +379,20 @@ fn vue_scaffold_is_opt_in_and_preserves_source() {
 
 #[test]
 fn audit_vue_rejects_legacy_scope_escape_selectors() {
-    for selector in ["::v-global(body)", ".card ::v-deep(p)", ".card ::v-slotted(p)", ".card >>> p", ".card /deep/ p"] {
-        let fixture = Fixture::new(SOURCE, &variant("scoped").replace(".card {", &format!("{selector} {{")));
+    if !compiler_configured() {
+        return;
+    }
+    for selector in [
+        "::v-global(body)",
+        ".card ::v-deep(p)",
+        ".card ::v-slotted(p)",
+        ".card >>> p",
+        ".card /deep/ p",
+    ] {
+        let fixture = Fixture::new(
+            SOURCE,
+            &variant("scoped").replace(".card {", &format!("{selector} {{")),
+        );
         let (_, result) = fixture.accept("1");
         assert_eq!(result["mode"], "error", "accepted {selector}: {result}");
         assert_eq!(fixture.source(), SOURCE);
@@ -348,7 +401,12 @@ fn audit_vue_rejects_legacy_scope_escape_selectors() {
 
 #[test]
 fn audit_vue_rejects_behavior_relocation() {
-    let selected = variant("scoped").replace(" @click=\"increment\"", "").replace("<p>", "<p @click=\"increment\">");
+    if !compiler_configured() {
+        return;
+    }
+    let selected = variant("scoped")
+        .replace(" @click=\"increment\"", "")
+        .replace("<p>", "<p @click=\"increment\">");
     let fixture = Fixture::new(SOURCE, &selected);
     let (_, result) = fixture.accept("1");
     assert_eq!(result["mode"], "error", "{result}");
@@ -357,17 +415,26 @@ fn audit_vue_rejects_behavior_relocation() {
 
 #[test]
 fn audit_vue_rejects_changed_slot_and_component_contracts() {
+    if !compiler_configured() {
+        return;
+    }
     for (original, changed) in [
         ("<slot name=\"header\" />", "<slot name=\"footer\" />"),
         ("<slot name=\"header\" />", ""),
-        ("<AccountCard account-id=\"123\" />", "<AccountCard account-id=\"456\" />"),
+        (
+            "<AccountCard account-id=\"123\" />",
+            "<AccountCard account-id=\"456\" />",
+        ),
     ] {
         let markup = MARKUP.replace("</p>", &format!("</p>{original}"));
         let source = SOURCE.replace(MARKUP, &markup);
         let selected = variant("scoped").replace(MARKUP, &markup.replace(original, changed));
         let fixture = Fixture::new(&source, &selected);
-        let manifest_file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/manifest.json");
-        let mut manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_file).unwrap()).unwrap();
+        let manifest_file = fixture
+            .0
+            .join("node_modules/.impeccable-live/ab12cd34/manifest.json");
+        let mut manifest: Value =
+            serde_json::from_str(&fs::read_to_string(&manifest_file).unwrap()).unwrap();
         manifest["originalMarkup"] = json!(markup);
         fs::write(manifest_file, manifest.to_string()).unwrap();
         let (_, result) = fixture.accept("1");
@@ -378,6 +445,9 @@ fn audit_vue_rejects_changed_slot_and_component_contracts() {
 
 #[test]
 fn audit_vue_rejects_session_directory_alias_before_cleanup() {
+    if !compiler_configured() {
+        return;
+    }
     let fixture = Fixture::new(SOURCE, &variant("scoped"));
     let session = fixture.0.join("node_modules/.impeccable-live/ab12cd34");
     let target = fixture.0.join("components");
@@ -387,27 +457,53 @@ fn audit_vue_rejects_session_directory_alias_before_cleanup() {
     std::os::unix::fs::symlink(&target, &session).unwrap();
     #[cfg(windows)]
     {
-        let output = std::process::Command::new("cmd").args(["/c", "mklink", "/J"])
-            .arg(&session).arg(&target).output().unwrap();
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        let output = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&session)
+            .arg(&target)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
-    let mut manifest: Value = serde_json::from_str(&fs::read_to_string(target.join("manifest.json")).unwrap()).unwrap();
+    let mut manifest: Value =
+        serde_json::from_str(&fs::read_to_string(target.join("manifest.json")).unwrap()).unwrap();
     manifest["componentDir"] = json!("components");
     fs::write(target.join("manifest.json"), manifest.to_string()).unwrap();
     let (_, result) = fixture.accept("1");
     assert_eq!(result["mode"], "error", "{result}");
     assert_eq!(fixture.source(), SOURCE);
-    assert_eq!(fs::read_to_string(target.join("user.txt")).unwrap(), "unrelated component data");
+    assert_eq!(
+        fs::read_to_string(target.join("user.txt")).unwrap(),
+        "unrelated component data"
+    );
 }
 
 fn audit_scaffold(fixture: &Fixture, count: i64) -> impeccable_live::svelte_component::Scaffold {
-    let start = SOURCE.lines().position(|line| line.contains("<section")).unwrap() as i64 + 1;
-    impeccable_live::vue_component::scaffold("ab12cd34", count, "StatusCard.vue", start, start + 2,
-        &MARKUP.lines().map(str::to_owned).collect::<Vec<_>>(), fixture.0.to_str().unwrap())
+    let start = SOURCE
+        .lines()
+        .position(|line| line.contains("<section"))
+        .unwrap() as i64
+        + 1;
+    impeccable_live::vue_component::scaffold(
+        "ab12cd34",
+        count,
+        "StatusCard.vue",
+        start,
+        start + 2,
+        &MARKUP.lines().map(str::to_owned).collect::<Vec<_>>(),
+        fixture.0.to_str().unwrap(),
+    )
 }
 
 #[test]
 fn audit_vue_scaffold_failure_can_be_retried() {
+    if !compiler_configured() {
+        return;
+    }
     use impeccable_live::svelte_component::Scaffold;
     let fixture = Fixture::new(SOURCE, &variant("scoped"));
     let root = fixture.0.join("node_modules/.impeccable-live");
@@ -423,13 +519,21 @@ fn audit_vue_scaffold_failure_can_be_retried() {
 
 #[test]
 fn audit_vue_scaffold_rejects_incompatible_existing_session() {
+    if !compiler_configured() {
+        return;
+    }
     use impeccable_live::svelte_component::Scaffold;
     let fixture = Fixture::new(SOURCE, &variant("scoped"));
     fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
     assert!(matches!(audit_scaffold(&fixture, 1), Scaffold::Session(_)));
-    let manifest_file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/manifest.json");
+    let manifest_file = fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34/manifest.json");
     let original = fs::read_to_string(&manifest_file).unwrap();
-    assert!(matches!(audit_scaffold(&fixture, 2), Scaffold::Fallback(_)), "changed count must not silently reuse a one-variant manifest");
+    assert!(
+        matches!(audit_scaffold(&fixture, 2), Scaffold::Fallback(_)),
+        "changed count must not silently reuse a one-variant manifest"
+    );
     assert_eq!(fs::read_to_string(manifest_file).unwrap(), original);
 }
 
@@ -437,35 +541,66 @@ fn wrap(fixture: &Fixture) -> (i32, Value) {
     let env = HashMap::from([("IMPECCABLE_LIVE_VUE_COMPONENT".into(), "1".into())]);
     let (mut io, cap) = Io::captured("", fixture.0.clone(), env);
     let code = impeccable_live::live_wrap::run(
-        &["--id", "ab12cd34", "--count", "1", "--file", "StatusCard.vue",
-          "--classes", "card", "--tag", "section", "--defer-source-write"].map(str::to_owned),
+        &[
+            "--id",
+            "ab12cd34",
+            "--count",
+            "1",
+            "--file",
+            "StatusCard.vue",
+            "--classes",
+            "card",
+            "--tag",
+            "section",
+            "--defer-source-write",
+        ]
+        .map(str::to_owned),
         &mut io,
     );
     let text = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
-    (code, serde_json::from_str(&text).unwrap_or_else(|_| json!({"stdout":text})))
+    (
+        code,
+        serde_json::from_str(&text).unwrap_or_else(|_| json!({"stdout":text})),
+    )
 }
 
 #[test]
 fn vue_scaffold_models_are_mutable_local_refs() {
+    if !compiler_configured() {
+        return;
+    }
     let source = SOURCE.replace("<p>", "<p><input v-model=\"count\" />");
     let fixture = Fixture::new(&source, &variant("scoped"));
     fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
     let (code, result) = wrap(&fixture);
     assert_eq!(code, 0, "{result}");
     assert_eq!(result["previewMode"], "vue-component", "{result}");
-    let file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/v1.vue");
+    let file = fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34/v1.vue");
     let generated = fs::read_to_string(file).unwrap();
-    let parsed = impeccable_live::vue_component::analyze(&generated, "StatusCard.vue", fixture.0.to_str().unwrap()).unwrap();
+    let parsed = impeccable_live::vue_component::analyze(
+        &generated,
+        "StatusCard.vue",
+        fixture.0.to_str().unwrap(),
+    )
+    .unwrap();
     assert_eq!(parsed["ok"], true);
     assert_eq!(fixture.source(), source);
     let (_, accepted) = fixture.accept("1");
     assert_ne!(accepted["mode"], "error", "{accepted}");
     assert!(fixture.source().contains("v-model=\"count\""));
-    assert_eq!(fixture.source().split("<template>").next(), source.split("<template>").next());
+    assert_eq!(
+        fixture.source().split("<template>").next(),
+        source.split("<template>").next()
+    );
 }
 
 #[test]
 fn vue_unsupported_scaffolds_use_deferred_normal_preview() {
+    if !compiler_configured() {
+        return;
+    }
     for source in [
         SOURCE.replace("<style scoped>", "<style scoped lang=\"scss\">"),
         format!("{SOURCE}\n<i18n>{{}}</i18n>"),
@@ -476,13 +611,25 @@ fn vue_unsupported_scaffolds_use_deferred_normal_preview() {
         fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
         let (code, result) = wrap(&fixture);
         assert_eq!(code, 0, "{result}");
-        assert_eq!(result["previewFallback"]["from"], "vue-component", "{result}");
-        assert_eq!(result["previewFallback"]["error"], "unsupported_vue_component_preview", "{result}");
-        assert!(result["wrapperBlock"].as_str().unwrap().contains("data-impeccable-variants"));
+        assert_eq!(
+            result["previewFallback"]["from"], "vue-component",
+            "{result}"
+        );
+        assert_eq!(
+            result["previewFallback"]["error"], "unsupported_vue_component_preview",
+            "{result}"
+        );
+        assert!(result["wrapperBlock"]
+            .as_str()
+            .unwrap()
+            .contains("data-impeccable-variants"));
         assert_eq!(result["sourceWritten"], false);
         assert_eq!(result["file"], "StatusCard.vue");
         assert_eq!(fixture.source(), source);
-        assert!(!fixture.0.join("node_modules/.impeccable-live/ab12cd34").exists());
+        assert!(!fixture
+            .0
+            .join("node_modules/.impeccable-live/ab12cd34")
+            .exists());
     }
 }
 
@@ -492,7 +639,12 @@ fn vue_missing_compiler_uses_normal_preview_and_preserves_source() {
     fs::remove_dir_all(fixture.0.join("node_modules")).unwrap();
     let (code, result) = wrap(&fixture);
     assert_eq!(code, 0, "{result}");
-    assert_eq!(result["previewFallback"]["from"], "vue-component", "{result}");
-    assert!(result["wrapperBlock"].as_str().unwrap().contains(MARKUP.trim()));
+    assert_eq!(
+        result["previewFallback"]["from"], "vue-component",
+        "{result}"
+    );
+    let block = result["wrapperBlock"].as_str().unwrap();
+    assert!(block.contains("@click=\"increment\""));
+    assert!(block.contains("{{ label }}: {{ count }}"));
     assert_eq!(fixture.source(), SOURCE);
 }

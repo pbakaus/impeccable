@@ -36,6 +36,11 @@ test('Vue preview → Tune → Accept → Reload preserves style and behavior', 
     await clickGo(page);
     await waitForCycling(page, 3);
     assert.equal(readFileSync(join(tmp, 'src/App.vue'), 'utf8'), source, 'generation must not rewrite source');
+    await page.locator('section.card input').evaluate(input => {
+      input.value = '7';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelector('section.card p').textContent.includes('Imports: 7'));
     await openTunePanel(page);
     await setTuneRange(page, 'Space', 23);
     await closeTunePanel(page);
@@ -60,6 +65,7 @@ test('Vue preview → Tune → Accept → Reload preserves style and behavior', 
     await page.reload();
     await waitForHandshake(page);
     await page.waitForSelector('section.card');
+    assert.equal(await page.locator('section.card input').inputValue(), '0', 'preview v-model must not overwrite source state');
     assert.equal(await page.locator('section.card').evaluate(el => getComputedStyle(el).paddingLeft), '23px');
     assert.equal(await page.locator('.unrelated').evaluate(el => getComputedStyle(el).paddingLeft), '3px');
     await clickExitLiveMode(page);

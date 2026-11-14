@@ -435,13 +435,7 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
                 svelte_session = Some(session);
             }
             Scaffold::Fallback(reason) => {
-                eprintln(
-                    io,
-                    &json_compact(
-                        &json!({"error":"unsupported_vue_component_preview","hint":reason}),
-                    ),
-                );
-                return 1;
+                svelte_preview_fallback = Some(reason);
             }
         }
     }
@@ -497,7 +491,11 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     if let Some(reason) = &svelte_preview_fallback {
         out.insert(
             "previewFallback".into(),
-            json!({ "from": "svelte-component", "reason": reason }),
+            if use_vue_component {
+                json!({ "from": "vue-component", "error": "unsupported_vue_component_preview", "reason": reason })
+            } else {
+                json!({ "from": "svelte-component", "reason": reason })
+            },
         );
     }
     if let Some((block, rs, re)) = &deferred_wrapper {

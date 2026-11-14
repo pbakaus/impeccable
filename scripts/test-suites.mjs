@@ -360,7 +360,7 @@ export const SUITES = {
       /^tests\/live-vue-accept\.test\.mjs$/,
       /^tests\/fixtures\/live-vue-accept\//,
     ],
-    commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs'] }],
+    commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs', 'tests/live-vue-bindings.test.mjs'] }],
   },
   'live-svelte-adapter-deepseek': {
     description: 'DeepSeek-backed Svelte adapter browser sweep.',
