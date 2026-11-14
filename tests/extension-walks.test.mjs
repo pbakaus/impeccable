@@ -128,21 +128,87 @@ describe('talk to type', () => {
     return { seen, control, rec: Speech.last };
   };
 
-  it('listens once with interim words, writes them after the box’s text, and keeps them when stopped', () => {
+  it('listens through pauses with interim words, writes them after the box’s text, and keeps them when stopped', () => {
     const { seen, control, rec } = run('On the pricing page ');
-    assert.deepEqual([rec.continuous, rec.interimResults, rec.lang, seen.started], [false, true, 'en-GB', 1]);
+    assert.deepEqual([rec.continuous, rec.interimResults, rec.lang, seen.started], [true, true, 'en-GB', 1]);
     rec.hear(['try sign']);
     control.stop();
     assert.deepEqual(seen.text, ['On the pricing page try sign', 'On the pricing page try signing up']);
     assert.deepEqual(seen.ended, [null]);
   });
 
-  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['network', 'network'], ['no-speech', null], ['aborted', null]]) {
+  // Chrome ends a session by itself after a pause or about a minute of talk: a new one starts, its words
+  // follow the earlier ones once (last interim words kept), and only a long silence ends listening.
+  it('starts again when Chrome ends a session, without doubling or losing words', () => {
+    const { seen, control, rec: first } = run('');
+    first.hear(['open the pricing page'], true);
+    first.hear(['open the pricing page', ' and compare']);
+    first.onend();
+    const second = Speech.last;
+    assert.notEqual(second, first);
+    second.hear(['then click upgrade']);
+    control.stop();
+    assert.deepEqual(seen.text.slice(-3), ['open the pricing page and compare', 'open the pricing page and compare then click upgrade', 'open the pricing page and compare try signing up']);
+    assert.deepEqual([seen.started, seen.ended], [2, [null]]);
+  });
+
+  it('starts a new session when words stop coming mid-talk', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { seen, rec: first } = run('');
+    first.hear(['open the pricing page']);
+    t.mock.timers.tick(8000);
+    assert.deepEqual([first.calls, seen.started, seen.ended], [['start', 'stop'], 2, []]);
+    Speech.last.hear(['then click upgrade']);
+    assert.equal(seen.text.at(-1), 'try signing up then click upgrade');
+  });
+
+  it('keeps what the person types while listening, and adds only new words after it', () => {
+    const { seen, control, rec } = run('');
+    rec.hear(['open pricing']);
+    control.retype('open pricing and log in');
+    rec.hear(['open pricing', ' then upgrade']);
+    assert.equal(seen.text.at(-1), 'open pricing and log in then upgrade');
+  });
+
+  it('frees the mic when Chrome never answers a stop', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { seen, control, rec } = run('');
+    rec.stop = () => { rec.calls.push('stop'); };
+    control.stop();
+    assert.deepEqual(seen.ended, []);
+    t.mock.timers.tick(2000);
+    assert.deepEqual([rec.calls, seen.ended], [['start', 'stop', 'abort'], [null]]);
+  });
+
+  it('stops by itself after two silent sessions in a row', () => {
+    const { seen, rec: first } = run('');
+    first.onerror({ error: 'no-speech' });
+    first.onend();
+    assert.deepEqual(seen.ended, []);
+    Speech.last.onerror({ error: 'no-speech' });
+    Speech.last.onend();
+    assert.deepEqual([seen.started, seen.ended], [2, [null]]);
+  });
+
+  it('starts again when the connection drops, and says so after two failures in a row', () => {
+    const { seen, rec: first } = run('');
+    first.hear(['open pricing'], true);
+    first.onerror({ error: 'network' });
+    first.onend();
+    Speech.last.onerror({ error: 'network' });
+    Speech.last.onend();
+    assert.deepEqual(seen.ended, []);
+    Speech.last.onerror({ error: 'network' });
+    Speech.last.onend();
+    assert.deepEqual([seen.started, seen.ended, seen.text.at(-1)], [3, ['network'], 'open pricing']);
+  });
+
+  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['audio-capture', 'audio-capture'], ['aborted', null]]) {
     it(`ends once on ${error}, saying ${ended ?? 'nothing'}`, () => {
       const { seen, rec } = run('');
       rec.onerror({ error });
       rec.onend?.();
-      assert.deepEqual(seen.ended, [ended]);
+      assert.deepEqual([seen.started, seen.ended], [1, [ended]]);
     });
   }
 
