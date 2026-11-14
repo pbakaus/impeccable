@@ -459,8 +459,8 @@ fn audit_vue_rejects_session_directory_alias_before_cleanup() {
     {
         let output = std::process::Command::new("cmd")
             .args(["/c", "mklink", "/J"])
-            .arg(&session)
-            .arg(&target)
+            .arg(session.to_string_lossy().replace('/', "\\"))
+            .arg(target.to_string_lossy().replace('/', "\\"))
             .output()
             .unwrap();
         assert!(

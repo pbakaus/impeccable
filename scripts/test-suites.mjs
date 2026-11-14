@@ -358,6 +358,7 @@ export const SUITES = {
       /^crates\/live\/src\/(vue_component\.rs|vue_bridge_helper\.mjs|live_accept\.rs|live_wrap\.rs|accept_css\.rs)$/,
       /^skill\/scripts\/live-browser/,
       /^tests\/live-vue-accept\.test\.mjs$/,
+      /^tests\/live-vue-bindings\.test\.mjs$/,
       /^tests\/fixtures\/live-vue-accept\//,
     ],
     commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs', 'tests/live-vue-bindings.test.mjs'] }],
