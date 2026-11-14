@@ -82,8 +82,26 @@ npx impeccable detect src/                   # scan a directory
 npx impeccable detect https://example.com    # scan a rendered page (uses your installed Chrome or Edge)
 npx impeccable detect --json .               # machine-readable output
 npx impeccable detect --github src/          # GitHub Actions annotations
+npx impeccable detect --sarif src/           # SARIF 2.1.0 for code scanning
 npx impeccable detect --list-rules           # every rule with its id and description
 ```
+
+GitHub code scanning keeps these alerts on the pull request, lets reviewers dismiss them, and fails only on findings that are new in that PR. `--github` annotates a single Actions run; `--sarif` is the log you upload:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - run: npx impeccable detect --sarif src/ > impeccable.sarif || test $? -eq 2
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: impeccable.sarif
+      category: impeccable
+```
+
+Exit code `2` (findings) still uploads the log; exit code `1` (a target couldn't be scanned) fails the step, and the log it wrote says `executionSuccessful: false` so it is never read as a clean scan. `category` keeps this upload beside CodeQL instead of replacing it. Run it from the repository root: paths are written relative to `GITHUB_WORKSPACE`, and a file outside it becomes a `file://` URI. A clean scan still prints a log with an empty `results` array, which is what closes alerts that were fixed. HTML findings without a line are anchored to the file. The upload action fills `partialFingerprints.primaryLocationLineHash`; detect leaves it unset.
 
 Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`.
 

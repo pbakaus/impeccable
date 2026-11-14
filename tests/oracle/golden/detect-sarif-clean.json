@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"$schema\": \"https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json\",\n  \"version\": \"2.1.0\",\n  \"runs\": [\n    {\n      \"tool\": {\n        \"driver\": {\n          \"name\": \"impeccable\",\n          \"version\": \"<ENGINE>\",\n          \"informationUri\": \"https://impeccable.style\",\n          \"rules\": []\n        }\n      },\n      \"invocations\": [\n        {\n          \"executionSuccessful\": true\n        }\n      ],\n      \"results\": []\n    }\n  ]\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

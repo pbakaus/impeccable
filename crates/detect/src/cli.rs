@@ -22,12 +22,15 @@ use crate::file_system::{
     walk_dir_reporting,
 };
 use crate::github_annotations::{
-    format_github_annotations, GITHUB_JSON_CONFLICT, GITHUB_LIST_RULES_CONFLICT,
+    format_github_annotations, is_advisory, GITHUB_JSON_CONFLICT, GITHUB_LIST_RULES_CONFLICT,
 };
 use crate::jsp;
 use crate::list_rules::{
     collect_catalog_rules, format_list_rules_ids, format_list_rules_json, format_list_rules_text,
     LIST_RULES_SCAN_ERROR,
+};
+use crate::sarif::{
+    format_sarif, SARIF_GITHUB_CONFLICT, SARIF_JSON_CONFLICT, SARIF_LIST_RULES_CONFLICT,
 };
 use crate::util::{exists, re, D};
 
@@ -39,7 +42,9 @@ Options:
   --json              Output results as JSON
   --quiet             In text mode, only print the final findings count
   --github            Write GitHub Actions annotations for each
-                      finding. Not with --json or --list-rules
+                      finding. Not with --json, --sarif or --list-rules
+  --sarif             Write a SARIF 2.1.0 log for code scanning.
+                      Not with --json, --github or --list-rules
   --list-rules        Print the detector rule catalog and exit. --json
                       for JSON, --quiet for ids only. Takes no targets
   --scope <name>      Only report rules in the given design domain
@@ -75,6 +80,8 @@ Output streams:
   Human-readable findings go to stderr so stdout stays available for structured
   output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
   --github writes Actions annotations to stdout (no human findings).
+  --sarif writes a SARIF 2.1.0 log to stdout (no human findings). A clean
+  scan still writes one, so code scanning can close alerts.
   --list-rules writes the catalog to stdout (no scan).
 
 Exit status:
@@ -111,6 +118,7 @@ Examples:
   impeccable detect --cdp 9222 --target \"My App\" --json
   impeccable detect --json .
   impeccable detect --github src/
+  impeccable detect --sarif src/
   impeccable detect --list-rules
   impeccable detect --no-config src/
 ";
@@ -173,10 +181,6 @@ fn expand_joined_url_targets(targets: Vec<String>) -> Vec<String> {
         }
     }
     out
-}
-
-fn is_advisory(f: &Finding) -> bool {
-    f.advisory == Some(true) || f.severity == "advisory"
 }
 
 fn partition_advisory(findings: &[Finding]) -> (Vec<&Finding>, Vec<&Finding>) {
@@ -295,6 +299,7 @@ struct Ctx<'a> {
     json_mode: bool,
     quiet_mode: bool,
     github_mode: bool,
+    sarif_mode: bool,
     design_system_enabled: bool,
     base: ScanOptions,
     cache: DesignSystemCache,
@@ -586,6 +591,7 @@ fn detect_cli(
     let json_mode = has(&args, "--json");
     let quiet_mode = has(&args, "--quiet");
     let github_mode = has(&args, "--github");
+    let sarif_mode = has(&args, "--sarif");
     let help_mode = has(&args, "--help");
     let no_advisory = has(&args, "--no-advisory");
     if has(&args, "--fast") {
@@ -743,6 +749,10 @@ fn detect_cli(
             io.err(GITHUB_LIST_RULES_CONFLICT);
             return Err(Exit(1));
         }
+        if sarif_mode {
+            io.err(SARIF_LIST_RULES_CONFLICT);
+            return Err(Exit(1));
+        }
         if cdp.is_some() || !targets.is_empty() {
             io.err(LIST_RULES_SCAN_ERROR);
             return Err(Exit(1));
@@ -756,6 +766,14 @@ fn detect_cli(
             io.out(&format_list_rules_text(&rules));
         }
         return Ok(0);
+    }
+    if sarif_mode && json_mode {
+        io.err(SARIF_JSON_CONFLICT);
+        return Err(Exit(1));
+    }
+    if sarif_mode && github_mode {
+        io.err(SARIF_GITHUB_CONFLICT);
+        return Err(Exit(1));
     }
     if github_mode && json_mode {
         io.err(GITHUB_JSON_CONFLICT);
@@ -781,6 +799,7 @@ fn detect_cli(
         json_mode,
         quiet_mode,
         github_mode,
+        sarif_mode,
         design_system_enabled,
         base,
         cache: DesignSystemCache::new(),
@@ -819,7 +838,7 @@ fn detect_cli(
                     // notes say which checks did not run (a hidden window skips
                     // the pixel reads), so they go to stderr there and stdout
                     // stays the JSON.
-                    if ctx.json_mode || ctx.github_mode {
+                    if ctx.json_mode || ctx.github_mode || ctx.sarif_mode {
                         ctx.io.err(&format!("{note}\n"));
                     } else if !ctx.design_notes.contains(&note) {
                         ctx.design_notes.push(note);
@@ -871,7 +890,7 @@ fn detect_cli(
             s.close();
         }
         result?;
-        if !json_mode && !quiet_mode && !github_mode && ctx.regex_only_files > 0 {
+        if !json_mode && !quiet_mode && !github_mode && !sarif_mode && ctx.regex_only_files > 0 {
             let note = regex_only_note(ctx.regex_only_files, &ctx.regex_only_exts, &ctx.dev_server_ports);
             ctx.io.err(&note);
         }
@@ -987,6 +1006,8 @@ fn detect_cli(
             if !text.is_empty() {
                 ctx.io.out(&text);
             }
+        } else if sarif_mode {
+            emit_sarif(&mut ctx, &all, &scopes, no_advisory);
         } else if quiet_mode {
             ctx.io
                 .err(&format!("{}\n", format_finding_summary(primary_len)));
@@ -1009,10 +1030,26 @@ fn detect_cli(
     }
     if json_mode {
         ctx.io.out("[]\n");
+    } else if sarif_mode {
+        emit_sarif(&mut ctx, &all, &scopes, no_advisory);
     } else if !github_mode && !quiet_mode {
         print_design_notes(&mut ctx, false);
     }
     Ok(exit_code)
+}
+
+/// `--sarif` writes a log on every completed scan, including a clean one.
+fn emit_sarif(ctx: &mut Ctx, findings: &[Finding], scopes: &[String], no_advisory: bool) {
+    let rules = collect_catalog_rules(scopes, no_advisory);
+    let text = format_sarif(
+        findings,
+        &rules,
+        &ctx.cwd,
+        ctx.io.env("GITHUB_WORKSPACE"),
+        env!("CARGO_PKG_VERSION"),
+        !ctx.had_operational_failure,
+    );
+    ctx.io.out(&format!("{text}\n"));
 }
 
 /// Text mode: say which checks a project's DESIGN.md switched off, after the
@@ -1166,7 +1203,7 @@ fn scan_targets(
             continue;
         };
         if stat.is_dir() {
-            if !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode {
+            if !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
                 if let Some(fw) = detect_framework_config(&resolved) {
                     ctx.dev_server_ports.insert(fw.port);
                     let probe = is_port_listening(fw.port, Some(fw.fingerprint));
@@ -1211,7 +1248,7 @@ fn scan_targets(
                 .iter()
                 .filter(|f| uses_html_engine(f, &ctx.config.extensions))
                 .count();
-            if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode {
+            if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
                 ctx.io.err(&format!(
                     "\nFound {} files ({} HTML) in {}.\nScanning may take a while{}.\nTarget a specific subdirectory to narrow scope.\n",
                     files.len(),
