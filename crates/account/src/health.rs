@@ -163,7 +163,9 @@ pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
 
 fn upload(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     let synced = upload_inner(io, scan, quiet);
-    if synced.recorded() {
+    // `forget` (which turns sync off and clears the marks) may have run
+    // while the upload did; don't bring a mark back after it.
+    if synced.recorded() && Local::read(&io.env).is_some_and(|l| l.sync()) {
         mark_first_scan(&io.env, &scan.root);
     }
     synced

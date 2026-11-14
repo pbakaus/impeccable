@@ -71,7 +71,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             let code = impeccable_account::run_login(rest, io);
             if code == 0 {
                 crate::setup_report::schedule(io);
-                scan_after_login(io, &engines, pack.rule_pack);
+                // `--help` exits 0 without signing in: nothing to scan for.
+                if !rest.iter().any(|a| a == "--help" || a == "-h") {
+                    scan_after_login(io, &engines, pack.rule_pack);
+                }
             }
             code
         }
@@ -264,8 +267,12 @@ fn scan_after_login(
     // The findings stay off the terminal: the line below sums them up.
     let out = std::mem::replace(&mut io.stdout, Box::new(std::io::sink()));
     let err = std::mem::replace(&mut io.stderr, Box::new(std::io::sink()));
+    // Scan from the root, as `detect` there would: config, ignores and the
+    // design system are read from the working directory, not a subdirectory.
+    let cwd = std::mem::replace(&mut io.cwd, std::path::PathBuf::from(&root));
     let args = [root.clone(), "--json".to_string()];
     let _ = impeccable_detect::cli::run_detect_reporting(&args, io, engines, rule_pack, &mut report);
+    io.cwd = cwd;
     io.stdout = out;
     io.stderr = err;
     let Some(full) = report else {

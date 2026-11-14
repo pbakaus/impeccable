@@ -1348,3 +1348,35 @@ fn foundations_alone_landing_counts_as_added() {
     login_in(&env, &root);
     assert_eq!(fake.hits("/cli/v1/foundations"), 1, "marked, no rescan");
 }
+
+#[test]
+fn login_help_never_scans() {
+    // Catches (review, Cursor): `login --help` exiting 0 and scanning the work tree.
+    let (fake, env) = signed_in("first-signin-help");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    for flag in ["--help", "-h"] {
+        let out = run(&env, &root, &["login", flag]);
+        assert!(out.status.success());
+        assert!(!String::from_utf8_lossy(&out.stderr).contains("Scanning"), "{flag}");
+    }
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+}
+
+#[test]
+fn a_sign_in_from_a_subdirectory_scans_with_the_root_config() {
+    // Catches (review, Cursor): the root's ignoreRules skipped because detect read config from the subdirectory.
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let env = fake.env("first-signin-subdir-config");
+    let root = repo(&env, Some("https://github.com/acme/my-site"));
+    std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+    std::fs::write(root.join(".impeccable/config.json"), r#"{"detector":{"ignoreRules":["cream-palette"]}}"#).unwrap();
+    login_in(&env, &root.join("sub"));
+    run(&env, &root, &["health", "forget"]);
+    run(&env, &root, &["health", "on"]);
+    run(&env, &root, &["detect", "--json", "."]);
+    let all = scans(&fake);
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0]["rules"], all[1]["rules"]);
+    assert_eq!(all[0]["rulesetId"], all[1]["rulesetId"]);
+}
