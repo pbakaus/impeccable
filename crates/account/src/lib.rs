@@ -20,6 +20,7 @@ pub mod plans;
 pub mod pro;
 pub mod session;
 pub mod setup;
+pub mod setup_status;
 mod stale_grant;
 pub mod store;
 pub mod taste;
@@ -174,11 +175,12 @@ fn unknown_args(args: &[String], allowed: &[&str], io: &mut Io, verb: &str) -> b
 /// `IMPECCABLE_NO_BROWSER=1`) the authorization URL is the only line on
 /// stdout, so a script can open it itself.
 /// How a sign-in attempt ended, for callers that act on it (`impeccable start`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoginOutcome {
     /// A usable sign-in was already here; no browser was opened.
     Already,
-    SignedIn,
+    /// A fresh sign-in, to this account.
+    SignedIn(Account),
     /// Declined, timed out, or the service refused it; the reason is on stderr.
     Failed,
 }
@@ -194,7 +196,11 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     let skip = if has_flag(args, "--force") { Skip::Never } else { Skip::UnlessStale };
     match sign_in(io, has_flag(args, "--no-browser"), skip) {
         LoginOutcome::Failed => 1,
-        LoginOutcome::Already | LoginOutcome::SignedIn => 0,
+        LoginOutcome::Already => 0,
+        LoginOutcome::SignedIn(account) => {
+            setup_status::after_login(io, &account);
+            0
+        }
     }
 }
 
@@ -252,7 +258,7 @@ fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
                 }
                 Err(_) => report_entitlement(io, &done.entitlement),
             }
-            LoginOutcome::SignedIn
+            LoginOutcome::SignedIn(done.account)
         }
         Err(e) => {
             io.err(&format!("Sign-in failed: {e}.\n"));

@@ -268,7 +268,10 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
 /// `loop status [--json]`: what Loop and each agent look like right now, read only.
 /// Nothing is written and no lock is taken; the agents' CLIs are never run.
 pub(crate) fn status(io: &Io) -> Result<Value> {
-    init_mcp_url(io)?;
+    // Reading never needs the account's server: on an origin connect would refuse, an
+    // entry is judged against production's, as disconnect does. Failing here would also
+    // silence login's Loop offer.
+    let _ = init_mcp_url(io);
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
@@ -339,6 +342,12 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     }))
 }
 
+/// Whether a `status` agent row is connected all the way: Loop's record names it, and its
+/// MCP server, hooks and instruction are all in place.
+pub(crate) fn agent_connected(a: &Value) -> bool {
+    a["connected"] == true && a["hooks"] == true && a["instruction"] == true && a["mcp"] == "registered"
+}
+
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
@@ -350,11 +359,7 @@ pub(crate) fn status_text(v: &Value) -> String {
         let label = a["label"].as_str().unwrap_or("Agent");
         if a["detected"] != true {
             out.push_str(&format!("{label}: not found.\n"));
-        } else if a["connected"] == true
-            && a["hooks"] == true
-            && a["instruction"] == true
-            && a["mcp"] == "registered"
-        {
+        } else if agent_connected(a) {
             out.push_str(&format!("{label}: connected.\n"));
         } else {
             out.push_str(&format!(

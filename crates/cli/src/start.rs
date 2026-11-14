@@ -55,7 +55,7 @@ pub(crate) fn run(
     }
     record(&mut steps, "sign_in", match signed {
         LoginOutcome::Already => "already",
-        LoginOutcome::SignedIn => "done",
+        LoginOutcome::SignedIn(_) => "done",
         LoginOutcome::Failed => "failed",
     });
     if signed == LoginOutcome::Failed {
