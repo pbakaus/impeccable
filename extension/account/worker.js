@@ -108,12 +108,18 @@ async function plan(message) {
 /** Who walks, as the side panel picked them: a name, and the face sheet's address when there is one. */
 const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: typeof who.face === 'string' && /^https?:\/\//.test(who.face) ? who.face.slice(0, 2048) : null } : null);
 
+/** The width the side panel picked, as the server names it (walks/driver.js `DEVICES`); none is the tab as it is. */
+const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
+
 async function walk({ plan: approved, walker, ...message }, panel = Promise.resolve(false)) {
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };
   if (approved !== undefined && !PLAN_ID.test(approved)) return { ok: false, why: 'failed' };
   const at = issuer;
-  const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}) });
+  // Told only to a server that says it takes it (REN-1890): an older one refuses a key it does not know. The tab is laid
+  // out at the width either way (link.js `adopt`).
+  const device = Object.hasOwn(SERVER_DEVICE, message.device) && (await session.me().catch(() => null))?.widths ? { device: SERVER_DEVICE[message.device] } : {};
+  const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}), ...device });
   if (!started.ok) return started;
   const socket = socketOf(at);
   if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };

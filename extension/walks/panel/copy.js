@@ -72,7 +72,7 @@ export const COPY = {
     risky: 'Some steps can’t be undone. Go ahead?',
     edit: 'Edit the task',
     start: 'Start journey',
-    at: { tablet: 'At tablet width, 768 × 1024', phone: 'At phone width, 390 × 844' },
+    at: { tablet: 'At tablet width, 820 × 1180', phone: 'At phone width, 390 × 844' },
   },
 
   walking: {

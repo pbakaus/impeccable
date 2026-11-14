@@ -371,6 +371,22 @@ describe('account worker', () => {
     assert.deepEqual(posted.at(-1).body.persona, { mine: 'night-nurse' });
   });
 
+  // REN-1890: the width picked goes to the server only where its /me says it takes one (`widths`); the walk runs at it either way.
+  for (const [label, widths, device] of [['a server that takes widths', true, 'mobile'], ['an older server, which refuses a key it does not know', false, undefined]]) {
+    it(`starts a walk at Phone width, telling ${label} ${device ? 'the device' : 'nothing of it'}`, async () => {
+      await loaded;
+      startServer(() => json(201, { handoff: HANDOFF }));
+      const served = globalThis.fetch;
+      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(200, { email: 'mira@example.com', pro: true, ...(widths ? { widths } : {}) }) : served(url, init));
+      delete session.handoff;
+      // The walks before this one are still waiting for their tab: ended, so this one may start.
+      (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
+      assert.deepEqual(await ask({ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone' }, fromPopup), { ok: true, panel: true });
+      assert.equal(posted.at(-1).body.device, device);
+      assert.equal(session.handoff.device, 'phone');
+    });
+  }
+
   // Making a persona: each answer the server gives, as the popup hears it.
   const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
   const create = (description) => ask({ account: 'create', description }, fromPopup);

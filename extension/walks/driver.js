@@ -118,11 +118,11 @@ async function mayGo(url) {
 }
 
 /**
- * The widths a walk of the person's own tab may run at, picked in the side panel (REN-1890). Desktop is not here: the
- * tab keeps its own size. One device pixel a CSS pixel, as the engine's own browser has it; both take touch and name
+ * The widths a walk of the person's own tab may run at, picked in the side panel (REN-1890): the server's own sizes for
+ * them (its `mobile` and `tablet`). Desktop is not here: the tab keeps its own size. One device pixel a CSS pixel, as the engine's own browser has it; both take touch and name
  * themselves as Chrome on Android, a phone as a mobile one.
  */
-export const DEVICES = { tablet: { width: 768, height: 1024, phone: false }, phone: { width: 390, height: 844, phone: true } };
+export const DEVICES = { tablet: { width: 820, height: 1180, phone: false }, phone: { width: 390, height: 844, phone: true } };
 
 /** What the tab says it is at `device`: this Chrome's own version, on Android. */
 function agentOf(device) {
