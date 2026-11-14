@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -273,9 +273,35 @@ fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
 }
 
 pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
+    use crate::loop_connect::Taste;
+    // `--taste` / `--no-taste` answer connect's taste question ahead of time.
+    let (taste_yes, taste_no) = (
+        args.iter().any(|a| a == "--taste"),
+        args.iter().any(|a| a == "--no-taste"),
+    );
+    let verb = args.first().map(String::as_str);
+    if (taste_yes || taste_no)
+        && ((taste_yes && taste_no) || !matches!(verb, Some("connect" | "install")))
+    {
+        io.err(&format!("--taste and --no-taste go with loop connect or loop install, one at a time.\n{USAGE}"));
+        return 1;
+    }
+    let taste = if taste_yes {
+        Taste::Yes
+    } else if taste_no {
+        Taste::No
+    } else {
+        Taste::Ask
+    };
+    let args: Vec<String> = args
+        .iter()
+        .filter(|a| *a != "--taste" && *a != "--no-taste")
+        .cloned()
+        .collect();
+    let args = args.as_slice();
     // The JSON forms answer one object on stdout whatever happened, for Loop's own UI.
     if args.iter().any(|a| a == "--json") {
-        if let Some(code) = run_json(args, io, std::env::consts::OS) {
+        if let Some(code) = run_json(args, io, std::env::consts::OS, taste) {
             return code;
         }
     }
@@ -296,7 +322,12 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         Ok(message) => {
             io.out(&message);
             if install && !no_connect {
-                return after_install(io, connect);
+                return after_install(io, connect, taste);
+            }
+            if inner.first().is_some_and(|a| a == "connect") {
+                let only = (inner.len() == 3).then(|| inner[2].as_str());
+                let (lines, _) = crate::loop_connect::offer_taste(io, only, taste);
+                io.out(&lines);
             }
             0
         }
@@ -310,7 +341,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
 /// The step after a fresh install: connect the agents. `--connect` does it outright; a
 /// person at a terminal is asked once (Enter means yes); anything else (an agent, a
 /// script, a pipe) gets the one command to run next and nothing is changed.
-fn after_install(io: &mut Io, connect: bool) -> i32 {
+fn after_install(io: &mut Io, connect: bool, taste: crate::loop_connect::Taste) -> i32 {
     use std::io::IsTerminal;
     let ask = !connect && io.stdin_is_tty && std::io::stdout().is_terminal();
     let yes = connect || (ask && {
@@ -327,6 +358,8 @@ fn after_install(io: &mut Io, connect: bool) -> i32 {
     match crate::loop_connect::connect(io) {
         Ok(message) => {
             io.out(&message);
+            let (lines, _) = crate::loop_connect::offer_taste(io, None, taste);
+            io.out(&lines);
             0
         }
         Err(e) => {
@@ -344,7 +377,12 @@ fn connect_answer(bytes_read: usize, line: &str) -> bool {
 
 /// `loop status --json` and `loop connect [--agent claude|codex] --json`. `None` when
 /// the arguments are not one of those, so usage errors read as usual.
-fn run_json(args: &[String], io: &mut Io, os: &str) -> Option<i32> {
+fn run_json(
+    args: &[String],
+    io: &mut Io,
+    os: &str,
+    taste: crate::loop_connect::Taste,
+) -> Option<i32> {
     let rest: Vec<&str> = args[1..]
         .iter()
         .map(String::as_str)
@@ -359,12 +397,30 @@ fn run_json(args: &[String], io: &mut Io, os: &str) -> Option<i32> {
             Ok(v) => (v, true),
             Err(e) => (serde_json::json!({ "ok": false, "error": e }), false),
         },
-        (Some("connect"), []) => crate::loop_connect::connect_json(io, None),
-        (Some("connect"), ["--agent", agent]) => crate::loop_connect::connect_json(io, Some(agent)),
+        (Some("connect"), []) => with_taste(io, None, taste),
+        (Some("connect"), ["--agent", agent]) => with_taste(io, Some(agent), taste),
         _ => return None,
     };
     io.out(&format!("{value}\n"));
     Some(if ok { 0 } else { 1 })
+}
+
+/// `connect --json`: never asks, so the taste block is added or removed only with
+/// `--taste` or `--no-taste`. `taste`, present only when a rule file was touched or
+/// asked about, lists what happened to each.
+fn with_taste(
+    io: &mut Io,
+    only: Option<&str>,
+    taste: crate::loop_connect::Taste,
+) -> (serde_json::Value, bool) {
+    use crate::loop_connect::Taste;
+    let taste = if taste == Taste::Ask { Taste::Skip } else { taste };
+    let (mut value, ok) = crate::loop_connect::connect_json(io, only);
+    let (_, rows) = crate::loop_connect::offer_taste(io, only, taste);
+    if !rows.is_empty() {
+        value["taste"] = serde_json::Value::Array(rows);
+    }
+    (value, ok)
 }
 
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {

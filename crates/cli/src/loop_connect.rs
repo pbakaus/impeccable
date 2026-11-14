@@ -11,6 +11,7 @@
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
+use crate::loop_taste;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -485,6 +486,8 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         ));
     }
     let specs = found.committed;
+    let mut taste_specs: Vec<&Spec> = rolled_back.clone();
+    taste_specs.extend(specs.iter());
     // A rolled-back first connect has no journal left, but may have added the MCP
     // server and Loop's record: stop the waking and say how to remove the server.
     for spec in rolled_back {
@@ -530,6 +533,10 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
             }
         }
         out.push_str(&mcp_stays(&support, spec));
+    }
+    // After the engine's undo, which leaves this block alone: it is not the engine's.
+    if !remove_taste(&home, &support, &taste_specs, &mut out) {
+        failed = true;
     }
     if out.is_empty() {
         out.push_str("Nothing to disconnect.\n");
@@ -1080,6 +1087,204 @@ fn publish_bytes(support: &Path, name: &str, bytes: &[u8]) -> Result<()> {
         let _ = fs::remove_file(&staged);
         e.to_string()
     })
+}
+
+/// What connect does about the taste block (`--taste`, `--no-taste`, or neither).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Taste {
+    /// Neither flag: a person at a terminal is asked once; anything else skips it.
+    Ask,
+    /// Never ask (the JSON form): with no flag, nothing is added.
+    Skip,
+    Yes,
+    No,
+}
+
+/// The person's answer for each rule file, in connect's note: `"on"` (added) or
+/// `"off"` (declined). The rule file itself never carries it.
+const TASTE_KEY: &str = "taste";
+
+/// The rule file an agent reads for this config folder: Codex reads
+/// `AGENTS.override.md` in place of `AGENTS.md` when it is there.
+fn rule_file(harness: &str, root: &Path) -> PathBuf {
+    root_override(harness, root)
+        .unwrap_or_else(|| root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" }))
+}
+
+fn tilde(home: &Path, path: &Path) -> String {
+    path.strip_prefix(home)
+        .map_or_else(|_| path.display().to_string(), |rest| format!("~/{}", rest.display()))
+}
+
+/// The rule files of the agents this connect left connected (or just `only`): an agent
+/// counts when the engine holds a committed installation for its config folder.
+fn taste_targets(io: &Io, home: &Path, only: Option<&str>) -> Vec<PathBuf> {
+    let installed = installed_specs(OWNER).map(|f| f.committed).unwrap_or_default();
+    AGENTS
+        .iter()
+        .filter(|(h, _)| only.is_none_or(|o| o == *h))
+        .filter_map(|(h, _)| agent(io, home, h))
+        .filter(|a| installed.iter().any(|s| s.harness == a.harness && s.root == a.root))
+        .map(|a| rule_file(a.harness, &a.root))
+        .collect()
+}
+
+fn row(file: &Path, result: &str) -> Value {
+    json!({ "file": file.display().to_string(), "result": result })
+}
+
+/// After a connect: keep the taste block where the person said yes, and ask once (or
+/// follow the flag) for the rule files never asked about. A block the person deleted by
+/// hand is not put back unless they pass `--taste`; `--no-taste` takes it out. Returns
+/// the report lines and one JSON row per rule file changed or asked about.
+pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (String, Vec<Value>) {
+    use std::io::IsTerminal;
+    let (mut out, mut rows) = (String::new(), Vec::new());
+    let Ok(home) = home(io) else { return (out, rows) };
+    let Ok(support) = support_dir(&home) else { return (out, rows) };
+    let targets = taste_targets(io, &home, only);
+    if targets.is_empty() {
+        return (out, rows);
+    }
+    let note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
+    let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) =
+        targets.into_iter().partition(|f| loop_taste::present(f));
+    // Asked about: files with no answer yet, and with --taste every file without the block.
+    let ask: Vec<PathBuf> = absent
+        .into_iter()
+        .filter(|f| choice == Taste::Yes || !answered(f))
+        .collect();
+    let yes = match choice {
+        _ if ask.is_empty() => None,
+        Taste::Yes => Some(true),
+        Taste::No => Some(false),
+        Taste::Ask if io.stdin_is_tty && std::io::stdout().is_terminal() => {
+            let files: Vec<String> = ask.iter().map(|f| tilde(&home, f)).collect();
+            io.out(&format!(
+                "Let your agents use your Impeccable taste? This adds 3 lines to {}. [Y/n] ",
+                files.join(" and ")
+            ));
+            let _ = std::io::Write::flush(&mut io.stdout);
+            let mut line = String::new();
+            Some(
+                std::io::stdin()
+                    .read_line(&mut line)
+                    .is_ok_and(|n| yes_answer(n, &line)),
+            )
+        }
+        Taste::Ask | Taste::Skip => None,
+    };
+    // The answer was taken without the lock; the files and the note change under it.
+    let Ok(_lock) = lock(&support) else { return (out, rows) };
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    if !note[TASTE_KEY].is_object() {
+        note[TASTE_KEY] = json!({});
+    }
+    let before = note[TASTE_KEY].clone();
+    let mut record = |file: &Path, answer: &str| {
+        note[TASTE_KEY][file.display().to_string()] = json!(answer);
+    };
+    for file in &present {
+        let shown = tilde(&home, file);
+        if choice == Taste::No {
+            match loop_taste::take_out(file) {
+                Ok(_) => {
+                    record(file, "off");
+                    out.push_str(&format!("Taste: removed from {shown}.\n"));
+                    rows.push(row(file, "removed"));
+                }
+                Err(e) => {
+                    out.push_str(&format!("Taste: left in {shown}: {e}\n"));
+                    rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+                }
+            }
+            continue;
+        }
+        // Rewritten in place, so a block from an older wording is brought up to date.
+        match loop_taste::add(file) {
+            Ok(()) => record(file, "on"),
+            Err(e) => {
+                out.push_str(&format!("Taste: couldn't update {shown}: {e}\n"));
+                rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+            }
+        }
+    }
+    for file in &ask {
+        let shown = tilde(&home, file);
+        match yes {
+            Some(true) => match loop_taste::add(file) {
+                Ok(()) => {
+                    record(file, "on");
+                    out.push_str(&format!("Taste: added to {shown}.\n"));
+                    rows.push(row(file, "added"));
+                }
+                Err(e) => {
+                    out.push_str(&format!("Taste: not added to {shown}: {e}\n"));
+                    rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+                }
+            },
+            Some(false) => {
+                record(file, "off");
+                rows.push(row(file, "declined"));
+            }
+            None => rows.push(row(file, "skipped")),
+        }
+    }
+    if yes.is_none() && !ask.is_empty() {
+        out.push_str("To let your agents use your Impeccable taste: impeccable loop connect --taste\n");
+    }
+    if note[TASTE_KEY] != before {
+        if let Err(e) = publish(&support, TARGETS, &note) {
+            out.push_str(&format!("Taste: couldn't record your answer: {e}\n"));
+        }
+    }
+    (out, rows)
+}
+
+fn yes_answer(bytes_read: usize, line: &str) -> bool {
+    bytes_read > 0 && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+}
+
+/// Disconnect: take the taste block out of every rule file connect put it in, and of
+/// the rule files of the installations being removed, then forget every answer so a
+/// later connect asks again. Called with the connect lock held.
+fn remove_taste(home: &Path, support: &Path, specs: &[&Spec], out: &mut String) -> bool {
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let mut files: Vec<PathBuf> = note[TASTE_KEY]
+        .as_object()
+        .map(|m| m.keys().map(PathBuf::from).collect())
+        .unwrap_or_default();
+    for spec in specs {
+        let own = if spec.harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" };
+        for file in [spec.root.join(own), spec.root.join("AGENTS.override.md")] {
+            if !files.contains(&file) {
+                files.push(file);
+            }
+        }
+    }
+    let mut ok = true;
+    for file in &files {
+        match loop_taste::take_out(file) {
+            Ok(true) => out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file))),
+            Ok(false) => {}
+            Err(e) => {
+                ok = false;
+                out.push_str(&format!(
+                    "  The taste lines in {} were left in place: {e}\n",
+                    tilde(home, file)
+                ));
+            }
+        }
+    }
+    if note[TASTE_KEY].as_object().is_some_and(|m| !m.is_empty()) {
+        note[TASTE_KEY] = json!({});
+        if let Err(e) = publish(support, TARGETS, &note) {
+            ok = false;
+            out.push_str(&format!("  Couldn't forget the taste answers: {e}\n"));
+        }
+    }
+    ok
 }
 
 fn sign_in(harness: &str) -> &'static str {
