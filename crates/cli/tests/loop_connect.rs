@@ -950,3 +950,320 @@ fn an_agents_override_file_is_named_instead_of_reported_connected() {
     let status = b.run(&["loop", "status"]);
     assert!(!text(&status).contains("hidden by"), "{}", text(&status));
 }
+
+const TASTE_START: &str = "<!-- impeccable:taste -->";
+const TASTE_END: &str = "<!-- /impeccable:taste -->";
+
+fn read(p: &Path) -> String {
+    fs::read_to_string(p).unwrap_or_default()
+}
+
+fn taste_blocks(p: &Path) -> usize {
+    read(p).matches(TASTE_START).count()
+}
+
+#[test]
+fn taste_is_added_once_keeps_the_file_and_goes_on_disconnect() {
+    // Catches: a second connect appending a second block, a 0600 rule file left
+    // world-readable, a disconnect that leaves the block or eats the person's lines.
+    // What a round trip without taste leaves in Codex's folder, to compare with.
+    let plain = Box::new("taste-roundtrip-plain");
+    plain.install_loop();
+    assert!(plain.run(&["loop", "connect"]).status.success());
+    assert!(plain.run(&["loop", "disconnect"]).status.success());
+    let plain_codex = fs::read(plain.home().join(".codex/AGENTS.md")).ok();
+    let b = Box::new("taste-roundtrip");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    let codex_md = b.home().join(".codex/AGENTS.md");
+    fs::write(&claude_md, "# mine\nkeep this\n").unwrap();
+    fs::set_permissions(&claude_md, fs::Permissions::from_mode(0o600)).unwrap();
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    for f in [&claude_md, &codex_md] {
+        assert_eq!(taste_blocks(f), 1, "{}: {}", f.display(), read(f));
+        assert!(read(f).contains(TASTE_END));
+        assert!(read(f).contains("taste.get once per task"));
+        assert!(read(f).contains(INSTRUCTION), "the engine's block stays too");
+    }
+    assert!(read(&claude_md).starts_with("# mine\nkeep this\n"));
+    assert_eq!(
+        fs::metadata(&claude_md).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
+    assert_eq!(read(&claude_md), "# mine\nkeep this\n", "back to the person's own bytes");
+    assert_eq!(fs::read(&codex_md).ok(), plain_codex, "as a round trip without taste leaves it");
+    assert!(!text(&out).contains("left in place"), "{}", text(&out));
+    assert!(text(&out).contains("Claude Code: disconnected.\n"), "{}", text(&out));
+    assert!(text(&out).contains("Codex: disconnected.\n"), "{}", text(&out));
+    assert_eq!(
+        fs::metadata(&claude_md).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[test]
+fn an_older_taste_block_is_replaced_where_it_stands() {
+    let b = Box::new("taste-replace");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    fs::write(
+        &claude_md,
+        format!("top\n{TASTE_START}\nold wording\n{TASTE_END}\nbottom\n"),
+    )
+    .unwrap();
+    // No flag and no terminal: an existing block is still brought up to date.
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let t = read(&claude_md);
+    assert_eq!(taste_blocks(&claude_md), 1, "{t}");
+    assert!(!t.contains("old wording"), "{t}");
+    assert!(t.starts_with(&format!("top\n{TASTE_START}\nImpeccable Taste:")), "{t}");
+    assert!(t.contains(&format!("{TASTE_END}\nbottom\n")), "{t}");
+}
+
+#[test]
+fn nothing_is_written_when_declined_or_unasked() {
+    // Catches: a script or Loop's own panel adding lines nobody agreed to.
+    let b = Box::new("taste-declined");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0);
+    assert!(text(&out).contains("impeccable loop connect --taste"), "{}", text(&out));
+    let out = b.run(&["loop", "connect", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0);
+    // Declined once is asked no more, and the hint goes with it.
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0);
+    assert!(!text(&out).contains("--taste"), "{}", text(&out));
+    let out = b.run(&["loop", "connect", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(taste_blocks(&claude_md), 0);
+}
+
+#[test]
+fn a_block_deleted_by_hand_is_not_put_back() {
+    let b = Box::new("taste-hand");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    assert!(b.run(&["loop", "connect", "--taste"]).status.success());
+    let t = read(&claude_md);
+    let (a, e) = (t.find(TASTE_START).unwrap(), t.find(TASTE_END).unwrap() + TASTE_END.len());
+    fs::write(&claude_md, format!("{}{}", &t[..a], &t[e..])).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+    // Asking for it outright puts it back.
+    assert!(b.run(&["loop", "connect", "--taste"]).status.success());
+    assert_eq!(taste_blocks(&claude_md), 1);
+}
+
+#[test]
+fn taste_goes_to_the_config_folder_claude_uses_and_json_reports_it() {
+    let mut b = Box::new("taste-config-dir");
+    b.install_loop();
+    let dir = b.root.join("claude-work");
+    fs::create_dir_all(&dir).unwrap();
+    b.env.insert("CLAUDE_CONFIG_DIR".into(), dir.display().to_string());
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--taste", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["ok"], true, "{v}");
+    assert_eq!(v["taste"][0]["result"], "added", "{v}");
+    assert_eq!(v["taste"][0]["file"], dir.join("CLAUDE.md").display().to_string());
+    assert_eq!(taste_blocks(&dir.join("CLAUDE.md")), 1);
+    assert_eq!(taste_blocks(&b.home().join(".claude/CLAUDE.md")), 0);
+    assert_eq!(taste_blocks(&b.home().join(".codex/AGENTS.md")), 0, "only the agent asked for");
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(taste_blocks(&dir.join("CLAUDE.md")), 0);
+}
+
+#[test]
+fn an_empty_rule_file_the_person_had_stays_after_disconnect() {
+    // Catches: disconnect deleting every rule file it emptied, not just ones connect made.
+    let b = Box::new("taste-empty-kept");
+    b.install_loop();
+    let codex_md = b.home().join(".codex/AGENTS.md");
+    fs::write(&codex_md, "").unwrap();
+    assert!(b.run(&["loop", "connect", "--agent", "codex", "--taste"]).status.success());
+    assert_eq!(taste_blocks(&codex_md), 1);
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(fs::read(&codex_md).ok(), Some(Vec::new()), "the person's own empty file stays");
+}
+
+#[test]
+fn json_reports_a_block_brought_up_to_date() {
+    let b = Box::new("taste-json-updated");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    fs::write(&claude_md, format!("{TASTE_START}\nold wording\n{TASTE_END}\n")).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["taste"][0]["result"], "updated", "{v}");
+    assert_eq!(v["taste"][0]["file"], claude_md.display().to_string());
+    // Unchanged on the next run: nothing to report.
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v.get("taste").is_none(), "{v}");
+}
+
+#[test]
+fn a_block_that_could_not_be_removed_is_tried_again_next_disconnect() {
+    // Catches: disconnect forgetting a file whose block it failed to take out.
+    let b = Box::new("taste-retry");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    assert!(b.run(&["loop", "connect", "--agent", "claude", "--taste"]).status.success());
+    let good = read(&claude_md);
+    // A stray second marker makes the block ambiguous, so it is left alone.
+    fs::write(&claude_md, format!("{good}{TASTE_START}\n")).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("were left in place"), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 2);
+    // Fixed by hand: the next disconnect finds the file from the kept answer.
+    let fixed = read(&claude_md).replacen(&format!("{TASTE_START}\n"), "", 2);
+    let fixed = format!("{TASTE_START}\n{fixed}");
+    fs::write(&claude_md, &fixed).unwrap();
+    assert_eq!(taste_blocks(&claude_md), 1, "{fixed}");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+}
+
+#[test]
+fn taste_still_reaches_the_agent_that_connected_when_another_failed() {
+    // Catches: a partial connect skipping the offer, and a failed connect leaving a
+    // note that would later delete a file the person made.
+    let b = Box::new("taste-partial");
+    b.install_loop();
+    let theirs = "[mcp_servers.impeccable]\nurl = \"https://elsewhere.example/mcp\"\n";
+    fs::write(b.home().join(".codex/config.toml"), theirs).unwrap();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    let codex_md = b.home().join(".codex/AGENTS.md");
+    let out = b.run(&["loop", "connect", "--taste"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Taste: added to ~/.claude/CLAUDE.md."), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 1);
+    assert!(!codex_md.exists(), "nothing written for the agent that failed");
+    // The person makes the file themselves, then Codex connects too.
+    fs::write(&codex_md, "").unwrap();
+    fs::write(b.home().join(".codex/config.toml"), "").unwrap();
+    let out = b.run(&["loop", "connect", "--taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&codex_md), 1);
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(fs::read(&codex_md).ok(), Some(Vec::new()), "their file stays");
+}
+
+#[test]
+fn taste_flags_go_with_connect_or_install_one_at_a_time() {
+    let b = Box::new("taste-flags");
+    for args in [
+        vec!["loop", "status", "--taste"],
+        vec!["loop", "connect", "--taste", "--no-taste"],
+    ] {
+        let out = b.run(&args);
+        assert!(!out.status.success(), "{args:?}");
+        assert!(text(&out).contains("--taste and --no-taste go with"), "{}", text(&out));
+    }
+}
+
+/// `loop connect` at a terminal (macOS `script` gives it one), answering `answer`.
+fn connect_at_a_terminal(b: &Box, answer: &str) -> String {
+    use std::io::Write;
+    let mut child = Command::new("/usr/bin/script")
+        .args(["-q", "/dev/null", env!("CARGO_BIN_EXE_impeccable"), "loop", "connect"])
+        .env_clear()
+        .envs(&b.env)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Typed once the question is on screen, as a person would: input sent earlier
+    // reaches a terminal the program hasn't started reading yet.
+    let mut stdout = child.stdout.take().unwrap();
+    let mut seen = Vec::new();
+    let mut buf = [0u8; 4096];
+    let mut stdin = child.stdin.take();
+    // A lost answer must fail the test, not hang CI: end this exact child after 30 s.
+    let pid = child.id();
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = done.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+        if !flag.load(std::sync::atomic::Ordering::SeqCst) {
+            let _ = Command::new("/bin/kill").args(["-9", &pid.to_string()]).status();
+        }
+    });
+    loop {
+        let n = std::io::Read::read(&mut stdout, &mut buf).unwrap_or(0);
+        if n == 0 {
+            break;
+        }
+        seen.extend_from_slice(&buf[..n]);
+        if String::from_utf8_lossy(&seen).contains("[Y/n]") {
+            if let Some(mut s) = stdin.take() {
+                s.write_all(answer.as_bytes()).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+    }
+    drop(stdin);
+    child.wait().unwrap();
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    String::from_utf8_lossy(&seen).into_owned()
+}
+
+#[test]
+fn a_person_at_a_terminal_is_asked_once_naming_each_file() {
+    let b = Box::new("taste-prompt");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    let out = connect_at_a_terminal(&b, "n\n");
+    assert!(
+        out.contains("Let your agents use your Impeccable taste? This adds 3 lines to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md. [Y/n]"),
+        "{out}"
+    );
+    assert_eq!(taste_blocks(&claude_md), 0);
+    // Declined: the next connect at a terminal doesn't ask again.
+    let out = connect_at_a_terminal(&b, "y\n");
+    assert!(!out.contains("Impeccable taste?"), "{out}");
+    assert_eq!(taste_blocks(&claude_md), 0);
+    // After a disconnect the answers are forgotten, and Enter means yes.
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    let out = connect_at_a_terminal(&b, "\n");
+    assert!(out.contains("Taste: added to ~/.claude/CLAUDE.md."), "{out}");
+    assert_eq!(taste_blocks(&claude_md), 1);
+    assert_eq!(taste_blocks(&b.home().join(".codex/AGENTS.md")), 1);
+}
+
+#[test]
+fn a_symlinked_rule_file_stays_a_link_and_its_target_comes_back_exact() {
+    // Catches: a rename over the link, which would cut a dotfiles setup loose.
+    let b = Box::new("taste-symlink");
+    b.install_loop();
+    let target = b.root.join("dotfiles/CLAUDE.md");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(&target, "# from my dotfiles\n").unwrap();
+    let link = b.home().join(".claude/CLAUDE.md");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    assert!(b.run(&["loop", "connect", "--agent", "claude", "--taste"]).status.success());
+    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert_eq!(taste_blocks(&target), 1);
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+    assert_eq!(read(&target), "# from my dotfiles\n");
+}
