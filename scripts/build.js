@@ -16,6 +16,7 @@
  * and builds Tailwind CSS for production deployment.
  */
 
+import { checkTokenBudget } from './lib/token-budget.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -493,6 +494,19 @@ function validateAskInstructionSites(rootDir) {
  * Returns the number of validation errors. Build fails if > 0.
  */
 const CLAUDE_CODE_DESCRIPTION_MAX = 200;
+/**
+ * Token budget: every LLM-facing skill file and each common use's up-front
+ * load stay under the caps in scripts/token-budget.json.
+ *
+ * Returns the number of validation errors. Build fails if > 0.
+ */
+function validateTokenBudget(rootDir) {
+  const { errors, rows } = checkTokenBudget(rootDir);
+  for (const e of errors) console.error(`  ❌ ${e}`);
+  if (!errors.length) console.log(`✓ Token budget: ${rows.join('; ')}`);
+  return errors.length;
+}
+
 function validateClaudeCodeDescription(rootDir) {
   const src = fs.readFileSync(path.join(rootDir, 'skill', 'SKILL.src.md'), 'utf-8');
   const m = src.match(/^claude-code-description:\s*"(.*)"\s*$/m);
@@ -1026,7 +1040,10 @@ async function build() {
   // cmd.exe misparses an LF-only batch file, so every emitted .cmd is CRLF.
   const batchEolErrors = validateBatchLineEndings(ROOT_DIR, DIST_DIR, BUILD_OPTIONS);
 
-  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0 || claudeDescriptionErrors > 0 || batchEolErrors > 0) {
+  // What the skill loads into an agent's context stays under its byte caps.
+  const tokenBudgetErrors = validateTokenBudget(ROOT_DIR);
+
+  if (countErrors > 0 || versionErrors > 0 || manifestShapeErrors > 0 || proseErrors > 0 || skillProseErrors > 0 || askSiteErrors > 0 || claudeDescriptionErrors > 0 || batchEolErrors > 0 || tokenBudgetErrors > 0) {
     process.exit(1);
   }
 

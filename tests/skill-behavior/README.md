@@ -446,6 +446,7 @@ results remain the completed measurements.
 | 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
 | 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
 | 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll; stops at the roll, no build |
+| 24 | one fixture per split playbook: a world redesign, a build from an approved comp, an inline web critique, a native iOS critique; each repeats `IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS` times (default 3) | every run loads the part (`new-work-world.md`, `new-work-comp.md`, `critique-rubric.md`) before any implementation write, roll, `build-phase` or `comp-spec`; one miss fails the path |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 

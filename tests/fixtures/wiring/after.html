@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Signup</title>
+<script src="/js/analytics.js"></script>
+<script>window.dataLayer   = window.dataLayer || [];</script>
+</head>
+<body>
+<header class="masthead">
+  <nav>
+    <a href="/">Home</a>
+    <a href="/pricing">Pricing</a>
+  </nav>
+</header>
+<main id="main">
+  <h1>Start your free trial</h1>
+  <img src="/logo.svg" alt="Acme logo">
+  <form action="/signup" method="POST" data-testid="signup-form">
+    <label for="email">Email</label>
+    <input id="email" name="mail" type="email" required>
+    <select name="plan">
+      <option>Free</option>
+      <option>Team</option>
+    </select>
+    <input type="checkbox" name="terms" value="yes" required>
+    <textarea name="note" data-cy="note"></textarea>
+    <button type="submit" onclick="track('signup', 'v2')">Create account</button>
+  </form>
+  <h2>Questions?</h2>
+  <a href="/contact" data-qa="footer-contact">Contact us</a>
+</main>
+</body>
+</html>

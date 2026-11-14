@@ -588,6 +588,7 @@ dependencies = [
  "impeccable-common",
  "impeccable-core",
  "impeccable-detect",
+ "libc",
  "percent-encoding",
  "png",
  "serde_json",

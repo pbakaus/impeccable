@@ -38,6 +38,7 @@ pub mod attach;
 pub mod cdp;
 pub mod consent;
 pub mod overlays;
+mod reaper;
 pub mod response_capture;
 pub mod html_snapshot;
 pub mod discovery;

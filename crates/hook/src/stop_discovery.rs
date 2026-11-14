@@ -101,6 +101,7 @@ pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[Extens
         return Vec::new();
     }
     let root_path = Path::new(root);
+    let scripts_in_scope = crate::hook_lib::uses_impeccable(root);
     let cutoff = UNIX_EPOCH + std::time::Duration::from_millis(since_ms.saturating_sub(SLACK_MS));
     let mut found: Vec<(SystemTime, String)> = Vec::new();
     let mut visited = 0usize;
@@ -128,7 +129,11 @@ pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[Extens
             }
             let path = entry.path().to_string_lossy().into_owned();
             let ext = js::to_lower_case(&jsp::extname(&path));
-            if !ALLOWED_EXTS.contains(&ext.as_str()) && match_configured_extension(&path, configured).is_none() {
+            let claimed = match_configured_extension(&path, configured).is_some();
+            if !ALLOWED_EXTS.contains(&ext.as_str()) && !claimed {
+                continue;
+            }
+            if !claimed && crate::hook_lib::PLAIN_SCRIPT_EXTS.contains(&ext.as_str()) && !scripts_in_scope {
                 continue;
             }
             let Ok(meta) = entry.metadata() else { continue };
