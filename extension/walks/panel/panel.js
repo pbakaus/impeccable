@@ -149,7 +149,7 @@ function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; } });
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
   const send = () => { hush(); pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
@@ -205,12 +205,13 @@ function hear() {
     base: pre.task,
     lang: navigator.language || 'en-US',
     // The box holds 2000 characters, as typing does: a longer talk stops there and says so, rather than going on unseen.
-    onText: (text) => {
+    onText: (text, settled) => {
       pre.task = text.slice(0, 2000);
       const box = app.querySelector('textarea.text');
       // The newest words in view: a long talk outgrows the box.
       if (box) { box.value = pre.task; box.scrollTop = box.scrollHeight; }
-      if (text.length > 2000 && voice) { pre.note = COPY.voice.full; voice.stop(); }
+      // Only on final words: an interim guess can run long and then shrink.
+      if (text.length > 2000 && settled && voice) { pre.note = COPY.voice.full; voice.stop(); }
     },
     onEnd: (error) => { ended = true; voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
   });

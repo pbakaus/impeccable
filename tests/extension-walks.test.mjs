@@ -162,6 +162,24 @@ describe('talk to type', () => {
     assert.equal(seen.text.at(-1), 'try signing up then click upgrade');
   });
 
+  it('keeps what the person types while listening, and adds only new words after it', () => {
+    const { seen, control, rec } = run('');
+    rec.hear(['open pricing']);
+    control.retype('open pricing and log in');
+    rec.hear(['open pricing', ' then upgrade']);
+    assert.equal(seen.text.at(-1), 'open pricing and log in then upgrade');
+  });
+
+  it('frees the mic when Chrome never answers a stop', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { seen, control, rec } = run('');
+    rec.stop = () => { rec.calls.push('stop'); };
+    control.stop();
+    assert.deepEqual(seen.ended, []);
+    t.mock.timers.tick(2000);
+    assert.deepEqual([rec.calls, seen.ended], [['start', 'stop', 'abort'], [null]]);
+  });
+
   it('stops by itself after two silent sessions in a row', () => {
     const { seen, rec: first } = run('');
     first.onerror({ error: 'no-speech' });
