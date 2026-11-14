@@ -944,5 +944,62 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    // Split playbooks: SKILL.md's Setup step 2 names each part file, so the agent
+    // reads it with the playbook rather than finding the pointer two files deep.
+    // Every run must load the part before the step that needs it; the rate is
+    // the point, so each path repeats (IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS, default 3).
+    // The sub-agent critique path needs a sub-agent tool this harness lacks, so
+    // it is measured in real Claude Code instead (headless runs, by hand).
+    const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
+    const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
+      || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''));
+    const partLoadedInTime = (trace, part) => {
+      const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, part));
+      const needIndex = trace.toolCalls.findIndex(needsPart);
+      return loadIndex >= 0 && (needIndex < 0 || loadIndex < needIndex);
+    };
+    const NESTED_PATHS = [
+      { id: 'world', part: 'new-work-world.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable redesign index.html: replace the current look with a completely new visual world and keep the copy.' },
+      { id: 'comp', part: 'new-work-comp.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML,
+          '.impeccable/config.json': '{ "buildPath": "comp" }\n',
+          '.impeccable/mocks/landing.png': TINY_PNG,
+          '.impeccable/mocks/landing.png.json': JSON.stringify({ prompt: 'The landing page for the product in this workspace.', approved: true }, null, 2) },
+        prompt: '/impeccable build index.html from the approved comp at .impeccable/mocks/landing.png.' },
+      { id: 'critique-inline', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable critique index.html' },
+      { id: 'critique-native', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS, 'TideDetailView.swift': MINIMAL_IOS_SOURCE },
+        prompt: '/impeccable critique TideDetailView.swift' },
+    ];
+    for (const nested of NESTED_PATHS) {
+      it(`scenario 24: ${nested.id} loads ${nested.part} on every run (${LOAD_RUNS} runs)`, async () => {
+        const misses = [];
+        for (let run = 1; run <= LOAD_RUNS; run++) {
+          const workspace = prepareWorkspace({ files: nested.files });
+          try {
+            const { trace, text } = await runTurn({
+              checkpoint: (trace) => fileLoaded(trace, nested.part) || trace.toolCalls.some(needsPart),
+              workspace,
+              model,
+              userPrompt: nested.prompt,
+              maxSteps: 12,
+            });
+            logTrace('S24', `${nested.id} run ${run}`, modelId, trace, { textSample: text.slice(0, 400) });
+            if (!partLoadedInTime(trace, nested.part)) misses.push({ run, trace: summarizeTrace(trace) });
+          } finally {
+            cleanupWorkspace(workspace);
+          }
+        }
+        assert.equal(misses.length, 0,
+          `${nested.part} was not loaded before the step that needs it in ${misses.length} of ${LOAD_RUNS} runs.\n` +
+            `Misses: ${JSON.stringify(misses, null, 2)}`);
+      });
+    }
   });
 }
