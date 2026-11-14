@@ -525,3 +525,22 @@ div.card:hover { --tw-ring: 1px; background: url(photo.jpg); color: #fafafa; }
         "{findings:#?}"
     );
 }
+
+#[test]
+fn an_auto_axis_scales_a_hover_svg_past_icon_size() {
+    // A 32x1 SVG at `auto 32px` paints 1024x32, and a 4x32 SVG at `32px`
+    // paints 32x256: both cover the text, so the hover is left unscored.
+    for (w, h, size) in [(32, 1, "auto 32px"), (4, 32, "32px")] {
+        let findings = scan(&format!(
+            r#"<!DOCTYPE html><html><head><style>
+div.card {{ background: #111111; color: #ffffff; font-size: 16px; }}
+div.card:hover {{ background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='{w}' height='{h}'%3E%3Crect width='{w}' height='{h}' fill='%23111'/%3E%3C/svg%3E") left top / {size} no-repeat; color: #fafafa; }}
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#
+        ));
+        assert!(
+            !findings.iter().any(|f| f.snippet.contains(":hover")),
+            "{size}: {findings:#?}"
+        );
+    }
+}
+

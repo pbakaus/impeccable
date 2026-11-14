@@ -85,7 +85,8 @@ fn inline_bg(el: &StaticElement<'_>) -> String {
     let raw = el.get_attribute("style").unwrap_or("");
     let values: Vec<String> = INLINE_BG_RE.captures_iter(raw).map(|m| js::trim(&m[1]).to_string()).collect();
     let important = |v: &&String| IMPORTANT_RE.is_match(v);
-    values.iter().filter(important).last().or_else(|| values.last()).cloned().unwrap_or_default()
+    let winner = values.iter().filter(important).last().or_else(|| values.last()).cloned().unwrap_or_default();
+    js::trim(&IMPORTANT_RE.replace(&winner, "")).to_string()
 }
 static IMPORTANT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(&format!(r"(?i)!{ws}*important{ws}*$", ws = js::WS)).expect("IMPORTANT_RE"));

@@ -1302,23 +1302,39 @@ pub fn check_element_hover_contrast(
         || (own_image.contains("gradient")
             && (split_top_level_commas(&own_image).len() > 1
                 || !gradient_tile_misses(hover, &own_image, font_size)));
-    // The hover's own image is read past only when it is an icon: an
-    // icon-sized SVG that does not repeat and stays icon-sized (`auto`, or
-    // lengths up to the icon size). A tiled pattern, or one stretched by
-    // `cover`, `contain`, a percentage or a larger size, covers the text
-    // however small the file.
-    let icon_size = |size: &str| {
+    // The hover's own image is read past only when it is an icon: an SVG
+    // that does not repeat and paints at most icon-sized on both axes. The
+    // painted size follows `background-size`, where an `auto` axis scales
+    // with the SVG's aspect ratio (a 32x1 SVG at `auto 32px` paints
+    // 1024x32). A tiled pattern, or one stretched by `cover`, `contain` or a
+    // percentage, covers the text however small the file.
+    let painted = |(w, h): (f64, f64), size: &str| -> Option<(f64, f64)> {
+        let px = |t: &str| t.strip_suffix("px").and_then(|n| n.parse::<f64>().ok()).filter(|n| *n >= 0.0);
+        let axis = |t: &str| if t == "auto" { Some(None) } else { px(t).map(Some) };
         let parts: Vec<&str> = size.split_ascii_whitespace().collect();
-        parts.len() <= 2
-            && parts.iter().all(|p| {
-                *p == "auto" || p.strip_suffix("px").and_then(|n| n.parse::<f64>().ok()).is_some_and(|n| (0.0..=ICON_MAX_PX).contains(&n))
-            })
+        let (sw, sh) = match parts.as_slice() {
+            [] => (None, None),
+            [x] => (axis(x)?, None),
+            [x, y] => (axis(x)?, axis(y)?),
+            _ => return None,
+        };
+        match (sw, sh) {
+            (None, None) => Some((w, h)),
+            (Some(sw), None) => (w > 0.0).then(|| (sw, sw * h / w)),
+            (None, Some(sh)) => (h > 0.0).then(|| (sh * w / h, sh)),
+            (Some(sw), Some(sh)) => Some((sw, sh)),
+        }
     };
     let icon = !own_image.contains("gradient")
-        && data_svg_intrinsic_size(sv(hover, "backgroundImage")).is_some_and(|(w, h)| w <= ICON_MAX_PX && h <= ICON_MAX_PX)
         && geo::repeat_from(sv(hover, "backgroundRepeat"), &own_image) == (false, false)
-        && split_top_level_commas(&own_image).into_iter().next().map_or(true, |layer| {
-            geo::parse_shorthand_layer(&layer).size.map_or(true, |size| icon_size(js::trim(&size)))
+        && data_svg_intrinsic_size(sv(hover, "backgroundImage")).is_some_and(|intrinsic| {
+            let size = split_top_level_commas(&own_image)
+                .into_iter()
+                .next()
+                .and_then(|layer| geo::parse_shorthand_layer(&layer).size)
+                .map(|size| js::trim(&size).to_string())
+                .unwrap_or_default();
+            painted(intrinsic, &size).is_some_and(|(w, h)| w <= ICON_MAX_PX && h <= ICON_MAX_PX)
         });
     if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !icon {
         return Vec::new();
