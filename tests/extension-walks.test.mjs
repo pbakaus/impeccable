@@ -554,6 +554,33 @@ describe('walk worker', () => {
     });
   }
 
+  // REN-1891: the op says where, never what. Whatever else it carries, the page gets the picture shipped in walks/.
+  it('attaches only the bundled sample picture, whatever file, path or address the op names', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const fetched = [];
+    const given = [];
+    const { fetch } = globalThis;
+    const { sendCommand } = chrome.debugger;
+    globalThis.fetch = async (url) => { fetched.push(String(url)); return new Response(readFileSync(path.join(ROOT, 'extension', String(url).replace('chrome-extension://ext/', '')))); };
+    chrome.debugger.sendCommand = async (target, method, params) => {
+      if (method !== 'Runtime.evaluate' || !params?.expression?.includes('elementFromPoint')) return sendCommand(target, method, params);
+      given.push(params.expression);
+      return { result: { value: 'picker' } };
+    };
+    try {
+      const named = { file: '/etc/passwd', path: '/Users/me/secret.png', url: 'https://evil.example/x.png', data: 'ZXZpbA==', name: 'evil.exe', type: 'text/html' };
+      assert.deepEqual(await ops.upload({ x: 5, y: 6, ...named }), { value: 'picker' });
+      assert.deepEqual(fetched, ['chrome-extension://ext/walks/sample-photo.png']);
+      const sample = readFileSync(path.join(ROOT, 'extension/walks/sample-photo.png')).toString('base64');
+      assert.ok(given[0].endsWith(`)(5,6,"${sample}","sample-photo.png","image/png")`));
+      for (const value of Object.values(named)) assert.ok(!given[0].includes(value), `${value} never reaches the page`);
+    } finally {
+      globalThis.fetch = fetch;
+      chrome.debugger.sendCommand = sendCommand;
+    }
+  });
+
   it('lets nothing a pause held reach the tab once Stop is pressed, even while the walk is still letting go', async () => {
     const { ops, command, hooks } = await walked();
     page.seen = {};
