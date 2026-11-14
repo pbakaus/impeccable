@@ -1281,6 +1281,16 @@ pub fn check_element_hover_contrast(
     let resting_own_bg = parse_any_color(sv_opt(style, "backgroundColor"));
     let hover_own_bg = parse_any_color(sv_opt(hover, "backgroundColor"));
     let own_bg = hover_own_bg.or(resting_own_bg);
+    // Text over the element's own image (a `background: url(...)` whose
+    // implied fill is transparent) sits on pixels this engine cannot read,
+    // so the hover pairing is not scored, as the resting one is not.
+    let own_image = js::to_lower_case(sv(hover, "backgroundImage"));
+    if !own_bg.is_some_and(|c| a_ge(&c, 0.99))
+        && (own_image.contains("url(") || own_image.contains("gradient"))
+        && !background_is_icon(el)
+    {
+        return Vec::new();
+    }
 
     let bg = if own_bg.is_some_and(|c| a_ge(&c, 0.99)) {
         own_bg.unwrap()

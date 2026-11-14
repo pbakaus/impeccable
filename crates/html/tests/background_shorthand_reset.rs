@@ -325,3 +325,20 @@ body { background: #ffffff; }
         "{findings:#?}"
     );
 }
+
+#[test]
+fn a_color_only_hover_over_a_resting_image_is_not_scored() {
+    // The resting shorthand paints an image and resets the fill to
+    // transparent; a hover that changes only the text color still sits on
+    // that image, which a static read cannot sample.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background: url(photo.jpg) center / cover; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().all(|f| !f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
