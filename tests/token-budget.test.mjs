@@ -59,15 +59,17 @@ describe('token budget', () => {
         IMPECCABLE_NO_STALENESS_CHECK: '1', IMPECCABLE_NO_UPDATE_CHECK: '1', IMPECCABLE_CREDENTIAL_STORE: 'file',
       };
       const run = (args, input) => spawnSync(bin, args, { cwd: project, env, input, encoding: 'utf-8' });
+      const bytes = (out) => Buffer.byteLength(out, 'utf8');
       const context = run(['context']);
       assert.equal(context.status, 0, context.stderr);
-      assert.ok(context.stdout.length <= BUDGET.cli.context, `context printed ${context.stdout.length} bytes, over its ${BUDGET.cli.context}-byte cap:\n${context.stdout}`);
+      assert.ok(bytes(context.stdout) <= BUDGET.cli.context, `context printed ${bytes(context.stdout)} bytes, over its ${BUDGET.cli.context}-byte cap:\n${context.stdout}`);
       const targeted = run(['context', '--target', 'src/index.html']);
-      assert.ok(targeted.stdout.length <= BUDGET.cli['context-target'], `context --target printed ${targeted.stdout.length} bytes, over its ${BUDGET.cli['context-target']}-byte cap:\n${targeted.stdout}`);
+      assert.equal(targeted.status, 0, targeted.stderr);
+      assert.ok(bytes(targeted.stdout) <= BUDGET.cli['context-target'], `context --target printed ${bytes(targeted.stdout)} bytes, over its ${BUDGET.cli['context-target']}-byte cap:\n${targeted.stdout}`);
       const event = JSON.stringify({ session_id: 's', cwd: project, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: path.join(project, 'src', 'index.html') } });
       const hook = run(['hook'], event);
-      assert.ok(hook.stdout.length > 0, 'the hook printed nothing for a clean edit');
-      assert.ok(hook.stdout.length <= BUDGET.cli['hook-clean'], `a clean hook pass printed ${hook.stdout.length} bytes, over its ${BUDGET.cli['hook-clean']}-byte cap:\n${hook.stdout}`);
+      assert.ok(bytes(hook.stdout) > 0, 'the hook printed nothing for a clean edit');
+      assert.ok(bytes(hook.stdout) <= BUDGET.cli['hook-clean'], `a clean hook pass printed ${bytes(hook.stdout)} bytes, over its ${BUDGET.cli['hook-clean']}-byte cap:\n${hook.stdout}`);
     } finally {
       fs.rmSync(project, { recursive: true, force: true });
       fs.rmSync(home, { recursive: true, force: true });

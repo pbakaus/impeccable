@@ -67,7 +67,7 @@ Evaluate:
 
 - **Persona red flags**: select personas with the Selecting Personas table in [critique-rubric.md](critique-rubric.md), plus 1-2 project-specific ones from PRODUCT.md's `## Users` when it has one, and walk each through the primary action.
 
-Read critique-rubric.md as part of Assessment A: a sub-agent running A reads it itself, so give it the file's path in its prompt, and the parent does not load it.
+Read critique-rubric.md as part of Assessment A. When a sub-agent runs A, give it the file's path so it reads the rubric itself, and the parent does not load it. When A runs in this context (native critiques, or the single-context fallback), read the rubric here before scoring.
 
 Return: design-specificity verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
 
