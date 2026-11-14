@@ -634,6 +634,8 @@ fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
     let t = Tmp::new();
     let cwd = t.path();
     t.write("package.json", "{}");
+    // A plain .ts scans only in a project that uses Impeccable (#1237).
+    t.write("PRODUCT.md", "# Product\n");
     // This is the actual working-tree preimage, not HEAD (which might differ).
     let before = "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n";
     let after = before.replacen("import dead from 'dead';\n", "", 1);
@@ -3422,10 +3424,11 @@ fn stop_from_an_umbrella_cwd_finds_the_project_below_it() {
     assert!(stop.audit.get("roots").is_none(), "{:?}", stop.audit);
     // Nothing lands in the umbrella folder itself (#346).
     assert!(!t.exists("work/.impeccable"));
-    // The second Stop has nothing new to say.
+    // The second Stop has nothing new to say. Nothing changed since the first,
+    // so it is the same pass and the claim skips it (D5).
     let again = hook::run_stop_hook(&rt_with(&work, e.clone()), &stop_event(&work, "p1"));
     assert_eq!(again.stdout, "", "{:?}", again.audit);
-    assert_eq!(audit_str(&again.audit, "skipped"), Some("stop-clean"));
+    assert_eq!(audit_str(&again.audit, "skipped"), Some("duplicate-event"));
     // Another session's Stop does not see this session's roots.
     let other = hook::run_stop_hook(&rt_with(&work, e), &stop_event(&work, "p2"));
     assert_eq!(audit_str(&other.audit, "skipped"), Some("no-touched-files"));
@@ -4098,4 +4101,221 @@ fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
     let r = rt(&cwd);
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+// D5: a plugin hook next to a project hook fires the turn-end pass twice too.
+// The copies run at once, both read the cache before either writes it, and
+// both printed the same deep pass. Stop now claims like PostToolUse.
+
+#[test]
+fn concurrent_duplicate_stop_invocations_run_one_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let file = t.write("src/card.css", SIDE_TAB_CSS);
+    // The per-edit pass records the file; side-tab is deferred to Stop.
+    hook::run_hook(&rt_with(&cwd, e.clone()), &edit_event(&cwd, &file, "s-stop"));
+    let stdin = stop_event(&cwd, "s-stop");
+    let results: Vec<hook::RunResult> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let (cwd, e, stdin) = (cwd.clone(), e.clone(), stdin.clone());
+                s.spawn(move || hook::run_stop_hook(&rt_with(&cwd, e), &stdin))
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let printed: Vec<&hook::RunResult> = results.iter().filter(|r| r.stdout.contains("[side-tab]")).collect();
+    assert_eq!(printed.len(), 1, "{:?}", results.iter().map(|r| &r.audit).collect::<Vec<_>>());
+    assert!(results.iter().any(|r| r.audit.get("skipped") == Some(&json!("duplicate-event"))), "the other copies skip as duplicates");
+}
+
+#[test]
+fn a_later_turn_with_a_new_edit_still_runs_its_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let r = rt_with(&cwd, e);
+    let first = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &first, "s-turns"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns")).stdout.contains("a.css"));
+    // Same session, identical Stop payload (Claude sends no turn id), new edit.
+    let second = t.write("src/b.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &second, "s-turns"));
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns"));
+    assert!(again.stdout.contains("b.css"), "{} {:?}", again.stdout, again.audit);
+}
+
+#[test]
+fn concurrent_cache_saves_leave_one_whole_cache_and_no_staging_files() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let files: Vec<String> = (0..8).map(|i| t.write(&format!("src/c{i}.css"), SIDE_TAB_CSS)).collect();
+    std::thread::scope(|s| {
+        for (i, f) in files.iter().enumerate() {
+            let cwd = cwd.clone();
+            s.spawn(move || hook::run_hook(&rt(&cwd), &edit_event(&cwd, f, &format!("s{i}"))));
+        }
+    });
+    let text = t.read(".impeccable/hook.cache.json");
+    assert!(serde_json::from_str::<Value>(&text).is_ok(), "the cache parses: {text}");
+    let leftovers: Vec<String> = std::fs::read_dir(t.0.join(".impeccable")).unwrap()
+        .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp")).collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn a_turn_that_only_changed_design_md_runs_a_new_deep_pass() {
+    // The claim key carries the design system: changing DESIGN.md alone is a
+    // new pass, not a copy of the previous Stop.
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt_with(&cwd, claim_env(&t, &[]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-design"));
+    hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    t.write("DESIGN.md", "# Design\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_cache_save_keeps_the_file_mode_and_a_symlinked_cache() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    // A cache kept elsewhere, linked in, readable only by its owner.
+    let real = t.write("elsewhere/cache.json", "{}");
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    std::os::unix::fs::symlink(&real, t.0.join(".impeccable/hook.cache.json")).unwrap();
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-mode"));
+    assert!(std::fs::symlink_metadata(t.0.join(".impeccable/hook.cache.json")).unwrap().file_type().is_symlink(), "the link stays");
+    assert!(t.read("elsewhere/cache.json").contains("s-mode"), "the save went through the link");
+    assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o600);
+}
+
+#[test]
+fn a_turn_that_only_changed_an_inherited_design_md_runs_a_new_deep_pass() {
+    // The app has no DESIGN.md of its own, so the deep pass reads the repo
+    // root's; editing that file alone must not read as a copy of the last Stop.
+    let t = Tmp::new();
+    // A monorepo: the app inherits the workspace root's DESIGN.md.
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt_with(&app, claim_env(&t, &[]));
+    let css = t.write("app/src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&app, &css, "s-inherit"));
+    hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    t.write("DESIGN.md", "# Design\n\nColors changed.\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}
+
+// #1237: plain .ts/.js is mostly not UI (a server, a CLI, a config), so the
+// hook scans it only in a project that uses Impeccable.
+const TS_SLOP: &str = "const s = `.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}`;\n";
+
+#[test]
+fn plain_scripts_skip_in_a_project_without_impeccable_context() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let ts = t.write("src/server.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+    assert_eq!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.is_empty());
+    let js = t.write("bin/cli.js", TS_SLOP);
+    assert_eq!(audit_str(&hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).audit, "skipped"), Some("plain-script"));
+    // Component and style files are UI wherever they are.
+    let tsx = t.write("src/Card.tsx", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &tsx, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn plain_scripts_scan_once_the_project_uses_impeccable() {
+    for marker in ["PRODUCT.md", "DESIGN.md", "docs/PRODUCT.md", ".agents/context/DESIGN.md", ".impeccable/config.json"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(marker, if marker.ends_with(".json") { "{}" } else { "# Product\n" });
+        let r = rt(&cwd);
+        let ts = t.write("src/theme.ts", TS_SLOP);
+        let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+        assert!(out.stdout.contains("[gradient-text]"), "{marker}: {:?}", out.audit);
+    }
+}
+
+#[test]
+fn plain_scripts_scan_in_a_monorepo_app_that_inherits_design_context() {
+    // Review: the app has its own package.json and no local context; it
+    // inherits the workspace root's DESIGN.md, so its scripts are in scope.
+    let t = Tmp::new();
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt(&app);
+    let ts = t.write("app/src/theme.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&app, &ts, "s-mono"));
+    assert_ne!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.contains("[gradient-text]"), "{:?}", out.audit);
+}
+
+#[test]
+fn a_configured_extension_is_not_a_plain_script() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"detector":{"extensions":[{"ext":".js","engine":"text"}]}}"#);
+    let r = rt(&cwd);
+    let js = t.write("src/a.js", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let css = t.0.join("src/page.css");
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+    std::fs::OpenOptions::new().write(true).open(&css).unwrap().set_modified(earlier).unwrap();
+    // More plain scripts than discovery keeps, all newer than the stylesheet.
+    for i in 0..45 {
+        t.write(&format!("server/route{i}.ts"), TS_SLOP);
+    }
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "the stylesheet still scans: {} {:?}", deep.stdout, deep.audit);
+    assert!(!deep.stdout.contains("[gradient-text]"), "no server script scans: {}", deep.stdout);
+}
+
+#[test]
+fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let write = cursor(&cwd, "Write", json!({"file_path": "src/server.ts", "content": TS_SLOP}));
+    assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
+    t.write("DESIGN.md", "# Design\n");
+    assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
 }

@@ -19,7 +19,7 @@ use impeccable_detect::config::{
 pub use impeccable_detect::config::{
     match_configured_extension, merge_extensions, normalize_extension_entries, ExtensionEntry,
 };
-use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
+use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, resolve_design_sidecar_path, DesignSystem};
 use impeccable_detect::detect_text::{detect_text, TextOptions};
 use impeccable_detect::engines::{HtmlEngine, ScanOptions};
 use once_cell::sync::Lazy;
@@ -37,6 +37,48 @@ pub const ALLOWED_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass",
     ".less", ".ts", ".js",
 ];
+
+/// Plain scripts: mostly not UI (a server, a CLI, a config file), so the hook
+/// scans them only in a project that uses Impeccable (#1237). Markup, style
+/// and component files are UI wherever they are.
+pub const PLAIN_SCRIPT_EXTS: &[&str] = &[".ts", ".js"];
+
+/// Whether `root` uses Impeccable: a PRODUCT.md or DESIGN.md where context
+/// resolution looks (the root, `.agents/context`, `docs`), or an `.impeccable`
+/// folder, at `root` or at the project and repo roots context resolution
+/// inherits from (a monorepo app with its own package.json takes the
+/// workspace root's DESIGN.md). A few stats, then one project resolution,
+/// paid only for a plain script.
+pub fn uses_impeccable(root: &str, env: &HashMap<String, String>) -> bool {
+    if marks_impeccable(root) {
+        return true;
+    }
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        env,
+    );
+    let inherited = [project.project_root.as_str(), project.repo_root.as_str()]
+        .into_iter()
+        .any(|dir| dir != root && marks_impeccable(dir));
+    inherited
+}
+
+fn marks_impeccable(root: &str) -> bool {
+    use impeccable_context::context::{DESIGN_NAMES, FALLBACK_DIRS, PRODUCT_NAMES};
+    if exists(&jsp::join(&[root, ".impeccable"])) {
+        return true;
+    }
+    std::iter::once(root.to_string())
+        .chain(FALLBACK_DIRS.iter().map(|d| jsp::join(&[root, d])))
+        .any(|dir| PRODUCT_NAMES.iter().chain(DESIGN_NAMES.iter()).any(|name| exists(&jsp::join(&[&dir, name]))))
+}
+
+/// False for a plain script (not claimed by a configured extension) in a
+/// project that does not use Impeccable.
+pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str, env: &HashMap<String, String>) -> bool {
+    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root, env)
+}
 
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
@@ -656,11 +698,11 @@ pub fn persist_cache(rt: &Runtime, cwd: &str, cache: &Cache) -> bool {
     if std::fs::create_dir_all(jsp::dirname(&target)).is_err() {
         return false;
     }
-    std::fs::write(
-        &target,
-        serde_json::to_string(&Value::Object(cache)).unwrap_or_default(),
-    )
-    .is_ok()
+    // Write beside the target and rename, so two hook processes that save at
+    // once leave one whole cache. The shared helper keeps a symlinked cache's
+    // link and the file's permissions.
+    let body = serde_json::to_string(&Value::Object(cache)).unwrap_or_default();
+    impeccable_common::fsx::write_atomic(&target, body.as_bytes()).is_ok()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1671,6 +1713,32 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
 /// Resolve design rules for the edited workspace without moving hook state,
 /// and waive the linked stylesheets `detector.ignoreFiles` covers, matched
 /// like the edited file ([`is_ignored_file`]).
+/// The design documents a Stop pass under `root` reads: the DESIGN.md and
+/// sidecar of the project root and of the repo root, resolved the way
+/// [`design_system_options_for_file`] resolves them. The turn-end claim keys
+/// on them, so a turn that only edited an inherited DESIGN.md is a new pass.
+pub fn stop_design_inputs(rt: &Runtime, root: &str) -> Vec<String> {
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        &rt.env,
+    );
+    let mut out = Vec::new();
+    for dir in [&project.project_root, &project.repo_root] {
+        if let Some(doc) = resolve_design_md_path(dir) {
+            if !out.contains(&doc.path) {
+                out.push(doc.path.clone());
+            }
+            if let Some(sidecar) = resolve_design_sidecar_path(dir, &doc.context_dir) {
+                if !out.contains(&sidecar) {
+                    out.push(sidecar);
+                }
+            }
+        }
+    }
+    out
+}
+
 pub fn design_system_options_for_file(
     rt: &Runtime,
     config: &HookConfig,

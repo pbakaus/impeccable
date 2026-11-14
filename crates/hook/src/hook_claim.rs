@@ -265,6 +265,58 @@ pub fn claim_key(rt: &Runtime, key: &str) -> Claim {
     }
 }
 
+/// The claim key for a turn-end deep pass over `root`. A Stop payload names
+/// no tool call, and Claude sends the same payload on every turn, so the key
+/// carries what the pass is about to scan: each touched file with its size
+/// and mtime. Duplicate copies of one Stop agree on it; a later turn that
+/// changed a file does not. Codex's `turn_id` is part of it when present.
+pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String], extra_inputs: &[String]) -> Option<String> {
+    let session = non_empty_str(event, SESSION_KEYS)?;
+    let turn = non_empty_str(event, &["turn_id", "turnId"]).unwrap_or("");
+    let mut files: Vec<&str> = files.iter().map(String::as_str).collect();
+    files.sort_unstable();
+    let mut h = Sha256::new();
+    for part in ["stop", session, turn, root] {
+        h.update(part.as_bytes());
+        h.update([0u8]);
+    }
+    // What the scan reads besides the files: the design system and the
+    // detector settings. A turn that only edited DESIGN.md or the config is a
+    // new pass, not a copy of the last one.
+    let inputs: Vec<String> = SCAN_INPUTS.iter().map(|rel| format!("{}/{rel}", root.trim_end_matches('/'))).collect();
+    for f in files.iter().copied().chain(inputs.iter().map(String::as_str)).chain(extra_inputs.iter().map(String::as_str)) {
+        h.update(f.as_bytes());
+        h.update([0u8]);
+        if let Ok(meta) = std::fs::metadata(f) {
+            h.update(meta.len().to_le_bytes());
+            if let Ok(t) = meta.modified().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).map_err(std::io::Error::other)) {
+                h.update(t.as_nanos().to_le_bytes());
+            }
+        }
+        h.update([0u8]);
+    }
+    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Files under a project root that change what a deep pass reports without
+/// being scan targets themselves. The design documents the pass actually
+/// resolves (an inherited repo-root DESIGN.md, a `DESIGN.json` sidecar) come
+/// in as `extra_inputs`.
+const SCAN_INPUTS: &[&str] = &[
+    "DESIGN.md", "Design.md", "design.md",
+    ".agents/context/DESIGN.md", "docs/DESIGN.md",
+    ".impeccable/design.json",
+    ".impeccable/config.json", ".impeccable/config.local.json",
+];
+
+/// Claims the turn-end pass over `root`. No session id: no claim, scan.
+pub fn claim_stop(rt: &Runtime, event: &Map<String, Value>, root: &str, files: &[String], extra_inputs: &[String]) -> Claim {
+    match stop_key(event, root, files, extra_inputs) {
+        Some(key) => claim_key(rt, &key),
+        None => Claim::Scan,
+    }
+}
+
 /// Claims the event this invocation is about to scan.
 pub fn claim_event(rt: &Runtime, event: &Map<String, Value>, project_cwd: &str, files: &[String]) -> Claim {
     match event_key(event, project_cwd, files) {

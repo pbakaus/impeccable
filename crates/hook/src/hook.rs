@@ -248,6 +248,10 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd, &rt.env) {
+            last_skip = "plain-script";
+            continue;
+        }
         if is_ignored_file(&rt.proc_cwd, file_path, &project_cwd, &config.ignore_files) {
             last_skip = "config-ignore-file";
             continue;
@@ -825,6 +829,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
                 root,
                 &home,
+                &rt.env,
                 since,
                 &root_config.extensions,
                 root_config.limits.max_file_bytes,
@@ -848,6 +853,18 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
                 vec![("skipped", Value::from("no-touched-files")), ("durationMs", ms_since(started))],
+            ));
+            continue;
+        }
+        // A plugin hook next to a project hook fires this pass twice at once:
+        // only the first copy scans, as PostToolUse does.
+        let touched_paths: Vec<String> = touched.iter().map(|(f, _)| f.clone()).collect();
+        let design_inputs = stop_design_inputs(rt, root);
+        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths, &design_inputs) == crate::hook_claim::Claim::Duplicate {
+            // A duplicate says more than an empty root's skip, so it wins.
+            first_skip = Some(result(
+                &root_audit,
+                vec![("skipped", Value::from("duplicate-event")), ("durationMs", ms_since(started))],
             ));
             continue;
         }
