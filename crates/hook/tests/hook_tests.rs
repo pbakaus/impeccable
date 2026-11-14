@@ -2453,7 +2453,8 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     assert!(out.ends_with("Installed or repaired hook manifests for: .claude, .agents, .cursor, .github.\n"), "{out}");
 
     let claude: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
-    let cmd = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    let cmd = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    assert_eq!(claude["hooks"]["SessionStart"][0]["hooks"][0]["command"], json!(cmd));
     assert_eq!(claude["hooks"]["PostToolUse"][0]["hooks"][0]["command"], json!(cmd));
     assert_eq!(claude["hooks"]["Stop"][0]["hooks"][0]["command"], json!(cmd));
     assert!(claude["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
@@ -2751,7 +2752,7 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(post[0]["hooks"][0]["command"], json!("echo other"));
     assert_eq!(
         post[1]["hooks"][0]["command"],
-        json!("\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook")
+        json!("[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook")
     );
     // Upstream 611147a3: the repaired Claude group must exist and carry the
     // current Edit|Write matcher (MultiEdit is retired; see 55fb8e8).
@@ -3761,6 +3762,47 @@ fn status_requires_complete_current_entries_for_each_harness() {
     t.write(".claude/settings.json", &partial.to_string());
     let (out, _, _) = admin_run(&r, &["status"]);
     assert!(out.contains("wiring .claude: not wired"), "{out}");
+}
+
+/// #1307: a manifest from an earlier `hooks on` (PostToolUse and Stop, bare
+/// launcher) reads as not wired, and `hooks on` upgrades it in place to the
+/// installer's three guarded entries, keeping a foreign hook.
+#[test]
+fn hooks_on_upgrades_a_two_entry_claude_manifest() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    let bare = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".claude/settings.local.json", &json!({
+        "hooks": {
+            "PostToolUse": [
+                { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": bare, "timeout": 5 }] },
+                { "matcher": "Bash", "hooks": [{ "type": "command", "command": "echo foreign" }] }
+            ],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30 }] }]
+        }
+    }).to_string());
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: not wired"), "{out}");
+    admin_run(&r, &["on"]);
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    let guarded = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    let ours = |event: &str| manifest["hooks"][event].as_array().unwrap().iter()
+        .filter(|e| e["hooks"][0]["command"].as_str().is_some_and(|c| c.contains("skills/impeccable"))).count();
+    for event in ["SessionStart", "PostToolUse", "Stop"] {
+        assert_eq!(ours(event), 1, "{event}: {manifest}");
+    }
+    assert!(manifest.to_string().contains("echo foreign"), "{manifest}");
+    let commands: Vec<&str> = ["SessionStart", "PostToolUse", "Stop"].iter().flat_map(|event|
+        manifest["hooks"][*event].as_array().unwrap().iter().filter_map(|e| e["hooks"][0]["command"].as_str())
+            .filter(|c| c.contains("skills/impeccable"))).collect();
+    assert!(commands.iter().all(|c| *c == guarded), "{commands:?}");
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: wired"), "{out}");
+    let before = t.read(".claude/settings.local.json");
+    admin_run(&r, &["on"]);
+    assert_eq!(t.read(".claude/settings.local.json"), before);
 }
 
 #[test]
