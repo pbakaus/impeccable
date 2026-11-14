@@ -13,7 +13,7 @@ use super::{BrowserFinding, ElFinding};
 use crate::checks::measures::resolve_length_px;
 use crate::checks::rules::{check_kicker_above_heading, KickerCandidate, RuleHit};
 use crate::checks::text_rules::{
-    check_em_dash_overuse, check_numbered_section_labels, is_kicker_candidate,
+    check_em_dash_overuse_less, check_numbered_section_labels, is_kicker_candidate,
     is_numbered_section_label_candidate, is_repeated_text_container, parse_numbered_label_text,
     strip_edge_quotes, HEADING_TAGS, KICKER_CARD_CONTEXT_SELECTOR, KICKER_SKIP_SELECTOR, LEADING_DISPLAY_TYPE_PX,
     KickerCandidateInput, NumberedLabel, NumberedLabelCandidate, NumberedLabelCandidateInput,
@@ -79,10 +79,15 @@ pub fn is_kicker_card_context(dom: &dyn Dom, heading: ElId, kicker: ElId) -> boo
 /// counts: an h3 or lower set under display size. A section's own heading in
 /// a painted panel (redoubt.agency's h2 in the hero's side panel,
 /// vestra.ai's 40px h3 across a feature band) keeps its eyebrow reported.
+///
+/// A label pinned to the card as a badge (absolutely positioned) is the
+/// card's own at any title size: void5.lovable.app's "Most popular"
+/// straddles the top edge of its pricing card over a 24px h3.
 fn kicker_in_painted_card(dom: &dyn Dom, heading: ElId, kicker: ElId) -> bool {
-    if kicker_heading_level(dom, heading) < 3.0 || font_size_of(dom, heading) >= LEADING_DISPLAY_TYPE_PX {
+    if kicker_heading_level(dom, heading) < 3.0 {
         return false;
     }
+    let display_size = font_size_of(dom, heading) >= LEADING_DISPLAY_TYPE_PX;
     let viewport = {
         let h = dom.inner_height();
         if num_truthy(h) {
@@ -98,12 +103,45 @@ fn kicker_in_painted_card(dom: &dyn Dom, heading: ElId, kicker: ElId) -> bool {
             return false;
         }
         if super::page_checks::is_card_like_dom(dom, c) {
-            return dom.rect(c).height < viewport && dom.contains(c, kicker);
+            return dom.rect(c).height < viewport
+                && dom.contains(c, kicker)
+                && (!display_size || kicker_is_badge(dom, kicker, c));
         }
         cur = dom.parent(c);
     }
     false
 }
+
+/// Whether `kicker` is pinned to `card` as a badge: absolutely positioned,
+/// out of the flow the heading sits in, and set on the card's top edge (its
+/// box reaching to within 2px of the card's top or across it:
+/// void5.lovable.app's `-top-3` "Most popular") or painted in a fill of its
+/// own apart from the card's. An eyebrow placed absolutely inside the
+/// card's padding, in the card's colour, is still an eyebrow. A filled pill
+/// in flow is not enough either: integroai.tech sets its "What we do"
+/// eyebrow as an amber pill over a card's 24px title, and quoin.ai's
+/// "Early-adopter rate" pill in an offer panel has the same shape, so the
+/// in-flow pill keeps the size test.
+fn kicker_is_badge(dom: &dyn Dom, kicker: ElId, card: ElId) -> bool {
+    if dom.style(kicker, "position") != "absolute" {
+        return false;
+    }
+    let (k, c) = (dom.rect(kicker), dom.rect(card));
+    let on_top_edge = k.all_finite() && c.all_finite() && k.top <= c.top + 2.0 && k.bottom > c.top - 2.0;
+    let own_fill = crate::color::parse_any_color(Some(&dom.style(kicker, "backgroundColor")))
+        .filter(|f| f.alpha_or_one() >= BADGE_MIN_FILL_ALPHA)
+        .is_some_and(|f| {
+            let card_fill = crate::color::parse_any_color(Some(&dom.style(card, "backgroundColor")));
+            card_fill.map_or(true, |cf| {
+                (f.r - cf.r).abs() > 3.0 || (f.g - cf.g).abs() > 3.0 || (f.b - cf.b).abs() > 3.0
+            })
+        });
+    on_top_edge || own_fill
+}
+
+/// The fill alpha a badge has to paint to read as its own colour
+/// ([`kicker_is_badge`]).
+const BADGE_MIN_FILL_ALPHA: f64 = 0.9;
 
 static HEADING_LEVEL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^h([1-6])$").expect("HEADING_LEVEL_RE"));
@@ -617,7 +655,110 @@ pub fn check_em_dash_overuse_dom(dom: &dyn Dom) -> Vec<RuleHit> {
         Some(t) => without_choice_lines(dom, &without_lone_dash_cells(&t)),
         None => dom.text_content(body),
     };
-    hits(check_em_dash_overuse(Some(&text)))
+    // Lowercased: `text-transform` changes the case `innerText` reports.
+    let rendered = collapse_ws(&text).to_lowercase();
+    hits(check_em_dash_overuse_less(Some(&text), list_separator_dashes(dom, &rendered)))
+}
+
+/// Whether `term` is the whole text of an element inside `li` (a link, a
+/// `strong`, a `code`), a few levels down at most.
+fn term_is_own_element(dom: &dyn Dom, li: ElId, term: &str) -> bool {
+    let mut stack: Vec<(ElId, usize)> = dom.children(li).into_iter().map(|k| (k, 1)).collect();
+    let mut visited = 0usize;
+    while let Some((el, depth)) = stack.pop() {
+        visited += 1;
+        if visited > 32 {
+            return false;
+        }
+        if collapsed_text_content(dom, el) == term {
+            return true;
+        }
+        if depth < 3 {
+            stack.extend(dom.children(el).into_iter().map(|k| (k, depth + 1)));
+        }
+    }
+    false
+}
+
+/// The most words a list item's leading term has before the dash that
+/// separates it from its description ([`list_separator_dashes`]).
+const SEPARATOR_TERM_MAX_WORDS: usize = 6;
+/// The longest a leading term runs, in characters: a term in a language set
+/// without spaces is one "word" by the count above.
+const SEPARATOR_TERM_MAX_CHARS: usize = 60;
+/// How many items of one list have to share the shape before their dashes
+/// are read as separators.
+const SEPARATOR_MIN_ITEMS: usize = 3;
+/// The most list items read for the shape.
+const SEPARATOR_MAX_ITEMS: usize = 2000;
+
+/// How many em dashes on the page separate a short leading term from its
+/// description in a list item (`Weather — Current conditions for any
+/// city`, `<a>Your first ten minutes</a> — the demo, signing up, ...`), in
+/// lists where at least [`SEPARATOR_MIN_ITEMS`] items under one ancestor
+/// (the list's own parent, so a docs index of one-item lists counts too)
+/// share that shape. Such a dash is a separator, like a colon or a tab
+/// stop, not punctuation in a sentence: karmaboard.app's 20 "em dashes" are
+/// its widget list, takejournal.com's its docs index. The term is the
+/// item's leading text, up to [`SEPARATOR_TERM_MAX_WORDS`] words and no
+/// sentence end, a bullet or check glyph before it aside, and it reads as a
+/// label: an element of its own, or followed by a description that opens
+/// capitalised or in an uncased script. The item has to be painted, and its
+/// term and dash have to be in the rendered text the count reads. Prose items
+/// whose dash falls later, and every dash in paragraphs, still count. Each
+/// item gives at most its first dash; an item that holds a nested list is
+/// read through its own items.
+fn list_separator_dashes(dom: &dyn Dom, rendered: &str) -> usize {
+    let mut groups: Vec<(Option<ElId>, usize)> = Vec::new();
+    for li in dom.query_all(None, "li").unwrap_or_default().into_iter().take(SEPARATOR_MAX_ITEMS) {
+        let r = dom.rect(li);
+        if !(r.width >= 1.0 && r.height >= 1.0) {
+            continue;
+        }
+        if !dom.query_all(Some(li), "li").unwrap_or_default().is_empty() {
+            continue;
+        }
+        let text = collapsed_text_content(dom, li);
+        let text = text.trim_start_matches(|c: char| !c.is_alphanumeric());
+        let Some((term, rest)) = text.split_once('—') else { continue };
+        let term = term.trim();
+        let rest = rest.trim();
+        if term.is_empty()
+            || term.chars().count() > SEPARATOR_TERM_MAX_CHARS
+            || term.split_whitespace().count() > SEPARATOR_TERM_MAX_WORDS
+            || term.contains(['.', '!', '?', '。', '！', '？'])
+            || rest.is_empty()
+        {
+            continue;
+        }
+        // The term reads as a label, not a clause: it is an element of its
+        // own (takejournal.com's linked titles), or what follows the dash
+        // opens like a description, capitalised or in a script with no case
+        // (karmaboard.app's "Weather — Current conditions"). Prose runs on in
+        // lowercase ("We ship every week — and every update is free").
+        let opens_description = rest.chars().next().is_some_and(|c| c.is_alphabetic() && !c.is_lowercase());
+        if !opens_description && !term_is_own_element(dom, li, term) {
+            continue;
+        }
+        // Text a visitor does not see is not in `innerText`, so its dashes
+        // were never counted (a closed menu at `visibility: hidden`): the
+        // item has to be painted, and the term with its dash has to be in
+        // the rendered text the count was taken from.
+        if super::painted::unpainted_at_capture(dom, li, super::painted::OwnOpacity::Counts).is_some()
+            || !{
+                let term = term.to_lowercase();
+                rendered.contains(&format!("{term} —")) || rendered.contains(&format!("{term}—"))
+            }
+        {
+            continue;
+        }
+        let key = dom.parent(li).and_then(|list| dom.parent(list));
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, n)) => *n += 1,
+            None => groups.push((key, 1)),
+        }
+    }
+    groups.iter().filter(|(_, n)| *n >= SEPARATOR_MIN_ITEMS).map(|(_, n)| n).sum()
 }
 
 /// `innerText` without the lines a rendered `<select>`'s choices put there.
@@ -1429,6 +1570,69 @@ mod tests {
         assert_eq!(hits[0].snippet, "8 em-dashes in body text");
         d.el_mut(body).inner_text = Some("no dashes here".to_string());
         assert!(check_em_dash_overuse_dom(&d).is_empty());
+    }
+
+    /// observations-1010 row 9 (karmaboard.app 10136822, takejournal.com
+    /// 10138354): a list of short terms, each set off from its description
+    /// by a dash, separates with the dash; it does not punctuate. Eight
+    /// sentences with a dash mid-sentence still report, in paragraphs or in
+    /// list items whose dash falls after a clause.
+    #[test]
+    fn em_dash_skips_list_separators() {
+        let page = |tag: &str, lines: &[String], in_lists: bool| {
+            let mut d = FakeDom::new();
+            let (_html, body) = d.with_page();
+            let mut text = String::new();
+            let mut holder = body;
+            for (i, line) in lines.iter().enumerate() {
+                if in_lists && (i == 0 || tag == "li-single") {
+                    holder = d.add(Some(body), "ul");
+                    d.set_rect(holder, 0.0, 40.0 * i as f64, 600.0, 40.0);
+                }
+                let el = d.add(Some(holder), if tag == "p" { "p" } else { "li" });
+                d.set_rect(el, 0.0, 40.0 * i as f64, 600.0, 30.0);
+                let mark = d.add(Some(el), "span");
+                d.add_text(mark, "✓");
+                let words = d.add(Some(el), "span");
+                d.add_text(words, line);
+                text.push_str(&format!("✓{line}\n"));
+            }
+            d.el_mut(body).inner_text = Some(text);
+            check_em_dash_overuse_dom(&d).len()
+        };
+        let terms: Vec<String> = ["Time & Date", "Weather", "US Headlines", "World Headlines", "Quote of the Day", "On This Day", "Market Movers", "Flights"]
+            .iter()
+            .map(|t| format!("{t} — A short line on what the widget shows."))
+            .collect();
+        assert_eq!(page("li", &terms, true), 0, "a widget list");
+        assert_eq!(page("li-single", &terms, true), 0, "a docs index of one-item lists");
+        assert_eq!(page("p", &terms, false), 1, "the same lines as paragraphs");
+        let prose: Vec<String> = (0..8)
+            .map(|i| format!("Sentence {i} runs on for a good while before it turns — and then it ends."))
+            .collect();
+        assert_eq!(page("li", &prose, true), 1, "items whose dash falls after a clause");
+        let bullets: Vec<String> = (0..9)
+            .map(|i| format!("We ship update {i} — and every update is free for you."))
+            .collect();
+        assert_eq!(page("li", &bullets, true), 1, "short clauses that run on in lowercase");
+        // Separator items whose text never reached the rendered text take
+        // nothing off the count of the dashes that did.
+        let mut d = FakeDom::new();
+        let (_html, body) = d.with_page();
+        let list = d.add(Some(body), "ul");
+        d.set_rect(list, 0.0, 0.0, 600.0, 200.0);
+        for t in ["Weather", "Flights", "Headlines"] {
+            let li = d.add(Some(list), "li");
+            d.set_rect(li, 0.0, 0.0, 600.0, 30.0);
+            d.add_text(li, &format!("{t} — Live in the menu panel."));
+        }
+        d.el_mut(body).inner_text = Some("a — b — c — d — e — f — g — h — i".to_string());
+        assert_eq!(check_em_dash_overuse_dom(&d).len(), 1, "eight prose dashes stand");
+        // A label set in capitals by `text-transform` is in the rendered
+        // text all the same.
+        d.el_mut(body).inner_text = Some("WEATHER — LIVE IN THE MENU PANEL.\nFLIGHTS — LIVE IN THE MENU PANEL.\nHEADLINES — LIVE IN THE MENU PANEL.\na — b — c — d — e — f — g — h".to_string());
+        assert!(check_em_dash_overuse_dom(&d).is_empty(), "three uppercase separators come off the ten");
+        assert_eq!(page("p", &prose, false), 1, "eight prose sentences");
     }
 
     /// visiby.net: a pricing matrix marks every missing feature with a lone

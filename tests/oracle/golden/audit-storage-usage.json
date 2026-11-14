@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "usage: audit-storage <slug|write> ...\n  slug <target>\n  write <slug-or-target> <body-file>\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

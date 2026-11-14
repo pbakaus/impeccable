@@ -123,10 +123,30 @@ fn canon(v: &Value) -> Canon {
     }
 }
 
+/// How many units in the last place a number may differ by on Windows.
+/// `f64::powf` calls the platform's math library, and the Universal CRT on
+/// Windows Server 2022 rounds a few `pow` results one to three ULP away from
+/// V8's (the recorded `relativeLuminance` and `contrastRatio` vectors), where
+/// Server 2025 matches. Linux and macOS match V8 exactly and stay an exact
+/// gate.
+const WINDOWS_ULP_TOLERANCE: u64 = 4;
+
+fn ulps_apart(x: f64, y: f64) -> u64 {
+    if x.is_sign_negative() != y.is_sign_negative() {
+        return u64::MAX;
+    }
+    x.to_bits().abs_diff(y.to_bits())
+}
+
 fn same(a: &Canon, b: &Canon) -> bool {
     match (a, b) {
         (Canon::Num(x), Canon::Num(y)) => {
-            (x.is_nan() && y.is_nan()) || (x == y && x.is_sign_negative() == y.is_sign_negative())
+            (x.is_nan() && y.is_nan())
+                || (x == y && x.is_sign_negative() == y.is_sign_negative())
+                || (cfg!(windows)
+                    && x.is_finite()
+                    && y.is_finite()
+                    && ulps_apart(*x, *y) <= WINDOWS_ULP_TOLERANCE)
         }
         (Canon::Arr(x), Canon::Arr(y)) => {
             x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))

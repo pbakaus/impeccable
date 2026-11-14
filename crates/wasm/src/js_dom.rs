@@ -33,6 +33,8 @@ extern "C" {
     fn document_html_for_patterns() -> String;
     fn linked_stylesheet_text() -> String;
     fn text_wrap_pretty_supported() -> i32;
+    fn document_font_faces() -> Option<String>;
+    fn rendered_faces() -> Option<String>;
     fn tag_name(el: u32) -> String;
     fn namespace_uri(el: u32) -> String;
     fn parent(el: u32) -> u32;
@@ -194,6 +196,12 @@ impl Dom for JsDom {
     }
     fn keyframe_keys(&self, name: &str) -> Option<Vec<String>> {
         serde_json::from_str(&keyframe_keys(name)?).ok()
+    }
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        serde_json::from_str(&document_font_faces()?).ok()
+    }
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        serde_json::from_str(&rendered_faces()?).ok()
     }
     fn linked_stylesheet_text(&self) -> String {
         linked_stylesheet_text()

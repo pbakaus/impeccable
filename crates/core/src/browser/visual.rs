@@ -839,6 +839,125 @@ fn pseudo_quad(dom: &dyn Dom, node: ElId, which: &str) -> Option<Quad> {
     Some(Quad { laid, m: box_matrix(laid, &get("transform"), &get("translate"))?, shift: (0.0, 0.0) })
 }
 
+/// The 2D matrix a pseudo-element's `rotate` and `scale` properties apply
+/// (CSS order: `translate`, then `rotate`, then `scale`, then `transform`),
+/// as its linear part. `None` for a value this cannot read (a 3D axis, an
+/// unknown unit).
+fn rotate_scale_linear(rotate: &str, scale: &str) -> Option<[f64; 4]> {
+    let mut angle = 0.0;
+    let rotate = js::trim(rotate);
+    if !rotate.is_empty() && rotate != "none" {
+        let tokens: Vec<&str> = rotate.split_ascii_whitespace().collect();
+        // `z 10deg` and `0 0 1 10deg` turn in the plane; any other axis is 3D.
+        match tokens.as_slice() {
+            [_] => {}
+            ["z", _] => {}
+            [x, y, z, _] if parse_float(x) == 0.0 && parse_float(y) == 0.0 && parse_float(z) > 0.0 => {}
+            _ => return None,
+        }
+        let a = tokens.last()?;
+        let deg = if let Some(v) = a.strip_suffix("deg") {
+            parse_float(v)
+        } else if let Some(v) = a.strip_suffix("grad") {
+            parse_float(v) * 0.9
+        } else if let Some(v) = a.strip_suffix("rad") {
+            parse_float(v).to_degrees()
+        } else if let Some(v) = a.strip_suffix("turn") {
+            parse_float(v) * 360.0
+        } else if parse_float(a) == 0.0 {
+            0.0
+        } else {
+            return None;
+        };
+        if !deg.is_finite() {
+            return None;
+        }
+        angle = deg.to_radians();
+    }
+    let (mut sx, mut sy) = (1.0, 1.0);
+    let scale = js::trim(scale);
+    if !scale.is_empty() && scale != "none" {
+        let factor = |t: &str| {
+            let v = match t.strip_suffix('%') {
+                Some(p) => parse_float(p) / 100.0,
+                None => parse_float(t),
+            };
+            v.is_finite().then_some(v)
+        };
+        let tokens: Vec<&str> = scale.split_ascii_whitespace().collect();
+        match tokens.as_slice() {
+            [one] => {
+                sx = factor(one)?;
+                sy = sx;
+            }
+            [x, y] | [x, y, _] => {
+                sx = factor(x)?;
+                sy = factor(y)?;
+            }
+            _ => return None,
+        }
+    }
+    let (c, s) = (angle.cos(), angle.sin());
+    // R · S, column-major like the matrix: [a, b, c, d].
+    Some([c * sx, s * sx, -s * sy, c * sy])
+}
+
+/// Whether a positioned pseudo face still lies under all of `text` once its
+/// transform, `translate`, `rotate` and `scale` are applied. A face parked
+/// off its box at rest (aproov.es's sweep `::before`, a full width to the
+/// left inside `overflow: hidden`) does not; a centred chip
+/// (`left: 50%; translate(-50%, -50%)`), a face turned 2deg, skewed 10deg
+/// or scaled to 1.04 does. Where the capture places the face, the
+/// parallelogram it paints has to cover the run for every
+/// `transform-origin` inside its box ([`quads_cover_any_origin`]). Where it
+/// does not (offsets or a containing block it did not resolve), the
+/// transform is read alone: it keeps the face where it moves it by at most
+/// half the face's size on each axis, scales it by 0.5 or more on each
+/// axis, and turns it by at most 15 degrees. A 3D transform, or a value
+/// this cannot read, does not.
+pub(crate) fn pseudo_face_covers_after_transform(dom: &dyn Dom, node: ElId, which: &str, text: &Rect) -> bool {
+    let get = |prop: &str| dom.pseudo_style(node, which, prop).unwrap_or_default();
+    let Some(rs) = rotate_scale_linear(&get("rotate"), &get("scale")) else {
+        return false;
+    };
+    let (w, h) = match (px_length(&get("width")), px_length(&get("height"))) {
+        (Some(w), Some(h)) if w > 0.0 && h > 0.0 => (w, h),
+        _ => return false,
+    };
+    let probe = Rect::from_xywh(0.0, 0.0, w, h);
+    let Some(t) = box_matrix(probe, &get("transform"), "none") else {
+        return false;
+    };
+    let Some(tr) = box_matrix(probe, "none", &get("translate")) else {
+        return false;
+    };
+    // T · (R·S) · transform.
+    let m = [
+        rs[0] * t[0] + rs[2] * t[1],
+        rs[1] * t[0] + rs[3] * t[1],
+        rs[0] * t[2] + rs[2] * t[3],
+        rs[1] * t[2] + rs[3] * t[3],
+        rs[0] * t[4] + rs[2] * t[5] + tr[4],
+        rs[1] * t[4] + rs[3] * t[5] + tr[5],
+    ];
+    let placed = (|| {
+        if js::trim(&get("position")) != "absolute" {
+            return None;
+        }
+        let cb = containing_block(dom, node)?;
+        let left = px_length(&get("left")).or_else(|| px_length(&get("right")).map(|r| cb.width - r - w))?;
+        let top = px_length(&get("top")).or_else(|| px_length(&get("bottom")).map(|b| cb.height - b - h))?;
+        Some(Rect::from_xywh(cb.left + left, cb.top + top, w, h))
+    })();
+    if let Some(laid) = placed {
+        return quads_cover_any_origin(&[Quad { laid, m, shift: (0.0, 0.0) }], text);
+    }
+    let scale_x = (m[0] * m[0] + m[1] * m[1]).sqrt();
+    let scale_y = (m[2] * m[2] + m[3] * m[3]).sqrt();
+    let turn = m[1].atan2(m[0]).to_degrees().abs();
+    m[4].abs() <= w / 2.0 && m[5].abs() <= h / 2.0 && scale_x >= 0.5 && scale_y >= 0.5 && turn <= 15.0
+}
+
 /// The padding box an absolutely positioned child of `host` is placed in:
 /// the nearest positioned or transformed box, the host included. `None`
 /// where that is the initial containing block, or an inline box, whose
@@ -1364,6 +1483,7 @@ fn layer_in_box(
     outer: (f64, bool),
     budget: &mut usize,
     skip: &[ElId],
+    translucent: bool,
 ) -> Option<(Paint, ElId)> {
     if *budget == 0 {
         return None;
@@ -1413,18 +1533,41 @@ fn layer_in_box(
             .take(LAYER_MAX_CHILDREN);
         for &child in reaching {
             if let Some(paint) =
-                layer_in_box(dom, child, text, text_layer, earlier, depth + 1, layer, budget, skip)
+                layer_in_box(dom, child, text, text_layer, earlier, depth + 1, layer, budget, skip, translucent)
             {
                 return Some(paint);
             }
         }
     }
     if covers && beneath && !skipped {
-        detached_paint(dom, node, text).map(|paint| (paint, node))
+        detached_paint(dom, node, text)
+            .or_else(|| translucent.then(|| translucent_fill(dom, node)).flatten().map(Paint::Fill))
+            .map(|paint| (paint, node))
     } else {
         None
     }
 }
+
+/// A background colour a reader sees, but that lets what is beneath it show
+/// through: more than [`TRANSLUCENT_FILL_MIN_ALPHA`] strong and under
+/// [`TRANSLUCENT_FILL_MAX_ALPHA`]. A dialog's `bg-black/80` scrim is one.
+fn translucent_fill(dom: &dyn Dom, node: ElId) -> Option<Rgba> {
+    // A mask or a clip can leave the run's ground clear while the box
+    // covers it (#1201 review): its coverage is unknown, so it is no layer.
+    if super::text_layers::masked_or_clipped(dom, node) {
+        return None;
+    }
+    parse_rgb_or_any(&dom.style(node, "backgroundColor"))
+        .filter(|c| c.alpha_or_one() > TRANSLUCENT_FILL_MIN_ALPHA && c.alpha_or_one() < TRANSLUCENT_FILL_MAX_ALPHA)
+}
+
+/// A fill at least this strong is read as the climb always read it: opaque
+/// where [`paints_opaque_color`] says so, and a pseudo's colour from 0.9.
+const TRANSLUCENT_FILL_MAX_ALPHA: f64 = 0.9;
+
+/// Fill fainter than this is a wash over the surface, not a layer of it
+/// (`text_layers`' `FAINT_PAINT`).
+const TRANSLUCENT_FILL_MIN_ALPHA: f64 = 0.1;
 
 /// What paints under a run of text, as far as layout can say, next to the
 /// answer the background walk already gave.
@@ -1469,6 +1612,7 @@ fn sibling_layer(
     text_layer: f64,
     budget: &mut usize,
     skip: &[ElId],
+    translucent: bool,
 ) -> Option<(LayerUnder, ElId)> {
     let siblings = dom.children(parent);
     let index = siblings.iter().position(|&s| s == node)?;
@@ -1491,7 +1635,7 @@ fn sibling_layer(
     for (_, i, is_earlier) in candidates {
         let outer = (FLOW_LAYER, false);
         if let Some((paint, found)) =
-            layer_in_box(dom, siblings[i], text, text_layer, is_earlier, 0, outer, budget, skip)
+            layer_in_box(dom, siblings[i], text, text_layer, is_earlier, 0, outer, budget, skip, translucent)
         {
             return Some((paint.into(), found));
         }
@@ -1621,14 +1765,14 @@ pub fn layer_under_text(dom: &dyn Dom, el: ElId) -> LayerUnder {
 pub fn layer_under_text_found(dom: &dyn Dom, el: ElId) -> (LayerUnder, Option<ElId>) {
     let text = dom.direct_text_rect(el).unwrap_or_else(|| dom.rect(el));
     let hosts = icon_hosts(dom, el);
-    climb_layers(dom, el, el, &text, &hosts, &[])
+    climb_layers(dom, el, el, &text, &hosts, &[], false)
 }
 
 /// What paints under `rect`, climbing from `start` the way
 /// [`layer_under_text`] climbs from a run of text: the surface a box's
 /// shadow or glow is drawn on, with `start` its parent.
 pub fn layer_under_rect(dom: &dyn Dom, start: ElId, rect: &Rect) -> (LayerUnder, Option<ElId>) {
-    climb_layers(dom, start, start, rect, &[], &[])
+    climb_layers(dom, start, start, rect, &[], &[], false)
 }
 
 fn climb_layers(
@@ -1638,6 +1782,7 @@ fn climb_layers(
     text: &Rect,
     hosts: &[ElId],
     skip: &[ElId],
+    translucent: bool,
 ) -> (LayerUnder, Option<ElId>) {
     let text = *text;
     let mut budget = LAYER_MAX_NODES;
@@ -1663,7 +1808,7 @@ fn climb_layers(
             break;
         };
         if let Some((layer, found)) =
-            sibling_layer(dom, parent, node, &text, text_layer, &mut budget, skip)
+            sibling_layer(dom, parent, node, &text, text_layer, &mut budget, skip, translucent)
         {
             return (layer, Some(found));
         }
@@ -1764,10 +1909,18 @@ struct UnreadLayer {
 
 impl UnreadLayer {
     fn new(dom: &dyn Dom, el: ElId, under: LayerUnder, found: ElId) -> Self {
+        // A translucent fill ([`translucent_fill`]) paints its colour at its
+        // own alpha too. The fills the climb always read (opaque, or a
+        // pseudo's colour at 0.9 or more) paint at their box's opacity alone,
+        // as they always did.
+        let alpha = match under {
+            LayerUnder::Detached(c) if c.alpha_or_one() < TRANSLUCENT_FILL_MAX_ALPHA => c.alpha_or_one(),
+            _ => 1.0,
+        };
         UnreadLayer {
             found,
             under,
-            fade: layer_fade(dom, found, el).clamp(0.0, 1.0),
+            fade: (layer_fade(dom, found, el) * alpha).clamp(0.0, 1.0),
         }
     }
 
@@ -2015,18 +2168,30 @@ pub fn unread_reading(
         return unknown;
     }
     let text = dom.direct_text_rect(el).unwrap_or_else(|| dom.rect(el));
+    let hosts = icon_hosts(dom, el);
+    // A translucent fill the climb passed on its way to a fill or gradient
+    // (a dialog's scrim between the panel and the page under it) is the
+    // first layer: the reading chains down through it (observations-1010
+    // row 8). Over a picture the pixels still answer, as they did.
+    let (under, found) = match (under.0, climb_layers(dom, el, el, &text, &hosts, &[], true)) {
+        (LayerUnder::Detached(_) | LayerUnder::Gradient { .. }, (LayerUnder::Detached(c), Some(scrim)))
+            if c.alpha_or_one() < TRANSLUCENT_FILL_MAX_ALPHA && scrim != found =>
+        {
+            (LayerUnder::Detached(c), scrim)
+        }
+        _ => (under.0, found),
+    };
     if found_order(dom, el, &text, found) != Order::Over {
         return unknown;
     }
-    let hosts = icon_hosts(dom, el);
-    let mut chain = vec![UnreadLayer::new(dom, el, under.0, found)];
+    let mut chain = vec![UnreadLayer::new(dom, el, under, found)];
     let mut skip = vec![found];
     let mut on_ground = false;
     while !chain.last().is_some_and(|l| l.hides_beneath(dom)) {
         if chain.len() >= UNREAD_MAX_LAYERS {
             return unknown;
         }
-        match climb_layers(dom, el, el, &text, &hosts, &skip) {
+        match climb_layers(dom, el, el, &text, &hosts, &skip, true) {
             (next, Some(node)) if !matches!(next, LayerUnder::Ancestor | LayerUnder::Undecided) => {
                 if found_order(dom, el, &text, node) != Order::Over {
                     return unknown;
@@ -2616,6 +2781,9 @@ re!(HANDED_VERDICT_RE, r"^[0-9.]+:1 \(need ([0-9.]+):1\) — text (#[0-9a-fA-F]{
 /// printed against a layer, a verdict not in the element pass's plain form,
 /// any other layer, and unread paint the ratio is measured through.
 pub fn handed_over_unmeasured(dom: &dyn Dom, el: ElId, snippet: &str) -> bool {
+    // A verdict that speaks for other copies of its pair says so at the end.
+    let (snippet, _) = crate::checks::rules::split_more_count(snippet);
+    let snippet = snippet.as_str();
     let Some(caps) = HANDED_VERDICT_RE.captures(snippet) else {
         return false;
     };
@@ -3565,6 +3733,54 @@ fn gradient_layer_covers_box(dom: &dyn Dom, node: ElId, layers: &[String], index
         && split_ws(&value("backgroundPosition")).iter().all(|t| t.ends_with('%') || matches!(&**t, "" | "0px" | "left" | "top" | "center" | "right" | "bottom"))
 }
 
+/// Whether a gradient layer is drawn at a size that paints no surface: zero
+/// on either axis (nothing at all), or at most [`HAIRLINE_LAYER_MAX_PX`] on an
+/// axis the layer does not repeat along (one rule, as a hover underline
+/// grown from `background-size: 0 1px` to `100% 1px` draws). aok.de's
+/// `span.link_underline` parks such an underline in its ink colour, and the
+/// one stop was read as the ground of the tooltip text inside it, 1.0:1
+/// (observations-1010 row 8). A layer whose size is not stated in pixels or
+/// percentages is not one.
+fn gradient_layer_paints_no_surface(dom: &dyn Dom, node: ElId, layers: &[String], index: usize) -> bool {
+    let layer = js::to_lower_case(js::trim(&layers[index]));
+    if !layer.contains("gradient(") || layer.contains("url(") {
+        return false;
+    }
+    let value = |prop: &str| {
+        let list = split_top_level_commas(&dom.style(node, prop));
+        list.get(index % list.len().max(1)).map(|v| js::trim(v).to_string()).unwrap_or_default()
+    };
+    let size = value("backgroundSize");
+    let tokens = split_ws(&size);
+    let [w, h] = tokens.as_slice() else {
+        return false;
+    };
+    let length = |t: &str| -> Option<f64> {
+        let n = t.strip_suffix("px").or_else(|| t.strip_suffix('%')).unwrap_or(if t == "0" { "0" } else { "" });
+        n.parse::<f64>().ok().filter(|v| v.is_finite())
+    };
+    let (Some(wv), Some(hv)) = (length(w), length(h)) else {
+        return false;
+    };
+    if wv <= 0.0 || hv <= 0.0 {
+        return true;
+    }
+    let repeat = value("backgroundRepeat");
+    let (repeat_x, repeat_y) = match split_ws(&repeat).as_slice() {
+        ["no-repeat"] => (false, false),
+        ["repeat-x"] => (true, false),
+        ["repeat-y"] => (false, true),
+        [x, y] => (*x != "no-repeat", *y != "no-repeat"),
+        _ => (true, true),
+    };
+    let hairline = |t: &str, v: f64| t.ends_with("px") && v <= HAIRLINE_LAYER_MAX_PX;
+    (hairline(w, wv) && !repeat_x) || (hairline(h, hv) && !repeat_y)
+}
+
+/// The thickest a gradient layer may be drawn, on an axis it does not
+/// repeat along, and still be a rule rather than a surface.
+const HAIRLINE_LAYER_MAX_PX: f64 = 3.0;
+
 /// JS: index.mjs#sampleCssBackground — every decision except the image
 /// load and the canvas sample.
 pub fn css_plan(dom: &dyn Dom, node: ElId, text_color: Option<&Rgba>) -> CssPlan {
@@ -3584,16 +3800,29 @@ pub fn css_plan(dom: &dyn Dom, node: ElId, text_color: Option<&Rgba>) -> CssPlan
         };
     }
     let bg_image = dom.style(node, "backgroundImage");
-    if !bg_image.is_empty() && bg_image != "none" {
-        if GRADIENT_RE.is_match(&bg_image) {
+    // Gradient layers drawn at zero or hairline size paint no surface under
+    // the text, whatever the box's own fill: each is left out, and where
+    // none is left the walk reads the fill, or goes on beneath the box. The
+    // layers kept keep their places in the size, position and repeat lists.
+    let all_layers = split_top_level_commas(&bg_image);
+    let kept: Vec<usize> =
+        (0..all_layers.len()).filter(|&i| !gradient_layer_paints_no_surface(dom, node, &all_layers, i)).collect();
+    let image_paints_no_surface = !all_layers.is_empty() && kept.is_empty();
+    let painting_image = if kept.len() == all_layers.len() {
+        bg_image.clone()
+    } else {
+        kept.iter().map(|&i| js::trim(&all_layers[i]).to_string()).collect::<Vec<_>>().join(", ")
+    };
+    if !bg_image.is_empty() && bg_image != "none" && !image_paints_no_surface {
+        if GRADIENT_RE.is_match(&painting_image) {
             if let Some(tc) = text_color {
                 // Compared raw, `transparent` reads as black (issue #881). Over the
                 // element's own opaque background-color the layers composite bottom
                 // up before they are judged, while every layer is a gradient that
                 // paints the whole box; anything else takes the path below.
-                let layers = split_top_level_commas(&bg_image);
+                let layers: Vec<String> = kept.iter().map(|&i| all_layers[i].clone()).collect();
                 let own = parse_rgb_or_any(&dom.style(node, "backgroundColor")).filter(|c| {
-                    c.alpha_or_one() >= 0.999 && (0..layers.len()).all(|i| gradient_layer_covers_box(dom, node, &layers, i))
+                    c.alpha_or_one() >= 0.999 && kept.iter().all(|&i| gradient_layer_covers_box(dom, node, &all_layers, i))
                 });
                 // Set when a translucent stop lands on more than one color: which
                 // composite is painted then depends on where each of them sits.
@@ -3615,7 +3844,7 @@ pub fn css_plan(dom: &dyn Dom, node: ElId, text_color: Option<&Rgba>) -> CssPlan
                         // A stack too deep to enumerate is left unread, not cut short.
                         (over.len() <= 4096).then_some(over)
                     }),
-                    None => Some(parse_gradient_colors(Some(&bg_image))),
+                    None => Some(parse_gradient_colors(Some(&painting_image))),
                 };
                 let Some(colors) = colors else {
                     return CssPlan::Sample {
@@ -3654,7 +3883,7 @@ pub fn css_plan(dom: &dyn Dom, node: ElId, text_color: Option<&Rgba>) -> CssPlan
                 // reaches here without one, so this branch is unreachable.
             }
         }
-        if URL_RE.is_match(&bg_image) {
+        if URL_RE.is_match(&painting_image) {
             // A `fixed` image is placed against the viewport, not against
             // the box, so the pixel under a point depends on the scroll
             // position this walk never models. Mapped onto the box it read
@@ -3665,16 +3894,21 @@ pub fn css_plan(dom: &dyn Dom, node: ElId, text_color: Option<&Rgba>) -> CssPlan
                     sample: json!({ "status": "unresolved", "reason": "fixed background image", "stop": true }),
                 };
             }
+            // The size and position are the first layer's, as they always
+            // were; where parked layers were left out, they are the first
+            // kept layer's (#1201 review: a photo under a parked underline
+            // is not drawn at the underline's size).
+            let layer = if kept.len() == all_layers.len() { 0 } else { kept.first().copied().unwrap_or(0) };
             let size = {
-                let v = get_layer_value(&dom.style(node, "backgroundSize"), 0);
+                let v = get_layer_value(&dom.style(node, "backgroundSize"), layer);
                 if v.is_empty() { "auto".to_string() } else { v }
             };
             let position = {
-                let v = get_layer_value(&dom.style(node, "backgroundPosition"), 0);
+                let v = get_layer_value(&dom.style(node, "backgroundPosition"), layer);
                 if v.is_empty() { "50% 50%".to_string() } else { v }
             };
             return CssPlan::Url {
-                url: first_css_url(&bg_image),
+                url: first_css_url(&painting_image),
                 size,
                 position,
             };
@@ -5413,6 +5647,67 @@ mod tests {
         assert_eq!(routed_reason(&d, seam), None);
     }
 
+    /// observations-1010 row 8, kinflo-website.vercel.app 10136306: a radix
+    /// dialog's panel (`rgba(235, 230, 224, 0.3)`) over its sibling
+    /// `bg-black/80` scrim, both fixed at `z-index: 50` beside the page. The
+    /// climb passed the scrim (no opaque fill) and read the pale page under
+    /// it, so the light title failed 1.0:1 on a ground nobody sees.
+    #[test]
+    fn a_translucent_scrim_under_a_dialog_panel_is_a_layer_of_its_ground() {
+        let build = |scrim_fill: Option<&str>| {
+            let mut d = FakeDom::new();
+            let (html, body) = d.with_page();
+            d.set_styles(html, &[("backgroundColor", "rgba(0, 0, 0, 0)"), ("backgroundImage", "none")]);
+            d.set_styles(body, &[("backgroundColor", "rgb(250, 250, 250)"), ("backgroundImage", "none"), ("position", "relative")]);
+            d.set_rect(body, 0.0, 0.0, 1280.0, 800.0);
+            let page = d.add(Some(body), "main");
+            d.set_styles(page, &[("backgroundColor", "rgb(250, 250, 250)"), ("backgroundImage", "none"), ("opacity", "1")]);
+            d.set_rect(page, 0.0, 0.0, 1280.0, 800.0);
+            if let Some(fill) = scrim_fill {
+                let scrim = d.add(Some(body), "div");
+                d.set_styles(
+                    scrim,
+                    &[("backgroundColor", fill), ("backgroundImage", "none"), ("position", "fixed"), ("zIndex", "50"), ("opacity", "1")],
+                );
+                d.set_rect(scrim, 0.0, 0.0, 1280.0, 800.0);
+            }
+            let panel = d.add(Some(body), "div");
+            d.set_styles(
+                panel,
+                &[
+                    ("backgroundColor", "rgba(235, 230, 224, 0.3)"),
+                    ("backgroundImage", "none"),
+                    ("position", "fixed"),
+                    ("zIndex", "50"),
+                    ("opacity", "1"),
+                ],
+            );
+            d.set_rect(panel, 315.0, 40.0, 650.0, 720.0);
+            let title = text_run(&mut d, panel, "h2", "Choose a plan", (340.0, 163.0, 600.0, 40.0));
+            d.set_styles(title, &[("color", "rgb(247, 245, 243)"), ("fontSize", "24px")]);
+            (d, title)
+        };
+        // Over the scrim the title reads light on dark grey, and passes.
+        let (d, title) = build(Some("rgba(0, 0, 0, 0.8)"));
+        assert_eq!(verdict_over_layer(&d, title), UnreadVerdict::Passes);
+        // The climb every other reader shares still answers as it did.
+        assert!(matches!(layer_under_text(&d, title), LayerUnder::Detached(c) if c.r == 250.0));
+        // Twins: with no scrim, or one too faint to be a layer, the title
+        // fails on the pale page.
+        let (d, title) = build(None);
+        assert_eq!(verdict_over_layer(&d, title), UnreadVerdict::Fails);
+        let (d, title) = build(Some("rgba(0, 0, 0, 0.05)"));
+        assert_eq!(verdict_over_layer(&d, title), UnreadVerdict::Fails);
+        // A masked or clipped scrim may leave the title's ground clear: no
+        // layer, and the title fails on the page (#1201 review).
+        for (prop, value) in [("maskImage", "linear-gradient(transparent, black)"), ("clipPath", "inset(50% 0px 0px)")] {
+            let (mut d, title) = build(Some("rgba(0, 0, 0, 0.8)"));
+            let scrim = d.parent(title).and_then(|panel| d.previous_element_sibling(panel)).expect("scrim");
+            d.set_style(scrim, prop, value);
+            assert_eq!(verdict_over_layer(&d, title), UnreadVerdict::Fails, "{prop}");
+        }
+    }
+
     #[test]
     fn sheared_halves_decide_only_where_they_paint() {
         let orange = "linear-gradient(rgba(254, 143, 24, 0) 0%, rgb(254, 143, 24) 100%)";
@@ -6036,6 +6331,87 @@ mod tests {
         // Text over its own section's fill was never over a picture.
         let plain = text_run(&mut d, body, "p", "Plain", (20.0, 100.0, 140.0, 20.0));
         assert!(!handed_over_unmeasured(&d, plain, "1.1:1 (need 4.5:1) — text #fcfcfc on #efefef"));
+    }
+
+    /// observations-1010 row 8, aok.de 10139549: `span.link_underline`
+    /// parks a hover underline in the ink colour at `background-size: 0 1px`,
+    /// and the tooltip text inside it was scored on the one stop, 1.0:1.
+    #[test]
+    fn a_gradient_parked_at_zero_or_hairline_size_is_no_surface() {
+        let mut d = FakeDom::new();
+        let (_, body) = d.with_page();
+        let span = d.add(Some(body), "span");
+        let ink = rgba(109.0, 118.0, 124.0, 1.0);
+        let plan = |d: &mut FakeDom, fill: &str, size: &str, repeat: &str| {
+            d.set_styles(
+                span,
+                &[
+                    ("backgroundImage", "linear-gradient(rgb(109, 118, 124), rgb(109, 118, 124))"),
+                    ("backgroundColor", fill),
+                    ("backgroundSize", size),
+                    ("backgroundRepeat", repeat),
+                    ("backgroundPosition", "0% 100%"),
+                ],
+            );
+            match css_plan(d, span, Some(&ink)) {
+                CssPlan::Sample { sample } => sample,
+                other => panic!("{other:?}"),
+            }
+        };
+        // Parked at nothing, or drawn as a 1px rule, it paints no ground: the
+        // walk goes on beneath a clear box, and reads an opaque box's fill.
+        for (size, repeat) in [("0px 1px", "no-repeat"), ("100% 1px", "no-repeat"), ("0px 1px", "repeat"), ("100% 2px", "repeat-x")] {
+            let sample = plan(&mut d, "rgba(0, 0, 0, 0)", size, repeat);
+            assert_eq!(sample["status"], "unresolved", "{size} {repeat}: {sample}");
+            assert!(!sample_ends_walk(&sample), "{size} {repeat}");
+            let sample = plan(&mut d, "rgb(255, 255, 255)", size, repeat);
+            assert_eq!(sample["method"], "solid-background", "{size} {repeat}: {sample}");
+        }
+        // Twin: drawn over the box, it is the ground, and the ink matches it.
+        for size in ["100% 100%", "auto"] {
+            let sample = plan(&mut d, "rgba(0, 0, 0, 0)", size, "no-repeat");
+            assert_eq!(sample["method"], "analytic-gradient", "{size}: {sample}");
+        }
+        // A 1px rule repeated down the box is stripes: a surface.
+        let sample = plan(&mut d, "rgba(0, 0, 0, 0)", "100% 1px", "repeat");
+        assert_eq!(sample["method"], "analytic-gradient", "{sample}");
+        // A parked underline over a full gradient is left out on its own: the
+        // gradient beneath decides, not the underline's ink stop.
+        d.set_styles(
+            span,
+            &[
+                ("backgroundImage", "linear-gradient(rgb(109, 118, 124), rgb(109, 118, 124)), linear-gradient(rgb(255, 255, 255), rgb(250, 250, 250))"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+                ("backgroundSize", "0px 1px, 100% 100%"),
+                ("backgroundRepeat", "no-repeat, no-repeat"),
+                ("backgroundPosition", "0% 100%, 0% 0%"),
+            ],
+        );
+        match css_plan(&d, span, Some(&ink)) {
+            CssPlan::Sample { sample } => {
+                assert_eq!(sample["method"], "analytic-gradient", "{sample}");
+                assert_ne!(sample["color"]["r"], 109.0, "{sample}");
+            }
+            other => panic!("{other:?}"),
+        }
+        // A photo under a parked underline is drawn at its own size and
+        // position, not the underline's (#1201 review).
+        d.set_styles(
+            span,
+            &[
+                ("backgroundImage", "linear-gradient(rgb(109, 118, 124), rgb(109, 118, 124)), url(\"photo.png\")"),
+                ("backgroundSize", "0px 1px, cover"),
+                ("backgroundRepeat", "no-repeat, no-repeat"),
+                ("backgroundPosition", "0% 100%, 50% 20%"),
+            ],
+        );
+        match css_plan(&d, span, Some(&ink)) {
+            CssPlan::Url { url, size, position } => {
+                assert!(url.contains("photo.png"), "{url}");
+                assert_eq!((size.as_str(), position.as_str()), ("cover", "50% 20%"));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     /// freesubtitlemaker.lovable.app: a gradient word inside a white h1.

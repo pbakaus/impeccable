@@ -12,7 +12,7 @@ There is **one** user-invocable skill, `impeccable`, with **24 commands** undern
 
 ### Engine binary (the runtime behind every verb)
 
-The skill has no runtime of its own. Every command the skill text runs is `{{scripts_path}}/impeccable <verb>` (Setup step 1 says `impeccable context`; `impeccable.cmd` is the Windows twin for shells without `sh`). `skill/scripts/impeccable` is a POSIX `sh` launcher: it execs `$IMPECCABLE_BIN` if set, else the sibling `scripts/bin/<os>-<arch>/impeccable[.exe]`, else `~/.impeccable/bin/impeccable`, else the version-pinned user cache `~/.impeccable/bin/<VERSION>/`, else `impeccable` on PATH, and as a last resort downloads the pinned version into that cache. It exports `IMPECCABLE_SKILL_DIR` (the skill dir, for `reference/*.md` and `command-metadata.json`) and `IMPECCABLE_SELF` (how the binary spells itself in the commands it prints).
+The skill has no runtime of its own. Every command the skill text runs is `{{scripts_path}}/impeccable <verb>` (Setup step 1 says `impeccable context`; `impeccable.cmd` is the Windows twin for shells without `sh`). `skill/scripts/impeccable` is a POSIX `sh` launcher: it execs `$IMPECCABLE_BIN` if set, else the sibling `scripts/bin/<os>-<arch>/impeccable[.exe]` (skipped with a warning when its `engine-probe` version differs from `VERSION`), else `~/.impeccable/bin/impeccable`, else the version-pinned user cache `~/.impeccable/bin/<VERSION>/`, else `impeccable` on PATH, and as a last resort downloads the pinned version into that cache. It exports `IMPECCABLE_SKILL_DIR` (the skill dir, for `reference/*.md` and `command-metadata.json`) and `IMPECCABLE_SELF` (how the binary spells itself in the commands it prints).
 
 The binary is built from **this repo's Cargo workspace** (`Cargo.toml` at the root, `crates/*`; `cargo build --release -p impeccable`). Its verbs are the old script basenames (`context`, `doctor`, `pin`, `hook`, `hook-before-edit`, `live*`, `detect`, ...) with two aliases: `signals` for context-signals and `hooks` for hook-admin. Its observable behavior is specified in `docs/CLI-CONTRACT.md` and pinned by `tests/oracle/`. **Read `docs/ENGINE.md` before touching `crates/`**: it maps the crates and the browser-bundle flow.
 
@@ -242,11 +242,11 @@ IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior    # dump per-sc
 
 **Frontier tiers, more than one family.** The lineup is `DEFAULT_MODELS` in `tests/skill-behavior/providers.mjs`, currently `claude-sonnet-5` and `gemini-3.6-flash`. `gpt-5.6-luna` and `deepseek-v4-flash` were dropped in 2026-08: below the frontier tier they fail scenarios for model-floor reasons rather than skill-text defects, and a suite that is always red is a suite nobody reads. **Don't substitute Claude alone**: many of the most useful findings come from divergence between families, so keep at least two. The dropped models stay selectable via `IMPECCABLE_SKILL_BEHAVIOR_MODELS` when a Setup or routing change warrants a wider sweep.
 
-**Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
+**Auth** lives in `~/.config/impeccable/dev.env` (mode 0600, shared by every Impeccable repo; `IMPECCABLE_DEV_KEYS` names another file, and real environment variables win). Keys are passed to each SDK and never written into `process.env`, so child processes do not inherit them. Providers skip cleanly when their key is unset; they don't fail.
 
 **The scenario list and the baseline live in `tests/skill-behavior/README.md`**, not here. Read that table before changing Setup or routing text, and update it in the same change. Duplicating it in this file is how it went stale before.
 
-**Cost.** Each run is real LLM calls, billed to the keys in `.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
+**Cost.** Each run is real LLM calls, billed to the keys in `~/.config/impeccable/dev.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
 
 **Adding a scenario.** Write the fixture in `tests/skill-behavior/fixtures.mjs`, add the `it()` block in `scenarios.test.mjs` (the harness uses the source `skill/` dir via a symlink, so no rebuild needed), and update the baseline table in the suite's README. The harness's `fileLoaded(trace, filename)` helper checks both `read` and bash `cat` — different models prefer different tools.
 

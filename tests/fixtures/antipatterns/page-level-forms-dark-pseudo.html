@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page-Level Stylesheet Forms, Dark Ground (pseudo): Should Flag</title>
+  <style>
+    /* A should-flag twin of page-level-forms-white-canvas.html (review of
+      round 14, observations-1010 row 4). html and body paint nothing, but a
+      `body::before` fixed behind the page paints the ground near-black, so
+      the white canvas is not what the page shows and the stylesheet decides
+      "dark page" as before. The offset glow in the template reports in both
+      engines. The text stays dark, so the light-text backstop is not what
+      decides. */
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; color: #111111; }
+    main { width: 1200px; padding: 32px; }
+    .player { width: 320px; height: 180px; background: #000; }
+    body::before { content: ""; position: fixed; inset: 0; background: #0a0a0a; z-index: -1; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Course catalogue</h1>
+    <p>Pick a course to see its outline and enrol.</p>
+    <div class="player"></div>
+    <template id="card"><div style="width: 200px; height: 80px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4)">Course</div></template>
+  </main>
+  <script>
+    var html = '<button class="learn-button" style="padding: 12px 32px; box-shadow: 0 4px 15px rgba(124, 58, 237, 0.5)">Start</button>'
+      + '<div class="video-wrapper" style="width: 100%; height: 100vh; background: #000;"></div>';
+  </script>
+</body>
+</html>

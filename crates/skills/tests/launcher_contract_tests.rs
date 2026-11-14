@@ -29,7 +29,7 @@ fn sh_launcher_asset_naming_matches_engine() {
     let win_x64 = asset_url(DEFAULT_DOWNLOAD_BASE, "V", "windows", "x64");
     assert!(win_x64.ends_with("/engine-vV/impeccable-windows-x64.exe"));
     assert!(sh.contains(r#"url="$base/engine-v$version/impeccable-windows-x64.exe""#));
-    // The PATH and unversioned home candidates are probed; trusted paths are not.
+    // The PATH and unversioned home candidates are probed.
     assert!(sh.contains("engine-probe"));
     assert!(sh.contains(r#"probe_ok "$home_bin""#));
     assert!(sh.contains("probe_ok impeccable"));
@@ -71,11 +71,13 @@ fn cmd_launcher_forwards_engine_exit_code() {
             i + 1
         );
     }
+    // Three engine invocations: the PATH candidate run directly (an .exe or
+    // .com) or through `call` (a .cmd or .bat shim, #1240), and :run.
     let forward = "exit /b %errorlevel%";
     assert_eq!(
         cmd.matches(forward).count(),
-        2,
-        "PATH candidate and :run must both forward the engine exit code"
+        3,
+        "both PATH candidate forms and :run must forward the engine exit code"
     );
 }
 

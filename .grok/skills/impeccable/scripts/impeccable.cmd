@@ -11,13 +11,16 @@ rem   Linear goto flow keeps every expansion on its own line, and avoids
 rem   delayed expansion eating ! characters in user arguments.
 rem - The unversioned user binary and the PATH candidate are validated with
 rem   the engine-probe handshake (see :probe) so the retired 3.x npm CLI,
-rem   whose bin is also named impeccable, is never exec'd. IMPECCABLE_BIN,
-rem   the sibling binary, and the version-pinned cache stay trusted.
+rem   whose bin is also named impeccable, is never exec'd. The sibling binary
+rem   must also report the version in VERSION: it is not tracked, so a skill
+rem   upgrade can leave an old engine in place. IMPECCABLE_BIN stays trusted.
 rem - Downloads and the version-pinned cache are verified via certutil
 rem   against engine-checksums.txt next to this file, and fail closed; a
-rem   .verified stamp lets later runs skip hashing the cache. On ARM64 the
-rem   arm64 asset is tried first and the x64 asset is the fallback (Windows on
-rem   ARM runs x64 binaries), each only when the manifest has a line for it.
+rem   .verified stamp lets later runs skip hashing the cache while it holds
+rem   the manifest digest and the binary's size and is not older than the
+rem   binary. On ARM64 the arm64 asset is tried first and the x64 asset is the
+rem   fallback (Windows on ARM runs x64 binaries), each only when the manifest
+rem   has a line for it.
 if not defined IMPECCABLE_SKILL_DIR set "IMPECCABLE_SKILL_DIR=%~dp0.."
 if not defined IMPECCABLE_SELF set "IMPECCABLE_SELF=%~f0"
 set "arch=x64"
@@ -29,8 +32,18 @@ set "run=%IMPECCABLE_BIN%"
 goto run
 :no_env_bin
 
+set "version="
+if exist "%~dp0VERSION" set /p version=<"%~dp0VERSION"
 set "bin=%~dp0bin\windows-%arch%\impeccable.exe"
 if not exist "%bin%" goto no_sibling
+if defined IMPECCABLE_LAUNCHER_PROBE goto sibling_ok
+if not defined version goto sibling_ok
+call :probe "%bin%"
+if "%probe_version%"=="%version%" goto sibling_ok
+if not defined probe_version set "probe_version=unknown"
+echo impeccable: skipping "%bin%": it reports engine %probe_version% but this skill pins %version%; delete it to stop this warning 1>&2
+goto no_sibling
+:sibling_ok
 set "run=%bin%"
 goto run
 :no_sibling
@@ -44,16 +57,27 @@ set "run=%home_bin%"
 goto run
 :no_home_bin
 
-set "version="
-if exist "%~dp0VERSION" set /p version=<"%~dp0VERSION"
 if not defined IMPECCABLE_HOME set "IMPECCABLE_HOME=%USERPROFILE%\.impeccable"
 set "cached=%IMPECCABLE_HOME%\bin\%version%\impeccable.exe"
 set "asset=impeccable-windows-%arch%.exe"
 set "manifest=%~dp0engine-checksums.txt"
 if not defined version goto no_cache
 if not exist "%cached%" goto no_cache
-if exist "%cached%.verified" goto cache_trusted
 call :read_expected
+for %%f in ("%cached%") do set "size=%%~zf"
+set "stamp="
+if exist "%cached%.verified" for /f "usebackq tokens=1,2" %%s in ("%cached%.verified") do set "stamp=%%s"& set "stamp_size=%%t"
+if not defined stamp goto cache_hash
+if not "%stamp_size%"=="%size%" goto cache_hash
+if /I "%stamp%"=="%expected%" goto cache_stamp_matches
+if /I "%stamp%"=="%expected_x64%" goto cache_stamp_matches
+goto cache_hash
+:cache_stamp_matches
+rem Newest first: the stamp must be listed before the binary it vouches for.
+set "newest="
+for /f "delims=" %%f in ('dir /b /a:-d /o:-d "%cached%*" 2^>nul') do if not defined newest set "newest=%%f"
+if /I "%newest%"=="impeccable.exe.verified" goto cache_trusted
+:cache_hash
 call :sha256 "%cached%" "%TEMP%\impeccable-hash-%RANDOM%%RANDOM%.txt"
 if not defined actual goto cache_unverified
 if /I "%actual%"=="%expected%" goto cache_verified
@@ -62,18 +86,33 @@ if /I "%actual%"=="%expected_x64%" goto cache_verified
 echo impeccable: cannot verify the cached engine "%cached%" against "%manifest%"; not using it 1>&2
 goto no_cache
 :cache_verified
-(>"%cached%.verified" echo %actual%) 2>nul
+(>"%cached%.verified" echo %actual% %size%) 2>nul
 :cache_trusted
 set "run=%cached%"
 goto run
 :no_cache
 
 if defined IMPECCABLE_LAUNCHER_PROBE goto download
-where impeccable >nul 2>nul
-if errorlevel 1 goto download
-call :probe impeccable
+rem The first impeccable on PATH, resolved once so the probe and the run see
+rem the same file. A batch shim (npm writes impeccable.cmd) must run under
+rem call to return here (#1240), and call expands % in the arguments a second
+rem time; a real binary runs directly so a target such as a%20b reaches it intact.
+set "path_bin="
+rem where also lists npm's extensionless POSIX shim, which cmd cannot run:
+rem take the first match with a runnable extension.
+rem Loop letters c and k are not path modifiers, so %%~xc reads as the
+rem extension of c and never as a loop variable followed by text.
+for /f "delims=" %%c in ('where impeccable 2^>nul') do if not defined path_bin for %%k in (.exe .com .cmd .bat) do if /I "%%~xc"=="%%k" set "path_bin=%%c"
+if not defined path_bin goto download
+call :probe "%path_bin%"
 if not "%probe_ok%"=="1" goto download
-impeccable %*
+for %%k in ("%path_bin%") do set "path_ext=%%~xk"
+if /I "%path_ext%"==".cmd" goto path_shim
+if /I "%path_ext%"==".bat" goto path_shim
+"%path_bin%" %*
+exit /b %errorlevel%
+:path_shim
+call "%path_bin%" %*
 exit /b %errorlevel%
 
 :download
@@ -115,14 +154,14 @@ rem branch on the command's failure directly.
 (type nul >"%part%") 2>nul || goto staging_write_failed
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
 if not defined expected goto fetch_x64
-curl.exe -fsSL -o "%part%" "%url%" >nul 2>nul
+call :fetch_url
 if not errorlevel 1 goto verify
 :fetch_x64
 if not defined expected_x64 goto download_failed
 set "asset=impeccable-windows-x64.exe"
 set "expected=%expected_x64%"
 set "url=%IMPECCABLE_DOWNLOAD_BASE%/engine-v%version%/%asset%"
-curl.exe -fsSL -o "%part%" "%url%" >nul 2>nul
+call :fetch_url
 if errorlevel 1 goto download_failed
 
 :verify
@@ -148,10 +187,28 @@ call :discard_staging
 echo impeccable: cannot verify %url% (certutil could not hash it); refusing the unverified download 1>&2
 exit /b 127
 
+:fetch_url
+set "http_status="
+set "effective_url="
+set "download_host="
+curl.exe -fsSL --retry 2 -w "%%{http_code} %%{url_effective}" -o "%part%" "%url%" >"%staging%\http.txt" 2>nul
+set "fetch_result=%errorlevel%"
+for /f "usebackq tokens=1" %%a in ("%staging%\http.txt") do set "http_status=%%a"
+for /f "usebackq tokens=2" %%a in ("%staging%\http.txt") do set "effective_url=%%a"
+rem Token 2 is the authority after scheme://. Drop userinfo and the port.
+for /f "tokens=2 delims=/" %%h in ("%effective_url%") do set "download_host=%%h"
+for /f "tokens=1,* delims=@" %%h in ("%download_host%") do if not "%%i"=="" set "download_host=%%i"
+rem Bracketed IPv6 hosts contain colons that are not port separators.
+if "%download_host:~0,1%"=="[" goto fetch_ipv6
+for /f "tokens=1 delims=:" %%h in ("%download_host%") do set "download_host=%%h"
+exit /b %fetch_result%
+:fetch_ipv6
+for /f "tokens=1 delims=]" %%h in ("%download_host%") do set "download_host=%%h]"
+exit /b %fetch_result%
+
 :read_expected
 rem Sets expected (and, on ARM64, expected_x64: Windows on ARM runs x64
-rem binaries) from engine-checksums.txt. Only called off the stamped path:
-rem hooks run this launcher on every edit.
+rem binaries) from engine-checksums.txt.
 call :manifest_digest "%asset%" expected
 set "expected_x64="
 if "%arch%"=="arm64" call :manifest_digest impeccable-windows-x64.exe expected_x64
@@ -211,7 +268,8 @@ if errorlevel 1 goto place_failed
 call :discard_staging
 call :check_download "%cached%"
 if errorlevel 1 exit /b 127
-(>"%cached%.verified" echo %actual%) 2>nul
+for %%f in ("%cached%") do set "size=%%~zf"
+(>"%cached%.verified" echo %actual% %size%) 2>nul
 set "run=%cached%"
 goto run
 
@@ -228,17 +286,23 @@ exit /b %errorlevel%
 
 :probe
 rem Sets probe_ok=1 when %1 answers the engine handshake: prints
-rem "impeccable-engine <version>" and exits 0. The 3.x npm CLI answers any
-rem unknown verb with "Unknown command", exit 1, so it never passes.
+rem "impeccable-engine <version>" and exits 0, and probe_version to that
+rem version. The 3.x npm CLI answers any unknown verb with "Unknown command",
+rem exit 1, so it never passes.
+rem The candidate runs under call: an npm .cmd shim run without it takes
+rem over this script and never returns (#1240).
 set "probe_ok="
+set "probe_version="
 set "probe_tmp=%TEMP%\impeccable-probe-%RANDOM%%RANDOM%.txt"
 set "IMPECCABLE_LAUNCHER_PROBE=1"
-"%~1" engine-probe >"%probe_tmp%" 2>nul
+call "%~1" engine-probe >"%probe_tmp%" 2>nul
 set "probe_err=%ERRORLEVEL%"
 set "IMPECCABLE_LAUNCHER_PROBE="
 if not "%probe_err%"=="0" goto probe_done
 findstr /b /c:"impeccable-engine" "%probe_tmp%" >nul 2>nul
-if not errorlevel 1 set "probe_ok=1"
+if errorlevel 1 goto probe_done
+set "probe_ok=1"
+for /f "usebackq tokens=2" %%v in ("%probe_tmp%") do if not defined probe_version set "probe_version=%%v"
 :probe_done
 del "%probe_tmp%" >nul 2>nul
 exit /b 0
@@ -264,6 +328,18 @@ goto setup_failed
 
 :download_failed
 call :discard_staging
+if not "%http_status:~0,1%"=="5" goto download_generic
+if "%http_status:~2,1%"=="" goto download_generic
+if /I "%download_host%"=="github.com" goto download_github
+if /I "%download_host:~-11%"==".github.com" goto download_github
+if /I "%download_host%"=="githubusercontent.com" goto download_github
+if /I "%download_host:~-22%"==".githubusercontent.com" goto download_github
+echo impeccable: could not download engine %version%: %download_host% is failing right now (HTTP %http_status%), a server error on %download_host%'s side. Try again later. 1>&2
+exit /b 127
+:download_github
+echo impeccable: could not download engine %version%: GitHub's downloads are failing right now (HTTP %http_status% from %download_host%). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered. 1>&2
+exit /b 127
+:download_generic
 echo impeccable: could not download engine %version% from %url%; check network access and the release URL. 1>&2
 
 :setup_failed

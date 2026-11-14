@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stays: a full-screen aria-hidden modal with a control and a finite animation</title>
+  <!-- A newsletter wall: fixed over the page, opaque, aria-hidden, with a slow
+       finite colour shift running, but it holds a field and a button the visitor
+       answers. It is a wall, not an intro: not waited for, not hidden.
+       Pinned by crates/browser/tests/overlay_hiding.rs. -->
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .wall { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f4f1ea; animation: shimmer 30s linear forwards; }
+    @keyframes shimmer { from { background-color: #f4f1ea; } to { background-color: #efe9dd; } }
+  </style>
+</head>
+<body>
+  <div class="wall" aria-hidden="true"><p>Join the list for weekly notes</p><input type="email" aria-label="Email"><button type="button">Join</button></div>
+  <h1>A page under an intro</h1>
+  <p class="body-copy" style="max-width: 640px;">This page has copy of its own under the layer: a product, its pricing, its support hours and a note on shipping. A visitor reads it once the layer in front of it is gone, and the scan should read it too. It runs long enough to be more than a title.</p>
+  <p class="faint" id="covered-copy">Faint copy the intro covers.</p>
+</body>
+</html>

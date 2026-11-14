@@ -191,6 +191,17 @@ const __impeccableDom = {
     const v = __snapTextWrapPrettySupported();
     return v === null ? -1 : (v ? 1 : 0);
   },
+  // Dom::document_font_faces and Dom::rendered_faces as JSON, or undefined
+  // where they cannot be read; the readers live in 15-snapshot.js beside
+  // the snapshot fields of the same names.
+  document_font_faces() {
+    const v = __snapFontFaces();
+    return v === null ? undefined : JSON.stringify(v);
+  },
+  rendered_faces() {
+    const v = __snapRenderedFaces();
+    return v === null ? undefined : JSON.stringify(v);
+  },
   document_html_for_patterns() {
     const docClone = document.documentElement.cloneNode(true);
     for (const node of docClone.querySelectorAll('[id^="impeccable-live-"]')) node.remove();

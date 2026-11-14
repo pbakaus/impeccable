@@ -146,7 +146,7 @@ if (cfg.sibling) {
 const ENGINE_SOURCE_PATHS = [
   'crates', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml',
   'browser-bundle',
-  'scripts/bundle-signing-keys.json',
+  'scripts/bundle-signing-keys.json', 'scripts/cli-pro-release-keys.json',
   'skill/scripts/live-browser*.js', 'skill/scripts/modern-screenshot.umd.js',
   'ui/component-review/theme.css', 'ui/component-review/fonts',
   'ui/component-review/vendor/*.css', 'ui/component-review/vendor/instrument-strip.js',
@@ -470,6 +470,24 @@ async function releaseEngine() {
   const wrong = pins.filter(([, range]) => String(range).replace(/^[^\d]*/, '') !== version);
   if (wrong.length) fail(`package.json pins ${wrong.map(([n, r]) => `${n}@${r}`).join(', ')}; expected ${version}. Bump them with ENGINE_VERSION.`);
   ok(`${pins.length} platform package pins agree`);
+
+  // The engine compiles in scripts/cli-pro-release-keys.json (crates/account
+  // pro/verify.rs). With no key there, every Pro build fails its signature
+  // check and every user falls back to the open rules, and only another engine
+  // release fixes it, so refuse to tag one.
+  step('Checking a Pro release key is compiled in');
+  let releaseKeys = {};
+  try {
+    releaseKeys = JSON.parse(readFileSync(path.join(repoRoot, 'scripts/cli-pro-release-keys.json'), 'utf8'));
+  } catch {}
+  // The engine rejects the whole file if any entry is malformed, so every entry
+  // must be valid, not just one.
+  const entries = releaseKeys && typeof releaseKeys === 'object' && !Array.isArray(releaseKeys) ? Object.entries(releaseKeys) : [];
+  const bad = entries.filter(([id, hex]) => !id || typeof hex !== 'string' || !/^[0-9a-f]{64}$/.test(hex));
+  if (!entries.length || bad.length) {
+    fail(`scripts/cli-pro-release-keys.json holds no Pro release key the engine can use (each id must map to 64 lowercase hex${bad.length ? `; invalid: ${bad.map(([id]) => JSON.stringify(id)).join(', ')}` : ''}). The engine refuses the whole file when any entry is malformed, so this engine would ship with Pro dispatch off for everyone.`);
+  }
+  ok(`${entries.length} Pro release key(s)`);
 
   const tag = `${cfg.tagPrefix}${version}`;
 

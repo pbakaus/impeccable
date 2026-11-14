@@ -48,6 +48,7 @@ const CONTRIBUTOR_POLICY_LABELS = new Set([
   'policy: needs ai disclosure',
   'policy: generated output',
 ]);
+const MAINTAINER_DECISION_LABEL = 'policy: needs maintainer decision';
 const SHERIFF_WAIT_COMMAND = /^\/sheriff\s+wait\s*$/i;
 
 function normalizeLabelName(label) {
@@ -238,10 +239,20 @@ export function evaluatePullRequest(pr, options = {}) {
     addContributorBlocker({ kind: 'manual-waiting', at: waitingLabelAt });
   }
 
-  const contributorActionBlockerAt = latestDate(blockers
-    .filter((blocker) => blocker.contributorAction)
-    .map((blocker) => blocker.at || pr.createdAt));
-  const contributorActionRequired = blockers.some((blocker) => blocker.contributorAction);
+  // An explicit maintainer decision owns the next step even if the PR is a
+  // draft or still has contributor-resolvable blockers. Keep those blockers
+  // visible, but do not warn or close while the contributor awaits a decision.
+  const needsMaintainerDecision = labels.has(MAINTAINER_DECISION_LABEL);
+  const contributorActionRequired = !needsMaintainerDecision
+    && blockers.some((blocker) => blocker.contributorAction);
+  // Returning responsibility starts a fresh window; an old draft timestamp or
+  // warning must not count time that was spent waiting on maintainers.
+  const contributorActionBlockerAt = contributorActionRequired ? latestDate([
+    ...blockers
+      .filter((blocker) => blocker.contributorAction)
+      .map((blocker) => blocker.at || pr.createdAt),
+    latestLabelEventAt(pr.labelEvents || [], MAINTAINER_DECISION_LABEL, 'UnlabeledEvent'),
+  ]) : null;
   const waitingDays = contributorActionRequired && contributorActionBlockerAt
     ? Math.floor((now.getTime() - contributorActionBlockerAt.getTime()) / DAY_MS)
     : 0;
@@ -439,7 +450,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   const prs = fetchOpenPullRequests(repo).map(normalizePullRequest);
   hydrateIssueComments(repo, prs);
-  hydrateMissingWaitingLabelEvents(repo, prs);
+  hydrateIssueLabelEvents(repo, prs);
   const plans = prs.map((pr) => evaluatePullRequest(pr, options));
 
   for (const plan of plans) {
@@ -546,10 +557,11 @@ function applyPlan(repo, plan, options) {
   }
 }
 
-function hydrateMissingWaitingLabelEvents(repo, prs) {
+function hydrateIssueLabelEvents(repo, prs) {
   for (const pr of prs) {
-    if (!(pr.labels || []).includes('waiting on contributor')) continue;
-    if (latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent')) continue;
+    // The last 100 GraphQL label events can omit a maintainer-decision
+    // handoff, even when no waiting label is present. Read every page so an
+    // old warning cannot authorize closure after a recent handoff.
     mergeIssueLabelEvents(pr, fetchIssueEvents(repo, pr.number));
   }
 }
@@ -571,13 +583,23 @@ function fetchIssueComments(repo, number) {
 }
 
 function fetchIssueEvents(repo, number) {
-  const pages = runGhJson([
-    'api',
-    '--paginate',
-    '--slurp',
-    `repos/${repo}/issues/${number}/events?per_page=100`,
-  ]);
-  return Array.isArray(pages) ? pages.flat() : [];
+  const events = [];
+  for (let page = 1; ; page += 1) {
+    // Bound subprocess output by one page of small label-event records, not
+    // the size of the entire history (or unrelated event payloads). Count the
+    // raw page so a page without label events does not end pagination early.
+    const result = runGhJson([
+      'api',
+      `repos/${repo}/issues/${number}/events?per_page=100&page=${page}`,
+      '--jq',
+      '{count: length, events: [.[] | select(.event == "labeled" or .event == "unlabeled") | {event, created_at, label: {name: .label.name}, actor: {login: .actor.login}}]}',
+    ]);
+    if (!Number.isInteger(result.count) || result.count < 0 || result.count > 100 || !Array.isArray(result.events)) {
+      throw new Error(`Invalid issue event page for PR #${number}`);
+    }
+    events.push(...result.events);
+    if (result.count < 100) return events;
+  }
 }
 
 function fetchOpenPullRequests(repo) {

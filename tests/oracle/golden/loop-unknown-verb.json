@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

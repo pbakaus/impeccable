@@ -134,6 +134,24 @@ pub trait Dom {
         None
     }
 
+    /// The faces `document.fonts` holds, as `(family, status)`: the family
+    /// with its quotes removed, the status one of `unloaded`, `loading`,
+    /// `loaded` or `error`. It lists `@font-face` rules and faces a script
+    /// added, never a face installed on the system. `None` where the
+    /// capture did not ask (a recording older than the field), and a caller
+    /// then knows nothing about which faces loaded.
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        None
+    }
+
+    /// For each face that heads the font stack of an element holding text,
+    /// whether the browser draws text in it at all, from a face installed on
+    /// the system or one the page loaded: `(face, drawn)`, measured on a
+    /// canvas at capture. `None` where the capture did not measure.
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        None
+    }
+
     // ── element identity / tree ───────────────────────────────────────
     /// `el.tagName` (uppercase for HTML elements, as-is for SVG/foreign).
     fn tag_name(&self, el: ElId) -> String;

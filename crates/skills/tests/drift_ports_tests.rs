@@ -65,7 +65,7 @@ fn create_fake_universal_bundle(root: &str, providers: &[&str]) -> String {
             &format!("{bundle_root}/.claude/settings.json"),
             &json!({
                 "description": "fresh claude hook",
-                "hooks": { "PostToolUse": [{ "matcher": "Edit", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
+                "hooks": { "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "Stop": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
             })
             .to_string(),
         );
@@ -603,6 +603,34 @@ fn check_reports_stale_impeccable_in_home_rooted_tree() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+#[test]
+fn check_ignores_engine_binary_installed_beside_the_skill() {
+    let root = temp_root("check-1247-engine-bin");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&home, &project, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle_root);
+
+    let r = run_cli(
+        &["install", "-y", "--scope=project", "--no-hooks", "--providers=claude"],
+        &project,
+        &env,
+    );
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    // A real install fetches the engine here; the bundle never ships it.
+    write(&format!("{project}/.claude/skills/impeccable/scripts/bin/windows-x64/impeccable.exe"), "MZ");
+
+    let r = run_cli(&["check"], &project, &env);
+    assert!(r.stdout.contains("Skills are up to date"), "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("Updates available"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
 // ─── inferred agent update scope (d2a9efb9) ──────────────────────────────────
 
 #[test]
@@ -1109,7 +1137,7 @@ fn user_hook_with_missing_launcher_is_not_current() {
     let command = impeccable_skills::hook_manifest::user_claude_hook_command(&home, false).unwrap();
     write(
         &settings,
-        &serde_json::json!({"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":command}]}]}}).to_string(),
+        &impeccable_context::hook_wiring::claude_manifest_for_command(&command).to_string(),
     );
     assert!(!impeccable_skills::hook_manifest::user_claude_hook_is_current_for(&home, false));
     write(&format!("{home}/.claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n");
@@ -1159,4 +1187,218 @@ fn merge_hook_manifests_replaces_legacy_windows_path_claude_hooks() {
     assert_eq!(stop.len(), 1, "legacy Windows guard duplicated: {stop:?}");
     assert_eq!(post[0]["hooks"][0]["command"], Value::String(fresh_command.clone()));
     assert_eq!(stop[0]["hooks"][0]["command"], Value::String(fresh_command));
+}
+
+/// `update` ends with the doctor report on both of its success paths, and it
+/// only reports: the project file the findings name stays as it was. The
+/// fixes are the agent's to offer, so a run that installed a new version
+/// ends by sending the user to the `doctor` command there.
+#[test]
+fn update_ends_with_the_doctor_report() {
+    let root = temp_root("update-doctor-report");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    write(&format!("{project}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let product = "# Product\n\n## Register\n\nbrand\n";
+    write(&format!("{project}/PRODUCT.md"), product);
+    let bundle = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+
+    let next_step = "\nNext step: run /impeccable doctor in your coding agent. It checks this project's setup against the version you just installed and offers the fixes.\n";
+    for (last_line, installed) in [("Done!", true), ("Nothing else to do.", false)] {
+        let r = run_cli(&["update", "-y"], &project, &env);
+        assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+        let (_, report) = r.stdout.split_once(&format!("{last_line}\n\nImpeccable doctor:")).unwrap_or_else(|| panic!("{}", r.stdout));
+        assert!(report.contains("product-deprecated-register"), "{}", r.stdout);
+        assert_eq!(r.stdout.ends_with(next_step), installed, "{}", r.stdout);
+    }
+    assert_eq!(read(&format!("{project}/PRODUCT.md")), product);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// The npm shim runs `update` outside any skill folder, so the report takes
+/// its harness from the skill it refreshed (the hook checks need one) and its
+/// project from the working directory, even when that skill lives under home.
+#[test]
+fn update_doctor_report_checks_the_updated_harness_in_the_project() {
+    let root = temp_root("update-doctor-harness");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    write(&format!("{home}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    write(&format!("{project}/PRODUCT.md"), "# Product\n\n## Register\n\nbrand\n");
+    let bundle = create_fake_universal_bundle(&root, &[".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+
+    let r = run_cli(&["update", "-y", "--user", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let (_, report) = r.stdout.split_once("Impeccable doctor:").unwrap_or_else(|| panic!("{}", r.stdout));
+    assert!(report.contains("hook-not-installed"), "{}", r.stdout);
+    assert!(report.contains("product-deprecated-register"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// Two harnesses in one project share every finding but the hook ones, so the
+/// report lists each harness's missing hook and the shared findings once.
+#[test]
+fn update_doctor_report_merges_the_updated_harnesses() {
+    let root = temp_root("update-doctor-merge");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    for provider in [".claude", ".cursor"] {
+        write(&format!("{project}/{provider}/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    }
+    write(&format!("{project}/PRODUCT.md"), "# Product\n\n## Register\n\nbrand\n");
+    let bundle = create_fake_universal_bundle(&root, &[".claude", ".cursor"]);
+    let mut env = base_env(&home, &tmpdir, &bundle);
+    // A provider id exported in the shell must not make every pass check the
+    // same harness: each refreshed folder names its own.
+    env.insert("IMPECCABLE_PROVIDER_ID".to_string(), "claude-code".to_string());
+
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let (_, report) = r.stdout.split_once("Impeccable doctor:").unwrap_or_else(|| panic!("{}", r.stdout));
+    assert!(report.contains("hook-not-installed  [.claude/settings.local.json]"), "{}", r.stdout);
+    assert!(report.contains("hook-not-installed  [.cursor/hooks.json]"), "{}", r.stdout);
+    assert_eq!(report.matches("product-deprecated-register").count(), 1, "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+// `.codex/skills` is not an install target (Codex reads repository skills
+// from `.agents/skills`), so a copy there is reported, never refreshed (#1391).
+fn codex_dir_project(name: &str, with_agents: bool, copy_under_home: bool) -> (String, String, HashMap<String, String>) {
+    let root = temp_root(name);
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for dir in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let copy_root = if copy_under_home { &home } else { &project };
+    write(&format!("{copy_root}/.codex/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 3.9.1\n---\n");
+    if with_agents {
+        write(&format!("{project}/.agents/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    }
+    let bundle = create_fake_universal_bundle(&root, &[".agents", ".claude"]);
+    let env = base_env(&home, &tmpdir, &bundle);
+    (root, project, env)
+}
+
+#[test]
+fn update_names_a_codex_skills_copy_it_cannot_find() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-only", false, false);
+    let r = run_cli(&["update", "-y"], &project, &env);
+    assert_eq!(r.code, 1, "{}\n{}", r.stdout, r.stderr);
+    let expected = "No impeccable skill folders found in this project or at the user level.\n\
+        Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run `npx impeccable install --providers=codex` to install it there, then delete .codex/skills/impeccable.\n\
+        Run `npx impeccable install` to install first.\n";
+    assert_eq!(r.stdout, expected);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_names_a_codex_skills_copy_beside_the_agents_install() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-beside", true, false);
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let note = "Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Delete .codex/skills/impeccable.\nDone!\n";
+    assert!(r.stdout.contains(note), "{}", r.stdout);
+    assert!(r.stdout.contains("Updated 1 skill(s)"), "{}", r.stdout);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    assert!(read(&format!("{project}/.agents/skills/impeccable/SKILL.md")).contains("9.9.9-local"));
+    // The up-to-date path says it too, before its closing line.
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Delete .codex/skills/impeccable.\nNothing else to do.\n"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn update_is_silent_about_a_codex_skills_link_onto_the_agents_install() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-link", true, false);
+    std::fs::remove_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink("../.agents/skills", format!("{project}/.codex/skills")).unwrap();
+    // A second skill in the linked folder is that install's too, not a copy.
+    write(&format!("{project}/.agents/skills/teach-impeccable/SKILL.md"), "---\nname: teach-impeccable\nversion: 1.0.0\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    // A linked entry does not hide a real copy beside it.
+    std::fs::remove_file(format!("{project}/.codex/skills")).unwrap();
+    std::fs::create_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink("../../.agents/skills/impeccable", format!("{project}/.codex/skills/impeccable")).unwrap();
+    write(&format!("{project}/.codex/skills/teach-impeccable/SKILL.md"), "---\nname: teach-impeccable\nversion: 3.9.1\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Found an Impeccable skill at .codex/skills/teach-impeccable, which update does not manage"), "{}", r.stdout);
+    // `.agents` and `.codex` both linked onto one checkout (`impeccable link`)
+    // while a copied `.claude` install keeps the update going: the `.codex`
+    // link is the same install as the `.agents` one, not a copy.
+    let checkout = format!("{root}/checkout/impeccable");
+    write(&format!("{checkout}/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    std::fs::remove_dir_all(format!("{project}/.agents/skills/impeccable")).unwrap();
+    std::os::unix::fs::symlink(&checkout, format!("{project}/.agents/skills/impeccable")).unwrap();
+    std::fs::remove_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::fs::create_dir_all(format!("{project}/.codex/skills")).unwrap();
+    std::os::unix::fs::symlink(&checkout, format!("{project}/.codex/skills/impeccable")).unwrap();
+    write(&format!("{project}/.claude/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Continuing with copied installs in: .claude"), "{}", r.stdout);
+    assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_falling_back_to_the_user_install_names_the_project_codex_copy() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-fallback", false, false);
+    let home = format!("{root}/home");
+    write(&format!("{home}/.agents/skills/impeccable/SKILL.md"), "---\nname: impeccable\nversion: 1.0.0\n---\n");
+    let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Updating the user level install"), "{}", r.stdout);
+    let note = "Found an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run `npx impeccable install --providers=codex` to install it there, then delete .codex/skills/impeccable.\nDone!\n";
+    assert!(r.stdout.contains(note), "{}", r.stdout);
+    assert!(read(&format!("{project}/.codex/skills/impeccable/SKILL.md")).contains("version: 3.9.1"));
+    assert!(read(&format!("{home}/.agents/skills/impeccable/SKILL.md")).contains("9.9.9-local"));
+    // A project entry linked onto the user install just updated is that install.
+    #[cfg(unix)]
+    {
+        std::fs::remove_dir_all(format!("{project}/.codex/skills/impeccable")).unwrap();
+        std::os::unix::fs::symlink(format!("{home}/.agents/skills/impeccable"), format!("{project}/.codex/skills/impeccable")).unwrap();
+        let r = run_cli(&["update", "-y", "--no-hooks"], &project, &env);
+        assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+        assert!(!r.stdout.contains("which update does not manage"), "{}", r.stdout);
+    }
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn update_user_names_a_codex_skills_copy_under_home() {
+    let (root, project, env) = codex_dir_project("update-codex-dir-home", false, true);
+    let r = run_cli(&["update", "-y", "--user"], &project, &env);
+    assert_eq!(r.code, 1, "{}\n{}", r.stdout, r.stderr);
+    assert!(
+        r.stdout.contains("Found an Impeccable skill at ~/.codex/skills/impeccable, which update does not manage: the user-level install Impeccable maintains is ~/.agents/skills/impeccable. Run `npx impeccable install --providers=codex --scope=global` to install it there, then delete ~/.codex/skills/impeccable so Codex loads one copy.\n"),
+        "{}",
+        r.stdout
+    );
+    std::fs::remove_dir_all(&root).ok();
 }

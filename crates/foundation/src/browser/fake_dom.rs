@@ -78,6 +78,10 @@ pub struct FakeDom {
     pub shadow_trees_unrecorded: bool,
     /// [`Dom::text_wrap_pretty_supported`]; `None` is a probe that did not ask.
     pub text_wrap_pretty_supported: Option<bool>,
+    /// [`Dom::document_font_faces`]; `None` is a capture that did not ask.
+    pub font_faces: Option<Vec<(String, String)>>,
+    /// [`Dom::rendered_faces`]; `None` is a capture that did not measure.
+    pub rendered_faces: Option<Vec<(String, bool)>>,
     pub els: Vec<FakeEl>,
     pub document_element: Option<ElId>,
     pub body: Option<ElId>,
@@ -602,6 +606,12 @@ impl Dom for FakeDom {
     }
     fn text_wrap_pretty_supported(&self) -> Option<bool> {
         self.text_wrap_pretty_supported
+    }
+    fn document_font_faces(&self) -> Option<Vec<(String, String)>> {
+        self.font_faces.clone()
+    }
+    fn rendered_faces(&self) -> Option<Vec<(String, bool)>> {
+        self.rendered_faces.clone()
     }
     fn pseudo_style(&self, el: ElId, pseudo: &str, prop: &str) -> Option<String> {
         let e = &self.els[el as usize];

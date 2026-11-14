@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>/web\",\n  \"repoRoot\": \"<WS>/web\",\n  \"isMonorepo\": false,\n  \"productPath\": null,\n  \"designPath\": null,\n  \"platform\": null,\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"hook-not-installed\",\n      \"artifact\": \"hook manifest\",\n      \"path\": \".claude/settings.local.json\",\n      \"severity\": \"route\",\n      \"summary\": \"No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.\",\n      \"fix\": \"Run `impeccable hooks on` from `..`, where the skill is installed, to install it, or `impeccable hooks off` to keep it off and stop this finding.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

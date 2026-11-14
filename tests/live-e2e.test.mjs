@@ -32,6 +32,7 @@ import {
   FAKE_VARIANT_FONT_WEIGHTS,
 } from './live-e2e/agent.mjs';
 import { createLlmAgent, resolveLlmAgentConfig } from './live-e2e/agents/llm-agent.mjs';
+import { devEnvView } from './lib/dev-keys.mjs';
 import { bootFixtureSession, ENGINE_BIN, ENGINE_MISSING_MESSAGE, FIXTURES_DIR, runEngineSync } from './live-e2e/session.mjs';
 import {
   assertApplyDockVisible,
@@ -237,7 +238,7 @@ for (const { name, fixture } of fixtures) {
       if (agentMode === 'llm') {
         const llmConfig = resolveLlmAgentConfig({
           model: process.env.IMPECCABLE_E2E_LLM_MODEL,
-        });
+        }, devEnvView());
         agent = await createLlmAgent({
           config: llmConfig,
           log: (m) => t.diagnostic('[llm] ' + m),
@@ -277,7 +278,7 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? insertDomSelector
         : pickSelector;
-      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture) || name === 'nuxt-vite7';
+      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture);
       // Component previews mount every variant into the same node, so one
       // selector serves all three; the HTML/JSX paths keep a div per variant.
       const variantContentSelectorFor = (variantNum) => (isInsert
@@ -436,7 +437,7 @@ for (const { name, fixture } of fixtures) {
           );
           assert.doesNotMatch(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'Astro live CSS does not use raw @scope');
         } else {
-          assert.match(after, /<style data-impeccable-css="/, 'colocated <style> block present');
+          assert.match(after, /<(?:style|component is="style") data-impeccable-css="/, 'colocated <style> block present');
           assert.match(after, /@scope \(\[data-impeccable-variant="1"\]\)/, 'scoped CSS for variant 1');
           assert.match(after, /@scope \(\[data-impeccable-variant="2"\]\)/, 'scoped CSS for variant 2');
           assert.match(after, /@scope \(\[data-impeccable-variant="3"\]\)/, 'scoped CSS for variant 3');
@@ -1389,7 +1390,7 @@ for (const { name, fixture } of fixtures) {
         if (agentMode === 'llm') {
           const llmConfig = resolveLlmAgentConfig({
             model: process.env.IMPECCABLE_E2E_LLM_MODEL,
-          });
+          }, devEnvView());
           baseAgent = await createLlmAgent({
             config: llmConfig,
             log: (m) => t.diagnostic('[llm] ' + m),
@@ -1811,7 +1812,7 @@ async function createManualScenarioAgent(t, scenario = {}) {
 
   const llmConfig = resolveLlmAgentConfig({
     model: process.env.IMPECCABLE_E2E_LLM_MODEL,
-  });
+  }, devEnvView());
   const agent = await createLlmAgent({
     config: llmConfig,
     log: (m) => t.diagnostic('[llm] ' + m),
