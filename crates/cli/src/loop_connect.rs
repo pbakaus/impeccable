@@ -19,13 +19,23 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// The Impeccable MCP server. A constant of the build: never taken from a flag, the
-/// environment or a server response.
+/// The Impeccable MCP servers. Constants of the build: the account service the CLI
+/// signs in to (`IMPECCABLE_ACCOUNT_URL`) chooses between them, and nothing else can name
+/// one. An entry is written into the agent's own global configuration and outlives the
+/// variable, so an account URL that is neither service is refused, never followed and
+/// never replaced by production.
 const MCP_URL: &str = "https://api.impeccable.style/mcp";
+const STAGING_MCP_URL: &str = "https://api.staging.impeccable.style/mcp";
+/// The account services, as `impeccable_account::config::normalize_origin` spells them.
+const ACCOUNTS: [(&str, &str); 2] = [
+    (impeccable_account::config::DEFAULT_ACCOUNT_URL, MCP_URL),
+    ("https://api.staging.impeccable.style", STAGING_MCP_URL),
+];
+static MCP_FOR_ACCOUNT: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
 /// A build with the `test-mcp-url` feature (staging end-to-end runs only, like
 /// `test-release-keys`) may point connect at another https MCP server through
-/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they always use
-/// the constant above and ignore the variable.
+/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they ignore the
+/// variable.
 #[cfg(feature = "test-mcp-url")]
 static MCP_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
@@ -34,14 +44,30 @@ fn mcp_url() -> &'static str {
     if let Some(url) = MCP_OVERRIDE.get() {
         return url;
     }
-    MCP_URL
+    MCP_FOR_ACCOUNT.get().copied().unwrap_or(MCP_URL)
+}
+
+/// The MCP server of the account service `raw` names (`IMPECCABLE_ACCOUNT_URL`, unset
+/// for production), or why there is none.
+fn mcp_for_account(raw: Option<&str>) -> Result<&'static str> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(MCP_URL);
+    };
+    let origin = impeccable_account::config::normalize_origin(raw);
+    ACCOUNTS
+        .iter()
+        .find(|(account, _)| origin.as_deref() == Some(*account))
+        .map(|(_, mcp)| *mcp)
+        .ok_or_else(|| {
+            "IMPECCABLE_ACCOUNT_URL isn't the Impeccable account or its staging service, so no MCP server was added. Unset it to connect to Impeccable.".into()
+        })
 }
 
 /// In a `test-mcp-url` build, a set but unusable `IMPECCABLE_MCP_URL` is refused, never
 /// replaced by production: falling back would send a staging run's agents to production.
-fn init_mcp_url(_io: &Io) -> Result<()> {
+fn init_mcp_url(io: &Io) -> Result<()> {
     #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = _io.env("IMPECCABLE_MCP_URL") {
+    if let Some(url) = io.env("IMPECCABLE_MCP_URL") {
         let usable = url::Url::parse(url)
             .ok()
             .filter(|u| u.scheme() == "https" && u.host_str().is_some() && u.as_str() == url);
@@ -49,7 +75,10 @@ fn init_mcp_url(_io: &Io) -> Result<()> {
             return Err("IMPECCABLE_MCP_URL must be a plain https URL.".into());
         }
         let _ = MCP_OVERRIDE.set(url.to_string());
+        return Ok(());
     }
+    let url = mcp_for_account(io.env("IMPECCABLE_ACCOUNT_URL"))?;
+    let _ = MCP_FOR_ACCOUNT.set(url);
     Ok(())
 }
 const MCP_NAME: &str = "impeccable";
@@ -326,23 +355,9 @@ pub(crate) fn status_text(v: &Value) -> String {
     out
 }
 
-/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
-/// working installation is never undone by a failed reconnect. The MCP server is never
-/// removed here: a failure says how to remove it.
-fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
-    if agent.harness == "codex" {
-        if let Some(other) = read_record(support, "codex")
-            .filter(|r| r["enabled"] == true)
-            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
-            .filter(|dir| *dir != agent.root)
-        {
-            return Err(format!(
-                "Codex is already connected for {}; run impeccable loop disconnect first.",
-                other.display()
-            ));
-        }
-    }
-    // 1. The MCP server: added only when the agent has none of that name.
+/// The MCP server, added only when the agent has none of that name. True when this call
+/// added it; an entry of that name that differs is left alone and is an error.
+fn ensure_mcp(agent: &Agent) -> Result<bool> {
     let mut added = false;
     match read_entry(agent) {
         Entry::Exact => {}
@@ -378,6 +393,74 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             }
         }
     }
+    Ok(added)
+}
+
+/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, for a
+/// person without the Loop app (any OS). No hooks, no taste block, no Loop records: each
+/// agent signs in to the server itself on first use.
+pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
+    let rows = (|| -> Result<(String, usize, usize, Vec<Value>)> {
+        if let Some(h) = only {
+            if !AGENTS.iter().any(|(a, _)| *a == h) {
+                return Err(format!("Unknown agent: {h}. Use claude or codex."));
+            }
+        }
+        init_mcp_url(io)?;
+        let home = home(io)?;
+        let (mut out, mut rows, mut connected, mut failed) = (String::new(), Vec::new(), 0, 0);
+        for (harness, label) in AGENTS {
+            if only.is_some_and(|h| h != harness) {
+                continue;
+            }
+            let Some(agent) = agent(io, &home, harness) else {
+                out.push_str(&format!("{label}: not found, skipped.\n"));
+                rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
+                continue;
+            };
+            match ensure_mcp(&agent) {
+                Ok(added) => {
+                    connected += 1;
+                    let what = if added { "MCP server added" } else { "MCP server already there" };
+                    out.push_str(&format!("{label}: {what}.\n  Sign in: {}\n", sign_in(harness)));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": sign_in(harness) }));
+                }
+                Err(e) => {
+                    failed += 1;
+                    out.push_str(&format!("{label}: not connected: {e}\n"));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "failed", "error": e }));
+                }
+            }
+        }
+        Ok((out, connected, failed, rows))
+    })();
+    match rows {
+        Err(e) => (Err(e.clone()), json!({ "ok": false, "error": e, "agents": [] }), false),
+        Ok((out, connected, failed, rows)) => {
+            let ok = failed == 0 && connected > 0;
+            (connect_report(out, only, connected, failed), json!({ "ok": ok, "agents": rows }), ok)
+        }
+    }
+}
+
+/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
+/// working installation is never undone by a failed reconnect. The MCP server is never
+/// removed here: a failure says how to remove it.
+fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
+    if agent.harness == "codex" {
+        if let Some(other) = read_record(support, "codex")
+            .filter(|r| r["enabled"] == true)
+            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
+            .filter(|dir| *dir != agent.root)
+        {
+            return Err(format!(
+                "Codex is already connected for {}; run impeccable loop disconnect first.",
+                other.display()
+            ));
+        }
+    }
+    // 1. The MCP server.
+    let added = ensure_mcp(agent)?;
     let with_mcp = |why: String| -> String {
         if added {
             format!(
@@ -1448,7 +1531,7 @@ mod mcp_url_tests {
     use super::*;
 
     #[test]
-    fn a_shipped_build_always_uses_the_built_in_mcp_url() {
+    fn a_shipped_build_ignores_the_mcp_override() {
         // Catches: a variable redirecting a customer's agents to another MCP server.
         let mut env = std::collections::HashMap::new();
         env.insert("IMPECCABLE_MCP_URL".to_string(), "https://evil.example/mcp".to_string());
@@ -1458,6 +1541,19 @@ mod mcp_url_tests {
         assert_eq!(mcp_url(), "https://api.impeccable.style/mcp");
         #[cfg(feature = "test-mcp-url")]
         assert_eq!(mcp_url(), "https://evil.example/mcp");
+    }
+
+    #[test]
+    fn the_account_service_picks_its_own_mcp_server_and_nothing_else() {
+        // Catches: IMPECCABLE_ACCOUNT_URL writing another server into an agent's global
+        // config, or falling back to production for a run aimed elsewhere.
+        assert_eq!(mcp_for_account(None), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some(" ")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://api.impeccable.style/")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://API.staging.impeccable.style")), Ok("https://api.staging.impeccable.style/mcp"));
+        for other in ["https://evil.example", "https://api.impeccable.style.evil.test", "http://127.0.0.1:8787", "https://impeccable.style", "not a url"] {
+            assert!(mcp_for_account(Some(other)).is_err(), "{other}");
+        }
     }
 
     #[test]

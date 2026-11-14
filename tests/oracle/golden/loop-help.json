@@ -1,5 +1,5 @@
 {
-  "stdout": "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n",
+  "stdout": "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop connect --mcp-only [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n",
   "stderr": "",
   "exit": 0,
   "signal": null,
