@@ -139,7 +139,7 @@ function agentOf(device) {
 async function sizeTo(device) {
   const size = DEVICES[device];
   if (!size) return;
-  walk.sized = true;
+  walk.sized = device;
   await cmd('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: 1, mobile: true });
   await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await cmd('Emulation.setUserAgentOverride', agentOf(device));
@@ -147,7 +147,7 @@ async function sizeTo(device) {
 
 /**
  * Gives the tab its own size back, before the debugger leaves it: past `cmd`, which refuses once the walk is ending.
- * A debugger that left without this (Cancel on Chrome's bar, the worker ended) took its overrides with it.
+ * A debugger that left without this (Cancel on Chrome's bar) is `unstick`'s.
  */
 async function unsize(tab) {
   if (!tab?.sized) return;
@@ -521,7 +521,27 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   walk = null;
   say({ event: 'detached', reason });
   void letGo(tab, reason);
+  void unstick(tab, reason);
 });
+
+/**
+ * A sized tab whose debugger left without clearing (Cancel on Chrome's bar) keeps its phone or tablet size until it
+ * reloads: Chrome drops the touch and the user agent with the debugger, not the size. One moment's debugger sets the
+ * size and clears it, which gives the tab its own back. Not a tab that closed, nor one another debugger took.
+ */
+async function unstick(tab, reason) {
+  if (!tab.sized || reason === 'target_closed' || reason === 'replaced_with_devtools') return;
+  const target = { tabId: tab.tabId };
+  try {
+    await chrome.debugger.attach(target, '1.3');
+  } catch { return; }
+  try {
+    const { width, height } = DEVICES[tab.sized];
+    await chrome.debugger.sendCommand(target, 'Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
+    await chrome.debugger.sendCommand(target, 'Emulation.clearDeviceMetricsOverride');
+  } catch { /* the tab went meanwhile */ }
+  await chrome.debugger.detach(target).catch(() => undefined);
+}
 
 /** Which new tabs are the walked tab's (guard.js). */
 const popups = popupWatch();

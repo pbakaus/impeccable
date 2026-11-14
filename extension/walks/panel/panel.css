@@ -101,8 +101,8 @@ b { font-weight: 500; }
 .widths button:hover { color: var(--ink); }
 .widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
-.at { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-.at .ic { width: 14px; height: 14px; }
+.task.at { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.task.at .ic { width: 14px; height: 14px; }
 .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }
 .mid .face { margin-bottom: 12px; }
 .act { font-size: 17px; font-weight: 500; line-height: 1.35; color: var(--ink); }

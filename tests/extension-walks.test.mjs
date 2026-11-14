@@ -827,18 +827,20 @@ describe('walk worker', () => {
     ['Stop, at phone width', 'phone', ({ command }) => command('stop')],
     ['a guard ending (the tab left its site), at tablet width', 'tablet', () => fireOn(21, 'Page.frameNavigated', { frame: { id: 'main', loaderId: 'x1', url: 'https://elsewhere.example.com/' } })],
     ['an open that failed once the tab was sized', 'phone', null],
+    ['Cancel on Chrome’s debugging bar, which takes the touch and the user agent but not the size', 'tablet', () => { for (const listener of listeners.detach) listener({ tabId: 21 }, 'canceled_by_user'); }],
   ]) {
     it(`lays the person’s tab out at the width picked, and clears it before letting go on ${label}`, async () => {
       const walk = await ownTab();
       const { ops, current, dispatch, DEVICES } = walk;
       const log = [];
-      const { sendCommand, detach } = chrome.debugger;
+      const { sendCommand, detach, attach } = chrome.debugger;
       chrome.debugger.sendCommand = async (target, method, params) => {
         if (method.startsWith('Emulation.')) log.push([method, params]);
         if (!end && method === 'Emulation.setTouchEmulationEnabled' && params.enabled) throw new Error('{"message":"no touch here"}');
         return sendCommand(target, method, params);
       };
       chrome.debugger.detach = async () => { log.push(['detach']); };
+      chrome.debugger.attach = async () => { log.push(['attach']); };
       try {
         const before = sockets.length;
         assert.equal((await (await import('../extension/walks/link.js')).adopt(started(), 21, device)).ok, true);
@@ -859,11 +861,13 @@ describe('walk worker', () => {
         const { width, height } = DEVICES[device];
         assert.deepEqual(log.find(([method]) => method === 'Emulation.setDeviceMetricsOverride')[1], { width, height, deviceScaleFactor: 1, mobile: true });
         if (end) assert.match(log.find(([method]) => method === 'Emulation.setUserAgentOverride')[1].userAgent, /Android/);
-        assert.deepEqual(log.slice(-4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : method === 'detach' ? method : `${method}:${JSON.stringify(params ?? {})}`)), [
-          'Emulation.clearDeviceMetricsOverride:{}', 'Emulation.setTouchEmulationEnabled:{"enabled":false}', 'Emulation.setUserAgentOverride:{"userAgent":""}', 'detach',
-        ]);
+        const tail = log.slice(-4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : ['attach', 'detach'].includes(method) ? method : `${method}:${JSON.stringify(params ?? {})}`));
+        // Cleared before the debugger leaves; after a debugger that left by itself, a moment's one sets the size and clears it.
+        assert.deepEqual(tail, label.startsWith('Cancel')
+          ? ['attach', 'size', 'Emulation.clearDeviceMetricsOverride:{}', 'detach']
+          : ['Emulation.clearDeviceMetricsOverride:{}', 'Emulation.setTouchEmulationEnabled:{"enabled":false}', 'Emulation.setUserAgentOverride:{"userAgent":""}', 'detach']);
       } finally {
-        Object.assign(chrome.debugger, { sendCommand, detach });
+        Object.assign(chrome.debugger, { sendCommand, detach, attach });
         // Ended here when it did not end itself, so the walks below can start.
         dispatch({ type: 'stop' });
       }
