@@ -2324,7 +2324,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
   An existing installation changes nothing, opens the app (unless `--no-open`),
   prints `Loop is already installed. To get the newest: impeccable loop update.`
-  and exits 0, so the connect step after install still runs.
+  and exits 0, so the connect step after install still runs. It opens the app only
+  while holding the install lock (waiting up to 2 s for it, else `Another Loop install
+  or update is in progress.` and exit 1), so it never restarts a Loop an update is
+  replacing. A launch that fails adds `Couldn't open Loop (<why>). Open it from <path>.`
+  and still exits 0.
 - `impeccable loop update [--no-open]` replaces an installed app with the highest
   pinned version. An already current app exits 0. A running Loop is asked to quit
   (SIGTERM to the processes whose executable is exactly this bundle's, never by name)

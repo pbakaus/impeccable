@@ -258,6 +258,15 @@ mod mac {
         assert!(run_inner(&args("install"), &io, &pins, "macos")
             .unwrap()
             .contains("already installed"));
+        // Catches (#1466 review): install opening Loop while an update holds the lock,
+        // restarting the app the update is quitting or replacing.
+        {
+            let _held = install_lock(&apps).unwrap();
+            assert_eq!(
+                run_inner(&args("install"), &io, &pins, "macos").unwrap_err(),
+                "Another Loop install or update is in progress."
+            );
+        }
         assert!(run_inner(&args("update"), &io, &pins, "macos")
             .unwrap()
             .contains("already current"));
