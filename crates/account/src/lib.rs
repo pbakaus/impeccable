@@ -67,7 +67,9 @@ pub fn login(
     let meta = oauth::metadata(&client, &account)?;
     let pending = oauth::start(&account, &meta)?;
     open(&pending.url);
-    let code = pending
+    // The browser waits on `callback` until the sign-in is saved; dropped on any
+    // early return, it tells the browser the sign-in didn't finish.
+    let (code, callback) = pending
         .wait(&account.issuer, timeout)
         .map_err(|e| e.to_string())?;
     let tokens = oauth::exchange(&client, &account, &meta.token_endpoint, &pending, &code)
@@ -121,6 +123,7 @@ pub fn login(
         pro::reset_holding(&lock, &account);
         (replaced, generation)
     };
+    callback.signed_in();
     // The grant this sign-in replaced is ended at the service too.
     if let Some((endpoint, old)) = replaced {
         let _ = oauth::revoke(&client, &endpoint, &old.refresh_token);
