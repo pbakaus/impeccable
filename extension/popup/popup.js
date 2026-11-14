@@ -1,15 +1,18 @@
 /**
  * Impeccable DevTools Extension - Popup
  *
- * Scan, copy the current page's findings, and toggle overlays.
+ * Scan, copy the current page's findings, and toggle the outlines.
  */
 
+const countDisplay = document.getElementById('count-display');
 const countNumber = document.getElementById('count-number');
 const countLabel = document.getElementById('count-label');
 const btnScan = document.getElementById('btn-scan');
 const btnToggle = document.getElementById('btn-toggle');
 const btnCopyAll = document.getElementById('btn-copy-all');
-const copyStatus = document.getElementById('copy-status');
+const copyLabel = document.getElementById('copy-label');
+const toggleLabel = document.getElementById('toggle-label');
+// The one line under Scan page: an error, or nothing. Its space is always kept, so nothing moves.
 const scanError = document.getElementById('scan-error');
 
 let overlaysVisible = true;
@@ -22,16 +25,31 @@ async function getActiveTab() {
   return tab;
 }
 
-function showCopyStatus(message, error = false) {
-  copyStatus.textContent = message;
-  copyStatus.classList.toggle('is-error', error);
+let copiedTimer = null;
+/** `copied`: the button says so for a moment; `message`: what went wrong, on the line. */
+function showCopyStatus(message, copied = false) {
+  clearTimeout(copiedTimer);
+  copyLabel.textContent = copied ? 'Copied' : 'Copy all';
+  if (copied) copiedTimer = setTimeout(() => { copyLabel.textContent = 'Copy all'; }, 1500);
+  if (message || scanError.dataset.from === 'copy') showLine(message, 'copy');
+}
+
+function showLine(message, from = 'scan') {
+  scanError.textContent = message || '';
+  scanError.dataset.from = message ? from : '';
+}
+
+function showOverlays(visible) {
+  overlaysVisible = visible;
+  toggleLabel.textContent = overlaysVisible ? 'Hide outlines' : 'Show outlines';
 }
 
 function updateFindings(findings) {
   const count = findings.reduce((sum, item) => sum + item.findings.length, 0);
   countNumber.textContent = String(count);
-  countNumber.classList.toggle('has-findings', count > 0);
+  countDisplay.classList.toggle('has-findings', count > 0);
   countLabel.textContent = count === 1 ? 'anti-pattern' : 'anti-patterns';
+  btnToggle.disabled = count === 0;
 }
 
 function clearScan() {
@@ -51,12 +69,9 @@ function updateFromState(state) {
   btnCopyAll.disabled = !currentScan;
   showCopyStatus('');
   updateFindings(state.findings || []);
-  btnScan.textContent = state.scanning ? 'Restart scan' : 'Scan page';
   btnScan.disabled = false;
-  scanError.textContent = state.scanError || '';
-  scanError.hidden = !state.scanError;
-  overlaysVisible = state.overlaysVisible !== false;
-  btnToggle.textContent = overlaysVisible ? 'Hide overlays' : 'Show overlays';
+  showLine(state.scanError);
+  showOverlays(state.overlaysVisible !== false);
 }
 
 async function loadState() {
@@ -78,26 +93,21 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (activeTabId == null || msg.tabId !== activeTabId) return;
   if (msg.action === 'findings-updated') {
     updateFromState({ ...msg, overlaysVisible });
-    btnScan.textContent = msg.scanComplete ? 'Scan page' : 'Restart scan';
     btnScan.disabled = false;
-    scanError.hidden = true;
+    showLine('');
   }
   if (msg.action === 'scan-started' || msg.action === 'navigated') {
     clearScan();
-    scanError.hidden = true;
-    btnScan.textContent = msg.action === 'scan-started' ? 'Restart scan' : 'Scan page';
+    showLine('');
     btnScan.disabled = false;
   }
   if (msg.action === 'scan-failed') {
     clearScan();
-    btnScan.textContent = 'Scan page';
     btnScan.disabled = false;
-    scanError.textContent = msg.message || 'Couldn\u2019t scan this page.';
-    scanError.hidden = false;
+    showLine(msg.message || 'Couldn\u2019t scan this page.');
   }
   if (msg.action === 'overlays-toggled-broadcast') {
-    overlaysVisible = msg.visible;
-    btnToggle.textContent = overlaysVisible ? 'Hide overlays' : 'Show overlays';
+    showOverlays(msg.visible);
   }
 });
 
@@ -105,8 +115,7 @@ chrome.runtime.onMessage.addListener((msg) => {
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (tabId === activeTabId && (change.status === 'loading' || change.url)) {
     clearScan();
-    scanError.hidden = true;
-    btnScan.textContent = 'Scan page';
+    showLine('');
     btnScan.disabled = false;
   }
 });
@@ -116,8 +125,7 @@ btnScan.addEventListener('click', async () => {
   if (!tab) return;
   activeTabId = tab.id;
   clearScan();
-  scanError.hidden = true;
-  btnScan.textContent = 'Restart scan';
+  showLine('');
   btnScan.disabled = false;
   chrome.runtime.sendMessage({ action: 'scan', tabId: tab.id });
 });
@@ -136,9 +144,9 @@ btnCopyAll.addEventListener('click', async () => {
       return;
     }
     await navigator.clipboard.writeText(ImpeccableReport.formatFindingsForCopy(scan.findings, scan.url));
-    if (scan === currentScan) showCopyStatus('Copied findings. Paste them into your agent.');
+    if (scan === currentScan) showCopyStatus('', true);
   } catch {
-    if (scan === currentScan) showCopyStatus('Couldn\u2019t copy findings. Try again.', true);
+    if (scan === currentScan) showCopyStatus('Couldn\u2019t copy findings. Try again.');
   } finally {
     if (scan === currentScan) btnCopyAll.disabled = false;
   }
@@ -148,8 +156,7 @@ btnToggle.addEventListener('click', async () => {
   const tab = await getActiveTab();
   if (!tab) return;
   chrome.runtime.sendMessage({ action: 'toggle-overlays', tabId: tab.id });
-  overlaysVisible = !overlaysVisible;
-  btnToggle.textContent = overlaysVisible ? 'Hide overlays' : 'Show overlays';
+  showOverlays(!overlaysVisible);
 });
 
 loadState();

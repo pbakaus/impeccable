@@ -172,9 +172,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: impeccable-build-node-${{ matrix.node-version }}
-          # Ship the packaged zips, not the unpacked Firefox staging tree.
+          # Ship the packaged zips, not the unpacked staging trees.
           path: |
             dist/
+            !dist/extension-chrome/
             !dist/extension-firefox/
           retention-days: 7
 

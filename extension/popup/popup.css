@@ -1,198 +1,91 @@
 /*
- * Popup: the toolbar sheet. Paper ground, the mark and the wordmark at the
- * head, one count, three controls. Tokens and the severity language live in
- * ../shared/kinpaku.css; only layout and the local pieces are here.
- *
- * The count is ink at every value: gold under 2:1 on paper cannot carry a
- * numeral. What findings change is the rule under it, which lights gold.
- * No button carries the kit's gold arrow, because popup.js rewrites
- * the scan and overlay labels through textContent and would drop any child element.
+ * Popup: the toolbar sheet. The mark and wordmark, one big count, Copy all and Hide outlines side by side, Scan page,
+ * one line for an error, and Impeccable Pro at the foot. Every block has a fixed height, so the popup opens at its
+ * final size and nothing moves after: not when a scan answers, not when an error shows. Type as impeccable.style's
+ * Live Mode: Alumni Sans for the count, Albert Sans for the controls, mono for the label.
  */
 
+@font-face { font-family: "Alumni Sans"; src: url("../fonts/alumnisans.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Albert Sans"; src: url("../fonts/albertsans.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+
+:root {
+  --font: "Albert Sans", var(--ks-font);
+  --wordmark: "Alumni Sans", var(--ks-font-wordmark);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 body {
-  width: 224px;
-  padding: 14px 14px 10px;
-}
-
-/* Head */
-
-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--ks-rule);
-}
-
-h1 {
-  font-family: var(--ks-font-wordmark);
-  font-size: var(--ks-type-ui);
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--ks-ink);
-}
-
-/* Count */
-
-.count-display {
-  text-align: center;
-  padding: 18px 0 0;
-  margin-bottom: 16px;
-}
-
-.count-number {
-  display: inline-block;
-  min-width: 56px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--ks-rule);
-  font-family: var(--ks-font-wordmark);
-  font-size: 44px;
-  font-weight: 300;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  color: var(--ks-text-mute-deep);
-  transition: color var(--ks-settle) var(--ks-ease), border-color var(--ks-settle) var(--ks-ease);
-}
-
-/* Findings present: the numeral goes ink and the rule under it lights gold. */
-.count-number.has-findings {
-  color: var(--ks-ink);
-  border-bottom-color: var(--ks-kinpaku);
-}
-
-.count-label {
-  display: block;
-  margin-top: 8px;
-  font-size: var(--ks-type-micro);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ks-text-muted);
-}
-
-/* Controls */
-
-.actions {
+  width: 320px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.btn {
-  display: block;
-  width: 100%;
-  min-height: 30px;
-  padding: 7px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--ks-radius-sm);
-  font-family: inherit;
-  font-size: var(--ks-type-label);
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    background-color var(--ks-quick) var(--ks-ease),
-    border-color var(--ks-quick) var(--ks-ease),
-    color var(--ks-quick) var(--ks-ease);
-}
-
-.btn-primary {
-  background: var(--ks-ink);
-  border-color: var(--ks-ink);
-  color: var(--ks-paper-raised);
-}
-
-.btn-primary:hover {
-  background: var(--ks-text);
-  border-color: var(--ks-text);
-}
-
-.btn-primary:active {
-  background: oklch(8% 0 0);
-  border-color: oklch(8% 0 0);
-}
-
-.btn:disabled {
-  background: transparent;
-  border-color: var(--ks-rule);
-  color: var(--ks-text-mute-deep);
-  cursor: default;
-  box-shadow: none;
-}
-
-.btn-secondary {
+  padding: 24px 20px 20px;
   background: var(--ks-paper-raised);
-  border-color: var(--ks-edge);
-  color: var(--ks-ink);
-  box-shadow: var(--ks-cap-lift);
-}
-
-.btn-secondary:hover {
-  border-color: var(--ks-ink);
-}
-
-.btn-secondary:active {
-  background: var(--ks-gray);
-  box-shadow: var(--ks-cap-press);
-}
-
-/* A scan that did not run. The one vermilion in the extension. */
-
-.scan-error {
-  margin: -8px 0 14px;
-  padding-left: 8px;
-  border-left: 2px solid var(--ks-vermilion);
-  font-size: var(--ks-type-micro);
-  line-height: 1.45;
-  color: var(--ks-vermilion);
-}
-
-.scan-error[hidden] {
-  display: none;
-}
-
-.btn-secondary:disabled {
-  border-color: var(--ks-rule);
-  color: var(--ks-text-mute-deep);
-  background: transparent;
-  box-shadow: none;
-}
-
-.copy-status {
-  margin: -4px 0 14px;
   color: var(--ks-text);
-  font-size: var(--ks-type-micro);
-  line-height: 1.45;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+body:has(> .pro) { height: 491px; }
+
+header { height: 28px; flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
+.mark { width: 22px; height: 22px; flex: none; color: var(--ks-ink); }
+h1 {
+  position: relative; top: 1px;
+  font-family: var(--wordmark); font-weight: 500; font-size: 20px; line-height: 1.2;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--ks-ink);
 }
 
-.copy-status:empty {
-  display: none;
-}
+main { display: flex; flex-direction: column; flex: none; }
 
-.copy-status.is-error {
+.count { height: 176px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.count-number {
+  font-family: var(--wordmark); font-weight: 200; font-size: 104px; line-height: 1.2;
+  font-variant-numeric: tabular-nums; color: var(--ks-text-mute-deep);
+}
+.count-rule { width: 72px; height: 3px; border-radius: 2px; background: var(--ks-gray-2); }
+.count-label { font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ks-text-muted); }
+.count.has-findings .count-number { color: var(--ks-ink); }
+.count.has-findings .count-rule { background: var(--ks-kinpaku); }
+.count.has-findings .count-label { color: var(--ks-text); }
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:disabled { cursor: default; }
+button:focus-visible { outline: 2px solid var(--ks-patina-deep); outline-offset: 2px; }
+
+.pair { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btn {
+  height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 10px; background: var(--ks-paper-deep); color: var(--ks-ink);
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  transition: background var(--ks-quick) var(--ks-ease);
+}
+.btn svg { width: 18px; height: 18px; flex: none; color: var(--ks-text-muted); }
+.btn:not(:disabled):hover { background: var(--ks-gray); }
+.btn:disabled, .btn:disabled svg { color: var(--ks-text-mute-deep); }
+
+.btn-scan {
+  margin-top: 20px; flex: none;
+  background: var(--ks-kinpaku); color: var(--ks-on-gold);
+  font-size: 14px; font-weight: 600;
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.35);
+}
+.btn-scan:not(:disabled):hover { background: var(--ks-kinpaku-vivid); }
+
+/* The one line: empty until there is something wrong. Its space is always kept. */
+.line {
+  margin-top: 8px; height: 36px; flex: none; overflow: hidden;
+  font-size: 12px; font-weight: 400; line-height: 18px; text-align: center; text-wrap: balance;
   color: var(--ks-vermilion);
 }
 
-/* Foot */
-
-footer {
-  text-align: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--ks-rule);
+.pro { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--ks-rule); }
+.btn-pro {
+  width: 100%; height: 44px; display: grid; grid-template-columns: 18px 1fr 15px; align-items: center; gap: 12px;
+  padding: 0 18px; border-radius: 10px;
+  background: oklch(20% 0.01 85); border: 1px solid oklch(74% 0.09 82 / 0.6); color: oklch(93% 0 0);
+  font-size: 14px; font-weight: 500; text-align: left;
 }
-
-footer a {
-  font-size: var(--ks-type-micro);
-  color: var(--ks-text-muted);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-  padding-bottom: 1px;
-  transition: color var(--ks-quick) var(--ks-ease), border-color var(--ks-quick) var(--ks-ease);
-}
-
-footer a:hover {
-  color: var(--ks-ink);
-  border-bottom-color: var(--ks-kinpaku);
-}
+.btn-pro svg { width: 18px; height: 18px; color: var(--ks-kinpaku); }
+.btn-pro .arrow { width: 15px; height: 8px; }
+.btn-pro:hover { background: oklch(25% 0.012 85); }

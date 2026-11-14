@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Impeccable</title>
+  <link rel="stylesheet" href="../shared/kinpaku.css">
+  <style>
+    body { padding: 20px; font-size: 14px; line-height: 1.4; display: grid; gap: 12px; justify-items: start; }
+    .label { font-size: 12px; color: var(--ks-text-muted); }
+    .email { font-weight: 600; color: var(--ks-ink); }
+    .error { color: var(--ks-vermilion); font-size: 12px; }
+    button { font: inherit; height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--ks-paper-deep); color: var(--ks-ink); cursor: pointer; }
+    label:not([hidden]) { display: grid; gap: 4px; }
+    input { font: inherit; width: 320px; padding: 6px 8px; border: 1px solid var(--ks-edge); border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <p class="label" id="account-label"></p>
+  <p class="email" id="account-email" hidden></p>
+  <button id="btn-account" type="button" hidden></button>
+  <p class="error" id="account-error" role="status"></p>
+  <label id="account-server-row" hidden>
+    <span class="label">Server</span>
+    <input id="account-server" type="url" spellcheck="false">
+  </label>
+  <script src="words.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

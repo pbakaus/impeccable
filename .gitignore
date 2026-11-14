@@ -141,3 +141,6 @@ tmp/
 # PNGs, the old card backup). The canonical generator is `bun run og-image`
 # (scripts/generate-og-image.js); this dir is throwaway and safe to delete.
 .og-build/
+
+# A developer's own servers for the extension's development build (shape: extension/dev-hosts.example.json)
+extension/dev-hosts.local.json
