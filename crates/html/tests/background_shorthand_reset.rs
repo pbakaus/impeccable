@@ -375,3 +375,20 @@ div.link:hover { color: #fafafa; }
     );
 }
 
+
+#[test]
+fn a_full_gradient_under_an_underline_still_hides_the_page() {
+    // The 2px underline is the first layer, but a full dark gradient paints
+    // beneath it, so the light hover text is not scored against the white
+    // page.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.link { background: linear-gradient(#000, #000) no-repeat 0 100% / 100% 2px, linear-gradient(#111, #111); color: #eeeeee; font-size: 16px; }
+div.link:hover { color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="link">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        !findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}

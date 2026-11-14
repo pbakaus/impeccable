@@ -41,7 +41,7 @@ use impeccable_core::checks::text_rules::{
     POPOVER_LAYER_SELECTOR, POSITIONED_CHILD_INTERACTIVE_SELECTOR,
 };
 use impeccable_core::color::{
-    composite_color_over, is_no_paint_color_value, parse_any_color, parse_rgb, Rgba,
+    composite_color_over, is_no_paint_color_value, parse_any_color, parse_rgb, split_top_level_commas, Rgba,
 };
 use impeccable_core::constants::SAFE_TAGS;
 use impeccable_core::js::{self, parse_float, parse_int};
@@ -1293,10 +1293,14 @@ pub fn check_element_hover_contrast(
     // implied fill is transparent) sits on pixels this engine cannot read,
     // so the hover pairing is not scored, as the resting one is not. A
     // gradient tile too small to cover a line of text (an underline) is read
-    // past, as the resting check reads past it.
+    // past, as the resting check reads past it. Only a single layer is read
+    // past: the tile test sizes the first layer, and a full gradient under an
+    // underline still paints behind the text.
     let own_image = js::to_lower_case(sv(hover, "backgroundImage"));
     let image_under_text = own_image.contains("url(")
-        || (own_image.contains("gradient") && !gradient_tile_misses(hover, &own_image, font_size));
+        || (own_image.contains("gradient")
+            && (split_top_level_commas(&own_image).len() > 1
+                || !gradient_tile_misses(hover, &own_image, font_size)));
     if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !background_is_icon(el) {
         return Vec::new();
     }
