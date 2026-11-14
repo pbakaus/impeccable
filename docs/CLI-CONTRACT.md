@@ -2351,6 +2351,43 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   so your agents bring their questions to Loop.` A connect that fails after
   the install exits 1 and says Loop is installed and to run `loop connect`
   again. The two flags go with `install` only, one at a time.
+- **Taste block.** After a connect (text, `--agent`, `--json`, or the one after
+  `loop install`), each agent the engine now holds a committed installation for
+  gets a fixed three-line block in the rule file it reads (`CLAUDE.md` in the
+  Claude config folder, `$CLAUDE_CONFIG_DIR` when set; `AGENTS.md` in
+  `CODEX_HOME` for Codex, with a line saying to copy it when
+  `AGENTS.override.md` shadows that file), between `<!-- impeccable:taste -->` and
+  `<!-- /impeccable:taste -->`, telling the agent to call the MCP's `taste.get`
+  once per task and record design calls with `taste.note`. It never holds rules,
+  taste or ids. A file whose block is there is rewritten in place (no question).
+  A file with no recorded answer is asked about once, for all such files
+  together: `Let your agents use your Impeccable taste? This adds 3 lines to
+  <files joined by " and ">. [Y/n]` (stdin and stdout both terminals; Enter
+  means yes). `--taste` adds it without asking (also where the person had
+  deleted it); `--no-taste` declines and takes out a block that is there; with
+  neither flag and no terminal (and always under `--json`) nothing is written
+  and the text form prints `To let your agents use your Impeccable taste:
+  impeccable loop connect --taste`. Answers (`on` or `off` per file) live under
+  `taste` in Loop's `connect.json`, so a declined file is not asked again and a
+  block the person deleted by hand is not put back. Writes keep the file's
+  mode, follow a symlink to its target, and leave every byte outside the markers
+  alone; duplicated or unbalanced markers leave the file untouched and are
+  reported. Under `--json` a `taste` array of `{file, result:
+  added|updated|removed|declined|skipped|failed, error?}` is added only when a
+  file was changed or asked about (a failure to save the answers is a `failed` row
+  naming `connect.json`). When one agent fails, the text and JSON forms still make
+  the offer, once, to the agents this run connected (and to no one when nothing
+  connected), and the files and agents are re-checked under the lock
+  after the question, so a disconnect meanwhile is never undone. `loop disconnect` takes the block out of every file
+  recorded and every rule file of the installations it removes (printing
+  `  Removed the taste lines from <file>.`) before the engine's undo, so the
+  engine finds each file as it wrote it, then forgets the answers, keeping those
+  whose file could not be changed so the next disconnect tries again. Connect
+  records under `tasteCreated` each rule file that was missing before it first
+  wrote there (and drops the entry when that agent's connect fails with the file
+  still missing); such a file, when plain (not a symlink) and left empty after both
+  blocks are out, is removed. A file the person had, even an empty one, stays. The two flags go with `connect` or `install`, one at a
+  time.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
   (`registered`, `absent` or `different`), `hooks`, `instruction` and `connected`.
