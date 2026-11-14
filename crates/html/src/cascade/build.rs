@@ -682,6 +682,22 @@ fn compute_styles(
                         is_painted_image(&resolved) || js::to_lower_case(&resolved).contains("var(")
                     });
                     if paints {
+                        // The shorthand still clears the resting fill; the
+                        // image it paints is what the text sits on, so the
+                        // hover style carries the transparent fill and the
+                        // contrast check leaves the pairing unscored rather
+                        // than reading the fill the shorthand removed.
+                        let cleared = normalize_static_css_value(
+                            prop,
+                            "transparent",
+                            &custom_props,
+                            parent_style.as_deref(),
+                            Some(&values),
+                        );
+                        if values.get(prop).map(|s| s.as_str()) != Some(cleared.as_str()) {
+                            let hv = hover_values.get_or_insert_with(|| values.clone());
+                            hv.insert(prop.to_string(), cleared);
+                        }
                         continue;
                     }
                 }
@@ -698,22 +714,32 @@ fn compute_styles(
                 let hv = hover_values.get_or_insert_with(|| values.clone());
                 hv.insert(prop.to_string(), next);
             }
-            if let Some(mut hv) = hover_values {
-                // The image the hover paints, so the hover contrast check
-                // does not read a resting image a `:hover { background: none }`
-                // removed.
-                if let Some(img) = hover_map.get("backgroundImage") {
-                    if compare_static_priority(specified_map.get("backgroundImage").map(|d| &d.meta), &img.meta) {
-                        let resolved = normalize_static_css_value(
-                            "backgroundImage",
-                            &img.value,
-                            &custom_props,
-                            parent_style.as_deref(),
-                            Some(&values),
-                        );
-                        hv.insert("backgroundImage".to_string(), resolved);
-                    }
+            // The image the hover paints and how it is tiled, so the hover
+            // contrast check reads the hover's surface: a
+            // `:hover { background: none }` that removes a resting image, or
+            // a hover that shrinks a gradient to an underline, changes what
+            // the text sits on even when no color changes.
+            for prop in ["backgroundImage", "backgroundSize", "backgroundRepeat"] {
+                let Some(decl) = hover_map.get(prop) else {
+                    continue;
+                };
+                if !compare_static_priority(specified_map.get(prop).map(|d| &d.meta), &decl.meta) {
+                    continue;
                 }
+                let resolved = normalize_static_css_value(
+                    prop,
+                    &decl.value,
+                    &custom_props,
+                    parent_style.as_deref(),
+                    Some(&values),
+                );
+                if values.get(prop).map(|s| s.as_str()) == Some(resolved.as_str()) {
+                    continue;
+                }
+                let hv = hover_values.get_or_insert_with(|| values.clone());
+                hv.insert(prop.to_string(), resolved);
+            }
+            if let Some(hv) = hover_values {
                 hover_out.push((node, hv));
             }
         }

@@ -392,3 +392,36 @@ div.link:hover { color: #fafafa; }
         "{findings:#?}"
     );
 }
+
+#[test]
+fn a_hover_image_shorthand_clears_the_resting_fill() {
+    // `:hover { background: url(...) }` clears the white fill and paints an
+    // image this engine cannot read, so the hover pairing is not scored
+    // against the white fill the shorthand removed.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.card { background: #ffffff; color: #222222; font-size: 16px; }
+div.card:hover { background: url(photo.jpg); color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        !findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn a_hover_that_only_removes_the_image_is_scored() {
+    // The resting text sits on an image; the hover removes it without
+    // touching any color, so the light text now sits on the white page.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.card { background: url(photo.jpg); color: #fafafa; font-size: 16px; }
+div.card:hover { background: none; }
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}

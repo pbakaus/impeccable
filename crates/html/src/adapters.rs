@@ -17,6 +17,7 @@ use crate::quality::{
     collapse_ws, is_in_non_rendered_markup, is_visually_hidden, pf0, resolve_font_size_px,
 };
 use impeccable_core::checks::css_scan::css_length_to_px;
+use impeccable_core::checks::gradient_geometry as geo;
 use impeccable_core::checks::measures::{
     self, border_colors_from_style, border_widths_from_style, check_oversized_h1,
     data_svg_intrinsic_size, gpt_border_shadow_halo_blur_px, gpt_border_shadow_lengths_close,
@@ -1301,7 +1302,10 @@ pub fn check_element_hover_contrast(
         || (own_image.contains("gradient")
             && (split_top_level_commas(&own_image).len() > 1
                 || !gradient_tile_misses(hover, &own_image, font_size)));
-    if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !background_is_icon(el) {
+    // An icon-sized image is read past only when it does not repeat: a tiled
+    // pattern covers the text however small its tile.
+    let icon = background_is_icon(el) && geo::repeat_from(sv(hover, "backgroundRepeat"), &own_image) == (false, false);
+    if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !icon {
         return Vec::new();
     }
 
