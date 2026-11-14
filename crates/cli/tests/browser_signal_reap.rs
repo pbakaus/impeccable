@@ -82,9 +82,17 @@ fn scan_then_signal(sig: libc::c_int) {
     unsafe { libc::kill(child.id() as libc::pid_t, sig) };
     let status = child.wait().unwrap();
     assert_eq!(status.signal(), Some(sig), "{status:?}");
-    std::thread::sleep(Duration::from_secs(1));
-    let left = profiles(&tmp);
-    let alive = helpers_alive(&tmp);
+    // Chrome's helpers exit on their own once the browser is gone; under a
+    // loaded parallel run that can take longer than a second, so wait for it
+    // (bounded) instead of sampling once.
+    let reaped = Instant::now();
+    let (left, alive) = loop {
+        let (left, alive) = (profiles(&tmp), helpers_alive(&tmp));
+        if (left.is_empty() && alive == 0) || reaped.elapsed() > Duration::from_secs(15) {
+            break (left, alive);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    };
     let _ = std::fs::remove_dir_all(&tmp);
     drop(listener);
     assert!(left.is_empty(), "profiles left: {left:?}");

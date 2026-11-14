@@ -288,8 +288,12 @@ fn scan_after_login(
         n => format!("{n} findings"),
     };
     if synced.recorded() {
+        let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+            Some(url) => format!("See it on your Home: {url}"),
+            None => "Find it under Repositories in your Impeccable account.".to_string(),
+        };
         io.err(&format!(
-            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.\n"
+            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(
