@@ -130,6 +130,9 @@ export const COPY = {
 
   tabGroup: (name) => `Impeccable · ${name}`,
 
+  /** The corner of every picture while the options page's sight experiment is on (../sight.js). */
+  seenAs: { older: 'As seen with older eyes', 'colour-blind': 'As seen with colour blindness' },
+
   /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print]. */
   firstRun: {
     before: {

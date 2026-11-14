@@ -11,6 +11,7 @@
     .error { color: var(--ks-vermilion); font-size: 12px; }
     button { font: inherit; height: 36px; padding: 0 16px; border: 0; border-radius: 10px; background: var(--ks-paper-deep); color: var(--ks-ink); cursor: pointer; }
     label { display: grid; gap: 4px; }
+    select { font: inherit; width: 320px; padding: 6px 8px; border: 1px solid var(--ks-edge); border-radius: 6px; }
     input { font: inherit; width: 320px; padding: 6px 8px; border: 1px solid var(--ks-edge); border-radius: 6px; }
   </style>
 </head>
@@ -22,6 +23,11 @@
   <label id="account-server-row" hidden>
     <span class="label">Server</span>
     <input id="account-server" type="url" spellcheck="false">
+  </label>
+  <label id="sight-row">
+    <span class="label" id="sight-label"></span>
+    <select id="sight"></select>
+    <span class="label" id="sight-who"></span>
   </label>
   <script src="words.js"></script>
   <script src="settings.js"></script>

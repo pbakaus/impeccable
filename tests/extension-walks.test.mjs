@@ -551,6 +551,53 @@ describe('walk worker', () => {
     assert.equal(sent.slice(atContinue).filter((m) => m === 'Input.dispatchMouseEvent').length, 3, 'one asked for after Continue is made');
   });
 
+  // The sight experiment (REN-1892): the persona's pictures are drawn as the options page chose, and go as taken
+  // without it. A picture here is raw RGBA bytes, pixel by pixel: red, green, blue, white, black.
+  it('sends the persona pictures as the chosen sight sees them, and untouched with none chosen', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const PIXELS = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255], [0, 0, 0]];
+    const taken = btoa(String.fromCharCode(...PIXELS.flatMap((rgb) => [...rgb, 255])));
+    const kept = { shot: answers['Page.captureScreenshot'], bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+    answers['Page.captureScreenshot'] = () => ({ data: taken });
+    globalThis.createImageBitmap = async (blob) => ({ width: PIXELS.length, height: 1, px: new Uint8ClampedArray(await blob.arrayBuffer()), close() {} });
+    globalThis.OffscreenCanvas = class {
+      constructor(width, height) { this.px = new Uint8ClampedArray(width * height * 4); }
+      getContext() {
+        const canvas = this;
+        return { drawImage(bitmap) { canvas.px.set(bitmap.px); }, getImageData() { return { data: canvas.px }; }, putImageData({ data }) { canvas.px = data; }, measureText: () => ({ width: 0 }), beginPath() {}, roundRect() {}, fill() {}, fillText() {} };
+      }
+      async convertToBlob() { return new Blob([this.px]); }
+    };
+    const seen = async (sight) => {
+      if (sight) await chrome.storage.local.set({ walkSight: sight }); else await chrome.storage.local.remove('walkSight');
+      const { data } = (await ops.screenshot({ format: 'png' })).value;
+      const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
+      return { data, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
+    };
+    try {
+      assert.equal((await seen(null)).data, taken, 'none chosen: the picture as taken');
+      assert.equal((await seen('normal')).data, taken, 'Normal: the picture as taken');
+      const [red, green, blue] = (await seen('colour-blind')).px;
+      assert.ok(Math.abs(red[0] - red[1]) < 40 && Math.abs(green[0] - green[1]) < 40, `red and green both turn olive: ${red} ${green}`);
+      assert.ok(blue[2] > blue[0] + 100, `blue stays blue: ${blue}`);
+      const [, , , white, black] = (await seen('older')).px;
+      assert.ok(white.every((v) => v < 230) && black.every((v) => v > 15), `older eyes see less contrast: ${white} ${black}`);
+      assert.ok(white[2] < white[0] - 15, `and less blue: ${white}`);
+      // A full page, taller than the tab: the replay keeps its top and right edge, so the label goes there, sized to it.
+      let box = null;
+      const context = OffscreenCanvas.prototype.getContext;
+      OffscreenCanvas.prototype.getContext = function () { return { ...context.call(this), roundRect: (x, y, w, h) => { box = { x, y, w, h }; } }; };
+      globalThis.createImageBitmap = async () => ({ width: 2108, height: 1498, px: new Uint8ClampedArray(2108 * 1498 * 4), close() {} });
+      await seen('older');
+      assert.ok(box && box.y < 50 && box.x > 2108 / 2 && box.h >= 40, `the label sits top right, big enough to read when shrunk: ${JSON.stringify(box)}`);
+    } finally {
+      await chrome.storage.local.remove('walkSight');
+      answers['Page.captureScreenshot'] = kept.shot;
+      Object.assign(globalThis, { createImageBitmap: kept.bitmap, OffscreenCanvas: kept.canvas });
+    }
+  });
+
   it('keeps a sign-in pause the person takes over hushed, and turns a hand back during it into a pause', async () => {
     const { command, current } = await walked();
     page.seen = { password: true };
