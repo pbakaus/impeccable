@@ -1106,6 +1106,31 @@ fn global_install_prunes_only_the_stale_project_copy_of_the_home_hook() {
 }
 
 #[test]
+fn global_install_keeps_a_project_owned_hook_on_the_project_skill() {
+    // The project has its own Cursor skill and a stale hook naming it. A
+    // global install repairs that hook against the project skill, so the
+    // cleanup that follows does not mistake it for a global leftover.
+    let fx = home_fixture("home-hooks-project-owned");
+    let sys = home_sys(&fx.home, &fx.project, &[]);
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+    assert!(file_has_impeccable_hook_marker(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
+    write(&jsp::join(&[&fx.project, ".cursor", "skills", "impeccable", "scripts", "impeccable"]), "#!/bin/sh\n");
+    let project_cursor = jsp::join(&[&fx.project, ".cursor", "hooks.json"]);
+    write(&project_cursor, &json!({ "version": 1, "hooks": {
+        "postToolUse": [{ "command": "node .cursor/skills/impeccable/scripts/hook.mjs", "matcher": "^Write$", "timeout": 5 }],
+    } }).to_string());
+
+    repair_stale_hook_manifests(&sys, &fx.project, &[".cursor"], Some(&fx.home)).unwrap();
+    assert!(prune_duplicate_home_hooks(&sys, &fx.home, &fx.project, &[".cursor"]).unwrap().is_empty());
+
+    let after = read(&project_cursor);
+    assert!(file_has_impeccable_hook_marker(&project_cursor), "{after}");
+    assert!(!after.contains("hook.mjs"), "{after}");
+    assert!(!after.contains(&fx.home), "{after}");
+    assert!(after.contains(".cursor/skills/impeccable/scripts/impeccable"), "{after}");
+}
+
+#[test]
 fn stale_project_copy_stays_while_the_home_hook_is_not_wired() {
     let fx = home_fixture("home-hooks-unwired");
     let sys = home_sys(&fx.home, &fx.project, &[]);

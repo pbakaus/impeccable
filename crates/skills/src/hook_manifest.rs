@@ -937,10 +937,19 @@ pub fn prune_duplicate_claude_hooks(sys: &crate::providers::Sys, home_root: &str
 /// not the user re-consents to hooks. Returns the providers whose manifest
 /// changed.
 pub fn repair_stale_hook_manifests(sys: &Sys, root: &str, providers: &[&'static str], skill_root: Option<&str>) -> Result<Vec<&'static str>, String> {
-    let skill_root = skill_root.unwrap_or(root);
-    let absolute = skill_root != root || sys.is_home_dir(root);
+    let other_root = skill_root.unwrap_or(root);
     let mut repaired: Vec<&'static str> = Vec::new();
     for provider in providers {
+        // A project that has its own skill for this provider owns its hook:
+        // the stale manifest is the team's, so it is retargeted at that skill
+        // in the portable project form, never at another root's (a global
+        // install's home skill). Pointing it at home would leave teammates a
+        // hook that names one person's machine, and the duplicate-hook
+        // cleanup that follows would then remove it as a global leftover.
+        let project_owned = other_root != root
+            && launcher_path(root, provider).is_some_and(|l| util::exists(&l));
+        let skill_root = if project_owned { root } else { other_root };
+        let absolute = skill_root != root || sys.is_home_dir(root);
         if launcher_path(skill_root, provider).is_none() {
             continue;
         }
