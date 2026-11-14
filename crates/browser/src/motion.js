@@ -227,9 +227,17 @@
         meta.wallDuration = a.playbackRate === 0 ? 0 : Math.max(0,
           (a.playbackRate < 0 ? meta.origin : meta.end - meta.origin) / Math.abs(a.playbackRate));
         // Under a millisecond no frame can show the motion: the common
-        // reduced-motion `animation-duration: 0.01ms` is instant, and sampling
-        // it would read its start keyframe as the animated frames.
-        if (meta.wallDuration < 1) meta.wallDuration = 0;
+        // reduced-motion `animation-duration: 0.01ms` is instant. It is shown
+        // at its endpoint (just short of it, so the fill holds) for every
+        // sample, never at the start keyframe; a zero rate stays where it is.
+        if (meta.wallDuration < 1) {
+          meta.wallDuration = 0;
+          if (a.playbackRate !== 0) {
+            const edge = Math.min(0.01, meta.end * 0.001);
+            meta.instant = a.playbackRate < 0 ? edge : meta.end - edge;
+            a.currentTime = meta.instant;
+          }
+        }
         if (!Number.isFinite(meta.wallDuration) || meta.wallDuration > 10000) unsupported = 'Motion capture requires finite playback no longer than 10 seconds';
       }
       prepared = true;
@@ -241,6 +249,7 @@
       sampledTime = time;
       collect();
       for (const [a, meta] of animations) {
+        if (meta.instant !== undefined) continue;
         const local = meta.origin + time * meta.playbackRate;
         a.currentTime = meta.playbackRate === 0 ? meta.origin : meta.playbackRate < 0
           ? Math.max(Math.min(meta.origin, 0.01), local)

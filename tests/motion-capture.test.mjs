@@ -74,4 +74,7 @@ test('an animation shorter than a millisecond is instant, not sampled', async ()
   const animation = create();
   animation.playbackRate = 1000;
   assert.equal((await motion.ready()).duration, 0);
+  // Every sample shows the effect at its endpoint, not its start keyframe.
+  await motion.seek(0);
+  assert.ok(animation.currentTime > 599 && animation.currentTime < 600, String(animation.currentTime));
 });
