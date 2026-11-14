@@ -198,4 +198,52 @@ expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
 check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ] && grep -q "^Your sign-in expired" "$H/sb3.out"'
 info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
 
+# 7. CLI-first setup (REN-1918): a sign-in inside a repository scans it and names Home,
+#    status reads the account's setup, a second login opens nothing, and
+#    `loop connect --mcp-only` gives an agent staging's MCP server without the Loop app.
+R2="$H/first-repo"; mkdir -p "$R2"
+cp "$R/index.html" "$R2/"
+git -C "$R2" init -q && git -C "$R2" remote add origin https://github.com/impeccable-e2e/staging-first-scan
+git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
+(cd "$R2" && exec "$BIN" login --no-browser) > "$H/login2.out" 2> "$H/login2.err" &
+login_pid=$!
+url=""
+for _ in $(seq 1 100); do url=$(grep -m1 '^https://' "$H/login2.out" 2>/dev/null); [ -n "$url" ] && break; sleep 0.2; done
+answer=""
+[ -n "$url" ] && answer=$(cd "$PRISTINE" && bun run --silent staging-admin cli-login "$url" 2>&1 | grep -E '^(approved|refused:)' | tail -1)
+check "setup: a sign-in inside a repository is approved" '[ "$answer" = approved ]'
+for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$login_pid" 2>/dev/null; then kill "$login_pid" 2>/dev/null; fi
+wait "$login_pid"; rc=$?; login_pid=""
+check "setup: that sign-in finishes" '[ $rc = 0 ]'
+if [ $health = 1 ]; then
+  check "setup: the first scan names Home" 'grep -q "^Added this repository to your account: .*See it on your Home: https://app.staging.impeccable.style/app$" "$H/login2.err"'
+  grep -q "^Added this repository" "$H/login2.err" || info "setup: login said: $(grep -v '^https://' "$H/login2.err" | tr '\n' ' ' | cut -c1-300)"
+fi
+(cd "$R2" && exec "$BIN" status) > "$H/status.out" 2> "$H/status.err"; rc=$?
+check "setup: status reads the account's setup" '[ $rc = 0 ] && grep -q "^Next: " "$H/status.err" "$H/status.out"'
+[ $rc = 0 ] || info "setup: status said: $(head -2 "$H/status.err" | tr '\n' ' ' | cut -c1-200)"
+# A second login must neither print a link nor wait: bounded at 30 s.
+(cd "$R2" && exec "$BIN" login --no-browser) > "$H/login3.out" 2> "$H/login3.err" &
+p=$!
+for _ in $(seq 1 150); do kill -0 "$p" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; fi
+wait "$p"; rc=$?
+check "setup: a second login says so and opens nothing" '[ $rc = 0 ] && ! grep -q "^https://" "$H/login3.out" && grep -q "^Already signed in to " "$H/login3.err"'
+# A stand-in `claude` in a home of its own: it records its arguments and writes the entry
+# as Claude Code does. Nothing reaches this machine's real agents.
+AH="$H/agent-home"; mkdir -p "$AH/.claude" "$H/bin"
+cat > "$H/bin/claude" <<'SH'
+#!/bin/sh
+printf '%s\t' "$@" >> "$HOME/claude.calls"; echo >> "$HOME/claude.calls"
+if [ "$1" = mcp ] && [ "$2" = add-json ]; then printf '{"mcpServers":{"%s":%s}}\n' "$5" "$6" > "$HOME/.claude.json"; fi
+SH
+chmod +x "$H/bin/claude"
+HOME="$AH" PATH="$H/bin:$PATH" IMPECCABLE_CLAUDE_BIN="$H/bin/claude" IMPECCABLE_CODEX_BIN="$H/bin/no-codex" \
+  "$BIN" loop connect --mcp-only --agent claude --json > "$H/mcp.out" 2> "$H/mcp.err"; rc=$?
+check "setup: --mcp-only connects Claude Code without Loop" '[ $rc = 0 ] && [ "$(jq -r ".agents[0].result" "$H/mcp.out" 2>/dev/null)" = connected ]'
+check "setup: the server is staging's" 'grep -q "https://api.staging.impeccable.style/mcp" "$AH/.claude.json" 2>/dev/null'
+[ $rc = 0 ] || info "setup: --mcp-only said: $(cat "$H/mcp.out" "$H/mcp.err" | tr '\n' ' ' | cut -c1-300)"
+"$BIN" logout > /dev/null 2>&1
+
 finish
