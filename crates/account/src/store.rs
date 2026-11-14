@@ -33,7 +33,13 @@ pub enum Backend {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct State {
+    #[serde(default)]
+    pub foundations: bool,
+    #[serde(default)]
+    pub taste: bool,
     pub schema: u32,
+    #[serde(default)]
+    pub scopes: Vec<String>,
     pub issuer: String,
     pub generation: u64,
     pub signed_in: bool,
@@ -214,6 +220,65 @@ impl Store {
         }
     }
 
+    /// Global preference, so this lock is shared across account issuers too.
+    /// Uploads hold it from their final preference check through transmission.
+    pub(crate) fn design_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(home.join("design.lock"))
+            .map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("another impeccable command is using it; try again".into()),
+            }
+        }
+    }
+    pub(crate) fn critique_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(home.join("critiques.lock"))
+            .map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("critique sync lock unavailable".into()),
+            }
+        }
+    }
+
     pub fn state(&self) -> Option<State> {
         self.try_state().ok().flatten()
     }
@@ -247,6 +312,21 @@ impl Store {
             Backend::Keychain => keychain::get(SERVICE, &self.keychain_account())?,
         };
         Ok(bytes.and_then(|b| serde_json::from_slice(&b).ok()))
+    }
+
+    /// Background uploads must never ask for Keychain approval.
+    pub(crate) fn try_secret_noninteractive(
+        &self,
+        state: &State,
+    ) -> Result<Option<Secret>, String> {
+        #[cfg(target_os = "macos")]
+        if state.signed_in && state.backend == Backend::Keychain {
+            return Ok(
+                keychain::get_noninteractive(SERVICE, &self.keychain_account())?
+                    .and_then(|b| serde_json::from_slice(&b).ok()),
+            );
+        }
+        self.try_secret(state)
     }
 
     /// Write a secret and then the state naming it (caller holds the lock).
@@ -287,6 +367,48 @@ impl Store {
         write_private(&self.dir.join("state.json"), &bytes)
     }
 
+    /// Drop this issuer's cached taste rules (caller holds the lifecycle
+    /// lock). Every issuer under one home shares the copy, so a copy another
+    /// issuer wrote is left alone, and the change is ordered with theirs by
+    /// [`Store::taste_lock_for`].
+    pub fn clear_taste(&self, _lock: &Lock) {
+        if let Ok(taste) = Store::taste_lock_for(&self.account.home, Duration::from_secs(3)) {
+            self.clear_taste_holding(&taste);
+        }
+    }
+
+    /// [`Store::clear_taste`] for a caller already holding the taste lock.
+    pub(crate) fn clear_taste_holding(&self, _taste: &Lock) {
+        let path = self.account.home.join("taste.json");
+        if impeccable_context::taste::read(&path).is_some_and(|v| v["issuer"] == self.account.issuer) {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    /// The one `taste.json` under a home, shared by every issuer: writes and
+    /// deletions hold this home-wide lock, taken after the lifecycle lock.
+    pub(crate) fn taste_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false).no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(home.join("taste.lock")).map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("another impeccable command is using the taste copy".into()),
+            }
+        }
+    }
+
     /// The tombstone: signed out under a new generation, then the secret
     /// removed from every backend (caller holds the lock).
     pub fn sign_out(
@@ -297,6 +419,9 @@ impl Store {
     ) -> Result<(), String> {
         let generation = previous.map(|s| s.generation + 1).unwrap_or(1);
         let tomb = State {
+            foundations: false,
+            taste: false,
+            scopes: Vec::new(),
             schema: 1,
             issuer: self.account.issuer.clone(),
             generation,
@@ -310,6 +435,7 @@ impl Store {
             login: 0,
         };
         self.write_state(&tomb)?;
+        self.clear_taste(_lock);
         self.remove_secret(None)
     }
 }
@@ -431,6 +557,45 @@ pub fn write_private_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<(), St
     result.map_err(|e| format!("could not write {}: {e}", path.display()))
 }
 
+/// What a macOS keychain failure means for the person, with the way out.
+/// The bare OSStatus told nobody anything: the keychain is missing in an SSH
+/// session or under a changed HOME, locked without a way to ask, or the
+/// person declined the prompt. The file store is the documented alternative,
+/// and a sign-in remembers its store, so setting it once for `login` is enough.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn keychain_error(action: &str, code: i32) -> String {
+    const FILE: &str = "To keep the sign-in in ~/.impeccable instead, run: IMPECCABLE_CREDENTIAL_STORE=file impeccable login";
+    // Sign-out advice must finish signing out, never sign back in.
+    if action == "delete" {
+        return match code {
+            // No keychain in this session: no prompt can appear, so retrying here can't work.
+            -25307 | -60006 => format!(
+                "this session has no macOS keychain to remove the sign-in from ({code}), as over SSH or with a changed HOME. Run impeccable logout from a terminal on the Mac itself"
+            ),
+            _ => format!(
+                "macOS wouldn't let the CLI remove its keychain entry ({code}). Unlock your keychain or choose Allow if asked, then run impeccable logout again"
+            ),
+        };
+    }
+    match code {
+        // errSecNoDefaultKeychain; errAuthorizationCanceled, which is what a
+        // write returns when HOME has no keychain (measured on macOS 27)
+        -25307 | -60006 => format!(
+            "macOS wouldn't let the CLI {action} its keychain here (no keychain in this session, as over SSH or with a changed HOME, or its prompt was declined). {FILE}"
+        ),
+        // errSecInteractionNotAllowed, errSecAuthFailed: locked, and no way to ask
+        -25308 | -25293 => format!(
+            "the macOS keychain is locked and can't ask to unlock here. Unlock it and try again, or {}",
+            FILE.replacen("To keep", "to keep", 1)
+        ),
+        // errSecUserCanceled
+        -128 => format!(
+            "the keychain prompt was declined. Run impeccable login again and choose Allow. {FILE}"
+        ),
+        code => format!("keychain {action} failed ({code}). {FILE}"),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod keychain {
     pub const AVAILABLE: bool = true;
@@ -442,18 +607,37 @@ mod keychain {
         match passwords::get_generic_password(service, account) {
             Ok(v) => Ok(Some(v)),
             Err(e) if e.code() == NOT_FOUND => Ok(None),
-            Err(e) => Err(format!("keychain read failed ({})", e.code())),
+            Err(e) => Err(super::keychain_error("read", e.code())),
         }
     }
+    pub fn get_noninteractive(service: &str, account: &str) -> Result<Option<Vec<u8>>, String> {
+        use security_framework::item::{ItemClass, ItemSearchOptions, SearchResult};
+        let mut options = ItemSearchOptions::new();
+        options
+            .class(ItemClass::generic_password())
+            .service(service)
+            .account(account)
+            .load_data(true)
+            .skip_authenticated_items(true);
+        match options.search() {
+            Ok(items) => Ok(items.into_iter().find_map(|item| match item {
+                SearchResult::Data(bytes) => Some(bytes),
+                _ => None,
+            })),
+            Err(e) if e.code() == NOT_FOUND => Ok(None),
+            Err(e) => Err(super::keychain_error("read", e.code())),
+        }
+    }
+
     pub fn set(service: &str, account: &str, secret: &[u8]) -> Result<(), String> {
         passwords::set_generic_password(service, account, secret)
-            .map_err(|e| format!("keychain write failed ({})", e.code()))
+            .map_err(|e| super::keychain_error("write", e.code()))
     }
     pub fn delete(service: &str, account: &str) -> Result<(), String> {
         match passwords::delete_generic_password(service, account) {
             Ok(()) => Ok(()),
             Err(e) if e.code() == NOT_FOUND => Ok(()),
-            Err(e) => Err(format!("keychain delete failed ({})", e.code())),
+            Err(e) => Err(super::keychain_error("delete", e.code())),
         }
     }
 }
@@ -584,6 +768,43 @@ mod keychain {
     }
     pub fn delete(_: &str, _: &str) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod keychain_error_tests {
+    use super::keychain_error;
+    #[test]
+    fn each_keychain_failure_says_what_happened_and_how_out() {
+        let missing = keychain_error("write", -60006);
+        assert!(missing.starts_with(
+            "macOS wouldn't let the CLI write its keychain here (no keychain in this session"
+        ));
+        assert_eq!(missing, keychain_error("write", -25307));
+        assert!(missing.ends_with("IMPECCABLE_CREDENTIAL_STORE=file impeccable login"));
+        assert!(keychain_error("read", -25308).starts_with("the macOS keychain is locked"));
+        assert!(keychain_error("read", -25308).contains("or to keep the sign-in in ~/.impeccable"));
+        assert!(keychain_error("write", -128).starts_with("the keychain prompt was declined"));
+        let other = keychain_error("read", -1);
+        assert!(other.starts_with("keychain read failed (-1). To keep"));
+        // Sign-out advice must never be "sign in": a failed delete says how to finish signing out.
+        for code in [-25307, -60006, -25308, -128, -1] {
+            let delete = keychain_error("delete", code);
+            assert!(!delete.contains("impeccable login"), "{delete}");
+            assert!(delete.contains("impeccable logout"), "{delete}");
+            // With no keychain in the session no prompt can appear, so the advice is another terminal.
+            let missing = matches!(code, -25307 | -60006);
+            assert_eq!(delete.contains("choose Allow"), !missing, "{delete}");
+            assert_eq!(
+                delete.contains("from a terminal on the Mac itself"),
+                missing,
+                "{delete}"
+            );
+        }
+        // Login prints "Sign-in failed: {e}." so no message may end in a period.
+        for code in [-25307, -60006, -25308, -25293, -128, -1] {
+            assert!(!keychain_error("write", code).ends_with('.'));
+        }
     }
 }
 

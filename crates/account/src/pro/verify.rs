@@ -245,6 +245,18 @@ const CLOCK_SKEW_SECS: u64 = 300;
 #[cfg(test)]
 pub mod tests {
     use super::*;
+
+    #[test]
+    fn the_shipped_release_keyring_holds_a_key() {
+        // Catches (launch review, 10 Nov): scripts/cli-pro-release-keys.json committed as {},
+        // which compiles a CLI where every Pro build fails its signature check.
+        let keys = parse_keyring(include_str!("../../../../scripts/cli-pro-release-keys.json"))
+            .expect("scripts/cli-pro-release-keys.json parses as { id: 64 hex }");
+        assert!(
+            !keys.is_empty(),
+            "scripts/cli-pro-release-keys.json holds no Pro release key; add the production public key (Pro sitting step 10)"
+        );
+    }
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
