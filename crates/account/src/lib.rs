@@ -173,6 +173,16 @@ fn unknown_args(args: &[String], allowed: &[&str], io: &mut Io, verb: &str) -> b
 /// `impeccable login [--no-browser]`. With `--no-browser` (or
 /// `IMPECCABLE_NO_BROWSER=1`) the authorization URL is the only line on
 /// stdout, so a script can open it itself.
+/// How a sign-in attempt ended, for callers that act on it (`impeccable start`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginOutcome {
+    /// A usable sign-in was already here; no browser was opened.
+    Already,
+    SignedIn,
+    /// Declined, timed out, or the service refused it; the reason is on stderr.
+    Failed,
+}
+
 pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     if has_flag(args, "--help") || has_flag(args, "-h") {
         io.out(LOGIN_USAGE);
@@ -181,12 +191,32 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     if unknown_args(args, &["--no-browser", "--force"], io, "login") {
         return 1;
     }
-    if !has_flag(args, "--force") {
-        if let Some(code) = already_signed_in(io) {
-            return code;
-        }
+    let skip = if has_flag(args, "--force") { Skip::Never } else { Skip::UnlessStale };
+    match sign_in(io, has_flag(args, "--no-browser"), skip) {
+        LoginOutcome::Failed => 1,
+        LoginOutcome::Already | LoginOutcome::SignedIn => 0,
     }
-    let no_browser = has_flag(args, "--no-browser") || io.env_truthy("IMPECCABLE_NO_BROWSER");
+}
+
+/// `impeccable start`'s sign-in: any usable sign-in counts as done, even one missing a
+/// scope the service has since added, so running start again never reopens the browser.
+/// `login` itself is what asks for the new scope.
+pub fn login_for_start(io: &mut Io) -> LoginOutcome {
+    sign_in(io, false, Skip::AnyUsable)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Skip {
+    Never,
+    UnlessStale,
+    AnyUsable,
+}
+
+fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
+    if skip != Skip::Never && already_signed_in(io, skip == Skip::UnlessStale) {
+        return LoginOutcome::Already;
+    }
+    let no_browser = no_browser || io.env_truthy("IMPECCABLE_NO_BROWSER");
     let timeout = io
         .env("IMPECCABLE_LOGIN_TIMEOUT")
         .and_then(|s| s.parse::<u64>().ok())
@@ -222,24 +252,28 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
                 }
                 Err(_) => report_entitlement(io, &done.entitlement),
             }
-            0
+            LoginOutcome::SignedIn
         }
         Err(e) => {
             io.err(&format!("Sign-in failed: {e}.\n"));
-            1
+            LoginOutcome::Failed
         }
     }
 }
 
 /// `login` on a machine already signed in to this account: say so and stop, with no
-/// browser. `None` when there is no usable sign-in (none, expired, ended by the
+/// browser. False when there is no usable sign-in (none, expired, ended by the
 /// service, unreadable), so the browser sign-in goes ahead.
-fn already_signed_in(io: &mut Io) -> Option<i32> {
+fn already_signed_in(io: &mut Io, unless_stale: bool) -> bool {
+    already_signed_in_inner(io, unless_stale).is_some()
+}
+
+fn already_signed_in_inner(io: &mut Io, unless_stale: bool) -> Option<()> {
     let account = Account::from_env(&io.env).ok()?;
     let mut session = Session::load(&account).ok()?;
     // A sign-in missing a scope the service now offers is the one the "needs a fresh
     // sign-in" notices send here: that one signs in again.
-    if stale_grant::fresh_sign_in_adds(&account, &session.state) {
+    if unless_stale && stale_grant::fresh_sign_in_adds(&account, &session.state) {
         return None;
     }
     let login = session.state.login;
@@ -249,12 +283,12 @@ fn already_signed_in(io: &mut Io) -> Option<i32> {
             pro::settle(&account, login, e.pro);
             io.err(&format!("Already signed in to {name}. To sign in again: impeccable login --force\n"));
             report_entitlement(io, &Ok(e));
-            Some(0)
+            Some(())
         }
         // Offline or the service is down: the sign-in stored here still stands.
         Err(SessionError::Api(e)) => {
             io.err(&format!("Already signed in to {name}. Couldn't reach it to check the sign-in: {e}.\n"));
-            Some(0)
+            Some(())
         }
         Err(_) => None,
     }
