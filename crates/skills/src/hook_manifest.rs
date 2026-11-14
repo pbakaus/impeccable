@@ -69,15 +69,46 @@ pub fn hook_artifacts_for_provider(bundle_dir: &str, root: &str, provider: &str)
         .collect()
 }
 
-fn hook_artifacts_for_install(bundle_dir: &str, root: &str, provider: &str, user_scope: bool) -> Vec<HookArtifact> {
-    if provider == ".claude" && user_scope {
-        return vec![HookArtifact {
-            src: jsp::join(&[bundle_dir, ".claude", "settings.json"]),
-            dest: jsp::join(&[root, ".claude", "settings.json"]),
-            shared_dest: None,
-        }];
+fn hook_artifacts_for_install(sys: &Sys, bundle_dir: &str, root: &str, home_root: &str, provider: &str, user_scope: bool) -> Vec<HookArtifact> {
+    if user_scope {
+        if let Some(dest) = user_scope_hook_dest(sys, home_root, provider) {
+            let spec = &provider_hook_artifacts(provider)[0];
+            return vec![HookArtifact { src: jsp::join(&[bundle_dir, spec.source_provider, spec.rel]), dest, shared_dest: None }];
+        }
     }
     hook_artifacts_for_provider(bundle_dir, root, provider)
+}
+
+/// Where a user-scope (global) install puts a provider's hook manifest when
+/// the harness loads one from the user's home (#1190): Claude's
+/// `~/.claude/settings.json`, Codex's `$CODEX_HOME/hooks.json` (else
+/// `~/.codex/hooks.json`), Cursor's `~/.cursor/hooks.json`, Grok's personal
+/// `~/.grok/hooks/impeccable.json`. The Codex, Cursor and Grok paths are the
+/// ones `context`, `doctor` and `hooks` read (`user_hook_manifest_under`).
+/// `None`: the manifest stays in the project (Copilot's committed
+/// `.github/hooks/impeccable.json`, Gemini).
+pub fn user_scope_hook_dest(sys: &Sys, home_root: &str, provider: &str) -> Option<String> {
+    match provider {
+        ".claude" => Some(jsp::join(&[home_root, ".claude", "settings.json"])),
+        ".agents" | ".cursor" | ".grok" => impeccable_context::context_cli::user_hook_manifest_under(
+            home_provider_id(provider)?,
+            &sys.cwd,
+            &sys.env,
+            home_root,
+        ),
+        _ => None,
+    }
+}
+
+/// The provider id `context_cli::user_hook_manifest_under` keys on, for the
+/// providers whose global hook lives under home (Claude aside).
+fn home_provider_id(provider: &str) -> Option<&'static str> {
+    match provider {
+        ".agents" => Some("codex"),
+        ".cursor" => Some("cursor"),
+        ".grok" => Some("grok"),
+        _ => None,
+    }
 }
 
 /// JS: expectedHookDests(root, providers)
@@ -422,9 +453,16 @@ pub fn hook_installed_for_provider(sys: &Sys, root: &str, provider: &str) -> boo
 /// install wrote the portable `$(git rev-parse ...)/.github/skills/...` form
 /// into a project with no Copilot skill of its own, a hook that never fires
 /// (#1098), so a repeat install must rewrite it rather than count it.
+///
+/// Codex, Cursor and Grok take their global hook from home (#1190), so in user
+/// scope only that home manifest counts: a project manifest an older global
+/// install wrote does not, and a repeat install moves the hook home.
 pub fn hook_installed_for_provider_at_scope(sys: &Sys, root: &str, provider: &str, user_scope: bool) -> bool {
     if user_scope && provider == ".claude" {
         return user_claude_hook_is_current(root);
+    }
+    if user_scope && home_provider_id(provider).is_some() {
+        return home_hook_is_current(sys, &sys.home, provider);
     }
     if user_scope && provider == ".github" && github_manifest_names_missing_project_skill(root) {
         return false;
@@ -647,8 +685,7 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             }
             continue;
         }
-        let manifest_root = if user_scope && *provider == ".claude" { skill_root } else { root };
-        for artifact in hook_artifacts_for_install(bundle_dir, manifest_root, provider, user_scope) {
+        for artifact in hook_artifacts_for_install(sys, bundle_dir, root, skill_root, provider, user_scope) {
             if !util::exists(&artifact.src) {
                 continue;
             }
@@ -704,7 +741,127 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
             prune_duplicate_claude_hooks(sys, skill_root, project_root.unwrap_or(root))?;
         }
     }
+    if user_scope {
+        prune_duplicate_home_hooks(sys, skill_root, project_root.unwrap_or(root), providers)?;
+    }
     Ok(written)
+}
+
+/// Once a global install has the Codex, Cursor or Grok hook in its home
+/// manifest, a project manifest an older global install wrote for the same
+/// provider (naming the same home skill) only makes the hook fire twice.
+/// Removes Impeccable's entries from that project manifest, keeping every
+/// other entry and key, and only when:
+///
+/// - the home hook is current (`home_hook_is_current`: a dangling, partial or
+///   legacy `.mjs` home hook does not count);
+/// - the project manifest is not the home one (cwd is home, or a relative
+///   `CODEX_HOME` points into the project);
+/// - every Impeccable command in it names the home skill. A command naming a
+///   project skill belongs to a project install and stays.
+///
+/// A project manifest with nothing else left is removed, as
+/// `prune_impeccable_hook_from_manifest` does. Copilot's manifest is a project
+/// file in every scope and is never touched here.
+pub fn prune_duplicate_home_hooks(sys: &Sys, home_root: &str, project_root: &str, providers: &[&'static str]) -> Result<Vec<String>, String> {
+    let mut pruned = Vec::new();
+    if sys.is_home_dir(project_root) {
+        return Ok(pruned);
+    }
+    for provider in providers {
+        if home_provider_id(provider).is_none() {
+            continue;
+        }
+        let Some(home_dest) = user_scope_hook_dest(sys, home_root, provider) else { continue };
+        let skill_dir = jsp::join(&[home_root, provider, "skills", "impeccable"]);
+        if !home_hook_is_current(sys, home_root, provider) {
+            continue;
+        }
+        for project_dest in expected_hook_dests(project_root, &[provider]) {
+            if same_file(&project_dest, &home_dest) {
+                continue;
+            }
+            let Some((Value::Object(map), _)) = read_manifest(&project_dest) else { continue };
+            let Some(hooks @ (Value::Object(_) | Value::Array(_))) = map.get("hooks") else { continue };
+            let mut commands = Vec::new();
+            collect_impeccable_hook_commands(hooks, &mut commands);
+            if commands.is_empty() || !commands.iter().all(|c| command_names_skill_dir(c, &skill_dir)) {
+                continue;
+            }
+            if prune_impeccable_hook_from_manifest(&project_dest)? {
+                pruned.push(project_dest);
+            }
+        }
+    }
+    Ok(pruned)
+}
+
+/// The Codex, Cursor or Grok hook in the home manifest is current, the way
+/// `user_claude_hook_is_current` decides it for Claude: the home launcher
+/// exists, the manifest carries every current entry, and each Impeccable
+/// command in it is a launcher command naming the home skill. A legacy
+/// `node .../hook.mjs` entry, a partial manifest, or one naming a launcher
+/// that is gone is a dead hook: it must be rewritten, not counted, and it
+/// never licenses pruning the project copy.
+pub fn home_hook_is_current(sys: &Sys, home_root: &str, provider: &str) -> bool {
+    let Some(home_dest) = user_scope_hook_dest(sys, home_root, provider) else { return false };
+    let Some(launcher) = launcher_path(home_root, provider) else { return false };
+    if !util::exists(&launcher) {
+        return false;
+    }
+    let Some(target) = impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider) else {
+        return false;
+    };
+    if !impeccable_context::hook_wiring::manifest_is_wired(&home_dest, &(target.manifest)()) {
+        return false;
+    }
+    let Some((Value::Object(map), _)) = read_manifest(&home_dest) else { return false };
+    let Some(hooks @ (Value::Object(_) | Value::Array(_))) = map.get("hooks") else { return false };
+    let mut commands = Vec::new();
+    collect_impeccable_hook_commands(hooks, &mut commands);
+    let skill_dir = jsp::join(&[home_root, provider, "skills", "impeccable"]);
+    !commands.is_empty()
+        && commands.iter().all(|c| is_launcher_hook_command(c) && command_names_skill_dir(c, &skill_dir))
+}
+
+/// True when a hook command runs a script under `skill_dir`, in every
+/// spelling the installer writes: POSIX single quotes (an apostrophe in the
+/// path escaped as `'\''`), double quotes with JSON-doubled backslashes (a
+/// Windows Cursor or Claude guard), and the `cmd /c` shim form with single
+/// backslashes. Separator runs collapse to one `/`, a `\\?\` verbatim prefix
+/// is dropped, and on Windows the comparison ignores case (drive letters).
+pub fn command_names_skill_dir(command: &str, skill_dir: &str) -> bool {
+    command_names_skill_dir_for(command, skill_dir, cfg!(windows))
+}
+
+/// `command_names_skill_dir` with the platform made explicit (tests drive the
+/// Windows form from any host).
+pub fn command_names_skill_dir_for(command: &str, skill_dir: &str, win32: bool) -> bool {
+    let norm = |s: &str| {
+        let s = s.replace("'\\''", "'").replace("\\\\?\\", "");
+        let mut out = String::with_capacity(s.len());
+        for ch in s.chars() {
+            let ch = if ch == '\\' { '/' } else { ch };
+            if ch == '/' && out.ends_with('/') {
+                continue;
+            }
+            out.push(ch);
+        }
+        if win32 { out.to_lowercase() } else { out }
+    };
+    let dir = norm(skill_dir);
+    let dir = dir.trim_end_matches('/');
+    norm(command).contains(&format!("{dir}/"))
+}
+
+fn same_file(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+    match (util::realpath(a), util::realpath(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => false,
+    }
 }
 
 /// The Hermes gateway loads plugins from its home dir, not from a project,
@@ -780,10 +937,19 @@ pub fn prune_duplicate_claude_hooks(sys: &crate::providers::Sys, home_root: &str
 /// not the user re-consents to hooks. Returns the providers whose manifest
 /// changed.
 pub fn repair_stale_hook_manifests(sys: &Sys, root: &str, providers: &[&'static str], skill_root: Option<&str>) -> Result<Vec<&'static str>, String> {
-    let skill_root = skill_root.unwrap_or(root);
-    let absolute = skill_root != root || sys.is_home_dir(root);
+    let other_root = skill_root.unwrap_or(root);
     let mut repaired: Vec<&'static str> = Vec::new();
     for provider in providers {
+        // A project that has its own skill for this provider owns its hook:
+        // the stale manifest is the team's, so it is retargeted at that skill
+        // in the portable project form, never at another root's (a global
+        // install's home skill). Pointing it at home would leave teammates a
+        // hook that names one person's machine, and the duplicate-hook
+        // cleanup that follows would then remove it as a global leftover.
+        let project_owned = other_root != root
+            && launcher_path(root, provider).is_some_and(|l| util::exists(&l));
+        let skill_root = if project_owned { root } else { other_root };
+        let absolute = skill_root != root || sys.is_home_dir(root);
         if launcher_path(skill_root, provider).is_none() {
             continue;
         }
