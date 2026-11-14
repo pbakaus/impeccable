@@ -342,3 +342,36 @@ fn a_color_only_hover_over_a_resting_image_is_not_scored() {
         "{findings:#?}"
     );
 }
+
+#[test]
+fn a_hover_that_removes_the_image_is_scored_on_the_page() {
+    // The hover drops the resting image, so the light hover text sits on the
+    // white page again and is a real hover failure.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+.card { background: url(photo.jpg) center / cover; color: #ffffff; font-size: 16px; padding: 12px 16px; }
+.card:hover { background: none; color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Cancel the trial now</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
+fn an_underline_gradient_does_not_hide_a_hover_failure() {
+    // A 2px gradient underline cannot cover the text, so the hover color is
+    // still read against the white page, as the resting check reads it.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.link { background: linear-gradient(#000, #000) no-repeat 0 100% / 100% 2px; color: #222222; font-size: 16px; }
+div.link:hover { color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="link">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+

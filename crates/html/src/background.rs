@@ -250,7 +250,7 @@ pub fn resolve_text_surface(
 /// `background-repeat` longhands an author declared; a `background`
 /// shorthand arrives whole in `backgroundImage`, and its size and repeat
 /// are read out of it.
-fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
+pub(crate) fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
     if !GRADIENT_RE.is_match(bg_image) || URL_CALL_RE.is_match(bg_image) {
         return false;
     }

@@ -632,7 +632,7 @@ fn compute_styles(
             values.insert(prop.clone(), next);
         }
 
-        // Hover pass: color / backgroundColor only.
+        // Hover pass: color / backgroundColor, plus the hover's own image.
         if let Some(hover_map) = hover_specified.get(&node) {
             let mut hover_values: Option<StyleValues> = None;
             for prop in ["color", "backgroundColor"] {
@@ -698,7 +698,22 @@ fn compute_styles(
                 let hv = hover_values.get_or_insert_with(|| values.clone());
                 hv.insert(prop.to_string(), next);
             }
-            if let Some(hv) = hover_values {
+            if let Some(mut hv) = hover_values {
+                // The image the hover paints, so the hover contrast check
+                // does not read a resting image a `:hover { background: none }`
+                // removed.
+                if let Some(img) = hover_map.get("backgroundImage") {
+                    if compare_static_priority(specified_map.get("backgroundImage").map(|d| &d.meta), &img.meta) {
+                        let resolved = normalize_static_css_value(
+                            "backgroundImage",
+                            &img.value,
+                            &custom_props,
+                            parent_style.as_deref(),
+                            Some(&values),
+                        );
+                        hv.insert("backgroundImage".to_string(), resolved);
+                    }
+                }
                 hover_out.push((node, hv));
             }
         }

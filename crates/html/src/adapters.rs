@@ -6,7 +6,7 @@
 //! and the computed style and hands plain data over.
 
 use crate::background::{
-    a_ge, a_gt, read_cascade_background_color, read_own_background_color, resolve_background,
+    a_ge, a_gt, gradient_tile_misses, read_cascade_background_color, read_own_background_color, resolve_background,
     resolve_border_radius_px, resolve_side_accent_corners, resolve_text_gradient_stops,
     resolve_text_surface, sv, sv_opt, CustomPropMap, TextSurface,
 };
@@ -1281,14 +1281,23 @@ pub fn check_element_hover_contrast(
     let resting_own_bg = parse_any_color(sv_opt(style, "backgroundColor"));
     let hover_own_bg = parse_any_color(sv_opt(hover, "backgroundColor"));
     let own_bg = hover_own_bg.or(resting_own_bg);
+    let font_size = {
+        let n = parse_float(sv(style, "fontSize"));
+        if num_truthy(n) {
+            n
+        } else {
+            16.0
+        }
+    };
     // Text over the element's own image (a `background: url(...)` whose
     // implied fill is transparent) sits on pixels this engine cannot read,
-    // so the hover pairing is not scored, as the resting one is not.
+    // so the hover pairing is not scored, as the resting one is not. A
+    // gradient tile too small to cover a line of text (an underline) is read
+    // past, as the resting check reads past it.
     let own_image = js::to_lower_case(sv(hover, "backgroundImage"));
-    if !own_bg.is_some_and(|c| a_ge(&c, 0.99))
-        && (own_image.contains("url(") || own_image.contains("gradient"))
-        && !background_is_icon(el)
-    {
+    let image_under_text = own_image.contains("url(")
+        || (own_image.contains("gradient") && !gradient_tile_misses(hover, &own_image, font_size));
+    if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !background_is_icon(el) {
         return Vec::new();
     }
 
@@ -1314,14 +1323,6 @@ pub fn check_element_hover_contrast(
     };
     let font_weight =
         impeccable_core::checks::rules::contrast_font_weight(font_weight, sv(style, "fontFamily"));
-    let font_size = {
-        let n = parse_float(sv(style, "fontSize"));
-        if num_truthy(n) {
-            n
-        } else {
-            16.0
-        }
-    };
     check_hover_contrast(&HoverContrastOpts {
         tag: tag.to_string(),
         text_color: Some(text_color),
