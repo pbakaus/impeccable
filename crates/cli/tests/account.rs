@@ -49,6 +49,34 @@ fn a_script_signs_in_checks_and_signs_out() {
 }
 
 #[test]
+fn login_when_signed_in_opens_nothing_unless_forced() {
+    // Catches: onboarding sending a signed-in person through the browser again, and a script waiting on a link that never comes.
+    let fake = Fake::start();
+    let env = fake.env("cli-login-again");
+    let sign_in = |args: &[&str]| {
+        let mut child = impeccable(&env, args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut url = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut url)
+            .unwrap();
+        assert!(url.starts_with("http"), "a link on stdout: {url:?}");
+        browser(url.trim());
+        assert!(child.wait().unwrap().success());
+    };
+    sign_in(&["login", "--no-browser"]);
+    let out = impeccable(&env, &["login", "--no-browser"]).output().unwrap();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "no link");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Already signed in"), "{}", String::from_utf8_lossy(&out.stderr));
+    // `--force` signs in again.
+    sign_in(&["login", "--no-browser", "--force"]);
+}
+
+#[test]
 fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     // Catches: whoami failing or going quiet when the public plan catalog is off (404), and the catalog's items not reaching the person.
     let fake = Fake::start();

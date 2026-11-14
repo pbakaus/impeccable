@@ -63,6 +63,20 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
     }
 }
 
+/// Whether a fresh sign-in would add a scope this one lacks and the service now offers:
+/// then `login` signs in again rather than saying it already is.
+pub(crate) fn fresh_sign_in_adds(account: &Account, state: &State) -> bool {
+    [
+        oauth::HEALTH_SCOPE,
+        oauth::FOUNDATIONS_SCOPE,
+        oauth::TASTE_READ_SCOPE,
+        oauth::DESIGN_SCOPE,
+        oauth::CRITIQUES_SCOPE,
+    ]
+    .into_iter()
+    .any(|scope| !holds(account, state, scope) && offers(account, scope, DEADLINE))
+}
+
 pub(crate) fn status(io: &Io, scope: &str) -> bool {
     let Ok(account) = Account::from_env(&io.env) else {
         return false;

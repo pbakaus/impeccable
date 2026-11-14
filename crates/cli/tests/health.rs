@@ -26,7 +26,13 @@ fn impeccable(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Comma
 }
 
 fn login(env: &HashMap<String, String>) {
-    let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &["login", "--no-browser"])
+    login_with(env, &[]);
+}
+
+/// `extra`: `--force` for a second sign-in to an account already signed in.
+fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
+    let args: Vec<&str> = ["login", "--no-browser"].iter().chain(extra).copied().collect();
+    let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -524,12 +530,12 @@ fn foundations_use_scan_evidence_and_the_health_opt_out() {
     assert_eq!(out.stderr, stalled.stderr);
     assert_eq!(out.status.code(), stalled.status.code());
     fake.knobs.lock().unwrap().foundations_denied = true;
-    login(&env);
+    login_with(&env, &["--force"]);
     let before = fake.hits("/cli/v1/foundations");
     run(&env, &root, &["detect", "--json", "."]);
     assert_eq!(fake.hits("/cli/v1/foundations"), before, "declined scope");
     fake.knobs.lock().unwrap().foundations_denied = false;
-    login(&env);
+    login_with(&env, &["--force"]);
     // Only a clean page left: the detector's classes pass as "none found".
     for file in [
         "contrast.html",
@@ -1129,7 +1135,7 @@ fn design_notice_is_once_after_success_and_again_after_sign_in() {
         assert!(!String::from_utf8_lossy(&out.stdout).contains(notice));
     }
     assert_eq!(fake.hits("/cli/v1/design"), 5);
-    login(&env);
+    login_with(&env, &["--force"]);
     let out = run(&env, &root, &["detect", "."]);
     assert!(String::from_utf8_lossy(&out.stderr).contains(notice));
 }
