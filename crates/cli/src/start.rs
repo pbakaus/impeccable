@@ -92,9 +92,9 @@ pub(crate) fn run(
 
     // 5. Loop, on a Mac and only when asked: it installs an app.
     if cfg!(target_os = "macos") && yes {
-        // The MCP step already connected the agents, so Loop's install doesn't ask
-        // again; under --json it doesn't open the app either.
-        let mut install: Vec<String> = vec!["install".into(), "--no-connect".into()];
+        // Loop's install connects the agents to Loop (hooks and instructions) without
+        // asking; under --json it doesn't open the app either.
+        let mut install: Vec<String> = vec!["install".into(), "--connect".into()];
         if json {
             install.push("--no-open".into());
         }

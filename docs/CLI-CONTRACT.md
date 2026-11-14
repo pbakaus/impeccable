@@ -2737,8 +2737,8 @@ scan, and, only with `--yes` on macOS, `loop install`. Each step keeps its own
 rules; running `start` again redoes nothing.
 
 After a sign-in it schedules the setup report, as `login` does. Loop's install
-runs with `--no-connect` (the MCP step already connected the agents) and, under
-`--json`, `--no-open`.
+runs with `--connect`, so it wires the agents' Loop hooks and instructions
+without asking, and, under `--json`, `--no-open`.
 
 Exit codes: **0** set up; **1** a step failed (later steps still ran),
 including an MCP step stopped before it looked for agents (a refused
