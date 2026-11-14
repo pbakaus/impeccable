@@ -220,6 +220,17 @@ fn checks_shim_helpers() {
     assert_eq!(resolve_length_px("2em", 10.0), Some(20.0));
     assert_eq!(resolve_length_px("50%", 10.0), Some(5.0));
     assert_eq!(resolve_length_px("1.5", 10.0), Some(15.0));
+    // Absolute units resolve at 96px to the inch, never against the font size
+    // (the 99 here would show through if one fell into the em branch).
+    assert_eq!(resolve_length_px("15pt", 99.0), Some(20.0));
+    assert_eq!(resolve_length_px("1pc", 99.0), Some(16.0));
+    assert_eq!(resolve_length_px("1in", 99.0), Some(96.0));
+    assert_eq!(resolve_length_px("2.54cm", 99.0), Some(96.0));
+    assert_eq!(resolve_length_px("25.4mm", 99.0), Some(96.0));
+    assert_eq!(resolve_length_px("101.6Q", 99.0), Some(96.0));
+    // Units are case-insensitive, and a negative or fractional value keeps its sign and scale.
+    assert_eq!(resolve_length_px("15PT", 99.0), Some(20.0));
+    assert_eq!(resolve_length_px("-0.5in", 99.0), Some(-48.0));
 }
 
 /// A box shorthand read from a stylesheet with a negative side and an

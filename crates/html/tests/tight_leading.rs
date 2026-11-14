@@ -75,10 +75,27 @@ fn fixture_flag_and_pass_cases() {
     // count lines. The flex row whose long first run wraps (1.17) flags in
     // both; the flex row of short runs wrapped as whole items (1.25) passes
     // in the browser only, since the static engine cannot see the items.
+    // The print-sheet cases set in absolute units, which resolve at 96px to the
+    // inch: 12pt over 15.5pt (1.29) and 0.2in over 0.256in (1.28) flag, at the
+    // ratio the numbers say. Leading of 0.6cm over 15px (1.51), 0.25in over 14px
+    // (1.71) and 16pt over 10pt (1.60) passes; read as ems the first two were
+    // 0.60x and 0.25x and flagged as crushed.
+    for ratio in ["1.29", "1.28"] {
+        assert!(
+            snippets.iter().any(|s| s.contains(ratio)),
+            "expected a print-sheet finding at {ratio}x, got {snippets:?}"
+        );
+    }
+    for ratio in ["0.60", "0.25", "1.51", "1.71"] {
+        assert!(
+            !snippets.iter().any(|s| s.contains(ratio)),
+            "print-sheet leading in absolute units should not flag at {ratio}x, got {snippets:?}"
+        );
+    }
     assert_eq!(
         snippets.len(),
-        15,
-        "expected ten flags plus the five documented static hits, got {snippets:?}"
+        17,
+        "expected twelve flags plus the five documented static hits, got {snippets:?}"
     );
 }
 
