@@ -208,7 +208,8 @@ function hear() {
     onText: (text) => {
       pre.task = text.slice(0, 2000);
       const box = app.querySelector('textarea.text');
-      if (box) box.value = pre.task;
+      // The newest words in view: a long talk outgrows the box.
+      if (box) { box.value = pre.task; box.scrollTop = box.scrollHeight; }
       if (text.length > 2000 && voice) { pre.note = COPY.voice.full; voice.stop(); }
     },
     onEnd: (error) => { ended = true; voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
