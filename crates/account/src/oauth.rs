@@ -160,6 +160,59 @@ pub struct Pending {
     state: String,
     verifier: String,
     requested_scopes: Vec<String>,
+    /// Your setup on the app's own origin (the authorization endpoint's), where a
+    /// finished sign-in sends the browser.
+    setup_url: Option<String>,
+}
+
+/// The browser's callback, held open until the sign-in is saved so the page it
+/// lands on can say how it went. Dropped unanswered, it says the sign-in didn't
+/// finish.
+pub struct Callback {
+    stream: Option<TcpStream>,
+    setup_url: Option<String>,
+}
+
+impl Callback {
+    /// The sign-in is saved: send the browser to Your setup, or say so where
+    /// the app's address is unknown.
+    pub fn signed_in(mut self) {
+        let Some(mut stream) = self.stream.take() else { return };
+        match &self.setup_url {
+            Some(url) => {
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 303 See Other\r\nlocation: {url}\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                );
+            }
+            None => page(&mut stream, PAGE_OK),
+        }
+    }
+}
+
+impl Drop for Callback {
+    fn drop(&mut self) {
+        if let Some(mut stream) = self.stream.take() {
+            page(&mut stream, PAGE_FAIL);
+        }
+    }
+}
+
+fn page(stream: &mut TcpStream, page: &str) {
+    let _ = write!(
+        stream,
+        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
+        page.len()
+    );
+}
+
+/// `<origin of the authorization endpoint>/app/-/setup?signed-in=cli`.
+fn setup_url(authorization_endpoint: &str) -> Option<String> {
+    let url = url::Url::parse(authorization_endpoint).ok()?;
+    let origin = url.origin();
+    origin
+        .is_tuple()
+        .then(|| format!("{}/app/-/setup?signed-in=cli", origin.ascii_serialization()))
 }
 
 /// Bind the loopback listener and build the authorization URL.
@@ -190,6 +243,7 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
             .split_whitespace()
             .map(str::to_string)
             .collect(),
+        setup_url: setup_url(&meta.authorization_endpoint),
     })
 }
 
@@ -233,7 +287,7 @@ impl Pending {
     /// carry this attempt's `state`, are answered and ignored: only an answer
     /// bound to this attempt can end it. Nothing about a request is logged:
     /// its query carries the code.
-    pub fn wait(&self, issuer: &str, timeout: Duration) -> Result<String, CallbackError> {
+    pub fn wait(&self, issuer: &str, timeout: Duration) -> Result<(String, Callback), CallbackError> {
         self.listener
             .set_nonblocking(true)
             .map_err(|_| CallbackError::Malformed)?;
@@ -274,7 +328,7 @@ impl Pending {
         mut stream: TcpStream,
         target: Option<String>,
         issuer: &str,
-    ) -> Option<Result<String, CallbackError>> {
+    ) -> Option<Result<(String, Callback), CallbackError>> {
         let _ = stream.set_nonblocking(false);
         let _ = stream.set_write_timeout(Some(REQUEST_HEAD_DEADLINE));
         let query = target.as_deref().and_then(|t| {
@@ -287,18 +341,20 @@ impl Pending {
             );
             return None;
         };
-        let result = self.judge(query, issuer);
-        let page = if matches!(result, Some(Ok(_))) {
-            PAGE_OK
-        } else {
-            PAGE_FAIL
-        };
-        let _ = write!(
-            stream,
-            "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
-            page.len()
-        );
-        result
+        match self.judge(query, issuer) {
+            Some(Ok(code)) => Some(Ok((
+                code,
+                Callback { stream: Some(stream), setup_url: self.setup_url.clone() },
+            ))),
+            Some(Err(e)) => {
+                page(&mut stream, PAGE_FAIL);
+                Some(Err(e))
+            }
+            None => {
+                page(&mut stream, PAGE_FAIL);
+                None
+            }
+        }
     }
 
     /// `None` for a callback that is not bound to this attempt (no `state`,
