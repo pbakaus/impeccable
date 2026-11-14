@@ -2322,7 +2322,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
 
 - `impeccable loop install [--version X.Y.Z] [--no-open]` installs the highest
   pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
-  An existing installation exits non-zero and directs the user to `update`.
+  An existing installation changes nothing, opens the app (unless `--no-open`),
+  prints `Loop is already installed. To get the newest: impeccable loop update.`
+  and exits 0, so the connect step after install still runs. It opens the app only
+  while holding the install lock (waiting up to 2 s for it, else `Another Loop install
+  or update is in progress.` and exit 1), so it never restarts a Loop an update is
+  replacing. A launch that fails adds `Couldn't open Loop (<why>). Open it from <path>.`
+  and still exits 0.
 - `impeccable loop update [--no-open]` replaces an installed app with the highest
   pinned version. An already current app exits 0. A running Loop is asked to quit
   (SIGTERM to the processes whose executable is exactly this bundle's, never by name)
@@ -2405,6 +2411,19 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
+- `impeccable loop connect --mcp-only [--agent claude|codex] [--json]` gives each
+  detected agent (or the one named) the `impeccable` MCP server and nothing else:
+  no hooks, no instruction or taste block, no Loop records, and no platform check,
+  so it works on any OS without the Loop app. The server URL comes from the
+  account's origin (production or staging, from the engine's build constants;
+  any other origin is refused). Each agent signs in to the server itself on first
+  use; no token is written. An entry already there is kept. The text form prints
+  `<Agent>: MCP server added.` or `<Agent>: MCP server already there.` and a
+  `  Sign in: ...` line per agent; `--json` prints `{ok, agents:[{agent, label,
+  result: connected|not_found|failed, added, signIn, error}]}`, or `{ok:false,
+  error}` when nothing could be tried. It exits 0 only when every agent asked for
+  connected. With any other argument (`--taste`, `--no-taste`, another verb) it
+  exits 1 with usage.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.
@@ -2708,6 +2727,38 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `start [--yes] [--json]`
+
+`impeccable start` sets Impeccable up in one go by running, in order, the verbs
+that already do each part: `skills install -y`, the sign-in (skipped when a
+usable one is stored, as for `login`), the MCP server for each coding agent
+`loop connect` finds (an entry already there is kept), the repository's first
+scan, and, only with `--yes` on macOS, `loop install`. Each step keeps its own
+rules; running `start` again redoes nothing.
+
+Exit codes: **0** set up; **1** a step failed (later steps still ran);
+**2** no coding agent was found; **3** the sign-in did not finish (declined,
+timed out or refused), and nothing after it ran.
+
+`--json` prints one line on stdout, `{"ok":bool,"exit":n,"steps":[{"step","result"}]}`,
+with `step` one of `skills`, `sign_in`, `mcp`, `scan`, `loop` and `result` one
+of `done`, `already` (sign-in), `no_agents` (mcp), `skipped` (loop) or
+`failed`. The steps' own lines are held back, except the sign-in's link and
+outcome, which go to stderr.
+
+## `login` when already signed in
+
+`impeccable login` on a machine whose stored sign-in to this account is still
+good opens no browser and prints no link (stdout stays empty, also under
+`--no-browser`). It exits 0 with `Already signed in to {account}. To sign in
+again: impeccable login --force` and the Pro line `whoami` prints, or, when the
+service cannot be reached, `Already signed in to {account}. Couldn't reach it
+to check the sign-in: {error}.` The browser sign-in goes ahead as before when
+there is no sign-in, it expired or the service ended it, it cannot be read, or
+it lacks a scope the service now offers (the case every "needs a fresh
+sign-in" notice sends here). `--force` always signs in again. The first scan
+below runs after either kind of success.
+
 ## `login`: the first scan of a repository
 
 After a successful sign-in, and after its own success line, the CLI adds the
@@ -2724,7 +2775,7 @@ Exact stderr lines:
 
 - `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
 - `Scanning this repository for your account (Ctrl-C skips it)...`
-- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.`
+- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. See it on your Home: {home}` for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), and `... Find it under Repositories in your Impeccable account.` for any other.
 - `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`
 - `Couldn't scan this repository. Run impeccable detect here to add it to your account.`
 

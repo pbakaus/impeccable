@@ -78,6 +78,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             }
             code
         }
+        // One command that sets everything up (`crate::start`).
+        "start" => crate::start::run(rest, io, &engines, pack.rule_pack),
         "setup" => impeccable_account::setup::run(rest, io),
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
@@ -240,7 +242,7 @@ fn detect(
 /// is in the person's account at once (its foundations upload founds a Pro
 /// or Team city). Only the local detector runs; the person sees one line,
 /// and nothing here changes the sign-in's exit code.
-fn scan_after_login(
+pub(crate) fn scan_after_login(
     io: &mut Io,
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
@@ -288,8 +290,12 @@ fn scan_after_login(
         n => format!("{n} findings"),
     };
     if synced.recorded() {
+        let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+            Some(url) => format!("See it on your Home: {url}"),
+            None => "Find it under Repositories in your Impeccable account.".to_string(),
+        };
         io.err(&format!(
-            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.\n"
+            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(
@@ -353,6 +359,7 @@ const KNOWN_VERBS: &[&str] = &[
     "ignores",
     "ignore",
     "login",
+    "start",
     "logout",
     "whoami",
     "world",

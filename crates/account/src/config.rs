@@ -58,6 +58,16 @@ impl Account {
         }
     }
 
+    /// The account's Home in the web app, for production and staging only (a test or
+    /// local service has no known app to point at).
+    pub fn home_url(&self) -> Option<&'static str> {
+        match self.issuer.as_str() {
+            DEFAULT_ACCOUNT_URL => Some("https://app.impeccable.style/app"),
+            "https://api.staging.impeccable.style" => Some("https://app.staging.impeccable.style/app"),
+            _ => None,
+        }
+    }
+
     /// The host shown to people (`api.impeccable.style`).
     pub fn display_host(&self) -> &str {
         self.issuer.split("://").nth(1).unwrap_or(&self.issuer)
@@ -87,7 +97,7 @@ pub fn impeccable_home(env: &HashMap<String, String>) -> Option<PathBuf> {
 
 /// Loopback names: `127.0.0.1`, `[::1]`, `localhost` and names under it
 /// (RFC 6761), which a local split-host rehearsal uses (`api.localhost`).
-fn loopback_url(u: &url::Url) -> bool {
+pub fn loopback_url(u: &url::Url) -> bool {
     matches!(u.host_str(), Some(h) if h == "127.0.0.1" || h == "[::1]" || h == "localhost" || h.ends_with(".localhost"))
 }
 
@@ -144,6 +154,10 @@ mod tests {
             at("https://api.staging.impeccable.style").display_name(),
             "Impeccable (api.staging.impeccable.style)"
         );
+        // Catches: a Home link to the wrong app, or to an app a test service doesn't have.
+        assert_eq!(at(DEFAULT_ACCOUNT_URL).home_url(), Some("https://app.impeccable.style/app"));
+        assert_eq!(at("https://api.staging.impeccable.style").home_url(), Some("https://app.staging.impeccable.style/app"));
+        assert_eq!(at("http://127.0.0.1:9").home_url(), None);
     }
     use super::*;
 
