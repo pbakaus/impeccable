@@ -2322,7 +2322,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
 
 - `impeccable loop install [--version X.Y.Z] [--no-open]` installs the highest
   pinned semver (or the requested pinned release) to `~/Applications/Impeccable Loop.app`.
-  An existing installation exits non-zero and directs the user to `update`.
+  An existing installation changes nothing, opens the app (unless `--no-open`),
+  prints `Loop is already installed. To get the newest: impeccable loop update.`
+  and exits 0, so the connect step after install still runs.
 - `impeccable loop update [--no-open]` replaces an installed app with the highest
   pinned version. An already current app exits 0. A running Loop is asked to quit
   (SIGTERM to the processes whose executable is exactly this bundle's, never by name)
@@ -2724,7 +2726,7 @@ Exact stderr lines:
 
 - `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
 - `Scanning this repository for your account (Ctrl-C skips it)...`
-- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.`
+- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. See it on your Home: {home}` for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), and `... Find it under Repositories in your Impeccable account.` for any other.
 - `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`
 - `Couldn't scan this repository. Run impeccable detect here to add it to your account.`
 

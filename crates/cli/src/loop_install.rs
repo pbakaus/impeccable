@@ -460,6 +460,15 @@ fn with_taste(
     (value, ok)
 }
 
+/// `loop install` with Loop already there: nothing to do, so it succeeds, and opens the
+/// app as an install would (unless `--no-open`).
+fn already_installed(app: &Path, no_open: bool) -> Result<String> {
+    if !no_open {
+        let _ = Command::new("/usr/bin/open").arg(app).status();
+    }
+    Ok("Loop is already installed. To get the newest: impeccable loop update.\n".into())
+}
+
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
@@ -505,12 +514,14 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
     }
     check_platform(os)?;
-    if !update
-        && io
+    if !update {
+        if let Some(app) = io
             .home()
-            .is_some_and(|home| home.join("Applications").join(APP).exists())
-    {
-        return Err("Loop is already installed. Use impeccable loop update.".into());
+            .map(|home| home.join("Applications").join(APP))
+            .filter(|app| app.exists())
+        {
+            return already_installed(&app, no_open);
+        }
     }
     let pins = parse_pins(manifest)?;
     let version = requested
@@ -556,7 +567,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
     }
     if app.exists() && !update {
-        return Err("Loop is already installed. Use impeccable loop update.".into());
+        return already_installed(&app, no_open);
     }
     if !app.exists() && update {
         return Err("Loop is not installed. Use impeccable loop install.".into());

@@ -256,7 +256,7 @@ mod mac {
             "1.0.0"
         );
         assert!(run_inner(&args("install"), &io, &pins, "macos")
-            .unwrap_err()
+            .unwrap()
             .contains("already installed"));
         assert!(run_inner(&args("update"), &io, &pins, "macos")
             .unwrap()
