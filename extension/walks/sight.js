@@ -40,17 +40,21 @@ function recolour(px, { m, add, linear }) {
   }
 }
 
-/** The corner label, bottom left, so the replay says whose view it is. */
-function label(ctx, text, height) {
+/**
+ * The corner label, so the replay says whose view it is. Bottom right: bottom left sits on a sidebar's foot, where
+ * links like Sign out live.
+ */
+function label(ctx, text, right, height) {
   ctx.font = '600 13px system-ui, sans-serif';
   const width = ctx.measureText(text).width + 16;
+  const left = right - width - 8;
   ctx.fillStyle = 'rgba(20, 20, 20, 0.78)';
   ctx.beginPath();
-  ctx.roundRect(8, height - 34, width, 26, 6);
+  ctx.roundRect(left, height - 34, width, 26, 6);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 16, height - 21);
+  ctx.fillText(text, left + 8, height - 21);
 }
 
 /** A picture (base64, `format`) as the persona sees it, as base64 again; as it came while the experiment is off. */
@@ -73,7 +77,7 @@ export async function seenAs(data, format = 'png', quality) {
   const pixels = ctx.getImageData(0, 0, width, height);
   recolour(pixels.data, look);
   ctx.putImageData(pixels, 0, 0);
-  label(ctx, COPY.seenAs[sight], height);
+  label(ctx, COPY.seenAs[sight], width, height);
   const blob = await canvas.convertToBlob({ type: `image/${format}`, ...(quality === undefined ? {} : { quality: quality / 100 }) });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let text = '';
