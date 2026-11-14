@@ -25,7 +25,8 @@
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
 //     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
-//     opens; a native dialog is dismissed.
+//     opens; a native dialog is dismissed. The one file a walk ever gives a page is the drawn sample photo shipped
+//     beside this file (driver.js `upload`): the op says where, never which file.
 // And it fails closed: a walked tab seen anywhere it should not be loses the debugger at once, which ends the walk.
 //
 // It knowingly does NOT defend

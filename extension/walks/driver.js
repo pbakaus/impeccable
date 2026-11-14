@@ -638,6 +638,60 @@ function expression({ fn, args, undef }) {
   return `(${fn}\n)(${args.map((arg, i) => (undef?.includes(i) ? 'undefined' : JSON.stringify(arg))).join(',')})`;
 }
 
+/** The one picture a walk ever attaches: a drawn face shipped in this folder. Nothing from the person's computer. */
+const SAMPLE = { file: 'walks/sample-photo.png', name: 'sample-photo.png', type: 'image/png' };
+let sampleData = null;
+async function samplePhoto() {
+  if (sampleData) return sampleData;
+  const bytes = new Uint8Array(await (await fetch(chrome.runtime.getURL(SAMPLE.file))).arrayBuffer());
+  let text = '';
+  for (const byte of bytes) text += String.fromCharCode(byte);
+  return (sampleData = btoa(text));
+}
+
+/**
+ * Runs in the page: gives the picture to what is at (x, y). A file field, or the label of one, takes it as if picked;
+ * else a drop area that accepts a drag takes it as if dropped. 'picker', 'drop', or null when nothing there takes a file.
+ */
+function attach(x, y, data, name, type) {
+  const at = document.elementFromPoint(x, y);
+  if (!at) return null;
+  const file = new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, { type });
+  const files = () => { const dt = new DataTransfer(); dt.items.add(file); return dt; };
+  const label = at.closest('label');
+  const field = [at, label?.control, label?.querySelector('input[type=file]')].find((el) => el instanceof HTMLInputElement && el.type === 'file' && !el.disabled);
+  if (field) {
+    field.files = files().files;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    return 'picker';
+  }
+  // A drop area says so by cancelling dragover (the HTML drag model). Only the box at the point, up to body's child,
+  // counts: a page that cancels it on the document or body would make every point look like one.
+  let box = at;
+  while (box.parentElement && box.parentElement !== document.body) box = box.parentElement;
+  if (box.parentElement !== document.body) return null;
+  const dt = files();
+  const drag = (kind) => {
+    const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y });
+    // Uncancelled on the way into the box, cancelled on the way out; or stopped inside it, so cancelled there.
+    let before, after;
+    const into = () => { before = e.defaultPrevented; };
+    const out = () => { after = e.defaultPrevented; };
+    box.addEventListener(kind, into, true);
+    box.addEventListener(kind, out);
+    at.dispatchEvent(e);
+    box.removeEventListener(kind, into, true);
+    box.removeEventListener(kind, out);
+    return before === false && (after ?? e.defaultPrevented);
+  };
+  // One that does not cancel it is never dropped on, so no handler further out takes a file this says it did not give.
+  const wanted = [drag('dragenter'), drag('dragover')].some(Boolean);
+  if (!wanted) { drag('dragleave'); return null; }
+  drag('drop');
+  return 'drop';
+}
+
 /** The keys a press may name (the engine's `normalizeKey`), as the protocol wants them. */
 const KEYS = {
   Enter: { code: 'Enter', vk: 13, text: '\r' },
@@ -915,6 +969,23 @@ export const ops = {
       }
     }
     return {};
+  },
+
+  // Only where: the picture is always the one bundled here (SAMPLE), never a name, path or address from anyone.
+  async upload({ x, y }) {
+    const at = fences;
+    if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
+    const data = await samplePhoto();
+    overtaken(at);
+    walk.lastInputAt = Date.now();
+    // In a world of our own: the page sees the file and its events, never the code that made them.
+    const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: walk.mainFrame, worldName: 'impeccable-walk-upload' });
+    // Looked at again after the wait, as a click looks before its press: a pause or another site meanwhile gives nothing.
+    if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
+    overtaken(at);
+    const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression({ fn: String(attach), args: [Number(x), Number(y), data, SAMPLE.name, SAMPLE.type] }), contextId: executionContextId, returnByValue: true, userGesture: true });
+    if (exceptionDetails || !result?.value) throw fail('NotFound', 'nothing there takes a file');
+    return { value: result.value };
   },
 
   async waitForNetworkIdle({ idleTime, timeout }) {
