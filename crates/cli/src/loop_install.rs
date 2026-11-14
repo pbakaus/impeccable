@@ -492,7 +492,12 @@ pub(crate) fn after_login(io: &mut Io) {
         )),
     }
     if !connected.is_empty() {
+        // offer_taste asks on stdout; login keeps stdout for the sign-in link, so its
+        // question goes to stderr with the rest of login's words.
+        let err = std::mem::replace(&mut io.stderr, Box::new(std::io::sink()));
+        let out = std::mem::replace(&mut io.stdout, err);
         let (lines, _) = crate::loop_connect::offer_taste(io, &connected, crate::loop_connect::Taste::Ask);
+        io.stderr = std::mem::replace(&mut io.stdout, out);
         io.err(&lines);
     }
 }
