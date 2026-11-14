@@ -20,6 +20,7 @@ const OUTPUT_BUDGET_CHARS: usize = 24_000;
 
 pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     match provider_id {
+        "antigravity" => &[".agents/hooks.json"],
         "claude-code" => &[".claude/settings.local.json", ".claude/settings.json"],
         "codex" | "agents" => &[".codex/hooks.json"],
         "cursor" => &[".cursor/hooks.json"],
@@ -34,6 +35,7 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
 /// provider's manifest. `None`: that verb has no target for the provider.
 fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
     let dir = match provider_id {
+        "antigravity" => ".agent",
         "claude-code" => ".claude",
         "codex" | "agents" => ".agents",
         "cursor" => ".cursor",
@@ -60,6 +62,7 @@ pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
 /// empty. A non-empty CODEX_HOME is exclusive.
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
     match provider_id {
+        "antigravity" => Some(jsp::join(&[&crate::util::homedir(env), ".gemini", "config", "hooks.json"])),
         "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
@@ -69,7 +72,7 @@ pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<Str
     }
 }
 
-const STOP_REVIEW_PROVIDERS: [&str; 4] = ["claude-code", "codex", "agents", "grok"];
+const STOP_REVIEW_PROVIDERS: [&str; 5] = ["antigravity", "claude-code", "codex", "agents", "grok"];
 
 // Only the launcher-era design hook counts as an active automatic hook. A
 // manifest that still names the JS-era `.mjs` script (a pre-launcher install
@@ -140,8 +143,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         }
         for rel in manifests {
             if let Some(raw) = read_json(&jsp::join(&[&root, rel])) {
-                if let Some(h) = raw.get("hooks") {
-                    if crate::staleness::js_truthy(h) && value_has_hook_marker(h) {
+                if let Some(h) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                    if crate::staleness::js_truthy(&h) && value_has_hook_marker(&h) {
                         return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
                     }
                 }
@@ -150,8 +153,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     }
     if let Some(path) = user_hook_manifest(&provider.id, cwd, env) {
         if let Some(raw) = read_json(&path) {
-            if let Some(hooks) = raw.get("hooks") {
-                if crate::staleness::js_truthy(hooks) && value_has_hook_marker(hooks) {
+            if let Some(hooks) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                if crate::staleness::js_truthy(&hooks) && value_has_hook_marker(&hooks) {
                     return "stop";
                 }
             }
@@ -401,7 +404,7 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
         // Gemini's settings file may carry comments, and `hooks on` reads it the same way.
         safe_read(p)
             .and_then(|text| crate::hook_markers::parse_manifest_jsonc(&text))
-            .and_then(|(raw, _)| raw.get("hooks").cloned())
+            .and_then(|(raw, _)| crate::hook_markers::active_manifest_hook_subtree(&raw))
             .map(|hooks| crate::staleness::js_truthy(&hooks) && crate::hook_markers::value_has_impeccable_hook_marker(&hooks))
             .unwrap_or(false)
     });

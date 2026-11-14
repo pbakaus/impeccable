@@ -375,7 +375,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         // pass. Remembering here would dedupe those findings out of Stop.
         // Touch the file so Stop has it, and leave the finding list empty
         // (#646).
-        if harness == "grok" {
+        if matches!(harness, "grok" | "antigravity") {
             touch_file(&mut cache, &session_id, file_path);
         } else {
             // Deferred findings a Stop pass already reported stay remembered;
@@ -426,7 +426,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
 
-    if !fresh_groups.is_empty() {
+    if !fresh_groups.is_empty() && harness != "antigravity" {
         let scan = &scans[&fresh_groups[0].file_path];
         let short = footer_mode_short(&mut cache, &session_id);
         let reserve = design_note_reserve(rt, scan, &mut cache, &session_id);
@@ -509,11 +509,29 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // this, clean-edit editCount bumps would stop persisting the moment
     // state relocates. Under stock paths the cache sits inside
     // `.impeccable/`, so the extra check changes nothing there.
+    // Antigravity skips the emit branch above (its PostToolUse stdout is
+    // ignored), which is where every other harness persists fresh findings.
+    // Persist them here instead so Stop sees the touched file even in a
+    // project with no `.impeccable/` yet.
     let wants_persist = deferred_total > 0
+        || (harness == "antigravity" && !fresh_groups.is_empty())
         || (cache_dirty
             && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))));
     if wants_persist && persist_cache(rt, &project_cwd, &cache) {
         record_session_root(rt, harness, &session_value, &project_cwd);
+    }
+
+    if harness == "antigravity" {
+        return RunResult {
+            stdout: "{}".to_string(),
+            audit: with(
+                &audit,
+                vec![
+                    ("emitted", Value::Bool(false)),
+                    ("durationMs", ms_since(started)),
+                ],
+            ),
+        };
     }
 
     if detector_threw_any && pending_winner.is_none() && clean_winner.is_none() {
@@ -689,6 +707,22 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     if harness == "grok" {
         if let Some(Value::String(reason)) = event.get("reason") {
             if reason != "end_turn" {
+                return result(
+                    &audit,
+                    vec![
+                        ("skipped", Value::from("stop-reason")),
+                        ("reason", Value::String(reason.clone())),
+                        ("durationMs", ms_since(started)),
+                    ],
+                );
+            }
+        }
+    }
+    if harness == "antigravity" {
+        // The binary spells the reason `NO_TOOL_CALL`; the published docs
+        // show `model_stop` for the same natural end of a turn.
+        if let Some(Value::String(reason)) = event.get("terminationReason") {
+            if !reason.eq_ignore_ascii_case("NO_TOOL_CALL") && !reason.eq_ignore_ascii_case("model_stop") {
                 return result(
                     &audit,
                     vec![
@@ -1075,6 +1109,13 @@ fn is_stop_event(stdin: &str) -> bool {
     }
 }
 
+fn antigravity_stdin(rt: &Runtime, stdin: &str) -> bool {
+    match serde_json::from_str::<Value>(stdin) {
+        Ok(Value::Object(o)) => resolve_harness(rt, Some(&o)) == "antigravity",
+        _ => rt.env("IMPECCABLE_HOOK_HARNESS") == Some("antigravity"),
+    }
+}
+
 /// `impeccable hook` (hook.mjs main). Returns the exit code (always 0).
 pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(stdin) {
@@ -1110,6 +1151,11 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     write_audit_log(rt, &result.audit, &rt.proc_cwd);
     if !result.stdout.is_empty() {
         io.out(&result.stdout);
+    } else if antigravity_stdin(rt, stdin) {
+        // Antigravity reads hook stdout as JSON; an early skip (disabled, no
+        // file, duplicate, a Stop with nothing to report) still answers with
+        // the empty object.
+        io.out("{}");
     }
     0
 }
