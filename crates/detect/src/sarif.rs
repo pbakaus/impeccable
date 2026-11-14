@@ -194,7 +194,7 @@ fn physical_location(finding: &Finding, cwd: &str, workspace: Option<&str>) -> O
     } else if let Some(path) = absolute_file_path(&raw) {
         (format!("file://{}", encode_uri_reference(&path)), true)
     } else {
-        (encode_uri_reference(&raw), false)
+        (encode_relative_reference(&raw), false)
     };
     let mut artifact = serde_json::Map::new();
     artifact.insert("uri".into(), Value::String(uri));
@@ -234,6 +234,21 @@ fn start_line(line: f64) -> Option<u32> {
         None
     } else {
         Some(line.floor() as u32)
+    }
+}
+
+/// A relative reference under %SRCROOT%. RFC 3986 section 4.2 lets no colon
+/// sit in its first segment, where a reader would take `theme:` in
+/// `theme:dark.css` for a scheme, so a colon there is percent-encoded.
+fn encode_relative_reference(path: &str) -> String {
+    let encoded = encode_uri_reference(path);
+    match encoded.find('/') {
+        Some(slash) => format!(
+            "{}{}",
+            encoded[..slash].replace(':', "%3A"),
+            &encoded[slash..]
+        ),
+        None => encoded.replace(':', "%3A"),
     }
 }
 
@@ -413,6 +428,18 @@ mod tests {
             result_at(&log, 0)["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
             "my%20file%231.html"
         );
+    }
+
+    #[test]
+    fn a_colon_in_the_first_relative_segment_is_encoded() {
+        let uri = |file: &str| {
+            let log = parse(&[finding("side-tab", file, "snip", 1.0)], None);
+            result_at(&log, 0)["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                .clone()
+        };
+        assert_eq!(uri("theme:dark.css"), "theme%3Adark.css");
+        assert_eq!(uri("a:b/c:d.css"), "a%3Ab/c:d.css");
+        assert_eq!(uri("styles/theme:dark.css"), "styles/theme:dark.css");
     }
 
     #[test]
