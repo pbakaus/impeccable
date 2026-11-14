@@ -232,6 +232,12 @@ fn record(
         )?;
     }
     page.motion_command("Animation.setPlaybackRate", json!({"playbackRate":1}))?;
+    // Finishing the animations while the DevTools Animation domain still
+    // tracks them crashes the renderer intermittently on Linux Chrome 156
+    // (`Inspector.targetCrashed` inside `Animation.finish()`, about one
+    // capture in ten on CI). Every sample is taken by now, so the domain is
+    // released first.
+    page.motion_command("Animation.disable", json!({}))?;
     page.evaluate_value(&format!("{STATE}.finish()"))?;
     sample(
         &mut page,

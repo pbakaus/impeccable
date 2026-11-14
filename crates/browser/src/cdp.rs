@@ -804,7 +804,16 @@ impl<'a> Page<'a> {
         let out = loop {
             match self.browser.conn.next(id, method, deadline) {
                 Ok(Reply::Result(value)) => break Ok(value),
-                Ok(Reply::Event(ev)) => self.on_event(&ev),
+                Ok(Reply::Event(ev)) => {
+                    // A crashed renderer answers nothing more, so the call
+                    // fails now instead of waiting out the protocol timeout.
+                    let crashed = ev.get("method").and_then(Value::as_str) == Some("Inspector.targetCrashed")
+                        && ev.get("sessionId").and_then(Value::as_str) == Some(sid.as_str());
+                    self.on_event(&ev);
+                    if crashed {
+                        break Err(CdpError::new(format!("{method}: the page crashed (renderer process ended)")));
+                    }
+                }
                 Err(e) => break Err(e),
             }
         };
@@ -815,7 +824,7 @@ impl<'a> Page<'a> {
     /// Capture-only animation timeline control and trusted input on a disposable page.
     pub fn motion_command(&mut self, method: &str, params: Value) -> CdpResult<Value> {
         match method {
-            "Animation.enable" | "Animation.setPlaybackRate" | "Input.dispatchMouseEvent" | "Input.dispatchKeyEvent" => self.send(method, params),
+            "Animation.enable" | "Animation.disable" | "Animation.setPlaybackRate" | "Input.dispatchMouseEvent" | "Input.dispatchKeyEvent" => self.send(method, params),
             _ => Err(CdpError::new("Unsupported motion protocol command")),
         }
     }
