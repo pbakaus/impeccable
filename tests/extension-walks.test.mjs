@@ -518,6 +518,13 @@ describe('walk worker', () => {
       const [, , , white, black] = (await seen('older')).px;
       assert.ok(white.every((v) => v < 230) && black.every((v) => v > 15), `older eyes see less contrast: ${white} ${black}`);
       assert.ok(white[2] < white[0] - 15, `and less blue: ${white}`);
+      // A full page, taller than the tab: the replay keeps its top and right edge, so the label goes there, sized to it.
+      let box = null;
+      const context = OffscreenCanvas.prototype.getContext;
+      OffscreenCanvas.prototype.getContext = function () { return { ...context.call(this), roundRect: (x, y, w, h) => { box = { x, y, w, h }; } }; };
+      globalThis.createImageBitmap = async () => ({ width: 2108, height: 1498, px: new Uint8ClampedArray(2108 * 1498 * 4), close() {} });
+      await seen('older');
+      assert.ok(box && box.y < 50 && box.x > 2108 / 2 && box.h >= 40, `the label sits top right, big enough to read when shrunk: ${JSON.stringify(box)}`);
     } finally {
       await chrome.storage.local.remove('walkSight');
       answers['Page.captureScreenshot'] = kept.shot;

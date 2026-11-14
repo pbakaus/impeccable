@@ -41,20 +41,22 @@ function recolour(px, { m, add, linear }) {
 }
 
 /**
- * The corner label, so the replay says whose view it is. Bottom right: bottom left sits on a sidebar's foot, where
- * links like Sign out live.
+ * The corner label, so the replay says whose view it is. Top right: the replay shows a picture at the tab's shape from
+ * the top down, so a taller picture loses its foot, but never its top or right edge. Sized to the picture, so it stays
+ * readable when the replay shrinks a wide picture.
  */
-function label(ctx, text, right, height) {
-  ctx.font = '600 13px system-ui, sans-serif';
-  const width = ctx.measureText(text).width + 16;
-  const left = right - width - 8;
+function label(ctx, text, right) {
+  const size = Math.max(13, Math.round(right / 80));
+  ctx.font = `600 ${size}px system-ui, sans-serif`;
+  const width = ctx.measureText(text).width + size * 1.2;
+  const left = right - width - size * 0.6;
   ctx.fillStyle = 'rgba(20, 20, 20, 0.78)';
   ctx.beginPath();
-  ctx.roundRect(left, height - 34, width, 26, 6);
+  ctx.roundRect(left, size * 0.6, width, size * 2, size / 2);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, left + 8, height - 21);
+  ctx.fillText(text, left + size * 0.6, size * 1.6);
 }
 
 /** A picture (base64, `format`) as the persona sees it, as base64 again; as it came while the experiment is off. */
@@ -78,7 +80,7 @@ export async function seenAs(data, format = 'png', quality) {
   recolour(pixels.data, look);
   ctx.putImageData(pixels, 0, 0);
   // A small picture (one element's clip) is all page: no room for the label.
-  if (width >= 400 && height >= 120) label(ctx, COPY.seenAs[sight], width, height);
+  if (width >= 400 && height >= 120) label(ctx, COPY.seenAs[sight], width);
   const blob = await canvas.convertToBlob({ type: `image/${format}`, ...(quality === undefined ? {} : { quality: quality / 100 }) });
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let text = '';
