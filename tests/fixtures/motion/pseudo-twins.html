@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>Two animated pseudos</title>
+<style>
+body { margin: 40px; } #region { width: 500px; height: 400px; position: relative; }
+#first, #second { position: absolute; width: 100px; height: 100px; top: 40px; }
+#second { left: 150px; }
+#first::before, #second::before { content: ""; position: absolute; left: 0; top: 0; width: 30px; height: 30px; background: teal; }
+.run::before { animation: slide 600ms linear both; }
+@keyframes slide { from { transform: translateX(0); } to { transform: translateX(40px); } }
+</style><button id="go">Run motion</button><div id="region"><div id="first"></div><div id="second"></div></div>
+<script>go.onclick = () => { first.classList.add('run'); second.classList.add('run'); };</script>

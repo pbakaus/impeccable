@@ -502,6 +502,7 @@ describe('degraded-mode fallback reference generation', () => {
       'documenter.md',
       'finish-reviewer.md',
       'manual-edit-applier.md',
+      'motion-reviewer.md',
     ]);
   });
 
@@ -579,6 +580,7 @@ describe('GitHub Copilot custom agent generation', () => {
       'impeccable-documenter.agent.md',
       'impeccable-finish-reviewer.agent.md',
       'impeccable-manual-edit-applier.agent.md',
+      'impeccable-motion-reviewer.agent.md',
     ]);
   });
 
@@ -622,6 +624,7 @@ describe('GitHub Copilot custom agent generation', () => {
       'documenter.md',
       'finish-reviewer.md',
       'manual-edit-applier.md',
+      'motion-reviewer.md',
     ]);
   });
 });
@@ -650,6 +653,7 @@ describe('Cursor subagent generation', () => {
       'impeccable-documenter.md',
       'impeccable-finish-reviewer.md',
       'impeccable-manual-edit-applier.md',
+      'impeccable-motion-reviewer.md',
     ]);
   });
 
@@ -666,9 +670,8 @@ describe('Cursor subagent generation', () => {
       expect(frontmatter).not.toContain('tools:');
       expect(frontmatter).not.toContain('effort:');
       expect(frontmatter).not.toContain('maxTurns:');
-      // The finish reviewer is the only role whose tool list has no Write or
-      // Edit; it reviews, the other three write.
-      if (name === 'impeccable-finish-reviewer.md') {
+      // Both reviewers omit Write and Edit; production roles can write.
+      if (name === 'impeccable-finish-reviewer.md' || name === 'impeccable-motion-reviewer.md') {
         expect(frontmatter).toContain('readonly: true');
       } else {
         expect(frontmatter).not.toContain('readonly:');

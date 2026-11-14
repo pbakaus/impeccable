@@ -2304,6 +2304,75 @@ this rule to an existing unsubmitted draft. It verifies stored image blobs and
 current source integrity, preserves any new reviewer decisions, records the
 prior approval revision, and leaves packet revisions and old receipts unchanged.
 
+## `motion-capture` (skill-internal)
+
+`impeccable motion-capture <url> --click <selector> --out-dir <directory>`
+records evidence for animate's motion reviewer; it is not a user-facing skill
+command. `--steps <json-file>` replaces `--click`: an array of at most 20
+single-action objects (`click`, `hover`, `press`, `wait`). Press accepts Enter,
+Space, Tab, Escape, and arrow keys; wait is bounded to 2000 ms. Input uses CDP
+mouse/key events. URL schemes are HTTP, HTTPS, and file, including local dev
+servers. No service or remote dependency is contacted by the recorder.
+
+Options: `--region <selector|[x,y,width,height]>`, `--frames <3..15>` (default 7
+animated samples), and `--reduced-motion`. Capture uses a 1000×760 viewport and
+a fixed region wholly inside it; a missing selector or out-of-view target is
+an error. Record an entrance and its exit separately. A step list triggers one
+recording, not a separate timeline per action; JavaScript timers and mutations
+are not rewindable. Animations are frozen while collecting the list and sought
+together. Use separate captures for sequences whose intermediate actions or
+JavaScript timers drive essential changes.
+
+Outputs: `frame-00.png` onward, a three-column `filmstrip.png` in frame order,
+self-contained `index.html` with a labeled frame scrubber, and `report.json`.
+The manifest is invalidated before a recapture and written last. Frames include
+before, first, evenly spaced middles, last animated (just before completion),
+and settled (250 ms after finishing). Reports include per-frame transformed
+boxes, cumulative opacity, ancestor overflow clips, clip-path style, direct
+content/child identities, box shadows, pairwise overlap paint order, and animation
+timing. Animation playback rates and initial positions are preserved: duration
+and sample times use wall-clock milliseconds, including reverse playback; a
+zero-rate animation stays fixed. Resting animations present before the interaction
+are not rewound.
+
+Finding kinds: `start-jump`, `end-jump`, `mid-step`, `paint-order-flip`,
+`clipped-midway`, `content-swap`, `reduced-motion-ignored`, `entrance-replay`,
+`crossfade-dip`, `orphan-linger`, and `end-paint-swap`. Each carries `element`,
+`frameIndex`, `timeMs`, and `magnitude` (box/opacity step in pixels/percentage
+points, clipped area fraction, categorical 1, duration ratio, opacity-sum
+deviation from 1, or milliseconds past surrounding motion). Shadow boundary
+findings also carry `property: "box-shadow"`.
+
+A new CSS animation on a selector with a visible box before the interaction is
+an `entrance-replay`, including replacement DOM nodes. View Transition reports
+include group boxes, old/new opacity, blend mode, isolation, background, and
+per-group completion times. For paired groups, an old+new opacity sum outside
+[0.95, 1.05] in more than one sampled frame produces `crossfade-dip` findings
+with `opacitySum`; this covers both washout and over-exposure. Old-only or
+new-only animated groups still visible more than 20 ms after paired spatial
+motion ends produce `orphan-linger`. Transition group stacking uses computed
+z-index and pseudo-tree order; the final animated order is compared with
+settled DOM hit-test order for `end-paint-swap`. Nested transition groups and
+other complex compositing still require visual review.
+
+Reduced capture runs a fresh normal baseline, then reloads with reduced motion
+emulated before navigation. Unchanged spatial movement (at least 90% of the
+baseline range) at at least 90% of its full duration is reported when the normal
+motion lasts at least 100 ms. Shorter or smaller movement still needs the
+reviewer's accessibility check. Opacity-only alternatives are not mechanically
+flagged. Both runs replay the interaction, so use a disposable development state
+for actions that write application data.
+
+Exit 0 means evidence was recorded, even with findings. JSON goes to stdout;
+a short summary goes to stderr. Exit 1 means incomplete capture, never a clean
+verdict. Infinite or longer-than-10-second animations and animations still
+running after the settle window are refused. The scrubber contains only inline
+frame data and does not load the tested page. Sampling and DOM measurements do
+not prove visual continuity: pseudo-element geometry is approximate, hit testing
+does not cover every paint effect, and masks, canvas, cross-origin frames,
+closed shadow roots, and timer-driven changes require visual review. The fresh
+motion reviewer owns the final craft and continuity verdict.
+
 ### Engine download failures in launchers and the npm shim
 
 The POSIX launcher (curl path), Windows launcher (curl.exe), and npm shim

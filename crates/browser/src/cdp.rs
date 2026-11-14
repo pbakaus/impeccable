@@ -816,12 +816,29 @@ impl<'a> Page<'a> {
         let out = loop {
             match self.browser.conn.next(id, method, deadline) {
                 Ok(Reply::Result(value)) => break Ok(value),
-                Ok(Reply::Event(ev)) => self.on_event(&ev),
+                Ok(Reply::Event(ev)) => {
+                    // A crashed renderer answers nothing more, so the call
+                    // fails now instead of waiting out the protocol timeout.
+                    let crashed = ev.get("method").and_then(Value::as_str) == Some("Inspector.targetCrashed")
+                        && ev.get("sessionId").and_then(Value::as_str) == Some(sid.as_str());
+                    self.on_event(&ev);
+                    if crashed {
+                        break Err(CdpError::new(format!("{method}: the page crashed (renderer process ended)")));
+                    }
+                }
                 Err(e) => break Err(e),
             }
         };
         self.pump_events();
         out
+    }
+
+    /// Capture-only animation timeline control and trusted input on a disposable page.
+    pub fn motion_command(&mut self, method: &str, params: Value) -> CdpResult<Value> {
+        match method {
+            "Animation.enable" | "Animation.disable" | "Animation.setPlaybackRate" | "Input.dispatchMouseEvent" | "Input.dispatchKeyEvent" => self.send(method, params),
+            _ => Err(CdpError::new("Unsupported motion protocol command")),
+        }
     }
 
     /// Start a fresh diagnostic journal before navigation. Cache, authentication,
@@ -1726,6 +1743,33 @@ impl<'a> Page<'a> {
         width: f64,
         height: f64,
     ) -> CdpResult<String> {
+        let beyond = !self.attached;
+        self.screenshot_clip_with(x, y, width, height, beyond)
+    }
+
+    /// [`Page::screenshot_clip`] for a clip inside the viewport, read off the
+    /// surface as it is. A beyond-viewport capture lays the page out again at
+    /// the clip's size, and that relayout skips a running view transition
+    /// (`document.activeViewTransition` ends while its animations are
+    /// paused), so a motion capture must never take one.
+    pub fn screenshot_clip_in_viewport(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> CdpResult<String> {
+        self.screenshot_clip_with(x, y, width, height, false)
+    }
+
+    fn screenshot_clip_with(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        beyond: bool,
+    ) -> CdpResult<String> {
         // Page.screenshot: roundRectangle(normalizeRectangle(clip)).
         let (x, width) = if width < 0.0 {
             (x + width, -width)
@@ -1749,7 +1793,7 @@ impl<'a> Page<'a> {
                 // A beyond-viewport capture lays the page out at the size of
                 // the clip for the shot, which an attached app's window would
                 // show: it reads what is on screen instead.
-                "captureBeyondViewport": !self.attached,
+                "captureBeyondViewport": beyond,
             }),
             timeout,
         )?;

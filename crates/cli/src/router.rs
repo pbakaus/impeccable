@@ -63,6 +63,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
+        "motion-capture" => impeccable_browser::motion::run(rest, io),
         "detect" => detect(rest, io, &engines, pack.rule_pack),
         "foundations" => crate::foundations::run(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
@@ -283,6 +284,7 @@ const KNOWN_VERBS: &[&str] = &[
     "--version",
     "-v",
     "engine-probe",
+    "motion-capture",
     "ignores",
     "ignore",
     "login",

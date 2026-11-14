@@ -206,7 +206,11 @@ function validatePluginVersions(rootDir) {
  * this wrapper owns the console output and the error count the build gates on.
  */
 function validatePluginManifestShape(rootDir) {
-  const findings = collectPluginManifestFindings(rootDir);
+  // Source-first builds validate the newly emitted agents; tracked plugin output
+  // is intentionally refreshed only by release/main-sync builds.
+  const findings = collectPluginManifestFindings(rootDir, BUILD_OPTIONS.syncRootOutputs ? {} : {
+    agentsDir: path.join(DIST_DIR, 'claude-code', '.claude', 'agents'),
+  });
   for (const { relPath, reason } of findings) {
     console.error(`  ❌ ${relPath}: ${reason}`);
   }
