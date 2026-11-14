@@ -73,6 +73,8 @@ export const COPY = {
     edit: 'Edit the task',
     start: 'Start journey',
     at: { tablet: 'At tablet width, 820 × 1180', phone: 'At phone width, 390 × 844' },
+    /** The width picked, when the server could not be asked whether it takes one: the walk runs as the tab is. */
+    atDesktop: 'At desktop width. Couldn’t check that your server takes another.',
   },
 
   walking: {

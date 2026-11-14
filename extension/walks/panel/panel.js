@@ -241,9 +241,10 @@ async function plan() {
   pre.screen = 'planning';
   pre.note = '';
   render();
-  const answer = await chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task: pre.task, tabId: here }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task: pre.task, tabId: here, device: pre.width }).catch(() => null);
   if (pre.screen !== 'planning') return;
-  if (answer?.ok) { pre.plan = answer.plan; pre.screen = 'plan'; } else { pre.note = WHY[answer?.why] ?? COPY.why.failed; pre.screen = 'home'; }
+  // `runAt`: the width this walk will run at, which is Desktop where the server's word on widths was never heard.
+  if (answer?.ok) { pre.plan = answer.plan; pre.runAt = WIDTHS.includes(answer.width) ? answer.width : pre.width; pre.screen = 'plan'; } else { pre.note = WHY[answer?.why] ?? COPY.why.failed; pre.screen = 'home'; }
   render();
 }
 
@@ -253,7 +254,7 @@ async function go(start) {
   start.disabled = true;
   walker = { name: person.name, face: person.face ?? null };
   ended = false;
-  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.width }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.runAt ?? pre.width }).catch(() => null);
   if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
   pre.note = WHY[answer?.why] ?? COPY.why.failed;
   // A plan the server no longer takes (expired, or for another task or site): back to the box, to send again.
@@ -273,7 +274,7 @@ function planned() {
     top(),
     el('div', { class: 'plan-head' }, face(person, 56, 'confident'), el('h2', { class: 'hd', text: COPY.plan.title(person.name) })),
     el('q', { class: 'task', text: pre.task }),
-    COPY.plan.at[pre.width] ? el('p', { class: 'task at', 'data-width': pre.width }, icon(pre.width), COPY.plan.at[pre.width]) : null,
+    COPY.plan.at[pre.width] ? el('p', { class: 'task at', 'data-width': pre.runAt ?? pre.width }, icon(pre.runAt ?? pre.width), pre.runAt === 'desktop' ? COPY.plan.atDesktop : COPY.plan.at[pre.width]) : null,
     el('ul', { class: 'plan' }, pre.plan.steps.map((line) => el('li', { class: line.risky ? 'risky' : '', 'data-risky': line.risky ? 'yes' : undefined }, el('i', { text: line.risky ? '!' : '' }), el('span', { text: line.text })))),
     el('span', { class: 'grow' }),
     pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,

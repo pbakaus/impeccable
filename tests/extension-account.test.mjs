@@ -387,6 +387,28 @@ describe('account worker', () => {
     });
   }
 
+  // When /me can't be read, the last answer this server gave on widths stands; with none ever, the walk runs at Desktop and its plan says so.
+  for (const [label, kept, width] of [['its last answer, kept', true, 'phone'], ['no answer ever', undefined, 'desktop']]) {
+    it(`plans and starts a Phone walk when the server can't be asked about widths: ${label}`, async () => {
+      await loaded;
+      startServer(() => json(201, { handoff: HANDOFF }));
+      const served = globalThis.fetch;
+      globalThis.fetch = async (url, init = {}) => {
+        if (url === `${ISSUER}/extension/v1/me`) return json(503, {});
+        if (url === `${ISSUER}/extension/v1/walks/plan`) return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } });
+        return served(url, init);
+      };
+      await chrome.storage.local.remove(`widths:${ISSUER}`);
+      if (kept !== undefined) await chrome.storage.local.set({ [`widths:${ISSUER}`]: kept });
+      const planned = await ask({ account: 'plan', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone' }, fromPopup);
+      assert.equal(planned.width, width, JSON.stringify(planned));
+      delete session.handoff;
+      (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
+      assert.equal((await ask({ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone' }, fromPopup)).ok, true);
+      assert.deepEqual([posted.at(-1).body.device, session.handoff.device], width === 'phone' ? ['mobile', 'phone'] : [undefined, undefined]);
+    });
+  }
+
   // Making a persona: each answer the server gives, as the popup hears it.
   const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
   const create = (description) => ask({ account: 'create', description }, fromPopup);

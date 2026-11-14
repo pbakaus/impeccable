@@ -140,6 +140,8 @@ async function sizeTo(device) {
   const size = DEVICES[device];
   if (!size) return;
   walk.sized = device;
+  // Kept beyond this worker: one Chrome ends mid-journey leaves the tab to the next to give back (`giveBack`).
+  await chrome.storage.session.set({ sizedTab: { tabId: walk.tabId, device } }).catch(() => undefined);
   await cmd('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: 1, mobile: true });
   await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await cmd('Emulation.setUserAgentOverride', agentOf(device));
@@ -155,6 +157,19 @@ async function unsize(tab) {
   const to = sendTo(tab.tabId);
   await Promise.all([to('Emulation.clearDeviceMetricsOverride'), to('Emulation.setTouchEmulationEnabled', { enabled: false }), to('Emulation.setUserAgentOverride', { userAgent: '' })]
     .map((done) => done.catch(() => undefined)));
+  await chrome.storage.session.remove('sizedTab').catch(() => undefined);
+}
+
+/** The walked tab's page, loaded again once under its new size and user agent, before anything is taken of it. */
+async function reloadSized() {
+  const page = watch();
+  const was = walk.loader;
+  try {
+    await cmd('Page.reload');
+    await page.wait((e) => e.kind === 'lifecycle' && e.name === 'load' && e.loaderId !== was, OPEN_MS, 'slow').catch(() => undefined);
+  } finally {
+    page.stop();
+  }
 }
 
 /** Whether the walked tab is on a site the walk only looks at: another site the person let it go to. */
@@ -531,17 +546,32 @@ chrome.debugger.onDetach.addListener((source, reason) => {
  */
 async function unstick(tab, reason) {
   if (!tab.sized || reason === 'target_closed' || reason === 'replaced_with_devtools') return;
-  const target = { tabId: tab.tabId };
+  await giveBack(tab.tabId, tab.sized);
+}
+
+/**
+ * Gives a tab sized as `device` its own size, touch and user agent back, from a debugger of its own: one attached for
+ * the moment, or the one a worker Chrome ended left attached. Nothing for a tab that is gone.
+ */
+async function giveBack(tabId, device) {
+  const target = { tabId };
+  let attached = false;
+  try { await chrome.debugger.attach(target, '1.3'); attached = true; } catch { /* still ours from before, or gone */ }
   try {
-    await chrome.debugger.attach(target, '1.3');
-  } catch { return; }
-  try {
-    const { width, height } = DEVICES[tab.sized];
+    const { width, height } = DEVICES[device];
     await chrome.debugger.sendCommand(target, 'Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: true });
     await chrome.debugger.sendCommand(target, 'Emulation.clearDeviceMetricsOverride');
-  } catch { /* the tab went meanwhile */ }
+    await chrome.debugger.sendCommand(target, 'Emulation.setTouchEmulationEnabled', { enabled: false });
+    await chrome.debugger.sendCommand(target, 'Emulation.setUserAgentOverride', { userAgent: '' });
+  } catch { if (!attached) return; }
   await chrome.debugger.detach(target).catch(() => undefined);
+  await chrome.storage.session.remove('sizedTab').catch(() => undefined);
 }
+
+// A worker that starts finds no journey under way: a tab the last one sized and never gave back is given back now.
+void chrome.storage.session.get('sizedTab').then(({ sizedTab } = {}) => {
+  if (Number.isInteger(sizedTab?.tabId) && Object.hasOwn(DEVICES, sizedTab.device) && walk?.tabId !== sizedTab.tabId) return giveBack(sizedTab.tabId, sizedTab.device);
+}).catch(() => undefined);
 
 /** Which new tabs are the walked tab's (guard.js). */
 const popups = popupWatch();
@@ -692,6 +722,7 @@ async function adopt(name, allow) {
     walk.firstIndex = (await cmd('Page.getNavigationHistory')).currentIndex ?? 0;
     await arm(cmd);
     await sizeTo(device);
+    if (Object.hasOwn(DEVICES, device ?? '')) await reloadSized();
     for (const hook of hooks.opened) { still(); await hook(walk); }
     still();
     return { value: { tabId, group, before: { width: tab.width, height: tab.height } } };

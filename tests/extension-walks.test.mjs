@@ -658,7 +658,7 @@ describe('walk worker', () => {
     assert.equal(current().state, 'walking');
     await ops.setViewport({ width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
     await assert.rejects(ops.cdp({ method: 'Page.startScreencast', params: {} }), { name: 'NotSupported' });
-    assert.deepEqual(sent.slice(at).filter((m) => ['Page.navigate', 'Emulation.setDeviceMetricsOverride', 'Page.startScreencast'].includes(m)), []);
+    assert.deepEqual(sent.slice(at).filter((m) => ['Page.navigate', 'Page.reload', 'Emulation.setDeviceMetricsOverride', 'Page.startScreencast'].includes(m)), []);
     assert.deepEqual([tabs.made, tabs.removed], [[], []]);
   });
 
@@ -835,7 +835,7 @@ describe('walk worker', () => {
       const log = [];
       const { sendCommand, detach, attach } = chrome.debugger;
       chrome.debugger.sendCommand = async (target, method, params) => {
-        if (method.startsWith('Emulation.')) log.push([method, params]);
+        if (method.startsWith('Emulation.') || method === 'Page.reload') log.push([method, params]);
         if (!end && method === 'Emulation.setTouchEmulationEnabled' && params.enabled) throw new Error('{"message":"no touch here"}');
         return sendCommand(target, method, params);
       };
@@ -845,7 +845,9 @@ describe('walk worker', () => {
         const before = sockets.length;
         assert.equal((await (await import('../extension/walks/link.js')).adopt(started(), 21, device)).ok, true);
         for (let turn = 0; turn < 50 && sockets.length === before; turn++) await settle(1);
-        const opening = ops.open({ url: `${SHOP}/`, name: 'Ines' });
+        // The page loads again under its new size: its `load` comes as Chrome's would.
+        const loaded = setInterval(() => fireOn(21, 'Page.lifecycleEvent', { frameId: 'main', name: 'load', loaderId: 'again' }), 2);
+        const opening = ops.open({ url: `${SHOP}/`, name: 'Ines' }).finally(() => clearInterval(loaded));
         if (!end) {
           await assert.rejects(opening, /no touch here/);
           // The server ends a walk whose tab did not open.
@@ -853,6 +855,10 @@ describe('walk worker', () => {
         }
         else {
           await opening;
+          // Loaded again once, after the size and before anything else; and kept beyond this worker until given back.
+          const methods = log.map(([method]) => method);
+          assert.equal(methods.indexOf('Page.reload'), methods.indexOf('Emulation.setUserAgentOverride') + 1, methods.join());
+          assert.deepEqual((await chrome.storage.session.get('sizedTab')).sizedTab, { tabId: 21, device });
           // The engine's own size for the walk does not undo the person's pick.
           await ops.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
           await end(walk);
@@ -861,10 +867,11 @@ describe('walk worker', () => {
         const { width, height } = DEVICES[device];
         assert.deepEqual(log.find(([method]) => method === 'Emulation.setDeviceMetricsOverride')[1], { width, height, deviceScaleFactor: 1, mobile: true });
         if (end) assert.match(log.find(([method]) => method === 'Emulation.setUserAgentOverride')[1].userAgent, /Android/);
-        const tail = log.slice(-4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : ['attach', 'detach'].includes(method) ? method : `${method}:${JSON.stringify(params ?? {})}`));
+        assert.equal((await chrome.storage.session.get('sizedTab')).sizedTab, undefined);
+        const tail = log.slice(label.startsWith('Cancel') ? -6 : -4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : ['attach', 'detach'].includes(method) ? method : `${method}:${JSON.stringify(params ?? {})}`));
         // Cleared before the debugger leaves; after a debugger that left by itself, a moment's one sets the size and clears it.
         assert.deepEqual(tail, label.startsWith('Cancel')
-          ? ['attach', 'size', 'Emulation.clearDeviceMetricsOverride:{}', 'detach']
+          ? ['attach', 'size', 'Emulation.clearDeviceMetricsOverride:{}', 'Emulation.setTouchEmulationEnabled:{"enabled":false}', 'Emulation.setUserAgentOverride:{"userAgent":""}', 'detach']
           : ['Emulation.clearDeviceMetricsOverride:{}', 'Emulation.setTouchEmulationEnabled:{"enabled":false}', 'Emulation.setUserAgentOverride:{"userAgent":""}', 'detach']);
       } finally {
         Object.assign(chrome.debugger, { sendCommand, detach, attach });
@@ -873,6 +880,25 @@ describe('walk worker', () => {
       }
     });
   }
+
+  it('gives back the size of a tab the last worker sized and never let go of, as the next worker starts', async () => {
+    await ownTab();
+    const log = [];
+    const { sendCommand, detach, attach } = chrome.debugger;
+    chrome.debugger.sendCommand = async (target, method, params) => { log.push(`${target.tabId} ${method}${method === 'Emulation.setDeviceMetricsOverride' ? '' : JSON.stringify(params ?? {})}`); };
+    chrome.debugger.detach = async ({ tabId }) => { log.push(`${tabId} detach`); };
+    chrome.debugger.attach = async ({ tabId }) => { log.push(`${tabId} attach`); };
+    try {
+      await chrome.storage.session.set({ sizedTab: { tabId: 33, device: 'phone' } });
+      // Another worker's driver, as Chrome starts one: the same module, loaded afresh.
+      await import('../extension/walks/driver.js?restarted');
+      await settle(10);
+      assert.deepEqual(log, ['33 attach', '33 Emulation.setDeviceMetricsOverride', '33 Emulation.clearDeviceMetricsOverride{}', '33 Emulation.setTouchEmulationEnabled{"enabled":false}', '33 Emulation.setUserAgentOverride{"userAgent":""}', '33 detach']);
+      assert.equal((await chrome.storage.session.get('sizedTab')).sizedTab, undefined);
+    } finally {
+      Object.assign(chrome.debugger, { sendCommand, detach, attach });
+    }
+  });
 
   // Each on a walk of its own, after the one above has ended: the counts start at nothing.
   for (const [label, answer, asked] of [[`${MAX_OTHER_SITES} other sites`, 'yes', MAX_OTHER_SITES], [`${MAX_SITE_QUESTIONS} questions`, 'no', MAX_SITE_QUESTIONS]]) {

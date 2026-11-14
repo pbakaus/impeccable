@@ -102,7 +102,10 @@ async function asked({ persona, task, tabId }) {
 /** A short plan of the walk, for the person to approve in the side panel before it starts. */
 async function plan(message) {
   const ask = await asked(message);
-  return ask.body ? session.planWalk(ask.body) : { ok: false, why: ask.why };
+  if (!ask.body) return { ok: false, why: ask.why };
+  const planned = await session.planWalk(ask.body);
+  // The width the walk will run at: the one picked, unless this server's word on widths was never heard (`takesWidths`).
+  return planned.ok && Object.hasOwn(SERVER_DEVICE, message.device) ? { ...planned, width: (await takesWidths()) === null ? 'desktop' : message.device } : planned;
 }
 
 /** Who walks, as the side panel picked them: a name, and the face sheet's address when there is one. */
@@ -111,6 +114,18 @@ const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: w
 /** The width the side panel picked, as the server names it (walks/driver.js `DEVICES`); none is the tab as it is. */
 const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
 
+/**
+ * Whether the server in use takes a walk's width (`widths` on /me, REN-1890): its answer now, else the last it gave,
+ * kept per server; null when it never answered. A walk then runs at Desktop rather than at a width it could not file.
+ */
+async function takesWidths() {
+  const key = `widths:${issuer}`;
+  const me = await session.me().catch(() => null);
+  if (me) { await chrome.storage.local.set({ [key]: me.widths }).catch(() => undefined); return me.widths; }
+  const kept = (await chrome.storage.local.get(key).catch(() => ({})))[key];
+  return typeof kept === 'boolean' ? kept : null;
+}
+
 async function walk({ plan: approved, walker, ...message }, panel = Promise.resolve(false)) {
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };
@@ -118,7 +133,9 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
   const at = issuer;
   // Told only to a server that says it takes it (REN-1890): an older one refuses a key it does not know. The tab is laid
   // out at the width either way (link.js `adopt`).
-  const device = Object.hasOwn(SERVER_DEVICE, message.device) && (await session.me().catch(() => null))?.widths ? { device: SERVER_DEVICE[message.device] } : {};
+  const widths = Object.hasOwn(SERVER_DEVICE, message.device) ? await takesWidths() : false;
+  if (widths === null) message.device = 'desktop';
+  const device = widths ? { device: SERVER_DEVICE[message.device] } : {};
   const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}), ...device });
   if (!started.ok) return started;
   const socket = socketOf(at);
