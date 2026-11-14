@@ -328,9 +328,38 @@ fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, 
     };
     parts.push([
         format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
-        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
+        format!("Once the changed web UI is finished, run the mechanical detector over it: {} (without git, pass the changed files instead of `--changed`).", changed_detect_command(ctx, cwd, provider)),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
+}
+
+/// `--changed` scans only cwd's subtree, so when context resolved a project
+/// other than cwd (an explicit `--target`, or a session started below or
+/// beside the project) the directive names the directory to run it from.
+/// The command then runs from that directory, so a launcher invoked by a
+/// relative path is spelled absolute against cwd.
+fn changed_detect_command(ctx: &Ctx, cwd: &str, provider: &Provider) -> String {
+    let same = |a: &str, b: &str| {
+        let canon = |p: &str| std::fs::canonicalize(p).map(|c| c.to_string_lossy().into_owned()).unwrap_or_else(|_| p.trim_end_matches(['/', '\\']).to_string());
+        canon(a) == canon(b)
+    };
+    if ctx.project_root.is_empty() || same(&ctx.project_root, cwd) {
+        return format!("`{} --json --changed`", provider.verb_cmd("detect"));
+    }
+    let raw = provider.self_raw.as_str();
+    let has_dir = raw.contains('/') || (cfg!(windows) && raw.contains('\\'));
+    let self_cmd = if has_dir && !jsp::is_absolute(raw) {
+        let resolved = jsp::resolve(cwd, &[raw]);
+        if !impeccable_common::launcher::is_cmd_launcher(&resolved) && resolved.chars().any(char::is_whitespace) {
+            // The cwd made this path absolute, so a space in it is new.
+            shell_arg(&resolved)
+        } else {
+            impeccable_common::launcher::spell_self(&resolved)
+        }
+    } else {
+        provider.self_cmd.clone()
+    };
+    format!("`{self_cmd} detect --json --changed` from `{}`", ctx.project_root)
 }
 
 /// `which <tool>` exit 0 (`where` on Windows).
@@ -1735,6 +1764,38 @@ mod wiring_fallback_tests {
         let output = parts.render();
         assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
         assert!(!output.contains("repair with impeccable hooks on"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_relative_launcher_is_spelled_absolute_when_run_from_another_dir() {
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_SELF".to_string(), ".claude/skills/impeccable/scripts/impeccable".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/repo/apps/b");
+        let mut ctx = crate::context::load_context("/repo/apps/b", &crate::target_args::TargetOptions::default(), &env);
+        ctx.project_root = "/repo/apps/a".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/repo/apps/b", &provider),
+            "`/repo/apps/b/.claude/skills/impeccable/scripts/impeccable detect --json --changed` from `/repo/apps/a`"
+        );
+        // Run from cwd itself, the command is printed as given.
+        ctx.project_root = "/repo/apps/b".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/repo/apps/b", &provider),
+            "`.claude/skills/impeccable/scripts/impeccable detect --json --changed`"
+        );
+        // A bare name resolves on PATH from anywhere.
+        let bare = crate::provider::detect(&crate::util::Env::from([("IMPECCABLE_SELF".to_string(), "impeccable".to_string())]), "/repo/apps/b");
+        ctx.project_root = "/repo/apps/a".to_string();
+        assert_eq!(super::changed_detect_command(&ctx, "/repo/apps/b", &bare), "`impeccable detect --json --changed` from `/repo/apps/a`");
+        // A cwd with a space is quoted once it lands in the absolute path.
+        let spaced = crate::provider::detect(&env, "/work/My Apps/b");
+        ctx.project_root = "/work/My Apps/a".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/work/My Apps/b", &spaced),
+            "`'/work/My Apps/b/.claude/skills/impeccable/scripts/impeccable' detect --json --changed` from `/work/My Apps/a`"
+        );
     }
 }
 

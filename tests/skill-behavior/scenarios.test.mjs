@@ -133,6 +133,46 @@ function executedUpdateCommands(trace) {
   );
 }
 
+// Scenario 24 helpers. The step that needs a split playbook's part is the
+// first implementation write, roll, build-phase or comp-spec call, or the first
+// heuristic score (in a tool call's input or in the agent's own text).
+const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+// A score: an N/4 mark, a /40 or /32 total, or a 0-4 or n/a cell right after a
+// named heuristic (the template's # column and its ? cells do not count).
+const scoresHeuristics = (text) => /heuristic/i.test(text)
+  && (/\b\d{1,2}\s*\/\s*(?:4|40|32)\b/.test(text) || /\|[^|\n]*[a-z][^|\n]*\|\s*(?:[0-4]|n\/a)\s*\|/i.test(text));
+const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
+  || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''))
+  || scoresHeuristics(JSON.stringify(call.input ?? ''));
+const needIndex = (trace) => {
+  const calls = trace.toolCalls.findIndex(needsPart);
+  const scored = (trace.textSteps || []).find((step) => scoresHeuristics(step.text));
+  const candidates = [calls, scored ? scored.callsBefore : -1].filter((i) => i >= 0);
+  return candidates.length ? Math.min(...candidates) : -1;
+};
+const partLoadedInTime = (trace, part) => {
+  const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, part));
+  const need = needIndex(trace);
+  return loadIndex >= 0 && (need < 0 || loadIndex < need);
+};
+
+it('scenario 24 helpers: a part read after scoring or after the first write is a miss', () => {
+  const read = { name: 'read', input: { path: 'reference/critique-rubric.md' }, loadedFiles: ['reference/critique-rubric.md'] };
+  const write = { name: 'write', input: { path: 'index.html', content: '<p>' }, mutatedPaths: ['index.html'] };
+  const scoreText = { text: 'Heuristic 1, visibility of system status: 3/4', callsBefore: 1 };
+  assert.ok(partLoadedInTime({ toolCalls: [read, write] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [write, read] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [], textSteps: [] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [{ name: 'bash', input: { command: 'ls' } }, read], textSteps: [scoreText] }, 'critique-rubric.md'));
+  assert.ok(partLoadedInTime({ toolCalls: [read, { name: 'bash', input: { command: 'ls' } }], textSteps: [{ ...scoreText, callsBefore: 2 }] }, 'critique-rubric.md'));
+  const table = { text: '| # | Heuristic | Score |\n|---|---|---|\n| 1 | Visibility of system status | 3 |', callsBefore: 0 };
+  assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [table] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [{ text: 'Heuristics total: 31/40', callsBefore: 0 }] }, 'critique-rubric.md'));
+  const template = { text: '| # | Heuristic | Score | Key Issue |\n|---|---|---|---|\n| 1 | Visibility of System Status | ? | |', callsBefore: 0 };
+  assert.ok(partLoadedInTime({ toolCalls: [read], textSteps: [template] }, 'critique-rubric.md'));
+});
+
 for (const modelId of resolveModelList()) {
   const provider = detectProvider(modelId);
   const keyPresent = hasKey(provider);
@@ -188,7 +228,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -204,6 +244,11 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           fileLoaded(trace, 'new-work.md'),
           `a greenfield request with PRODUCT.md should load new-work.md to establish the missing visual world.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        assert.ok(
+          fileLoaded(trace, 'new-work-world.md'),
+          `with no visual world yet, new-work should send the agent on to new-work-world.md.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -304,7 +349,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -319,6 +364,9 @@ for (const modelId of resolveModelList()) {
         );
         assert.ok(fileLoaded(trace, 'new-work.md'),
           `greenfield craft should load new-work.md for visual authority and world discovery.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+        assert.ok(fileLoaded(trace, 'new-work-world.md'),
+          `world discovery lives in new-work-world.md, which new-work should load.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
         assert.equal(fileLoaded(trace, 'init.md'), false, 'existing PRODUCT.md must not re-enter init for missing DESIGN.md');
       } finally {
@@ -936,5 +984,53 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    // Split playbooks: SKILL.md's Setup step 2 names each part file, so the agent
+    // reads it with the playbook rather than finding the pointer two files deep.
+    // Every run must load the part before the step that needs it; the rate is
+    // the point, so each path repeats (IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS, default 3).
+    // The sub-agent critique path needs a sub-agent tool this harness lacks, so
+    // it is measured in real Claude Code instead (headless runs, by hand).
+    const NESTED_PATHS = [
+      { id: 'world', part: 'new-work-world.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable redesign index.html: replace the current look with a completely new visual world and keep the copy.' },
+      { id: 'comp', part: 'new-work-comp.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML,
+          '.impeccable/config.json': '{ "buildPath": "comp" }\n',
+          '.impeccable/mocks/landing.png': TINY_PNG,
+          '.impeccable/mocks/landing.png.json': JSON.stringify({ prompt: 'The landing page for the product in this workspace.', approved: true }, null, 2) },
+        prompt: '/impeccable build index.html from the approved comp at .impeccable/mocks/landing.png.' },
+      { id: 'critique-inline', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable critique index.html' },
+      { id: 'critique-native', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS, 'TideDetailView.swift': MINIMAL_IOS_SOURCE },
+        prompt: '/impeccable critique TideDetailView.swift' },
+    ];
+    for (const nested of NESTED_PATHS) {
+      it(`scenario 24: ${nested.id} loads ${nested.part} on every run (${LOAD_RUNS} runs)`, async () => {
+        const misses = [];
+        for (let run = 1; run <= LOAD_RUNS; run++) {
+          const workspace = prepareWorkspace({ files: nested.files });
+          try {
+            const { trace, text } = await runTurn({
+              checkpoint: (trace) => fileLoaded(trace, nested.part) || needIndex(trace) >= 0,
+              workspace,
+              model,
+              userPrompt: nested.prompt,
+              maxSteps: 12,
+            });
+            logTrace('S24', `${nested.id} run ${run}`, modelId, trace, { textSample: text.slice(0, 400) });
+            if (!partLoadedInTime(trace, nested.part)) misses.push({ run, trace: summarizeTrace(trace) });
+          } finally {
+            cleanupWorkspace(workspace);
+          }
+        }
+        assert.equal(misses.length, 0,
+          `${nested.part} was not loaded before the step that needs it in ${misses.length} of ${LOAD_RUNS} runs.\n` +
+            `Misses: ${JSON.stringify(misses, null, 2)}`);
+      });
+    }
   });
 }
