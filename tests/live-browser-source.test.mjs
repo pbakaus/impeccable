@@ -28,8 +28,8 @@ describe('component preview remount parameters', () => {
     assert.equal(saved.paramValues.space, 23);
   });
   for (const deferred of [false, true]) {
-    for (const sameVariant of [false, true]) {
-      it(`preserves edits only on the same variant (deferred=${deferred}, same=${sameVariant})`, async () => {
+    for (const scenario of ['switch', 'same', 'restore']) {
+      it(`preserves edits on remount or reload but not variant switches (deferred=${deferred}, scenario=${scenario})`, async () => {
         const source = SOURCE.match(/async function mountSvelteComponentVariant\([^\n]*\) \{[\s\S]*?\n  \}/)?.[0];
         assert.ok(source);
         const anchor = { values: {} };
@@ -38,9 +38,10 @@ describe('component preview remount parameters', () => {
         const context = {
           svelteComponentSession: {
             sessionId: 'vue1', manifest: {}, mountTargetEl: {},
-            mountedVariant: sameVariant ? 1 : 2, propValues: {},
+            mountedVariant: scenario === 'restore' ? 0 : scenario === 'same' ? 1 : 2, propValues: {},
           },
           paramsCurrentValues: { space: 23 }, selectedElement: {}, state: 'CYCLING',
+          restoredParamValuesForVisibleVariant: () => scenario === 'restore' ? { space: 23 } : null,
           componentModuleCandidates: () => ['/v1.vue'],
           makeFrozenAnchor: value => value,
           loadSvelteRuntime: async () => ({ mount() { mounted = true; return {}; } }),
@@ -59,7 +60,7 @@ describe('component preview remount parameters', () => {
         assert.equal(await mount(1), true);
         context.getMountedSvelteComponentAnchor = () => anchor;
         for (const frame of frames) frame();
-        assert.equal(anchor.values.space, sameVariant ? 23 : undefined);
+        assert.equal(anchor.values.space, scenario === 'switch' ? undefined : 23);
       });
     }
   }
