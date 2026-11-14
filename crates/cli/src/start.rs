@@ -94,10 +94,11 @@ pub(crate) fn run(
     if cfg!(target_os = "macos") && yes {
         // Loop's install connects the agents to Loop (hooks and instructions) without
         // asking, unless there are none to connect, which exit 2 already reports;
-        // under --json it doesn't open the app either.
+        // under --json, or with Loop already installed (a repeat start redoes nothing), it
+        // doesn't open the app either.
         let connect = if found { "--connect" } else { "--no-connect" };
         let mut install: Vec<String> = vec!["install".into(), connect.into()];
-        if json {
+        if json || crate::loop_install::installed_app(io).is_some() {
             install.push("--no-open".into());
         }
         let code = quiet(io, json, |io| crate::loop_install::run(&install, io));
