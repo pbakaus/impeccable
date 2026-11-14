@@ -70,6 +70,15 @@ fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     assert!(out.status.success());
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("Pro rules: included."), "{text}");
+    // The account is named, and a non-production service shows its host.
+    assert!(text.starts_with("Signed in to Impeccable (127.0.0.1:"), "{text}");
+    // Pro gets no pricing pointer; an account without Pro gets the one live page (launch CTA audit).
+    assert!(!text.contains("impeccable.style/pricing"), "{text}");
+    fake.knobs.lock().unwrap().entitled = false;
+    let out = impeccable(&env, &["whoami"]).output().unwrap();
+    let free = String::from_utf8_lossy(&out.stdout);
+    assert!(free.ends_with("See impeccable.style/pricing\n"), "{free}");
+    fake.knobs.lock().unwrap().entitled = true;
 
     let catalog = serde_json::json!({
         "plans": [

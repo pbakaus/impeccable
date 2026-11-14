@@ -240,7 +240,7 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 [![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=impeccable)
 
-Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux runners.
+Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux and Windows runners.
 
 ## License
 

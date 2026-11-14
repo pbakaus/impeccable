@@ -92,6 +92,7 @@ export const SUITES = {
           'tests/release.test.mjs',
           'tests/bundle-signing.test.mjs',
           'tests/skill-reference.test.mjs',
+          'tests/token-budget.test.mjs',
           'tests/lib/dev-keys.test.mjs',
           'tests/skill-behavior-harness.test.mjs',
           'tests/readme-gitignore.test.mjs',
@@ -118,7 +119,7 @@ export const SUITES = {
       {
         runner: 'node',
         timeoutMs: 900000,
-        files: ['tests/oracle.test.mjs'],
+        files: ['tests/oracle.test.mjs', 'tests/oracle/invocation.test.mjs'],
       },
     ],
   },

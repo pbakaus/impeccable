@@ -128,3 +128,17 @@ fn omitted_scope_keeps_login_grants_and_refresh_features() {
         assert_eq!(session.state.foundations, mask & 4 != 0);
     }
 }
+
+#[test]
+fn sign_in_asks_for_worlds_read_only_where_it_is_offered() {
+    // Catches: `impeccable world` 403ing for every fresh sign-in because login
+    // never asked for the scope the seed route checks.
+    for offered in [false, true] {
+        let fake = Fake::start();
+        fake.knobs.lock().unwrap().worlds = offered;
+        let env = fake.env(&format!("worlds-scope-{offered}"));
+        login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        let asked = fake.record.lock().unwrap().scopes.join(" ");
+        assert_eq!(asked.split(' ').any(|s| s == "worlds:read"), offered, "{asked}");
+    }
+}
