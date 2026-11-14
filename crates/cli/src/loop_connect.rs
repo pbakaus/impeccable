@@ -711,14 +711,9 @@ fn missing_loop(helper: &Path) -> String {
 }
 
 fn home(io: &Io) -> Result<PathBuf> {
-    let usable = |name: &str| {
-        io.env(name)
-            .filter(|h| !h.is_empty() && Path::new(h).is_absolute())
-            .map(PathBuf::from)
-    };
-    // Windows has no HOME unless a shell sets one; its own is USERPROFILE.
-    usable("HOME")
-        .or_else(|| cfg!(windows).then(|| usable("USERPROFILE")).flatten())
+    // The engine's one reading of home: USERPROFILE first on Windows, HOME elsewhere.
+    io.home()
+        .filter(|h| h.is_absolute())
         .ok_or_else(|| "HOME is not set to an absolute path.".into())
 }
 
