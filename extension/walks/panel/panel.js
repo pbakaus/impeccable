@@ -283,7 +283,7 @@ function question() {
 
 /** A walk that paused itself (a sign-in) or was held goes on only by the person's word. */
 function held() {
-  if (view.state === 'paused') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }), button('resume', COPY.controls.resume, 'gold'));
+  if (view.state === 'paused') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }), view.held === 'sign-in' ? el('small', { class: 'soon', text: COPY.signInSoon }) : null, button('resume', COPY.controls.resume, 'gold'));
   if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), button('handback', COPY.controls.handback, 'gold'));
   return null;
 }

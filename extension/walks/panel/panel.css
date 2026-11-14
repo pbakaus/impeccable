@@ -116,6 +116,7 @@ b { font-weight: 500; }
 .walk-head .hd { font-size: 2.25rem; }
 .ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
 .ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
+.held .soon { margin-top: -6px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 .sofar { flex: none; display: flex; flex-direction: column; margin-top: 24px; }
 .sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 4px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
 .sofar li:first-child { border-top: 0; }
