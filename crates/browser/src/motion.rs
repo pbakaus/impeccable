@@ -414,7 +414,12 @@ pub fn analyze(frames: &[Value]) -> Vec<Value> {
                     findings.push(finding("content-swap", b, &frames[i], 1.));
                 }
             }
-            if i >= 2 && i + 1 < last {
+            // A mid-step is a spike against animated intervals on both
+            // sides. Before and first both show the start keyframe, so the
+            // first animated interval has no animated neighbor on its left: a
+            // strong ease-out such as cubic-bezier(0.16, 1, 0.3, 1) moves most
+            // there by design and is not a step.
+            if i >= 3 && i + 1 < last {
                 if let (Some(a), Some(prev), Some(next)) =
                     (samples[i - 1], samples[i - 2], samples[i + 1])
                 {
@@ -799,6 +804,20 @@ mod tests {
             analyze(&frames)
                 .iter()
                 .any(|f| f["kind"] == "end-jump" && f["magnitude"] == 15.)
+        );
+    }
+    #[test]
+    fn a_strong_ease_out_is_not_a_mid_step() {
+        // Opacity samples of a 200 ms dropdown on cubic-bezier(0.16, 1, 0.3, 1).
+        let frames: Vec<_> = [0., 0., 0.766, 0.947, 0.990, 0.999, 1., 1., 1.]
+            .into_iter()
+            .enumerate()
+            .map(|(i, o)| frame(i, 0., o, "menu", 0.))
+            .collect();
+        assert!(
+            !analyze(&frames).iter().any(|f| f["kind"] == "mid-step"),
+            "{:?}",
+            analyze(&frames)
         );
     }
     #[test]
