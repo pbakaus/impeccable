@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inert under an overlay: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for an inert subtree an opaque overlay buries (issue #950).
+
+       An app route overlay (position: absolute, z-index: 40, opaque) is laid
+       over a view the app keeps mounted underneath, switched off with inert.
+       Nobody sees the view, so text-occlusion, nested-cards and
+       cramped-padding have nothing to score in it.
+
+       Should pass:
+       - a workspace sidebar inside an inert wrapper under an opaque overlay;
+       - the app-shell shape: a flex shell whose inert view scrolls content
+         longer than the shell, under an overlay inset over the shell;
+       - the inert wrapper positioned itself, below the overlay;
+       - the overlay at z-index: auto, later in tree order than the view;
+       - a card taller than the overlay, in an inert wrapper that clips it at
+         the overlay's edge.
+
+       Should flag, each differing in the one fact the engine reads:
+       - the same sidebar under the same overlay without inert;
+       - the same inert sidebar under a translucent overlay;
+       - the same inert sidebar with no overlay at all;
+       - an inert wrapper as tall as the overlay that lets its status line
+         overflow below it (the card it holds stays covered);
+       - a sidebar at z-index: -2 inside an inert isolation: isolate wrapper,
+         over an overlay at z-index: -1: the wrapper's stacking context keeps
+         the sidebar over it.
+
+       Each sidebar holds two runs of text, so the declared-mockup gates
+       (hidden_mockup.rs) never take it. Every cell sits in the first 800px,
+       since the hit tests ask only points inside the viewport.
+
+       The static HTML engine measures no boxes and runs no hit tests, so it
+       reports none of these rules in either column. The URL behaviour is
+       pinned by crates/browser/tests/inert_under_overlay.rs. */
+
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: #111; background: #fff; height: 1000px; position: relative; }
+    h2.case-title { position: absolute; margin: 0; font: 600 13px/17px system-ui; color: #333; }
+    .app { position: absolute; width: 230px; height: 340px; }
+    .sidebar { width: 210px; margin: 10px; padding: 16px; background: #ffffff; border: 1px solid #d1d5db; border-radius: 12px; }
+    .workspace { margin: 0 0 12px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; line-height: 20px; }
+    .status { padding: 2px; background: #f1f5f9; border-radius: 6px; font-size: 14px; line-height: 20px; }
+    .page { position: absolute; inset: 0; z-index: 40; padding: 20px; background: #ffffff; }
+    .page.glass { background: rgba(255, 255, 255, 0.5); }
+    .page.flat { z-index: auto; }
+    .page.below { z-index: -1; }
+    .app.short { height: 200px; }
+    .short > .view { display: flow-root; height: 200px; }
+    .shell { display: flex; }
+    .shell > .view { flex: 1; height: 100%; overflow: auto; }
+    .shell .sidebar { height: 420px; }
+  </style>
+</head>
+<body>
+  <h2 class="case-title" style="top: 40px; left: 12px;">Should pass</h2>
+  <h2 class="case-title" style="top: 414px; left: 12px;">Should flag</h2>
+
+  <!-- An inert workspace view under an opaque route overlay. -->
+  <div class="app" style="top: 70px; left: 12px;">
+    <div inert>
+      <aside class="sidebar">
+        <div class="workspace" id="pass-buried-card">Workspace Amber holds three panes and a running build that reports back here.</div>
+        <div class="status" id="pass-buried-status">Status text sits right against the edge of its tinted box on every side.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page</main>
+  </div>
+
+  <!-- An app shell: an inert view that scrolls, under the route overlay. -->
+  <div class="app shell" style="top: 70px; left: 262px;">
+    <div class="view" inert>
+      <aside class="sidebar">
+        <div class="workspace" id="pass-shell-card">Workspace Fern holds three panes and a running build that reports back here.</div>
+        <div class="status" id="pass-shell-status">Status text sits right against the edge of its tinted box in the shell.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page over the shell</main>
+  </div>
+
+  <!-- The inert wrapper positioned itself, below the overlay. -->
+  <div class="app" style="top: 70px; left: 512px;">
+    <div inert style="position: absolute; inset: 0; z-index: 10;">
+      <aside class="sidebar">
+        <div class="workspace" id="pass-raised-card">Workspace Gale holds three panes and a running build that reports back here.</div>
+        <div class="status" id="pass-raised-status">Status text sits right against the edge of its tinted box, raised.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page over a raised view</main>
+  </div>
+
+  <!-- The overlay at z-index: auto, later in tree order than the view. -->
+  <div class="app" style="top: 70px; left: 762px;">
+    <div inert>
+      <aside class="sidebar">
+        <div class="workspace" id="pass-later-card">Workspace Heath holds three panes and a running build that reports back here.</div>
+        <div class="status" id="pass-later-status">Status text sits right against the edge of its tinted box, overlaid.</div>
+      </aside>
+    </div>
+    <main class="page flat">Fleet overlay page in tree order</main>
+  </div>
+
+  <!-- A card taller than the overlay, clipped at its edge by the inert view. -->
+  <div class="app short" style="top: 70px; left: 1012px;">
+    <div class="view" inert style="overflow: hidden;">
+      <aside class="sidebar">
+        <div class="workspace" id="pass-clipped-card" style="height: 260px;">Workspace Iris holds three panes and a running build that reports back here.</div>
+        <div class="status" id="pass-clipped-status">Status text sits right against the edge of its tinted box, clipped.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page over a clipped view</main>
+  </div>
+
+  <!-- The same view without inert, under the same overlay. -->
+  <div class="app" style="top: 440px; left: 12px;">
+    <div>
+      <aside class="sidebar">
+        <div class="workspace" id="flag-live-card">Workspace Birch holds three panes and a running build that reports back here.</div>
+        <div class="status" id="flag-live-status">Status text sits right against the edge of its tinted box, not inert.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page, live view</main>
+  </div>
+
+  <!-- The inert view under a translucent overlay. -->
+  <div class="app" style="top: 440px; left: 262px;">
+    <div inert>
+      <aside class="sidebar">
+        <div class="workspace" id="flag-glass-card">Workspace Cedar holds three panes and a running build that reports back here.</div>
+        <div class="status" id="flag-glass-status">Status text sits right against the edge of its tinted box, under glass.</div>
+      </aside>
+    </div>
+    <main class="page glass">Fleet overlay page, glass</main>
+  </div>
+
+  <!-- The inert view with nothing over it. -->
+  <div class="app" style="top: 440px; left: 512px;">
+    <div inert>
+      <aside class="sidebar">
+        <div class="workspace" id="flag-shown-card">Workspace Dune holds three panes and a running build that reports back here.</div>
+        <div class="status" id="flag-shown-status">Status text sits right against the edge of its tinted box, in plain view.</div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- An inert view as tall as the overlay whose status overflows below it. -->
+  <div class="app short" style="top: 440px; left: 762px;">
+    <div class="view" inert>
+      <aside class="sidebar">
+        <div class="workspace" id="flag-overflow-covered" style="height: 150px;">Workspace Elm holds three panes and a running build that reports back here.</div>
+        <div class="status" id="flag-overflow-status">Status text sits right against the edge of its tinted box, below the page.</div>
+      </aside>
+    </div>
+    <main class="page">Fleet overlay page over an overflowing view</main>
+  </div>
+
+  <!-- A sidebar at -2 inside an isolated inert wrapper, over an overlay at -1. -->
+  <div class="app" style="top: 440px; left: 1012px;">
+    <div inert style="isolation: isolate;">
+      <aside class="sidebar" style="position: relative; z-index: -2;">
+        <div class="workspace" id="flag-isolated-card">Workspace Fir holds three panes and a running build that reports back here.</div>
+        <div class="status" id="flag-isolated-status">Status text sits right against the edge of its tinted box, isolated.</div>
+      </aside>
+    </div>
+    <main class="page below">Fleet overlay page beneath an isolated view</main>
+  </div>
+</body>
+</html>

@@ -572,7 +572,7 @@ enum Order {
 /// nothing the capture recorded opens one and it did not record `isolation`
 /// (a capture older than that property); a Tailwind `isolate` class answers
 /// for it there.
-fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
+pub(crate) fn opens_stacking_context(dom: &dyn Dom, n: ElId) -> Option<bool> {
     if box_layer(dom, n).context.is_some() {
         return Some(true);
     }
