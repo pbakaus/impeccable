@@ -456,8 +456,9 @@ fn report_hook_targets(sys: &Sys, io: &mut Io, written: &[String], wanted: &[&'s
     }
 }
 
-/// JS: decideHookInstall(root, targets, {yes})
-fn decide_hook_install(sys: &Sys, prompt: &mut Prompt, io: &mut Io, root: &str, targets: &[&'static str], yes: bool) -> R<bool> {
+/// JS: decideHookInstall(root, targets, {yes}). `user_scope`: the hooks
+/// already in place are looked up where a global install writes them.
+fn decide_hook_install(sys: &Sys, prompt: &mut Prompt, io: &mut Io, root: &str, targets: &[&'static str], yes: bool, user_scope: bool) -> R<bool> {
     if targets.is_empty() {
         return Ok(false);
     }
@@ -466,7 +467,15 @@ fn decide_hook_install(sys: &Sys, prompt: &mut Prompt, io: &mut Io, root: &str, 
         Some("accepted") => return Ok(true),
         _ => {}
     }
-    if targets.iter().all(|p| hook_installed_for_provider(sys, root, p)) {
+    let installed = |p: &&'static str| {
+        if user_scope {
+            let manifest_root = if *p == ".claude" { sys.home.as_str() } else { root };
+            hook_installed_for_provider_at_scope(sys, manifest_root, p, true)
+        } else {
+            hook_installed_for_provider(sys, root, p)
+        }
+    };
+    if targets.iter().all(installed) {
         return Ok(true);
     }
     if yes || !prompt.stdin_tty {
@@ -482,11 +491,12 @@ fn decide_hook_install(sys: &Sys, prompt: &mut Prompt, io: &mut Io, root: &str, 
 /// Update's hook self-heal (triage E8, and the retired Cursor gate): repairs
 /// the manifests at `hook_root` against the skill at `skill_root`. In user
 /// scope those differ (project manifests, home skill), and the home manifests
-/// are repaired as well, since an older `update --user` wrote Cursor, Codex
-/// and Grok manifests there. They are repaired, never pruned: a home manifest
-/// is global, so removing its entry would drop the hook from every other
-/// project. A home and a project hook firing for one edit is settled inside
-/// the hook (`hook_claim`).
+/// are repaired as well, since that is where a global install writes the
+/// Cursor, Codex and Grok hooks (#1190). They are repaired, never pruned: a
+/// home manifest is global, so removing its entry would drop the hook from
+/// every other project. A stale project copy is pruned only once the home
+/// hook is written (`prune_duplicate_home_hooks`); until then a home and a
+/// project hook firing for one edit is settled inside the hook (`hook_claim`).
 fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, skill_root: &str, providers: &[&'static str]) -> Result<(), String> {
     hook_manifest::repair_stale_hook_manifests(sys, hook_root, providers, Some(skill_root))?;
     if hook_root != skill_root {
@@ -683,7 +693,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         let linked_targets = sys.find_linked_providers(&install_root, &selected_installed, scope_opt);
         let copy_targets: Vec<&'static str> = selected_installed.iter().copied().filter(|p| !linked_targets.contains(p)).collect();
         let hook_targets: Vec<&'static str> = selected_installed.iter().chain(missing_selected_targets.iter()).copied().collect();
-        let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &hook_targets, yes)?;
+        let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &hook_targets, yes, scope == Scope::User)?;
         let mut bundle_dir: Option<String> = None;
         let outcome: Result<(), String> = (|| {
             if !linked_targets.is_empty() {
@@ -759,6 +769,13 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                 Vec::new()
             };
             report_hook_targets(&sys, io, &written_hook_targets, if want_hooks { &hook_targets } else { &[] });
+            // Self-heal any pre-launcher (`node .../hook.mjs`) manifest left by a
+            // v3 install into a present provider dir (triage E8). Independent of
+            // hook consent: it repairs an existing hook rather than adding one.
+            // It runs before the duplicate cleanup below, as `update` does, so a
+            // stale project manifest it retargets at the home skill is then
+            // pruned rather than left as a second home hook.
+            hook_manifest::repair_stale_hook_manifests(&sys, &hook_root, &hook_targets, Some(&install_root))?;
             // A repeat user-scope install whose user hook is already current
             // never sends Claude through copy_provider_hooks, so the
             // duplicate-hook cleanup that function ends with runs here as well.
@@ -767,11 +784,12 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             if want_hooks && scope == Scope::User && hook_targets.contains(&".claude") {
                 hook_manifest::prune_duplicate_claude_hooks(&sys, &install_root, &hook_root)?;
             }
-
-            // Self-heal any pre-launcher (`node .../hook.mjs`) manifest left by a
-            // v3 install into a present provider dir (triage E8). Independent of
-            // hook consent: it repairs an existing hook rather than adding one.
-            hook_manifest::repair_stale_hook_manifests(&sys, &hook_root, &hook_targets, Some(&install_root))?;
+            // The same for Codex, Cursor and Grok, whose global hook is in
+            // home (#1190): a project an older global install wrote a
+            // manifest into loses only that stale copy.
+            if want_hooks && scope == Scope::User {
+                hook_manifest::prune_duplicate_home_hooks(&sys, &install_root, &hook_root, &hook_targets)?;
+            }
 
             if update_check_skipped {
                 out(io, "Existing skills were left unchanged.");
@@ -804,7 +822,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         return Err(Flow::Exit(1));
     }
 
-    let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &targets, yes)?;
+    let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &targets, yes, scope == Scope::User)?;
 
     out(io, "\nDownloading impeccable skills...");
     let bundle_dir = match bundle::download_and_extract_bundle(&sys) {
@@ -931,10 +949,11 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         .into_iter()
         .map(|(_, dir)| util::realpath(&dir).unwrap_or(dir))
         .collect();
-    // Hook manifests follow install's placement: a user-scope install keeps
-    // the skill under home but writes every non-Claude manifest (Cursor,
-    // Codex, Grok, ...) into the project, so update repairs and writes them
-    // there too, against the home skill root.
+    // Hook manifests follow install's placement: a user-scope install writes
+    // the Claude, Codex, Cursor and Grok hooks under home and the rest
+    // (Copilot, Gemini) into the project, against the home skill root
+    // (`copy_provider_hooks` picks each destination). `hook_root` is that
+    // project, where consent is read and the project manifests are repaired.
     let hook_root = if scope == Some(Scope::User) { project_root.clone() } else { root.clone() };
     let linked_providers = sys.find_linked_providers(&root, &providers, scope);
     let copy_providers: Vec<&'static str> = providers.iter().copied().filter(|p| !linked_providers.contains(p)).collect();
@@ -970,7 +989,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
             // Repair any stale pre-launcher (`node .../hook.mjs`) manifest a v3
             // install left behind, regardless of hook consent (triage E8).
             repair_update_hook_manifests(&sys, &hook_root, &root, &copy_providers).map_err(Flow::Throw)?;
-            let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &copy_providers, yes)?;
+            let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &copy_providers, yes, scope == Some(Scope::User))?;
             let hook_targets = if want_hooks {
                 copy_provider_hooks(&sys, &tmp_dir, &hook_root, &copy_providers, force, Some(&root), Some(&project_root)).map_err(Flow::Throw)?
             } else {
@@ -1029,7 +1048,7 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         // Repair any stale pre-launcher (`node .../hook.mjs`) manifest a v3
         // install left behind, regardless of hook consent (triage E8).
         repair_update_hook_manifests(&sys, &hook_root, &root, &copy_providers).map_err(Flow::Throw)?;
-        let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &providers, yes)?;
+        let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &providers, yes, scope == Some(Scope::User))?;
         let hook_targets = if want_hooks {
             copy_provider_hooks(&sys, &tmp_dir, &hook_root, &providers, force, Some(&root), Some(&project_root)).map_err(Flow::Throw)?
         } else {
