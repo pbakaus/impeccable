@@ -229,7 +229,7 @@ Don't chase device sizes; let content tell you where to break. Start narrow, str
 
 /* Device supports hover */
 @media (hover: hover) {
-  .card:hover { transform: translateY(-2px); }
+  .card:hover .card-surface { transform: translateY(-2px); }  /* Lift a child; the card stays the hit area */
 }
 
 /* Device doesn't support hover (touch) */
