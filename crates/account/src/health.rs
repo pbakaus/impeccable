@@ -933,6 +933,17 @@ mod tests {
     }
 
     #[test]
+    fn a_github_clone_is_keyed_as_the_cloud_keys_its_repository() {
+        // Catches: the repository key drifting from the one the account service computes
+        // to show a person's local critiques on their team's repository (pristine
+        // src/app-rpc/views/local-critiques.ts `cliRepoKey`, pinned to the same hex).
+        let key = |raw: &str| hex(&Sha256::digest(normalize_remote(raw).unwrap().as_bytes()));
+        for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web"] {
+            assert_eq!(key(raw), "589c2f960e539d4adf1f5100f4b185bf4e5f972a8f9ee47b948ad732d788f7e6", "{raw}");
+        }
+    }
+
+    #[test]
     fn the_body_keeps_to_the_services_rules() {
         // Catches: a body the service refuses (sums, advisory in fingerprints, a stray field) or one that carries a path or snippet.
         let s = scan(vec![
