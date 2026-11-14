@@ -188,7 +188,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -204,6 +204,11 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           fileLoaded(trace, 'new-work.md'),
           `a greenfield request with PRODUCT.md should load new-work.md to establish the missing visual world.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        assert.ok(
+          fileLoaded(trace, 'new-work-world.md'),
+          `with no visual world yet, new-work should send the agent on to new-work-world.md.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -304,7 +309,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -319,6 +324,9 @@ for (const modelId of resolveModelList()) {
         );
         assert.ok(fileLoaded(trace, 'new-work.md'),
           `greenfield craft should load new-work.md for visual authority and world discovery.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+        assert.ok(fileLoaded(trace, 'new-work-world.md'),
+          `world discovery lives in new-work-world.md, which new-work should load.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
         assert.equal(fileLoaded(trace, 'init.md'), false, 'existing PRODUCT.md must not re-enter init for missing DESIGN.md');
       } finally {
