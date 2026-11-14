@@ -77,6 +77,31 @@ fn login_when_signed_in_opens_nothing_unless_forced() {
 }
 
 #[test]
+fn login_skips_when_the_sign_in_holds_every_scope_the_service_offers() {
+    // Catches (#1465 review): a scope that a sign-in is granted but `holds` never sees
+    // (setup's grant file, worlds in the token's scopes), so every `login` reopens the browser.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        (k.health, k.setup, k.taste, k.foundations, k.design, k.critiques, k.worlds) = (true, true, true, true, true, true, true);
+    }
+    let env = fake.env("cli-login-all-scopes");
+    let mut child = impeccable(&env, &["login", "--no-browser"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    let out = impeccable(&env, &["login", "--no-browser"]).output().unwrap();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "no link: {}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Already signed in"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     // Catches: whoami failing or going quiet when the public plan catalog is off (404), and the catalog's items not reaching the person.
     let fake = Fake::start();
