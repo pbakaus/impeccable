@@ -78,8 +78,8 @@ fn init_mcp_url(io: &Io) -> Result<()> {
         let usable = url::Url::parse(url)
             .ok()
             .filter(|u| {
-                // A local stack serves plain http on this machine only.
-                let loopback = matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+                // A local stack serves plain http on this machine only, its MCP on `api.localhost`.
+                let loopback = impeccable_account::config::loopback_url(u);
                 (u.scheme() == "https" || (u.scheme() == "http" && loopback))
                     && u.host_str().is_some()
                     && u.as_str() == url
@@ -1631,15 +1631,15 @@ mod mcp_url_tests {
             #[cfg(not(feature = "test-mcp-url"))]
             assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
         }
-        // A local stack's http server on this machine is usable in a test build.
-        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "https://staging.example/mcp"] {
+        // A local stack's http server on this machine is usable in a test build, `api.localhost` included (j9).
+        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "http://api.localhost:8787/mcp", "https://staging.example/mcp"] {
             let mut env = std::collections::HashMap::new();
             env.insert("IMPECCABLE_MCP_URL".to_string(), good.to_string());
             let (io, _) = Io::captured("", std::env::temp_dir(), env);
             assert!(init_mcp_url(&io).is_ok(), "{good:?}");
         }
         #[cfg(feature = "test-mcp-url")]
-        for bad in ["http://127.0.0.1.evil.test/mcp", "http://192.168.1.2/mcp"] {
+        for bad in ["http://127.0.0.1.evil.test/mcp", "http://localhost.evil.test/mcp", "http://192.168.1.2/mcp"] {
             let mut env = std::collections::HashMap::new();
             env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
             let (io, _) = Io::captured("", std::env::temp_dir(), env);
