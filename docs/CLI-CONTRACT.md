@@ -2405,6 +2405,19 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
+- `impeccable loop connect --mcp-only [--agent claude|codex] [--json]` gives each
+  detected agent (or the one named) the `impeccable` MCP server and nothing else:
+  no hooks, no instruction or taste block, no Loop records, and no platform check,
+  so it works on any OS without the Loop app. The server URL comes from the
+  account's origin (production or staging, from the engine's build constants;
+  any other origin is refused). Each agent signs in to the server itself on first
+  use; no token is written. An entry already there is kept. The text form prints
+  `<Agent>: MCP server added.` or `<Agent>: MCP server already there.` and a
+  `  Sign in: ...` line per agent; `--json` prints `{ok, agents:[{agent, label,
+  result: connected|not_found|failed, added, signIn, error}]}`, or `{ok:false,
+  error}` when nothing could be tried. It exits 0 only when every agent asked for
+  connected. With any other argument (`--taste`, `--no-taste`, another verb) it
+  exits 1 with usage.
 - Both commands open the installed app unless `--no-open` is passed. Other
   platforms exit non-zero. Downloads require HTTPS, with local HTTP permitted
   only for `localhost` or `127.0.0.1` fixture servers via `IMPECCABLE_DOWNLOAD_BASE`.

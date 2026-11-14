@@ -151,6 +151,28 @@ fn connect_refuses_plainly_without_loop() {
 }
 
 #[test]
+fn mcp_only_connects_the_server_without_loop_and_writes_nothing_of_loops() {
+    // Catches: a person without the Loop app had no command that gave their agents the MCP server.
+    let b = Box::new("mcp-only");
+    let out = b.run(&["loop", "connect", "--mcp-only"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(claude_entry(&b.home().join(".claude.json"))["url"], URL);
+    assert!(codex_config(&b).contains(URL), "{}", codex_config(&b));
+    assert!(!b.home().join(".claude/settings.json").exists(), "no hooks");
+    assert!(!b.support().exists(), "no Loop records");
+    // Again: the entry is already there, nothing is added twice.
+    let again = b.run(&["loop", "connect", "--mcp-only", "--agent", "codex", "--json"]);
+    assert!(again.status.success(), "{}", text(&again));
+    let v: serde_json::Value = serde_json::from_slice(&again.stdout).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["agents"][0]["agent"], "codex");
+    assert_eq!(v["agents"][0]["added"], false);
+    assert_eq!(codex_config(&b).matches("[mcp_servers.impeccable]").count(), 1);
+    // It answers no question about taste.
+    assert!(!b.run(&["loop", "connect", "--mcp-only", "--taste"]).status.success());
+}
+
+#[test]
 fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
     // Catches (Loop journey C2 and C3): no command connected a customer's agents to Needs you.
     let b = Box::new("roundtrip");

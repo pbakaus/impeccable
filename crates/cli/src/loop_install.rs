@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop connect --mcp-only [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -274,6 +274,9 @@ fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
 
 pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     use crate::loop_connect::Taste;
+    if args.iter().any(|a| a == "--mcp-only") {
+        return run_mcp_only(args, io);
+    }
     // `--taste` / `--no-taste` answer connect's taste question ahead of time.
     let (taste_yes, taste_no) = (
         args.iter().any(|a| a == "--taste"),
@@ -336,6 +339,45 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
             if install && !no_connect {
                 return after_install(io, connect, taste);
             }
+            0
+        }
+        Err(e) => {
+            io.err(&format!("{e}\n"));
+            1
+        }
+    }
+}
+
+/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, on any
+/// OS and without the Loop app, so no platform check, no hooks and no taste offer.
+fn run_mcp_only(args: &[String], io: &mut Io) -> i32 {
+    let json = args.iter().any(|a| a == "--json");
+    let rest: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--mcp-only" && *a != "--json")
+        .collect();
+    let only = match rest.as_slice() {
+        ["connect"] => None,
+        ["connect", "--agent", h] => Some(*h),
+        _ => {
+            let e = format!("--mcp-only goes with loop connect [--agent claude|codex] [--json], and nothing else.\n{USAGE}");
+            if json {
+                io.out(&format!("{}\n", serde_json::json!({ "ok": false, "error": e.trim_end() })));
+            } else {
+                io.err(&e);
+            }
+            return 1;
+        }
+    };
+    let (result, value, ok) = crate::loop_connect::connect_mcp(io, only);
+    if json {
+        io.out(&format!("{value}\n"));
+        return if ok { 0 } else { 1 };
+    }
+    match result {
+        Ok(message) => {
+            io.out(&message);
             0
         }
         Err(e) => {
