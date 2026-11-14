@@ -22,10 +22,16 @@ fn impeccable(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Comma
 }
 
 fn login(env: &HashMap<String, String>) {
+    login_with(env, &[]);
+}
+
+/// `extra`: `--force` for a second sign-in to an account already signed in.
+fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
+    let args: Vec<&str> = ["login", "--no-browser"].iter().chain(extra).copied().collect();
     let mut child = impeccable(
         env,
         Path::new(&env["IMPECCABLE_HOME"]),
-        &["login", "--no-browser"],
+        &args,
     )
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -655,7 +661,7 @@ fn critique_notice_is_once_after_success_and_again_after_sign_in() {
     let second = write(&env, root);
     assert!(!String::from_utf8_lossy(&second.stdout).contains(notice));
     assert_eq!(fake.hits("/cli/v1/critiques"), before + 2);
-    login(&env);
+    login_with(&env, &["--force"]);
     assert!(String::from_utf8_lossy(&write(&env, root).stdout).ends_with(notice));
 }
 
