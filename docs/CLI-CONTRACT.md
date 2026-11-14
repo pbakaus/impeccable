@@ -1974,6 +1974,73 @@ Revision dirs: on every `done` reply for a component session the server copies a
 
 Sweeps: shutdown/exit removes whole `node_modules/.impeccable-live` and legacy `.impeccable/live/previews`; startup removes session dirs (not `__*`) not in active snapshot list, and the root when nothing kept.
 
+#### Opt-in Vue component preview and acceptance
+
+`IMPECCABLE_LIVE_VUE_COMPONENT=1` (or `true`) enables `vue-component` previews
+for `.vue` selections. Without it the ordinary Vue source-preview path stays
+unchanged. The app must supply Vue 3 and its own `@vue/compiler-sfc`; the engine
+uses that compiler, not a bundled replacement. Insert mode is not enabled.
+
+A successful `live-wrap` leaves source unchanged, writes `v1.vue` through
+`v<count>.vue` and `manifest.json` under `node_modules/.impeccable-live/<id>`,
+and returns `previewMode` and `styleMode` = `vue-component`, `sourceFile`,
+`componentDir`, `propContract`, and `componentStubMarkup`. Counts are 1–8.
+Variants keep the generated script unchanged. Live binding snapshots and the
+original app context supply initial values; simple identifier `v-model` targets
+use local refs initialized from those values. Member-expression model targets
+use the ordinary preview instead. Event-only functions are inert in component
+previews; render helpers remain callable. A function used for both rendering and
+events cannot be safely snapshotted and reports a mount failure. Options API
+data and computed values are included. Component event snapshots support direct
+function references/calls; inline writes, member access/calls and unbound global
+calls use ordinary preview. Legacy manifests with event-writable object bindings
+are refused before mounting so they cannot change original reactive state.
+
+Unsupported scaffolds (including a missing compiler, malformed/external/custom
+SFC blocks, CSS modules, preprocessors such as Sass/SCSS/Less/Stylus, multiple
+scoped blocks, nested CSS rules, complex event expressions, or unsafe CSS) fall back through the ordinary source-wrapper
+path, with exit 0 and
+`previewFallback:{from:'vue-component',error:'unsupported_vue_component_preview',reason}`.
+This diagnostic is CLI metadata. The fallback does not return a component
+manifest or pretend a component was mounted. With `--defer-source-write`, it
+returns `sourceWritten:false`, `wrapperBlock`, `replaceStartLine` and
+`replaceEndLine` without editing source; otherwise the normal wrapper is written.
+The existing source-search/argument failures still exit 1. A fallback does not
+make a malformed original component valid.
+
+`live-accept --variant N` and accept-event `variantId` require a string of 1–3
+ASCII digits with numeric value 1–999 (leading zeros are accepted by validation;
+all-zero strings are rejected). Invalid CLI values produce stderr
+`Invalid --variant` and exit 1; invalid events fail event validation. Vue
+acceptance additionally requires the numeric value to be within 1–session count,
+otherwise `{handled:false,mode:'error',error:'Vue variant must be between 1 and the session count',…}`.
+
+Vue acceptance runs under the shared source lock and operation-receipt path.
+It validates source/session paths, rejects directory links and aliases before
+cleanup, and refuses incompatible session reuse. Compiler validation, stale
+selection checks, and a final source recheck precede the atomic source write.
+Original scripts and global style blocks stay byte-for-byte unchanged. Only the
+selected template range and scoped CSS change; global-only sources receive a
+new scoped block. Directives, expressions, their owning elements, component/slot
+contracts, native static attributes other than `class`/`style`, and template refs
+must remain intact. Variants require inline scoped
+CSS; global/deep/slotted selectors (including legacy aliases) and global at-rules
+are rejected before writing. CSS nesting is unsupported; top-level conditional
+at-rules still work. Padded numeric variants use the canonical number for CSS and
+Tune declarations (`01` reads `v1.vue` and `params.json["1"]`).
+Vue operation receipts also treat padded and canonical numbers as the same
+variant, so repeating `01` as `1` does not rewrite source. Vue discard applies
+the same directory-link/reparse-point checks as acceptance before cleanup.
+Failed acceptance leaves source and preview files
+intact. Successful acceptance removes only that session directory and returns
+`{handled:true,previewMode:'vue-component',carbonize:false,css:{replaced,appended},verify:{clean,findings},cleanupError,…}`.
+
+`params.json` beside the variants declares Tune knobs. Accept bakes chosen range,
+steps and toggle values; numeric values are unitless (for pixels use
+`calc(var(--p-space, 8) * 1px)`). The shared browser lifecycle also preserves Tune
+values on a same-variant remount, resets values when switching variants, and
+persists `generationPhase` for reload. These shared changes affect Svelte too.
+
 #### 9. Accept pipeline (`live-accept.mjs`, `live/accept-css.mjs`, `live/accept-verify.mjs`)
 
 Before any source range replacement or removal, accept and discard require
@@ -2098,7 +2165,7 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 
 #### `live-accept.mjs` -> `impeccable accept`
 - Invoked by `live-poll.mjs` automatically; live.md says re-run same command on `source_locked`.
-- Args: `--id ID` (missing → stderr `Missing --id` exit 1; bad chars → `Invalid --id` exit 1), `--discard` | `--variant N` (`Need --discard or --variant N`; N must be 1-3 digits: `Invalid --variant`), `--param-values '<json>'` (malformed → ignored), `--page-url URL`, `--defer-source-write` (deprecated no-op), `--help`.
+- Args: `--id ID` (missing → stderr `Missing --id` exit 1; bad chars → `Invalid --id` exit 1), `--discard` | `--variant N` (`Need --discard or --variant N`; N must be 1–3 ASCII digits with numeric value 1–999, including leading-zero forms but excluding all-zero forms; otherwise stderr `Invalid --variant`, exit 1), `--param-values '<json>'` (malformed → ignored for ordinary/Svelte acceptance; Vue component acceptance returns `{handled:false,mode:'error',error:'Invalid Vue parameter values: expected a JSON object',…}`, exit 0 without writing), `--page-url URL`, `--defer-source-write` (deprecated no-op), `--help`.
 - Output/side effects: section 9. All results exit 0 (even `handled:false`).
 - Tests: `tests/live-accept.test.mjs`, `tests/live-accept-scrub.test.mjs`, `tests/live-accept-css.test.mjs`, `tests/live-svelte-component-accept.test.mjs`, `tests/live-source-lock.test.mjs`, e2e `params` scenario.
 

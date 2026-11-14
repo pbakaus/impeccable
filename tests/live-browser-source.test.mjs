@@ -8,6 +8,64 @@ const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js')
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
+describe('component preview remount parameters', () => {
+  it('persists the generation phase for a Svelte session', () => {
+    const source = SOURCE.match(/function saveSession\(\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(source);
+    let saved;
+    const context = {
+      currentSessionId: 'ab12cd34', APP_ROOT: '/app', state: 'GENERATING',
+      selectedAction: 'polish', selectedCount: 3, expectedVariants: 3, arrivedVariants: 1,
+      visibleVariant: 1, currentSourceFile: 'Card.svelte', currentPreviewFile: 'manifest.json',
+      currentPreviewMode: 'svelte-component', location: { pathname: '/', hash: '', search: '' },
+      paramsCurrentValues: { space: 23 }, parameterGenerationState: 'ready', generationPhase: 'first_reviewable',
+      sessionOrigin: null, insertPlaceholderSnapshot: null, pickedAnchorSnapshot: null, pickedAnchorViewportTop: null,
+      sessionState: { saveSession(value) { saved = JSON.parse(JSON.stringify(value)); } },
+    };
+    runInNewContext(`${source}\nsaveSession()`, context);
+    assert.equal(saved.generationPhase, 'first_reviewable');
+    assert.equal(saved.previewMode, 'svelte-component');
+    assert.equal(saved.paramValues.space, 23);
+  });
+  for (const deferred of [false, true]) {
+    for (const scenario of ['switch', 'same', 'restore']) {
+      it(`preserves edits on remount or reload but not variant switches (deferred=${deferred}, scenario=${scenario})`, async () => {
+        const source = SOURCE.match(/async function mountSvelteComponentVariant\([^\n]*\) \{[\s\S]*?\n  \}/)?.[0];
+        assert.ok(source);
+        const anchor = { values: {} };
+        let mounted = false;
+        const frames = [];
+        const context = {
+          svelteComponentSession: {
+            sessionId: 'vue1', manifest: {}, mountTargetEl: {},
+            mountedVariant: scenario === 'restore' ? 0 : scenario === 'same' ? 1 : 2, propValues: {},
+          },
+          paramsCurrentValues: { space: 23 }, selectedElement: {}, state: 'CYCLING',
+          restoredParamValuesForVisibleVariant: () => scenario === 'restore' ? { space: 23 } : null,
+          componentModuleCandidates: () => ['/v1.vue'],
+          makeFrozenAnchor: value => value,
+          loadSvelteRuntime: async () => ({ mount() { mounted = true; return {}; } }),
+          importFirstReachable: async () => ({ url: '/v1.vue', mod: { default: {} } }),
+          getMountedSvelteComponentAnchor: () => mounted && !deferred ? anchor : null,
+          removeSvelteComponentVariantStyle() {}, syncCyclingControls() {},
+          isSvelteInsertManifest: () => false, applyOriginalAttrsToSvelteAnchor() {},
+          parseVariantParams: () => [{ id: 'space', kind: 'range', min: 4, max: 32 }],
+          applyParamValue(target, param, value) { target.values[param.id] = value; },
+          requestAnimationFrame: fn => frames.push(fn),
+          reportVariantMounted() {}, mountErrorState: null, console,
+        };
+        const helpers = ['isValidSavedParamValue', 'applySavedParamValues'].map(name =>
+          SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0]).join('\n');
+        const mount = runInNewContext(`${helpers}\n${source}\nmountSvelteComponentVariant`, context);
+        assert.equal(await mount(1), true);
+        context.getMountedSvelteComponentAnchor = () => anchor;
+        for (const frame of frames) frame();
+        assert.equal(anchor.values.space, scenario === 'switch' ? undefined : 23);
+      });
+    }
+  }
+});
+
 describe('live-browser source contracts', () => {
   it('does not checkpoint a generation before captureAndEmit creates its session', () => {
     for (const name of ['handleGo', 'handleInsertCreate']) {
