@@ -234,6 +234,18 @@ const cases = [
   // ======================================================================
   // context
   // ======================================================================
+  {
+    id: 'context-taste-ready', verb: 'context', workspace: 'ctx-empty',
+    env: env({ IMPECCABLE_HOME: '<WS>/.oracle-taste', IMPECCABLE_ACCOUNT_URL: 'https://api.impeccable.style', IMPECCABLE_NO_TASTE: null }),
+    setup: (ws) => write(ws, '.oracle-taste/taste.json', JSON.stringify({
+      version: 1, fetchedAt: Math.floor(Date.now() / 1000), etag: '"taste-1"',
+      issuer: 'https://api.impeccable.style', state: 'ready',
+      rules: [
+        { id: 'square', direction: 'prefer', text: 'Keep corners square: 0 to 2px radius on buttons, cards, inputs and images.' },
+        { id: 'kickers', direction: 'avoid', text: 'Small uppercase kicker labels above headings.' },
+      ],
+    })),
+  },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).
@@ -398,6 +410,15 @@ const cases = [
   // was recorded.
   { id: 'context-lowercase-product-name', platforms: ['darwin', 'win32'], verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'product.md', '# lower\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nLowercase filename.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-design-only', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Only\n---\n# Design: Only\n\n## Colors\n- **Ink** (#111): Text.\n'), env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-seeded-world', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\ncolors:\n  ground: "#82cc5c"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'), env: env(), files: IMPECCABLE_FILES },
+  // A seeded world outranks a scaffold's starter CSS: SEEDED_WORLD still fires
+  // when that CSS reads as a visual implementation, and the no-PRODUCT.md boot
+  // never calls the starter CSS the incumbent authority.
+  { id: 'context-seeded-world-starter-css', verb: 'context', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\ncolors:\n  ground: "#82cc5c"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'); write(ws, 'app/globals.css', ':root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n\nbody {\n  color: var(--foreground);\n  background: var(--background);\n}\n'); }, env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-seeded-world-starter-css-with-product', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, 'DESIGN.md', '---\nname: "Seedbed Lobes"\nworld: "sd-seedbed-lobes"\n---\n# Design System: Seedbed Lobes\n\nReference image: https://impeccable.style/worlds/cards/sd-seedbed-lobes.webp\n'); write(ws, 'app/globals.css', ':root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n'); }, env: env(), files: IMPECCABLE_FILES },
+  // `impeccable world` refuses on any DESIGN.md the context reader would read,
+  // not just a root one, and names it; no request is made, so this runs offline.
+  { id: 'world-refuses-docs-design', verb: 'world', workspace: 'ctx-empty', setup: (ws) => write(ws, 'docs/DESIGN.md', '# Ours\n'), args: ['kinpaku'], env: env({ IMPECCABLE_CREDENTIAL_STORE: 'file' }), files: [...IMPECCABLE_FILES, 'docs/**'] },
   { id: 'context-empty-platform-section', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\n## Positioning\nEmpty platform section.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-android', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nAndroid\n\n## Positioning\nNative android.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-adaptive-word', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nadaptive\n\n## Positioning\nAdaptive keyword.\n'), env: env(), files: IMPECCABLE_FILES },
@@ -421,6 +442,20 @@ const cases = [
   // Control: the launcher-era manifest still counts as an active hook, so
   // MANUAL_DETECTOR_REQUIRED is suppressed exactly as before.
   { id: 'context-launcher-hook-active', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/settings.local.json', JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: '[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" ] || "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" hook' }] }] } }, null, 2) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  // A harness with a hook surface and no manifest in reach: CONTEXT_STALE
+  // carries `hook-not-installed` and the fixed doctor sentence, spelled with
+  // the provider's command prefix. The fix names `hooks on` because a project
+  // skill folder is there for it to install beside; without one it names
+  // `update` (doctor-hook-not-installed-json).
+  { id: 'context-hook-not-installed', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  { id: 'context-hook-not-installed-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.agents/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }), files: IMPECCABLE_FILES },
+  // A declined install prompt keeps it quiet (`hooks off` writes
+  // `hook.enabled: false`, covered by context-hook-at-enclosing-git-root-disabled).
+  { id: 'context-hook-not-installed-declined', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/config.local.json', JSON.stringify({ hook: { consent: 'declined' } }) + '\n'), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }), files: IMPECCABLE_FILES },
+  // A plugin install resolves to the `source` provider, which has no hook
+  // surface: the plugin ships its own hooks, so there is nothing to install
+  // and no finding.
+  { id: 'context-hook-not-installed-plugin', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }), files: IMPECCABLE_FILES },
 
   // ======================================================================
   // doctor
@@ -497,6 +532,11 @@ const cases = [
   { id: 'doctor-codex-user-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, '.oracle-home/.codex'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
   { id: 'doctor-codex-home-hook-script-missing', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => codexUserHook(ws, 'codex-home'), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'codex', CODEX_HOME: `${WS}/codex-home` }) },
   { id: 'doctor-hook-script-present', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.claude/settings.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node .claude/skills/impeccable/scripts/hook.mjs' }] }] } }, null, 2) + '\n'); write(ws, '.claude/skills/impeccable/scripts/hook.mjs', '// present\n'); }, args: ['--json'], env: env() },
+  { id: 'doctor-hook-not-installed-text', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.claude/skills/impeccable/SKILL.md', ''), env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
+  // The skill folder sits above cwd: `hooks on` only installs beside a skill
+  // folder in the directory it runs in, so the fix names that directory.
+  { id: 'doctor-hook-not-installed-skill-above-cwd', verb: 'doctor', workspace: 'ctx-product-only', cwd: 'web', setup: (ws) => { gitBoundary(ws, '.'); write(ws, '.claude/skills/impeccable/SKILL.md', ''); write(ws, 'web/package.json', JSON.stringify({ name: 'web' }) + '\n'); }, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
+  { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
     setup: (ws) => {
@@ -628,6 +668,13 @@ const cases = [
   { id: 'critique-trend-existing', verb: 'critique-storage', workspace: 'ctx-full', args: ['trend', 'src-pages-index-astro'], env: env() },
   { id: 'critique-trend-none', verb: 'critique-storage', workspace: 'ctx-full', args: ['trend', 'nothing-here', '3'], env: env() },
   { id: 'critique-write-usage', verb: 'critique-storage', workspace: 'ctx-full', args: ['write', 'src/pages/index.astro'], env: env() },
+  { id: 'audit-storage-usage', verb: 'audit-storage', workspace: 'ctx-full', args: ['trend', 'x'], env: env() },
+  {
+    // #1329: reports.enabled false writes nothing and says so.
+    id: 'report-write-reports-off', verb: 'audit-storage', workspace: 'ctx-empty',
+    setup: (ws) => { write(ws, '.impeccable/config.json', '{"reports":{"enabled":false}}'); write(ws, 'body.md', '# Audit\n'); },
+    args: ['write', 'src/App.tsx', `${WS}/body.md`], env: env(),
+  },
   {
     // The snapshot filename carries the wall clock, so files are not
     // snapshotted; latest/trend afterwards prove the round trip. The written
@@ -753,6 +800,33 @@ const cases = [
   { id: 'seed-platform-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'surface', '--from', 'k1', '--platform', 'tv'], env: seedEnv() },
   { id: 'seed-candidate-count-invalid', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--from', 'k1', '--candidate-count', '9'], env: seedEnv() },
   { id: 'seed-no-product-gate', verb: 'concept-seed', workspace: 'ctx-visual-only', args: ['--scope', 'direction', '--from', 'k1'], env: seedEnv() },
+  {
+    id: 'seed-surface-settled-world', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'surface', '--mode', 'persuade', '--from', 'oracle-key-1'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
+  {
+    id: 'seed-direction-settled-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1', '--register', 'bolder'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
+  {
+    id: 'seed-direction-replace-world', verb: 'concept-seed', workspace: 'ctx-empty',
+    setup: (ws) => {
+      write(ws, 'PRODUCT.md', '# Product\n\n## Users\n\nPeople.\n');
+      write(ws, 'DESIGN.md', '---\nworld: "teletext-service"\n---\n# Design\n');
+    },
+    args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--replace-world'],
+    env: seedEnv({ IMPECCABLE_SEED_SALT: 'oracle' }),
+  },
   { id: 'seed-direction-local', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '1'], env: seedEnv() },
   { id: 'seed-direction-local-reroll-bolder', verb: 'concept-seed', workspace: 'ctx-product-only', args: ['--scope', 'direction', '--mode', 'persuade', '--from', 'oracle-key-1', '--reroll', '2', '--register', 'bolder'], env: seedEnv() },

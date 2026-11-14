@@ -281,6 +281,27 @@ export default [
   { id: 'hadmin-status-noargs', verb: 'hook-admin', workspace: 'hook-project', args: [], files: CACHE_FILES },
   { id: 'hadmin-unknown-action', verb: 'hook-admin', workspace: 'hook-project', args: ['bogus'], files: CACHE_FILES },
   { id: 'hadmin-off', verb: 'hook-admin', workspace: 'hook-project', args: ['off'], files: CACHE_FILES },
+  {
+    id: 'hadmin-user-account-install', verb: 'hook-admin', workspace: 'hook-project', platforms: ['linux', 'darwin'],
+    env: { CLAUDE_CONFIG_DIR: '<WS>/claude-account' },
+    files: [...CACHE_FILES, 'claude-account/installed-settings.json'],
+    setup(ws) {
+      for (const provider of ['.claude', '.cursor']) {
+        fs.rmSync(`${ws}/${provider}/skills/impeccable`, { recursive: true, force: true });
+      }
+      fs.mkdirSync(`${ws}/claude-account/skills/impeccable/scripts`, { recursive: true });
+      fs.writeFileSync(`${ws}/claude-account/skills/impeccable/scripts/impeccable`, '#!/bin/sh\n');
+    },
+    steps: [
+      { args: ['on'] },
+      { args: ['status'] },
+      { args: ['on'], setup(ws) {
+        fs.copyFileSync(`${ws}/claude-account/settings.json`, `${ws}/claude-account/installed-settings.json`);
+        fs.rmSync(`${ws}/claude-account/skills/impeccable`, { recursive: true, force: true });
+        fs.rmSync(`${ws}/claude-account/settings.json`);
+      } },
+    ],
+  },
   { id: 'hadmin-on', verb: 'hook-admin', workspace: 'hook-project', args: ['on'], files: CACHE_FILES },
   { id: 'hadmin-on-twice', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['on'] }, { args: ['on'] }, { args: ['status'] }] },
   { id: 'hadmin-off-then-status', verb: 'hook-admin', workspace: 'hook-project', files: CACHE_FILES, steps: [{ args: ['off'] }, { args: ['status'] }, { args: ['on'] }, { args: ['status'] }] },

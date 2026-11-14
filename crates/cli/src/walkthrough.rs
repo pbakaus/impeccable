@@ -1,0 +1,837 @@
+//! `impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]`
+//!
+//! Turns whatever an agent's browser tool recorded (WebM, GIF, MOV, MP4) into
+//! what a Needs you walkthrough card takes: a faststart H.264 MP4 with no
+//! audio, a poster still, and the attachment fields `needs_you.post` asks for
+//! (bytes, and the film's SHA-256 as base64url without padding). The agent
+//! never has to know ffmpeg; the system's ffmpeg does the work, and a missing
+//! one gets the exact install line.
+//!
+//! Output is one JSON object on stdout, success or failure, like the live
+//! verbs: `post` inside it is ready to merge into the `needs_you.post` call.
+use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+use base64::Engine;
+use impeccable_common::Io;
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+const USAGE: &str = "Usage: impeccable walkthrough <recording> [--chapter M:SS=Text]... [--ship Label] [--out <dir>]\n\nConverts a screen recording (webm, gif, mov, mp4) into a Needs you walkthrough:\nan H.264 MP4 with no audio, a poster still, and the fields needs_you.post wants.\nChapters mark the moments that matter, for example --chapter 0:04=\"Adding to the cart\".\n";
+
+/// The card's limits (the Needs you server enforces the same ones).
+const MAX_SECONDS: f64 = 120.0;
+const MAX_CHAPTER_MS: u64 = 120_000;
+/// Container duration rounding must not reject an otherwise valid recording.
+const DURATION_TOLERANCE_MS: u64 = 250;
+const MAX_FILM_BYTES: u64 = 50_000_000;
+const MAX_CHAPTERS: usize = 12;
+const MAX_CHAPTER_TEXT: usize = 200;
+const MAX_SHIP_LABEL: usize = 40;
+/// The approve button's label unless `--ship` names another.
+const DEFAULT_SHIP: &str = "Looks right";
+
+/// One encode attempt: the widest frame it keeps, and x264's quality factor.
+const ATTEMPTS: [(u32, u32); 2] = [(1920, 23), (1280, 30)];
+
+#[derive(Debug, PartialEq)]
+struct Chapter {
+    at_ms: u64,
+    text: String,
+}
+
+/// `M:SS=Text`, `H:MM:SS=Text` or `SS=Text` (seconds may carry a fraction).
+fn parse_chapter(raw: &str) -> Result<Chapter, String> {
+    let bad =
+        || format!("--chapter wants M:SS=Text, like 0:04=\"Adding to the cart\"; got \"{raw}\".");
+    let (time, text) = raw.split_once('=').ok_or_else(bad)?;
+    let text = text.trim();
+    if text.is_empty()
+        || text.chars().count() > MAX_CHAPTER_TEXT
+        || text.chars().any(char::is_control)
+    {
+        return Err(format!(
+            "A chapter's text is 1 to {MAX_CHAPTER_TEXT} characters on one line; got \"{raw}\"."
+        ));
+    }
+    let parts: Vec<&str> = time.trim().split(':').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return Err(bad());
+    }
+    let mut seconds = 0f64;
+    for (i, part) in parts.iter().enumerate() {
+        let last = i == parts.len() - 1;
+        let value: f64 = if last {
+            part.parse().map_err(|_| bad())?
+        } else {
+            part.parse::<u32>().map_err(|_| bad())? as f64
+        };
+        if !value.is_finite() || value < 0.0 || (i > 0 && value >= 60.0) {
+            return Err(bad());
+        }
+        seconds = seconds * 60.0 + value;
+    }
+    Ok(Chapter {
+        at_ms: (seconds * 1000.0).round() as u64,
+        text: text.to_string(),
+    })
+}
+
+fn duration_fits(seconds: f64) -> bool {
+    seconds <= MAX_SECONDS + DURATION_TOLERANCE_MS as f64 / 1000.0
+}
+
+/// Keep end markers playable and within the server's limit, without merging chapters.
+fn at_ms_fitted(at_ms: u64, film_ms: u64) -> u64 {
+    at_ms.min(film_ms.saturating_sub(1)).min(MAX_CHAPTER_MS)
+}
+
+fn chapter_at(at_ms: u64, film_ms: u64, previous: Option<u64>) -> Option<u64> {
+    if at_ms > film_ms.saturating_add(DURATION_TOLERANCE_MS) {
+        return None;
+    }
+    let at_ms = at_ms_fitted(at_ms, film_ms);
+    if previous.is_some_and(|p| at_ms <= p) {
+        return None;
+    }
+    Some(at_ms)
+}
+
+fn clock(ms: u64) -> String {
+    format!("{}:{:02}", ms / 60_000, (ms % 60_000) / 1000)
+}
+
+/// ffmpeg or ffprobe: `IMPECCABLE_FFMPEG_DIR` when set, else PATH, else the
+/// usual install folders (an agent's shell often has a thin PATH).
+fn tool(io: &Io, name: &str) -> Option<PathBuf> {
+    let file = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = io.env("IMPECCABLE_FFMPEG_DIR").filter(|d| !d.is_empty()) {
+        // An explicit folder is the only place looked: tests and locked-down setups rely on it.
+        return Some(PathBuf::from(dir).join(&file)).filter(|p| p.is_file());
+    }
+    if let Some(path) = search_path(&io.env, cfg!(windows)) {
+        dirs.extend(std::env::split_paths(path).filter(|d| d.is_absolute()));
+    }
+    for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
+        dirs.push(PathBuf::from(extra));
+    }
+    dirs.into_iter()
+        .map(|d| d.join(&file))
+        .find(|p| p.is_file())
+}
+
+/// The search path. Windows names it case-insensitively and usually spells it
+/// `Path`, which a plain `PATH` lookup in the env map would miss.
+fn search_path(env: &std::collections::HashMap<String, String>, windows: bool) -> Option<&str> {
+    if windows {
+        let mut keys: Vec<&String> = env.keys().filter(|k| k.eq_ignore_ascii_case("PATH")).collect();
+        keys.sort();
+        keys.first().map(|k| env[*k].as_str())
+    } else {
+        env.get("PATH").map(String::as_str)
+    }
+}
+
+fn install_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "brew install ffmpeg"
+    } else if cfg!(windows) {
+        "winget install Gyan.FFmpeg"
+    } else {
+        "sudo apt install ffmpeg (or your distribution's ffmpeg package)"
+    }
+}
+
+fn run_tool(tool: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let out = Command::new(tool)
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("couldn't run {}: {e}", tool.display()))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let last = err
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("no output");
+        return Err(last.trim().chars().take(300).collect());
+    }
+    Ok(out.stdout)
+}
+
+/// What ffprobe says about a file: seconds, the first video stream's codec
+/// and size, and whether any audio stream is present.
+struct Probe {
+    /// None when the container doesn't say (a browser MediaRecorder WebM often doesn't).
+    seconds: Option<f64>,
+    codec: String,
+    width: u64,
+    height: u64,
+    audio: bool,
+}
+
+fn probe(ffprobe: &Path, file: &Path) -> Result<Probe, String> {
+    let out = run_tool(
+        ffprobe,
+        &[
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type,codec_name,width,height:format=duration",
+            "-of",
+            "json",
+            &file.to_string_lossy(),
+        ],
+    )?;
+    let v: Value =
+        serde_json::from_slice(&out).map_err(|_| "ffprobe's answer wasn't JSON".to_string())?;
+    let streams = v["streams"].as_array().cloned().unwrap_or_default();
+    let video = streams
+        .iter()
+        .find(|s| s["codec_type"] == "video")
+        .ok_or("the file has no video")?;
+    let seconds = v["format"]["duration"]
+        .as_str()
+        .and_then(|d| d.parse::<f64>().ok())
+        .filter(|d| d.is_finite() && *d > 0.0);
+    Ok(Probe {
+        seconds,
+        codec: video["codec_name"].as_str().unwrap_or("").to_string(),
+        width: video["width"].as_u64().unwrap_or(0),
+        height: video["height"].as_u64().unwrap_or(0),
+        audio: streams.iter().any(|s| s["codec_type"] == "audio"),
+    })
+}
+
+fn fail(io: &mut Io, error: &str, message: String) -> i32 {
+    io.out(&format!(
+        "{}\n",
+        json!({ "ok": false, "error": error, "message": message })
+    ));
+    1
+}
+
+pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
+    let mut input = None;
+    let mut out_dir = None;
+    let mut chapters = Vec::new();
+    let mut ship = DEFAULT_SHIP.to_string();
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--help" | "-h" => {
+                io.out(USAGE);
+                return 0;
+            }
+            "--chapter" => match rest.next().map(|c| parse_chapter(c)) {
+                Some(Ok(c)) => chapters.push(c),
+                Some(Err(e)) => return fail(io, "bad_chapter", e),
+                None => return fail(io, "bad_chapter", "--chapter needs M:SS=Text.".into()),
+            },
+            "--ship" => match rest.next().map(|l| l.trim().to_string()) {
+                Some(l) if (1..=MAX_SHIP_LABEL).contains(&l.chars().count()) && !l.chars().any(char::is_control) => {
+                    ship = l
+                }
+                _ => {
+                    return fail(
+                        io,
+                        "usage",
+                        format!("--ship takes the approve button's label, 1 to {MAX_SHIP_LABEL} characters."),
+                    )
+                }
+            },
+            "--out" => match rest.next() {
+                Some(dir) => out_dir = Some(PathBuf::from(dir)),
+                None => return fail(io, "usage", "--out needs a folder.".into()),
+            },
+            a if a.starts_with('-') => {
+                return fail(io, "usage", format!("Unknown option for walkthrough: {a}"))
+            }
+            a if input.is_none() => input = Some(PathBuf::from(a)),
+            _ => return fail(io, "usage", "walkthrough takes one recording.".into()),
+        }
+    }
+    let Some(input) = input else {
+        return fail(
+            io,
+            "usage",
+            "walkthrough needs a recording: impeccable walkthrough <recording> [--chapter M:SS=Text]...".into(),
+        );
+    };
+    let input = if input.is_absolute() {
+        input
+    } else {
+        io.cwd.join(input)
+    };
+    if !input.is_file() {
+        return fail(
+            io,
+            "not_found",
+            format!("No recording at {}.", input.display()),
+        );
+    }
+    if chapters.len() > MAX_CHAPTERS {
+        return fail(
+            io,
+            "bad_chapter",
+            format!(
+                "A walkthrough takes up to {MAX_CHAPTERS} chapters; got {}.",
+                chapters.len()
+            ),
+        );
+    }
+    chapters.sort_by_key(|c| c.at_ms);
+    // The card wants chapters strictly increasing: two at one moment is a mistake to name.
+    if let Some(pair) = chapters.windows(2).find(|w| w[0].at_ms == w[1].at_ms) {
+        return fail(
+            io,
+            "bad_chapter",
+            format!(
+                "Two chapters share {}: \"{}\" and \"{}\". Give each its own moment.",
+                clock(pair[0].at_ms),
+                pair[0].text,
+                pair[1].text
+            ),
+        );
+    }
+
+    let (Some(ffmpeg), Some(ffprobe)) = (tool(io, "ffmpeg"), tool(io, "ffprobe")) else {
+        return fail(
+            io,
+            "ffmpeg_missing",
+            format!(
+                "Making a walkthrough needs ffmpeg, which isn't installed here. Install it with: {}. Then run this again.",
+                install_hint()
+            ),
+        );
+    };
+
+    let source = match probe(&ffprobe, &input) {
+        Ok(p) => p,
+        Err(e) => {
+            return fail(
+                io,
+                "unreadable",
+                format!(
+                    "{} isn't a recording ffmpeg can read: {e}.",
+                    input.display()
+                ),
+            )
+        }
+    };
+    let too_long = |io: &mut Io, seconds: f64| {
+        fail(
+            io,
+            "too_long",
+            format!(
+                "A walkthrough runs up to 2:00, and this recording is {}. Record a shorter pass of the moments that matter, or trim it first.",
+                clock((seconds * 1000.0).ceil() as u64)
+            ),
+        )
+    };
+    let late_chapter = |io: &mut Io, late: &Chapter, length_ms: u64| {
+        fail(
+            io,
+            "bad_chapter",
+            format!(
+                "The chapter \"{}\" is at {}, after the recording ends at {}.",
+                late.text,
+                clock(late.at_ms),
+                clock(length_ms)
+            ),
+        )
+    };
+    // A recording that states its length is checked before anything is written. One that
+    // doesn't (a browser's MediaRecorder WebM) is checked on the film made from it.
+    if let Some(seconds) = source.seconds {
+        if !duration_fits(seconds) {
+            return too_long(io, seconds);
+        }
+        let length_ms = (seconds * 1000.0).round() as u64;
+        if let Some(late) = chapters
+            .iter()
+            .find(|c| c.at_ms > length_ms.saturating_add(DURATION_TOLERANCE_MS))
+        {
+            return late_chapter(io, late, length_ms);
+        }
+    }
+
+    // Only the default folder is made to ignore itself: a folder the person named is theirs.
+    let default_out = out_dir.is_none();
+    let out_dir = out_dir
+        .map(|d| if d.is_absolute() { d } else { io.cwd.join(d) })
+        .unwrap_or_else(|| io.cwd.join(".impeccable").join("walkthroughs"))
+        // `--out .` reports clean paths, not `/project/./clip.mp4`.
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .collect::<PathBuf>();
+    if let Err(e) = std::fs::create_dir_all(&out_dir) {
+        return fail(
+            io,
+            "write_failed",
+            format!("Couldn't create {}: {e}.", out_dir.display()),
+        );
+    }
+    if default_out {
+        impeccable_common::git::ensure_dir_ignored(&out_dir.to_string_lossy(), &["*"]);
+    }
+    let mut stem: String = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "walkthrough".into())
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    // The recording itself is never the output: converting clip.mp4 into its own folder
+    // writes clip-walkthrough.mp4 beside it. In a folder the person named, a clip.mp4 or
+    // clip.png already there is theirs too, so the pair goes to the first free one of
+    // clip-walkthrough, clip-walkthrough-2, ...; the default folder holds only what this
+    // verb wrote, so a rerun there replaces it.
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    let taken = |p: &Path| std::fs::symlink_metadata(p).is_ok();
+    let blocked = |s: &str| {
+        let (f, p) = (out_dir.join(format!("{s}.mp4")), out_dir.join(format!("{s}.png")));
+        same(&f, &input) || same(&p, &input) || (!default_out && (taken(&f) || taken(&p)))
+    };
+    if blocked(&stem) {
+        let base = stem.clone();
+        stem = (1u32..)
+            .map(|n| match n {
+                1 => format!("{base}-walkthrough"),
+                n => format!("{base}-walkthrough-{n}"),
+            })
+            .find(|s| !blocked(s))
+            .expect("a free name");
+    }
+    let film = out_dir.join(format!("{stem}.mp4"));
+    let poster = out_dir.join(format!("{stem}.png"));
+    // Two runs that would write the same film and poster take turns, so each run's answer
+    // names a film and poster it made together, never one of each.
+    let _turn = match OutputTurn::take(&out_dir, &stem) {
+        Ok(turn) => turn,
+        Err(e) => {
+            return fail(
+                io,
+                "write_failed",
+                format!("Couldn't write in {}: {e}.", out_dir.display()),
+            )
+        }
+    };
+    // Everything is built under names only this run uses, then moved into place: a failure
+    // removes what this run made and nothing else, and a finished file is never half-written.
+    let token = std::process::id();
+    let film_tmp = out_dir.join(format!(".{stem}.{token}.tmp.mp4"));
+    let poster_tmp = out_dir.join(format!(".{stem}.{token}.tmp.png"));
+    let discard = |io: &mut Io, error: &str, message: String| {
+        let _ = std::fs::remove_file(&film_tmp);
+        let _ = std::fs::remove_file(&poster_tmp);
+        fail(io, error, message)
+    };
+
+    // A missing duration must not make us encode an arbitrarily long recording.
+    // Leave enough beyond the tolerance to detect oversize input, never silently trim it.
+    let encode_seconds = (MAX_SECONDS + 1.0).to_string();
+    let mut encoded = None;
+    let mut last_error = String::new();
+    for (max_width, crf) in ATTEMPTS {
+        // Even dimensions (yuv420p needs them), never upscaled past the source.
+        let scale = format!("scale='trunc(min({max_width},iw)/2)*2':-2");
+        let crf = crf.to_string();
+        let result = run_tool(
+            &ffmpeg,
+            &[
+                "-y",
+                "-v",
+                "error",
+                "-i",
+                &input.to_string_lossy(),
+                "-t",
+                &encode_seconds,
+                "-an",
+                "-map",
+                "0:v:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                &crf,
+                "-pix_fmt",
+                "yuv420p",
+                "-vf",
+                &scale,
+                "-movflags",
+                "+faststart",
+                &film_tmp.to_string_lossy(),
+            ],
+        );
+        match result {
+            Err(e) => {
+                last_error = e;
+                break;
+            }
+            Ok(_) => match std::fs::metadata(&film_tmp).map(|m| m.len()) {
+                Ok(bytes) if bytes <= MAX_FILM_BYTES => {
+                    encoded = Some(bytes);
+                    break;
+                }
+                Ok(bytes) => {
+                    last_error = format!(
+                        "the video is {} MB, over the card's 50 MB, even at 1280 px wide",
+                        bytes / 1_000_000
+                    )
+                }
+                Err(e) => {
+                    last_error = e.to_string();
+                    break;
+                }
+            },
+        }
+    }
+    let Some(film_bytes) = encoded else {
+        return discard(
+            io,
+            "convert_failed",
+            format!("Couldn't make the video: {last_error}."),
+        );
+    };
+
+    // What was made is checked, not assumed: the card refuses anything else.
+    let (made, made_seconds) = match probe(&ffprobe, &film_tmp) {
+        Ok(p) if p.codec == "h264" && !p.audio && p.seconds.is_some() => {
+            let seconds = p.seconds.unwrap_or(0.0);
+            (p, seconds)
+        }
+        Ok(p) => {
+            return discard(
+                io,
+                "convert_failed",
+                format!(
+                    "The video came out as {} {} audio, not H.264 without audio.",
+                    p.codec,
+                    if p.audio { "with" } else { "without" }
+                ),
+            );
+        }
+        Err(e) => {
+            return discard(
+                io,
+                "convert_failed",
+                format!("Couldn't check the video: {e}."),
+            );
+        }
+    };
+    // The film is what the card plays, so its length is the one that has to fit.
+    if !duration_fits(made_seconds) {
+        let _ = std::fs::remove_file(&film_tmp);
+        return too_long(io, made_seconds);
+    }
+    let made_ms = (made_seconds * 1000.0).round() as u64;
+    let mut previous: Option<(u64, String)> = None;
+    for chapter in &mut chapters {
+        let Some(at_ms) = chapter_at(chapter.at_ms, made_ms, previous.as_ref().map(|p| p.0)) else {
+            let _ = std::fs::remove_file(&film_tmp);
+            if chapter.at_ms > made_ms.saturating_add(DURATION_TOLERANCE_MS) {
+                return late_chapter(io, chapter, made_ms);
+            }
+            // Within the tolerance, a chapter past the end is moved onto the last moment,
+            // where it can land on the chapter before it.
+            let before = previous.map(|p| p.1).unwrap_or_default();
+            return fail(
+                io,
+                "bad_chapter",
+                format!(
+                    "The chapters \"{before}\" and \"{}\" both land at {} once fitted to the film, which ends at {}. Move the earlier one back.",
+                    chapter.text,
+                    clock(at_ms_fitted(chapter.at_ms, made_ms)),
+                    clock(made_ms)
+                ),
+            );
+        };
+        chapter.at_ms = at_ms;
+        previous = Some((at_ms, chapter.text.clone()));
+    }
+
+    // The poster is the first chapter's moment, never earlier than a second in: a chapter at
+    // 0:00 is the usual first one, and a recording's first frame is usually blank.
+    let wanted_ms = chapters
+        .first()
+        .map(|c| c.at_ms.max(1000))
+        .unwrap_or(1000)
+        .min(made_ms.saturating_sub(100));
+    // A seek near the end can land past a low frame rate's last frame and cut nothing, so
+    // the still falls back to the middle of the film, then its first frame.
+    let mut poster_cut = None;
+    for poster_ms in [wanted_ms, made_ms / 2, 0] {
+        let at = format!("{:.3}", poster_ms as f64 / 1000.0);
+        let result = run_tool(
+            &ffmpeg,
+            &[
+                "-y",
+                "-v",
+                "error",
+                "-ss",
+                &at,
+                "-i",
+                &film_tmp.to_string_lossy(),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale='min(1280,iw)':-2",
+                &poster_tmp.to_string_lossy(),
+            ],
+        );
+        if let Ok(b) = result.and_then(|_| {
+            std::fs::metadata(&poster_tmp)
+                .map(|m| m.len())
+                .map_err(|e| e.to_string())
+        }) {
+            if b > 0 {
+                poster_cut = Some((poster_ms, b));
+                break;
+            }
+        }
+    }
+    let Some((poster_ms, poster_bytes)) = poster_cut else {
+        return discard(
+            io,
+            "convert_failed",
+            "Couldn't cut the poster still from the video.".into(),
+        );
+    };
+
+    let digest = match std::fs::read(&film_tmp) {
+        Ok(bytes) => B64.encode(Sha256::digest(&bytes)),
+        Err(e) => {
+            return discard(
+                io,
+                "write_failed",
+                format!("Couldn't read back the video: {e}."),
+            )
+        }
+    };
+    // A film rename replaces the old film atomically or leaves it alone, but the poster goes
+    // first, so an earlier poster is set aside and put back if either move fails: a failure
+    // leaves the outputs exactly as they were.
+    let placed = place_pair(&poster_tmp, &poster, &film_tmp, &film, &out_dir.join(format!(".{stem}.poster.prev")));
+    if let Err(e) = placed {
+        return discard(
+            io,
+            "write_failed",
+            format!(
+                "Couldn't save the walkthrough in {}: {e}.",
+                out_dir.display()
+            ),
+        );
+    }
+    let chapter_rows: Vec<Value> = chapters
+        .iter()
+        .map(|c| json!({ "at": c.at_ms, "text": c.text }))
+        .collect();
+    let payload = json!({
+        "ok": true,
+        "film": {
+            "path": film, "format": "mp4", "bytes": film_bytes, "sha256": digest,
+            "durationMs": made_ms, "width": made.width, "height": made.height,
+        },
+        "poster": { "path": poster, "format": "png", "bytes": poster_bytes, "atMs": poster_ms },
+        "chapters": chapter_rows,
+        // Ready for needs_you.post: merge these two keys into the call, then upload
+        // each attachment the way the post's answer says.
+        "post": {
+            "attachments": [
+                { "id": "film", "format": "mp4", "bytes": film_bytes, "sha256": digest },
+                { "id": "poster", "format": "png", "bytes": poster_bytes },
+            ],
+            "interaction": {
+                "kind": "walkthrough",
+                "film": { "id": "film" },
+                "shot": { "id": "poster" },
+                "ship": { "label": ship },
+                "chapters": chapter_rows,
+            },
+        },
+        "_instructions": if chapters.is_empty() {
+            "Post this with needs_you.post: merge `post` into the call (title, notes, priority, target, question_key and request_id are yours), then upload film.path as attachment `film` and poster.path as `poster`. A walkthrough reads best with a chapter for each moment that matters: run again on the original recording with --chapter M:SS=Text for each."
+        } else {
+            "Post this with needs_you.post: merge `post` into the call (title, notes, priority, target, question_key and request_id are yours), then upload film.path as attachment `film` and poster.path as `poster`."
+        },
+    });
+    io.out(&format!(
+        "{}\n",
+        serde_json::to_string_pretty(&payload).unwrap_or_default()
+    ));
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_path_reads_windows_path_in_any_case() {
+        let env = |k: &str| std::collections::HashMap::from([(k.to_string(), "C:\\ffmpeg\\bin".to_string())]);
+        assert_eq!(search_path(&env("Path"), true), Some("C:\\ffmpeg\\bin"));
+        assert_eq!(search_path(&env("PATH"), true), Some("C:\\ffmpeg\\bin"));
+        assert_eq!(search_path(&env("path"), true), Some("C:\\ffmpeg\\bin"));
+        // Posix names are case-sensitive.
+        assert_eq!(search_path(&env("Path"), false), None);
+        assert_eq!(search_path(&env("PATH"), false), Some("C:\\ffmpeg\\bin"));
+    }
+
+    #[test]
+    fn chapters_read_the_ways_people_write_times() {
+        let at = |raw: &str| parse_chapter(raw).map(|c| (c.at_ms, c.text));
+        assert_eq!(
+            at("0:04=Adding to the cart"),
+            Ok((4000, "Adding to the cart".into()))
+        );
+        assert_eq!(at("1:30= Paying "), Ok((90_000, "Paying".into())));
+        assert_eq!(at("12.5=Half"), Ok((12_500, "Half".into())));
+        assert_eq!(at("0:01:05=Long form"), Ok((65_000, "Long form".into())));
+        // The first = splits; the text may hold more.
+        assert_eq!(at("0:02=a=b"), Ok((2000, "a=b".into())));
+        for bad in [
+            "0:04",
+            "0:04=",
+            "x=Text",
+            "0:75=Text",
+            "-1=Text",
+            "1:2:3:4=Text",
+            "0:04=line\nbreak",
+        ] {
+            assert!(parse_chapter(bad).is_err(), "{bad}");
+        }
+        assert!(parse_chapter(&format!("0:01={}", "x".repeat(201))).is_err());
+    }
+
+    #[test]
+    fn duration_tolerance_clamps_end_chapters_without_merging_them() {
+        assert!(duration_fits(120.0));
+        assert!(duration_fits(120.250));
+        assert!(!duration_fits(120.251));
+        assert!(!duration_fits(121.0));
+        assert_eq!(chapter_at(3000, 3000, None), Some(2999));
+        assert_eq!(chapter_at(3000, 2950, Some(1000)), Some(2949));
+        assert_eq!(chapter_at(3250, 3000, None), Some(2999));
+        assert_eq!(chapter_at(3251, 3000, None), None);
+        assert_eq!(chapter_at(3000, 3000, Some(2999)), None);
+        assert_eq!(chapter_at(3000, 2950, Some(2949)), None);
+        assert_eq!(chapter_at(120_200, 120_250, None), Some(120_000));
+        assert_eq!(chapter_at(120_201, 120_250, Some(120_000)), None);
+    }
+
+    #[test]
+    fn clock_reads_like_a_player() {
+        assert_eq!(clock(0), "0:00");
+        assert_eq!(clock(4_000), "0:04");
+        assert_eq!(clock(125_900), "2:05");
+    }
+
+    #[test]
+    fn a_failed_film_move_puts_the_earlier_poster_back() {
+        let dir = std::env::temp_dir().join(format!("walk-place-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("clip.mp4")).unwrap();
+        std::fs::write(dir.join("clip.mp4").join("keep"), b"x").unwrap();
+        std::fs::write(dir.join("clip.png"), b"old").unwrap();
+        std::fs::write(dir.join(".new.png"), b"new").unwrap();
+        std::fs::write(dir.join(".new.mp4"), b"film").unwrap();
+        let prev = dir.join(".clip.poster.prev");
+        let out = place_pair(
+            &dir.join(".new.png"),
+            &dir.join("clip.png"),
+            &dir.join(".new.mp4"),
+            &dir.join("clip.mp4"),
+            &prev,
+        );
+        assert!(out.is_err());
+        assert_eq!(std::fs::read(dir.join("clip.png")).unwrap(), b"old");
+        assert!(!prev.exists());
+        std::fs::remove_dir_all(dir.join("clip.mp4")).unwrap();
+        std::fs::write(dir.join(".new.png"), b"new").unwrap();
+        place_pair(
+            &dir.join(".new.png"),
+            &dir.join("clip.png"),
+            &dir.join(".new.mp4"),
+            &dir.join("clip.mp4"),
+            &prev,
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(dir.join("clip.png")).unwrap(), b"new");
+        assert_eq!(std::fs::read(dir.join("clip.mp4")).unwrap(), b"film");
+        assert!(!prev.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// Move the new poster and film into place together. An existing poster is moved to `prev`
+/// first and restored when either move fails; it is deleted only once both moves succeeded.
+fn place_pair(
+    poster_tmp: &Path,
+    poster: &Path,
+    film_tmp: &Path,
+    film: &Path,
+    prev: &Path,
+) -> std::io::Result<()> {
+    let kept = match std::fs::rename(poster, prev) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    let restore = || {
+        if kept {
+            let _ = std::fs::rename(prev, poster);
+        }
+    };
+    if let Err(e) = std::fs::rename(poster_tmp, poster) {
+        restore();
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(film_tmp, film) {
+        let _ = std::fs::remove_file(poster);
+        restore();
+        return Err(e);
+    }
+    if kept {
+        let _ = std::fs::remove_file(prev);
+    }
+    Ok(())
+}
+
+/// The turn one run holds on a film and poster name while it makes them: an exclusive lock
+/// on a hidden file beside them. The file stays when the run ends and the kernel releases
+/// the lock: unlinking it would let a third run lock a fresh file while a second still waits
+/// on the old one.
+struct OutputTurn {
+    _file: std::fs::File,
+}
+
+impl OutputTurn {
+    fn take(dir: &Path, stem: &str) -> std::io::Result<OutputTurn> {
+        let path = dir.join(format!(".{stem}.walkthrough.lock"));
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)?;
+        file.lock()?;
+        Ok(OutputTurn { _file: file })
+    }
+}
+

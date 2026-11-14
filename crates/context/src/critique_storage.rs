@@ -44,8 +44,17 @@ fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
             Value::Array(_) | Value::Object(_) => (js_string_of(v), false),
             Value::Null => unreachable!(),
         };
-        let needs_quotes = is_string && (s.contains(':') || s.contains('#'));
-        lines.push(format!("{}: {}", k, if needs_quotes { serde_json::to_string(&s).unwrap() } else { s }));
+        let multiline = s.contains(['\n', '\r']);
+        let needs_quotes = multiline || (is_string && (s.contains(':') || s.contains('#')));
+        lines.push(format!(
+            "{}: {}",
+            k,
+            if needs_quotes {
+                serde_json::to_string(&s).unwrap()
+            } else {
+                s
+            }
+        ));
     }
     lines.push("---".to_string());
     lines.join("\n")
@@ -188,6 +197,13 @@ pub fn list_snapshots(suffix: &str, cwd: &str, env: &Env) -> Vec<String> {
     let mut names: Vec<String> = names.into_iter().filter(|f| is_snapshot_name(f) && f.ends_with(suffix)).collect();
     names.sort();
     names.into_iter().map(|f| jsp::join(&[&dir, &f])).collect()
+}
+
+/// A newly written report. Body bytes are separate from local frontmatter.
+pub struct SavedReport {
+    pub path: String,
+    pub body: String,
+    pub meta: Map<String, Value>,
 }
 
 pub struct Snapshot {
@@ -438,7 +454,231 @@ fn read_newest_snapshot_for_identity_slugs(
     current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
 }
 
+/// The project's `reports` settings: `enabled` (default true) saves a report
+/// on every write, `commit` (default false) leaves the folder trackable
+/// instead of self-ignored. `.impeccable/config.local.json` wins per key.
+pub struct ReportSettings {
+    pub enabled: bool,
+    pub commit: bool,
+}
+
+pub fn report_settings(cwd: &str, env: &Env) -> ReportSettings {
+    let root = resolve_project_root(cwd, &TargetOptions::default(), env);
+    let mut settings = ReportSettings { enabled: true, commit: false };
+    for name in ["config.json", "config.local.json"] {
+        let Some(cfg) = crate::util::read_json(&jsp::join(&[&root, ".impeccable", name])) else { continue };
+        let Some(reports) = cfg.get("reports").and_then(Value::as_object) else { continue };
+        if let Some(b) = reports.get("enabled").and_then(Value::as_bool) {
+            settings.enabled = b;
+        }
+        if let Some(b) = reports.get("commit").and_then(Value::as_bool) {
+            settings.commit = b;
+        }
+    }
+    settings
+}
+
+/// `.impeccable/<kind>/` under the project root.
+fn store_dir(cwd: &str, env: &Env, kind: &str) -> String {
+    jsp::join(&[
+        &resolve_project_root(cwd, &TargetOptions::default(), env),
+        ".impeccable",
+        kind,
+    ])
+}
+
+const MAX_REPORT_BYTES: u64 = 64 * 1024;
+
+/// Check the opened handle, not a path that can be swapped after a stat.
+/// Temp reports outside the project are allowed; final symlinks and special
+/// files are refused. The bounded read also catches growth after metadata().
+fn read_report_input(path: &str) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let invalid = || {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "report input must be a regular file of at most 65536 bytes",
+        )
+    };
+    let before = std::fs::symlink_metadata(path)?;
+    if !before.is_file() || before.len() > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let file = options.open(path)?;
+    let meta = file.metadata()?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x400 != 0 {
+            return Err(invalid());
+        } // reparse point
+    }
+    if !meta.is_file() || meta.len() > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_REPORT_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_REPORT_BYTES {
+        return Err(invalid());
+    }
+    Ok(bytes)
+}
+
+/// `write <slug-or-target> <body-file>` for any report kind. Prints the path
+/// it wrote, or a `REPORTS OFF:` line when the project turned reports off.
+fn write_report(
+    kind: &str,
+    rest: &[String],
+    io: &mut Io,
+    cwd: &str,
+    env: &Env,
+    mut saved: Option<&mut dyn FnMut(SavedReport)>,
+) -> i32 {
+    let settings = report_settings(cwd, env);
+    if !settings.enabled {
+        io.out(&format!("REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the {kind} report was not saved. Carry on; nothing else changes.\n"));
+        return 0;
+    }
+    let slug_arg = rest.first().map(String::as_str).unwrap_or("");
+    // An audit may cover the whole project (`.`), which has no slug of its
+    // own; it is stored as `project`. Critique keeps skipping a root target.
+    let slug = coerce_slug(rest.first().map(String::as_str), cwd)
+        .or_else(|| (kind == "audit" && rest.get(1).is_some()).then(|| "project".to_string()));
+    let body_file = rest.get(1).filter(|s| !s.is_empty());
+    let (Some(slug), Some(body_file)) = (slug, body_file) else {
+        io.err("usage: write <slug-or-target> <body-file>\n");
+        return 1;
+    };
+    let raw = match if kind == "critique" {
+        read_report_input(body_file)
+    } else {
+        std::fs::read(body_file)
+    } {
+        Ok(b) => String::from_utf8_lossy(&b).into_owned(),
+        Err(e) => {
+            // JS: uncaught exception -> stack trace on stderr, exit 1
+            io.err(&format!("{}\n", uncaught(&node_read_error(body_file, &e))));
+            return 1;
+        }
+    };
+    let mut parsed_meta: Map<String, Value> = Map::new();
+    if let Some(m) = env.get("IMPECCABLE_REPORT_META").or_else(|| env.get("IMPECCABLE_CRITIQUE_META")).filter(|s| !s.is_empty()) {
+        if let Ok(Value::Object(o)) = serde_json::from_str::<Value>(m) {
+            parsed_meta = o;
+        }
+    }
+    // JS #660: the helper, not caller metadata, owns the target
+    // fingerprint/identity. Drop any caller-supplied copies (preserving
+    // the order of the rest) and append the freshly resolved values.
+    let mut meta: Map<String, Value> = Map::new();
+    for (k, v) in parsed_meta {
+        if k != "target_fingerprint" && k != "target_path" && k != "target_identity" {
+            meta.insert(k, v);
+        }
+    }
+    if let Some(id) = resolve_target_identity(slug_arg, cwd) {
+        meta.insert("target_identity".into(), Value::String(id));
+    }
+    if let Some(fp) = fingerprint_target(slug_arg, cwd) {
+        meta.insert("target_fingerprint".into(), Value::String(fp));
+        if let Some(lp) = resolve_local_target_path(slug_arg, cwd) {
+            meta.insert("target_path".into(), Value::String(lp));
+        }
+    }
+    let dir = store_dir(cwd, env, kind);
+    let _ = std::fs::create_dir_all(&dir);
+    // Reports are local runtime output unless the project commits them;
+    // `ignore.md` is the one hand-edited, team-shared file here.
+    if settings.commit {
+        // Opting in after a default write: drop only the rules this helper
+        // wrote, so reports become committable and user lines survive.
+        impeccable_common::git::release_dir_ignored(&dir, &["*", "!ignore.md"]);
+    } else {
+        impeccable_common::git::ensure_dir_ignored(&dir, &["*", "!ignore.md"]);
+    }
+    let timestamp = now_filename_stamp();
+    let mut front = meta.clone();
+    front.insert("timestamp".into(), Value::String(timestamp.clone()));
+    front.insert("slug".into(), Value::String(slug.clone()));
+    let contents = format!("{}\n{}\n", serialize_frontmatter(&front), js_trim(&raw));
+    // JS #660: exclusive create with a fixed-width collision suffix so a
+    // second critique in the same UTC second cannot replace history.
+    let mut written: Option<String> = None;
+    for collision in 0..=9999u32 {
+        let suffix = if collision == 0 { String::new() } else { format!("~{:04}", collision) };
+        let file_path = jsp::join(&[&dir, &format!("{}{}__{}.md", timestamp, suffix, slug)]);
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                let complete = f.write_all(contents.as_bytes()).is_ok();
+                if complete {
+                    if let Some(callback) = saved.as_mut() {
+                        callback(SavedReport {
+                            path: file_path.clone(),
+                            body: format!("{}\n", js_trim(&raw)),
+                            // Keep the original string types: plain numeric target names
+                            // are otherwise coerced by the legacy frontmatter parser.
+                            meta: front.clone(),
+                        });
+                    }
+                }
+                written = Some(file_path);
+                break;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                io.err(&format!("{}\n", uncaught(&e.to_string())));
+                return 1;
+            }
+        }
+    }
+    match written {
+        Some(fp) => {
+            io.out(&format!("{}\n", fp));
+            0
+        }
+        None => {
+            io.err(&format!("{}\n", uncaught(&format!("Too many {} snapshots for {} at {}", kind, slug, timestamp))));
+            1
+        }
+    }
+}
+
+/// `impeccable audit-storage`: saves audit reports under `.impeccable/audit/`
+/// through the same store as critique. Only `slug` and `write`: nothing reads
+/// audit history yet.
+pub fn run_audit(args: &[String], io: &mut Io) -> i32 {
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    let env = io.env.clone();
+    let rest = if args.is_empty() { &[][..] } else { &args[1..] };
+    match args.first().map(String::as_str).unwrap_or("") {
+        "slug" => run(args, io),
+        "write" => write_report("audit", rest, io, &cwd, &env, None),
+        _ => {
+            io.err("usage: audit-storage <slug|write> ...\n  slug <target>\n  write <slug-or-target> <body-file>\n");
+            1
+        }
+    }
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_saved(args, io, &mut |_| {})
+}
+
+/// Hands only a newly saved critique to the CLI, never a read or close.
+pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedReport)) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let cmd = args.first().map(String::as_str).unwrap_or("");
@@ -457,86 +697,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 }
             }
         }
-        "write" => {
-            let slug_arg = rest.first().map(String::as_str).unwrap_or("");
-            let slug = coerce_slug(rest.first().map(String::as_str), &cwd);
-            let body_file = rest.get(1).filter(|s| !s.is_empty());
-            let (Some(slug), Some(body_file)) = (slug, body_file) else {
-                io.err("usage: write <slug-or-target> <body-file>\n");
-                return 1;
-            };
-            let raw = match std::fs::read(body_file) {
-                Ok(b) => String::from_utf8_lossy(&b).into_owned(),
-                Err(e) => {
-                    // JS: uncaught exception -> stack trace on stderr, exit 1
-                    io.err(&format!("{}\n", uncaught(&node_read_error(body_file, &e))));
-                    return 1;
-                }
-            };
-            let mut parsed_meta: Map<String, Value> = Map::new();
-            if let Some(m) = env.get("IMPECCABLE_CRITIQUE_META").filter(|s| !s.is_empty()) {
-                if let Ok(Value::Object(o)) = serde_json::from_str::<Value>(m) {
-                    parsed_meta = o;
-                }
-            }
-            // JS #660: the helper, not caller metadata, owns the target
-            // fingerprint/identity. Drop any caller-supplied copies (preserving
-            // the order of the rest) and append the freshly resolved values.
-            let mut meta: Map<String, Value> = Map::new();
-            for (k, v) in parsed_meta {
-                if k != "target_fingerprint" && k != "target_path" && k != "target_identity" {
-                    meta.insert(k, v);
-                }
-            }
-            if let Some(id) = resolve_target_identity(slug_arg, &cwd) {
-                meta.insert("target_identity".into(), Value::String(id));
-            }
-            if let Some(fp) = fingerprint_target(slug_arg, &cwd) {
-                meta.insert("target_fingerprint".into(), Value::String(fp));
-                if let Some(lp) = resolve_local_target_path(slug_arg, &cwd) {
-                    meta.insert("target_path".into(), Value::String(lp));
-                }
-            }
-            let dir = get_critique_dir(&cwd, &env);
-            let _ = std::fs::create_dir_all(&dir);
-            // Snapshots are local runtime output; `ignore.md` is the one hand-edited, team-shared file here.
-            impeccable_common::git::ensure_dir_ignored(&dir, &["*", "!ignore.md"]);
-            let timestamp = now_filename_stamp();
-            let mut front = meta.clone();
-            front.insert("timestamp".into(), Value::String(timestamp.clone()));
-            front.insert("slug".into(), Value::String(slug.clone()));
-            let contents = format!("{}\n{}\n", serialize_frontmatter(&front), js_trim(&raw));
-            // JS #660: exclusive create with a fixed-width collision suffix so a
-            // second critique in the same UTC second cannot replace history.
-            let mut written: Option<String> = None;
-            for collision in 0..=9999u32 {
-                let suffix = if collision == 0 { String::new() } else { format!("~{:04}", collision) };
-                let file_path = jsp::join(&[&dir, &format!("{}{}__{}.md", timestamp, suffix, slug)]);
-                match std::fs::OpenOptions::new().write(true).create_new(true).open(&file_path) {
-                    Ok(mut f) => {
-                        use std::io::Write;
-                        let _ = f.write_all(contents.as_bytes());
-                        written = Some(file_path);
-                        break;
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(e) => {
-                        io.err(&format!("{}\n", uncaught(&e.to_string())));
-                        return 1;
-                    }
-                }
-            }
-            match written {
-                Some(fp) => {
-                    io.out(&format!("{}\n", fp));
-                    0
-                }
-                None => {
-                    io.err(&format!("{}\n", uncaught(&format!("Too many critique snapshots for {} at {}", slug, timestamp))));
-                    1
-                }
-            }
-        }
+        "write" => write_report("critique", rest, io, &cwd, &env, Some(saved)),
         "latest" => {
             let target = rest.first().map(String::as_str).unwrap_or("");
             let format = rest.get(1).map(String::as_str);
@@ -968,5 +1129,138 @@ mod tests_660 {
         assert_eq!(run_capture(&cwd, &["close", target, &identified_name]).0, 0);
 
         let _ = std::fs::remove_dir_all(&cwd);
+    }
+}
+
+#[cfg(test)]
+mod tests_reports {
+    use super::*;
+    use impeccable_common::Io;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    fn tmp() -> String {
+        let base = std::env::temp_dir().join(format!(
+            "impeccable-reports-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join(".git")).unwrap();
+        let real = std::fs::canonicalize(&base).unwrap().to_string_lossy().into_owned();
+        real.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(real)
+    }
+
+    fn call(f: fn(&[String], &mut Io) -> i32, cwd: &str, args: &[&str]) -> (i32, String, String) {
+        let (mut io, cap) = Io::captured("", PathBuf::from(cwd), HashMap::new());
+        let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let code = f(&owned, &mut io);
+        let out = String::from_utf8_lossy(&cap.stdout.borrow()).into_owned();
+        let err = String::from_utf8_lossy(&cap.stderr.borrow()).into_owned();
+        (code, out, err)
+    }
+
+    fn body(cwd: &str) -> String {
+        let p = format!("{cwd}/body.md");
+        std::fs::write(&p, "# Audit\n\nScore 14/20.\n").unwrap();
+        p
+    }
+
+    #[test]
+    fn audit_reports_are_saved_and_kept_out_of_git() {
+        let cwd = tmp();
+        let (code, out, err) = call(run_audit, &cwd, &["write", "src/App.tsx", &body(&cwd)]);
+        assert_eq!(code, 0, "{err}");
+        let path = out.trim();
+        // Windows joins with `\`; compare in one spelling.
+        let norm = path.replace('\\', "/");
+        assert!(norm.starts_with(&format!("{}/.impeccable/audit/", cwd.replace('\\', "/"))) && norm.ends_with("__src-app-tsx.md"), "{path}");
+        assert!(std::fs::read_to_string(path).unwrap().contains("Score 14/20."));
+        let ignore = std::fs::read_to_string(format!("{cwd}/.impeccable/audit/.gitignore")).unwrap();
+        assert!(ignore.lines().any(|l| l == "*"), "{ignore}");
+    }
+
+    #[test]
+    fn critique_snapshots_are_kept_out_of_git_too() {
+        let cwd = tmp();
+        let (code, _, err) = call(run, &cwd, &["write", "src/App.tsx", &body(&cwd)]);
+        assert_eq!(code, 0, "{err}");
+        assert!(std::fs::read_to_string(format!("{cwd}/.impeccable/critique/.gitignore")).unwrap().contains('*'));
+    }
+
+    #[test]
+    fn reports_off_saves_nothing() {
+        let cwd = tmp();
+        std::fs::create_dir_all(format!("{cwd}/.impeccable")).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"enabled":false}}"#).unwrap();
+        for f in [run_audit as fn(&[String], &mut Io) -> i32, run] {
+            let (code, out, _) = call(f, &cwd, &["write", "src/App.tsx", &body(&cwd)]);
+            assert_eq!(code, 0);
+            assert!(out.starts_with("REPORTS OFF:"), "{out}");
+        }
+        assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/audit")).exists());
+        assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/critique")).exists());
+    }
+
+    #[test]
+    fn a_local_config_overrides_the_shared_one() {
+        let cwd = tmp();
+        std::fs::create_dir_all(format!("{cwd}/.impeccable")).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"enabled":false}}"#).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.local.json"), r#"{"reports":{"enabled":true}}"#).unwrap();
+        let (_, out, _) = call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        assert!(out.replace('\\', "/").contains("/.impeccable/audit/"), "{out}");
+    }
+
+    #[test]
+    fn committed_reports_skip_the_ignore_file() {
+        let cwd = tmp();
+        std::fs::create_dir_all(format!("{cwd}/.impeccable")).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"commit":true}}"#).unwrap();
+        let (code, _, _) = call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        assert_eq!(code, 0);
+        assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/audit/.gitignore")).exists());
+    }
+
+    #[test]
+    fn opting_in_to_commit_lifts_the_helper_ignore_rules() {
+        let cwd = tmp();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        let ignore = format!("{cwd}/.impeccable/audit/.gitignore");
+        let mut text = std::fs::read_to_string(&ignore).unwrap();
+        text.push_str("scratch.txt\n");
+        std::fs::write(&ignore, text).unwrap();
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"commit":true}}"#).unwrap();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        let after = std::fs::read_to_string(&ignore).unwrap();
+        assert!(!after.lines().any(|l| l == "*" || l == "!ignore.md"), "{after}");
+        assert!(after.lines().any(|l| l == "scratch.txt"), "user lines stay: {after}");
+    }
+
+    #[test]
+    fn opting_in_removes_an_ignore_file_that_held_only_helper_rules() {
+        let cwd = tmp();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        std::fs::write(format!("{cwd}/.impeccable/config.json"), r#"{"reports":{"commit":true}}"#).unwrap();
+        call(run_audit, &cwd, &["write", "x", &body(&cwd)]);
+        assert!(!std::path::Path::new(&format!("{cwd}/.impeccable/audit/.gitignore")).exists());
+    }
+
+    #[test]
+    fn a_project_wide_audit_is_saved_as_project() {
+        let cwd = tmp();
+        let (code, out, err) = call(run_audit, &cwd, &["write", ".", &body(&cwd)]);
+        assert_eq!(code, 0, "{err}");
+        assert!(out.trim().ends_with("__project.md"), "{out}");
+    }
+
+    #[test]
+    fn audit_storage_takes_only_slug_and_write() {
+        let cwd = tmp();
+        let (code, _, err) = call(run_audit, &cwd, &["trend", "x"]);
+        assert_eq!(code, 1);
+        assert!(err.contains("usage: audit-storage"), "{err}");
     }
 }

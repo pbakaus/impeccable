@@ -34,7 +34,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     outputs:
       core: ${{ steps.plan.outputs.core }}
       rust: ${{ steps.plan.outputs.rust }}
@@ -66,7 +66,7 @@ jobs:
 
   test-matrix:
     name: test (Node ${{ matrix.node-version }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     strategy:
       fail-fast: false
@@ -83,9 +83,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -122,12 +120,23 @@ jobs:
         if: needs.changes.outputs.detector == 'true'
         run: rustup show && rustup target add wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: needs.changes.outputs.detector == 'true'
+        with:
+          cache: rust
 
       - name: Install wasm-pack
         if: needs.changes.outputs.detector == 'true'
         run: cargo install wasm-pack --locked
+
+      # wasm-pack fetches wasm-bindgen and binaryen (wasm-opt) from GitHub
+      # releases on first use; cached, a GitHub release outage cannot fail the build.
+      - name: Cache wasm-pack tools
+        if: needs.changes.outputs.detector == 'true'
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          path: ~/.cache/.wasm-pack
 
       - name: Build extension
         if: needs.changes.outputs.detector == 'true'
@@ -172,7 +181,7 @@ jobs:
   # The Rust workspace: the engine binary, the rule core, and every crate
   # behind them. Everything builds from source with no downloads.
   rust:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     steps:
@@ -184,7 +193,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build
         run: cargo build --workspace --all-targets
@@ -196,7 +208,7 @@ jobs:
   # workspace has to build and pass its own tests there. Tests that need a
   # browser or the oracle skip when those are absent.
   rust-windows:
-    runs-on: windows-latest
+    runs-on: namespace-profile-impeccable-windows
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     steps:
@@ -238,7 +250,7 @@ jobs:
       - run: cargo test --workspace --no-fail-fast
 
   launcher-windows:
-    runs-on: windows-latest
+    runs-on: namespace-profile-impeccable-windows
     needs: changes
     if: needs.changes.outputs.core == 'true'
     steps:
@@ -250,6 +262,8 @@ jobs:
           node-version: 24
       - name: Exercise Windows launcher downloads and verification
         run: node --test tests/launcher-download.test.mjs
+      - name: Exercise Windows plugin hook commands
+        run: node --test tests/hook-build-windows.test.mjs
 
   # The npm package ships only the shim (cli/bin/cli.js), and npm skips
   # `latest` for a Node its engines reject, serving the newest version that
@@ -258,7 +272,7 @@ jobs:
   # it to an older CLI that can no longer install (#361, #850). SHIM_FLOOR is
   # the version this job proves, and engines.node must match it.
   cli-shim-floor:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.core == 'true'
     env:
@@ -283,7 +297,7 @@ jobs:
   # runs on developer laptops: tests/oracle.test.mjs skips cleanly when no
   # binary is present, so the default suite is silent about it on CI.
   oracle:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.oracle == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.new_work_e2e == 'true'
     steps:
@@ -296,9 +310,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -306,7 +318,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine from source
         run: cargo build --release -p impeccable
@@ -335,7 +350,7 @@ jobs:
   # pin, or the launcher, the npm shim and `impeccable install` dead-end.
   # release.mjs hard-fails `release:skill`/`release:cli` on the same check.
   engine-release-ready:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -356,7 +371,7 @@ jobs:
           echo "::error title=Engine release not ready::The engine release for v$(cat ENGINE_VERSION) is not fully published (engine-v$(cat ENGINE_VERSION) release assets and/or the @impeccable/cli-<os>-<arch> npm platform packages). Publish the engine (bun run release:engine) and the platform packages (bun run release:platform-packages) before bumping ENGINE_VERSION on main or releasing the skill/CLI. If only engine-checksums.txt is named, run node scripts/check-engine-release.mjs --record and commit it."
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: test-matrix
     if: always()
     steps:
@@ -369,7 +384,7 @@ jobs:
           echo "test matrix passed"
 
   cli-remote-e2e:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.cli_remote_e2e == 'true'
     steps:
@@ -382,9 +397,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -394,7 +407,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -404,7 +420,7 @@ jobs:
 
   live-e2e-smoke:
     name: live-e2e smoke (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.live_e2e == 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
     timeout-minutes: 15
@@ -428,25 +444,17 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         run: bun install
@@ -459,7 +467,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -484,7 +495,7 @@ jobs:
 
   live-e2e-full:
     name: live-e2e full (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.live_e2e == 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
     timeout-minutes: 25
@@ -493,7 +504,7 @@ jobs:
       matrix:
         include:
           - group: platform
-            fixtures: astro-vite7,monorepo-nested-vite,nextjs-app-router,vite7-vue
+            fixtures: astro-vite7,monorepo-nested-vite,nextjs-app-router,nuxt-vite7,vite7-vue
           - group: svelte
             fixtures: vite8-sveltekit,vite8-sveltekit-stateful
           - group: react-a
@@ -514,25 +525,17 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         run: bun install
@@ -545,7 +548,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -568,7 +574,7 @@ jobs:
           if-no-files-found: ignore
 
   live-e2e-accept-cleanup:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.live_e2e_accept_cleanup == 'true'
     timeout-minutes: 15
@@ -592,27 +598,19 @@ jobs:
 
       - name: Setup Bun
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -628,8 +626,11 @@ jobs:
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        with:
+          cache: rust
 
       - name: Build the engine
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -646,7 +647,7 @@ jobs:
           bun run test:live-e2e-accept-cleanup
 
   live-svelte-adapter-deepseek:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.live_svelte_adapter_deepseek == 'true'
     timeout-minutes: 25
@@ -669,27 +670,19 @@ jobs:
 
       - name: Setup Bun
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
@@ -705,8 +698,11 @@ jobs:
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        with:
+          cache: rust
 
       - name: Build the engine
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
@@ -717,7 +713,7 @@ jobs:
         run: bun run test:live-svelte-adapter-deepseek
 
   skill-behavior:
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     needs: changes
     if: needs.changes.outputs.skill_behavior == 'true' && github.event_name != 'pull_request'
     env:
@@ -734,9 +730,7 @@ jobs:
           node-version: 24
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install
@@ -750,7 +744,7 @@ jobs:
   skill-workflow:
     # Expensive, manually opted-in completion diagnostics. This does not
     # replace the multi-family skill-behavior protocol suite above.
-    runs-on: ubuntu-latest
+    runs-on: namespace-profile-impeccable
     if: github.event_name == 'workflow_dispatch' && inputs.skill_workflow
     timeout-minutes: 70
     env:
@@ -764,9 +758,7 @@ jobs:
         with:
           node-version: 24
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
+        uses: ./.github/actions/setup-bun
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Prepare engine and browser before billing
