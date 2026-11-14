@@ -796,8 +796,8 @@ fn unavailable_metadata_keeps_plain_status_and_leaves_notice_owed() {
         .exists());
 }
 
-// Catches an audit saved but never uploaded, uploaded unmarked (it would read as a critique out of 40), or one
-// whose score cannot be an audit's reaching the account.
+// Catches an audit saved but never uploaded, uploaded unmarked (it would read as a critique out of 40), one whose
+// score cannot be an audit's reaching the account, or a linked file uploaded as an audit.
 #[test]
 fn a_saved_audit_uploads_marked_as_an_audit() {
     let (fake, env) = setup("audit-upload");
@@ -813,6 +813,16 @@ fn a_saved_audit_uploads_marked_as_an_audit() {
     assert!(out.status.success());
     assert!(String::from_utf8_lossy(&out.stdout).contains("audit"));
     assert!(audit(r#"{"target":".","total_score":30,"max_score":40,"p0_count":0,"p1_count":0}"#).status.success());
+    // An audit uploads now, so a link in place of its report is refused as a critique's is.
+    #[cfg(unix)]
+    {
+        let outside = std::env::temp_dir().join(format!("audit-outside-{}.md", std::process::id()));
+        std::fs::write(&outside, "Not a report").unwrap();
+        std::fs::remove_file(root.join("report.md")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("report.md")).unwrap();
+        assert!(!audit(r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":0}"#).status.success());
+        std::fs::remove_file(outside).unwrap();
+    }
     let r = fake.record.lock().unwrap();
     assert_eq!(r.critiques.len(), 1);
     let c = &r.critiques[0];

@@ -561,11 +561,8 @@ fn write_report(
         io.err("usage: write <slug-or-target> <body-file>\n");
         return 1;
     };
-    let raw = match if kind == "critique" {
-        read_report_input(body_file)
-    } else {
-        std::fs::read(body_file)
-    } {
+    // Both kinds upload, so both read only a small regular file (never a link to one).
+    let raw = match read_report_input(body_file) {
         Ok(b) => String::from_utf8_lossy(&b).into_owned(),
         Err(e) => {
             // JS: uncaught exception -> stack trace on stderr, exit 1
