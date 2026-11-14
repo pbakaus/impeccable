@@ -110,11 +110,21 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 let quiet = rest
                     .iter()
                     .any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
-                impeccable_account::critiques::after_save(io, &snapshot, quiet);
+                impeccable_account::critiques::after_save(io, &snapshot, impeccable_account::critiques::Report::Critique, quiet);
             }
             code
         }
-        "audit-storage" => impeccable_context::run_audit_storage(rest, io),
+        "audit-storage" => {
+            let mut saved = None;
+            let code = impeccable_context::critique_storage::run_audit_with_saved(rest, io, &mut |s| {
+                saved = Some(s)
+            });
+            if let Some(snapshot) = saved {
+                let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json"));
+                impeccable_account::critiques::after_save(io, &snapshot, impeccable_account::critiques::Report::Audit, quiet);
+            }
+            code
+        }
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
         "doctor" => impeccable_context::run_doctor(rest, io),

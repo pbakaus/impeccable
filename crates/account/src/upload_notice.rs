@@ -6,6 +6,7 @@ use impeccable_common::Io;
 pub(crate) enum Kind {
     Design,
     Critique,
+    Audit,
 }
 
 pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, kind: Kind, quiet: bool) {
@@ -15,6 +16,7 @@ pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, kind: Kind, quiet
     let (key, text) = match kind {
         Kind::Design => ("design", "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n"),
         Kind::Critique => ("critique", "Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off\n"),
+        Kind::Audit => ("audit", "Uploaded this audit report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off\n"),
     };
     // The caller holds this upload kind's admission lock through this step.
     // Login is stable across token refreshes and changes on a new sign-in.
@@ -26,7 +28,7 @@ pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, kind: Kind, quiet
     let _ = store::private_dir(&account.dir()).and_then(|_| store::write_private(&path, b"shown"));
     match kind {
         Kind::Design => io.err(text),
-        Kind::Critique => io.out(text),
+        Kind::Critique | Kind::Audit => io.out(text),
     }
 }
 

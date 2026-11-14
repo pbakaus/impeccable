@@ -660,12 +660,17 @@ fn write_report(
 /// through the same store as critique. Only `slug` and `write`: nothing reads
 /// audit history yet.
 pub fn run_audit(args: &[String], io: &mut Io) -> i32 {
+    run_audit_with_saved(args, io, &mut |_| {})
+}
+
+/// Hands only a newly saved audit to the CLI, as `run_with_saved` a critique.
+pub fn run_audit_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedReport)) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     match args.first().map(String::as_str).unwrap_or("") {
         "slug" => run(args, io),
-        "write" => write_report("audit", rest, io, &cwd, &env, None),
+        "write" => write_report("audit", rest, io, &cwd, &env, Some(saved)),
         _ => {
             io.err("usage: audit-storage <slug|write> ...\n  slug <target>\n  write <slug-or-target> <body-file>\n");
             1

@@ -23,13 +23,25 @@ fn enabled(io: &Io) -> bool {
     }
 }
 
+/// What a saved report is: a critique (ten heuristics out of 40) or an audit
+/// (five dimensions out of 20, none n/a, no heuristics). The cloud keeps
+/// both in the person's critique history and marks audits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Report {
+    Critique,
+    Audit,
+}
+
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
-fn payload(snapshot: &SavedReport) -> Option<Value> {
+fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
     let m = &snapshot.meta;
     let total = m.get("total_score")?.as_u64()?;
     let max = m.get("max_score")?.as_u64()?;
+    if report == Report::Audit && (max != 20 || m.get("na_heuristics").is_some()) {
+        return None;
+    }
     // The storage parser reads a single N/A index as a number, a list as text.
-    let na: Vec<u64> = match m.get("na_heuristics")? {
+    let na: Vec<u64> = match m.get("na_heuristics").unwrap_or(&Value::String(String::new())) {
         Value::Number(n) => vec![n.as_u64()?],
         Value::String(s) if s.is_empty() => vec![],
         Value::String(s) => s
@@ -42,7 +54,7 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
     if na.len() > 9
         || unique.len() != na.len()
         || na.iter().any(|n| !(1..=10).contains(n))
-        || max != 4 * (10 - na.len() as u64)
+        || (report == Report::Critique && max != 4 * (10 - na.len() as u64))
         || total > max
     {
         return None;
@@ -80,15 +92,20 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
         return None;
     }
     let created_at = format!("{}:{}:{}Z", &stamp[..13], &stamp[14..16], &stamp[17..19]);
-    Some(json!({
+    let mut out = json!({
         "version": 1, "critiqueId": id, "createdAt": created_at,
         "target": target, "score": { "total": total, "max": max }, "na": na,
         "heuristics": null, "counts": { "p0": p0, "p1": p1, "p2": count("p2_count"), "p3": count("p3_count") },
         "body": body
-    }))
+    });
+    // Only an audit names its kind: a critique's upload stays as every server so far reads it.
+    if report == Report::Audit {
+        out["kind"] = "audit".into();
+    }
+    Some(out)
 }
 
-pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
+pub fn after_save(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) {
     let started = Instant::now();
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
@@ -106,7 +123,7 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     if !state.signed_in {
         return;
     }
-    let Some(mut body) = payload(snapshot) else {
+    let Some(mut body) = payload(snapshot, report) else {
         return;
     };
     // Also honor an opt-out at the report's project root.
@@ -218,7 +235,11 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
             io,
             &account,
             session.state.login,
-            crate::upload_notice::Kind::Critique,
+            if report == Report::Audit {
+                crate::upload_notice::Kind::Audit
+            } else {
+                crate::upload_notice::Kind::Critique
+            },
             quiet,
         );
     }

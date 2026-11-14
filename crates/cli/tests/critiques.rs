@@ -795,3 +795,27 @@ fn unavailable_metadata_keeps_plain_status_and_leaves_notice_owed() {
         .join(format!("stale-grant-notice-{}", state.login))
         .exists());
 }
+
+// Catches an audit saved but never uploaded, uploaded unmarked (it would read as a critique out of 40), or one
+// whose score cannot be an audit's reaching the account.
+#[test]
+fn a_saved_audit_uploads_marked_as_an_audit() {
+    let (fake, env) = setup("audit-upload");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    assert!(impeccable(&env, root, &["critiques", "on"]).output().unwrap().status.success());
+    let audit = |meta: &str| {
+        impeccable(&env, root, &["audit-storage", "write", ".", "report.md"])
+            .env("IMPECCABLE_REPORT_META", meta)
+            .output()
+            .unwrap()
+    };
+    let out = audit(r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":2,"p2_count":3,"p3_count":1}"#);
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("audit"));
+    assert!(audit(r#"{"target":".","total_score":30,"max_score":40,"p0_count":0,"p1_count":0}"#).status.success());
+    let r = fake.record.lock().unwrap();
+    assert_eq!(r.critiques.len(), 1);
+    let c = &r.critiques[0];
+    assert_eq!((c["kind"].as_str(), c["score"]["max"].as_u64(), c["counts"]["p2"].as_u64()), (Some("audit"), Some(20), Some(3)));
+    assert!(r.critiques.iter().all(|c| c["na"] == serde_json::json!([])));
+}
