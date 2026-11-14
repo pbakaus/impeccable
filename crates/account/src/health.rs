@@ -497,13 +497,21 @@ pub(crate) fn critique_repo(
 ) -> Option<(String, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
-    // A remote read that timed out is not a repo without a remote: falling back
-    // to the local id then would name a different project, so send no key.
-    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short)
-        .ok()?
-        .and_then(|r| normalize_remote(&r));
+    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
+    repo_identity(&top, remote, env)
+}
+
+/// The key and label from the remote read's outcome. A read that timed out is
+/// not a repo without a remote: falling back to the local id then would name a
+/// different project, so it sends no key.
+fn repo_identity(
+    top: &str,
+    remote: Result<Option<String>, ()>,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    let remote = remote.ok()?.and_then(|r| normalize_remote(&r));
     let label = remote.as_deref().and_then(repo_label);
-    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
 
@@ -1024,5 +1032,30 @@ mod taste_notice_tests {
         let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
         assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
         std::fs::remove_dir_all(account.home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod repo_identity_tests {
+    use super::*;
+
+    #[test]
+    fn a_timed_out_remote_sends_no_key_and_a_missing_one_keeps_the_local_id() {
+        // Catches: a slow `git config` read under load fell back to the local id, so one
+        // repo was reported as another project.
+        let home = std::env::temp_dir().join(format!("impeccable-repo-identity-{}", std::process::id()));
+        let top = home.join("repo");
+        std::fs::create_dir_all(&top).unwrap();
+        let env: std::collections::HashMap<String, String> =
+            [("IMPECCABLE_HOME".to_string(), home.join(".impeccable").display().to_string())].into();
+        let top = top.to_string_lossy().into_owned();
+        assert_eq!(repo_identity(&top, Err(()), &env), None);
+        let local = repo_identity(&top, Ok(None), &env).expect("local id");
+        assert_eq!(local.1, None);
+        assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
+        let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
+        assert_ne!(remote.0, local.0);
+        assert!(remote.1.is_some());
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

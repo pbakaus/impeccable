@@ -69,7 +69,9 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         // Account sign-in. These never dispatch to the Pro engine.
         "login" => {
             let code = impeccable_account::run_login(rest, io);
-            if code == 0 {
+            // Help exits 0 too; only a finished sign-in earns the follow-ups.
+            let help = rest.iter().any(|a| a == "--help" || a == "-h");
+            if code == 0 && !help {
                 crate::setup_report::schedule(io);
                 crate::loop_install::after_login(io);
             }

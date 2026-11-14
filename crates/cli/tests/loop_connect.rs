@@ -950,3 +950,15 @@ fn an_agents_override_file_is_named_instead_of_reported_connected() {
     let status = b.run(&["loop", "status"]);
     assert!(!text(&status).contains("hidden by"), "{}", text(&status));
 }
+
+#[test]
+fn login_help_never_offers_to_connect_loop() {
+    // Catches: `login --help` exits 0 like a sign-in, so the Loop offer ran after help and
+    // could change an agent's MCP settings and hooks without anyone signing in.
+    let b = Box::new("login-help");
+    b.install_loop();
+    let out = b.run(&["login", "--help"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("Loop is installed"), "{}", text(&out));
+    assert!(claude_entry(&b.home().join(".claude.json")).is_null(), "nothing written");
+}
