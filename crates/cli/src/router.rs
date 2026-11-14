@@ -279,6 +279,7 @@ const KNOWN_VERBS: &[&str] = &[
     "--version",
     "-v",
     "engine-probe",
+    "motion-capture",
     "ignores",
     "ignore",
     "login",
