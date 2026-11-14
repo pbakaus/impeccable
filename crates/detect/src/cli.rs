@@ -383,6 +383,7 @@ impl<'a> Ctx<'a> {
                     std::io::ErrorKind::PermissionDenied => {
                         format!("EACCES: permission denied, open '{file_path}'")
                     }
+                    std::io::ErrorKind::InvalidData => e.to_string(),
                     _ => format!("ENOENT: no such file or directory, open '{file_path}'"),
                 }));
             }

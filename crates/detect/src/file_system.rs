@@ -177,13 +177,16 @@ pub fn build_import_graph_reporting(
 ) -> Vec<(String, Vec<String>)> {
     let mut graph = Vec::new();
     for file in files {
-        let content = match std::fs::read_to_string(file) {
+        let bytes = match std::fs::read(file) {
             Ok(c) => c,
             Err(e) => {
                 on_read_error(file, &e);
                 continue;
             }
         };
+        // Import discovery must not reject bytes the static HTML engine
+        // accepts. Actual filesystem errors still prevent the file's scan.
+        let content = String::from_utf8_lossy(&bytes);
         let dir = jsp::dirname(file);
         let mut imports: Vec<String> = Vec::new();
         for pattern in IMPORT_SPECIFIER_PATTERNS.iter() {
