@@ -498,6 +498,32 @@ describe('walk worker', () => {
     await ops.cdp({ method: 'Page.stopScreencast' });
   });
 
+  // `g1` is the goto's own document, committed before Page.navigate answers, as Chrome does it.
+  const commit = (loaderId, status) => {
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url: `http://localhost:3000/${loaderId}` } });
+    fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId, requestId: loaderId, response: { status, headers: {} } });
+  };
+  const load = (loaderId) => fire('Page.lifecycleEvent', { frameId: 'main', name: 'load', loaderId });
+  for (const [label, then, status] of [
+    ['its own load', () => load('g1'), 200],
+    ['the load of the page a script sent it on to', () => { commit('g2', 203); load('g2'); }, 203],
+    ['no load from a page that did not follow its own', () => load('l1'), 'TimeoutError'],
+  ]) {
+    it(`settles a goto on ${label} (REN-1910)`, async () => {
+      const { ops } = await walked();
+      const navigate = answers['Page.navigate'];
+      answers['Page.navigate'] = () => { commit('g1', 200); return { loaderId: 'g1' }; };
+      try {
+        const went = ops.goto({ url: 'http://localhost:3000/', waitUntil: 'load', timeout: 60 });
+        await settle(5);
+        then();
+        assert.equal(await went.then((r) => r.value.status, (err) => err.name), status);
+      } finally {
+        answers['Page.navigate'] = navigate;
+      }
+    });
+  }
+
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while it holds.
   for (const [sign, show] of [
     ['a visible password field', () => { page.seen = { password: true }; }],

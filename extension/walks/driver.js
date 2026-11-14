@@ -499,7 +499,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       for (const [id, loader] of walk.inflight) if (loader !== params.frame.loaderId) walk.inflight.delete(id);
       if (walk.inflight.size === 0) walk.quietSince = Date.now();
       setUrl(params.frame.url + (params.frame.urlFragment ?? ''));
-      tell({ kind: 'navigated', type: params.type });
+      tell({ kind: 'navigated', type: params.type, loaderId: params.frame.loaderId });
       break;
     case 'Page.navigatedWithinDocument':
       if (params.frameId !== walk.mainFrame) break;
@@ -864,9 +864,20 @@ export const ops = {
       if (sent.errorText) throw fail('Error', `${sent.errorText} at ${url}`);
       // The same document (a fragment): nothing loads.
       if (!sent.loaderId) return { value: { status: null } };
-      await page.wait((e) => e.kind === 'lifecycle' && e.loaderId === sent.loaderId && e.name === want, Math.max(1, timeout - (Date.now() - started)), navigationTimeout(timeout));
+      // A page that sends itself on by script (`location.replace` in its head) never loads: the document that replaced
+      // it in the main frame does. Only one that came after ours; one off the site never commits (the guard).
+      const ours = new Set([sent.loaderId]);
+      let committed = false;
+      let loaded = sent.loaderId;
+      await page.wait((e) => {
+        if (e.kind === 'navigated' && committed) ours.add(e.loaderId);
+        if (e.kind === 'navigated' && e.loaderId === sent.loaderId) committed = true;
+        if (e.kind !== 'lifecycle' || e.name !== want || !ours.has(e.loaderId)) return false;
+        loaded = e.loaderId;
+        return true;
+      }, Math.max(1, timeout - (Date.now() - started)), navigationTimeout(timeout));
       if (waitUntil === 'networkidle0') await idle(500, Math.max(1, timeout - (Date.now() - started))).catch(() => { throw fail('TimeoutError', navigationTimeout(timeout)); });
-      return { value: { status: walk.statuses.get(sent.loaderId) ?? null } };
+      return { value: { status: walk.statuses.get(loaded) ?? walk.statuses.get(sent.loaderId) ?? null } };
     } finally {
       page.stop();
     }
