@@ -93,7 +93,8 @@ fn resolve_linked_css_path(file_dir: &str, href: &str) -> String {
 ///
 /// Returns that text plus a second one for the page-level pattern scan: the
 /// same join minus the linked sheets `ignored` accepts (given the resolved
-/// path). The cascade keeps the full text.
+/// path). Each active sheet is media-filtered once before it enters either
+/// corpus. The cascade keeps active styles from ignored sheets too.
 pub fn collect_static_css_text(
     doc: &StaticDocument,
     file_dir: &Path,
@@ -107,12 +108,23 @@ pub fn collect_static_css_text(
     let mut warned_missing_stylesheets: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for style_el in doc.query_selector_all("style") {
-        let text = style_el.text_content();
-        pattern_texts.push(text.clone());
-        style_texts.push(text);
+        if style_el
+            .get_attribute("media")
+            .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
+        {
+            let text = super::media::screen_styles(&style_el.text_content());
+            pattern_texts.push(text.clone());
+            style_texts.push(text);
+        }
     }
     let file_dir_str = file_dir.to_string_lossy().into_owned();
     for link in doc.query_selector_all("link") {
+        if link
+            .get_attribute("media")
+            .is_some_and(|m| !m.trim().is_empty() && !super::media::matches_media(m))
+        {
+            continue;
+        }
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
         if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || REMOTE_HREF_RE.is_match(href) {
@@ -126,7 +138,7 @@ pub fn collect_static_css_text(
         );
         match read {
             Ok(bytes) => {
-                let text = String::from_utf8_lossy(&bytes).into_owned();
+                let text = super::media::screen_styles(&String::from_utf8_lossy(&bytes));
                 if !ignored.is_some_and(|f| f(&css_path)) {
                     pattern_texts.push(text.clone());
                 }
@@ -300,6 +312,7 @@ fn mark_pseudo_rule(
 }
 
 /// JS: css-cascade.mjs#buildStaticStyleMap(root, staticDoc, cssText, modules, profile, filePath)
+/// `css_text` is already media-filtered by [`collect_static_css_text`].
 pub fn build_static_style_map(
     doc: &mut StaticDocument,
     css_text: &str,

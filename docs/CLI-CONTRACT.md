@@ -33,6 +33,27 @@ Notation: `stdout>` / `stderr>` are literal writes; `exit N`; template strings u
 
 ---
 
+### Static HTML media environment
+
+Static HTML scans resolve CSS for one environment, matching the default rendered
+scan: `screen`, a light color scheme, and a 1280 × 800 CSS-pixel viewport. This
+applies to inline and local linked stylesheets, their `media` attributes, and
+nested `@media` blocks. Nonmatching and unsupported queries do not contribute
+styles, custom properties, or CSS pattern findings. Plain CSS/JS text scans are
+unchanged; a static HTML scan is not a review of every responsive state.
+
+Supported conditions are `screen`/`all` media types (other media types do not
+match), `not`/`only`, comma-separated alternatives, grouped `and`/`or` conditions,
+light/dark `prefers-color-scheme`, `orientation`, and `width`/`height` conditions.
+Dimensions support min/max, equality, and range syntax in px or initial-font
+em/rem (16px). Unsupported features, units, functions, and malformed conditions
+are excluded, including when negated. Use a rendered scan at the desired viewport
+for other environments. Existing `@supports` and `@layer` behavior is unchanged.
+
+The recorded `collectStaticCssRules` function vectors retain their historical
+behavior. Runtime scans filter media before the collector and custom-property
+resolution; those frozen vectors are not regenerated.
+
 ### PART 1 — the `impeccable` binary and the detect engine
 
 #### `cli/bin/cli.js` -> `impeccable <command>` (root dispatcher)
