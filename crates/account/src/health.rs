@@ -497,7 +497,10 @@ pub(crate) fn critique_repo(
 ) -> Option<(String, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
-    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
+    // A remote read that timed out is not a repo without a remote: falling back
+    // to the local id then would name a different project, so send no key.
+    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short)
+        .ok()?
         .and_then(|r| normalize_remote(&r));
     let label = remote.as_deref().and_then(repo_label);
     let identity = remote.or_else(|| local_repo_id(&top, env))?;
@@ -505,6 +508,12 @@ pub(crate) fn critique_repo(
 }
 
 fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    git_run(dir, args, timeout).ok().flatten()
+}
+
+/// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
+/// answered with a failure or nothing.
+fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -512,7 +521,7 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
+        .map_err(|_| ())?;
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -523,14 +532,17 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(());
             }
         }
     };
     let mut out = String::new();
-    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
+    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
+        return Ok(None);
+    }
     let s = out.trim().to_string();
-    (status.success() && !s.is_empty()).then_some(s)
+    Ok((status.success() && !s.is_empty()).then_some(s))
 }
 
 /// A repo with no `origin` gets a random id, kept under `IMPECCABLE_HOME`

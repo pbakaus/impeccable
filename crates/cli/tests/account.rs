@@ -257,10 +257,13 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
     let v: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
     assert_eq!(v["next"]["id"], "add-github");
 
-    // Every read from the repository named it by its key, in the header.
+    // Every read from the repository that named it used its one key, in the
+    // header. Under load git can miss its deadline and the read goes without a
+    // key, which is allowed; naming a different project is not.
     let seen = fake.record.lock().unwrap().setup_projects.clone();
     assert!(seen.len() >= 4, "{seen:?}");
-    let key = seen.last().unwrap().clone().expect("the project header");
+    let keys: Vec<&String> = seen.iter().flatten().collect();
+    let key = keys.first().expect("the project header").as_str();
     assert!(key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit()), "{key}");
-    assert!(seen.iter().all(|k| k.as_deref() == Some(key.as_str())), "{seen:?}");
+    assert!(keys.iter().all(|k| k.as_str() == key), "{seen:?}");
 }
