@@ -73,3 +73,46 @@ test('legacy manifests cannot share event-writable reactive objects with preview
     assert.ok(result.refused || result.previewCount === 1);
   } finally { await browser.close(); }
 });
+
+test('refusing an unsafe snapshot leaves the original component in the document', {
+  skip: process.env.IMPECCABLE_TEST_VUE_MODULES === undefined && 'IMPECCABLE_TEST_VUE_MODULES is unset',
+}, async () => {
+  const inject = source.match(/async function injectSvelteComponentsFromManifest\([^\n]*\) \{[\s\S]*?\n  \}/)?.[0];
+  assert.ok(inject);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<div id="original"></div>');
+    await page.addScriptTag({ content: readFileSync(join(process.env.IMPECCABLE_TEST_VUE_MODULES, 'vue/dist/vue.global.js'), 'utf8') });
+    const result = await page.evaluate(async ({ body, inject }) => {
+      const vm = Vue.createApp({ setup: () => ({ form: Vue.reactive({ count: 0 }) }), template: '<p>{{ form.count }}</p>' }).mount('#original');
+      const original = document.querySelector('#original p');
+      const manifest = { id: 'ab12cd34', count: 1, previewMode: 'vue-component', propContract: [
+        { prop: 'form', expr: 'form', kind: 'vue-callable-mixed' },
+      ] };
+      const run = new Function('original', 'manifest', `
+        let lastReportedMountFailure, currentSessionId, expectedVariants = 0, arrivedVariants = 0;
+        let visibleVariant = 1, state = 'GENERATING', svelteComponentSession = null;
+        let reported;
+        const PORT = 1, TOKEN = 'fixture';
+        const fetch = async () => ({ ok: true, text: async () => JSON.stringify(manifest) });
+        const loadSvelteComponentParams = async () => ({});
+        const isFrameworkComponentPreviewMode = () => true;
+        const rememberSessionFileMeta = () => {};
+        const setLiveState = value => { state = value; };
+        const findLiveElementForSvelteManifest = () => original;
+        const isSvelteInsertManifest = () => false;
+        const reportVariantMountFailed = (id, variant, path, error) => { reported = error.message; };
+        const abortSvelteComponentInjection = () => {};
+        ${body}
+        ${inject}
+        return injectSvelteComponentsFromManifest('manifest.json', 'ab12cd34').then(() => reported);
+      `);
+      const error = await run(original, manifest);
+      return { error, connected: original.isConnected, originalCount: vm.form.count };
+    }, { body, inject });
+    assert.match(result.error, /event bindings.*ordinary preview/i);
+    assert.equal(result.connected, true, 'snapshot refusal must not detach the original node');
+    assert.equal(result.originalCount, 0);
+  } finally { await browser.close(); }
+});

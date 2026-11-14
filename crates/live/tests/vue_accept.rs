@@ -788,6 +788,11 @@ fn review_vue_padded_variants_use_canonical_parameter_defaults() {
             assert!(source.contains("font-family: serif"), "{source}");
             assert!(source.contains("font-weight: 700"), "{source}");
             assert!(!source.contains("data-p-"), "{source}");
+            let (_, repeated) = fixture.accept("1");
+            assert_eq!(
+                repeated["alreadyApplied"], true,
+                "padded and canonical ids must share a Vue receipt: {repeated}"
+            );
         }
     }
 }
