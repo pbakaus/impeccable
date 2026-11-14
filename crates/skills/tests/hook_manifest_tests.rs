@@ -1151,6 +1151,39 @@ fn first_global_install_repairs_and_prunes_a_v3_project_hook() {
 }
 
 #[test]
+fn first_global_install_leaves_a_v3_project_hook_when_no_home_hook_is_written() {
+    // The bundle has no Cursor hook, so nothing is written to home. The v3
+    // project hook must not be retargeted at a home path nothing prunes.
+    let fx = home_fixture("home-hooks-first-install-no-artifact");
+    let bundle = jsp::join(&[&fx.dir.to_string_lossy(), "bundle-no-cursor"]);
+    write_current_bundle(&bundle, &[".agents"]);
+    let sys = home_sys(&fx.home, &fx.project, &[]);
+    let project_cursor = jsp::join(&[&fx.project, ".cursor", "hooks.json"]);
+    let text = json!({ "version": 1, "hooks": {
+        "postToolUse": [{ "command": "node .cursor/skills/impeccable/scripts/hook.mjs", "matcher": "^Write$", "timeout": 5 }],
+    } }).to_string();
+    write(&project_cursor, &text);
+
+    copy_provider_hooks(&sys, &bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+
+    assert!(!exists(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
+    assert_eq!(read(&project_cursor), text);
+}
+
+#[test]
+fn first_global_install_never_rewrites_committed_claude_settings() {
+    let fx = home_fixture("home-hooks-first-install-claude");
+    let sys = home_sys(&fx.home, &fx.project, &[]);
+    let settings = jsp::join(&[&fx.project, ".claude", "settings.json"]);
+    let text = json!({ "hooks": { "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node .claude/skills/impeccable/scripts/hook.mjs" }] }] } }).to_string();
+    write(&settings, &text);
+
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".claude", ".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+
+    assert_eq!(read(&settings), text);
+}
+
+#[test]
 fn stale_project_copy_stays_while_the_home_hook_is_not_wired() {
     let fx = home_fixture("home-hooks-unwired");
     let sys = home_sys(&fx.home, &fx.project, &[]);

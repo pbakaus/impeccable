@@ -676,13 +676,6 @@ fn json_parse_message(e: &serde_json::Error) -> String {
 pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: &str, providers: &[&'static str], force: bool, skill_root: Option<&str>, project_root: Option<&str>) -> Result<Vec<String>, String> {
     let skill_root = skill_root.unwrap_or(root);
     let user_scope = sys.is_home_dir(skill_root);
-    // A v3 (`node .../hook.mjs`) manifest a project still carries is repaired
-    // before the duplicate cleanup at the end, so a first global install
-    // retargets and then prunes it the way a repeat install does.
-    let project = project_root.unwrap_or(root);
-    if user_scope && project != skill_root {
-        repair_stale_hook_manifests(sys, project, providers, Some(skill_root))?;
-    }
     let mut written: Vec<String> = Vec::new();
     for provider in providers {
         if *provider == ".hermes" {
@@ -749,7 +742,22 @@ pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: 
         }
     }
     if user_scope {
-        prune_duplicate_home_hooks(sys, skill_root, project_root.unwrap_or(root), providers)?;
+        let project = project_root.unwrap_or(root);
+        // A v3 (`node .../hook.mjs`) project manifest is repaired here, so a
+        // first global install retargets and then prunes it the way a repeat
+        // install does. Only for Codex, Cursor and Grok, and only once their
+        // home hook is written and current: the prune right after then
+        // removes the retargeted copy, so no home path is left in the repo.
+        // Claude's committed project settings are never rewritten.
+        let wired: Vec<&'static str> = providers
+            .iter()
+            .copied()
+            .filter(|p| home_provider_id(p).is_some() && home_hook_is_current(sys, skill_root, p))
+            .collect();
+        if project != skill_root && !sys.is_home_dir(project) && !wired.is_empty() {
+            repair_stale_hook_manifests(sys, project, &wired, Some(skill_root))?;
+        }
+        prune_duplicate_home_hooks(sys, skill_root, project, providers)?;
     }
     Ok(written)
 }
