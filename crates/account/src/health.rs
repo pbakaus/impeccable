@@ -937,10 +937,19 @@ mod tests {
         // Catches: the repository key drifting from the one the account service computes
         // to show a person's local critiques on their team's repository (pristine
         // src/app-rpc/views/local-critiques.ts `cliRepoKey`, pinned to the same hex).
-        let key = |raw: &str| hex(&Sha256::digest(normalize_remote(raw).unwrap().as_bytes()));
+        // The key a clone gets is the one critique uploads send: `critique_repo` on a real repository.
+        let dir = std::env::temp_dir().join(format!("impeccable-health-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| assert!(Command::new("git").args(["-c", "core.fsmonitor=false", "-C"]).arg(&dir).args(args).output().unwrap().status.success());
+        git(&["init", "-q"]);
         for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web"] {
-            assert_eq!(key(raw), "589c2f960e539d4adf1f5100f4b185bf4e5f972a8f9ee47b948ad732d788f7e6", "{raw}");
+            git(&["config", "remote.origin.url", raw]);
+            // `critique_repo` gives git 150 ms a call; a loaded machine gets a few tries.
+            let key = (0..5).find_map(|_| critique_repo(&dir.to_string_lossy(), &std::collections::HashMap::new())).map(|(key, _)| key);
+            assert_eq!(key.as_deref(), Some("589c2f960e539d4adf1f5100f4b185bf4e5f972a8f9ee47b948ad732d788f7e6"), "{raw}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
