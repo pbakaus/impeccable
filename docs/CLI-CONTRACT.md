@@ -2708,6 +2708,38 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `login`: the first scan of a repository
+
+After a successful sign-in, and after its own success line, the CLI adds the
+repository it was run in to the account, once per repository and issuer, with
+no second command. It does this only when health sync is on, CI is unset, and
+the saved grant holds `health:write` or foundations consent; otherwise it
+prints nothing more. A telemetry opt-out does not stop it: signing in is the
+consent for this one scan and its sync, and the success line says what was
+sent. Later scans honor the opt-out as before. The repository is the git work
+tree containing the working directory (`git rev-parse --show-toplevel`), so a
+subdirectory counts as its repository.
+
+Exact stderr lines:
+
+- `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
+- `Scanning this repository for your account (Ctrl-C skips it)...`
+- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.`
+- `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`
+- `Couldn't scan this repository. Run impeccable detect here to add it to your account.`
+
+The scan runs in the foreground: the local detector's full scan of the work
+tree root (no model calls), with its output discarded, then the foundations
+sync (which founds a Pro or Team city) and the design health upload, with
+their notices kept off stderr. DESIGN.md contents are not part of it; the
+next full `detect` syncs them and shows their notice. The repository counts as
+added when either upload lands. The mark is `firstScans` in
+`$IMPECCABLE_HOME/health.json`, keyed by a hash of issuer and repository key;
+any full `detect` whose upload lands sets it too, and `health forget` clears
+it. A failed scan or upload is not marked, so the next sign-in tries again,
+and leaves the exit code of `login` at 0. Ctrl-C during the scan ends the
+process (exit 130) with the sign-in already saved.
+
 ## `health design on|off`
 
 Exact output strings:
