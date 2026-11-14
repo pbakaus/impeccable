@@ -2708,6 +2708,15 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `login`: already signed in
+
+`login` first checks the saved sign-in. When the service still honours it and
+it holds every feature scope the service offers now, `login` opens no browser,
+prints no link, writes `Already signed in to <account>.` and the Pro line to
+stderr, and exits 0. Otherwise (signed out, expired, the service unreachable,
+or a scope offered since) it signs in as before. `--force` always signs in,
+replacing the saved sign-in.
+
 ## `login`: the first scan of a repository
 
 After a successful sign-in, and after its own success line, the CLI adds the

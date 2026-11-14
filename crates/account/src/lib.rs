@@ -178,8 +178,17 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
         io.out(LOGIN_USAGE);
         return 0;
     }
-    if unknown_args(args, &["--no-browser"], io, "login") {
+    if unknown_args(args, &["--no-browser", "--force"], io, "login") {
         return 1;
+    }
+    // Signing in again would only replace a working sign-in with the same
+    // one; `--force` does it anyway (another account, a fresh grant).
+    if !has_flag(args, "--force") {
+        if let Some((account, entitlement)) = already_signed_in(&io.env) {
+            io.err(&format!("Already signed in to {}.\n", account.display_name()));
+            report_entitlement(io, &Ok(entitlement));
+            return 0;
+        }
     }
     let no_browser = has_flag(args, "--no-browser") || io.env_truthy("IMPECCABLE_NO_BROWSER");
     let timeout = io
@@ -224,6 +233,18 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
             1
         }
     }
+}
+
+/// A sign-in the service still honours and that holds every scope it offers
+/// now. Anything less (signed out, expired, offline, a newer scope) signs in.
+fn already_signed_in(env: &HashMap<String, String>) -> Option<(Account, Entitlement)> {
+    let account = Account::from_env(env).ok()?;
+    let entitlement = Session::load(&account)
+        .and_then(|mut s| session::entitlement(&mut s))
+        .ok()?;
+    let state = Store::new(&account).state().filter(|s| s.signed_in)?;
+    let meta = oauth::metadata(&http::Client::new(&account), &account).ok()?;
+    stale_grant::holds_all_offered(&account, &state, &meta).then_some((account, entitlement))
 }
 
 fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
@@ -359,12 +380,14 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
-const LOGIN_USAGE: &str = "Usage: impeccable login [--no-browser]
+const LOGIN_USAGE: &str = "Usage: impeccable login [--no-browser] [--force]
 
-Sign in to your Impeccable account in the browser.
+Sign in to your Impeccable account in the browser. Already signed in, it
+says so and does nothing.
 
 Options:
   --no-browser   Print the sign-in link on stdout instead of opening a browser
+  --force        Sign in again even when already signed in
 ";
 
 /// Start the system browser on `url`. Never through a shell: the URL is an

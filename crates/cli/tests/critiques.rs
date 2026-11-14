@@ -25,7 +25,7 @@ fn login(env: &HashMap<String, String>) {
     let mut child = impeccable(
         env,
         Path::new(&env["IMPECCABLE_HOME"]),
-        &["login", "--no-browser"],
+        &["login", "--no-browser", "--force"],
     )
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
@@ -794,4 +794,23 @@ fn unavailable_metadata_keeps_plain_status_and_leaves_notice_owed() {
         .dir()
         .join(format!("stale-grant-notice-{}", state.login))
         .exists());
+}
+
+// Catches `login` opening a second sign-in over a working one, and skipping one the service now needs for a newer scope.
+#[test]
+fn login_skips_a_working_sign_in_until_the_service_offers_more() {
+    let (fake, env) = setup("login-skip");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let again = || {
+        impeccable(&env, root, &["login", "--no-browser"])
+            .env("IMPECCABLE_LOGIN_TIMEOUT", "1")
+            .output()
+            .unwrap()
+    };
+    let out = again();
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "no sign-in link while signed in");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Already signed in"));
+    fake.knobs.lock().unwrap().worlds = true;
+    assert!(String::from_utf8_lossy(&again().stdout).starts_with("http"));
 }

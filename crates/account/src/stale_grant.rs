@@ -46,6 +46,15 @@ pub(crate) fn note_health_denied(account: &Account, login: u64) {
     let _ = store::write_private(&denied_path(account, login), b"403");
 }
 
+/// Whether this sign-in holds every feature scope the service offers now, so
+/// a fresh sign-in would add nothing.
+pub(crate) fn holds_all_offered(account: &Account, state: &State, meta: &oauth::Metadata) -> bool {
+    oauth::scopes(meta)
+        .split(' ')
+        .filter(|s| s.contains(':'))
+        .all(|scope| holds(account, state, scope))
+}
+
 fn holds(account: &Account, state: &State, scope: &str) -> bool {
     match scope {
         oauth::HEALTH_SCOPE => store::read_private(&denied_path(account, state.login))

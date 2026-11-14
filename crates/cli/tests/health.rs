@@ -26,7 +26,7 @@ fn impeccable(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Comma
 }
 
 fn login(env: &HashMap<String, String>) {
-    let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &["login", "--no-browser"])
+    let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &["login", "--no-browser", "--force"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1177,7 +1177,7 @@ fn stale_design_and_foundations_grants_require_current_service_offering() {
 
 /// `login` run from `cwd`; returns what it printed to stderr.
 fn login_in(env: &HashMap<String, String>, cwd: &Path) -> String {
-    let mut child = impeccable(env, cwd, &["login", "--no-browser"])
+    let mut child = impeccable(env, cwd, &["login", "--no-browser", "--force"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
