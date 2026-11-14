@@ -36,7 +36,9 @@ const COMPONENTS = {
     engineGated: true,
     buildCmd: 'bun run build:release',
     artifacts: ['dist/universal.zip'],
-    postReleaseHint: null,
+    // The ChatGPT listing is uploaded by hand and lags every release it misses (#1023).
+    postReleaseHint:
+      'Run `bun run release:cli` and `npm publish` at this version, then upload `dist/openai-plugin.zip` to the OpenAI plugin submission (docs/openai-plugin-submission.md) to update the ChatGPT listing.',
     tweetHeader: (v) => `Impeccable v${v} is out.`,
     tweetCta: 'Install / update: npx impeccable install',
   },
