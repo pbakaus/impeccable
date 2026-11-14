@@ -1088,6 +1088,86 @@ fn taste_goes_to_the_config_folder_claude_uses_and_json_reports_it() {
 }
 
 #[test]
+fn an_empty_rule_file_the_person_had_stays_after_disconnect() {
+    // Catches: disconnect deleting every rule file it emptied, not just ones connect made.
+    let b = Box::new("taste-empty-kept");
+    b.install_loop();
+    let codex_md = b.home().join(".codex/AGENTS.md");
+    fs::write(&codex_md, "").unwrap();
+    assert!(b.run(&["loop", "connect", "--agent", "codex", "--taste"]).status.success());
+    assert_eq!(taste_blocks(&codex_md), 1);
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(fs::read(&codex_md).ok(), Some(Vec::new()), "the person's own empty file stays");
+}
+
+#[test]
+fn json_reports_a_block_brought_up_to_date() {
+    let b = Box::new("taste-json-updated");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    fs::write(&claude_md, format!("{TASTE_START}\nold wording\n{TASTE_END}\n")).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["taste"][0]["result"], "updated", "{v}");
+    assert_eq!(v["taste"][0]["file"], claude_md.display().to_string());
+    // Unchanged on the next run: nothing to report.
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(v.get("taste").is_none(), "{v}");
+}
+
+#[test]
+fn a_block_that_could_not_be_removed_is_tried_again_next_disconnect() {
+    // Catches: disconnect forgetting a file whose block it failed to take out.
+    let b = Box::new("taste-retry");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    assert!(b.run(&["loop", "connect", "--agent", "claude", "--taste"]).status.success());
+    let good = read(&claude_md);
+    // A stray second marker makes the block ambiguous, so it is left alone.
+    fs::write(&claude_md, format!("{good}{TASTE_START}\n")).unwrap();
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("were left in place"), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 2);
+    // Fixed by hand: the next disconnect finds the file from the kept answer.
+    let fixed = read(&claude_md).replacen(&format!("{TASTE_START}\n"), "", 2);
+    let fixed = format!("{TASTE_START}\n{fixed}");
+    fs::write(&claude_md, &fixed).unwrap();
+    assert_eq!(taste_blocks(&claude_md), 1, "{fixed}");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+}
+
+#[test]
+fn taste_still_reaches_the_agent_that_connected_when_another_failed() {
+    // Catches: a partial connect skipping the offer, and a failed connect leaving a
+    // note that would later delete a file the person made.
+    let b = Box::new("taste-partial");
+    b.install_loop();
+    let theirs = "[mcp_servers.impeccable]\nurl = \"https://elsewhere.example/mcp\"\n";
+    fs::write(b.home().join(".codex/config.toml"), theirs).unwrap();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    let codex_md = b.home().join(".codex/AGENTS.md");
+    let out = b.run(&["loop", "connect", "--taste"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(text(&out).contains("Taste: added to ~/.claude/CLAUDE.md."), "{}", text(&out));
+    assert_eq!(taste_blocks(&claude_md), 1);
+    assert!(!codex_md.exists(), "nothing written for the agent that failed");
+    // The person makes the file themselves, then Codex connects too.
+    fs::write(&codex_md, "").unwrap();
+    fs::write(b.home().join(".codex/config.toml"), "").unwrap();
+    let out = b.run(&["loop", "connect", "--taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(taste_blocks(&codex_md), 1);
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(fs::read(&codex_md).ok(), Some(Vec::new()), "their file stays");
+}
+
+#[test]
 fn taste_flags_go_with_connect_or_install_one_at_a_time() {
     let b = Box::new("taste-flags");
     for args in [

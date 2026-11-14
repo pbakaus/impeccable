@@ -2316,12 +2316,20 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   mode, follow a symlink to its target, and leave every byte outside the markers
   alone; duplicated or unbalanced markers leave the file untouched and are
   reported. Under `--json` a `taste` array of `{file, result:
-  added|removed|declined|skipped|failed, error?}` is added only when a file was
-  touched or asked about. `loop disconnect` takes the block out of every file
+  added|updated|removed|declined|skipped|failed, error?}` is added only when a
+  file was changed or asked about (a failure to save the answers is a `failed` row
+  naming `connect.json`). When one agent fails, the text and JSON forms still make
+  the offer, once, to the agents this run connected (and to no one when nothing
+  connected), and the files and agents are re-checked under the lock
+  after the question, so a disconnect meanwhile is never undone. `loop disconnect` takes the block out of every file
   recorded and every rule file of the installations it removes (printing
   `  Removed the taste lines from <file>.`) before the engine's undo, so the
-  engine finds each file as it wrote it, then forgets every answer. A plain
-  (not symlinked) rule file left empty after both blocks are out is removed. The two flags go with `connect` or `install`, one at a
+  engine finds each file as it wrote it, then forgets the answers, keeping those
+  whose file could not be changed so the next disconnect tries again. Connect
+  records under `tasteCreated` each rule file that was missing before it first
+  wrote there (and drops the entry when that agent's connect fails with the file
+  still missing); such a file, when plain (not a symlink) and left empty after both
+  blocks are out, is removed. A file the person had, even an empty one, stays. The two flags go with `connect` or `install`, one at a
   time.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`

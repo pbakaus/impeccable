@@ -318,16 +318,23 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
         .filter(|a| *a != "--connect" && *a != "--no-connect")
         .cloned()
         .collect();
+    let connect_args = match inner.as_slice() {
+        [c] if c == "connect" => Some(None),
+        [c, a, h] if c == "connect" && a == "--agent" => Some(Some(h.as_str())),
+        _ => None,
+    };
+    if let Some(only) = connect_args {
+        let (result, connected) = match check_platform(std::env::consts::OS) {
+            Ok(()) => crate::loop_connect::connect_text(io, only),
+            Err(e) => (Err(e), Vec::new()),
+        };
+        return connect_then_taste(io, result, &connected, taste, "");
+    }
     match run_inner(&inner, io, PINS, std::env::consts::OS) {
         Ok(message) => {
             io.out(&message);
             if install && !no_connect {
                 return after_install(io, connect, taste);
-            }
-            if inner.first().is_some_and(|a| a == "connect") {
-                let only = (inner.len() == 3).then(|| inner[2].as_str());
-                let (lines, _) = crate::loop_connect::offer_taste(io, only, taste);
-                io.out(&lines);
             }
             0
         }
@@ -355,19 +362,37 @@ fn after_install(io: &mut Io, connect: bool, taste: crate::loop_connect::Taste) 
         io.out("Next: impeccable loop connect, so your agents bring their questions to Loop.\n");
         return 0;
     }
-    match crate::loop_connect::connect(io) {
+    let (result, connected) = crate::loop_connect::connect_text(io, None);
+    // Loop itself is installed; say how to finish rather than failing the install.
+    let finish = "Loop is installed. Run impeccable loop connect again once that is sorted.\n";
+    connect_then_taste(io, result, &connected, taste, finish)
+}
+
+/// Print a text connect's report, then make the taste offer to the agents it
+/// connected, which still happens when another agent failed. `on_error` follows the
+/// error. The exit code is the connect's.
+fn connect_then_taste(
+    io: &mut Io,
+    result: Result<String>,
+    connected: &[String],
+    taste: crate::loop_connect::Taste,
+    on_error: &str,
+) -> i32 {
+    let code = match result {
         Ok(message) => {
             io.out(&message);
-            let (lines, _) = crate::loop_connect::offer_taste(io, None, taste);
-            io.out(&lines);
             0
         }
         Err(e) => {
-            // Loop itself is installed; say how to finish rather than failing the install.
-            io.err(&format!("{e}\nLoop is installed. Run impeccable loop connect again once that is sorted.\n"));
+            io.err(&format!("{e}\n{on_error}"));
             1
         }
+    };
+    if !connected.is_empty() {
+        let (lines, _) = crate::loop_connect::offer_taste(io, connected, taste);
+        io.out(&lines);
     }
+    code
 }
 
 fn connect_answer(bytes_read: usize, line: &str) -> bool {
@@ -424,10 +449,11 @@ fn with_taste(
         .filter(|a| a["result"] == "connected")
         .filter_map(|a| a["agent"].as_str().map(str::to_owned))
         .collect();
-    let mut rows = Vec::new();
-    for harness in &connected {
-        rows.extend(crate::loop_connect::offer_taste(io, Some(harness), taste).1);
-    }
+    let rows = if connected.is_empty() {
+        Vec::new()
+    } else {
+        crate::loop_connect::offer_taste(io, &connected, taste).1
+    };
     if !rows.is_empty() {
         value["taste"] = serde_json::Value::Array(rows);
     }

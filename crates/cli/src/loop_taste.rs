@@ -105,24 +105,35 @@ fn physical(path: &Path) -> Result<PathBuf> {
     }
 }
 
-/// Write `bytes` whole: staged beside the file and renamed over it, keeping the
-/// file's mode (a new file gets the usual 0644 less the umask).
+/// Write `bytes` whole. An existing file is staged beside itself, readable only by
+/// its owner until it takes the file's own mode, and renamed over it; a missing file is
+/// created in place with the usual mode (0666 less the umask).
 fn write(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
     let path = physical(path)?;
     let parent = path.parent().ok_or("no parent folder")?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let Some(mode) = fs::metadata(&path).ok().map(|m| m.permissions()) else {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| e.to_string())?;
+        return file.write_all(bytes).map_err(|e| e.to_string());
+    };
     let name = path.file_name().ok_or("no file name")?.to_string_lossy();
     let staged = parent.join(format!(".{name}.impeccable-{}", std::process::id()));
     let _ = fs::remove_file(&staged);
-    let mode = fs::metadata(&path).ok().map(|m| m.permissions());
-    fs::write(&staged, bytes).map_err(|e| e.to_string())?;
-    if let Some(mode) = mode {
-        if let Err(e) = fs::set_permissions(&staged, mode) {
-            let _ = fs::remove_file(&staged);
-            return Err(e.to_string());
-        }
-    }
-    fs::rename(&staged, &path).map_err(|e| {
+    let mut open = fs::OpenOptions::new();
+    open.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut open, 0o600);
+    let done = open
+        .open(&staged)
+        .and_then(|mut f| f.write_all(bytes))
+        .and_then(|()| fs::set_permissions(&staged, mode))
+        .and_then(|()| fs::rename(&staged, &path));
+    done.map_err(|e| {
         let _ = fs::remove_file(&staged);
         e.to_string()
     })
@@ -143,15 +154,16 @@ pub(crate) fn present(path: &Path) -> bool {
     read(path).ok().flatten().is_some_and(|t| contains(&t))
 }
 
-/// Put the block in `path`, creating the file when it is missing. Writes nothing
-/// when the file already holds exactly this block.
-pub(crate) fn add(path: &Path) -> Result<()> {
+/// Put the block in `path`, creating the file when it is missing. `Ok(false)` when the
+/// file already held exactly this block and nothing was written.
+pub(crate) fn add(path: &Path) -> Result<bool> {
     let before = read(path)?.unwrap_or_default();
     let after = upsert(&before)?;
     if after == before {
-        return Ok(());
+        return Ok(false);
     }
-    write(path, after.as_bytes())
+    write(path, after.as_bytes())?;
+    Ok(true)
 }
 
 /// Take the block out of `path`. `Ok(false)` when there was none. The file itself

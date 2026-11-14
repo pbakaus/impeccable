@@ -107,7 +107,26 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
 /// `loop connect [--agent claude|codex]`: the full text report, sign-in and follow-up
 /// steps included, for every agent or just the one named.
 pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
-    let (out, connected, failed, _) = connect_agents(io, only)?;
+    connect_text(io, only).0
+}
+
+/// [`connect_only`], plus the agents this run connected: when one agent fails, the
+/// others are still connected and the result is an error naming the failure.
+pub(crate) fn connect_text(io: &Io, only: Option<&str>) -> (Result<String>, Vec<String>) {
+    match connect_agents(io, only) {
+        Err(e) => (Err(e), Vec::new()),
+        Ok((out, connected, failed, rows)) => {
+            let agents = rows
+                .iter()
+                .filter(|r| r["result"] == "connected")
+                .filter_map(|r| r["agent"].as_str().map(str::to_owned))
+                .collect();
+            (connect_report(out, only, connected, failed), agents)
+        }
+    }
+}
+
+fn connect_report(out: String, only: Option<&str>, connected: usize, failed: usize) -> Result<String> {
     if connected == 0 && failed == 0 {
         if let Some(harness) = only {
             return Err(format!("{}: not found.", label(harness)));
@@ -164,7 +183,13 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
             rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
             continue;
         };
-        match connect_one(&agent, &helper, &support) {
+        let file = rule_file(harness, &agent.root);
+        let noted = note_missing_rule_file(&support, &file);
+        let result = connect_one(&agent, &helper, &support);
+        if noted && result.is_err() && fs::symlink_metadata(&file).is_err() {
+            forget_missing_rule_file(&support, &file);
+        }
+        match result {
             Ok(manual) => {
                 connected += 1;
                 out.push_str(&format!(
@@ -461,7 +486,7 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // The taste block goes before the engine's undo, so the engine finds each rule file
     // exactly as it wrote it and cleans up after itself (a file it created goes too).
     let every: Vec<&Spec> = found.pending.iter().chain(&found.committed).collect();
-    let (taste_ok, emptied) = remove_taste(&home, &support, &every, &mut out);
+    let (taste_ok, created) = remove_taste(&home, &support, &every, &mut out);
     failed |= !taste_ok;
     let mut rolled_back = Vec::new();
     for spec in &found.pending {
@@ -537,10 +562,9 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         }
         out.push_str(&mcp_stays(&support, spec));
     }
-    // A rule file the engine created holds nothing once both blocks are out, but the
-    // engine keeps it because the taste block changed it after the engine wrote it.
-    // Only an empty plain file goes: never a link, never one with anything left in it.
-    for file in emptied {
+    // A rule file connect created for the taste block alone goes once it is empty
+    // again. A file the person had before, even an empty one, stays, as does a link.
+    for file in created {
         if fs::symlink_metadata(&file).is_ok_and(|m| m.is_file() && m.len() == 0) {
             let _ = fs::remove_file(&file);
         }
@@ -1110,6 +1134,39 @@ pub(crate) enum Taste {
 /// The person's answer for each rule file, in connect's note: `"on"` (added) or
 /// `"off"` (declined). The rule file itself never carries it.
 const TASTE_KEY: &str = "taste";
+/// The rule files that were missing when a connect first wrote to them, in connect's
+/// note. Once the taste block and the engine's block are both out, disconnect deletes
+/// such a file if nothing is left in it; a file the person had, even empty, stays.
+const TASTE_NEW_KEY: &str = "tasteCreated";
+
+/// Before a connect writes to `file`: note it when it doesn't exist yet, returning
+/// whether this call noted it. Called with the connect lock held. A failure only means
+/// an emptied file stays later.
+fn note_missing_rule_file(support: &Path, file: &Path) -> bool {
+    if fs::symlink_metadata(file).is_ok() {
+        return false;
+    }
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let key = json!(file.display().to_string());
+    if !note[TASTE_NEW_KEY].is_array() {
+        note[TASTE_NEW_KEY] = json!([]);
+    }
+    if note[TASTE_NEW_KEY].as_array().is_some_and(|a| a.contains(&key)) {
+        return false;
+    }
+    note[TASTE_NEW_KEY].as_array_mut().unwrap().push(key);
+    publish(support, TARGETS, &note).is_ok()
+}
+
+/// A connect that failed before writing `file`: it didn't create it after all.
+fn forget_missing_rule_file(support: &Path, file: &Path) {
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let key = json!(file.display().to_string());
+    if let Some(list) = note[TASTE_NEW_KEY].as_array_mut() {
+        list.retain(|v| *v != key);
+        let _ = publish(support, TARGETS, &note);
+    }
+}
 
 /// The agent's user-level rule file in this config folder, the one the engine's
 /// instruction block lives in.
@@ -1122,13 +1179,13 @@ fn tilde(home: &Path, path: &Path) -> String {
         .map_or_else(|_| path.display().to_string(), |rest| format!("~/{}", rest.display()))
 }
 
-/// The rule files of the agents this connect left connected (or just `only`): an agent
-/// counts when the engine holds a committed installation for its config folder.
-fn taste_targets(io: &Io, home: &Path, only: Option<&str>) -> Vec<PathBuf> {
+/// The rule files of `agents` that are connected: an agent counts when the engine
+/// holds a committed installation for its config folder.
+fn taste_targets(io: &Io, home: &Path, agents: &[String]) -> Vec<PathBuf> {
     let installed = installed_specs(OWNER).map(|f| f.committed).unwrap_or_default();
     AGENTS
         .iter()
-        .filter(|(h, _)| only.is_none_or(|o| o == *h))
+        .filter(|(h, _)| agents.iter().any(|a| a == h))
         .filter_map(|(h, _)| agent(io, home, h))
         .filter(|a| installed.iter().any(|s| s.harness == a.harness && s.root == a.root))
         .map(|a| rule_file(a.harness, &a.root))
@@ -1143,12 +1200,12 @@ fn row(file: &Path, result: &str) -> Value {
 /// follow the flag) for the rule files never asked about. A block the person deleted by
 /// hand is not put back unless they pass `--taste`; `--no-taste` takes it out. Returns
 /// the report lines and one JSON row per rule file changed or asked about.
-pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (String, Vec<Value>) {
+pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (String, Vec<Value>) {
     use std::io::IsTerminal;
     let (mut out, mut rows) = (String::new(), Vec::new());
     let Ok(home) = home(io) else { return (out, rows) };
     let Ok(support) = support_dir(&home) else { return (out, rows) };
-    let targets = taste_targets(io, &home, only);
+    let targets = taste_targets(io, &home, agents);
     if targets.is_empty() {
         return (out, rows);
     }
@@ -1191,7 +1248,20 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
             return (out, rows);
         }
     };
+    // A disconnect or another connect may have run while the person was answering, so
+    // the files are looked at again now: only agents still connected are touched, a
+    // block taken out meanwhile is not put back, and the answer covers only the files
+    // it was asked about.
+    let asked = ask;
     let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
+    let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = taste_targets(io, &home, agents)
+        .into_iter()
+        .partition(|f| loop_taste::present(f));
+    let ask: Vec<PathBuf> = absent
+        .into_iter()
+        .filter(|f| asked.contains(f) && (choice == Taste::Yes || !answered(f)))
+        .collect();
     if !note[TASTE_KEY].is_object() {
         note[TASTE_KEY] = json!({});
     }
@@ -1217,7 +1287,12 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
         }
         // Rewritten in place, so a block from an older wording is brought up to date.
         match loop_taste::add(file) {
-            Ok(()) => record(file, "on"),
+            Ok(changed) => {
+                record(file, "on");
+                if changed {
+                    rows.push(row(file, "updated"));
+                }
+            }
             Err(e) => {
                 out.push_str(&format!("Taste: couldn't update {shown}: {e}\n"));
                 rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
@@ -1228,7 +1303,7 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
         let shown = tilde(&home, file);
         match yes {
             Some(true) => match loop_taste::add(file) {
-                Ok(()) => {
+                Ok(_) => {
                     record(file, "on");
                     out.push_str(&format!("Taste: added to {shown}.\n"));
                     if let Some(over) = file.parent().and_then(|root| root_override("codex", root)).filter(|_| file.ends_with("AGENTS.md")) {
@@ -1257,6 +1332,11 @@ pub(crate) fn offer_taste(io: &mut Io, only: Option<&str>, choice: Taste) -> (St
     if note[TASTE_KEY] != before {
         if let Err(e) = publish(&support, TARGETS, &note) {
             out.push_str(&format!("Taste: couldn't record your answer: {e}\n"));
+            rows.push(json!({
+                "file": support.join(TARGETS).display().to_string(),
+                "result": "failed",
+                "error": format!("couldn't record your answer: {e}"),
+            }));
         }
     }
     (out, rows)
@@ -1267,9 +1347,10 @@ fn yes_answer(bytes_read: usize, line: &str) -> bool {
 }
 
 /// Disconnect: take the taste block out of every rule file connect put it in, and of
-/// the rule files of the installations being removed, then forget every answer so a
-/// later connect asks again. Called with the connect lock held. Returns whether all
-/// went well and the files the block came out of.
+/// the rule files of the installations being removed, then forget the answers so a
+/// later connect asks again. An answer whose file could not be changed is kept, so the
+/// next disconnect tries that file again. Called with the connect lock held. Returns
+/// whether all went well and the files connect created that the block came out of.
 fn remove_taste(
     home: &Path,
     support: &Path,
@@ -1277,42 +1358,52 @@ fn remove_taste(
     out: &mut String,
 ) -> (bool, Vec<PathBuf>) {
     let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
-    let mut files: Vec<PathBuf> = note[TASTE_KEY]
-        .as_object()
-        .map(|m| m.keys().map(PathBuf::from).collect())
-        .unwrap_or_default();
+    let answers = note[TASTE_KEY].as_object().cloned().unwrap_or_default();
+    let mut files: Vec<PathBuf> = answers.keys().map(PathBuf::from).collect();
     for spec in specs {
         let file = rule_file(&spec.harness, &spec.root);
         if !files.contains(&file) {
             files.push(file);
         }
     }
+    let new_files: Vec<Value> = note[TASTE_NEW_KEY].as_array().cloned().unwrap_or_default();
     let mut ok = true;
-    let mut taken = Vec::new();
+    let (mut created, mut kept, mut kept_new) = (Vec::new(), serde_json::Map::new(), Vec::new());
     for file in &files {
+        let key = file.display().to_string();
         match loop_taste::take_out(file) {
-            Ok(true) => {
-                out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));
-                taken.push(file.clone());
+            Ok(taken) => {
+                if taken {
+                    out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));
+                }
+                if taken && new_files.contains(&json!(key)) {
+                    created.push(file.clone());
+                }
             }
-            Ok(false) => {}
             Err(e) => {
                 ok = false;
                 out.push_str(&format!(
                     "  The taste lines in {} were left in place: {e}\n",
                     tilde(home, file)
                 ));
+                if let Some(answer) = answers.get(&key) {
+                    kept.insert(key.clone(), answer.clone());
+                }
+                if new_files.contains(&json!(key)) {
+                    kept_new.push(json!(key));
+                }
             }
         }
     }
-    if note[TASTE_KEY].as_object().is_some_and(|m| !m.is_empty()) {
-        note[TASTE_KEY] = json!({});
+    if kept != answers || kept_new != new_files {
+        note[TASTE_KEY] = Value::Object(kept);
+        note[TASTE_NEW_KEY] = Value::Array(kept_new);
         if let Err(e) = publish(support, TARGETS, &note) {
             ok = false;
             out.push_str(&format!("  Couldn't forget the taste answers: {e}\n"));
         }
     }
-    (ok, taken)
+    (ok, created)
 }
 
 fn sign_in(harness: &str) -> &'static str {
