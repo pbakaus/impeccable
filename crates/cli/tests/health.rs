@@ -1095,7 +1095,7 @@ fn upload_features_share_one_grant_and_keep_independent_consent() {
 
     // A new grant can decline one feature without losing any other scope.
     fake.knobs.lock().unwrap().design_denied = true;
-    login(&env);
+    login_with(&env, &["--force"]);
     run(&env, &root, &["detect", "--json", "."]);
     assert_eq!(fake.record.lock().unwrap().designs.len(), 1);
     assert_eq!(fake.record.lock().unwrap().foundations.len(), 2);
