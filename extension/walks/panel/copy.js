@@ -29,6 +29,9 @@ export const COPY = {
     failed: 'Couldn’t load your personas.',
     retry: 'Try again',
     signIn: 'Sign in again',
+    /** The width a journey runs at (REN-1890): the group, and each choice. */
+    width: 'Width',
+    widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
   },
   /** Talk to type: the mic in the ask box. A failure keys on the browser's error code; typing always still works. */
   voice: {
@@ -69,6 +72,7 @@ export const COPY = {
     risky: 'Some steps can’t be undone. Go ahead?',
     edit: 'Edit the task',
     start: 'Start journey',
+    at: { tablet: 'At tablet width, 768 × 1024', phone: 'At phone width, 390 × 844' },
   },
 
   walking: {

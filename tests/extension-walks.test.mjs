@@ -820,6 +820,56 @@ describe('walk worker', () => {
     assert.deepEqual([tabs.made, tabs.removed, tabs.ungrouped, current().state], [[], [], [21], 'done']);
   });
 
+  // REN-1890: a journey at phone or tablet width lays the person's tab out at that size, and gives the tab its own size
+  // back before the debugger leaves, however the journey ends. Chrome would keep a leftover override no longer than the
+  // debugger stays, but the clear is what a stop or a failure is checked by here.
+  for (const [label, device, end] of [
+    ['Stop, at phone width', 'phone', ({ command }) => command('stop')],
+    ['a guard ending (the tab left its site), at tablet width', 'tablet', () => fireOn(21, 'Page.frameNavigated', { frame: { id: 'main', loaderId: 'x1', url: 'https://elsewhere.example.com/' } })],
+    ['an open that failed once the tab was sized', 'phone', null],
+  ]) {
+    it(`lays the person’s tab out at the width picked, and clears it before letting go on ${label}`, async () => {
+      const walk = await ownTab();
+      const { ops, current, dispatch, DEVICES } = walk;
+      const log = [];
+      const { sendCommand, detach } = chrome.debugger;
+      chrome.debugger.sendCommand = async (target, method, params) => {
+        if (method.startsWith('Emulation.')) log.push([method, params]);
+        if (!end && method === 'Emulation.setTouchEmulationEnabled' && params.enabled) throw new Error('{"message":"no touch here"}');
+        return sendCommand(target, method, params);
+      };
+      chrome.debugger.detach = async () => { log.push(['detach']); };
+      try {
+        const before = sockets.length;
+        assert.equal((await (await import('../extension/walks/link.js')).adopt(started(), 21, device)).ok, true);
+        for (let turn = 0; turn < 50 && sockets.length === before; turn++) await settle(1);
+        const opening = ops.open({ url: `${SHOP}/`, name: 'Ines' });
+        if (!end) {
+          await assert.rejects(opening, /no touch here/);
+          // The server ends a walk whose tab did not open.
+          sockets.at(-1).onclose({ reason: 'cancelled' });
+        }
+        else {
+          await opening;
+          // The engine's own size for the walk does not undo the person's pick.
+          await ops.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+          await end(walk);
+          await settle(5);
+        }
+        const { width, height } = DEVICES[device];
+        assert.deepEqual(log.find(([method]) => method === 'Emulation.setDeviceMetricsOverride')[1], { width, height, deviceScaleFactor: 1, mobile: true });
+        if (end) assert.match(log.find(([method]) => method === 'Emulation.setUserAgentOverride')[1].userAgent, /Android/);
+        assert.deepEqual(log.slice(-4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : method === 'detach' ? method : `${method}:${JSON.stringify(params ?? {})}`)), [
+          'Emulation.clearDeviceMetricsOverride:{}', 'Emulation.setTouchEmulationEnabled:{"enabled":false}', 'Emulation.setUserAgentOverride:{"userAgent":""}', 'detach',
+        ]);
+      } finally {
+        Object.assign(chrome.debugger, { sendCommand, detach });
+        // Ended here when it did not end itself, so the walks below can start.
+        dispatch({ type: 'stop' });
+      }
+    });
+  }
+
   // Each on a walk of its own, after the one above has ended: the counts start at nothing.
   for (const [label, answer, asked] of [[`${MAX_OTHER_SITES} other sites`, 'yes', MAX_OTHER_SITES], [`${MAX_SITE_QUESTIONS} questions`, 'no', MAX_SITE_QUESTIONS]]) {
     it(`asks no more after ${label}: the next site is refused unasked`, async () => {

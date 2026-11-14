@@ -29,7 +29,9 @@ let signInFailed = false;
 let here;
 let hereUrl = '';
 /** Before a walk: the personas, the one picked, the task, and where the person is (`home`, `planning`, `plan`). */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '' };
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop' };
+/** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
+const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
 let walker = null;
 let walkUrl = null;
@@ -66,6 +68,9 @@ const ICONS = {
   warn: ['M12 3.5L2.5 20h19z', 'M12 10v4.5M12 17.2v.1'],
   shield: ['M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z', 'M8.5 12l2.5 2.5 4.5-5'],
   tab: ['M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z', 'M3 9h18'],
+  desktop: ['M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M9 21h6M12 17v4'],
+  tablet: ['M6 3h12a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 18 21H6a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 6 3z', 'M11 18h2'],
+  phone: ['M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3z', 'M11 18h2'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
 function icon(name) {
@@ -165,9 +170,18 @@ function home() {
       el('div', { class: 'field' }, box, el('div', { class: 'row' },
         Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
         el('span', { class: 'grow' }),
+        widths(),
         button('send', COPY.home.send, 'gold', send))),
     ),
   ];
+}
+
+/** Desktop, Tablet or Phone: the width the journey runs at, kept for next time. */
+function widths() {
+  return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.home.width }, WIDTHS.map((width) => el('button', {
+    type: 'button', 'data-act': `size-${width}`, 'aria-pressed': pre.width === width ? 'true' : 'false', title: COPY.home.widths[width], 'aria-label': COPY.home.widths[width],
+    onclick: () => { pre.width = width; void chrome.storage.local.set({ walkWidth: width }).catch(() => undefined); render(); },
+  }, icon(width))));
 }
 
 /**
@@ -239,7 +253,7 @@ async function go(start) {
   start.disabled = true;
   walker = { name: person.name, face: person.face ?? null };
   ended = false;
-  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.width }).catch(() => null);
   if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
   pre.note = WHY[answer?.why] ?? COPY.why.failed;
   // A plan the server no longer takes (expired, or for another task or site): back to the box, to send again.
@@ -259,6 +273,7 @@ function planned() {
     top(),
     el('div', { class: 'plan-head' }, face(person, 56, 'confident'), el('h2', { class: 'hd', text: COPY.plan.title(person.name) })),
     el('q', { class: 'task', text: pre.task }),
+    COPY.plan.at[pre.width] ? el('p', { class: 'task at', 'data-width': pre.width }, icon(pre.width), COPY.plan.at[pre.width]) : null,
     el('ul', { class: 'plan' }, pre.plan.steps.map((line) => el('li', { class: line.risky ? 'risky' : '', 'data-risky': line.risky ? 'yes' : undefined }, el('i', { text: line.risky ? '!' : '' }), el('span', { text: line.text })))),
     el('span', { class: 'grow' }),
     pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
@@ -467,6 +482,8 @@ async function knowWalk() {
 async function start() {
   // The stand-in states are a development build's alone: the store build draws no walk screen without a walk.
   const stub = BUILD.devHosts ? params.get('stub') : null;
+  const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
+  if (WIDTHS.includes(walkWidth)) pre.width = walkWidth;
   if (stub !== null) {
     const { STUBS, PRE } = await import('./stub.js');
     view = STUBS[stub] ?? STUBS.idle;

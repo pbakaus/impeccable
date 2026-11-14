@@ -71,7 +71,8 @@ let home = null;
 export function openIn(windowId) { home = typeof windowId === 'number' ? windowId : null; }
 
 /**
- * The person's own tab a walk main started is to walk (`{ tabId, site }`), or null: the walk opens a tab of its own.
+ * The person's own tab a walk main started is to walk (`{ tabId, site, device }`, `device` one of DEVICES or none), or
+ * null: the walk opens a tab of its own.
  * Such a walk opens and closes no tab, starts where the tab is, keeps its size, takes stills only, and may go to
  * another site when the person says yes (guard.js `askable`).
  */
@@ -116,6 +117,46 @@ async function mayGo(url) {
   return true;
 }
 
+/**
+ * The widths a walk of the person's own tab may run at, picked in the side panel (REN-1890). Desktop is not here: the
+ * tab keeps its own size. One device pixel a CSS pixel, as the engine's own browser has it; both take touch and name
+ * themselves as Chrome on Android, a phone as a mobile one.
+ */
+export const DEVICES = { tablet: { width: 768, height: 1024, phone: false }, phone: { width: 390, height: 844, phone: true } };
+
+/** What the tab says it is at `device`: this Chrome's own version, on Android. */
+function agentOf(device) {
+  const major = /Chrome\/(\d+)/.exec(navigator.userAgent)?.[1] ?? '120';
+  const mobile = DEVICES[device].phone;
+  const brands = navigator.userAgentData?.brands ?? [];
+  return {
+    userAgent: `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0${mobile ? ' Mobile' : ''} Safari/537.36`,
+    userAgentMetadata: { brands, platform: 'Android', platformVersion: '10', architecture: '', model: mobile ? 'K' : '', mobile },
+  };
+}
+
+/** Lays the walked tab out as `device` (DEVICES); the tab as it is for any other. */
+async function sizeTo(device) {
+  const size = DEVICES[device];
+  if (!size) return;
+  walk.sized = true;
+  await cmd('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: 1, mobile: true });
+  await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await cmd('Emulation.setUserAgentOverride', agentOf(device));
+}
+
+/**
+ * Gives the tab its own size back, before the debugger leaves it: past `cmd`, which refuses once the walk is ending.
+ * A debugger that left without this (Cancel on Chrome's bar, the worker ended) took its overrides with it.
+ */
+async function unsize(tab) {
+  if (!tab?.sized) return;
+  tab.sized = false;
+  const to = sendTo(tab.tabId);
+  await Promise.all([to('Emulation.clearDeviceMetricsOverride'), to('Emulation.setTouchEmulationEnabled', { enabled: false }), to('Emulation.setUserAgentOverride', { userAgent: '' })]
+    .map((done) => done.catch(() => undefined)));
+}
+
 /** Whether the walked tab is on a site the walk only looks at: another site the person let it go to. */
 export const lookOnly = () => Boolean(walk?.adopted && !stillHome(walk.url, walk.writable));
 
@@ -138,6 +179,7 @@ export async function endWalk(told, why, { tidy = false } = {}) {
   if (tidy) for (const hook of hooks.closing) { try { await hook(tab); } catch { /* the tab may be gone */ } }
   if (walk !== tab) return;
   walk = null;
+  await unsize(tab);
   await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
   say(told);
   await letGo(tab, why);
@@ -593,7 +635,7 @@ async function press(name) {
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
 async function adopt(name, allow) {
-  const { tabId, site } = adopted;
+  const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
   const still = () => { if (me.stopped) throw fail('Stopped', 'the journey ended before its tab opened'); };
@@ -629,12 +671,13 @@ async function adopt(name, allow) {
     // The person's history before the walk is theirs: going back never reaches it.
     walk.firstIndex = (await cmd('Page.getNavigationHistory')).currentIndex ?? 0;
     await arm(cmd);
+    await sizeTo(device);
     for (const hook of hooks.opened) { still(); await hook(walk); }
     still();
     return { value: { tabId, group, before: { width: tab.width, height: tab.height } } };
   } catch (err) {
     // A walk that could not be guarded, or was stopped, does not start; the tab is left as it was.
-    if (walk?.tabId === tabId) walk = null;
+    if (walk?.tabId === tabId) { await unsize(walk); walk = null; }
     if (attached) await chrome.debugger.detach({ tabId }).catch(() => undefined);
     if (grouped) await chrome.tabs.ungroup(tabId).catch(() => undefined);
     throw err;
@@ -765,7 +808,7 @@ export const ops = {
   },
 
   async setViewport({ width, height, deviceScaleFactor, mobile }) {
-    // The person's own tab keeps its size.
+    // The person's own tab keeps its size, or the width picked in the panel (`sizeTo`).
     if (walk.adopted) return {};
     await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile });
     walk.viewport = { width, height };
@@ -852,6 +895,7 @@ export const ops = {
     if (tab) for (const hook of hooks.closing) { try { await hook(tab); } catch { /* the tab may be gone */ } }
     walk = null;
     if (tab) {
+      await unsize(tab);
       await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
       await letGo(tab, 'closed');
       if (terminal !== null && !tab.adopted) await chrome.tabs.remove(tab.tabId).catch(() => undefined);
