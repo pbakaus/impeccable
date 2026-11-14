@@ -42,7 +42,9 @@ thread_local! {
 /// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they ignore the
 /// variable.
 #[cfg(feature = "test-mcp-url")]
-static MCP_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+thread_local! {
+    static MCP_OVERRIDE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
 
 fn mcp_url() -> &'static str {
     #[cfg(feature = "test-mcp-url")]
@@ -75,13 +77,23 @@ fn init_mcp_url(io: &Io) -> Result<()> {
     if let Some(url) = io.env("IMPECCABLE_MCP_URL") {
         let usable = url::Url::parse(url)
             .ok()
-            .filter(|u| u.scheme() == "https" && u.host_str().is_some() && u.as_str() == url);
+            .filter(|u| {
+                // A local stack serves plain http on this machine only.
+                let loopback = matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+                (u.scheme() == "https" || (u.scheme() == "http" && loopback))
+                    && u.host_str().is_some()
+                    && u.as_str() == url
+            });
         if usable.is_none() || url.contains(char::is_whitespace) {
-            return Err("IMPECCABLE_MCP_URL must be a plain https URL.".into());
+            MCP_OVERRIDE.set(None);
+            return Err("IMPECCABLE_MCP_URL must be a plain https URL, or http on localhost.".into());
         }
-        let _ = MCP_OVERRIDE.set(url.to_string());
+        // Leaked once per call, in test builds only.
+        MCP_OVERRIDE.set(Some(Box::leak(url.to_string().into_boxed_str())));
         return Ok(());
     }
+    #[cfg(feature = "test-mcp-url")]
+    MCP_OVERRIDE.set(None);
     let url = mcp_for_account(io.env("IMPECCABLE_ACCOUNT_URL"));
     MCP_FOR_ACCOUNT.set(url.as_ref().ok().copied());
     url.map(|_| ())
@@ -1621,6 +1633,20 @@ mod mcp_url_tests {
             assert!(init_mcp_url(&io).is_err(), "{bad:?}");
             #[cfg(not(feature = "test-mcp-url"))]
             assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
+        }
+        // A local stack's http server on this machine is usable in a test build.
+        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "https://staging.example/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), good.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_ok(), "{good:?}");
+        }
+        #[cfg(feature = "test-mcp-url")]
+        for bad in ["http://127.0.0.1.evil.test/mcp", "http://192.168.1.2/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
         }
     }
 }
