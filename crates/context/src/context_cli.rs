@@ -334,7 +334,13 @@ fn changed_detect_command(ctx: &Ctx, cwd: &str, provider: &Provider) -> String {
     let raw = provider.self_raw.as_str();
     let has_dir = raw.contains('/') || (cfg!(windows) && raw.contains('\\'));
     let self_cmd = if has_dir && !jsp::is_absolute(raw) {
-        impeccable_common::launcher::spell_self(&jsp::resolve(cwd, &[raw]))
+        let resolved = jsp::resolve(cwd, &[raw]);
+        if !impeccable_common::launcher::is_cmd_launcher(&resolved) && resolved.chars().any(char::is_whitespace) {
+            // The cwd made this path absolute, so a space in it is new.
+            shell_arg(&resolved)
+        } else {
+            impeccable_common::launcher::spell_self(&resolved)
+        }
     } else {
         provider.self_cmd.clone()
     };
@@ -1752,6 +1758,13 @@ mod wiring_fallback_tests {
         let bare = crate::provider::detect(&crate::util::Env::from([("IMPECCABLE_SELF".to_string(), "impeccable".to_string())]), "/repo/apps/b");
         ctx.project_root = "/repo/apps/a".to_string();
         assert_eq!(super::changed_detect_command(&ctx, "/repo/apps/b", &bare), "`impeccable detect --json --changed` from `/repo/apps/a`");
+        // A cwd with a space is quoted once it lands in the absolute path.
+        let spaced = crate::provider::detect(&env, "/work/My Apps/b");
+        ctx.project_root = "/work/My Apps/a".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/work/My Apps/b", &spaced),
+            "`'/work/My Apps/b/.claude/skills/impeccable/scripts/impeccable' detect --json --changed` from `/work/My Apps/a`"
+        );
     }
 }
 
