@@ -22,6 +22,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "design.rs"]
+mod design;
+pub use design::DESIGN_SYNC_DEFAULT_ON;
+
 /// Sync is on for a signed-in person unless they turn it off (decision 1 on
 /// REN-1559 is the decider's; this is the recommended default).
 pub const SYNC_BY_DEFAULT: bool = true;
@@ -52,6 +56,8 @@ pub struct Hit {
 
 /// A full scan, from `impeccable_detect::cli::FullScan`.
 pub struct Scan {
+    /// Catalog evidence only. Missing checks are never inferred as passing.
+    pub foundations: std::collections::BTreeMap<String, String>,
     pub root: String,
     pub files_scanned: usize,
     pub hits: Vec<Hit>,
@@ -86,6 +92,18 @@ pub fn wanted(io: &Io) -> bool {
     impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
 }
 
+/// Whether the signed-in grant includes foundations consent, from the saved
+/// sign-in state alone (no keychain, git or network), so a scan that won't
+/// upload foundations doesn't compute them.
+pub fn foundations_wanted(io: &Io) -> bool {
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    crate::store::Store::new(&account)
+        .state()
+        .is_some_and(|s| s.signed_in && s.foundations)
+}
+
 /// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
 /// and hint off stderr. The caller has checked [`wanted`].
 pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
@@ -93,6 +111,7 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
         return;
     }
+    design::after_scan(io, scan, quiet);
     let Ok(account) = Account::from_env(&io.env) else {
         return;
     };
@@ -119,6 +138,52 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
         return;
     }
+    if !session.state.taste && !impeccable_context::taste::disabled(&io.env) {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::TASTE_READ_SCOPE),
+            Duration::from_secs(2),
+            quiet,
+        );
+    }
+    // Its own request and consent: a switched-off route (404) or any other
+    // failure is silent and never prevents the health upload.
+    if session.state.foundations {
+        let mut foundation_body = json!({
+            "version": 1,
+            "scanId": body["scanId"],
+            "repoKey": repo.key,
+            "scannedAt": body["scannedAt"],
+            "productType": null,
+            "items": scan.foundations,
+        });
+        if let Some(label) = &repo.label {
+            foundation_body["label"] = label.clone().into();
+        }
+        let _ = Client::with_deadline(&account, Duration::from_secs(2)).post_json(
+            &format!("{}/cli/v1/foundations", account.issuer),
+            &token,
+            foundation_body,
+        );
+    } else {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::FOUNDATIONS_SCOPE),
+            // The same bound as the foundations request a granted sign-in
+            // makes here instead, so a stale one never waits longer.
+            Duration::from_secs(2),
+            quiet,
+        );
+    }
+    // The foundations request may have been in flight when another
+    // terminal saved `off` or `forget`. Do not start a second upload then.
+    if !Local::read(&io.env).is_some_and(|l| l.sync()) {
+        return;
+    }
     // One request, one deadline, no retry: a 401 waits for the next scan.
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
@@ -134,11 +199,15 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             }
         }
         Err(ApiError::Status { status: 403, .. }) => {
-            let fresh = Local::read(&io.env).unwrap_or_default();
-            if !quiet && fresh.hinted.as_deref() != Some(marker.as_str()) {
-                io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
-                let _ = Local::update(&io.env, |l| l.hinted = Some(marker));
-            }
+            crate::stale_grant::note_health_denied(&account, session.state.login);
+            crate::stale_grant::emit(
+                io,
+                &account,
+                session.state.login,
+                None,
+                Duration::ZERO,
+                quiet,
+            );
         }
         Err(_) => {}
     }
@@ -146,13 +215,35 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
 
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    if args.first().map(String::as_str) == Some("design") {
+        return design::run(&args[1..], io);
+    }
     let env = io.env.clone();
     // An unreadable health.json reads as off.
     let local = Local::read(&env).unwrap_or(Local {
         sync: Some(false),
         ..Local::default()
     });
-    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| l.sync = Some(on)) {
+    let _admission = if args.len() == 1 && matches!(args[0].as_str(), "on" | "off" | "forget") {
+        let result = impeccable_home(&env)
+            .ok_or_else(|| "no home directory; set IMPECCABLE_HOME".to_string())
+            .and_then(|home| crate::store::Store::design_lock_for(&home, Duration::from_secs(3)));
+        match result {
+            Ok(lock) => Some(lock),
+            Err(e) => {
+                io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
+    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| {
+        l.sync = Some(on);
+        if !on {
+            l.design_generation = l.design_generation.wrapping_add(1);
+        }
+    }) {
         Ok(()) => true,
         Err(e) => {
             io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
@@ -178,6 +269,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 None
             };
             match why_not {
+                None if crate::stale_grant::status(io, crate::oauth::HEALTH_SCOPE) => {
+                    io.out("Design health: on, but this sign-in can't save yet. Run impeccable login.\n")
+                }
                 None => io.out(&format!(
                     "Design health: on. Each full `impeccable detect` of a git repo saves its counts to {}: findings by rule and opaque fingerprints, never code or file names.\n",
                     account.as_ref().map(|a| a.display_host().to_string()).unwrap_or_default()
@@ -217,6 +311,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 .and_then(|mut s| s.call(|c, token| c.post_json(&url, token, json!({}))));
             match result {
                 Ok(_) => {
+                    design::forget(io);
                     io.out(&format!(
                         "Design health: deleted everything saved on {}, and turned sync off.\n",
                         account.display_host()
@@ -254,6 +349,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 #[derive(Default, Clone)]
 struct Local {
     sync: Option<bool>,
+    design: Option<bool>,
+    design_generation: u64,
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
@@ -276,6 +373,11 @@ impl Local {
         let v = v.as_object()?;
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
+            design: v.get("design").and_then(Value::as_bool),
+            design_generation: v
+                .get("designGeneration")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
         })
@@ -326,6 +428,12 @@ impl Local {
         let mut m = Map::new();
         if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
+        }
+        if local.design_generation != 0 {
+            m.insert("designGeneration".into(), local.design_generation.into());
+        }
+        if let Some(d) = local.design {
+            m.insert("design".into(), d.into());
         }
         if let Some(n) = local.noticed {
             m.insert("noticed".into(), n.into());
@@ -379,6 +487,24 @@ impl Repo {
 /// One short git question, given at most [`GIT_DEADLINE`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
+    git_with_timeout(dir, args, GIT_DEADLINE)
+}
+
+/// Critiques use the same repo identity, including for native projects and subdirectories.
+pub(crate) fn critique_repo(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    let short = Duration::from_millis(150);
+    let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
+    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
+        .and_then(|r| normalize_remote(&r));
+    let label = remote.as_deref().and_then(repo_label);
+    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    Some((hex(&Sha256::digest(identity.as_bytes())), label))
+}
+
+fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -387,7 +513,7 @@ fn git(dir: &str, args: &[&str]) -> Option<String> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    let until = std::time::Instant::now() + GIT_DEADLINE;
+    let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -618,12 +744,16 @@ fn label(name: &str) -> Option<String> {
     let l = name.trim();
     let format = |c: char| {
         matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}' | '\u{180E}'
-            | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+            | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{110BD}' | '\u{110CD}' | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control() || format(c));
+        && !name
+            .chars()
+            .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
 }
 
@@ -633,6 +763,7 @@ mod tests {
 
     fn scan(hits: Vec<(&str, &str, &str, bool)>) -> Scan {
         Scan {
+            foundations: Default::default(),
             root: "/w/repo".into(),
             files_scanned: 3,
             hits: hits
@@ -812,7 +943,12 @@ mod tests {
     fn labels_and_versions_follow_the_services_rules() {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
+        assert_eq!(label("repo\\secret"), None);
+        assert_eq!(label("\tname"), None);
+        assert_eq!(label("a\u{E0001}b"), None);
         assert_eq!(label("a\u{200B}b"), None);
+        // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
+        assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
         // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
@@ -834,5 +970,47 @@ mod tests {
         assert_eq!(publish_id(&file, &"b".repeat(32)).as_deref(), Some(first.as_str()));
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no staged file left behind");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+/// Internal renewal-only entry point. It never receives file contents.
+pub fn run_design_refresh(args: &[String], io: &mut Io) -> i32 {
+    design::run_refresh(args, io)
+}
+
+#[cfg(test)]
+mod taste_notice_tests {
+    use super::*;
+    use crate::test_fake::{browser, Fake};
+
+    #[test]
+    fn foreground_scan_notices_an_old_taste_grant_once_and_honors_quiet() {
+        let fake = Fake::start();
+        {
+            let mut knobs = fake.knobs.lock().unwrap();
+            knobs.health = true;
+            knobs.foundations = true;
+        }
+        let env = fake.env("taste-foreground-notice");
+        crate::login(&env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let root = account.home.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(Command::new("git").arg("init").arg(&root).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success());
+        // Only the fake issuer changes its advertised scopes after sign-in.
+        fake.knobs.lock().unwrap().taste = true;
+        let scan = Scan {
+            foundations: Default::default(), root: root.to_string_lossy().into_owned(),
+            files_scanned: 1, hits: vec![], ruleset: vec![], engine_version: "1.2.3".into(),
+            started: SystemTime::now(),
+        };
+        let (mut io, cap) = Io::captured("", root, env);
+        after_scan(&mut io, &scan, true);
+        assert!(cap.stderr.borrow().is_empty());
+        after_scan(&mut io, &scan, false);
+        after_scan(&mut io, &scan, false);
+        let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+        assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
+        std::fs::remove_dir_all(account.home).unwrap();
     }
 }

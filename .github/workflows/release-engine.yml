@@ -8,9 +8,16 @@ name: release-engine
 # ENGINE_VERSION, the npm platform-package pins, and a clean tree, then
 # pushes the tag. Third-party actions are pinned to commit SHAs so a
 # moved tag cannot swap the code this workflow runs.
+#
+# Manual run (workflow_dispatch, no inputs): a build-only rehearsal. It runs the
+# build matrix and smoke checks on the chosen ref and uploads run-scoped
+# artifacts. Signing and publication run only on a tag push, so a manual run
+# never reaches the windows-signing environment, its OIDC identity or
+# contents: write.
 on:
   push:
     tags: ['engine-v*']
+  workflow_dispatch:
 # Same-run artifact transfers use ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN;
 # they do not require actions: read/write. Keep downloads scoped to this run.
 permissions:
@@ -27,7 +34,7 @@ jobs:
           - { os: macos-15,       target: x86_64-apple-darwin,        short: darwin-x64 }
           - { os: namespace-profile-impeccable, target: x86_64-unknown-linux-musl,  short: linux-x64 }
           - { os: namespace-profile-impeccable, target: aarch64-unknown-linux-musl, short: linux-arm64, cross: true }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc,     short: windows-x64 }
+          - { os: namespace-profile-impeccable-windows, target: x86_64-pc-windows-msvc, short: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,7 +43,10 @@ jobs:
         run: |
           set -e
           version="$(tr -d '[:space:]' < ENGINE_VERSION)"
-          [ "$GITHUB_REF_NAME" = "engine-v$version" ] || { echo "tag $GITHUB_REF_NAME != engine-v$version"; exit 1; }
+          # A manual build-only run has a branch ref, not a tag: skip only this comparison.
+          if [ "${GITHUB_EVENT_NAME:-push}" != workflow_dispatch ]; then
+            [ "$GITHUB_REF_NAME" = "engine-v$version" ] || { echo "tag $GITHUB_REF_NAME != engine-v$version"; exit 1; }
+          fi
           # The binary reports the workspace version, and the launchers skip a
           # sibling engine that reports anything but ENGINE_VERSION. Checked here
           # as well as in the smoke step because that one cannot run the cross target.
@@ -70,6 +80,7 @@ jobs:
           if-no-files-found: error
   sign-windows:
     needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')
     runs-on: windows-latest
     timeout-minutes: 15
     environment: windows-signing
@@ -129,6 +140,7 @@ jobs:
           if-no-files-found: error
   publish:
     needs: [build, sign-windows]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')
     runs-on: namespace-profile-impeccable
     permissions:
       contents: write

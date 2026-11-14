@@ -47,6 +47,17 @@ impl Account {
         self.home.join("account").join(id)
     }
 
+    /// The account as people read it: "Impeccable" for the production
+    /// service, and "Impeccable (<host>)" for any other, so a staging or test
+    /// sign-in is never mistaken for the real account.
+    pub fn display_name(&self) -> String {
+        if self.issuer == DEFAULT_ACCOUNT_URL {
+            "Impeccable".to_string()
+        } else {
+            format!("Impeccable ({})", self.display_host())
+        }
+    }
+
     /// The host shown to people (`api.impeccable.style`).
     pub fn display_host(&self) -> &str {
         self.issuer.split("://").nth(1).unwrap_or(&self.issuer)
@@ -123,7 +134,28 @@ pub fn browser_safe(endpoint: &str, account: &Account) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_account_is_named_impeccable_and_only_other_services_show_a_host() {
+        // Catches: sign-in lines naming the host (api.impeccable.style) where a person expects their Impeccable account.
+        let at = |url: &str| Account { issuer: url.to_string(), home: PathBuf::from("/h") };
+        assert_eq!(at(DEFAULT_ACCOUNT_URL).display_name(), "Impeccable");
+        assert_eq!(
+            at("https://api.staging.impeccable.style").display_name(),
+            "Impeccable (api.staging.impeccable.style)"
+        );
+    }
     use super::*;
+
+    #[test]
+    fn context_and_account_agree_on_the_expected_issuer() {
+        let mut env = HashMap::from([("IMPECCABLE_HOME".into(), "/unused".into())]);
+        for override_url in [None, Some(" https://API.example.test:443/ "), Some("http://api.localhost:8787/"), Some("https://bad.test/path"), Some("")] {
+            env.remove("IMPECCABLE_ACCOUNT_URL");
+            if let Some(raw) = override_url { env.insert("IMPECCABLE_ACCOUNT_URL".into(), raw.into()); }
+            assert_eq!(impeccable_context::taste::expected_issuer(&env), Account::from_env(&env).ok().map(|a| a.issuer));
+        }
+    }
 
     #[test]
     fn origins_accept_https_and_loopback_http_only() {
