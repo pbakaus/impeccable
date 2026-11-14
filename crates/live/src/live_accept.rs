@@ -226,8 +226,15 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let prior_variant = prior.get("variantId").cloned().unwrap_or(Value::Null);
+        let prior_id = crate::accept_css::js_string(&prior_variant);
+        let vue_alias = prior["result"]["previewMode"] == "vue-component"
+            && prior_id
+                .parse::<u16>()
+                .ok()
+                .zip(variant_num.parse::<u16>().ok())
+                .is_some_and(|(prior, current)| prior == current);
         let same = prior_op == requested_operation
-            && (is_discard || crate::accept_css::js_string(&prior_variant) == variant_num);
+            && (is_discard || prior_id == variant_num || vue_alias);
         let out = if same {
             let mut m = match prior.get("result") {
                 Some(Value::Object(o)) => o.clone(),

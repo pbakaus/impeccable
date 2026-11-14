@@ -1895,7 +1895,9 @@ must remain intact. Variants require inline scoped
 CSS; global/deep/slotted selectors (including legacy aliases) and global at-rules
 are rejected before writing. CSS nesting is unsupported; top-level conditional
 at-rules still work. Padded numeric variants use the canonical number for CSS and
-Tune declarations (`01` reads `v1.vue` and `params.json["1"]`). Vue discard applies
+Tune declarations (`01` reads `v1.vue` and `params.json["1"]`).
+Vue operation receipts also treat padded and canonical numbers as the same
+variant, so repeating `01` as `1` does not rewrite source. Vue discard applies
 the same directory-link/reparse-point checks as acceptance before cleanup.
 Failed acceptance leaves source and preview files
 intact. Successful acceptance removes only that session directory and returns

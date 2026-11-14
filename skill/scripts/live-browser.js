@@ -5992,6 +5992,9 @@
         return;
       }
 
+      const insertMode = isSvelteInsertManifest(manifest);
+      const detachedOriginal = insertMode ? null : liveEl;
+      const propValues = buildSveltePropValuesFromLiveElement(detachedOriginal, manifest);
       const wrapper = document.createElement('div');
       wrapper.dataset.impeccableVariants = sessionId;
       wrapper.dataset.impeccableVariantCount = String(manifest.count || expectedVariants || 1);
@@ -6003,8 +6006,6 @@
       mountTarget.style.display = 'contents';
       wrapper.appendChild(mountTarget);
 
-      const insertMode = isSvelteInsertManifest(manifest);
-      const detachedOriginal = insertMode ? null : liveEl;
       if (insertMode) {
         removeInsertPlaceholderDom();
         if (manifest.position === 'before') liveEl.parentElement.insertBefore(wrapper, liveEl);
@@ -6024,7 +6025,7 @@
         mountedInstance: null,
         mountedVariant: 0,
         runtime: null,
-        propValues: buildSveltePropValuesFromLiveElement(detachedOriginal, manifest),
+        propValues,
         paramsByVariant,
       };
       if (pendingSvelteComponentRetryObserver) {
