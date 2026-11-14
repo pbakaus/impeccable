@@ -769,6 +769,22 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
 }
 
 #[test]
+fn status_answers_on_an_account_connect_refuses() {
+    // Catches: status failing outright on a local or unknown account service, which also
+    // silenced login's Loop offer there.
+    let mut b = Box::new("status-other-account");
+    b.install_loop();
+    b.env.insert("IMPECCABLE_ACCOUNT_URL".into(), "http://127.0.0.1:9/".into());
+    let out = b.run(&["loop", "status", "--json"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["loop"]["installed"], true, "{v}");
+    assert_eq!(v["agents"][0]["mcp"], "absent", "{v}");
+    let out = b.run(&["loop", "connect", "--mcp-only", "--json"]);
+    assert!(!out.status.success(), "connect still refuses: {}", text(&out));
+}
+
+#[test]
 fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     // Catches: Loop's Settings and first-run panel having no way to see or drive connect.
     let b = Box::new("status-json");
@@ -971,6 +987,18 @@ fn an_agents_override_file_is_named_instead_of_reported_connected() {
     fs::write(b.home().join(".codex/AGENTS.override.md"), rules).unwrap();
     let status = b.run(&["loop", "status"]);
     assert!(!text(&status).contains("hidden by"), "{}", text(&status));
+}
+
+#[test]
+fn login_help_never_offers_to_connect_loop() {
+    // Catches: `login --help` exits 0 like a sign-in, so the Loop offer ran after help and
+    // could change an agent's MCP settings and hooks without anyone signing in.
+    let b = Box::new("login-help");
+    b.install_loop();
+    let out = b.run(&["login", "--help"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("Loop is installed"), "{}", text(&out));
+    assert!(claude_entry(&b.home().join(".claude.json")).is_null(), "nothing written");
 }
 
 const TASTE_START: &str = "<!-- impeccable:taste -->";

@@ -44,6 +44,11 @@ export IMPECCABLE_CREDENTIAL_STORE=file
 unset CI IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
 
 failed=0
+# The Home and MCP URLs the CLI names for staging's issuer; another issuer skips those checks.
+case "$ISSUER" in
+  https://api.staging.impeccable.style) HOME_URL=https://app.staging.impeccable.style/app; MCP_URL=https://api.staging.impeccable.style/mcp ;;
+  *) HOME_URL=""; MCP_URL="" ;;
+esac
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1${2:+: $2}"; failed=1; }
 check() { if eval "$2"; then pass "$1"; else fail "$1"; fi; }
@@ -60,8 +65,15 @@ health=0
 case "$scopes" in *" health:write "*) pass "preflight: staging offers health:write"; health=1 ;; *) info "staging does not offer health:write; design health skipped" ;; esac
 
 # 1. Sign in: the CLI prints the authorize URL and waits on its loopback; pristine's
-#    command approves it as the seeded person and delivers the code there.
-"$BIN" login --no-browser > "$H/login.out" 2> "$H/login.err" &
+#    command approves it as the seeded person and delivers the code there. The host
+#    approves one sign-in per run, so this one also carries the CLI-first checks
+#    (REN-1918): it runs inside a fresh repository, which login scans and adds to the
+#    account, naming Home.
+R2="$H/first-repo"; mkdir -p "$R2"
+printf '%s\n' '<!doctype html><html><head><title>first</title></head><body><h1>First</h1><p style="color:#9ca3af;background:#6d28d9">Grey on purple</p></body></html>' > "$R2/index.html"
+git -C "$R2" init -q && git -C "$R2" remote add origin https://github.com/impeccable-e2e/staging-first-scan
+git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
+(cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
 url=""
 for _ in $(seq 1 100); do url=$(grep -m1 '^https://' "$H/login.out" 2>/dev/null); [ -n "$url" ] && break; sleep 0.2; done
@@ -76,6 +88,12 @@ for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2;
 if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "still running 620 s after the approval"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
+if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
+  info "setup: the Home link check runs against staging's issuer only"
+elif [ $health = 1 ]; then
+  check "setup: the sign-in's first scan names Home" 'grep -qF "See it on your Home: $HOME_URL" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
+  grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
+fi
 
 # 2. whoami.
 "$BIN" whoami > "$H/whoami.out" 2>&1; rc=$?
@@ -189,6 +207,19 @@ expire "$B"; as_home "$B" whoami > "$H/sb2.out" 2>&1; rc=$?
 check "sibling: B refreshes again" '[ $rc = 0 ] && grep -q "^Signed in to " "$H/sb2.out"'
 [ $rc = 0 ] || info "sibling B second refresh said: $(head -1 "$H/sb2.out" | cut -c1-160)"
 
+# 5b. Still signed in: status reads the account's setup, and a second login opens nothing.
+(cd "$R2" && exec "$BIN" status) > "$H/status.out" 2> "$H/status.err"; rc=$?
+# A finished setup has no Next line, so any of the setup read's lines will do.
+check "setup: status reads the account's setup" '[ $rc = 0 ] && grep -qE "^(Connected|Not connected yet|Next): " "$H/status.err" "$H/status.out"'
+[ $rc = 0 ] || info "setup: status said: $(head -2 "$H/status.err" | tr '\n' ' ' | cut -c1-200)"
+# A second login must neither print a link nor wait: bounded at 30 s.
+(cd "$R2" && exec "$BIN" login --no-browser) > "$H/login3.out" 2> "$H/login3.err" &
+p=$!
+for _ in $(seq 1 150); do kill -0 "$p" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; fi
+wait "$p"; rc=$?
+check "setup: a second login says so and opens nothing" '[ $rc = 0 ] && ! grep -q "^https://" "$H/login3.out" && grep -q "^Already signed in to " "$H/login3.err"'
+
 # 6. Sign out (A). That revokes the grant, so B's next refresh must fail too.
 "$BIN" logout > "$H/logout.out" 2>&1; rc=$?
 check "logout: exits 0" '[ $rc = 0 ]'
@@ -197,5 +228,26 @@ check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.
 expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
 check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ] && grep -q "^Your sign-in expired" "$H/sb3.out"'
 info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
+
+# 7. CLI-first setup (REN-1918): `loop connect --mcp-only` gives an agent staging's MCP
+#    server without the Loop app. It needs no sign-in.
+# A stand-in `claude` in a home of its own: it records its arguments and writes the entry
+# as Claude Code does. Nothing reaches this machine's real agents.
+AH="$H/agent-home"; mkdir -p "$AH/.claude" "$H/bin"
+cat > "$H/bin/claude" <<'SH'
+#!/bin/sh
+printf '%s\t' "$@" >> "$HOME/claude.calls"; echo >> "$HOME/claude.calls"
+if [ "$1" = mcp ] && [ "$2" = add-json ]; then printf '{"mcpServers":{"%s":%s}}\n' "$5" "$6" > "$HOME/.claude.json"; fi
+SH
+chmod +x "$H/bin/claude"
+env -u CLAUDE_CONFIG_DIR HOME="$AH" PATH="$H/bin:$PATH" IMPECCABLE_CLAUDE_BIN="$H/bin/claude" IMPECCABLE_CODEX_BIN="$H/bin/no-codex" \
+  "$BIN" loop connect --mcp-only --agent claude --json > "$H/mcp.out" 2> "$H/mcp.err"; rc=$?
+check "setup: --mcp-only connects Claude Code without Loop" '[ $rc = 0 ] && [ "$(jq -r ".agents[0].result" "$H/mcp.out" 2>/dev/null)" = connected ]'
+if [ -n "$MCP_URL" ]; then
+  check "setup: the server is staging's" 'grep -qF "$MCP_URL" "$AH/.claude.json" 2>/dev/null'
+else
+  info "setup: the MCP URL check runs against staging's issuer only"
+fi
+[ $rc = 0 ] || info "setup: --mcp-only said: $(cat "$H/mcp.out" "$H/mcp.err" | tr '\n' ' ' | cut -c1-300)"
 
 finish
