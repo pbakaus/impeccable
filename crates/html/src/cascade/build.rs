@@ -632,7 +632,7 @@ fn compute_styles(
             values.insert(prop.clone(), next);
         }
 
-        // Hover pass: color / backgroundColor only.
+        // Hover pass: color / backgroundColor, plus the hover's own image.
         if let Some(hover_map) = hover_specified.get(&node) {
             let mut hover_values: Option<StyleValues> = None;
             for prop in ["color", "backgroundColor"] {
@@ -642,6 +642,64 @@ fn compute_styles(
                 let resting = specified_map.get(prop).map(|d| &d.meta);
                 if !compare_static_priority(resting, &hover_decl.meta) {
                     continue;
+                }
+                // A `:hover { background: url(...) }` swaps the image; the
+                // transparent reset it implies is not a surface the author
+                // chose, so it is skipped while an image still paints on
+                // hover: the hover rule's own, or a resting image that
+                // outranks it (`!important`). An explicit
+                // `background-color: transparent` always counts.
+                if hover_decl.shorthand_reset {
+                    let resting_img = specified_map.get("backgroundImage");
+                    let resting_meta = resting_img.map(|d| &d.meta);
+                    let effective_img = match hover_map.get("backgroundImage") {
+                        Some(h) if compare_static_priority(resting_meta, &h.meta) => Some(h),
+                        _ => resting_img,
+                    };
+                    // Resolve `var()` and `inherit` first; an image that
+                    // still cannot be resolved counts as painting, so the
+                    // reset never invents a surface behind it.
+                    // A hover rule that sets its own custom properties can
+                    // change what the image resolves to in ways a static
+                    // read cannot follow (references, cycles, fallbacks), so
+                    // the implied reset is not scored there at all: a missed
+                    // hover finding is safer than a false one.
+                    let hover_sets_custom = hover_map.iter().any(|(name, decl)| {
+                        name.starts_with("--")
+                            && compare_static_priority(specified_map.get(name).map(|d| &d.meta), &decl.meta)
+                    });
+                    if hover_sets_custom {
+                        continue;
+                    }
+                    let paints = effective_img.is_some_and(|d| {
+                        let resolved = normalize_static_css_value(
+                            "backgroundImage",
+                            &d.value,
+                            &custom_props,
+                            parent_style.as_deref(),
+                            Some(&values),
+                        );
+                        is_painted_image(&resolved) || js::to_lower_case(&resolved).contains("var(")
+                    });
+                    if paints {
+                        // The shorthand still clears the resting fill; the
+                        // image it paints is what the text sits on, so the
+                        // hover style carries the transparent fill and the
+                        // contrast check leaves the pairing unscored rather
+                        // than reading the fill the shorthand removed.
+                        let cleared = normalize_static_css_value(
+                            prop,
+                            "transparent",
+                            &custom_props,
+                            parent_style.as_deref(),
+                            Some(&values),
+                        );
+                        if values.get(prop).map(|s| s.as_str()) != Some(cleared.as_str()) {
+                            let hv = hover_values.get_or_insert_with(|| values.clone());
+                            hv.insert(prop.to_string(), cleared);
+                        }
+                        continue;
+                    }
                 }
                 let next = normalize_static_css_value(
                     prop,
@@ -655,6 +713,32 @@ fn compute_styles(
                 }
                 let hv = hover_values.get_or_insert_with(|| values.clone());
                 hv.insert(prop.to_string(), next);
+            }
+            // The image the hover paints, so the hover contrast check reads
+            // the hover's surface: a `:hover { background: none }` that
+            // removes a resting image changes what the text sits on even when
+            // no color changes. (`background-size` and `background-repeat`
+            // longhands are not in the static cascade at all; tiling is read
+            // from the shorthand text that `backgroundImage` carries.)
+            for prop in ["backgroundImage"] {
+                let Some(decl) = hover_map.get(prop) else {
+                    continue;
+                };
+                if !compare_static_priority(specified_map.get(prop).map(|d| &d.meta), &decl.meta) {
+                    continue;
+                }
+                let resolved = normalize_static_css_value(
+                    prop,
+                    &decl.value,
+                    &custom_props,
+                    parent_style.as_deref(),
+                    Some(&values),
+                );
+                if values.get(prop).map(|s| s.as_str()) == Some(resolved.as_str()) {
+                    continue;
+                }
+                let hv = hover_values.get_or_insert_with(|| values.clone());
+                hv.insert(prop.to_string(), resolved);
             }
             if let Some(hv) = hover_values {
                 hover_out.push((node, hv));
@@ -705,4 +789,10 @@ fn compute_styles(
 /// `STATIC_DEFAULT_STYLE[prop]` lookup re-exported for the adapters.
 pub fn default_value(prop: &str) -> Option<&'static str> {
     static_default_style(prop)
+}
+
+/// A `background-image` value that paints: a `url()` or a gradient.
+fn is_painted_image(value: &str) -> bool {
+    let v = js::to_lower_case(js::trim(value));
+    v.contains("url(") || v.contains("gradient")
 }

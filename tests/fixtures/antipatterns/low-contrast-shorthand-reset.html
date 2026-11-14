@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Background shorthand reset: Should Flag vs Should Pass</title>
+  <style>
+    /* Fixture for issue #964. The `background` shorthand resets every
+       longhand it does not name, so `background: url(...)` declared after
+       `background-color: #111` paints the image over transparent, not over
+       #111. The static cascade used to keep the #111 and score the text
+       against a surface the browser never shows.
+
+       Should flag: the fill that does paint is still scored.
+       - A shorthand that names its own color with the image keeps it.
+       - A `background-color` declared after the image shorthand wins back.
+       - `background: url(...) currentColor` fills the box with its own
+         `color`, and a child's dim ink is scored on that fill.
+       - An explicit `background-color: transparent` on hover still counts,
+         and white ink then sits on the white page.
+
+       Should pass: dark ink on a light image or gradient that replaced an
+       earlier dark fill, a later image shorthand overriding an earlier
+       colored one, an `!important` resting image under a hover image swap,
+       a hover image swap over a light card, and a light fill named after
+       the image. */
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 20px; color: #111; background: #ffffff; }
+    .grid { display: grid; grid-template-columns: 480px 480px; gap: 40px; }
+    .col h2 { font: 600 15px/1.2 system-ui; margin: 0 0 8px; color: #111; }
+    .panel { width: 440px; height: 96px; padding: 16px; margin: 0 0 18px; }
+    .panel p { margin: 0; font-size: 16px; line-height: 24px; }
+
+    .dark-base { background-color: #111111; }
+    .keeps-color { background: #222222 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") no-repeat; }
+    .photo-over { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23f5f2ea'/%3E%3C/svg%3E") center / cover no-repeat; }
+    .gradient-over { background: linear-gradient(180deg, #f5f5f5, #ececec); }
+    .dim-ink { color: #3a3a3a; }
+    .dark-ink { color: #1f1f1f; }
+
+    /* A color declared after the image shorthand decides the fill. */
+    .image-then-color { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") no-repeat; }
+    .image-then-color { background-color: #2a2a2a; }
+    .ink-on-later-color { color: #404040; }
+
+    /* currentColor fills the box with the box's own color. */
+    .current-fill { color: #2b2b2b; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") no-repeat currentColor; }
+
+    /* An explicit transparent hover fill is a surface the author chose. */
+    .clear-on-hover { display: block; width: 440px; height: 48px; padding: 12px 16px; margin: 0 0 18px; background: #1c1c1c; color: #ffffff; font-size: 16px; }
+    .clear-on-hover:hover { background-color: transparent; }
+
+    /* A later image shorthand overrides an earlier colored one. */
+    .colored-shorthand { background: #151515; }
+    .later-image { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23f2f2f2'/%3E%3C/svg%3E") center / cover; }
+
+    /* An !important resting image still paints under a hover image swap. */
+    .pinned-image { display: block; width: 440px; height: 48px; padding: 12px 16px; margin: 0 0 18px; background-color: #111111; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23111111'/%3E%3C/svg%3E") !important; color: #ffffff; font-size: 16px; }
+    .pinned-image:hover { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E"); }
+
+    /* A hover image swap over a dark card. */
+    .swap-card { display: block; width: 440px; height: 48px; padding: 12px 16px; margin: 0 0 18px; background: #1b1b1b; color: #ffffff; font-size: 16px; }
+    .swap-card:hover { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") center / cover; }
+
+    /* A light color named after the image wins over the earlier dark fill. */
+    .color-after-image { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3C/svg%3E") no-repeat #fafafa; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col">
+      <h2>Should flag</h2>
+      <div class="panel dark-base keeps-color">
+        <p id="flag-ink-on-named-color" class="dim-ink">Dim ink on the shorthand's own dark color</p>
+      </div>
+      <div class="panel image-then-color">
+        <p id="flag-ink-on-later-color" class="ink-on-later-color">Dim ink on a color declared after the image</p>
+      </div>
+      <div class="panel current-fill">
+        <p id="flag-ink-on-current-color" class="ink-on-later-color">Dim ink on a box filled with its own currentColor</p>
+      </div>
+      <div id="flag-clear-on-hover" class="clear-on-hover">White ink whose hover clears the dark fill</div>
+    </div>
+
+    <div class="col">
+      <h2>Should pass</h2>
+      <div class="panel dark-base photo-over">
+        <p id="pass-ink-on-image" class="dark-ink">Dark ink on a light photo laid over an old dark fill</p>
+      </div>
+      <div class="panel dark-base gradient-over">
+        <p id="pass-ink-on-gradient" class="dark-ink">Dark ink on a light gradient laid over an old dark fill</p>
+      </div>
+      <div class="panel colored-shorthand later-image">
+        <p id="pass-ink-on-later-image" class="dark-ink">Dark ink on an image shorthand that replaced a colored one</p>
+      </div>
+      <div id="pass-pinned-image" class="pinned-image">White ink on a pinned dark image under a hover swap</div>
+      <div id="pass-swap-card" class="swap-card">White ink on a dark card whose hover swaps in an image</div>
+      <div class="panel dark-base color-after-image">
+        <p id="pass-ink-on-color-after-image" class="dark-ink">Dark ink on a light color named after the image</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

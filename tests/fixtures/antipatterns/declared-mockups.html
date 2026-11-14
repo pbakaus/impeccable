@@ -11,7 +11,9 @@
   nested-cards, tiny-text, undersized-ui-text, cramped-padding and
   clipped-overflow-container report nothing, and its headings leave the
   outline skipped-heading reads. The URL engine reads this; the static
-  engine, which has no layout to size a frame by, reports every row.
+  engine, which has no layout to size a frame by, reports every row except
+  the ones over the raster ground (.shot): that shorthand's image resets the
+  frame's white fill, and the static engine cannot read the pixels under it.
 
   Each row's ink is its own grey, so the page's one report per colour pair
   never hides one row behind another.

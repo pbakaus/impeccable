@@ -76,10 +76,14 @@ static CURRENTCOLOR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new("(?i)^currentcolor$").expect("CURRENTCOLOR_RE"));
 
 /// `rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i)` → trimmed value.
+/// The inline `background` / `background-color` value that wins: the last
+/// one declared, so a later `background: url(...)` shorthand is what is
+/// read, not the `background-color` it reset.
 fn inline_bg(el: &StaticElement<'_>) -> String {
     let raw = el.get_attribute("style").unwrap_or("");
     INLINE_BG_RE
-        .captures(raw)
+        .captures_iter(raw)
+        .last()
         .map(|m| js::trim(&m[1]).to_string())
         .unwrap_or_default()
 }
@@ -250,7 +254,7 @@ pub fn resolve_text_surface(
 /// `background-repeat` longhands an author declared; a `background`
 /// shorthand arrives whole in `backgroundImage`, and its size and repeat
 /// are read out of it.
-fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
+pub(crate) fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
     if !GRADIENT_RE.is_match(bg_image) || URL_CALL_RE.is_match(bg_image) {
         return false;
     }
