@@ -581,6 +581,32 @@ describe('walk worker', () => {
     }
   });
 
+  // REN-1891: a pause that lands while the upload's world is being made gives the page no picture.
+  it('gives no picture when a pause lands while the upload is under way', async () => {
+    const { ops, command } = await walked();
+    page.seen = {};
+    const { fetch } = globalThis;
+    globalThis.fetch = async (url) => new Response(readFileSync(path.join(ROOT, 'extension', String(url).replace('chrome-extension://ext/', ''))));
+    let release;
+    answers['Page.createIsolatedWorld'] = () => new Promise((resolve) => { release = () => resolve({ executionContextId: 9 }); });
+    const given = [];
+    const { sendCommand } = chrome.debugger;
+    chrome.debugger.sendCommand = async (target, method, params) => { if (String(params?.expression).includes('elementFromPoint')) given.push(method); return sendCommand(target, method, params); };
+    try {
+      const upload = ops.upload({ x: 5, y: 6 });
+      for (let turn = 0; turn < 50 && !release; turn++) await settle(1);
+      assert.equal(await command('pause'), true);
+      release();
+      await assert.rejects(upload, { name: 'Paused' });
+      assert.deepEqual(given, [], 'nothing reaches the page');
+    } finally {
+      chrome.debugger.sendCommand = sendCommand;
+      answers['Page.createIsolatedWorld'] = () => ({ executionContextId: 9 });
+      globalThis.fetch = fetch;
+      await command('resume');
+    }
+  });
+
   it('lets nothing a pause held reach the tab once Stop is pressed, even while the walk is still letting go', async () => {
     const { ops, command, hooks } = await walked();
     page.seen = {};

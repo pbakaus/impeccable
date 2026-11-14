@@ -868,6 +868,9 @@ export const ops = {
     walk.lastInputAt = Date.now();
     // In a world of our own: the page sees the file and its events, never the code that made them.
     const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: walk.mainFrame, worldName: 'impeccable-walk-upload' });
+    // Looked at again after the wait, as a click looks before its press: a pause or another site meanwhile gives nothing.
+    if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
+    overtaken(at);
     const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression({ fn: String(attach), args: [Number(x), Number(y), data, SAMPLE.name, SAMPLE.type] }), contextId: executionContextId, returnByValue: true, userGesture: true });
     if (exceptionDetails || !result?.value) throw fail('NotFound', 'nothing there takes a file');
     return { value: result.value };
