@@ -817,7 +817,8 @@ fn discard(fixture: &Fixture) -> Value {
         &["--id", "ab12cd34", "--discard"].map(str::to_owned),
         &mut io,
     );
-    serde_json::from_slice(&cap.stdout.borrow()).unwrap()
+    let result = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+    result
 }
 
 #[test]
