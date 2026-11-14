@@ -103,7 +103,7 @@
   ]);
 
   // Command vocabulary (values + labels + icons) comes from the canonical source,
-  // skill/scripts/live/vocabulary.mjs, which live-server.mjs serializes into
+  // crates/live/src/vocabulary.rs, which the engine's live server serializes into
   // window.__IMPECCABLE_VOCAB__ when it serves /live.js (same injection path as
   // the token/port above, so it is always present here). The icons stack above
   // each chip label and recolor to C.brand when selected (strokes use
@@ -116,13 +116,12 @@
   });
 
   // The Live chrome inventory (which surfaces exist, and the element ids each
-  // one owns) comes from the canonical source, skill/scripts/live/ui-surfaces.mjs,
-  // which the /live.js assembler serializes into these globals alongside the
-  // token/port/vocabulary. This file is served raw and injected as a classic
-  // script, so it cannot import that module; the private impeccable-site repo
-  // imports it directly to check its Live UI lab holds a snapshot for every
-  // surface, which only works while the list has exactly one definition.
-  // Add a surface in ui-surfaces.mjs, not here.
+  // one owns) comes from the canonical source, SURFACES in
+  // crates/live/src/vocabulary.rs, which the /live.js assembler
+  // (crates/live/src/browser_assets.rs) serializes into these globals alongside
+  // the token/port/vocabulary. This file is served raw and injected as a classic
+  // script, so it cannot import that list, which must keep exactly one
+  // definition. Add a surface in vocabulary.rs, not here.
   const LIVE_CHROME_MOUNT_CONTRACT = Array.isArray(window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__)
     ? window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__
     : ['root', 'transport', 'state', 'actions'];
@@ -153,9 +152,9 @@
   // behind checkpoint), and without this the bar jumps backward mid-generation.
   // Unranked phases always pass so we never block a phase we do not model.
   //
-  // Every `agent_phase` name here is emitted by recordAgentPhase() in
-  // live-server.mjs and listed in AGENT_PHASES in live/vocabulary.mjs, which the
-  // event validator enforces. This file is served raw and injected as an IIFE,
+  // Every `agent_phase` name here is recorded by record_agent_phase() in
+  // crates/live/src/server_state.rs and listed in AGENT_PHASES in
+  // crates/live/src/vocabulary.rs, which the event validator enforces. This file is served raw and injected as an IIFE,
   // so it cannot import that list; adding a phase means adding it in both.
   // `queued`, `generating`, `variants_progress`, and `variants_ready` are set
   // locally by this file and never arrive over the wire.
@@ -212,7 +211,7 @@
   // Survives cleanupAcceptedSession on purpose: the id of an accept whose
   // POST was acknowledged (intent durable, epoch fenced) but whose actual
   // source promotion hasn't reported back yet. Accept is optimistic, so the
-  // teardown nulls pendingAcceptedSession long before live-accept.mjs runs;
+  // teardown nulls pendingAcceptedSession long before `impeccable live-accept` runs;
   // this marker is what lets the SSE 'error' branch still recognize a late
   // accept failure and say the variant was not saved (issue #384). Released
   // when the real accept result arrives or a new session starts.
@@ -1728,7 +1727,7 @@
     return btn;
   }
 
-  // Insert mode helpers (mirrors skill/scripts/live/insert-ui.mjs)
+  // Insert mode helpers (the engine's insert checks are in crates/live/src/event_validation.rs)
 
   function detectInsertAxisFromStyle(style) {
     const display = style?.display || 'block';
@@ -6237,7 +6236,7 @@
   // carry that answer back, so the journal, `live-status`, and `live-resume`
   // can tell "the user is comparing variants" from "nothing ever rendered".
 
-  // Mirror of the caps in live/event-validation.mjs. Trimming here keeps a
+  // Mirror of the caps in crates/live/src/event_validation.rs. Trimming here keeps a
   // stack-trace-sized error from being rejected outright and lost.
   const MOUNT_URL_MAX = 2000;
   const MOUNT_ERROR_MAX = 1000;
@@ -6462,7 +6461,7 @@
     removeVariantStateStylesheet();
     clearMountErrorCard();
     clearSession();
-    clearHandled();
+    clearHandled(sessionId);
     resetSessionFileMeta();
     currentSessionId = null;
     parameterGenerationState = 'idle';
@@ -8047,7 +8046,7 @@
   function handleServerLost() {
     const recoveryState = currentSessionId ? state : 'IDLE';
     if (state === 'GENERATING' || state === 'CYCLING' || state === 'SAVING') {
-      showToast('Live server connection lost. Your session is saved; reopen this page or restart live-poll.mjs to continue.', 6000);
+      showToast('Live server connection lost. Your session is saved; reopen this page or restart `impeccable live-poll` to continue.', 6000);
     }
     hideBar();
     hideHighlight();
@@ -10644,7 +10643,7 @@ void main() {
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(62% 0 0 / 0.78)';
-  const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run live-poll.mjs to connect';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run impeccable live-poll to connect';
   // The indicator tracks whether a poll is parked, which is what decides if
   // steering can reach the agent right now. That goes quiet two ways, and they
   // need different copy: nobody is polling at all, or the agent took the work
@@ -11235,7 +11234,7 @@ void main() {
       return head + 'The agent is still busy with the current generation - your message was not lost, but it never got picked up. Send it again once the variants land.';
     }
     if (!agentPollingConnected) {
-      return head + 'No agent is polling right now. Run live-poll.mjs, then send it again.';
+      return head + 'No agent is polling right now. Run impeccable live-poll, then send it again.';
     }
     return head + 'The agent picked it up but never replied with steer_done. Check the agent session for a stalled or failed steer.';
   }

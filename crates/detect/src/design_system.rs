@@ -27,7 +27,7 @@ use crate::util::{exists, js_string, re, read_json, read_text, ANY, WS};
 const DESIGN_NAMES: &[&str] = &["DESIGN.md", "Design.md", "design.md"];
 
 const FALLBACK_DIRS: &[&str] = &[".agents/context", "docs"];
-const PROJECT_ROOT_MARKERS: &[&str] = &[".git", "package.json", ".impeccable"];
+pub(crate) const PROJECT_ROOT_MARKERS: &[&str] = &[".git", "package.json", ".impeccable"];
 const COLOR_CHANNEL_TOLERANCE: f64 = 6.0;
 const SHADOW_ALPHA_TOLERANCE: f64 = 0.02;
 const RADIUS_TOLERANCE_PX: f64 = 0.5;
@@ -1441,7 +1441,7 @@ fn monorepo_owns_path(root: &str, boundary_dir: &str) -> bool {
 /// never string-matches the physical paths a cwd-resolved target produces,
 /// which would let the post-boundary walk sail through $HOME and inherit
 /// from it.
-fn home_dir_forms(cwd: &str, home: &str) -> Vec<String> {
+pub(crate) fn home_dir_forms(cwd: &str, home: &str) -> Vec<String> {
     let home_dir = jsp::resolve(cwd, &[home]);
     let mut forms = vec![home_dir.clone()];
     if let Ok(real) = std::fs::canonicalize(&home_dir) {

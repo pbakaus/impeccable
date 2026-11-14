@@ -66,6 +66,12 @@ After Matthew Butterick's *Practical Typography*, paraphrased; where his numbers
 - Break a heading by hand only between phrases, and check the break at every width the heading renders at. A hard break that lands mid-line on a phone is worse than the default wrap.
 - An uneven break can carry meaning: a headline that lands on one word for weight, a poster line, a pull quote. Make it deliberate with a hard break or a wrap set on that element, and keep it rare. The detector's `straggler` and `unbalanced-heading` findings are advisory for this reason; say which breaks are intended.
 
+## Optical alignment
+
+- Put `text-box: trim-both cap alphabetic` on the label element, not the flex container. On an `inline-flex` button the text is an anonymous flex item, and trim on the button never reaches it. Wrap the label in a `<span>` with `display: block` and trim that.
+- For a trimmed label's fallback face, set `size-adjust` in the fallback `@font-face` to the web font's cap height over the fallback's, both per em. `ascent-override`, `descent-override` and `line-gap-override` change only what trim removes.
+- Judge the rendered component: centered caps are not a centered word. Most of a mixed-case label sits in the x-height, whose center is below the cap center, so a trimmed label can still look low. Check real labels at every size the control ships.
+
 ## Verify
 
 - Primary, secondary, body, and metadata roles are recognizable without reading the copy.

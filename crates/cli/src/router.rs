@@ -260,7 +260,12 @@ pub(crate) fn health_scan(
 
 /// Whether this invocation is a scan the Pro engine may take over: the
 /// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
+/// `detect --before` / `--kept` run no rules, and a Pro build older than
+/// those flags would ignore them and scan instead, so they stay here.
 pub fn is_scan(args: &[String], io: &Io) -> bool {
+    if args.iter().any(|a| a == "--before" || a == "--kept") {
+        return false;
+    }
     match args.first().map(String::as_str) {
         Some("detect" | "hook" | "hook-before-edit") => true,
         Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
@@ -379,5 +384,17 @@ mod verb_tests {
             missing.is_empty(),
             "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
         );
+    }
+
+    /// The wiring check runs no rules, so it never goes to a Pro build that
+    /// may predate its flags (#1291).
+    #[test]
+    fn the_wiring_check_is_not_a_scan() {
+        let (io, _) = impeccable_common::Io::captured("", std::env::temp_dir(), Default::default());
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(super::is_scan(&args(&["detect", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["detect", "--before", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["detect", "--kept", "--json", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["--kept", "page.html"]), &io));
     }
 }

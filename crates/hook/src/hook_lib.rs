@@ -38,6 +38,30 @@ pub const ALLOWED_EXTS: &[&str] = &[
     ".less", ".ts", ".js",
 ];
 
+/// Plain scripts: mostly not UI (a server, a CLI, a config file), so the hook
+/// scans them only in a project that uses Impeccable (#1237). Markup, style
+/// and component files are UI wherever they are.
+pub const PLAIN_SCRIPT_EXTS: &[&str] = &[".ts", ".js"];
+
+/// Whether `root` uses Impeccable: a PRODUCT.md or DESIGN.md where context
+/// resolution looks (the root, `.agents/context`, `docs`), or an `.impeccable`
+/// folder. A few stats, paid only for a plain script.
+pub fn uses_impeccable(root: &str) -> bool {
+    use impeccable_context::context::{DESIGN_NAMES, FALLBACK_DIRS, PRODUCT_NAMES};
+    if exists(&jsp::join(&[root, ".impeccable"])) {
+        return true;
+    }
+    std::iter::once(root.to_string())
+        .chain(FALLBACK_DIRS.iter().map(|d| jsp::join(&[root, d])))
+        .any(|dir| PRODUCT_NAMES.iter().chain(DESIGN_NAMES.iter()).any(|name| exists(&jsp::join(&[&dir, name]))))
+}
+
+/// False for a plain script (not claimed by a configured extension) in a
+/// project that does not use Impeccable.
+pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str) -> bool {
+    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root)
+}
+
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
@@ -68,19 +92,13 @@ re!(
     .join("|")
 );
 
-// JS: GENERATED_PATH (case-insensitive).
-re!(
-    GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
-);
 
 pub fn is_sensitive_path(p: &str) -> bool {
     SENSITIVE_PATH_RE.is_match(p)
 }
 
-pub fn is_generated_path(p: &str) -> bool {
-    GENERATED_PATH_RE.is_match(p)
-}
+/// Lives in `impeccable-detect` so `detect --changed` skips the same paths.
+pub use impeccable_detect::file_system::is_generated_path;
 
 /// JS: truthy(value) — `/^(1|true|yes|on)$/i` on a string (no trim).
 pub fn truthy(value: Option<&str>) -> bool {

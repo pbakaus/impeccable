@@ -634,6 +634,8 @@ fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
     let t = Tmp::new();
     let cwd = t.path();
     t.write("package.json", "{}");
+    // A plain .ts scans only in a project that uses Impeccable (#1237).
+    t.write("PRODUCT.md", "# Product\n");
     // This is the actual working-tree preimage, not HEAD (which might differ).
     let before = "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n";
     let after = before.replacen("import dead from 'dead';\n", "", 1);
@@ -4098,4 +4100,82 @@ fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
     let r = rt(&cwd);
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+// #1237: plain .ts/.js is mostly not UI (a server, a CLI, a config), so the
+// hook scans it only in a project that uses Impeccable.
+const TS_SLOP: &str = "const s = `.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}`;\n";
+
+#[test]
+fn plain_scripts_skip_in_a_project_without_impeccable_context() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let ts = t.write("src/server.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+    assert_eq!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.is_empty());
+    let js = t.write("bin/cli.js", TS_SLOP);
+    assert_eq!(audit_str(&hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).audit, "skipped"), Some("plain-script"));
+    // Component and style files are UI wherever they are.
+    let tsx = t.write("src/Card.tsx", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &tsx, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn plain_scripts_scan_once_the_project_uses_impeccable() {
+    for marker in ["PRODUCT.md", "DESIGN.md", "docs/PRODUCT.md", ".agents/context/DESIGN.md", ".impeccable/config.json"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(marker, if marker.ends_with(".json") { "{}" } else { "# Product\n" });
+        let r = rt(&cwd);
+        let ts = t.write("src/theme.ts", TS_SLOP);
+        let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+        assert!(out.stdout.contains("[gradient-text]"), "{marker}: {:?}", out.audit);
+    }
+}
+
+#[test]
+fn a_configured_extension_is_not_a_plain_script() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"detector":{"extensions":[{"ext":".js","engine":"text"}]}}"#);
+    let r = rt(&cwd);
+    let js = t.write("src/a.js", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let css = t.0.join("src/page.css");
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+    std::fs::OpenOptions::new().write(true).open(&css).unwrap().set_modified(earlier).unwrap();
+    // More plain scripts than discovery keeps, all newer than the stylesheet.
+    for i in 0..45 {
+        t.write(&format!("server/route{i}.ts"), TS_SLOP);
+    }
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "the stylesheet still scans: {} {:?}", deep.stdout, deep.audit);
+    assert!(!deep.stdout.contains("[gradient-text]"), "no server script scans: {}", deep.stdout);
+}
+
+#[test]
+fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let write = cursor(&cwd, "Write", json!({"file_path": "src/server.ts", "content": TS_SLOP}));
+    assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
+    t.write("DESIGN.md", "# Design\n");
+    assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
 }

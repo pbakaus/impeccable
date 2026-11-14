@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
+// new-work.md plus the branch files it loads on the step that needs them.
+const newWorkFlow = () => ['new-work.md', 'new-work-world.md', 'new-work-comp.md']
+  .map((f) => readFileSync(join(ROOT, 'skill/reference', f), 'utf-8').replace(/\r\n?/g, '\n'))
+  .join('\n');
+
 describe('skill reference authoring contracts', () => {
   it('keeps direction contracts in development-only surface briefs', () => {
     const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
@@ -44,7 +49,7 @@ describe('skill reference authoring contracts', () => {
   });
 
   it('defines the FORM seed value for a direction pinned whole', () => {
-    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8');
+    const newWork = newWorkFlow();
     const reviewer = readFileSync(join(ROOT, 'skill/agents/impeccable-finish-reviewer.md'), 'utf-8');
 
     assert.match(newWork, /pins whole, naming its world and its first-surface experience both in words you can quote/);
@@ -106,7 +111,7 @@ describe('skill reference authoring contracts', () => {
   });
 
   it('routes visual decision fallback through wait capability and start failure', () => {
-    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const newWork = newWorkFlow();
     const visualDecisionPage = newWork.match(
       /A harness that can leave a shell blocked[\s\S]*?<!-- rule:skill-visual-decision-page -->/,
     )?.[0] ?? '';
@@ -128,7 +133,7 @@ describe('skill reference authoring contracts', () => {
   });
 
   it('lists every card kind the engine accepts in the identity rule', () => {
-    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const newWork = newWorkFlow();
     const telemetry = readFileSync(join(ROOT, 'crates/context/src/telemetry.rs'), 'utf-8');
     const cardKinds = telemetry.match(/pub const CARD_KINDS: .*? = \[(.*?)\];/)?.[1].match(/[a-z]+/g) ?? [];
     const identityRule = newWork.match(/Every option declares its identity: ([\s\S]*?), and each challenger carries/)?.[1] ?? '';
@@ -140,7 +145,7 @@ describe('skill reference authoring contracts', () => {
   });
 
   it('sizes the hand by the verdicts, never by a requested count', () => {
-    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const newWork = newWorkFlow();
     const handComposition = newWork.match(
       /A hand holds at most three full-card challengers[\s\S]*?Add one card for your own top-ranked grounded candidate/,
     )?.[0] ?? '';

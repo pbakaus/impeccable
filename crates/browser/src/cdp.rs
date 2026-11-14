@@ -178,14 +178,21 @@ impl Browser {
         let user_data_dir = reserve_profile(&std::env::temp_dir(), stamp)?;
         args.push(format!("--user-data-dir={}", user_data_dir.display()));
 
-        let mut child = match Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => c,
+            .stderr(Stdio::piped());
+        // Chrome leads its own process group, so the signal reaper can end
+        // its helpers with it (crate::reaper).
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = match command.spawn() {
+            Ok(c) => {
+                crate::reaper::register(c.id(), user_data_dir.clone());
+                c
+            }
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
@@ -218,6 +225,7 @@ impl Browser {
             if remaining.is_zero() {
                 let _ = child.kill();
                 let _ = child.wait();
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
                     "Timed out after {} ms while waiting for the WS endpoint URL to appear in stdout!",
@@ -235,6 +243,7 @@ impl Browser {
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     let _ = child.wait();
+                    crate::reaper::unregister(child.id());
                     let _ = std::fs::remove_dir_all(&user_data_dir);
                     return Err(CdpError::new(format!(
                         "Failed to launch the browser process!{}",
@@ -252,6 +261,7 @@ impl Browser {
                     collected.push_str(&line);
                     collected.push('\n');
                 }
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
                     "Failed to launch the browser process! (exit {status}){}",
@@ -268,6 +278,7 @@ impl Browser {
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(e);
             }
@@ -458,6 +469,7 @@ impl Drop for Browser {
                 let _ = child.kill();
                 let _ = child.wait();
             }
+            crate::reaper::unregister(child.id());
         }
         if let Some(dir) = self.user_data_dir.as_ref() {
             let _ = std::fs::remove_dir_all(dir);

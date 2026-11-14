@@ -105,6 +105,20 @@ mod mac {
         fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
         fs::copy("/bin/sleep", app.join("Contents/MacOS/Impeccable Loop")).unwrap();
         fs::write(app.join("Contents/Info.plist"), format!(r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Impeccable Loop</string><key>CFBundleShortVersionString</key><string>{version}</string></dict></plist>"#)).unwrap();
+        // The Info.plist invalidates the copied binary's Apple signature, so macOS kills the
+        // launched bundle and shows a "damaged" dialog. Re-sign it ad hoc.
+        assert!(Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&app)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("/usr/bin/codesign")
+            .arg("--verify")
+            .arg(&app)
+            .status()
+            .unwrap()
+            .success());
         let zip = root.join("fixture.zip");
         assert!(Command::new("/usr/bin/ditto")
             .args(["-c", "-k", "--keepParent"])
@@ -390,14 +404,14 @@ fn after_install_never_connects_unasked_when_no_person_is_there() {
         home.to_string_lossy().into_owned(),
     )]);
     let (mut io, cap) = Io::captured("", home.clone(), env);
-    assert_eq!(after_install(&mut io, false), 0);
+    assert_eq!(after_install(&mut io, false, crate::loop_connect::Taste::Ask), 0);
     assert_eq!(
         String::from_utf8_lossy(&cap.stdout.borrow()),
         "Next: impeccable loop connect, so your agents bring their questions to Loop.\n"
     );
     assert!(!home.join(".claude").exists() && !home.join(".codex").exists());
     // --connect tries at once, and a failure names how to finish (no Loop app in this home).
-    assert_eq!(after_install(&mut io, true), 1);
+    assert_eq!(after_install(&mut io, true, crate::loop_connect::Taste::Ask), 1);
     let err = String::from_utf8_lossy(&cap.stderr.borrow()).into_owned();
     assert!(err.ends_with("Loop is installed. Run impeccable loop connect again once that is sorted.\n"), "{err}");
 }
