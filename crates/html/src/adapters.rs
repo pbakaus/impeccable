@@ -1303,14 +1303,22 @@ pub fn check_element_hover_contrast(
             && (split_top_level_commas(&own_image).len() > 1
                 || !gradient_tile_misses(hover, &own_image, font_size)));
     // The hover's own image is read past only when it is an icon: an
-    // icon-sized SVG that does not repeat and is painted at its own size (a
-    // tiled pattern, or one stretched by `cover` or a size, covers the text
-    // however small the file).
+    // icon-sized SVG that does not repeat and stays icon-sized (`auto`, or
+    // lengths up to the icon size). A tiled pattern, or one stretched by
+    // `cover`, `contain`, a percentage or a larger size, covers the text
+    // however small the file.
+    let icon_size = |size: &str| {
+        let parts: Vec<&str> = size.split_ascii_whitespace().collect();
+        parts.len() <= 2
+            && parts.iter().all(|p| {
+                *p == "auto" || p.strip_suffix("px").and_then(|n| n.parse::<f64>().ok()).is_some_and(|n| (0.0..=ICON_MAX_PX).contains(&n))
+            })
+    };
     let icon = !own_image.contains("gradient")
         && data_svg_intrinsic_size(sv(hover, "backgroundImage")).is_some_and(|(w, h)| w <= ICON_MAX_PX && h <= ICON_MAX_PX)
         && geo::repeat_from(sv(hover, "backgroundRepeat"), &own_image) == (false, false)
         && split_top_level_commas(&own_image).into_iter().next().map_or(true, |layer| {
-            geo::parse_shorthand_layer(&layer).size.map_or(true, |size| matches!(js::trim(&size), "" | "auto"))
+            geo::parse_shorthand_layer(&layer).size.map_or(true, |size| icon_size(js::trim(&size)))
         });
     if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !icon {
         return Vec::new();

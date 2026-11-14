@@ -469,3 +469,59 @@ fn an_inline_shorthand_after_an_inline_color_wins() {
     );
     assert!(findings.is_empty(), "{findings:#?}");
 }
+
+#[test]
+fn a_hover_icon_at_its_own_size_still_shows_the_hover_failure() {
+    // A 12px SVG at `auto auto`, or at an explicit 12px, stays an icon beside
+    // the text. The shorthand clears the dark fill, so the white hover text
+    // sits on the white page and is scored there.
+    for size in ["auto auto", "12px 12px", "12px"] {
+        let findings = scan(&format!(
+            r#"<!DOCTYPE html><html><head><style>
+div.card {{ background: #111111; color: #ffffff; font-size: 16px; }}
+div.card:hover {{ background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect width='12' height='12' fill='%23111'/%3E%3C/svg%3E") left center / {size} no-repeat; color: #fafafa; }}
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#
+        ));
+        assert!(
+            findings.iter().any(|f| f.snippet.contains(":hover")),
+            "{size}: {findings:#?}"
+        );
+    }
+}
+
+#[test]
+fn an_important_inline_color_beats_a_later_one() {
+    // The `!important` transparent fill wins the cascade, so the dark text
+    // sits on the white page, not on the later #111111.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head></head><body style="background:#ffffff"><div style="background-color:rgba(0,0,0,0)!important; background-color:#111111; color:#222222; font-size:16px">Read the full report</div></body></html>"#,
+    );
+    assert!(findings.is_empty(), "{findings:#?}");
+}
+
+#[test]
+fn a_custom_property_named_background_is_not_the_background() {
+    // `--background` is a custom property, not a fill: the transparent box
+    // shows the white page under the dark text.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head></head><body style="background:#ffffff"><div style="background:transparent; --background:#111111; color:#222222; font-size:16px">Read the full report</div></body></html>"#,
+    );
+    assert!(findings.is_empty(), "{findings:#?}");
+}
+
+#[test]
+fn a_hover_that_sets_custom_properties_keeps_no_stale_fill() {
+    // The hover shorthand paints an image and clears the resting #ffffff, and
+    // the same rule sets a custom property. The pairing is left unscored, not
+    // read against the white fill the shorthand removed.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.card { background: #ffffff; color: #222222; font-size: 16px; }
+div.card:hover { --tw-ring: 1px; background: url(photo.jpg); color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        !findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}

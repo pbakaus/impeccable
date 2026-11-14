@@ -50,7 +50,7 @@ pub type CustomPropMap<'a> = Option<&'a dyn CustomProps>;
 
 static INLINE_BG_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"(?i)background(?:-color)?{ws}*:{ws}*([^;]+)",
+        r"(?i)(?:^|[;{ws}])background(?:-color)?{ws}*:{ws}*([^;]+)",
         ws = js::WS
     ))
     .expect("INLINE_BG_RE")
@@ -77,16 +77,18 @@ static CURRENTCOLOR_RE: Lazy<Regex> =
 
 /// `rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i)` → trimmed value.
 /// The inline `background` / `background-color` value that wins: the last
-/// one declared, so a later `background: url(...)` shorthand is what is
-/// read, not the `background-color` it reset.
+/// `!important` one, else the last one declared, so a later
+/// `background: url(...)` shorthand is what is read, not the
+/// `background-color` it reset. Only whole declaration names match: a
+/// `--background` custom property is not a background.
 fn inline_bg(el: &StaticElement<'_>) -> String {
     let raw = el.get_attribute("style").unwrap_or("");
-    INLINE_BG_RE
-        .captures_iter(raw)
-        .last()
-        .map(|m| js::trim(&m[1]).to_string())
-        .unwrap_or_default()
+    let values: Vec<String> = INLINE_BG_RE.captures_iter(raw).map(|m| js::trim(&m[1]).to_string()).collect();
+    let important = |v: &&String| IMPORTANT_RE.is_match(v);
+    values.iter().filter(important).last().or_else(|| values.last()).cloned().unwrap_or_default()
 }
+static IMPORTANT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"(?i)!{ws}*important{ws}*$", ws = js::WS)).expect("IMPORTANT_RE"));
 
 fn hex_to_rgba(h: &str) -> Rgba {
     let p = |s: &str| js::parse_int(s, 16);

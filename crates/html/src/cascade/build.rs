@@ -635,6 +635,7 @@ fn compute_styles(
         // Hover pass: color / backgroundColor, plus the hover's own image.
         if let Some(hover_map) = hover_specified.get(&node) {
             let mut hover_values: Option<StyleValues> = None;
+            let mut unscored = false;
             for prop in ["color", "backgroundColor"] {
                 let Some(hover_decl) = hover_map.get(prop) else {
                     continue;
@@ -662,13 +663,15 @@ fn compute_styles(
                     // A hover rule that sets its own custom properties can
                     // change what the image resolves to in ways a static
                     // read cannot follow (references, cycles, fallbacks), so
-                    // the implied reset is not scored there at all: a missed
-                    // hover finding is safer than a false one.
+                    // the hover is not scored there at all (no hover style
+                    // is emitted): a missed hover finding is safer than a
+                    // false one read off the fill the shorthand removed.
                     let hover_sets_custom = hover_map.iter().any(|(name, decl)| {
                         name.starts_with("--")
                             && compare_static_priority(specified_map.get(name).map(|d| &d.meta), &decl.meta)
                     });
                     if hover_sets_custom {
+                        unscored = true;
                         continue;
                     }
                     let paints = effective_img.is_some_and(|d| {
@@ -740,7 +743,7 @@ fn compute_styles(
                 let hv = hover_values.get_or_insert_with(|| values.clone());
                 hv.insert(prop.to_string(), resolved);
             }
-            if let Some(hv) = hover_values {
+            if let Some(hv) = hover_values.filter(|_| !unscored) {
                 hover_out.push((node, hv));
             }
         }
