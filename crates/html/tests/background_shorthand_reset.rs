@@ -442,3 +442,19 @@ div.card:hover { background: url(dark-photo.jpg) center / cover no-repeat; color
         "{findings:#?}"
     );
 }
+
+#[test]
+fn a_stretched_hover_svg_is_not_an_icon() {
+    // A 12px SVG stretched by `cover` paints the whole card, so the hover
+    // text sits on it and the pairing is not scored against the page.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.card { background: #111111; color: #ffffff; font-size: 16px; }
+div.card:hover { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Crect width='12' height='12' fill='%23111'/%3E%3C/svg%3E") center / cover no-repeat; color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="card">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        !findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
