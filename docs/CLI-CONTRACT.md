@@ -2721,6 +2721,19 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `login` when already signed in
+
+`impeccable login` on a machine whose stored sign-in to this account is still
+good opens no browser and prints no link (stdout stays empty, also under
+`--no-browser`). It exits 0 with `Already signed in to {account}. To sign in
+again: impeccable login --force` and the Pro line `whoami` prints, or, when the
+service cannot be reached, `Already signed in to {account}. Couldn't reach it
+to check the sign-in: {error}.` The browser sign-in goes ahead as before when
+there is no sign-in, it expired or the service ended it, it cannot be read, or
+it lacks a scope the service now offers (the case every "needs a fresh
+sign-in" notice sends here). `--force` always signs in again. The first scan
+below runs after either kind of success.
+
 ## `login`: the first scan of a repository
 
 After a successful sign-in, and after its own success line, the CLI adds the
