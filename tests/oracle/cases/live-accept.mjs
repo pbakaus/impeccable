@@ -17,6 +17,17 @@ const A = (id, workspace, args, extra = {}) => ({ id, verb: 'live-accept', works
 const ID = 'ab12cd34';
 
 export default [
+  ...['variants', 'carbonize'].flatMap(kind => ['start', 'end'].flatMap(boundary => [false, true].map(discard =>
+    A(`live-accept-shared-${kind}-${boundary}-${discard ? 'discard' : 'accept'}`, 'live-html',
+      ['--id', ID, ...(discard ? ['--discard'] : ['--variant', '1'])], {
+        snap: ['index.html'],
+        setup: ws => write(ws, 'index.html',
+          `<!-- impeccable-${kind}-start ${ID} -->${boundary === 'start' ? '<p>Keep</p>' : ''}\n` +
+          '<div data-impeccable-variant="original"><h1>Old</h1></div>\n' +
+          '<div data-impeccable-variant="1"><h1>New</h1></div>\n' +
+          `${boundary === 'end' ? '<p>Keep</p>' : ''}<!-- impeccable-${kind}-end ${ID} -->\n`),
+      })))),
+
   A('live-accept-help', 'live-html', ['--help']),
   A('live-accept-missing-id', 'live-html', ['--variant', '1']),
   A('live-accept-invalid-id', 'live-html', ['--id', '../etc', '--variant', '1']),

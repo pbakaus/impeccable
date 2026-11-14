@@ -7354,3 +7354,50 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-09: a `background` shorthand with an image resets the fill (#964)
 
 The static cascade kept an earlier `background-color` when a later `background` shorthand named an image and no colour, so text was scored against a fill the browser never paints under the image. The shorthand now also resets `background-color` to transparent, beside the recorded `expandStaticDeclaration` (whose vectors are unchanged), and the hover pass ignores that implied reset while an image still paints on hover (the hover rule's own, or a resting image that outranks it). `background: url(...) currentColor` sets `currentColor` rather than a reset. `detect-fixture-json-declared-mockups-html` and `detect-fixture-text-declared-mockups-html` were re-recorded from the binary and reviewed by hand: the four `.shot` rows (`.frame { background: #ffffff }` overridden by `.shot { background: url(...) center / cover }`) no longer report `#f2f2f2`, `#f3f3f3`, `#f4f4f4` and `#f5f5f5` on `#ffffff`, so the text summary reads `22 anti-patterns found.` where it read 26; every other finding is byte-identical. `detect-fixture-json-low-contrast-shorthand-reset-html` and its text twin are new: they report the four should-flag rows (`#3a3a3a on #222222`, a shorthand that names its colour keeps it; `#404040 on #2a2a2a`, a later `background-color` wins back; `#404040 on #2b2b2b`, `background: url(...) currentColor` fills with the box's `color`; and a `:hover` `#ffffff on #ffffff` where an explicit `background-color: transparent` clears the fill) and nothing on the stale `#111111` or `#151515` fills or on the two hover image swaps, one of them under a resting `!important` image that still paints. The accepted-delta sweeps (`detect-dir-*-all-fixtures`, `detect-scope-*`, `detect-no-advisory-*`) were not re-recorded, since a re-record would also take in unrelated drift already on main; they lose the four `declared-mockups` findings and gain the new fixture's one at their next re-record.
+
+## Recorded 2026-11-12: `impeccable context` prints the person's taste from a local copy
+
+A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the shared invocation environment pins `IMPECCABLE_NO_TASTE` for every case (the isolated `context-taste-ready` case explicitly unsets it) so a developer's own copy never reaches a golden. New case: `context-taste-ready`.
+
+## Recorded 2026-11-12: the live boot names the next step when no dev server answers
+
+With `--dev-url` and no server found, the boot used to say "Open the app URL that serves a pageFiles entry" although no such URL existed. It now reports `pageUrls` (ready `file://` URLs) for a static folder, or `devCommand` for a project with a dev script, and `_instructions` say which to do. Output with a found `devUrl`, and without the flag, is unchanged. New cases: `live-boot-no-dev-server-static`, `live-boot-no-dev-server-dev-script`.
+
+
+## Recorded 2026-11-12: live-wrap and live-insert locate a bare element by its tag
+
+A picked element with no id and no class (a fresh page's `<h1>`) could not be wrapped: preflight skipped it as `insufficient_locator` and the command the event printed failed with `Need at least one of: --element-id, --classes, --query`. A tag alone now locates it (`docs/CLI-CONTRACT.md`, live-wrap args). `live-wrap-missing-locator` and `live-insert-missing-locator` change to the new message (the wrap case now passes no locator at all, since `--tag h1` is one), both help goldens gain the "a tag alone is enough" line, and three new cases pin the behavior: `live-wrap-tag-only`, `live-wrap-tag-only-text-picks-second` (a short text that is one element's whole text) and `live-wrap-tag-only-ambiguous` (two elements with the same text give `element_ambiguous`, never the first match).
+
+## Recorded 2026-11-12: live-wrap isolates an element that shares its line; accept refuses shared marker lines
+
+A picked element in the middle of a line (a minified or one-line page) used to answer `element_not_found`, and a hand-written wrapper on such a line lost the rest of the line on accept. `live-wrap` and `live-insert` now split the line around a block-level element (and any element in JSX) before wrapping, and answer `element_inline` where a split could change rendering. `live-accept` answers `markers_share_line` and writes nothing when a marker shares its line with other content. No existing golden changed; 20 cases added (`live-wrap-same-line-*`, `live-insert-same-line-*`, `live-accept-shared-*`).
+
+## Recorded 2026-11-12: a shared marker line on accept exits 0 with mode "error"
+
+`live-accept` answered `markers_share_line` with exit 1, and `live-poll` reads an accept's stdout only on exit 0, so the poll replaced the refusal with a generic `Command failed` and the agent never saw the hint. The refusal now carries `mode: "error"` and exits 0, the same shape as `source_locked`, and the poll instructions name the repair (move each marker onto a line of its own, rerun the command). Source and receipts are still untouched. The 8 `live-accept-shared-*` goldens changed in `exit` (1 to 0) and in `stdout` (the added `mode` field) only; no other golden changed.
+
+## Recorded 2026-11-12: live-wrap never matches inside a comment, script, style or textarea
+
+The line resolver searched comment and raw-text contents like markup, so `live-wrap --query hero-hook` on the `live-html` fixture matched the `.hero-hook` CSS rule and wrapped the page's `<style>` block in `<head>`. The element scans now read tags through one lexer that skips comments, raw-text contents and quoted attribute values, and matches HTML tag names case-insensitively; comment and raw-text contents are blanked before the search, so the query lands on `<p class="hero-hook">` in the body. `live-wrap-html-by-query` changed in `stdout` (startLine 14, endLine 22, originalLineCount 1) and in the written `index.html`; no other golden changed.
+
+## Recorded 2026-11-13: unsafe inline isolation uses the shared-line fallback
+
+- `live-wrap-same-line-text-inline`, `live-insert-same-line-text-inline`,
+  `live-wrap-same-line-inline-spans`, `live-insert-same-line-inline-spans`:
+  unsafe isolation now reports `element_ambiguous` with `reason: "shared_line"`,
+  the candidate line range, and the existing shared-line manual-wrapper hint
+  instead of `element_inline`. This keeps whitespace-sensitive refusals on the
+  fallback the agent already handles. Reviewed all four decoded goldens:
+  only stderr changes; exit 1, empty stdout, and source files stay unchanged.
+
+## Recorded 2026-11-13: a seeded world outranks starter CSS; `world` refuses on any design file the context reader finds
+
+New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to be dropped whenever the project read as having a visual implementation, which a scaffold's starter `globals.css` with three custom properties already does, so the boot treated boilerplate as the incumbent world. The line now fires whenever DESIGN.md names a seeded world, with a variant for a project that has code: the world outranks the styles in code, starter styles are no incumbent world, and the reference-image step applies until a build has resolved the world. The no-PRODUCT.md boot with code and a seeded world no longer prints `EXISTING_VISUAL_SYSTEM` or `SCOPED_EXISTING_ALLOWED`. `impeccable world <id>` now also refuses when `context` from the same directory would read a DESIGN.md elsewhere (`docs/`, `.agents/context/`, a workspace's repo root, `IMPECCABLE_CONTEXT_DIR`), and the merge line names that file. Existing goldens are unchanged.
+
+- `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: the seeded world with starter CSS, without and with PRODUCT.md.
+- `world-refuses-docs-design`: `docs/DESIGN.md already exists, so nothing was written. ...`, exit 0, nothing written, no request.
+
+## Recorded 2026-11-13: explicit redesign requests override a seeded world
+
+- `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.
+- On worlds/settled-world-roll the code-present and no-code `SEEDED_WORLD` variants both name the replacement door, a redesign whose direction roll passes `--replace-world`, after the explicit-request override; the three seeded-world goldens were re-recorded with it.

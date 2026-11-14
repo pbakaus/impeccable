@@ -495,6 +495,73 @@ fn repair_update_hook_manifests(sys: &crate::providers::Sys, hook_root: &str, sk
     Ok(())
 }
 
+/// An Impeccable skill under `<root>/.codex/skills`, which `update` never
+/// refreshes: `.codex/skills` is not an install target. Codex reads repository
+/// skills from `.agents/skills` only (its loader joins that onto each directory
+/// from the project root to the cwd), and the user-level install Impeccable
+/// maintains is `~/.agents/skills`, so a copy there (an unzipped bundle, a
+/// hand copy) stays at the version it was. `managed` holds the real paths of
+/// the skills dirs this run updates: an entry that resolves into one of them
+/// (the entry linked, or `.codex/skills` itself linked), or to the same place
+/// as its namesake there (both linked onto one checkout), is that install,
+/// not a copy, and is skipped without hiding a copy beside it. Returns the
+/// first copy's name.
+fn unmanaged_codex_skill(root: &str, managed: &[String]) -> Option<String> {
+    let skills_dir = util::jsp::join(&[root, ".codex", "skills"]);
+    util::read_dir_names(&skills_dir)?.into_iter().find(|n| {
+        if !is_impeccable_skill_name(n) || !is_skill_dir(&skills_dir, n) {
+            return false;
+        }
+        let skill_dir = util::jsp::join(&[&skills_dir, n]);
+        let real = util::realpath(&skill_dir).unwrap_or(skill_dir);
+        let parent = util::jsp::dirname(&real);
+        !managed.iter().any(|m| {
+            let twin = util::jsp::join(&[m, n]);
+            *m == parent || util::realpath(&twin).unwrap_or(twin) == real
+        })
+    })
+}
+
+/// Says so when `root` carries such a copy, so a run that reports the install
+/// as current or absent does not leave it sitting there unexplained (#1391).
+/// `has_agents`: the `.agents` install at this root is the one being updated,
+/// so the copy is a leftover; otherwise the install Codex reads is still to
+/// be made.
+fn note_unmanaged_codex_skill(sys: &Sys, io: &mut Io, root: &str, user: bool, has_agents: bool, managed: &[String]) {
+    let Some(name) = unmanaged_codex_skill(root, managed) else { return };
+    let shown = if user { format!("{}/.codex/skills/{name}", sys.format_path_for_display(root)) } else { format!(".codex/skills/{name}") };
+    let reads = if user {
+        "the user-level install Impeccable maintains is ~/.agents/skills/impeccable"
+    } else {
+        "Codex reads repository skills from .agents/skills, so that copy is never loaded"
+    };
+    let install = if user { "`npx impeccable install --providers=codex --scope=global`" } else { "`npx impeccable install --providers=codex`" };
+    let tail = if user { " so Codex loads one copy" } else { "" };
+    let step = if has_agents {
+        format!("Delete {shown}{tail}")
+    } else {
+        format!("Run {install} to install it there, then delete {shown}{tail}")
+    };
+    out(io, &format!("Found an Impeccable skill at {shown}, which update does not manage: {reads}. {step}."));
+}
+
+/// Ends an update with the doctor pass over the project: the skill just
+/// refreshed may read PRODUCT.md, DESIGN.md and the config differently from
+/// the version that wrote them. A report only; update repairs nothing in it.
+/// The fixes it names are the agent's to offer, so a run that installed a new
+/// version ends by sending the user to the `doctor` command there.
+fn report_doctor(sys: &Sys, io: &mut Io, root: &str, providers: &[&'static str], scope: Option<Scope>, updated: bool) {
+    let skill_dirs: Vec<String> =
+        sys.deduplicate_providers(root, providers, scope).into_iter().map(|(_, dir)| util::jsp::join(&[&dir, "impeccable"])).collect();
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    if let Some((report, command)) = impeccable_context::doctor::report_for_skills(&skill_dirs, &cwd, &io.env) {
+        out(io, &format!("\n{}", report.trim_end()));
+        if updated {
+            out(io, &format!("\nNext step: run {command} doctor in your coding agent. It checks this project's setup against the version you just installed and offers the fixes."));
+        }
+    }
+}
+
 // ─── link ────────────────────────────────────────────────────────────────────
 
 /// JS: link(flags)
@@ -820,10 +887,21 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
             }
             None => out(io, "No impeccable skill folders found in this project or at the user level."),
         }
+        let home_rooted = sys.is_home_dir(&project_root);
+        if explicit_scope != Some(Scope::User) && !home_rooted {
+            note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &[]);
+        }
+        if explicit_scope != Some(Scope::Project) {
+            note_unmanaged_codex_skill(&sys, io, &home, true, false, &[]);
+        }
         out(io, "Run `npx impeccable install` to install first.");
         return Err(Flow::Exit(1));
     };
 
+    // An unscoped run that found no project install and fell back to the user
+    // one: the project may still hold a `.codex/skills` copy, which is why
+    // nothing was found there, so that root is checked as well.
+    let fell_back_to_user = matches!(target, UpdateTarget::Resolved { scope: Some(Scope::User), .. }) && explicit_scope.is_none();
     let (root, scope, agent_scope, providers, scope_label) = match target {
         UpdateTarget::Resolved { root, scope, agent_scope, providers, scope_label } => (root, scope, agent_scope, providers, scope_label),
         UpdateTarget::Ambiguous { project_providers, user_providers } => {
@@ -846,6 +924,13 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
     };
 
     out(io, &format!("Updating the {scope_label} install: {} ({})", sys.format_path_for_display(&root), providers.join(", ")));
+    let user_root = scope != Some(Scope::Project);
+    let has_agents = providers.contains(&".agents");
+    let managed: Vec<String> = sys
+        .deduplicate_providers(&root, &providers, scope)
+        .into_iter()
+        .map(|(_, dir)| util::realpath(&dir).unwrap_or(dir))
+        .collect();
     // Hook manifests follow install's placement: a user-scope install keeps
     // the skill under home but writes every non-Claude manifest (Cursor,
     // Codex, Grok, ...) into the project, so update repairs and writes them
@@ -899,7 +984,12 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
                 let v = sys.get_skills_version(&root, scope);
                 out(io, &format!("Skills are up to date{}.", version_suffix(&v)));
                 report_hook_targets(&sys, io, &hook_targets, if want_hooks { &copy_providers } else { &[] });
+                note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
+                if fell_back_to_user {
+                    note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &managed);
+                }
                 out(io, "Nothing else to do.");
+                report_doctor(&sys, io, &root, &copy_providers, scope, false);
                 Err(Flow::Exit(0))
             }
             Err(Flow::Throw(e)) => {
@@ -950,7 +1040,12 @@ fn update(flags: &[String], io: &mut Io) -> R<()> {
         out(io, &format!("Updated {} skill(s){}.", refreshed.len(), to_version_suffix(&v)));
         install_engine_binaries(&sys, io, &refreshed);
         report_hook_targets(&sys, io, &hook_targets, if want_hooks { &providers } else { &[] });
-        out(io, "Done!\n");
+        note_unmanaged_codex_skill(&sys, io, &root, user_root, has_agents, &managed);
+        if fell_back_to_user {
+            note_unmanaged_codex_skill(&sys, io, &project_root, false, false, &managed);
+        }
+        out(io, "Done!");
+        report_doctor(&sys, io, &root, &copy_providers, scope, true);
         Ok(())
     })();
     match outcome {
