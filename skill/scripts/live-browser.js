@@ -5561,7 +5561,12 @@
         const name = entry.expr;
         const own = (object) => object && Object.prototype.hasOwnProperty.call(object, name);
         const value = own(instance.setupState) ? instance.setupState[name]
+          : own(instance.data) ? instance.data[name]
           : own(instance.props) ? instance.props[name] : instance.ctx?.[name];
+        if (value !== null && typeof value === 'object' &&
+            (entry.kind === 'vue-handler' || entry.kind === 'vue-callable-mixed')) {
+          throw new Error('Complex Vue event bindings require the ordinary preview.');
+        }
         if (typeof value === 'function' && entry.kind === 'vue-callable-mixed') {
           throw new Error('Vue preview cannot snapshot a function used for both rendering and events.');
         }

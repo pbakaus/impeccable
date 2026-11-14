@@ -45,6 +45,15 @@ fn session_directory(id: &str, cwd: &str) -> Result<PathBuf, String> {
     Ok(directory)
 }
 
+pub fn discard_session(id: &str, cwd: &str) -> Result<(), String> {
+    let directory = session_directory(id, cwd)?;
+    match std::fs::remove_dir_all(directory) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("Cannot discard Vue preview: {error}")),
+    }
+}
+
 pub fn scaffold(
     id: &str,
     count: i64,
@@ -215,6 +224,15 @@ pub fn scaffold(
 }
 
 pub fn analyze(source: &str, filename: &str, cwd: &str) -> Result<Value, String> {
+    analyze_with_mode(source, filename, cwd, false)
+}
+
+fn analyze_with_mode(
+    source: &str,
+    filename: &str,
+    cwd: &str,
+    behavior_only: bool,
+) -> Result<Value, String> {
     let mut child = Command::new(impeccable_common::proc::node_exe())
         .args([
             "--input-type=module",
@@ -230,7 +248,8 @@ pub fn analyze(source: &str, filename: &str, cwd: &str) -> Result<Value, String>
         .map_err(|e| {
             format!("Vue compiler unavailable: {e}. Install @vue/compiler-sfc in the app.")
         })?;
-    let request = json!({"source":source,"filename":filename}).to_string();
+    let request =
+        json!({"source":source,"filename":filename,"behaviorOnly":behavior_only}).to_string();
     child
         .stdin
         .take()
@@ -313,6 +332,8 @@ pub fn inline_vue_component_accept(
     let number = variant
         .parse::<usize>()
         .map_err(|_| "Invalid Vue variant")?;
+    let canonical_variant = number.to_string();
+    let variant = canonical_variant.as_str();
     let count = manifest.get("count").and_then(Value::as_u64).unwrap_or(0) as usize;
     if number == 0 || number > count {
         return Err("Vue variant must be between 1 and the session count".into());
@@ -394,10 +415,13 @@ pub fn inline_vue_component_accept(
         .get("originalMarkup")
         .and_then(Value::as_str)
         .ok_or("Missing original Vue markup")?;
-    let original_analysis = analyze(
+    // The fragment has no script metadata. Full source and variant validation
+    // already checked event safety; here only compare behavior ownership.
+    let original_analysis = analyze_with_mode(
         &format!("<template>{original}</template>"),
         &source_file,
         cwd,
+        true,
     )?;
     if !required_behaviors(&original_analysis, &next) {
         return Err("Vue variant removed or changed a binding, directive, or component; preserve component behavior".into());

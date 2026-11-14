@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
 
-const source = readFileSync('skill/scripts/live-browser.js', 'utf8');
+const source = readFileSync(new URL('../skill/scripts/live-browser.js', import.meta.url), 'utf8');
 function helper(name) {
   const body = source.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
   assert.ok(body, name);
@@ -12,7 +12,7 @@ function helper(name) {
 }
 
 test('Vue binding snapshots retain null and render helpers while isolating event callbacks', {
-  skip: !process.env.IMPECCABLE_TEST_VUE_MODULES && 'IMPECCABLE_TEST_VUE_MODULES is unset',
+  skip: process.env.IMPECCABLE_TEST_VUE_MODULES === undefined && 'IMPECCABLE_TEST_VUE_MODULES is unset',
 }, async () => {
   const browser = await chromium.launch({ headless: true });
   try {

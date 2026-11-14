@@ -910,4 +910,9 @@ fn review_vue_object_writing_events_use_ordinary_preview() {
     fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
     let (_, result) = wrap(&fixture);
     assert_eq!(result["previewMode"], "vue-component", "{result}");
+    let (_, result) = fixture.accept("1");
+    assert_eq!(
+        result["handled"], true,
+        "direct callback call must remain acceptable: {result}"
+    );
 }

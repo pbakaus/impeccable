@@ -9,7 +9,9 @@ const body = source.match(/function buildSveltePropValuesFromLiveElement\([^\n]*
 assert.ok(body);
 
 for (const production of [false, true]) {
-  test(`Options API snapshots preserve data, null, computed values and inert methods (production=${production})`, async () => {
+  test(`Options API snapshots preserve data, null, computed values and inert methods (production=${production})`, {
+    skip: process.env.IMPECCABLE_TEST_VUE_MODULES === undefined && 'IMPECCABLE_TEST_VUE_MODULES is unset',
+  }, async () => {
     const browser = await chromium.launch({ headless: true });
     try {
       const page = await browser.newPage();
@@ -42,7 +44,9 @@ for (const production of [false, true]) {
   });
 }
 
-test('legacy manifests cannot share event-writable reactive objects with previews', async () => {
+test('legacy manifests cannot share event-writable reactive objects with previews', {
+  skip: process.env.IMPECCABLE_TEST_VUE_MODULES === undefined && 'IMPECCABLE_TEST_VUE_MODULES is unset',
+}, async () => {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();

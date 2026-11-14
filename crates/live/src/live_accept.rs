@@ -322,7 +322,11 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
         let owner = format!("{}:{}", requested_operation, id);
         let locked = with_source_lock(&lock_file, &owner, &cwd, &env, ACCEPT_LOCK_WAIT_MS, || {
             if is_discard {
-                remove_svelte_component_session(&id, &cwd);
+                if is_vue {
+                    crate::vue_component::discard_session(&id, &cwd)?;
+                } else {
+                    remove_svelte_component_session(&id, &cwd);
+                }
                 let mut m = Map::new();
                 m.insert("handled".into(), Value::Bool(true));
                 for (k, v) in &context {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 import { bootFixtureSession } from './live-e2e/session.mjs';
@@ -10,7 +11,7 @@ import { waitForHandshake, pickElement, clickGo, waitForCycling, openTunePanel, 
 
 test('Vue preview → Tune → Accept → Reload preserves style and behavior', { timeout: 240000 }, async (t) => {
   const browser = await chromium.launch({ headless: true, ...(process.env.IMPECCABLE_TEST_CHROME ? { executablePath: process.env.IMPECCABLE_TEST_CHROME } : {}) });
-  const fixtureRoot = join(process.cwd(), 'tests/fixtures/live-vue-accept/app');
+  const fixtureRoot = fileURLToPath(new URL('./fixtures/live-vue-accept/app', import.meta.url));
   const fixture = JSON.parse(readFileSync(join(fixtureRoot, 'fixture.json')));
   let session;
   let cleanupPromise;

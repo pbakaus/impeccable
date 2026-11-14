@@ -5,11 +5,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 try {
-  const require = createRequire(resolve(process.argv[1], 'package.json'));
+  // With node -e, the first argument after -- is argv[1], not argv[2].
+  const appRoot = resolve(process.argv[1]);
+  const require = createRequire(resolve(appRoot, 'package.json'));
   const compiler = require('@vue/compiler-sfc');
   const request = JSON.parse(readFileSync(0, 'utf8'));
   const source = request.source;
-  const filename = request.filename || resolve(process.argv[1], 'Component.vue');
+  const filename = resolve(appRoot, request.filename || 'Component.vue');
   const { descriptor, errors } = compiler.parse(source, { filename });
   const fail = (errors) => { if (errors.length) throw new Error(errors.map(e => e.message || String(e)).join('; ')); };
   fail(errors);
@@ -43,18 +45,43 @@ try {
     }
     const compiled = compiler.compileStyle({ source: style.content, filename, id: 'data-v-impeccable-preview', scoped: !!style.scoped });
     fail(compiled.errors);
+    const root = compiled.rawResult?.root;
+    if (!root) throw new Error('Vue preview could not validate the CSS structure.');
+    const rejectNesting = node => {
+      for (let parent = node.parent; parent; parent = parent.parent) {
+        if (parent.type === 'rule') throw new Error('Vue component preview does not support nested CSS rules.');
+      }
+    };
+    root.walkRules(rejectNesting);
+    root.walkAtRules(rejectNesting);
     return { ...block(style), scoped: !!style.scoped, compiled: compiled.code };
   });
   const behaviors = [];
   const eventBindings = new Set();
   const renderBindings = new Set();
   const modelBindings = new Set();
-  const references = (expression, names) => {
+  const references = (expression, names, inertEvent = false) => {
     if (!expression) return;
     const options = { sourceType: 'module', plugins: ['typescript'], allowAwaitOutsideFunction: true };
     let ast;
     try { ast = compiler.babelParse(`(${expression})`, options); }
     catch { ast = compiler.babelParse(expression, options); }
+    if (inertEvent && !request.behaviorOnly) {
+      const check = node => {
+        if (!node || typeof node.type !== 'string') return;
+        const unsafe = ['AssignmentExpression', 'UpdateExpression', 'MemberExpression',
+          'OptionalMemberExpression', 'NewExpression', 'TaggedTemplateExpression'].includes(node.type)
+          || (node.type === 'UnaryExpression' && node.operator === 'delete')
+          || (['CallExpression', 'OptionalCallExpression'].includes(node.type)
+            && (node.callee.type !== 'Identifier' || !Object.hasOwn(bindings, node.callee.name)));
+        if (unsafe) throw new Error('Complex Vue event bindings require the ordinary preview.');
+        for (const value of Object.values(node)) {
+          if (Array.isArray(value)) value.forEach(check);
+          else if (value && typeof value === 'object') check(value);
+        }
+      };
+      check(ast);
+    }
     compiler.walkIdentifiers(ast, id => { if (Object.hasOwn(bindings, id.name)) names.add(id.name); });
   };
   // Ownership matters: an unchanged expression on a different element or in a
@@ -67,8 +94,7 @@ try {
     }
     if (node.type === 1) {
       if (node.tagType === 1 || node.tagType === 2) record('component:' + node.tag);
-      for (const prop of node.props || []) if (prop.type === 6 &&
-          (['ref', 'key'].includes(prop.name) || ((node.tagType === 1 || node.tagType === 2) && !['class', 'style'].includes(prop.name)))) {
+      for (const prop of node.props || []) if (prop.type === 6 && !['class', 'style'].includes(prop.name)) {
         record({ attribute: prop.name, value: prop.value?.content });
       }
       for (const prop of node.props || []) if (prop.type === 7) {
@@ -85,7 +111,7 @@ try {
           const expression = prop.name === 'for'
             ? prop.exp?.content?.match(/\s(?:in|of)\s+([\s\S]*)$/)?.[1]
             : prop.exp?.content;
-          references(expression, prop.name === 'on' ? eventBindings : renderBindings);
+          references(expression, prop.name === 'on' ? eventBindings : renderBindings, prop.name === 'on');
         }
       }
     }

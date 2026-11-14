@@ -359,9 +359,10 @@ export const SUITES = {
       /^skill\/scripts\/live-browser/,
       /^tests\/live-vue-accept\.test\.mjs$/,
       /^tests\/live-vue-bindings\.test\.mjs$/,
+      /^tests\/live-vue-review\.test\.mjs$/,
       /^tests\/fixtures\/live-vue-accept\//,
     ],
-    commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs', 'tests/live-vue-bindings.test.mjs'] }],
+    commands: [{ runner: 'node', timeoutMs: 300000, forceExit: true, files: ['tests/live-vue-accept.test.mjs', 'tests/live-vue-bindings.test.mjs', 'tests/live-vue-review.test.mjs'] }],
   },
   'live-svelte-adapter-deepseek': {
     description: 'DeepSeek-backed Svelte adapter browser sweep.',

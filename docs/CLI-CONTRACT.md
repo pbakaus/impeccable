@@ -1858,11 +1858,15 @@ original app context supply initial values; simple identifier `v-model` targets
 use local refs initialized from those values. Member-expression model targets
 use the ordinary preview instead. Event-only functions are inert in component
 previews; render helpers remain callable. A function used for both rendering and
-events cannot be safely snapshotted and reports a mount failure.
+events cannot be safely snapshotted and reports a mount failure. Options API
+data and computed values are included. Component event snapshots support direct
+function references/calls; inline writes, member access/calls and unbound global
+calls use ordinary preview. Legacy manifests with event-writable object bindings
+are refused before mounting so they cannot change original reactive state.
 
 Unsupported scaffolds (including a missing compiler, malformed/external/custom
 SFC blocks, CSS modules, preprocessors such as Sass/SCSS/Less/Stylus, multiple
-scoped blocks, or unsafe CSS) fall back through the ordinary source-wrapper
+scoped blocks, nested CSS rules, complex event expressions, or unsafe CSS) fall back through the ordinary source-wrapper
 path, with exit 0 and
 `previewFallback:{from:'vue-component',error:'unsupported_vue_component_preview',reason}`.
 This diagnostic is CLI metadata. The fallback does not return a component
@@ -1886,9 +1890,14 @@ selection checks, and a final source recheck precede the atomic source write.
 Original scripts and global style blocks stay byte-for-byte unchanged. Only the
 selected template range and scoped CSS change; global-only sources receive a
 new scoped block. Directives, expressions, their owning elements, component/slot
-contracts and template refs must remain intact. Variants require inline scoped
+contracts, native static attributes other than `class`/`style`, and template refs
+must remain intact. Variants require inline scoped
 CSS; global/deep/slotted selectors (including legacy aliases) and global at-rules
-are rejected before writing. Failed acceptance leaves source and preview files
+are rejected before writing. CSS nesting is unsupported; top-level conditional
+at-rules still work. Padded numeric variants use the canonical number for CSS and
+Tune declarations (`01` reads `v1.vue` and `params.json["1"]`). Vue discard applies
+the same directory-link/reparse-point checks as acceptance before cleanup.
+Failed acceptance leaves source and preview files
 intact. Successful acceptance removes only that session directory and returns
 `{handled:true,previewMode:'vue-component',carbonize:false,css:{replaced,appended},verify:{clean,findings},cleanupError,…}`.
 
