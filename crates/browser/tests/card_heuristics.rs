@@ -178,6 +178,16 @@ fn nested_cards_read_the_computed_box() {
     );
 }
 
+/// observations-1010 row 7 (swapno.in): the page wrapper is the page, not
+/// an outer card; a centred panel narrower than the viewport is one.
+#[test]
+fn nested_cards_skip_the_page_frame() {
+    let Some(findings) = scan("nested-cards-page-frame.html") else {
+        return;
+    };
+    assert_marks(&findings, "nested-cards", &["#flag-panel-card"], &["#pass-frame-card"]);
+}
+
 #[test]
 fn clipped_overflow_reads_track_words_past_bem_and_camel_case() {
     let Some(findings) = scan("clipped-overflow-container.html") else {
@@ -247,6 +257,9 @@ fn page_level_misreads_stay_silent() {
         ("first-viewport-column-overflow-tabs.html", "first-viewport-column-overflow"),
         ("first-viewport-column-overflow-clipped.html", "first-viewport-column-overflow"),
         ("em-dash-pricing-matrix.html", "em-dash-overuse"),
+        ("em-dash-list-separators.html", "em-dash-overuse"),
+        ("em-dash-paired-dash.html", "em-dash-overuse"),
+        ("skipped-heading-hidden-panel.html", "skipped-heading"),
     ] {
         let Some(findings) = scan(fixture) else {
             return;
@@ -261,6 +274,9 @@ fn page_level_misreads_stay_silent() {
         ("oversized-h1-browser.html", "oversized-h1"),
         ("first-viewport-column-overflow.html", "first-viewport-column-overflow"),
         ("em-dash-prose-with-matrix.html", "em-dash-overuse"),
+        ("em-dash-prose-list.html", "em-dash-overuse"),
+        ("em-dash-prose-bullets.html", "em-dash-overuse"),
+        ("skipped-heading-sr-only.html", "skipped-heading"),
     ] {
         let Some(findings) = scan(fixture) else {
             return;
@@ -322,8 +338,16 @@ fn label_collectors_climb_and_scale() {
             "Eyebrow In A Framer Wrapper",
             "Section Title In A Panel",
             "Display Title In A Band",
+            "Plain Label Over A Large Card Title",
+            "Pill In Flow Over A Large Card Title",
+            "Absolute Eyebrow In A Card",
         ],
-        &["Label Too Large For Its Heading", "Untracked Caps Label", "Press Card Source"],
+        &[
+            "Label Too Large For Its Heading",
+            "Untracked Caps Label",
+            "Press Card Source",
+            "Badge On A Pricing Card",
+        ],
     );
 
     let Some(findings) = scan("numbered-section-labels.html") else {

@@ -160,13 +160,7 @@ fn a_link_menu_is_not_a_column_and_a_disabled_control_takes_no_verdict() {
     let contrast = findings(&engine, port, "low-contrast-disabled-control.html", "low-contrast");
     assert_cases(
         &contrast,
-        &[
-            "flag-enabled",
-            "flag-enabled-label",
-            "flag-enabled-link",
-            "flag-aria-false",
-            "flag-enabled-in-fieldset",
-        ],
+        &["flag-enabled"],
         &[
             "pass-disabled",
             "pass-disabled-label",
@@ -176,7 +170,12 @@ fn a_link_menu_is_not_a_column_and_a_disabled_control_takes_no_verdict() {
         ],
         "low-contrast",
     );
-    assert_eq!(contrast.len(), 5, "{contrast:?}");
+    // The five enabled controls wear one colour pair, so the first reports
+    // it and counts the other four (r14-t2): the label, the link, the
+    // `aria-disabled="false"` button and the button in an enabled fieldset.
+    // No disabled control joins the count.
+    assert_eq!(contrast.len(), 1, "{contrast:?}");
+    assert!(contrast[0].0.ends_with("text #ffffff on #16a34a (and 4 more)"), "{contrast:?}");
 }
 
 #[test]

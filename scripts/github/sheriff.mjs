@@ -39,6 +39,9 @@ export const CLOSE_MARKER = '<!-- impeccable-sheriff:auto-close -->';
 const DEFAULT_MAINTAINERS = ['pbakaus'];
 const DEFAULT_REGULAR_CONTRIBUTORS = ['pbakaus', 'abdulwahabone'];
 const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
+// Authors whose PRs the sheriff labels but never marks stale, warns or closes, even with
+// --auto-close-regulars. The decider approved their PRs without an issue first.
+const DEFAULT_NEVER_CLOSE_AUTHORS = ['mvanhorn'];
 const DEFAULT_TRUSTED_MARKER_AUTHORS = ['github-actions', 'github-actions[bot]'];
 
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
@@ -48,6 +51,7 @@ const CONTRIBUTOR_POLICY_LABELS = new Set([
   'policy: needs ai disclosure',
   'policy: generated output',
 ]);
+const MAINTAINER_DECISION_LABEL = 'policy: needs maintainer decision';
 const SHERIFF_WAIT_COMMAND = /^\/sheriff\s+wait\s*$/i;
 
 function normalizeLabelName(label) {
@@ -154,6 +158,7 @@ export function evaluatePullRequest(pr, options = {}) {
   );
   const trustedMarkerAuthors = loginSet(options.trustedMarkerAuthors || DEFAULT_TRUSTED_MARKER_AUTHORS);
   const autoCloseRegulars = options.autoCloseRegulars === true;
+  const neverCloseAuthors = loginSet(options.neverCloseAuthors || DEFAULT_NEVER_CLOSE_AUTHORS);
 
   const labels = new Set(pr.labels || []);
   const policyBlockers = [...labels].filter(isBlockingPolicyLabel);
@@ -238,10 +243,20 @@ export function evaluatePullRequest(pr, options = {}) {
     addContributorBlocker({ kind: 'manual-waiting', at: waitingLabelAt });
   }
 
-  const contributorActionBlockerAt = latestDate(blockers
-    .filter((blocker) => blocker.contributorAction)
-    .map((blocker) => blocker.at || pr.createdAt));
-  const contributorActionRequired = blockers.some((blocker) => blocker.contributorAction);
+  // An explicit maintainer decision owns the next step even if the PR is a
+  // draft or still has contributor-resolvable blockers. Keep those blockers
+  // visible, but do not warn or close while the contributor awaits a decision.
+  const needsMaintainerDecision = labels.has(MAINTAINER_DECISION_LABEL);
+  const contributorActionRequired = !needsMaintainerDecision
+    && blockers.some((blocker) => blocker.contributorAction);
+  // Returning responsibility starts a fresh window; an old draft timestamp or
+  // warning must not count time that was spent waiting on maintainers.
+  const contributorActionBlockerAt = contributorActionRequired ? latestDate([
+    ...blockers
+      .filter((blocker) => blocker.contributorAction)
+      .map((blocker) => blocker.at || pr.createdAt),
+    latestLabelEventAt(pr.labelEvents || [], MAINTAINER_DECISION_LABEL, 'UnlabeledEvent'),
+  ]) : null;
   const waitingDays = contributorActionRequired && contributorActionBlockerAt
     ? Math.floor((now.getTime() - contributorActionBlockerAt.getTime()) / DAY_MS)
     : 0;
@@ -265,7 +280,8 @@ export function evaluatePullRequest(pr, options = {}) {
     if (blocker.label) desiredLabels.add(blocker.label);
   }
 
-  const staleEligible = contributorActionRequired && waitingDays >= warningDays;
+  const neverCloseAuthor = neverCloseAuthors.has(author);
+  const staleEligible = contributorActionRequired && waitingDays >= warningDays && !neverCloseAuthor;
   if (staleEligible) desiredLabels.add('stale');
 
   const warningPostedAt = latestMarkerAt(pr.comments, WARNING_MARKER, trustedMarkerAuthors);
@@ -281,6 +297,7 @@ export function evaluatePullRequest(pr, options = {}) {
     && warningAlreadyPosted
     && !closeAlreadyPosted
     && !exemptFromClose
+    && !neverCloseAuthor
     && (autoCloseRegulars || !regularContributor);
 
   const labelsToAdd = [...desiredLabels].filter((label) => !labels.has(label)).sort();
@@ -439,7 +456,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   const prs = fetchOpenPullRequests(repo).map(normalizePullRequest);
   hydrateIssueComments(repo, prs);
-  hydrateMissingWaitingLabelEvents(repo, prs);
+  hydrateIssueLabelEvents(repo, prs);
   const plans = prs.map((pr) => evaluatePullRequest(pr, options));
 
   for (const plan of plans) {
@@ -460,6 +477,7 @@ export function parseArgs(argv) {
     regularContributors: DEFAULT_REGULAR_CONTRIBUTORS,
     exemptLabels: DEFAULT_EXEMPT_LABELS,
     autoCloseRegulars: false,
+    neverCloseAuthors: DEFAULT_NEVER_CLOSE_AUTHORS,
     now: new Date(),
   };
 
@@ -474,6 +492,7 @@ export function parseArgs(argv) {
     else if (arg === '--close-days') options.closeDays = Number(requireValue(argv, ++i, arg));
     else if (arg === '--maintainers') options.maintainers = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--regular-contributors') options.regularContributors = splitList(requireValue(argv, ++i, arg));
+    else if (arg === '--never-close-authors') options.neverCloseAuthors = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--exempt-labels') options.exemptLabels = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--now') options.now = new Date(requireValue(argv, ++i, arg));
     else if (arg === '--help' || arg === '-h') {
@@ -546,10 +565,11 @@ function applyPlan(repo, plan, options) {
   }
 }
 
-function hydrateMissingWaitingLabelEvents(repo, prs) {
+function hydrateIssueLabelEvents(repo, prs) {
   for (const pr of prs) {
-    if (!(pr.labels || []).includes('waiting on contributor')) continue;
-    if (latestLabelEventAt(pr.labelEvents || [], 'waiting on contributor', 'LabeledEvent')) continue;
+    // The last 100 GraphQL label events can omit a maintainer-decision
+    // handoff, even when no waiting label is present. Read every page so an
+    // old warning cannot authorize closure after a recent handoff.
     mergeIssueLabelEvents(pr, fetchIssueEvents(repo, pr.number));
   }
 }
@@ -571,13 +591,23 @@ function fetchIssueComments(repo, number) {
 }
 
 function fetchIssueEvents(repo, number) {
-  const pages = runGhJson([
-    'api',
-    '--paginate',
-    '--slurp',
-    `repos/${repo}/issues/${number}/events?per_page=100`,
-  ]);
-  return Array.isArray(pages) ? pages.flat() : [];
+  const events = [];
+  for (let page = 1; ; page += 1) {
+    // Bound subprocess output by one page of small label-event records, not
+    // the size of the entire history (or unrelated event payloads). Count the
+    // raw page so a page without label events does not end pagination early.
+    const result = runGhJson([
+      'api',
+      `repos/${repo}/issues/${number}/events?per_page=100&page=${page}`,
+      '--jq',
+      '{count: length, events: [.[] | select(.event == "labeled" or .event == "unlabeled") | {event, created_at, label: {name: .label.name}, actor: {login: .actor.login}}]}',
+    ]);
+    if (!Number.isInteger(result.count) || result.count < 0 || result.count > 100 || !Array.isArray(result.events)) {
+      throw new Error(`Invalid issue event page for PR #${number}`);
+    }
+    events.push(...result.events);
+    if (result.count < 100) return events;
+  }
 }
 
 function fetchOpenPullRequests(repo) {
@@ -846,6 +876,8 @@ Options:
   --maintainers a,b               maintainer logins allowed to use /sheriff wait
   --regular-contributors a,b      contributors exempt from auto-close unless --auto-close-regulars is set
   --auto-close-regulars           also auto-close regular contributor PRs
+  --never-close-authors a,b       authors never warned or auto-closed, even with --auto-close-regulars
+                                  (default: mvanhorn)
   --no-label-ensure               skip creating/updating sheriff labels
 `);
 }

@@ -1,0 +1,26 @@
+{
+  "steps": [
+    {
+      "stdout": "",
+      "stderr": "Saved the wiring of page.html to .impeccable/wiring/page-html-84bd515f.json (19 wiring items, 3 content items).\n",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "",
+      "stderr": "page.html: 5 wiring items missing of 19, 4 new.\n  MISSING  field input name=\"csrf\" type=\"hidden\"\n  MISSING  field input name=\"email\" type=\"email\" required\n  MISSING  handler button onclick #6c299978\n  MISSING  link href=\"/\"\n  MISSING  test-hook data-qa=\"footer-home\"\n  NEW      field input name=\"mail\" type=\"email\" required\n  NEW      handler button onclick #008bd8d5\n  NEW      link href=\"/contact\"\n  NEW      test-hook data-qa=\"footer-contact\"\n  Content changes (informational, never a failure):\n    gone   heading h1 \"Start your trial\"\n    new    heading h1 \"Start your free trial\"\n\nNew items are not failures. Justify each one in the handoff: a renamed field shows as one missing and one new.\n\nWiring check failed: 5 items missing in 1 of 1 file.\n",
+      "exit": 1,
+      "signal": null
+    },
+    {
+      "stdout": "{\n  \"mode\": \"kept\",\n  \"ok\": false,\n  \"targets\": [\n    {\n      \"file\": \"page.html\",\n      \"status\": \"missing\",\n      \"inventory\": \".impeccable/wiring/page-html-84bd515f.json\",\n      \"wiring\": {\n        \"before\": 19,\n        \"after\": 18\n      },\n      \"missing\": [\n        \"field input name=\\\"csrf\\\" type=\\\"hidden\\\"\",\n        \"field input name=\\\"email\\\" type=\\\"email\\\" required\",\n        \"handler button onclick #6c299978\",\n        \"link href=\\\"/\\\"\",\n        \"test-hook data-qa=\\\"footer-home\\\"\"\n      ],\n      \"new\": [\n        \"field input name=\\\"mail\\\" type=\\\"email\\\" required\",\n        \"handler button onclick #008bd8d5\",\n        \"link href=\\\"/contact\\\"\",\n        \"test-hook data-qa=\\\"footer-contact\\\"\"\n      ],\n      \"content\": {\n        \"gone\": [\n          \"heading h1 \\\"Start your trial\\\"\"\n        ],\n        \"new\": [\n          \"heading h1 \\\"Start your free trial\\\"\"\n        ]\n      }\n    }\n  ]\n}\n",
+      "stderr": "",
+      "exit": 1,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/wiring/.gitignore": "# Written by Impeccable: local runtime state, never committed.\n*\n",
+    ".impeccable/wiring/page-html-84bd515f.json": "{\n  \"version\": 1,\n  \"target\": \"page.html\",\n  \"wiring\": [\n    \"button type=\\\"submit\\\"\",\n    \"field input name=\\\"csrf\\\" type=\\\"hidden\\\"\",\n    \"field input name=\\\"email\\\" type=\\\"email\\\" required\",\n    \"field input name=\\\"terms\\\" type=\\\"checkbox\\\" value=\\\"yes\\\" required\",\n    \"field select name=\\\"plan\\\"\",\n    \"field textarea name=\\\"note\\\"\",\n    \"form action=\\\"/signup\\\" method=\\\"post\\\"\",\n    \"handler button onclick #6c299978\",\n    \"id \\\"email\\\"\",\n    \"id \\\"main\\\"\",\n    \"label for=\\\"email\\\"\",\n    \"link href=\\\"/\\\"\",\n    \"link href=\\\"/\\\"\",\n    \"link href=\\\"/pricing\\\"\",\n    \"script inline #63c1ca93\",\n    \"script src=\\\"/js/analytics.js\\\"\",\n    \"test-hook data-cy=\\\"note\\\"\",\n    \"test-hook data-qa=\\\"footer-home\\\"\",\n    \"test-hook data-testid=\\\"signup-form\\\"\"\n  ],\n  \"content\": [\n    \"heading h1 \\\"Start your trial\\\"\",\n    \"heading h2 \\\"Questions?\\\"\",\n    \"image alt=\\\"Acme logo\\\"\"\n  ]\n}\n"
+  }
+}

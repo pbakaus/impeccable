@@ -26,6 +26,7 @@ use impeccable_detect::design_system::{
 use impeccable_detect::detect_text::run_text_content_analyzers;
 use impeccable_detect::engines::{EngineError, HtmlEngine, ScanOptions};
 use impeccable_detect::profiler::{DetectorProfile, ProfileEvent as DetectProfileEvent};
+use impeccable_detect::wiring::WiringInventory;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -38,8 +39,7 @@ use crate::quality::pf0;
 /// The static HTML engine as `impeccable detect` sees it.
 ///
 /// `static_rule_pack` is the rule pack's static-document hook, set by
-/// whichever binary builds `Engines`; the `impeccable` binary leaves it
-/// `None`. The pack's engine-wide hooks travel on `ScanOptions` instead,
+/// whichever host builds `Engines` from its installed pack. The pack's engine-wide hooks travel on `ScanOptions` instead,
 /// because `detect` owns those options and cannot name this crate's trait.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StaticHtmlEngine {
@@ -85,17 +85,23 @@ impl HtmlEngine for StaticHtmlEngine {
         detect_html(Path::new(path), &html_options).map_err(|e| {
             EngineError::new(match e {
                 // JS `fs.readFileSync` rejection surfaced by `detectCli`'s catch.
-                crate::engine::HtmlEngineError::Read { path, source } => match source.kind() {
-                    std::io::ErrorKind::NotFound => {
-                        format!("ENOENT: no such file or directory, open '{path}'")
-                    }
-                    std::io::ErrorKind::PermissionDenied => {
-                        format!("EACCES: permission denied, open '{path}'")
-                    }
-                    _ => format!("{source}, open '{path}'"),
-                },
+                crate::engine::HtmlEngineError::Read { path, source } => read_error(&path, &source),
             })
         })
+    }
+
+    fn wiring_inventory(&self, path: &str) -> Result<WiringInventory, EngineError> {
+        let source = std::fs::read(path).map_err(|e| EngineError::new(read_error(path, &e)))?;
+        Ok(crate::wiring::wiring_inventory_source(&String::from_utf8_lossy(&source)))
+    }
+}
+
+/// A page read failure in Node's errno wording.
+fn read_error(path: &str, source: &std::io::Error) -> String {
+    match source.kind() {
+        std::io::ErrorKind::NotFound => format!("ENOENT: no such file or directory, open '{path}'"),
+        std::io::ErrorKind::PermissionDenied => format!("EACCES: permission denied, open '{path}'"),
+        _ => format!("{source}, open '{path}'"),
     }
 }
 

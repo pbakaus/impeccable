@@ -1,0 +1,363 @@
+#[path = "../../account/tests/support/fake.rs"]
+mod fake;
+use fake::{browser, Fake};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
+    time::Duration,
+};
+
+const SEED: &str = "/cli/v1/worlds/kinpaku/seed";
+
+fn project(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "world-cli-{name}-{}",
+        impeccable_account::oauth::random_b64(9)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn run(env: &HashMap<String, String>, cwd: &Path, args: &[&str]) -> Output {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_impeccable"));
+    c.args(args)
+        .env_clear()
+        .envs(env)
+        .env("IMPECCABLE_NO_STALENESS_CHECK", "1")
+        .env("IMPECCABLE_NO_UPDATE_CHECK", "1")
+        .env("IMPECCABLE_NO_TELEMETRY", "1")
+        .current_dir(cwd)
+        .stdin(Stdio::null());
+    for key in ["PATH", "SystemRoot", "TEMP", "TMP"] {
+        if let Ok(v) = std::env::var(key) {
+            c.env(key, v);
+        }
+    }
+    c.output().unwrap()
+}
+
+fn signed_in(name: &str) -> (Fake, HashMap<String, String>) {
+    let f = Fake::start();
+    let env = f.env(name);
+    impeccable_account::login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    (f, env)
+}
+
+fn seed_body() -> String {
+    serde_json::json!({
+        "id": "kinpaku",
+        "name": "Kinpaku",
+        "design_md": "# Kinpaku\n\nGold leaf on lacquer.\n",
+        "sidecar": { "schemaVersion": 1, "colors": { "gold": "#c9a227" } },
+    })
+    .to_string()
+}
+
+fn text(b: &[u8]) -> String {
+    String::from_utf8_lossy(b).into_owned()
+}
+
+fn monorepo(name: &str) -> (PathBuf, PathBuf) {
+    let dir = project(name);
+    let cwd = dir.join("apps/web/src");
+    std::fs::create_dir_all(&cwd).unwrap();
+    std::fs::write(dir.join("package.json"), r#"{"workspaces":["apps/*"]}"#).unwrap();
+    std::fs::write(dir.join("apps/web/package.json"), r#"{"name":"web"}"#).unwrap();
+    (dir, cwd)
+}
+
+#[test]
+fn seeds_workspace_root_from_nested_cwd_and_context_reads_it() {
+    let (f, env) = signed_in("world-workspace");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace");
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(dir.join("apps/web/DESIGN.md").exists());
+    assert!(dir.join("apps/web/.impeccable/design.json").exists());
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert!(text(&out.stdout).contains("Wrote ../DESIGN.md and ../.impeccable/design.json."));
+    let out = run(&env, &cwd, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(text(&out.stdout).contains("SEEDED_WORLD:"), "{}", text(&out.stdout));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn seeds_beside_fallback_product(folder: &str, env_override: bool) {
+    // One home per caller: the four callers run in parallel, and a shared home
+    // lets one test's setup delete another's sign-in.
+    let home = format!("world-fallback-product-{}", folder.replace(['/', '.'], "-"));
+    let (f, mut env) = signed_in(&home);
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("fallback-product");
+    let context_dir = if folder == "../external-context" {
+        project("external-context")
+    } else {
+        dir.join(folder)
+    };
+    std::fs::create_dir_all(&context_dir).unwrap();
+    let product = "# PRODUCT.md\n\nA catalog for independent goldsmiths.\n";
+    std::fs::write(context_dir.join("PRODUCT.md"), product).unwrap();
+    if env_override {
+        env.insert("IMPECCABLE_CONTEXT_DIR".into(), context_dir.to_string_lossy().into_owned());
+    }
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    // Boot from the same cwd must retain product truth as well as the world.
+    let out = run(&env, &dir, &["context"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let boot = text(&out.stdout);
+    assert!(boot.contains(product.trim()), "{boot}");
+    assert!(!boot.contains("NO_PRODUCT_MD"), "{boot}");
+    assert!(boot.contains("SEEDED_WORLD:"), "{boot}");
+    assert!(context_dir.join("DESIGN.md").exists());
+    let sidecar: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(dir.join(".impeccable/design.json")).unwrap(),
+    ).unwrap();
+    assert_eq!(sidecar["seededFrom"]["world"], "kinpaku");
+    assert!(!dir.join("DESIGN.md").exists());
+    assert!(!context_dir.join(".impeccable/design.json").exists());
+    assert_eq!(std::fs::read_to_string(context_dir.join("PRODUCT.md")).unwrap(), product);
+    if !context_dir.starts_with(&dir) {
+        std::fs::remove_dir_all(context_dir).unwrap();
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn seeds_beside_docs_product_and_context_reads_both() {
+    seeds_beside_fallback_product("docs", false);
+}
+
+#[test]
+fn seeds_beside_agents_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product(".agents/context", false);
+}
+
+#[test]
+fn seeds_beside_env_context_product_and_context_reads_both() {
+    seeds_beside_fallback_product("custom-context", true);
+}
+
+#[test]
+fn inherited_repository_product_refuses_workspace_seed() {
+    let (f, env) = signed_in("world-inherited-product");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, _) = monorepo("inherited-product");
+    let cwd = dir.join("apps/web");
+    std::fs::write(dir.join("PRODUCT.md"), "# Shared product\n").unwrap();
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert_eq!(out.status.code(), Some(1));
+    let message = text(&out.stderr);
+    assert!(message.contains("../.."), "{message}");
+    assert!(message.contains("hide that PRODUCT.md"), "{message}");
+    assert!(message.contains("every workspace"), "{message}");
+    assert!(message.contains("impeccable world kinpaku --print"), "{message}");
+    assert_eq!(f.hits(SEED), 0);
+    for folder in [&dir, &cwd] {
+        assert!(!folder.join("DESIGN.md").exists());
+        assert!(!folder.join(".impeccable").exists());
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn legacy_design_beside_fallback_product_blocks_seed() {
+    for folder in ["docs", ".agents/context", "custom-context"] {
+        let (f, mut env) = signed_in("world-legacy-fallback");
+        f.route("GET", SEED, 200, vec![], seed_body());
+        let dir = project("legacy-fallback");
+        let destination = dir.join(folder);
+        std::fs::create_dir_all(&destination).unwrap();
+        std::fs::write(destination.join("PRODUCT.md"), "# Product\n").unwrap();
+        std::fs::write(destination.join("DESIGN.json"), "{}").unwrap();
+        if folder == "custom-context" {
+            env.insert("IMPECCABLE_CONTEXT_DIR".into(), destination.to_string_lossy().into_owned());
+        }
+        let out = run(&env, &dir, &["world", "kinpaku"]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        assert!(text(&out.stdout).contains("DESIGN.json already exists"));
+        assert_eq!(f.hits(SEED), 0);
+        assert!(!destination.join("DESIGN.md").exists());
+        assert!(!dir.join(".impeccable").exists());
+        assert_eq!(std::fs::read_to_string(destination.join("DESIGN.json")).unwrap(), "{}");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn symlinked_docs_product_folder_is_refused() {
+    let (f, env) = signed_in("world-symlink-docs");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("symlink-docs");
+    let outside = project("outside-docs");
+    std::fs::write(outside.join("PRODUCT.md"), "# Product\n").unwrap();
+    std::os::unix::fs::symlink(&outside, dir.join("docs")).unwrap();
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(&out.stderr).contains("docs is not a folder"));
+    assert!(!outside.join("DESIGN.md").exists());
+    assert!(!outside.join(".impeccable").exists());
+    assert!(!dir.join(".impeccable").exists());
+    std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_dir_all(outside).unwrap();
+}
+
+#[test]
+fn explicit_external_context_product_still_seeds_and_reads_both() {
+    seeds_beside_fallback_product("../external-context", true);
+}
+
+#[test]
+fn existing_workspace_sidecar_blocks_seed_from_nested_cwd() {
+    let (f, env) = signed_in("world-workspace-existing");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let (dir, cwd) = monorepo("workspace-existing");
+    let sidecar = dir.join("apps/web/.impeccable/design.json");
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    std::fs::write(&sidecar, "{}").unwrap();
+    let out = run(&env, &cwd, &["world", "kinpaku"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).starts_with("../.impeccable/design.json already exists"));
+    assert_eq!(f.hits(SEED), 0);
+    assert!(!cwd.join("DESIGN.md").exists());
+    assert_eq!(std::fs::read_to_string(sidecar).unwrap(), "{}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn seeds_design_md_and_a_marked_sidecar_then_names_the_next_step() {
+    let (f, mut env) = signed_in("world-seed");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("seed");
+    // A truecolor terminal setting alone never puts escapes into a pipe: agents read plain lines.
+    env.insert("COLORTERM".into(), "truecolor".into());
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "Kinpaku is now this project's design system.\nWrote DESIGN.md and .impeccable/design.json.\nNext: ask your agent for your next page, like /impeccable craft a pricing page. It builds in Kinpaku.\n"
+    );
+    // The world line every later boot and roll settles on, added when the seed has none.
+    assert_eq!(
+        std::fs::read_to_string(dir.join("DESIGN.md")).unwrap(),
+        "---\nworld: \"kinpaku\"\n---\n# Kinpaku\n\nGold leaf on lacquer.\n"
+    );
+    let sidecar: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join(".impeccable/design.json")).unwrap())
+            .unwrap();
+    assert_eq!(sidecar["colors"]["gold"], "#c9a227");
+    assert_eq!(sidecar["seededFrom"]["world"], "kinpaku");
+}
+
+#[test]
+fn an_existing_design_system_is_never_touched_and_print_hands_over_the_seed() {
+    let (f, env) = signed_in("world-existing");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    for existing in ["DESIGN.md", ".impeccable/design.json"] {
+        let dir = project("existing");
+        std::fs::create_dir_all(dir.join(".impeccable")).unwrap();
+        std::fs::write(dir.join(existing), "mine\n").unwrap();
+        let out = run(&env, &dir, &["world", "kinpaku"]);
+        assert!(out.status.success());
+        assert_eq!(
+            text(&out.stdout),
+            format!("{existing} already exists, so nothing was written. To merge this world into it, run impeccable world kinpaku --print and fold its DESIGN.md into yours.\n")
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join(existing)).unwrap(),
+            "mine\n"
+        );
+        assert!(!dir.join("DESIGN.md").exists() || existing == "DESIGN.md");
+    }
+    // The check costs no request.
+    assert_eq!(f.hits(SEED), 0);
+    let dir = project("print");
+    std::fs::write(dir.join("DESIGN.md"), "mine\n").unwrap();
+    let out = run(&env, &dir, &["world", "kinpaku", "--print"]);
+    assert!(out.status.success());
+    let printed: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(printed["name"], "Kinpaku");
+    assert_eq!(printed["design_md"], "# Kinpaku\n\nGold leaf on lacquer.\n");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("DESIGN.md")).unwrap(),
+        "mine\n"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn a_planted_symlink_is_never_followed() {
+    let (f, env) = signed_in("world-symlink");
+    f.route("GET", SEED, 200, vec![], seed_body());
+    let dir = project("symlink");
+    let victim = dir.join("victim.txt");
+    std::fs::write(&victim, "keep\n").unwrap();
+    std::os::unix::fs::symlink(&victim, dir.join("DESIGN.md")).unwrap();
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert!(out.status.success());
+    assert!(text(&out.stdout).starts_with("DESIGN.md already exists"));
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep\n");
+}
+
+#[test]
+fn service_answers_map_to_one_actionable_line_each() {
+    let (f, env) = signed_in("world-errors");
+    let dir = project("errors");
+    let cases = [
+        (403, r#"{"error":"insufficient_scope"}"#, "Using a world needs a fresh sign-in. Run impeccable login, then try again.\n"),
+        (403, r#"{"error":"forbidden","reason":"pro_required"}"#, "The world kinpaku needs Pro. See impeccable.style/pricing\n"),
+        (404, r#"{"error":"not_found"}"#, "No world has the id kinpaku. Copy the id from the world in the Impeccable worlds catalog.\n"),
+        (200, "<html>maintenance</html>", "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
+        (200, r##"{"id":"other","name":"X","design_md":"# X","sidecar":{}}"##, "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
+        (200, r##"{"id":"kinpaku","name":"K","design_md":"---\nworld: swiss\n---\n# K\n","sidecar":{}}"##, "The DESIGN.md your Impeccable account sent for kinpaku can't record which world it came from, so nothing was written. Update the Impeccable CLI and try again.\n"),
+    ];
+    for (status, body, line) in cases {
+        f.route("GET", SEED, status, vec![], body);
+        let out = run(&env, &dir, &["world", "kinpaku"]);
+        assert!(!out.status.success(), "{status} {body}");
+        assert_eq!(text(&out.stderr), line, "{status} {body}");
+        assert!(!dir.join("DESIGN.md").exists());
+        assert!(!dir.join(".impeccable/design.json").exists());
+    }
+}
+
+#[test]
+fn signed_out_and_bad_ids_never_reach_the_service() {
+    let f = Fake::start();
+    let env = f.env("world-signed-out");
+    let dir = project("signed-out");
+    let out = run(&env, &dir, &["world", "kinpaku"]);
+    assert_eq!(
+        text(&out.stderr),
+        "Using a world needs your Impeccable account. Run impeccable login, then try again.\n"
+    );
+    let out = run(&env, &dir, &["world", "../etc"]);
+    assert_eq!(
+        text(&out.stderr),
+        "\"../etc\" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.\n"
+    );
+    assert_eq!(f.hits(SEED), 0);
+}
+
+#[test]
+fn help_says_what_a_world_is_without_signing_in() {
+    // Catches: `world --help` printing only the usage line, so a newcomer never
+    // learns what a world is or what the verb writes.
+    let dir = project("world-help");
+    let env: HashMap<String, String> = [
+        ("IMPECCABLE_HOME".to_string(), dir.join("home").to_string_lossy().into_owned()),
+        ("IMPECCABLE_CREDENTIAL_STORE".to_string(), "file".to_string()),
+    ]
+    .into();
+    let out = run(&env, &dir, &["world", "--help"]);
+    assert!(out.status.success());
+    let help = text(&out.stdout);
+    assert!(help.starts_with("Usage: impeccable world <id> [--print]\n"), "{help}");
+    assert!(help.contains("Writes DESIGN.md"), "{help}");
+    assert!(help.contains("never overwrites"), "{help}");
+    assert!(!text(&out.stderr).contains("impeccable login, then"), "no sign-in error");
+    assert!(!dir.join("DESIGN.md").exists());
+}

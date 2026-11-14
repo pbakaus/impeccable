@@ -11,6 +11,7 @@
 //! system types and helpers ([`design_system`]).
 
 pub mod cdp_endpoint;
+pub mod changed;
 pub mod cli;
 pub mod config;
 pub mod design_system;
@@ -26,6 +27,7 @@ pub mod project_tokens;
 pub mod regex_matchers;
 pub mod skills;
 pub mod util;
+pub mod wiring;
 
 use impeccable_common::Io;
 
@@ -72,6 +74,13 @@ Commands:
   update                           Update skills to the latest version
   check                            Check if skill updates are available
   telemetry off|on|status          Turn the roll API's anonymous usage data off or on, or show it
+  login                            Sign in to your Impeccable account
+  logout                           Sign out on this machine
+  whoami                           Show the signed-in account and whether it includes Pro rules
+  walkthrough <recording>          Turn a screen recording into a Needs you walkthrough (MP4, poster, chapters)
+  world <id> [--print]             Seed this project's DESIGN.md from a world in the Impeccable catalog
+  health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  foundations [path]               Check which product foundations this project has in place
 
 Options:
   --help       Show this help message

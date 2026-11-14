@@ -18,6 +18,8 @@
     .copy { font: 16px/24px ui-monospace, Menlo, Consolas, monospace; margin: 0; padding: 0; }
     ul.copy { list-style: none; }
     a { color: inherit; }
+    .pass-pretty-rule { text-wrap: pretty }
+    .pull-quote { text-wrap: pretty }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1200px; }
   </style>
 </head>
@@ -46,12 +48,27 @@
 
       <h2>Flag: a right-aligned paragraph whose last word wraps alone</h2>
       <p class="copy flag-right" style="width: 39.5ch; text-align: right">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <!--
+        Chromium applies pretty, so the rows about it read through the
+        computed style. The dropped-declaration read (#1136, a browser whose
+        CSS.supports('text-wrap', 'pretty') is false) is pinned by the FakeDom
+        tests in line_breaks.rs: no browser the URL engine drives drops it.
+      -->
+      <h2>Flag: a pretty rule elsewhere on the page does not reach this paragraph</h2>
+      <p class="copy flag-pretty-elsewhere" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
     </div>
 
     <div class="col" data-col="pass">
     <!-- PASS: the wrap is chosen, the tail is not one word, or the column cannot avoid it -->
       <h2>Pass: the same paragraph set with text-wrap pretty</h2>
       <p class="copy pass-pretty" style="width: 39.5ch; text-wrap: pretty">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Pass: the same paragraph set pretty by a style rule</h2>
+      <p class="copy pass-pretty-rule" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>
+
+      <h2>Pass: the same paragraph under an ancestor set pretty</h2>
+      <div style="text-wrap: pretty"><p class="copy pass-pretty-ancestor" style="width: 39.5ch">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p></div>
 
       <h2>Pass: the same paragraph set with text-wrap balance</h2>
       <p class="copy pass-balance" style="width: 39.5ch; text-wrap: balance">Line breaks decide how a block of text sits on the page, and one word alone on the last line leaves a hole under the text.</p>

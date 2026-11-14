@@ -209,6 +209,21 @@ fn validate_manual_edit_event(msg: &Map<String, Value>, label: &str) -> Option<S
             return Some(format!("{}: op.originalText required", label));
         }
         let deleted = op.get("deleted") == Some(&Value::Bool(true));
+        if op.get("removeElement") == Some(&Value::Bool(true)) {
+            if !deleted {
+                return Some(format!("{}: removeElement requires deleted", label));
+            }
+            // Deletion verification keys on originalText; an empty needle
+            // could never verify, so such a removal is refused up front.
+            let empty = op
+                .get("originalText")
+                .and_then(|v| v.as_str())
+                .map(|t| t.trim().is_empty())
+                .unwrap_or(true);
+            if empty {
+                return Some(format!("{}: removeElement requires a non-empty originalText", label));
+            }
+        }
         let new_text = op.get("newText").and_then(|v| v.as_str());
         if !deleted && new_text.is_none() {
             return Some(format!("{}: text op requires newText", label));

@@ -73,3 +73,32 @@ pub trait RulePack: Send + Sync + std::fmt::Debug {
 pub fn install(pack: &'static dyn RulePack) {
     crate::registry::extend(pack.registry());
 }
+
+/// The hooks supplied by one build of the engine. The static hook is generic
+/// because its document model belongs to the host's HTML engine, not foundation.
+#[derive(Debug)]
+pub struct RulePackSet<S: ?Sized + 'static> {
+    pub rule_pack: Option<&'static dyn RulePack>,
+    pub static_rule_pack: Option<&'static S>,
+}
+
+impl<S: ?Sized> Copy for RulePackSet<S> {}
+impl<S: ?Sized> Clone for RulePackSet<S> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<S: ?Sized> RulePackSet<S> {
+    pub const NONE: Self = Self {
+        rule_pack: None,
+        static_rule_pack: None,
+    };
+
+    /// Register registry rows before routing any commands. Collision checks
+    /// are the same as for a directly installed rule pack.
+    pub fn install(self) {
+        if let Some(pack) = self.rule_pack {
+            install(pack);
+        }
+    }
+}

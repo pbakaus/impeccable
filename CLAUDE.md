@@ -12,7 +12,7 @@ There is **one** user-invocable skill, `impeccable`, with **24 commands** undern
 
 ### Engine binary (the runtime behind every verb)
 
-The skill has no runtime of its own. Every command the skill text runs is `{{scripts_path}}/impeccable <verb>` (Setup step 1 says `impeccable context`; `impeccable.cmd` is the Windows twin for shells without `sh`). `skill/scripts/impeccable` is a POSIX `sh` launcher: it execs `$IMPECCABLE_BIN` if set, else the sibling `scripts/bin/<os>-<arch>/impeccable[.exe]`, else `~/.impeccable/bin/impeccable`, else the version-pinned user cache `~/.impeccable/bin/<VERSION>/`, else `impeccable` on PATH, and as a last resort downloads the pinned version into that cache. It exports `IMPECCABLE_SKILL_DIR` (the skill dir, for `reference/*.md` and `command-metadata.json`) and `IMPECCABLE_SELF` (how the binary spells itself in the commands it prints).
+The skill has no runtime of its own. Every command the skill text runs is `{{scripts_path}}/impeccable <verb>` (Setup step 1 says `impeccable context`; `impeccable.cmd` is the Windows twin for shells without `sh`). `skill/scripts/impeccable` is a POSIX `sh` launcher: it execs `$IMPECCABLE_BIN` if set, else the sibling `scripts/bin/<os>-<arch>/impeccable[.exe]` (skipped with a warning when its `engine-probe` version differs from `VERSION`), else `~/.impeccable/bin/impeccable`, else the version-pinned user cache `~/.impeccable/bin/<VERSION>/`, else `impeccable` on PATH, and as a last resort downloads the pinned version into that cache. It exports `IMPECCABLE_SKILL_DIR` (the skill dir, for `reference/*.md` and `command-metadata.json`) and `IMPECCABLE_SELF` (how the binary spells itself in the commands it prints).
 
 The binary is built from **this repo's Cargo workspace** (`Cargo.toml` at the root, `crates/*`; `cargo build --release -p impeccable`). Its verbs are the old script basenames (`context`, `doctor`, `pin`, `hook`, `hook-before-edit`, `live*`, `detect`, ...) with two aliases: `signals` for context-signals and `hooks` for hook-admin. Its observable behavior is specified in `docs/CLI-CONTRACT.md` and pinned by `tests/oracle/`. **Read `docs/ENGINE.md` before touching `crates/`**: it maps the crates and the browser-bundle flow.
 
@@ -242,11 +242,11 @@ IMPECCABLE_SKILL_BEHAVIOR_VERBOSE=1 bun run test:skill-behavior    # dump per-sc
 
 **Frontier tiers, more than one family.** The lineup is `DEFAULT_MODELS` in `tests/skill-behavior/providers.mjs`, currently `claude-sonnet-5` and `gemini-3.6-flash`. `gpt-5.6-luna` and `deepseek-v4-flash` were dropped in 2026-08: below the frontier tier they fail scenarios for model-floor reasons rather than skill-text defects, and a suite that is always red is a suite nobody reads. **Don't substitute Claude alone**: many of the most useful findings come from divergence between families, so keep at least two. The dropped models stay selectable via `IMPECCABLE_SKILL_BEHAVIOR_MODELS` when a Setup or routing change warrants a wider sweep.
 
-**Auth** lives in repo-root `.env` (copied from `~/code/impeccable-evals/.env`, gitignored). Providers skip cleanly when their key is unset; they don't fail.
+**Auth** lives in `~/.config/impeccable/dev.env` (mode 0600, shared by every Impeccable repo; `IMPECCABLE_DEV_KEYS` names another file, and real environment variables win). Keys are passed to each SDK and never written into `process.env`, so child processes do not inherit them. Providers skip cleanly when their key is unset; they don't fail.
 
 **The scenario list and the baseline live in `tests/skill-behavior/README.md`**, not here. Read that table before changing Setup or routing text, and update it in the same change. Duplicating it in this file is how it went stale before.
 
-**Cost.** Each run is real LLM calls, billed to the keys in `.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
+**Cost.** Each run is real LLM calls, billed to the keys in `~/.config/impeccable/dev.env`. Production-tier models put a full sweep around $0.50-1.50. Keep it out of CI unless you really want it there.
 
 **Adding a scenario.** Write the fixture in `tests/skill-behavior/fixtures.mjs`, add the `it()` block in `scenarios.test.mjs` (the harness uses the source `skill/` dir via a symlink, so no rebuild needed), and update the baseline table in the suite's README. The harness's `fileLoaded(trace, filename)` helper checks both `read` and bash `cat` — different models prefer different tools.
 
@@ -272,7 +272,7 @@ The package no longer exports a JS detector API (`main` / `exports` are gone); t
 The skill and the npm CLI share one version; the Chrome extension and the engine pin are versioned on their own. Bump only what changed, except that the skill and the CLI always move together:
 
 **Engine pin** (`ENGINE_VERSION`, root):
-- The engine release the launcher downloads and the npm shim's `optionalDependencies` pin. Bump it when a new engine release is published; keep `package.json` `optionalDependencies` at the same version and run `bun run build` (it rewrites `skill/scripts/VERSION`). A skill release that needs the new engine bumps this together with the skill version.
+- The engine release the launcher downloads and the npm shim's `optionalDependencies` pin. Bump it when a new engine release is published; keep `package.json` `optionalDependencies` at the same version, run `bun run build` (it rewrites `skill/scripts/VERSION`), and run `node scripts/check-engine-release.mjs --record` (it rewrites `skill/scripts/engine-checksums.txt`, the digests every engine download is verified against; CI fails until they match the release). A skill release that needs the new engine bumps this together with the skill version.
 
 **CLI** (npm package):
 - `package.json` → `version`, always equal to the skill version in `.claude-plugin/plugin.json`. One number for users to read off npm, the plugin and the changelog: the two drifted to 4.1.0 against 4.5.1 in 2026-10 and npm kept serving an engine seven releases old. `validatePluginVersions` fails the build when they disagree.
@@ -323,7 +323,9 @@ The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` al
 2. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
 3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
 
-`scripts/check-engine-release.mjs` verifies step 1 and 2 for the pinned version (ranged-GET each release asset, registry-probe each npm package; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script as a hard gate, so missing release assets fail CI.
+`scripts/check-engine-release.mjs` verifies step 1 and 2 for the pinned version (ranged-GET each release asset, registry-probe each npm package, compare `skill/scripts/engine-checksums.txt` with each published `.sha256`; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script as a hard gate, so missing release assets fail CI.
+
+`scripts/release.mjs` also refuses a **skill** or **CLI** tag when anything under `crates/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml` or a file the crates compile in from outside the workspace (its `ENGINE_SOURCE_PATHS` list) differs from the `engine-v<ENGINE_VERSION>` tag, because the binary users download is built from that tag: bump `ENGINE_VERSION` and release the engine first. `IMPECCABLE_SKIP_ENGINE_SOURCE_CHECK=1` bypasses it only for changes that cannot reach the binary, such as test-only edits.
 
 ## Adding New Commands
 

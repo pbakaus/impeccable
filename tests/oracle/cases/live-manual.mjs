@@ -12,6 +12,16 @@ const twoPages = (ws) => writeBuffer(ws, [
   entry('e2', '/', [{ ref: 'main>p', tag: 'p', originalText: 'Minimal static page for oracle live-mode goldens.', newText: 'A tighter hook.' }, { ref: 'aside>p', tag: 'p', originalText: 'Nested content.', newText: 'Nested copy.' }]),
   entry('e3', '/docs/guide', [{ ref: 'article>p', tag: 'p', originalText: 'A second page covered by the config glob.', newText: 'Second page lead.' }]),
 ]);
+// One staged element removal (the browser's Remove badge): a deleted op that
+// carries removeElement and the element markup in leaf, never a newText.
+const removal = (ws) => writeBuffer(ws, [
+  entry('r1', '/', [{
+    ref: 'body>main.page:nth-of-type(1)>aside.side-note:nth-of-type(1)', tag: 'aside', classes: ['side-note'], originalText: 'Aside',
+    deleted: true, removeElement: true,
+    leaf: { tagName: 'aside', classes: ['side-note'], originalText: 'Aside', newText: '', outerHTML: '<aside class="side-note"><h2 class="note-title">Aside</h2><p>Nested content.</p></aside>' },
+    sourceHint: { file: 'index.html', line: 19, column: 7 },
+  }]),
+]);
 const D = (id, args, setup, extra = {}) => ({ id, verb: 'live-discard-manual-edits', workspace: 'live-html', args, setup, files: F, ...extra });
 const C = (id, args, setup, extra = {}) => ({ id, verb: 'live-commit-manual-edits', workspace: 'live-html', args, setup, files: F, ...extra });
 const MOCK = { IMPECCABLE_LIVE_COPY_AGENT: 'mock' };
@@ -57,6 +67,15 @@ export default [
       ...MOCK,
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({ 'index.html': '<html><body><h1 id="hero" class="hero-title">Oracle Fixture, renamed</h1><p class="hero-hook">A tighter hook.</p><aside><p>Nested copy.</p></aside></body></html>\n' }),
       IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({ status: 'done', appliedEntryIds: ['e1', 'e2'], failed: [], files: [] }),
+    },
+  }),
+  C('live-commit-mock-remove-element', ['--page-url=/', '--provider=mock'], removal, {
+    // The mock removes the whole <aside> from source; deletion verification
+    // passes because the hinted line no longer carries the element's text.
+    env: {
+      ...MOCK,
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_WRITES: JSON.stringify({ 'index.html': '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Oracle Live HTML Fixture</title>\n    <style>\n      .hero-title { font-size: 2rem; }\n      .hero-hook { color: #555; }\n    </style>\n  </head>\n  <body>\n    <main class="page">\n      <h1 id="hero" class="hero-title">Oracle Fixture</h1>\n      <p class="hero-hook">Minimal static page for oracle live-mode goldens.</p>\n      <section id="features" class="feature-grid">\n        <article class="feature-card">One</article>\n        <article class="feature-card">Two</article>\n      </section>\n    </main>\n  </body>\n</html>\n' }),
+      IMPECCABLE_LIVE_COPY_AGENT_MOCK_RESULT: JSON.stringify({ status: 'done', appliedEntryIds: ['r1'], failed: [], files: ['index.html'], notes: ['oracle mock removed the aside'] }),
     },
   }),
   C('live-commit-mock-invalid-result-json', ['--provider=mock'], twoPages, {

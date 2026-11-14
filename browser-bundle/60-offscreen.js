@@ -15,13 +15,13 @@
 //                                                answer: { ref, w, h } | null
 //       -> { ask: { io: { kind: 'readPixel', ref, plan, px, py } } }
 //                                                answer: { data } | { error } | { noContext }
-//       -> { stage: 'findings', groups, pageLevel, serialized }   answer: {}
+//       -> { stage: 'findings', groups, pageLevel, collapsed, serialized }   answer: {}
 //       -> { stage: 'visual', groups, serialized, lazy }           answer: {}
 //       -> { done: true }
 //       -> { error: message }
 //       -> { superseded: true }   (a newer scan-start took the session over)
 //   { action: 'scan-continue', session, answer }   (the answer to the last ask/stage)
-//   { action: 'analyze-candidate', session, snapshot, candidate, groups }
+//   { action: 'analyze-candidate', session, snapshot, candidate, groups, collapsed }
 //       -> asks as above, then { result, el, finding, serialized } (el 0 = no addition)
 //   { action: 'antipatterns' }        -> the registry slice for the overlay labels
 //   { action: 'ping' }                -> { ok: true, ready }
@@ -123,9 +123,12 @@
 
   // addVisualContrastResult over id-keyed groups: the two decisions are the
   // core's; this only keeps the map.
-  function addVisualContrastResult(wasm, groups, result) {
+  // `collapsed`: snapshot ids a counted finding speaks for (` (and N
+  // more)`), which the visual pass treats as reported.
+  function addVisualContrastResult(wasm, groups, result, collapsed = []) {
     const elId = wasm.visual_contrast_result_el(JSON.stringify(result));
     if (!elId) return 0;
+    if (collapsed.includes(elId)) return 0;
     let group = groups.find(g => g.el === elId);
     const existing = group ? group.findings : [];
     const finding = JSON.parse(wasm.visual_contrast_result_finding(elId, JSON.stringify(existing), JSON.stringify(result)));
@@ -145,11 +148,13 @@
     const t0 = performance.now();
     const collected = JSON.parse(await IO.core('collect_browser_findings', configJson(config)));
     const groups = collected.groups;
+    const collapsed = Array.isArray(collected.collapsed) ? collected.collapsed : [];
     const stats = { elements: n, coreMs: performance.now() - t0, unknownStyleProps: JSON.parse(wasm.snapshot_unknown_style_props()) };
     await ask(session, {
       stage: 'findings',
       groups,
       pageLevel: collected.pageLevel,
+      collapsed,
       serialized: serialize(wasm, groups),
       stats,
     });
@@ -164,7 +169,7 @@
       const analyses = await vc.analyzeVisualContrast(resolved);
       const added = [];
       for (const result of analyses) {
-        const el = addVisualContrastResult(wasm, groups, result);
+        const el = addVisualContrastResult(wasm, groups, result, collapsed);
         if (el) added.push(el);
       }
       const lazy = (resolved.visualContrastLazy === false || resolved.scrollOffscreen !== false)
@@ -192,10 +197,21 @@
     const vc = createVisualContrast(IO);
     const groups = Array.isArray(msg.groups) ? msg.groups : [];
     const result = await vc.analyzeVisualContrastCandidate(msg.candidate);
-    const el = addVisualContrastResult(wasm, groups, result);
+    const el = addVisualContrastResult(wasm, groups, result, Array.isArray(msg.collapsed) ? msg.collapsed : []);
     const out = { result, el, groups, serialized: el ? serialize(wasm, groups) : null };
     wasm.snapshot_clear();
     finish(session, out);
+  }
+
+  function cancelSession(session) {
+    if (!session) return;
+    session.superseded = true;
+    if (session.resume) session.resume.reject(new Error('superseded'));
+    if (session.respond) {
+      try { session.respond({ superseded: true }); } catch { /* channel gone */ }
+    }
+    session.respond = null;
+    if (sessions.get(session.id) === session) sessions.delete(session.id);
   }
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -208,18 +224,19 @@
       coreReady().then((wasm) => sendResponse({ antipatterns: JSON.parse(wasm.antipatterns_json()) }), (err) => sendResponse({ error: err?.message || String(err) }));
       return true;
     }
-    if (msg.action === 'scan-start' || msg.action === 'analyze-candidate') {
-      const prior = sessions.get(msg.session);
-      if (prior) {
-        // A restarted session (the content script re-scanned): drop the old
-        // coroutine so it never answers a stale request.
-        prior.superseded = true;
-        if (prior.resume) prior.resume.reject(new Error('superseded'));
-        if (prior.respond) { try { prior.respond({ superseded: true }); } catch { /* channel gone */ } }
-        prior.respond = null;
-        sessions.delete(msg.session);
+    if (msg.action === 'scan-cancel' || msg.action === 'scan-cancel-tab') {
+      if (msg.action === 'scan-cancel') cancelSession(sessions.get(msg.session));
+      else if (Number.isInteger(msg.tabId)) {
+        for (const session of sessions.values()) {
+          if (session.tabId === msg.tabId) cancelSession(session);
+        }
       }
-      const session = { id: msg.session, respond: sendResponse, resume: null, superseded: false };
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg.action === 'scan-start' || msg.action === 'analyze-candidate') {
+      cancelSession(sessions.get(msg.session));
+      const session = { id: msg.session, tabId: sender.tab?.id, respond: sendResponse, resume: null, superseded: false };
       sessions.set(msg.session, session);
       const run = msg.action === 'scan-start' ? runScan : runCandidate;
       serialized(() => {

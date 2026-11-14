@@ -88,11 +88,17 @@ fn covered_text_and_unread_surfaces_are_not_scored() {
         .collect();
     let has = |rule: &str, selector: &str| flagged.iter().any(|(r, s, _)| r == rule && s == selector);
 
+    // The four copies set in #aaaaaa on white are one colour pair, reported
+    // once by the first and counted (r14-t2): the half-covered, white-panel
+    // and wash copies are the three more, and no pass case wearing the pair
+    // joins them.
+    assert!(
+        flagged.iter().any(|(r, s, snippet)| r == "low-contrast"
+            && s == "#flag-visible-copy"
+            && snippet.ends_with("text #aaaaaa on #ffffff (and 3 more)")),
+        "{flagged:#?}"
+    );
     for (rule, selector) in [
-        ("low-contrast", "#flag-visible-copy"),
-        ("low-contrast", "#flag-half-covered-copy"),
-        ("low-contrast", "#flag-white-panel-copy"),
-        ("low-contrast", "#flag-wash-copy"),
         ("low-contrast", "#flag-dot-grid-copy"),
         ("low-contrast", "#flag-grain-copy"),
         ("low-contrast", "#flag-uncovered-link"),

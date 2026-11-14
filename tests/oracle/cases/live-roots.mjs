@@ -1,8 +1,8 @@
 /**
  * `impeccable live` (boot) and `live-inject` corpus: root resolution
  * (roots.json + repo pointer), config checks, framework injection.
- * Boot cases stop at config_missing so no helper server is spawned; the one
- * full boot (`live-boot-full-cycle`) stops its server in a final step.
+ * Full boot cases stop their helper server in a final step; other boot
+ * cases stop at config_missing without spawning a helper.
  */
 import { LIVE_FILES, fakeGit, rm, write } from '../live-helpers.mjs';
 
@@ -19,6 +19,7 @@ const CSP_QUOTE_STYLES_HTML = '<!DOCTYPE html>\n<html>\n<head>\n<meta http-equiv
 
 export default [
   // --- live.mjs (boot) ---
+  { id: 'live-boot-empty-folder', verb: 'live', args: ['--allow-missing-context', '--dev-url', '--auto-config'], files: F },
   { id: 'live-help', verb: 'live', workspace: 'live-html', args: ['--help'] },
   { id: 'live-target-missing-value', verb: 'live', workspace: 'live-html', args: ['--target'] },
   { id: 'live-boot-html-config-missing', verb: 'live', workspace: 'live-html', setup: (ws) => rm(ws, CFG), files: F },
@@ -73,6 +74,24 @@ export default [
     steps: [{ verb: 'live' }, { verb: 'live-inject', args: ['--check'] }, { verb: 'live-server', args: ['stop'] }],
   },
   {
+    id: 'live-boot-no-dev-server-static', verb: 'live', workspace: 'live-html',
+    files: [...F, 'index.html', 'pages/**'], normalize: PORT_NORM,
+    env: { IMPECCABLE_DEV_URL_CANDIDATES: 'http://127.0.0.1:1' },
+    setup: (ws) => {
+      rm(ws, 'package.json');
+      write(ws, 'pages/about us.html', '<html><body>About</body></html>\n');
+      write(ws, CFG, JSON.stringify({ files: ['index.html', 'pages/about us.html'], insertBefore: '</body>', commentSyntax: 'html', cspChecked: true }));
+    },
+    steps: [{ args: ['--allow-missing-context', '--dev-url'] }, { verb: 'live-server', args: ['stop'] }],
+  },
+  {
+    id: 'live-boot-no-dev-server-dev-script', verb: 'live', workspace: 'live-html',
+    files: [...F, 'index.html'], normalize: PORT_NORM,
+    env: { IMPECCABLE_DEV_URL_CANDIDATES: 'http://127.0.0.1:1' },
+    setup: (ws) => write(ws, 'package.json', JSON.stringify({ name: 'oracle-dev-script', scripts: { dev: 'vite' } })),
+    steps: [{ args: ['--allow-missing-context', '--dev-url'] }, { verb: 'live-server', args: ['stop'] }],
+  },
+  {
     id: 'live-server-background-static-subdir', verb: 'live-server', workspace: 'live-workspaces', cwd: 'static-mock', normalize: PORT_NORM,
     setup: (ws) => { fakeGit(ws); rm(ws, 'apps/admin'); write(ws, 'static-mock/index.html', '<!doctype html><title>mock</title><main><h1>Mock</h1></main>\n'); },
     steps: [{ args: ['--background'] }, { args: ['stop', '--keep-inject'] }],
@@ -82,6 +101,7 @@ export default [
   { id: 'live-inject-help', verb: 'live-inject', workspace: 'live-html', args: ['--help'] },
   { id: 'live-inject-check-ok', verb: 'live-inject', workspace: 'live-html', args: ['--check'] },
   { id: 'live-inject-check-missing', verb: 'live-inject', workspace: 'live-vite', args: ['--check'], setup: (ws) => rm(ws, CFG) },
+  { id: 'live-inject-check-auto-config-created', verb: 'live-inject', workspace: 'live-html', args: ['--check', '--auto-config'], setup: (ws) => rm(ws, CFG), files: [CFG, 'index.html'] },
   { id: 'live-inject-check-invalid-json', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, '[1') },
   { id: 'live-inject-check-invalid-files', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, JSON.stringify({ files: [], insertBefore: '</body>', commentSyntax: 'html' })) },
   { id: 'live-inject-check-invalid-anchor', verb: 'live-inject', workspace: 'live-html', args: ['--check'], setup: (ws) => write(ws, CFG, JSON.stringify({ files: ['index.html'], commentSyntax: 'html' })) },

@@ -28,6 +28,8 @@ pub const SCANNABLE_EXTENSIONS: &[&str] = &[
     ".tsx",
     ".js",
     ".ts",
+    ".mjs",
+    ".cjs",
     ".vue",
     ".svelte",
     ".astro",
@@ -42,7 +44,7 @@ pub fn has_scannable_extension(filename: &str) -> bool {
 }
 
 /// Built-in scannable extensions plus configured suffix matches (#822).
-fn has_scannable_extension_with(filename: &str, extra_exts: &[ExtensionEntry]) -> bool {
+pub fn has_scannable_extension_with(filename: &str, extra_exts: &[ExtensionEntry]) -> bool {
     let lower = impeccable_core::js::to_lower_case(filename);
     if SCANNABLE_EXTENSIONS.contains(&jsp::extname(&lower).as_str()) {
         return true;
@@ -53,6 +55,17 @@ fn has_scannable_extension_with(filename: &str, extra_exts: &[ExtensionEntry]) -
         }
     }
     match_configured_extension(filename, extra_exts).is_some()
+}
+
+// JS: GENERATED_PATH (case-insensitive). Build output, declaration files,
+// minified bundles and lockfiles: the hook and `detect --changed` skip them.
+re!(
+    GENERATED_PATH_RE,
+    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
+);
+
+pub fn is_generated_path(p: &str) -> bool {
+    GENERATED_PATH_RE.is_match(p)
 }
 
 /// `HTML_EXTENSIONS.has(path.extname(filePath).toLowerCase())`.

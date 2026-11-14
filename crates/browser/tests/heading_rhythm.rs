@@ -100,6 +100,10 @@ fn fixture_flags_crowded_headings_and_passes_the_misread_shapes() {
         "\"Flag Column Heading\" has 12px above vs 48px below",
         "\"Flag Spacer Below\" has 10px above vs 48px below",
         "\"Flag Stack Heading\" has 16px above vs 48px below",
+        // observations-1010 row 3: a spacer row in a colour of its own is a
+        // divider; one painted like its band is space (a should-pass).
+        "\"Flag Divider Row\" has 0px above vs 24px below",
+        "\"Flag Strip Over Gradient Band\" has 0px above vs 24px below",
         // A date line set like body copy is not folded in as a label.
         "\"Flag Plain Line Above\" has 10px above vs 48px below",
         // A code block framed on every side is content, not a rule, and a
@@ -140,5 +144,5 @@ fn fixture_flags_crowded_headings_and_passes_the_misread_shapes() {
     );
     let stray: Vec<&&str> = snippets.iter().filter(|s| s.contains("\"Pass ")).collect();
     assert!(stray.is_empty(), "should-pass headings flagged: {stray:?}");
-    assert_eq!(snippets.len(), 26, "{snippets:?}");
+    assert_eq!(snippets.len(), 28, "{snippets:?}");
 }

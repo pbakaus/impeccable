@@ -161,7 +161,7 @@ Choose appropriate breakpoints:
 ### Navigation Adaptation
 
 - Transform complex nav to hamburger/drawer on mobile
-- Bottom nav bar for mobile apps
+- Bottom nav bar for mobile web
 - Persistent side navigation on desktop
 - Breadcrumbs on smaller screens for context
 
@@ -229,7 +229,7 @@ Don't chase device sizes; let content tell you where to break. Start narrow, str
 
 /* Device supports hover */
 @media (hover: hover) {
-  .card:hover { transform: translateY(-2px); }
+  .card:hover .card-surface { transform: translateY(-2px); }  /* Lift a child; the card stays the hit area */
 }
 
 /* Device doesn't support hover (touch) */

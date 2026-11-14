@@ -43,6 +43,7 @@ crates/live/assets/antipatterns.json linguist-generated
 .codex/** linguist-generated
 .claude/** linguist-generated
 .cursor/** linguist-generated
+.devin/** linguist-generated
 .dsh/** linguist-generated
 .gemini/** linguist-generated
 .github/agents/** linguist-generated

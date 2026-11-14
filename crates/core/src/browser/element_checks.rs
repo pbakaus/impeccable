@@ -161,13 +161,20 @@ pub fn check_element_borders_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
             status_context: is_status_context_element(dom, el),
             tab_context: is_tab_context_element(dom, el),
             corners,
+            // `parse_radius_corners` keeps the horizontal radii only, so an
+            // elliptical corner (`50% / 4px`) leaves the circle test unread.
+            box_size: (!radius_value.contains('/')).then_some([rect.width, rect.height]),
         },
     );
     // A side-tab is a card of text with a coloured edge; a card a visitor
     // cannot see (in a tab pane at opacity 0, a slide parked off its track)
     // shows no edge. Asked only once the border path has reported.
-    if hits.iter().any(|h| h.id == "side-tab") && crate::browser::painted::unpainted_text_box(dom, el).is_some() {
-        hits.retain(|h| h.id != "side-tab");
+    // The same holds for an accent band across a rounded card's top or
+    // bottom (revenpages.fr's mega-menu panel at opacity 0, visibility
+    // hidden, observations-1010 row 17).
+    let edge_rule = |h: &RuleHit| h.id == "side-tab" || h.id == "border-accent-on-rounded";
+    if hits.iter().any(edge_rule) && crate::browser::painted::unpainted_text_box(dom, el).is_some() {
+        hits.retain(|h| !edge_rule(h));
     }
     hits
 }
@@ -795,6 +802,30 @@ pub fn is_stripe_heading_host(host_tag: &str) -> bool {
     matches!(host_tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6")
 }
 
+/// Whether a positioned pseudo face is under the text it would be the
+/// ground of: untransformed, or transformed in a way that still covers the
+/// text ([`crate::browser::visual::pseudo_face_covers_after_transform`]). A
+/// face moved, scaled or turned off the text at rest (a slide-in parked at
+/// `translateX(-101%)`, `scaleX(0)` or `rotate: 90deg`) is not.
+/// `translate: 0px`, `scale: 1` and a zero `rotate` angle (`0deg`,
+/// `z 0deg`) are the identity; `scale: 0` is a face parked at nothing.
+fn pseudo_face_in_place(dom: &dyn Dom, el: ElId, which: &str, text: &Rect) -> bool {
+    let individual = |prop: &str, identity: f64| {
+        let raw = pseudo_str(dom, el, which, prop);
+        let raw = js::trim(&raw);
+        raw.is_empty() || raw == "none" || raw.split_whitespace().all(|t| parse_float(t) == identity)
+    };
+    let unrotated = {
+        let raw = pseudo_str(dom, el, which, "rotate");
+        let raw = js::trim(&raw);
+        raw.is_empty() || raw == "none" || raw.split_whitespace().last().is_some_and(|angle| parse_float(angle) == 0.0)
+    };
+    let matrix: String = pseudo_str(dom, el, which, "transform").split_whitespace().collect();
+    let untransformed = matrix.is_empty() || matrix == "none" || is_identity_matrix(&matrix);
+    (untransformed && individual("translate", 0.0) && individual("scale", 1.0) && unrotated)
+        || crate::browser::visual::pseudo_face_covers_after_transform(dom, el, which, text)
+}
+
 /// JS: checks.mjs#readPseudoSurfaceDOM(el, rect)
 pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<Rgba> {
     for which in PSEUDOS {
@@ -819,7 +850,18 @@ pub fn read_pseudo_surface_dom(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<R
                 n
             }
         };
-        if pseudo_str(dom, el, which, "display") == "none" || opacity < 0.9 {
+        if pseudo_str(dom, el, which, "display") == "none"
+            || pseudo_str(dom, el, which, "visibility") == "hidden"
+            || opacity < 0.9
+        {
+            continue;
+        }
+        // A sweep face parked off the box (aproov.es's secondary button keeps
+        // its green `::before` a full width to the left, inside
+        // `overflow: hidden`, until hover) is not the ground at rest, as
+        // [`read_pseudo_gradient_face`] reads it (observations-1010 row 8).
+        // A centred, tilted or slightly scaled chip still under the text is.
+        if !pseudo_face_in_place(dom, el, which, &dom.direct_text_rect(el).unwrap_or(*rect)) {
             continue;
         }
         let w = pseudo_px(dom, el, which, "width");
@@ -910,25 +952,7 @@ pub(crate) fn read_pseudo_gradient_face(
         {
             continue;
         }
-        // A face moved, scaled or turned at rest (a slide-in parked at
-        // `translateX(-101%)`, `scaleX(0)` or `rotate: 90deg`) may not be
-        // under the text; the capture places only one that is not
-        // transformed. `translate: 0px`, `scale: 1` and a zero `rotate`
-        // angle (`0deg`, `z 0deg`) are the identity; `scale: 0` is a face
-        // parked at nothing.
-        let individual = |prop: &str, identity: f64| {
-            let raw = pseudo_str(dom, el, which, prop);
-            let raw = js::trim(&raw);
-            raw.is_empty() || raw == "none" || raw.split_whitespace().all(|t| parse_float(t) == identity)
-        };
-        let unrotated = {
-            let raw = pseudo_str(dom, el, which, "rotate");
-            let raw = js::trim(&raw);
-            raw.is_empty() || raw == "none" || raw.split_whitespace().last().is_some_and(|angle| parse_float(angle) == 0.0)
-        };
-        let matrix: String = pseudo_str(dom, el, which, "transform").split_whitespace().collect();
-        let untransformed = matrix.is_empty() || matrix == "none" || is_identity_matrix(&matrix);
-        if !(untransformed && individual("translate", 0.0) && individual("scale", 1.0) && unrotated) {
+        if !pseudo_face_in_place(dom, el, which, &dom.direct_text_rect(el).unwrap_or(*rect)) {
             continue;
         }
         let w = pseudo_px(dom, el, which, "width");
@@ -1249,7 +1273,7 @@ fn names_close_control_dom(dom: &dyn Dom, el: ElId) -> bool {
 /// Whether the element lies wholly within the page's width, give or take a
 /// pixel. A marquee's first copy starting past the left edge, or a card cut
 /// by a carousel's right edge, is only partly readable.
-fn wholly_within_page_width(dom: &dyn Dom, rect: &Rect) -> bool {
+pub(crate) fn wholly_within_page_width(dom: &dyn Dom, rect: &Rect) -> bool {
     let width = dom.inner_width();
     if !num_truthy(width) {
         return true;
@@ -3043,9 +3067,25 @@ pub fn check_element_colors_dom_in(
     // Text under a box labelled as a screenshot is advisory too (r13-t5),
     // decided here so it claims only the advisory pairs and never hides
     // the page's own text wearing the same colours.
+    // The ink's best ratio over the ground the walk read, which a ghost
+    // word's faint-ground test takes (taste call r14-t3).
+    let ghost_ratio = || {
+        let ink = color_opts.visible_text.or(color_opts.text_color)?;
+        let grounds: Vec<Rgba> = match &color_opts.effective_bg_stops {
+            Some(stops) if !stops.is_empty() => stops.clone(),
+            _ => vec![color_opts.effective_bg?],
+        };
+        grounds
+            .iter()
+            .map(|g| {
+                let seen = crate::browser::visual::blend_rgba(Some(&ink), Some(g)).unwrap_or(ink);
+                crate::color::contrast_ratio(&seen, g)
+            })
+            .reduce(f64::max)
+    };
     let is_decorative = || {
         *decorative.get_or_init(|| {
-            super::decorative_text::is_decorative_text_dom(dom, el)
+            super::decorative_text::decorative_text_shape_measured_dom(dom, el, ghost_ratio()).is_some()
                 || dimmed_by_a_state(dom, el, surface_host)
                 || mockups.is_some_and(|m| m.signal(el) == Some(super::hidden_mockup::MockupSignal::Labelled))
         })
@@ -3719,6 +3759,9 @@ pub fn check_element_glow_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
 /// A stop painting under this much alpha is a tint over whatever sits behind
 /// it, not a palette decision (Tailwind's `/5` and `/10` fills, 0.13 washes).
 const AI_PALETTE_MIN_STOP_ALPHA: f64 = 0.15;
+/// A gradient of one colour whose every stop keeps this much alpha or more
+/// is that colour laid flat, not a fade.
+const AI_PALETTE_SAME_COLOUR_FADE_MIN_ALPHA: f64 = 0.75;
 /// Past this blur radius a gradient is atmosphere: no edge and no hue
 /// survives it as something a visitor reads as a color choice.
 const AI_PALETTE_MAX_BLUR_PX: f64 = 24.0;
@@ -3914,6 +3957,15 @@ fn ai_palette_gradient_hit(
             && c.b == first.b
             && c.alpha_or_one() == first.alpha_or_one()
     }) {
+        return None;
+    }
+    // One colour fading only a little (articulation-hub.vercel.app's
+    // `rgb(29, 74, 84)` to the same at 0.8, observations-1010 row 14) still
+    // reads as that flat colour over what lies behind; the ramp a glow blob
+    // draws runs down toward transparent.
+    if stops.iter().all(|c| c.r == first.r && c.g == first.g && c.b == first.b)
+        && stops.iter().all(|c| c.alpha_or_one() >= AI_PALETTE_SAME_COLOUR_FADE_MIN_ALPHA)
+    {
         return None;
     }
     let rect = element_rect(dom, el)?;
@@ -9057,6 +9109,68 @@ mod tests {
         assert!(check_element_borders_dom(&d, card).is_empty());
     }
 
+    /// observations-1010 row 17 (revenpages.fr 10139645): an accent band
+    /// across the top of a rounded mega-menu panel parked at opacity 0 and
+    /// `visibility: hidden` shows no band. The open panel reports.
+    #[test]
+    fn border_accent_on_rounded_skips_a_panel_nobody_sees() {
+        let (mut d, body) = page();
+        let menu = d.add(Some(body), "div");
+        d.set_rect(menu, 0.0, 0.0, 900.0, 400.0);
+        let panel = d.add(Some(menu), "div");
+        d.set_rect(panel, 0.0, 0.0, 280.0, 320.0);
+        d.add_text(panel, "Our services and how we work");
+        d.set_styles(
+            panel,
+            &[
+                ("borderTopWidth", "3px"),
+                ("borderTopColor", "rgb(235, 87, 71)"),
+                ("borderRightWidth", "0px"),
+                ("borderBottomWidth", "0px"),
+                ("borderLeftWidth", "0px"),
+                ("borderRadius", "4px"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+            ],
+        );
+        let hits = check_element_borders_dom(&d, panel);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].id, "border-accent-on-rounded");
+        d.set_styles(menu, &[("opacity", "0"), ("visibility", "hidden")]);
+        assert!(check_element_borders_dom(&d, panel).is_empty());
+    }
+
+    /// observations-1010 row 6 (mypip.dev 10137997): the browser form reads
+    /// the circle off the element's own box.
+    #[test]
+    fn a_border_arc_on_a_ring_is_not_a_side_tab() {
+        let (mut d, body) = page();
+        let ring = d.add(Some(body), "div");
+        d.set_rect(ring, 100.0, 100.0, 64.0, 64.0);
+        d.set_styles(
+            ring,
+            &[
+                ("borderTopWidth", "0px"),
+                ("borderRightWidth", "2px"),
+                ("borderRightColor", "rgb(45, 212, 191)"),
+                ("borderBottomWidth", "0px"),
+                ("borderLeftWidth", "0px"),
+                ("borderRadius", "9999px"),
+                ("backgroundColor", "rgba(0, 0, 0, 0)"),
+            ],
+        );
+        assert!(check_element_borders_dom(&d, ring).is_empty());
+        // Corners flattened to 4px vertically are not a circle.
+        d.set_style(ring, "borderRadius", "50% / 4px");
+        assert_eq!(check_element_borders_dom(&d, ring).len(), 1);
+        d.set_style(ring, "borderRadius", "9999px");
+        // The same border on a wide rounded card is a side tab.
+        d.set_rect(ring, 100.0, 100.0, 320.0, 64.0);
+        d.set_style(ring, "borderRadius", "12px");
+        let hits = check_element_borders_dom(&d, ring);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].id, "side-tab");
+    }
+
     /// Bootstrap's floating labels and `placeholder:text-transparent` hide the
     /// placeholder so a label can take its place.
     #[test]
@@ -9359,6 +9473,28 @@ mod tests {
         let hits = palette_hits(&d, overlay);
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!(hits[0].snippet, "Purple/violet gradient background");
+    }
+
+    /// observations-1010 row 14 (articulation-hub.vercel.app 10136044): one
+    /// colour fading only to 0.8 (0.75 or more) is that colour laid flat. The same colour
+    /// fading toward transparent is a glow blob and reports.
+    #[test]
+    fn ai_palette_gradient_skips_a_colour_that_barely_fades() {
+        let (mut d, body) = page();
+        let flat = gradient_surface(&mut d, body, "linear-gradient(135deg, rgb(29, 74, 84), rgba(29, 74, 84, 0.8))");
+        assert!(palette_hits(&d, flat).is_empty());
+        let blob = gradient_surface(&mut d, body, "radial-gradient(50% 50%, rgb(20, 184, 166) 0%, rgba(20, 184, 166, 0) 100%)");
+        assert_eq!(palette_hits(&d, blob)[0].snippet, "Cyan gradient background");
+        let half = gradient_surface(&mut d, body, "linear-gradient(90deg, rgb(20, 184, 166), rgba(20, 184, 166, 0.4))");
+        assert_eq!(palette_hits(&d, half)[0].snippet, "Cyan gradient background");
+        // Review of round 14: teal to the same at 0.5 or 0.6, and the
+        // stock violet to lavender, are visible two-tone ramps.
+        for end in ["0.5", "0.6"] {
+            let ramp = gradient_surface(&mut d, body, &format!("linear-gradient(90deg, rgb(20, 184, 166), rgba(20, 184, 166, {end}))"));
+            assert_eq!(palette_hits(&d, ramp)[0].snippet, "Cyan gradient background", "{end}");
+        }
+        let violet = gradient_surface(&mut d, body, "linear-gradient(135deg, rgb(124, 58, 237), rgba(124, 58, 237, 0.5))");
+        assert_eq!(palette_hits(&d, violet)[0].snippet, "Purple/violet gradient background");
     }
 
     /// observations-1004 row 24 (librairielorguaise.fr 10046523): a 7px
@@ -13075,6 +13211,80 @@ mod tests {
         assert!(shown[0].contains("on #c8c8c8"), "{}", shown[0]);
         // An opacity the capture did not read counts as shown.
         assert_eq!(run("rgb(200, 200, 200)", "").len(), 1);
+    }
+
+    /// observations-1010 row 8, aproov.es 10136648: the secondary button's
+    /// green sweep `::before` waits a full width to the left, inside
+    /// `overflow: hidden`, until hover. The dark label was scored on the
+    /// green, 2.5:1.
+    #[test]
+    fn a_sweep_face_parked_off_the_button_is_not_the_surface() {
+        let run = |extra: &[(&str, &str)]| {
+            let (mut d, body) = page();
+            let b = d.add(Some(body), "div");
+            visible(&mut d, b);
+            d.add_text(b, "Ver casos");
+            d.set_rect(b, 40.0, 600.0, 165.0, 48.0);
+            d.set_text_rect(b, 60.0, 612.0, 100.0, 24.0);
+            d.set_styles(
+                b,
+                &[
+                    ("backgroundColor", "rgba(253, 252, 250, 0.5)"),
+                    ("color", "rgb(42, 30, 16)"),
+                    ("fontSize", "16px"),
+                    ("fontWeight", "500"),
+                    ("position", "relative"),
+                    ("overflow", "hidden"),
+                ],
+            );
+            for (p, v) in [
+                ("content", "\"\""),
+                ("position", "absolute"),
+                ("display", "block"),
+                ("backgroundColor", "rgb(45, 106, 79)"),
+                ("backgroundImage", "none"),
+                ("top", "0px"),
+                ("left", "0px"),
+                ("width", "165px"),
+                ("height", "48px"),
+                ("opacity", "1"),
+            ]
+            .into_iter()
+            .chain(extra.iter().copied())
+            {
+                d.set_pseudo_style(b, "::before", p, v);
+            }
+            colors(&d, b).into_iter().filter(|h| h.id == "low-contrast").map(|h| h.snippet).collect::<Vec<_>>()
+        };
+        // Parked a full width off, translated, scaled to nothing or hidden:
+        // the label reads on the page.
+        for extra in [
+            &[("transform", "matrix(1, 0, 0, 1, -165.2, 0)")][..],
+            &[("translate", "-101%")][..],
+            &[("scale", "0 1")][..],
+            &[("rotate", "90deg")][..],
+            &[("visibility", "hidden")][..],
+        ] {
+            assert!(run(extra).is_empty(), "{extra:?}: {:?}", run(extra));
+        }
+        // Twins: in place (translate 0, the identity matrix), or moved but
+        // still under the label (a centred chip, 2deg of tilt, a 10deg skew,
+        // 1.04 of scale, a 2deg `rotate`), the face is the ground and the
+        // label fails on it.
+        for extra in [
+            &[][..],
+            &[("transform", "matrix(1, 0, 0, 1, 0, 0)"), ("translate", "0px")][..],
+            &[("left", "82.5px"), ("top", "24px"), ("transform", "matrix(1, 0, 0, 1, -82.5, -24)")][..],
+            &[("transform", "matrix(0.999391, -0.0348995, 0.0348995, 0.999391, 0, 0)")][..],
+            &[("transform", "matrix(1, 0, -0.176327, 1, 0, 0)")][..],
+            &[("transform", "matrix(1.04, 0, 0, 1.04, 0, 0)")][..],
+            &[("rotate", "-2deg")][..],
+            &[("scale", "1.04")][..],
+        ] {
+            let hits = run(extra);
+            assert_eq!(hits.len(), 1, "{extra:?}: {hits:?}");
+            assert!(hits[0].contains("on #2d6a4f"), "{}", hits[0]);
+        }
     }
 
     /// observations-47 row 12, ardainc.com 322246: the CTA paints a conic

@@ -159,6 +159,22 @@ fn session_start_persists_only_a_literal_session_identity() {
 }
 
 #[test]
+fn session_start_writes_the_session_identity_once_across_resumes() {
+    let t = Tmp::new();
+    let env_path = t.write("session.env", "export EXISTING=kept\n");
+    let r = rt_with(&t.path(), env(&[("CLAUDE_ENV_FILE", &env_path)]));
+    let mut io = Io::captured("", t.0.clone(), HashMap::new()).0;
+    for session in ["owner-123", "owner-123", "other-456", "owner-123", "owner-123"] {
+        let event = json!({"hook_event_name":"SessionStart", "session_id":session, "cwd":t.path()}).to_string();
+        assert_eq!(hook::run(&r, &event, &mut io), 0);
+    }
+    assert_eq!(
+        t.read("session.env"),
+        "export EXISTING=kept\nexport IMPECCABLE_SESSION_ID='owner-123'\nexport IMPECCABLE_SESSION_ID='other-456'\nexport IMPECCABLE_SESSION_ID='owner-123'\n"
+    );
+}
+
+#[test]
 fn unfinished_comp_stop_is_owned_bounded_and_does_not_reopen_on_unrelated_turn() {
     let t = Tmp::new();
     t.write("index.html", "<main>In progress</main>");
@@ -367,7 +383,11 @@ fn local_config_rel() -> String {
     jsp::join(&[".impeccable", "config.local.json"])
 }
 
-fn rt_with(cwd: &str, env: HashMap<String, String>) -> Runtime<'static> {
+fn rt_with(cwd: &str, mut env: HashMap<String, String>) -> Runtime<'static> {
+    // A test never reads the developer's real home: an install of the skill there would make every "not wired" case read as wired.
+    let home = format!("{cwd}/.test-home");
+    env.entry("HOME".into()).or_insert_with(|| home.clone());
+    env.entry("USERPROFILE".into()).or_insert(home);
     Runtime::new(
         cwd.to_string(),
         env,
@@ -614,6 +634,8 @@ fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
     let t = Tmp::new();
     let cwd = t.path();
     t.write("package.json", "{}");
+    // A plain .ts scans only in a project that uses Impeccable (#1237).
+    t.write("PRODUCT.md", "# Product\n");
     // This is the actual working-tree preimage, not HEAD (which might differ).
     let before = "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n";
     let after = before.replacen("import dead from 'dead';\n", "", 1);
@@ -644,6 +666,33 @@ fn stop_baseline_reports_new_findings_and_keeps_first_preimage() {
     assert!(stop.stdout.contains("[side-tab]"));
     assert!(stop.stdout.contains("[new]"), "{}", stop.stdout);
     assert_eq!(stop.audit["newFindings"], json!(1));
+}
+
+#[test]
+fn stop_does_not_repeat_findings_after_an_edit_above_them() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    assert!(!hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+    // A line inserted above moves the finding; it is the same finding.
+    t.write("card.css", &format!("/* later */\n{SIDE_TAB_CSS}"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+}
+
+#[test]
+fn a_per_edit_pass_keeps_what_stop_already_reported() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("card.css", SIDE_TAB_CSS);
+    let r = rt(&cwd);
+    hook::run_hook(&r, &edit_with_original(&cwd, &file, "s1", ".card {}\n", ".card {}\n", SIDE_TAB_CSS));
+    assert!(!hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
+    hook::run_hook(&r, &edit_event(&cwd, &file, "s1"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s1")).stdout.is_empty());
 }
 
 #[test]
@@ -1153,20 +1202,31 @@ fn cache_round_trip_and_gc() {
     assert_eq!(bump_edit_count(&mut cache, "s", "/x/a.tsx"), 1.0);
     assert_eq!(bump_edit_count(&mut cache, "s", "/x/a.tsx"), 2.0);
     let g = f("gradient-text", 3.0, "G", "d", "s");
-    remember_findings(&mut cache, "s", "/x/a.tsx", &[g.clone()]);
+    remember_findings(&mut cache, "s", "/x/a.tsx", &finding_cache_keys(&[g.clone()]));
     assert!(persist_cache(&r, &cwd, &cache));
     let back = read_cache(&cwd);
     let entry = &back["sessions"]["s"]["files"]["/x/a.tsx"];
     assert_eq!(entry["editCount"], json!(2));
-    assert_eq!(entry["findings"], json!(["gradient-text:3"]));
+    assert_eq!(entry["findings"], json!(["gradient-text:s#1"]));
     let mut cache2 = back.clone();
-    assert!(dedupe_against_cache(&[g.clone()], &mut cache2, "s", "/x/a.tsx").is_empty());
+    assert!(dedupe_against_cache(&[g.clone()], &finding_cache_keys(&[g.clone()]), &mut cache2, "s", "/x/a.tsx").is_empty());
+    // the same finding one line lower is not fresh; one more identical finding is exactly one fresh
+    let lower = f("gradient-text", 9.0, "G", "d", "s");
+    let both = [g.clone(), lower];
+    let keys = finding_cache_keys(&both);
+    assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
+    assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
     let mut b = a.clone();
     b.extras.insert("ignoreValue".into(), json!("Roboto"));
-    assert_ne!(finding_cache_key(&a), finding_cache_key(&b));
+    assert_ne!(finding_cache_keys(&[a]), finding_cache_keys(&[b]));
+    // a colour pair that gains a copy is the same finding (r14-t2)
+    let pair = f("low-contrast", 0.0, "L", "d", "2.3:1 (need 4.5:1) — text #aaaaaa on #ffffff (and 2 more)");
+    let mut more = pair.clone();
+    more.snippet = "2.3:1 (need 4.5:1) — text #aaaaaa on #ffffff (and 3 more)".into();
+    assert_eq!(finding_cache_keys(&[pair]), finding_cache_keys(&[more]));
     // gc: 10 sessions -> newest 8 kept
     let mut big = read_cache(&cwd);
     for i in 0..10 {
@@ -1481,7 +1541,7 @@ fn render_template_clamps_inside_budget_and_keeps_policy() {
         },
     );
     assert!(text.chars().count() <= 500, "{}", text.chars().count());
-    assert!(text.ends_with("unsure, ask in one line."));
+    assert!(text.ends_with("unsure, leave it with a reason."));
     let huge: Vec<Finding> = (0..5)
         .map(|i| f("side-tab", (i + 1) as f64, "X", &"y".repeat(2000), "s"))
         .collect();
@@ -1581,6 +1641,16 @@ fn harness_detection_and_github_normalization() {
         payload("t", "Stop", "claude"),
         r#"{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"t"}}"#
     );
+    // VS Code's two runners read different fields (#1249).
+    assert_eq!(
+        payload("t", "PostToolUse", "vscode"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"},"additionalContext":"t"}"#
+    );
+    let vscode = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    assert_eq!(resolve_harness(&vscode, None), "vscode");
+    // Grok honors the manifest's `env` too, so its event shape still wins.
+    let grok_shaped: Map<String, Value> = json!({"hookEventName": "PostToolUse", "toolName": "Edit", "toolInput": {}}).as_object().unwrap().clone();
+    assert_eq!(resolve_harness(&vscode, Some(&grok_shaped)), "grok");
     assert_eq!(
         payload("t", "PostToolUse", "cursor"),
         r#"{"additional_context":"t"}"#
@@ -1834,6 +1904,33 @@ fn run_hook_symlinked_cwd_and_umbrella_launch() {
     );
     assert!(t.exists("app/.impeccable/hook.cache.json"));
     assert!(!t.exists(".impeccable"));
+}
+
+/// VS Code reports edits in its tools' own shapes, and keeps every rule per edit (#1249).
+#[test]
+fn run_hook_scans_files_named_by_vscode_tool_inputs() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "vscode")]));
+    let main = t.write("main.css", GRADIENT_CSS);
+    let patch = format!("*** Begin Patch\n*** Update File: {main}\n@@\n-a\n+b\n*** End Patch\n");
+    let inputs = [
+        json!(patch),
+        json!({"input": patch}),
+        json!({"filePath": main, "content": "a"}),
+        json!({"replacements": [{"filePath": main, "oldString": "a", "newString": "b"}]}),
+    ];
+    for (i, tool_input) in inputs.into_iter().enumerate() {
+        let event = json!({"session_id": format!("v{i}"), "cwd": cwd, "hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": tool_input}).to_string();
+        let res = hook::run_hook(&r, &event);
+        assert_eq!(res.audit["emitted"], json!(true), "{i}: {:?}", res.audit);
+    }
+    assert!(!per_edit_tiering_active(&HookConfig::default(), "vscode"));
+    let stop = json!({"session_id": "v0", "cwd": cwd, "hook_event_name": "Stop", "stop_hook_active": false}).to_string();
+    let res = hook::run_stop_hook(&r, &stop);
+    assert_eq!(audit_str(&res.audit, "skipped"), Some("vscode-stop"));
+    assert!(res.stdout.is_empty());
 }
 
 #[test]
@@ -2314,10 +2411,8 @@ fn admin_on_prunes_local_manifest_when_shared_settings_carry_the_hook() {
     let cwd = t.path();
     let r = rt(&cwd);
     std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/hook.mjs\""}]}]}}"#,
-    );
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     t.write(
         ".claude/settings.local.json",
         "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls)\"\n    ]\n  },\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"Edit\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"node old/skills/impeccable/scripts/hook.mjs\"\n          }\n        ]\n      }\n    ]\n  }\n}\n",
@@ -2674,12 +2769,8 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
         json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#)
     );
 
-    // A launcher-form manifest written by another checkout is recognized as
-    // ours too: shared settings carrying it make `on` prune the local file.
-    t.write(
-        ".claude/settings.json",
-        r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook"}]}]}}"#,
-    );
+    // A complete launcher manifest in shared settings supersedes local hooks.
+    t.write(".claude/settings.json", &t.read(".claude/settings.local.json"));
     let (out, _, _) = admin_run(&r, &["on"]);
     assert!(out.contains("already installed for: .claude"), "{out}");
     let local = t.read(".claude/settings.local.json");
@@ -2883,6 +2974,41 @@ fn codex_stop_emits_decision_block() {
     assert_eq!(out["decision"], json!("block"));
     assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
     assert!(out.get("hookSpecificOutput").is_none());
+}
+
+#[test]
+fn hermes_harness_shapes_each_pass() {
+    // #1178: the Hermes plugin sets the harness explicitly and sends
+    // Claude-shaped events; its pre_verify gate reads Codex's Stop shape.
+    let forced = rt_with("/p", env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let claude = json!({ "hook_event_name": "Stop", "session_id": "s" }).as_object().cloned().unwrap();
+    assert_eq!(resolve_harness(&forced, Some(&claude)), "hermes");
+    assert_eq!(payload("findings", "Stop", "hermes"), r#"{"decision":"block","reason":"findings"}"#);
+    assert_eq!(payload("  ", "Stop", "hermes"), "");
+    assert_eq!(
+        payload("t", "PostToolUse", "hermes"),
+        r#"{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"t"}}"#
+    );
+
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_HARNESS", "hermes")]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    let edit = json!({
+        "session_id": "h1", "cwd": cwd, "hook_event_name": "PostToolUse",
+        "tool_name": "Write", "tool_input": { "file_path": css },
+    })
+    .to_string();
+    let quiet = hook::run_hook(&r, &edit);
+    assert_eq!(audit_str(&quiet.audit, "harness"), Some("hermes"));
+    assert!(!quiet.stdout.contains("[side-tab]"), "side-tab is deferred to Stop: {}", quiet.stdout);
+    let stop = stop_event(&cwd, "h1");
+    let deep = hook::run_stop_hook(&r, &stop);
+    let out: Value = serde_json::from_str(&deep.stdout).unwrap();
+    assert_eq!(out["decision"], json!("block"));
+    assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
+    assert!(out.get("hookSpecificOutput").is_none());
+    assert_eq!(hook::run_stop_hook(&r, &stop).stdout, "", "a repeat Stop stays silent");
 }
 
 // ── live-preview stand-down ───────────────────────────────────────────────
@@ -3545,4 +3671,511 @@ fn expiry_removes_only_old_session_dirs_of_ours() {
     assert_eq!(names_in(&jsp::join(&[&root, &fresh])), vec![OLD_CLAIM.to_string()]);
     assert!(t.exists(&format!("outside/{OLD_CLAIM}")));
     assert!(t.exists("home/.impeccable/hook-sessions/keep-me/x"));
+}
+
+#[test]
+fn enabled_config_reports_missing_wiring() {
+    let t = Tmp::new();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true}}"#);
+    let (out, _, code) = admin_run(&rt(&t.path()), &["status"]);
+    assert_eq!(code, 0);
+    assert!(out.contains("enabled in config, not wired in any harness"), "{out}");
+    assert!(out.contains("impeccable hooks on"), "{out}");
+}
+
+#[test]
+fn context_repairs_only_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".claude/settings.local.json", r#"{"permissions":{"allow":["Bash(ls)"]}}"#);
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":true,"consent":"accepted"}}"#);
+    let r = rt(&cwd);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.read(".claude/settings.local.json").contains("hooks"));
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().unwrap().contains("Repaired"));
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+}
+
+#[test]
+fn stale_shared_claude_hook_does_not_remove_working_local_entries() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    let r = rt(&cwd);
+    admin_run(&r, &["on"]);
+    t.write(".claude/settings.json", r#"{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"node x/skills/impeccable/scripts/hook.mjs"}]}]}}"#);
+    admin_run(&r, &["on"]);
+    assert!(t.read(".claude/settings.local.json").contains("impeccable"));
+}
+
+#[test]
+fn context_command_repairs_with_consent_and_keeps_manual_fallback_without_it() {
+    for consent in [None, Some("declined"), Some("accepted")] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+        t.write(".impeccable/config.json", r#"{"hook":{"enabled":true},"updateCheck":false}"#);
+        if let Some(consent) = consent {
+            t.write(".impeccable/config.local.json", &json!({"hook":{"consent":consent}}).to_string());
+        }
+        let r = rt(&cwd);
+        let mut env = r.env.clone();
+        env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+        assert_eq!(impeccable_hook::run_context(&[], &mut io), 0);
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        if consent == Some("accepted") {
+            assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+            assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(t.exists(".claude/settings.local.json"));
+        } else {
+            assert!(out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+            assert!(out.contains(".claude/settings.local.json"), "{out}");
+            assert!(!t.exists(".claude/settings.local.json"));
+        }
+    }
+}
+
+#[test]
+fn status_requires_complete_current_entries_for_each_harness() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        std::fs::create_dir_all(t.0.join(target.skill_rel)).unwrap();
+    }
+    admin_run(&r, &["on"]);
+    let (out, _, _) = admin_run(&r, &["status"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        assert!(out.contains(&format!("wiring {}: wired", target.provider)), "{out}");
+    }
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    t.write(".claude/settings.json", &manifest.to_string());
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: wired"), "{out}");
+    let mut partial = manifest;
+    partial["hooks"].as_object_mut().unwrap().remove("Stop");
+    t.write(".claude/settings.json", &partial.to_string());
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: not wired"), "{out}");
+}
+
+#[test]
+fn context_does_not_replace_malformed_settings_or_reenable_disabled_hooks() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    t.write(".claude/settings.local.json", "{broken");
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert_eq!(t.read(".claude/settings.local.json"), "{broken");
+    std::fs::remove_file(t.0.join(".claude/settings.local.json")).unwrap();
+    t.write(".impeccable/config.json", r#"{"hook":{"enabled":false}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!t.exists(".claude/settings.local.json"));
+}
+
+#[test]
+fn context_restores_a_missing_user_claude_manifest_with_local_consent() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let home_text = home.to_string_lossy().to_string();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text)]));
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_none());
+    assert!(!home.join(".claude/settings.json").exists());
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"}}"#);
+    assert!(admin::repair_for_context(&r, &cwd).unwrap().is_some());
+    assert!(home.join(".claude/settings.json").exists());
+}
+
+#[test]
+fn context_repairs_consented_manifest_at_the_enclosing_repository_root() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    std::fs::create_dir_all(t.0.join(".git")).unwrap();
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    t.write(".impeccable/config.local.json", r#"{"hook":{"consent":"accepted"},"updateCheck":false}"#);
+    t.write("app/PRODUCT.md", "# Product\n\n## Platform\nweb\n");
+    let mut env = rt(&cwd).env.clone();
+    env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+    let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), env);
+    assert_eq!(impeccable_hook::run_context(&["--target".into(), "app".into()], &mut io), 0);
+    let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+    assert!(out.contains("Repaired Impeccable hook wiring"), "{out}");
+    assert!(!out.contains("MANUAL_DETECTOR_REQUIRED"), "{out}");
+}
+
+#[test]
+fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
+    for relative in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write(".impeccable/config.json", r#"{"updateCheck":false}"#);
+        let home = t.0.join("home");
+        let account = t.0.join("alternate account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+        std::fs::write(account.join("settings.json"), r#"{"permissions":{"allow":["Bash(ls)"]}}"#).unwrap();
+        let home_text = home.to_string_lossy().into_owned();
+        let account_text = if relative { "alternate account".to_string() } else { account.to_string_lossy().into_owned() };
+        let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, err, code) = admin_run(&r, &["on"]);
+        assert_eq!(code, 0, "{err}");
+        assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
+        let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
+        let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
+        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
+        assert!(!home.join(".claude/settings.json").exists());
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("wiring .claude: wired"), "{status}");
+        let mut context_env = r.env.clone();
+        context_env.insert("IMPECCABLE_PROVIDER_ID".into(), "claude-code".into());
+        let (mut io, cap) = Io::captured("", PathBuf::from(&cwd), context_env);
+        impeccable_hook::run_context(&[], &mut io);
+        let output = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        assert!(!output.contains("MANUAL_DETECTOR_REQUIRED"), "{output}");
+    }
+}
+
+#[test]
+fn hooks_on_explains_unwired_account_and_never_uses_another_accounts_skill() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let home = t.0.join("home");
+    std::fs::create_dir_all(home.join(".claude/skills/impeccable/scripts")).unwrap();
+    std::fs::write(home.join(".claude/skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+    let account = t.0.join("other-account");
+    let home_text = home.to_string_lossy().into_owned();
+    let account_text = account.to_string_lossy().into_owned();
+    let r = rt_with(&cwd, env(&[("HOME", &home_text), ("USERPROFILE", &home_text), ("CLAUDE_CONFIG_DIR", &account_text)]));
+    let (out, _, _) = admin_run(&r, &["on"]);
+    assert!(out.contains("No design harness is wired"), "{out}");
+    assert!(out.contains(&account_text), "{out}");
+    assert!(!home.join(".claude/settings.json").exists());
+    assert!(!account.join("settings.json").exists());
+}
+
+#[test]
+fn hooks_on_explains_missing_launcher_and_unwritable_account_settings() {
+    for malformed in [false, true] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let account = t.0.join("claude-account");
+        std::fs::create_dir_all(account.join("skills/impeccable/scripts")).unwrap();
+        if malformed {
+            std::fs::write(account.join("skills/impeccable/scripts/impeccable"), "#!/bin/sh\n").unwrap();
+            std::fs::write(account.join("settings.json"), "{broken").unwrap();
+        }
+        let account_text = account.to_string_lossy().into_owned();
+        let r = rt_with(&cwd, env(&[("HOME", &cwd), ("USERPROFILE", &cwd), ("CLAUDE_CONFIG_DIR", &account_text)]));
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        if malformed {
+            assert!(out.contains("not valid JSON"), "{out}");
+            assert!(!out.contains("No installed provider skill folders found"), "{out}");
+            assert_eq!(std::fs::read_to_string(account.join("settings.json")).unwrap(), "{broken");
+        } else {
+            assert!(out.contains(account.join("skills").join("impeccable").join("scripts").join("impeccable").to_str().unwrap()), "{out}");
+        }
+    }
+}
+
+#[test]
+fn status_and_on_recognize_enabled_hermes_plugins() {
+    for name in [".hermes", "custom-hermes"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let home = t.0.join("home").to_string_lossy().into_owned();
+        let hermes_home = t.0.join("home").join(name).to_string_lossy().into_owned();
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/plugin.yaml"), "name: impeccable-design-hook\n");
+        t.write(&format!("home/{name}/plugins/impeccable-design-hook/__init__.py"), "");
+        let config = format!("home/{name}/config.yaml");
+        t.write(&config, "plugins:\n  enabled: [impeccable-design-hook]\n  disabled: []\n");
+        let mut environment = env(&[("HOME", &home), ("USERPROFILE", &home)]);
+        if name != ".hermes" {
+            environment.insert("HERMES_HOME".into(), hermes_home);
+        }
+        let r = rt_with(&cwd, environment);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(!status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(!out.contains("No design harness is wired"), "{out}");
+        assert!(out.contains("Hermes design hook plugin is already enabled"), "{out}");
+        assert!(!out.contains("No installed provider skill folders"), "{out}");
+        let disabled = "plugins:\n  enabled: []\n  disabled: [impeccable-design-hook]\n";
+        t.write(&config, disabled);
+        let (status, _, _) = admin_run(&r, &["status"]);
+        assert!(status.contains("not wired in any harness"), "{status}");
+        let (out, _, _) = admin_run(&r, &["on"]);
+        assert!(out.contains("No design harness is wired"), "{out}");
+        assert_eq!(t.read(&config), disabled);
+    }
+}
+
+// Shell writes (D6): Codex reaches PostToolUse only through apply_patch, and
+// Claude only through Edit/Write, so a file written by a shell command never
+// enters the per-edit cache. Stop finds UI files modified since the session
+// started and scans them with the cached ones.
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+/// A UUIDv7 whose timestamp is `ms`, as Codex mints its thread ids.
+fn uuid_v7(ms: u64) -> String {
+    let hex = format!("{ms:012x}");
+    format!("{}-{}-7abc-8def-0123456789ab", &hex[..8], &hex[8..12])
+}
+
+fn codex_stop(cwd: &str, session: &str) -> String {
+    json!({ "session_id": session, "cwd": cwd, "hook_event_name": "Stop", "turn_id": "t-1", "stop_hook_active": false }).to_string()
+}
+
+fn set_mtime(path: &str, ms: u64) {
+    let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms)).unwrap();
+}
+
+#[test]
+fn stop_scans_a_shell_written_file_from_a_codex_session() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("index.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    let out: Value = serde_json::from_str(&deep.stdout).unwrap_or_else(|_| panic!("no Stop output: {:?}", deep.audit));
+    assert_eq!(out["decision"], json!("block"));
+    assert!(out["reason"].as_str().unwrap().contains("[side-tab]"));
+    assert_eq!(hook::run_stop_hook(&r, &codex_stop(&cwd, &session)).stdout, "", "a repeat Stop stays silent");
+}
+
+#[test]
+fn stop_skips_files_modified_before_the_session_started() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let started = now_ms() - 60_000;
+    let css = t.write("index.css", SIDE_TAB_CSS);
+    set_mtime(&css, started - 3_600_000);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(started)));
+    assert_eq!(deep.stdout, "");
+    assert_eq!(audit_str(&deep.audit, "skipped"), Some("no-touched-files"));
+}
+
+#[test]
+fn stop_does_not_guess_a_session_start() {
+    // No v7 id and no transcript: today's behavior, cache only.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write("index.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, "s1"));
+    assert_eq!(deep.stdout, "");
+    assert_eq!(audit_str(&deep.audit, "skipped"), Some("no-touched-files"));
+}
+
+#[test]
+fn stop_adds_shell_written_files_to_the_cached_ones() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    let clean = t.write("src/clean.css", ".a { color: #333; }\n");
+    hook::run_hook(&r, &edit_event(&cwd, &clean, &session));
+    t.write("src/shell.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "shell-written file scanned: {}", deep.stdout);
+    assert!(deep.stdout.contains("shell.css"));
+}
+
+#[test]
+fn stop_discovery_skips_dependency_and_hidden_dirs() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("node_modules/pkg/a.css", SIDE_TAB_CSS);
+    t.write(".cache/b.css", SIDE_TAB_CSS);
+    t.write("dist/c.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_takes_the_session_start_from_the_transcript() {
+    // Claude ids are v4, so its Bash writes date from the transcript's birth.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let transcript = t.write(".test-home/transcript.jsonl", "{}\n");
+    if std::fs::metadata(&transcript).and_then(|m| m.created()).is_err() {
+        return; // no birth time on this filesystem: discovery stays off
+    }
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    t.write("page.css", SIDE_TAB_CSS);
+    let stop = json!({ "session_id": "c1", "cwd": cwd, "hook_event_name": "Stop", "transcript_path": transcript, "stop_hook_active": false }).to_string();
+    let deep = hook::run_stop_hook(&r, &stop);
+    assert!(deep.stdout.contains("[side-tab]"), "transcript-anchored discovery: {} {:?}", deep.stdout, deep.audit);
+}
+
+#[test]
+fn stop_discovery_stays_out_of_a_folder_that_is_not_a_project() {
+    // A session cwd above several projects keys each file to its own root in
+    // the per-edit pass; discovery does not walk the parent under its settings.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("app/package.json", "{}");
+    t.write("app/a.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_discovery_skips_files_over_the_size_limit() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"hook":{"limits":{"maxFileBytes":32}}}"#);
+    t.write("big.css", SIDE_TAB_CSS);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+#[cfg(unix)]
+#[test]
+fn stop_discovery_skips_named_pipes() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    let fifo = format!("{cwd}/preview.css");
+    assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success());
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "");
+}
+
+#[test]
+fn stop_discovery_covers_a_session_started_inside_a_project() {
+    // A Codex session started in `src/`: the project marker sits one level up.
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/src");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert!(deep.stdout.contains("[side-tab]"), "{} {:?}", deep.stdout, deep.audit);
+    // Keyed to the project: no cache lands in the subfolder, where its
+    // `.impeccable` would later pass for a project root.
+    assert!(!std::path::Path::new(&format!("{cwd}/.impeccable")).exists());
+    assert!(std::path::Path::new(&format!("{root}/.impeccable")).exists());
+}
+
+#[test]
+fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
+    let t = Tmp::new();
+    let root = t.path();
+    t.write("package.json", "{}");
+    t.write("vendor/lib/x.css", SIDE_TAB_CSS);
+    let cwd = format!("{root}/vendor");
+    let r = rt(&cwd);
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
+    assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+// #1237: plain .ts/.js is mostly not UI (a server, a CLI, a config), so the
+// hook scans it only in a project that uses Impeccable.
+const TS_SLOP: &str = "const s = `.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}`;\n";
+
+#[test]
+fn plain_scripts_skip_in_a_project_without_impeccable_context() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let ts = t.write("src/server.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+    assert_eq!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.is_empty());
+    let js = t.write("bin/cli.js", TS_SLOP);
+    assert_eq!(audit_str(&hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).audit, "skipped"), Some("plain-script"));
+    // Component and style files are UI wherever they are.
+    let tsx = t.write("src/Card.tsx", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &tsx, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn plain_scripts_scan_once_the_project_uses_impeccable() {
+    for marker in ["PRODUCT.md", "DESIGN.md", "docs/PRODUCT.md", ".agents/context/DESIGN.md", ".impeccable/config.json"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(marker, if marker.ends_with(".json") { "{}" } else { "# Product\n" });
+        let r = rt(&cwd);
+        let ts = t.write("src/theme.ts", TS_SLOP);
+        let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+        assert!(out.stdout.contains("[gradient-text]"), "{marker}: {:?}", out.audit);
+    }
+}
+
+#[test]
+fn a_configured_extension_is_not_a_plain_script() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"detector":{"extensions":[{"ext":".js","engine":"text"}]}}"#);
+    let r = rt(&cwd);
+    let js = t.write("src/a.js", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let css = t.0.join("src/page.css");
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+    std::fs::OpenOptions::new().write(true).open(&css).unwrap().set_modified(earlier).unwrap();
+    // More plain scripts than discovery keeps, all newer than the stylesheet.
+    for i in 0..45 {
+        t.write(&format!("server/route{i}.ts"), TS_SLOP);
+    }
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "the stylesheet still scans: {} {:?}", deep.stdout, deep.audit);
+    assert!(!deep.stdout.contains("[gradient-text]"), "no server script scans: {}", deep.stdout);
+}
+
+#[test]
+fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let write = cursor(&cwd, "Write", json!({"file_path": "src/server.ts", "content": TS_SLOP}));
+    assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
+    t.write("DESIGN.md", "# Design\n");
+    assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
 }
