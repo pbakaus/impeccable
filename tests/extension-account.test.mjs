@@ -255,7 +255,13 @@ describe('account worker', () => {
   const local = {};
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
   const none = { addListener() {} };
+  /** The alarms kept, the notices shown, and the worker's alarm and notice-button listeners (REN-1909). */
+  const alarms = new Map();
+  const notices = [];
+  const heard = { alarm: [], button: [] };
   globalThis.chrome = {
+    alarms: { onAlarm: { addListener: (listener) => heard.alarm.push(listener) }, async get(name) { return alarms.get(name); }, async create(name, info) { alarms.set(name, info); }, async clear(name) { alarms.delete(name); } },
+    notifications: { onButtonClicked: { addListener: (listener) => heard.button.push(listener) }, onClicked: none, async create(id, options) { notices.push({ id, ...options }); }, async clear() {} },
     runtime: {
       id: 'ext', getURL: (file) => `chrome-extension://ext/${file}`, getManifest: () => ({ action: { default_popup: 'popup/popup.html' } }), onMessage: { addListener: (listener) => listeners.push(listener) }, onConnect: none,
       async sendMessage() {},
@@ -314,6 +320,41 @@ describe('account worker', () => {
       return json(404, {});
     };
   };
+  it('checks in on the alarm, shows each journey an agent asked for once, and opens only our outing page on Start or tells the server Not now (REN-1909)', async () => {
+    await loaded;
+    const page = 'https://app.impeccable.style/app/acme/outings/o7';
+    const journeys = [
+      { id: 'o7', page, persona: 'Dana', site: 'shop.example.com', task: 'Buy a mug.', at: '2026-11-14T10:00:00Z' },
+      { id: 'o8', page: 'https://evil.example.com/app/acme/outings/o8', persona: 'Eve', site: 'evil.example.com', task: 'Sign up.', at: '2026-11-14T10:00:00Z' },
+    ];
+    const asked = [];
+    globalThis.fetch = async (url, init = {}) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-in', refresh_token: 'refresh-walk', expires_in: 900 });
+      if (url === `${ISSUER}/extension/v1/me`) return json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: true });
+      if (url.startsWith(`${ISSUER}/extension/v1/waiting`)) { asked.push({ path: url.slice(ISSUER.length), method: init.method ?? 'GET', auth: init.headers.authorization }); return init.method ? json(204, null) : json(200, { journeys }); }
+      return json(404, {});
+    };
+    // Signed in with Pro: the alarm is kept, once a minute.
+    await ask({ account: 'status' }, fromPopup);
+    assert.deepEqual(alarms.get('check-in'), { periodInMinutes: 1 });
+    const tick = () => Promise.all(heard.alarm.map((listener) => listener({ name: 'check-in' })));
+    await tick();
+    await tick();
+    await settle();
+    assert.deepEqual(asked.map(({ path, method, auth }) => [path, method, auth]), [['/extension/v1/waiting', 'GET', 'Bearer access-in'], ['/extension/v1/waiting', 'GET', 'Bearer access-in']]);
+    // Twice asked, one notice: never the page that isn't ours.
+    assert.deepEqual(notices.map(({ id, buttons }) => [id, buttons.length]), [['journey:o7', 2]]);
+    assert.match(notices[0].message, /Dana.*shop\.example\.com.*Buy a mug\./);
+    const press = (id, button) => Promise.all(heard.button.map((listener) => listener(id, button))).then(settle);
+    await press('journey:o8', 0);
+    await press('journey:o7', 0);
+    assert.deepEqual(opened.slice(-1), [{ url: page, active: true }]);
+    assert.equal(opened.filter((tab) => tab.url.includes('evil')).length, 0);
+    await press('journey:o7', 1);
+    assert.deepEqual(asked.at(-1), { path: '/extension/v1/waiting/o7/decline', method: 'POST', auth: 'Bearer access-in' });
+  });
+
   // Before any walk (a walk under way keeps the icon on its panel too).
   it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
     await loaded;
@@ -509,6 +550,33 @@ describe('account worker', () => {
 });
 
 // The welcome page's script (manifest.json), on a stub page: the mark the page reads, and its button.
+describe('agent check-in', () => {
+  // A worker Chrome ended and started again: the same session storage and alarms, a new check-in.
+  it('never shows a journey twice, nor puts the alarm off, across a worker started again (REN-1909)', async () => {
+    const { checkIns } = await import('../extension/account/waiting.js');
+    const kept = {};
+    const made = [];
+    const notices = [];
+    const alarms = new Map();
+    const chrome = {
+      runtime: { getURL: (file) => `chrome-extension://ext/${file}` },
+      storage: { session: { async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); } } },
+      alarms: { async get(name) { return alarms.get(name); }, async create(name, info) { made.push(name); alarms.set(name, info); }, async clear(name) { alarms.delete(name); } },
+      notifications: { async create(id) { notices.push(id); } },
+    };
+    const session = { async waiting() { return [{ id: 'o7', page: 'https://app.impeccable.style/app/acme/outings/o7', persona: 'Dana', site: 'shop.example.com', task: 'Buy a mug.' }]; } };
+    for (let start = 0; start < 2; start++) {
+      const worker = checkIns({ session, chrome });
+      await worker.keep(true);
+      await Promise.all([worker.checkIn(), worker.checkIn({ start: true })]);
+    }
+    assert.deepEqual(notices, ['journey:o7']);
+    assert.deepEqual(made, ['check-in']);
+    await checkIns({ session, chrome }).keep(false);
+    assert.equal(alarms.size, 0);
+  });
+});
+
 describe('welcome page', () => {
   it('marks the page as having the extension, and its open-panel button asks the worker instead of following its link', () => {
     const root = { dataset: {} };

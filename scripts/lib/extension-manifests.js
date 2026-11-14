@@ -24,11 +24,14 @@ const onlyStoreHosts = (entries) => entries
   .map((entry) => ({ ...entry, matches: entry.matches.filter((match) => STORE_HOSTS.some((host) => match.startsWith(host))) }))
   .filter((entry) => entry.matches.length > 0);
 
-/** The store manifest: no key, no `identity` (the store build does not sign in), content scripts on production hosts only. */
+/** The account's own permissions: signing in, and the check-in with its notice (account/waiting.js). */
+const ACCOUNT_PERMISSIONS = ['identity', 'alarms', 'notifications'];
+
+/** The store manifest: no key, none of the account's permissions (the store build does not sign in), content scripts on production hosts only. */
 export function storeManifest(source) {
   const { key: _key, content_scripts: scripts = [], options_ui: _options, ...rest } = source;
   const kept = onlyStoreHosts(scripts.filter((entry) => !entry.js.some(isAccountFile)));
-  return { ...rest, permissions: source.permissions.filter((permission) => permission !== 'identity'), ...(kept.length ? { content_scripts: kept } : {}) };
+  return { ...rest, permissions: source.permissions.filter((permission) => !ACCOUNT_PERMISSIONS.includes(permission)), ...(kept.length ? { content_scripts: kept } : {}) };
 }
 
 /** Whether a path in extension/ goes into the store build: everything but the account. */
@@ -107,7 +110,7 @@ export function firefoxManifest(source) {
     // releases. The shared worker hosts the rule core in a background-page
     // iframe when Chrome's offscreen API is unavailable.
     background: { scripts: [DETECTOR_WORKER] },
-    permissions: rest.permissions.filter((permission) => ![...WALK_PERMISSIONS, 'offscreen', 'identity'].includes(permission)),
+    permissions: rest.permissions.filter((permission) => ![...WALK_PERMISSIONS, 'offscreen', ...ACCOUNT_PERMISSIONS].includes(permission)),
     // Required by AMO for signing/distribution. Ignored by Chrome.
     browser_specific_settings: {
       gecko: {

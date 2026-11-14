@@ -18,6 +18,13 @@ export const COPY = {
 
   /** Signed in, and the server says the account has no Impeccable Pro. */
   notPro: { line: 'This account doesn’t have Impeccable Pro.' },
+  /** Chrome's notice when an agent asks for a journey (account/waiting.js): who, where and what, in one line. */
+  agent: {
+    title: 'Your agent wants to start a journey',
+    line: ({ persona, site, task }) => `${persona || 'A persona'} on ${site}: ${task}`,
+    start: 'Start',
+    later: 'Not now',
+  },
   signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.' },
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', settings: 'Settings', back: 'Back' },
 

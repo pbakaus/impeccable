@@ -65,13 +65,17 @@ const SLUG = /^[a-z0-9-]{1,80}$/;
 const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
   ...(SLUG.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : {}) } : {}),
-  ...(typeof p.about === 'string' && p.about ? { about: p.about.slice(0, 1500) } : {}),
+  ...(typeof (p.profile ?? p.about) === 'string' && (p.profile ?? p.about) ? { about: (p.profile ?? p.about).slice(0, 1500) } : {}),
   ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
 });
+/** A waiting journey's id: an outing's, as the hand-off takes it (walks/handoff.js `ID`). */
+const WAITING_ID = /^[A-Za-z0-9_-]{1,80}$/;
+/** A plan's id: a signed string the server reads back, bound to the persona, task and site it was made for. */
+export const PLAN_ID = /^[A-Za-z0-9._~+/=-]{1,4096}$/;
 /** A plan as the server answers it: `{ id, steps: [{ text, risky }], risky }`, or null. */
 function planOf(plan) {
   const steps = Array.isArray(plan?.steps) ? plan.steps.filter((s) => typeof s?.text === 'string' && s.text.trim()).slice(0, 12).map((s) => ({ text: s.text.slice(0, 200), risky: s.risky === true })) : [];
-  if (typeof plan?.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(plan.id) || steps.length === 0) return null;
+  if (typeof plan?.id !== 'string' || !PLAN_ID.test(plan.id) || steps.length === 0) return null;
   return { id: plan.id, steps, risky: plan.risky === true || steps.some((s) => s.risky) };
 }
 /** Why creating a persona did not happen, by the server's answer. */
@@ -269,6 +273,25 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
+     * The check-in (REN-1909): the server hears Chrome is open, and answers the journeys an agent asked for that wait
+     * for the person's Start, `[{ id, page, persona, site, task }]` (at most 3), or null.
+     */
+    async waiting() {
+      const list = await read(issuer(), '/waiting');
+      const rows = Array.isArray(list?.journeys) ? list.journeys : null;
+      const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+      return rows?.filter((j) => typeof j?.id === 'string' && WAITING_ID.test(j.id) && typeof j.page === 'string' && j.page.length <= 2048).slice(0, 3)
+        .map((j) => ({ id: j.id, page: j.page, persona: text(j.persona, 120), site: text(j.site, 255), task: text(j.task, 200) })) ?? null;
+    },
+
+    /** Tells the server the person said Not now to a waiting journey. A 404 is one already gone. `{ ok }`. */
+    async decline(id) {
+      if (!WAITING_ID.test(id)) return { ok: false };
+      const answer = await call(issuer(), `/waiting/${id}/decline`, undefined, 'POST').catch(() => null);
+      return { ok: answer?.status === 204 || answer?.status === 404 };
+    },
+
+    /**
      * Asks the server to make the person a persona of their own from `description`. The same `requestId` sent again
      * is answered with the persona it made, never a second. `{ ok: true, persona }`, or `{ ok: false, why }`: `short`,
      * `scope` (signed in before personas could be created), `unavailable`, `limit` (with the server's `max`), `quota`,
@@ -314,6 +337,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      if (answer?.status === 429) return { ok: false, why: 'too-many' };
+      if (answer?.status === 502) return { ok: false, why: 'no-plan' };
       const plan = answer && answer.status >= 200 && answer.status < 300 ? planOf(answer.json?.plan) : null;
       return plan ? { ok: true, plan } : { ok: false, why: 'failed' };
     },

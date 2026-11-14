@@ -11,6 +11,7 @@ import { planned } from '../walks/control.js';
 import { signedIn as pointToolbar } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { PLAN_ID, createSession, idbStore } from './session.js';
+import { ALARM, checkIns } from './waiting.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
 /** A development build (shared/build.js): only such a build may sign in to another server. */
@@ -29,7 +30,8 @@ const chosen = chrome.storage.local.get('accountServer').then(({ accountServer }
 }, () => undefined).then(() => session.recover()).catch(() => undefined);
 // Signed in with Impeccable Pro, the toolbar icon opens the side panel rather than the popup: from the worker's start,
 // by the server's word (`status`); out of its reach, by the sign-in kept on disk.
-void chosen.then(() => status()).catch(() => undefined);
+// The worker's start is also a check-in for journeys an agent asked for (waiting.js).
+void chosen.then(() => status()).then((answer) => (answer.signedIn && answer.pro === true ? agent.checkIn({ start: true }) : undefined)).catch(() => undefined);
 
 const session = createSession({
   fetch: (...args) => fetch(...args),
@@ -39,12 +41,18 @@ const session = createSession({
   redirectUri: chrome.identity.getRedirectURL('callback'),
 });
 
+const agent = checkIns({ session, chrome });
+chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === ALARM) void chosen.then(() => agent.checkIn()); });
+chrome.notifications.onButtonClicked.addListener((notice, button) => { void chosen.then(() => agent.pressed(notice, button)).catch(() => undefined); });
+chrome.notifications.onClicked.addListener((notice) => { void chosen.then(() => agent.pressed(notice)).catch(() => undefined); });
+
 /** What the popup is told of the account. */
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
   // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
   pointToolbar(signedIn && answer.pro !== false);
+  void agent.keep(signedIn && answer.pro !== false).catch(() => undefined);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
 }

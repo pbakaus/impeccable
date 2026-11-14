@@ -15,7 +15,9 @@
     "tabGroups",
     "sidePanel",
     "downloads",
-    "identity"
+    "identity",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>"
