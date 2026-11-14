@@ -152,6 +152,16 @@ describe('talk to type', () => {
     assert.deepEqual([seen.started, seen.ended], [2, [null]]);
   });
 
+  it('starts a new session when words stop coming mid-talk', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const { seen, rec: first } = run('');
+    first.hear(['open the pricing page']);
+    t.mock.timers.tick(8000);
+    assert.deepEqual([first.calls, seen.started, seen.ended], [['start', 'stop'], 2, []]);
+    Speech.last.hear(['then click upgrade']);
+    assert.equal(seen.text.at(-1), 'try signing up then click upgrade');
+  });
+
   it('stops by itself after two silent sessions in a row', () => {
     const { seen, rec: first } = run('');
     first.onerror({ error: 'no-speech' });

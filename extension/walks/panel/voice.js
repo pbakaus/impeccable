@@ -14,6 +14,8 @@ const QUIET = new Set(['no-speech', 'aborted']);
 const AGAIN = new Set(['no-speech', 'network']);
 /** Chrome ends a session on its own after a pause or about a minute; after this many in a row with no words, stop. */
 const EMPTY = 2;
+/** Words that stop coming mid-talk: Google's service can go quiet on a session without ending it. Then start anew. */
+const STALL_MS = 8000;
 
 /**
  * Listens until `stop()` is called, through pauses: when Chrome ends a session on its own, a new one starts and its
@@ -21,14 +23,15 @@ const EMPTY = 2;
  * `base`; `onEnd` gets, once, null or the reason it failed (`not-allowed`, `network`, …), also after a long silence.
  * Returns `stop`, which keeps what was heard, and `drop`, which ends it at once and calls nothing back.
  */
-export function listen(Ctor, { base = '', lang = 'en-US', onStart = () => {}, onText, onEnd }) {
+export function listen(Ctor, { base = '', lang = 'en-US', stallMs = STALL_MS, onStart = () => {}, onText, onEnd }) {
   // What earlier sessions heard stays; each session's words go after it.
   let kept = base.trim();
   let rec = null;
   let over = false;
   let stopping = false;
   let empty = 0;
-  const quiet = (r) => { if (r) r.onstart = r.onresult = r.onerror = r.onend = null; };
+  let timer = null;
+  const quiet = (r) => { clearTimeout(timer); if (r) r.onstart = r.onresult = r.onerror = r.onend = null; };
   const finish = (error) => {
     if (over) return;
     over = true;
@@ -44,12 +47,16 @@ export function listen(Ctor, { base = '', lang = 'en-US', onStart = () => {}, on
     now.maxAlternatives = 1;
     let said = '';
     let failed = null;
+    let stalled = false;
     now.onstart = () => onStart();
     now.onresult = (event) => {
       said = '';
       for (let i = 0; i < event.results.length; i++) said += event.results[i][0]?.transcript || '';
       said = said.trim();
       onText(`${kept} ${said}`.trim());
+      // Once words come, more should follow: none for a while ends this session, and the next one listens.
+      clearTimeout(timer);
+      timer = setTimeout(() => { stalled = true; try { now.stop(); } catch { /* ended */ } timer = setTimeout(() => { try { now.abort(); } catch { /* ended */ } }, 1500); }, stallMs);
     };
     now.onerror = (event) => { failed = event.error || 'failed'; };
     now.onend = () => {
@@ -57,6 +64,7 @@ export function listen(Ctor, { base = '', lang = 'en-US', onStart = () => {}, on
       // The last words shown stay, interim or not: Chrome can end a session before it marks them final.
       if (said) kept = `${kept} ${said}`.trim();
       empty = said ? 0 : empty + 1;
+      if (stalled) failed = null;
       if (stopping || (failed && !AGAIN.has(failed)) || empty >= EMPTY) { finish(failed); return; }
       session();
     };
