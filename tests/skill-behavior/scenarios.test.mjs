@@ -133,6 +133,38 @@ function executedUpdateCommands(trace) {
   );
 }
 
+// Scenario 24 helpers. The step that needs a split playbook's part is the
+// first implementation write, roll, build-phase or comp-spec call, or the first
+// heuristic score (in a tool call's input or in the agent's own text).
+const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const scoresHeuristics = (text) => /heuristic/i.test(text) && /\b[0-4]\s*\/\s*4\b/.test(text);
+const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
+  || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''))
+  || scoresHeuristics(JSON.stringify(call.input ?? ''));
+const needIndex = (trace) => {
+  const calls = trace.toolCalls.findIndex(needsPart);
+  const scored = (trace.textSteps || []).find((step) => scoresHeuristics(step.text));
+  const candidates = [calls, scored ? scored.callsBefore : -1].filter((i) => i >= 0);
+  return candidates.length ? Math.min(...candidates) : -1;
+};
+const partLoadedInTime = (trace, part) => {
+  const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, part));
+  const need = needIndex(trace);
+  return loadIndex >= 0 && (need < 0 || loadIndex < need);
+};
+
+it('scenario 24 helpers: a part read after scoring or after the first write is a miss', () => {
+  const read = { name: 'read', input: { path: 'reference/critique-rubric.md' }, loadedFiles: ['reference/critique-rubric.md'] };
+  const write = { name: 'write', input: { path: 'index.html', content: '<p>' }, mutatedPaths: ['index.html'] };
+  const scoreText = { text: 'Heuristic 1, visibility of system status: 3/4', callsBefore: 1 };
+  assert.ok(partLoadedInTime({ toolCalls: [read, write] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [write, read] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [], textSteps: [] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [{ name: 'bash', input: { command: 'ls' } }, read], textSteps: [scoreText] }, 'critique-rubric.md'));
+  assert.ok(partLoadedInTime({ toolCalls: [read, { name: 'bash', input: { command: 'ls' } }], textSteps: [{ ...scoreText, callsBefore: 2 }] }, 'critique-rubric.md'));
+});
+
 for (const modelId of resolveModelList()) {
   const provider = detectProvider(modelId);
   const keyPresent = hasKey(provider);
@@ -951,15 +983,6 @@ for (const modelId of resolveModelList()) {
     // the point, so each path repeats (IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS, default 3).
     // The sub-agent critique path needs a sub-agent tool this harness lacks, so
     // it is measured in real Claude Code instead (headless runs, by hand).
-    const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
-    const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
-    const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
-      || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''));
-    const partLoadedInTime = (trace, part) => {
-      const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, part));
-      const needIndex = trace.toolCalls.findIndex(needsPart);
-      return loadIndex >= 0 && (needIndex < 0 || loadIndex < needIndex);
-    };
     const NESTED_PATHS = [
       { id: 'world', part: 'new-work-world.md',
         files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
@@ -984,7 +1007,7 @@ for (const modelId of resolveModelList()) {
           const workspace = prepareWorkspace({ files: nested.files });
           try {
             const { trace, text } = await runTurn({
-              checkpoint: (trace) => fileLoaded(trace, nested.part) || trace.toolCalls.some(needsPart),
+              checkpoint: (trace) => fileLoaded(trace, nested.part) || needIndex(trace) >= 0,
               workspace,
               model,
               userPrompt: nested.prompt,
