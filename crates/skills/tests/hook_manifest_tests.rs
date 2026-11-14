@@ -1131,6 +1131,26 @@ fn global_install_keeps_a_project_owned_hook_on_the_project_skill() {
 }
 
 #[test]
+fn first_global_install_repairs_and_prunes_a_v3_project_hook() {
+    // A v3 install left a `node .../hook.mjs` Cursor hook in the project,
+    // naming a project skill that is gone. The first global install retargets
+    // it at the home skill and then prunes it as a duplicate of the home hook.
+    let fx = home_fixture("home-hooks-first-install-v3");
+    let sys = home_sys(&fx.home, &fx.project, &[]);
+    let project_cursor = jsp::join(&[&fx.project, ".cursor", "hooks.json"]);
+    write(&project_cursor, &json!({ "version": 1, "hooks": {
+        "postToolUse": [{ "command": "node .cursor/skills/impeccable/scripts/hook.mjs", "matcher": "^Write$", "timeout": 5 }],
+    } }).to_string());
+
+    copy_provider_hooks(&sys, &fx.bundle, &fx.project, &[".cursor"], false, Some(&fx.home), Some(&fx.project)).unwrap();
+
+    assert!(file_has_impeccable_hook_marker(&jsp::join(&[&fx.home, ".cursor", "hooks.json"])));
+    let after = std::fs::read_to_string(&project_cursor).unwrap_or_default();
+    assert!(!after.contains("hook.mjs"), "{after}");
+    assert!(!file_has_impeccable_hook_marker(&project_cursor), "{after}");
+}
+
+#[test]
 fn stale_project_copy_stays_while_the_home_hook_is_not_wired() {
     let fx = home_fixture("home-hooks-unwired");
     let sys = home_sys(&fx.home, &fx.project, &[]);

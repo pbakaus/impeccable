@@ -676,6 +676,13 @@ fn json_parse_message(e: &serde_json::Error) -> String {
 pub fn copy_provider_hooks(sys: &crate::providers::Sys, bundle_dir: &str, root: &str, providers: &[&'static str], force: bool, skill_root: Option<&str>, project_root: Option<&str>) -> Result<Vec<String>, String> {
     let skill_root = skill_root.unwrap_or(root);
     let user_scope = sys.is_home_dir(skill_root);
+    // A v3 (`node .../hook.mjs`) manifest a project still carries is repaired
+    // before the duplicate cleanup at the end, so a first global install
+    // retargets and then prunes it the way a repeat install does.
+    let project = project_root.unwrap_or(root);
+    if user_scope && project != skill_root {
+        repair_stale_hook_manifests(sys, project, providers, Some(skill_root))?;
+    }
     let mut written: Vec<String> = Vec::new();
     for provider in providers {
         if *provider == ".hermes" {
