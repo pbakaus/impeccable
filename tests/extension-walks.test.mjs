@@ -128,21 +128,46 @@ describe('talk to type', () => {
     return { seen, control, rec: Speech.last };
   };
 
-  it('listens once with interim words, writes them after the box’s text, and keeps them when stopped', () => {
+  it('listens through pauses with interim words, writes them after the box’s text, and keeps them when stopped', () => {
     const { seen, control, rec } = run('On the pricing page ');
-    assert.deepEqual([rec.continuous, rec.interimResults, rec.lang, seen.started], [false, true, 'en-GB', 1]);
+    assert.deepEqual([rec.continuous, rec.interimResults, rec.lang, seen.started], [true, true, 'en-GB', 1]);
     rec.hear(['try sign']);
     control.stop();
     assert.deepEqual(seen.text, ['On the pricing page try sign', 'On the pricing page try signing up']);
     assert.deepEqual(seen.ended, [null]);
   });
 
-  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['network', 'network'], ['no-speech', null], ['aborted', null]]) {
+  // Chrome ends a session by itself after a pause or about a minute of talk (#1893): a new one starts, its words
+  // follow the earlier ones once (last interim words kept), and only a long silence ends listening.
+  it('starts again when Chrome ends a session, without doubling or losing words', () => {
+    const { seen, control, rec: first } = run('');
+    first.hear(['open the pricing page'], true);
+    first.hear(['open the pricing page', ' and compare']);
+    first.onend();
+    const second = Speech.last;
+    assert.notEqual(second, first);
+    second.hear(['then click upgrade']);
+    control.stop();
+    assert.deepEqual(seen.text.slice(-3), ['open the pricing page and compare', 'open the pricing page and compare then click upgrade', 'open the pricing page and compare try signing up']);
+    assert.deepEqual([seen.started, seen.ended], [2, [null]]);
+  });
+
+  it('stops by itself after two silent sessions in a row', () => {
+    const { seen, rec: first } = run('');
+    first.onerror({ error: 'no-speech' });
+    first.onend();
+    assert.deepEqual(seen.ended, []);
+    Speech.last.onerror({ error: 'no-speech' });
+    Speech.last.onend();
+    assert.deepEqual([seen.started, seen.ended], [2, [null]]);
+  });
+
+  for (const [error, ended] of [['not-allowed', 'not-allowed'], ['network', 'network'], ['aborted', null]]) {
     it(`ends once on ${error}, saying ${ended ?? 'nothing'}`, () => {
       const { seen, rec } = run('');
       rec.onerror({ error });
       rec.onend?.();
-      assert.deepEqual(seen.ended, [ended]);
+      assert.deepEqual([seen.started, seen.ended], [1, [ended]]);
     });
   }
 
