@@ -581,6 +581,55 @@ describe('walk worker', () => {
     }
   });
 
+  // REN-1891: dragover bubbles, so a page that cancels it on the document would make any point read as a drop box.
+  // The page script runs against a stand-in page whose events go in and back out through the parents, as Chrome's do.
+  for (const [cancels, gives] of [['document', 'NotFound'], ['box', 'drop']]) {
+    it(`drops the picture only where the box at the point takes it: cancelled on the ${cancels} gives ${gives}`, async () => {
+      const { ops } = await walked();
+      page.seen = {};
+      const node = (up, element = true) => ({
+        up, parentElement: element ? up : null, heard: [], closest: () => null,
+        addEventListener(type, fn, capture = false) { this.heard.push({ type, fn, capture }); },
+        removeEventListener(type, fn, capture = false) { this.heard = this.heard.filter((l) => !(l.type === type && l.fn === fn && l.capture === capture)); },
+        dispatchEvent(e) {
+          const path = [];
+          for (let at = this; at; at = at.up) path.unshift(at);
+          const run = (at, capture) => { for (const l of at.heard.filter((h) => h.type === e.type && h.capture === capture)) l.fn(e); };
+          for (const at of path.slice(0, -1)) run(at, true);
+          run(this, true);
+          run(this, false);
+          for (const at of path.slice(0, -1).reverse()) run(at, false);
+        },
+      });
+      const document = node(null, false);
+      const html = node(document, false);
+      document.body = node(html);
+      const box = node(document.body);
+      const at = node(box);
+      document.elementFromPoint = () => at;
+      const dropped = [];
+      const cancelling = cancels === 'document' ? document : box;
+      for (const type of ['dragenter', 'dragover']) cancelling.addEventListener(type, (e) => e.preventDefault());
+      cancelling.addEventListener('drop', (e) => { dropped.push(e.type); e.preventDefault(); });
+      const stand = {
+        document, File, Uint8Array, atob, Event: class {}, HTMLInputElement: class {},
+        DataTransfer: class { constructor() { this.items = { add() {} }; } },
+        DragEvent: class { constructor(type) { this.type = type; this.defaultPrevented = false; } preventDefault() { this.defaultPrevented = true; } },
+      };
+      const { fetch } = globalThis;
+      const { sendCommand } = chrome.debugger;
+      globalThis.fetch = async (url) => new Response(readFileSync(path.join(ROOT, 'extension', String(url).replace('chrome-extension://ext/', ''))));
+      chrome.debugger.sendCommand = async (target, method, params) => (String(params?.expression).includes('elementFromPoint') ? { result: { value: vm.runInNewContext(params.expression, stand) } } : sendCommand(target, method, params));
+      try {
+        const got = await ops.upload({ x: 5, y: 6 }).then((r) => r.value, (err) => err.name);
+        assert.deepEqual([got, dropped], [gives, gives === 'drop' ? ['drop'] : []]);
+      } finally {
+        globalThis.fetch = fetch;
+        chrome.debugger.sendCommand = sendCommand;
+      }
+    });
+  }
+
   // REN-1891: a pause that lands while the upload's world is being made gives the page no picture.
   it('gives no picture when a pause lands while the upload is under way', async () => {
     const { ops, command } = await walked();

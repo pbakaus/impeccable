@@ -573,9 +573,26 @@ function attach(x, y, data, name, type) {
     field.dispatchEvent(new Event('change', { bubbles: true }));
     return 'picker';
   }
+  // A drop area says so by cancelling dragover (the HTML drag model). Only the box at the point, up to body's child,
+  // counts: a page that cancels it on the document or body would make every point look like one.
+  let box = at;
+  while (box.parentElement && box.parentElement !== document.body) box = box.parentElement;
+  if (box.parentElement !== document.body) return null;
   const dt = files();
-  const drag = (kind) => { const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }); at.dispatchEvent(e); return e.defaultPrevented; };
-  // A drop area says so by cancelling dragover (the HTML drag model); one that does not would never take a drop.
+  const drag = (kind) => {
+    const e = new DragEvent(kind, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y });
+    // Uncancelled on the way into the box, cancelled on the way out; or stopped inside it, so cancelled there.
+    let before, after;
+    const into = () => { before = e.defaultPrevented; };
+    const out = () => { after = e.defaultPrevented; };
+    box.addEventListener(kind, into, true);
+    box.addEventListener(kind, out);
+    at.dispatchEvent(e);
+    box.removeEventListener(kind, into, true);
+    box.removeEventListener(kind, out);
+    return before === false && (after ?? e.defaultPrevented);
+  };
+  // One that does not cancel it is never dropped on, so no handler further out takes a file this says it did not give.
   const wanted = [drag('dragenter'), drag('dragover')].some(Boolean);
   if (!wanted) { drag('dragleave'); return null; }
   drag('drop');
