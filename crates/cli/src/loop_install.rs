@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open]\n       impeccable loop update [--no-open]\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -184,24 +184,66 @@ fn executable(app: &Path) -> Result<PathBuf> {
     fs::canonicalize(app.join("Contents/MacOS").join(name)).map_err(|e| e.to_string())
 }
 
-fn refuse_running(app: &Path) -> Result<()> {
+const RUNNING: &str =
+    "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.";
+/// How long `loop update` waits for a running Loop to quit.
+const QUIT_WAIT: Duration = Duration::from_secs(10);
+
+/// The pids whose executable is exactly this bundle's, never another app's: matched by
+/// canonical path, not by name or bundle id (a development build shares the id).
+fn running_pids(app: &Path) -> Result<Vec<i32>> {
     let exe = executable(app)?;
     let out = Command::new("/bin/ps")
-        .args(["-axo", "comm="])
+        .args(["-axo", "pid=,comm="])
         .output()
         .map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err("Cannot check whether Loop is running; quit Loop and retry.".into());
     }
-    if String::from_utf8_lossy(&out.stdout)
+    Ok(String::from_utf8_lossy(&out.stdout)
         .lines()
-        .any(|line| fs::canonicalize(line.trim()).is_ok_and(|path| path == exe))
-    {
-        return Err(
-            "Impeccable Loop is running. Quit Loop first, then run impeccable loop update.".into(),
-        );
+        .filter_map(|line| {
+            let (pid, comm) = line.trim_start().split_once(char::is_whitespace)?;
+            let path = fs::canonicalize(comm.trim()).ok()?;
+            (path == exe).then(|| pid.parse().ok()).flatten()
+        })
+        .collect())
+}
+
+/// Ask a running Loop to quit (SIGTERM to this bundle's processes only) and wait up to
+/// `wait` for them to exit. One that is still running keeps today's refusal.
+fn quit_running(app: &Path, wait: Duration) -> Result<()> {
+    #[cfg(unix)]
+    let signal = libc::SIGTERM;
+    #[cfg(not(unix))]
+    let signal = 0;
+    quit_running_with(app, wait, signal)
+}
+
+/// [`quit_running`] with the signal as a parameter, so a test can stand in for a Loop
+/// that ignores it (signal 0 delivers nothing).
+fn quit_running_with(app: &Path, wait: Duration, signal: i32) -> Result<()> {
+    let pids = running_pids(app)?;
+    if pids.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    for &pid in &pids {
+        #[cfg(unix)]
+        // SAFETY: a plain signal to a pid this bundle's executable owns.
+        unsafe {
+            libc::kill(pid, signal);
+        }
+    }
+    let deadline = std::time::Instant::now() + wait;
+    loop {
+        if running_pids(app)?.is_empty() {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(RUNNING.into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
@@ -231,9 +273,31 @@ fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
 }
 
 pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
-    match run_inner(args, io, PINS, std::env::consts::OS) {
+    // The JSON forms answer one object on stdout whatever happened, for Loop's own UI.
+    if args.iter().any(|a| a == "--json") {
+        if let Some(code) = run_json(args, io, std::env::consts::OS) {
+            return code;
+        }
+    }
+    // `--connect` / `--no-connect` belong to this wrapper: install itself never changes.
+    let wants = |flag: &str| args.iter().any(|a| a == flag);
+    let (connect, no_connect) = (wants("--connect"), wants("--no-connect"));
+    let install = args.first().is_some_and(|a| a == "install");
+    if (connect || no_connect) && (!install || (connect && no_connect)) {
+        io.err(&format!("--connect and --no-connect go with loop install, one at a time.\n{USAGE}"));
+        return 1;
+    }
+    let inner: Vec<String> = args
+        .iter()
+        .filter(|a| *a != "--connect" && *a != "--no-connect")
+        .cloned()
+        .collect();
+    match run_inner(&inner, io, PINS, std::env::consts::OS) {
         Ok(message) => {
             io.out(&message);
+            if install && !no_connect {
+                return after_install(io, connect);
+            }
             0
         }
         Err(e) => {
@@ -243,10 +307,89 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
+/// The step after a fresh install: connect the agents. `--connect` does it outright; a
+/// person at a terminal is asked once (Enter means yes); anything else (an agent, a
+/// script, a pipe) gets the one command to run next and nothing is changed.
+fn after_install(io: &mut Io, connect: bool) -> i32 {
+    use std::io::IsTerminal;
+    let ask = !connect && io.stdin_is_tty && std::io::stdout().is_terminal();
+    let yes = connect || (ask && {
+        io.out("Connect Claude Code and Codex to Loop now? [Y/n] ");
+        let _ = std::io::Write::flush(&mut io.stdout);
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line)
+            .is_ok_and(|n| connect_answer(n, &line))
+    });
+    if !yes {
+        io.out("Next: impeccable loop connect, so your agents bring their questions to Loop.\n");
+        return 0;
+    }
+    match crate::loop_connect::connect(io) {
+        Ok(message) => {
+            io.out(&message);
+            0
+        }
+        Err(e) => {
+            // Loop itself is installed; say how to finish rather than failing the install.
+            io.err(&format!("{e}\nLoop is installed. Run impeccable loop connect again once that is sorted.\n"));
+            1
+        }
+    }
+}
+
+fn connect_answer(bytes_read: usize, line: &str) -> bool {
+    bytes_read > 0
+        && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+}
+
+/// `loop status --json` and `loop connect [--agent claude|codex] --json`. `None` when
+/// the arguments are not one of those, so usage errors read as usual.
+fn run_json(args: &[String], io: &mut Io, os: &str) -> Option<i32> {
+    let rest: Vec<&str> = args[1..]
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--json")
+        .collect();
+    let (value, ok) = match (args.first().map(String::as_str), rest.as_slice()) {
+        _ if check_platform(os).is_err() => (
+            serde_json::json!({ "ok": false, "error": "Impeccable Loop is only available on macOS." }),
+            false,
+        ),
+        (Some("status"), []) => match crate::loop_connect::status(io) {
+            Ok(v) => (v, true),
+            Err(e) => (serde_json::json!({ "ok": false, "error": e }), false),
+        },
+        (Some("connect"), []) => crate::loop_connect::connect_json(io, None),
+        (Some("connect"), ["--agent", agent]) => crate::loop_connect::connect_json(io, Some(agent)),
+        _ => return None,
+    };
+    io.out(&format!("{value}\n"));
+    Some(if ok { 0 } else { 1 })
+}
+
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
         return Ok(USAGE.into());
+    }
+    match args.first().map(String::as_str) {
+        Some("connect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::connect(io);
+        }
+        Some("status") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::status(io).map(|v| crate::loop_connect::status_text(&v));
+        }
+        Some("connect") if args.len() == 3 && args[1] == "--agent" => {
+            check_platform(os)?;
+            return crate::loop_connect::connect_only(io, Some(&args[2]));
+        }
+        Some("disconnect") if args.len() == 1 => {
+            check_platform(os)?;
+            return crate::loop_connect::disconnect(io);
+        }
+        _ => {}
     }
     let update = match args.first().map(String::as_str) {
         Some("install") => false,
@@ -336,7 +479,8 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
                 "Loop {installed} is newer than the newest pinned release ({version}); nothing to update.\n"
             ));
         }
-        refuse_running(&app)?;
+        // A running Loop is asked to quit only once the new build is downloaded and
+        // verified, just before the swap, so a failed download leaves it running.
     }
     let base = io
         .env("IMPECCABLE_DOWNLOAD_BASE")
@@ -369,7 +513,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         return Err("Loop bundle version does not match its release.".into());
     }
     if update {
-        refuse_running(&app)?;
+        quit_running(&app, QUIT_WAIT)?;
     }
     swap(&staged, &app, &backup, update)?;
     if !no_open {

@@ -1,0 +1,10 @@
+{
+  "stdout": "{\"handled\":false,\"mode\":\"error\",\"error\":\"markers_share_line\",\"file\":\"index.html\",\"hint\":\"Put each marker comment on its own line, then accept again.\"}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "index.html": "<!-- impeccable-carbonize-start ab12cd34 --><p>Keep</p>\n<div data-impeccable-variant=\"original\"><h1>Old</h1></div>\n<div data-impeccable-variant=\"1\"><h1>New</h1></div>\n<!-- impeccable-carbonize-end ab12cd34 -->\n"
+  }
+}
