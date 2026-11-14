@@ -335,3 +335,164 @@ fn vue_scaffold_is_opt_in_and_preserves_source() {
     assert_eq!(check["ok"], true, "{check}");
     assert_eq!(check["checked"], 1);
 }
+
+#[test]
+fn audit_vue_rejects_legacy_scope_escape_selectors() {
+    for selector in ["::v-global(body)", ".card ::v-deep(p)", ".card ::v-slotted(p)", ".card >>> p", ".card /deep/ p"] {
+        let fixture = Fixture::new(SOURCE, &variant("scoped").replace(".card {", &format!("{selector} {{")));
+        let (_, result) = fixture.accept("1");
+        assert_eq!(result["mode"], "error", "accepted {selector}: {result}");
+        assert_eq!(fixture.source(), SOURCE);
+    }
+}
+
+#[test]
+fn audit_vue_rejects_behavior_relocation() {
+    let selected = variant("scoped").replace(" @click=\"increment\"", "").replace("<p>", "<p @click=\"increment\">");
+    let fixture = Fixture::new(SOURCE, &selected);
+    let (_, result) = fixture.accept("1");
+    assert_eq!(result["mode"], "error", "{result}");
+    assert_eq!(fixture.source(), SOURCE);
+}
+
+#[test]
+fn audit_vue_rejects_changed_slot_and_component_contracts() {
+    for (original, changed) in [
+        ("<slot name=\"header\" />", "<slot name=\"footer\" />"),
+        ("<slot name=\"header\" />", ""),
+        ("<AccountCard account-id=\"123\" />", "<AccountCard account-id=\"456\" />"),
+    ] {
+        let markup = MARKUP.replace("</p>", &format!("</p>{original}"));
+        let source = SOURCE.replace(MARKUP, &markup);
+        let selected = variant("scoped").replace(MARKUP, &markup.replace(original, changed));
+        let fixture = Fixture::new(&source, &selected);
+        let manifest_file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/manifest.json");
+        let mut manifest: Value = serde_json::from_str(&fs::read_to_string(&manifest_file).unwrap()).unwrap();
+        manifest["originalMarkup"] = json!(markup);
+        fs::write(manifest_file, manifest.to_string()).unwrap();
+        let (_, result) = fixture.accept("1");
+        assert_eq!(result["mode"], "error", "{original} -> {changed}: {result}");
+        assert_eq!(fixture.source(), source);
+    }
+}
+
+#[test]
+fn audit_vue_rejects_session_directory_alias_before_cleanup() {
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    let session = fixture.0.join("node_modules/.impeccable-live/ab12cd34");
+    let target = fixture.0.join("components");
+    fs::rename(&session, &target).unwrap();
+    fs::write(target.join("user.txt"), "unrelated component data").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&target, &session).unwrap();
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("cmd").args(["/c", "mklink", "/J"])
+            .arg(&session).arg(&target).output().unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    }
+    let mut manifest: Value = serde_json::from_str(&fs::read_to_string(target.join("manifest.json")).unwrap()).unwrap();
+    manifest["componentDir"] = json!("components");
+    fs::write(target.join("manifest.json"), manifest.to_string()).unwrap();
+    let (_, result) = fixture.accept("1");
+    assert_eq!(result["mode"], "error", "{result}");
+    assert_eq!(fixture.source(), SOURCE);
+    assert_eq!(fs::read_to_string(target.join("user.txt")).unwrap(), "unrelated component data");
+}
+
+fn audit_scaffold(fixture: &Fixture, count: i64) -> impeccable_live::svelte_component::Scaffold {
+    let start = SOURCE.lines().position(|line| line.contains("<section")).unwrap() as i64 + 1;
+    impeccable_live::vue_component::scaffold("ab12cd34", count, "StatusCard.vue", start, start + 2,
+        &MARKUP.lines().map(str::to_owned).collect::<Vec<_>>(), fixture.0.to_str().unwrap())
+}
+
+#[test]
+fn audit_vue_scaffold_failure_can_be_retried() {
+    use impeccable_live::svelte_component::Scaffold;
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    let root = fixture.0.join("node_modules/.impeccable-live");
+    fs::remove_dir_all(root.join("ab12cd34")).unwrap();
+    fs::create_dir(root.join("__vue_runtime.js")).unwrap();
+    assert!(matches!(audit_scaffold(&fixture, 1), Scaffold::Fallback(_)));
+    fs::remove_dir(root.join("__vue_runtime.js")).unwrap();
+    match audit_scaffold(&fixture, 1) {
+        Scaffold::Session(_) => (),
+        Scaffold::Fallback(error) => panic!("retry after repaired write failure: {error}"),
+    }
+}
+
+#[test]
+fn audit_vue_scaffold_rejects_incompatible_existing_session() {
+    use impeccable_live::svelte_component::Scaffold;
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+    assert!(matches!(audit_scaffold(&fixture, 1), Scaffold::Session(_)));
+    let manifest_file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/manifest.json");
+    let original = fs::read_to_string(&manifest_file).unwrap();
+    assert!(matches!(audit_scaffold(&fixture, 2), Scaffold::Fallback(_)), "changed count must not silently reuse a one-variant manifest");
+    assert_eq!(fs::read_to_string(manifest_file).unwrap(), original);
+}
+
+fn wrap(fixture: &Fixture) -> (i32, Value) {
+    let env = HashMap::from([("IMPECCABLE_LIVE_VUE_COMPONENT".into(), "1".into())]);
+    let (mut io, cap) = Io::captured("", fixture.0.clone(), env);
+    let code = impeccable_live::live_wrap::run(
+        &["--id", "ab12cd34", "--count", "1", "--file", "StatusCard.vue",
+          "--classes", "card", "--tag", "section", "--defer-source-write"].map(str::to_owned),
+        &mut io,
+    );
+    let text = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+    (code, serde_json::from_str(&text).unwrap_or_else(|_| json!({"stdout":text})))
+}
+
+#[test]
+fn vue_scaffold_models_are_mutable_local_refs() {
+    let source = SOURCE.replace("<p>", "<p><input v-model=\"count\" />");
+    let fixture = Fixture::new(&source, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+    let (code, result) = wrap(&fixture);
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(result["previewMode"], "vue-component", "{result}");
+    let file = fixture.0.join("node_modules/.impeccable-live/ab12cd34/v1.vue");
+    let generated = fs::read_to_string(file).unwrap();
+    let parsed = impeccable_live::vue_component::analyze(&generated, "StatusCard.vue", fixture.0.to_str().unwrap()).unwrap();
+    assert_eq!(parsed["ok"], true);
+    assert_eq!(fixture.source(), source);
+    let (_, accepted) = fixture.accept("1");
+    assert_ne!(accepted["mode"], "error", "{accepted}");
+    assert!(fixture.source().contains("v-model=\"count\""));
+    assert_eq!(fixture.source().split("<template>").next(), source.split("<template>").next());
+}
+
+#[test]
+fn vue_unsupported_scaffolds_use_deferred_normal_preview() {
+    for source in [
+        SOURCE.replace("<style scoped>", "<style scoped lang=\"scss\">"),
+        format!("{SOURCE}\n<i18n>{{}}</i18n>"),
+        SOURCE.replace("<script>", "<script src=\"./external.js\">"),
+        SOURCE.replace("</template>", "</template><template>duplicate</template>"),
+    ] {
+        let fixture = Fixture::new(&source, &variant("scoped"));
+        fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+        let (code, result) = wrap(&fixture);
+        assert_eq!(code, 0, "{result}");
+        assert_eq!(result["previewFallback"]["from"], "vue-component", "{result}");
+        assert_eq!(result["previewFallback"]["error"], "unsupported_vue_component_preview", "{result}");
+        assert!(result["wrapperBlock"].as_str().unwrap().contains("data-impeccable-variants"));
+        assert_eq!(result["sourceWritten"], false);
+        assert_eq!(result["file"], "StatusCard.vue");
+        assert_eq!(fixture.source(), source);
+        assert!(!fixture.0.join("node_modules/.impeccable-live/ab12cd34").exists());
+    }
+}
+
+#[test]
+fn vue_missing_compiler_uses_normal_preview_and_preserves_source() {
+    let fixture = Fixture::new(SOURCE, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules")).unwrap();
+    let (code, result) = wrap(&fixture);
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(result["previewFallback"]["from"], "vue-component", "{result}");
+    assert!(result["wrapperBlock"].as_str().unwrap().contains(MARKUP.trim()));
+    assert_eq!(fixture.source(), SOURCE);
+}
