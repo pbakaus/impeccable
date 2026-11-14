@@ -163,9 +163,7 @@ pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
 
 fn upload(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     let synced = upload_inner(io, scan, quiet);
-    // `forget` (which turns sync off and clears the marks) may have run
-    // while the upload did; don't bring a mark back after it.
-    if synced.recorded() && Local::read(&io.env).is_some_and(|l| l.sync()) {
+    if synced.recorded() {
         mark_first_scan(&io.env, &scan.root);
     }
     synced
@@ -305,8 +303,11 @@ pub fn repo_top(dir: &str) -> Option<String> {
 /// Remember that the repository at `root` had its sign-in scan.
 pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &str) {
     if let Some(key) = first_scan_key(env, root) {
+        // Under the file's lock: `forget` (which turns sync off and clears
+        // the marks) may have run while the upload did, and a mark written
+        // back after it would skip the next sign-in's scan.
         let _ = Local::update(env, |l| {
-            if !l.first_scans.contains(&key) {
+            if l.sync() && !l.first_scans.contains(&key) {
                 l.first_scans.push(key);
             }
         });
