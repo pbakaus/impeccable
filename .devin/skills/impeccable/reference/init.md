@@ -130,4 +130,6 @@ Recommend the next action from the actual project state:
 - Existing surface needing work: name the most relevant scoped command.
 - Web project ready for visual iteration: `/impeccable live` when configured.
 
+Then run `.devin/skills/impeccable/scripts/impeccable whoami` once. If it prints `Not signed in`, add one line to your reply, after any request that invoked init has resumed: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Signed in, say nothing about it.
+
 If init was invoked by another request, resume without rerunning `impeccable context`; the native reference above is the one thing that run could not have given you, and new-work owns later visual decisions.
