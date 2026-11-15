@@ -801,6 +801,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             } else {
                 out(io, "Done!\n");
             }
+            name_global_copy(&sys, io, &install_root, scope);
             Ok(())
         })();
         if let Some(dir) = &bundle_dir {
@@ -868,8 +869,28 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
     install_engine_binaries(&sys, io, &written);
     bundle::report_provider_agents(&sys, io, &agent_results);
     report_hook_targets(&sys, io, &hook_targets, if want_hooks { &targets } else { &[] });
+    name_global_copy(&sys, io, &install_root, scope);
     out(io, "\nDone! Now type /impeccable init in your AI coding agent's chat (not in this terminal) to set up design context.\n");
     Ok(())
+}
+
+/// A project install beside a different global copy: agents load both, and the
+/// older one can answer instead, so name it and the command that updates it.
+fn name_global_copy(sys: &Sys, io: &mut Io, root: &str, scope: Scope) {
+    if let Some(line) = global_copy_line(
+        scope == Scope::Project && !sys.is_home_dir(root),
+        sys.get_skills_version(&sys.home, Some(Scope::User)),
+        sys.get_skills_version(root, Some(Scope::Project)),
+    ) {
+        out(io, &line);
+    }
+}
+
+fn global_copy_line(project: bool, global: Option<String>, here: Option<String>) -> Option<String> {
+    let (global, here) = (global?, here?);
+    (project && global != here).then(|| format!(
+        "\nYou also have Impeccable {global} installed for all projects, and your agent may use it instead of {here}. Update it with: npx impeccable update --user"
+    ))
 }
 
 // ─── update ──────────────────────────────────────────────────────────────────
@@ -1189,5 +1210,25 @@ mod offline_install_tests {
         assert!(stderr.contains("Download failed: Could not download skill bundle: Network Error"), "{stderr}");
         assert!(!stderr.contains("verify"), "{stderr}");
         assert!(!std::path::Path::new(&format!("{}/.claude/skills/impeccable", fx.project)).exists());
+    }
+}
+
+#[cfg(test)]
+mod global_copy_tests {
+    use super::global_copy_line;
+
+    // Catches a project install staying silent beside a different global copy, or
+    // naming it when the two match or the install was the global one.
+    #[test]
+    fn names_a_different_global_copy_after_a_project_install() {
+        let v = |s: &str| Some(s.to_string());
+        let line = global_copy_line(true, v("4.8.0"), v("4.9.1")).unwrap();
+        assert!(
+            line.contains("4.8.0") && line.contains("npx impeccable update --user"),
+            "{line}"
+        );
+        assert_eq!(global_copy_line(true, v("4.9.1"), v("4.9.1")), None);
+        assert_eq!(global_copy_line(false, v("4.8.0"), v("4.9.1")), None);
+        assert_eq!(global_copy_line(true, None, v("4.9.1")), None);
     }
 }
