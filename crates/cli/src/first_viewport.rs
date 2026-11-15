@@ -53,13 +53,16 @@ const MEASURE_JS: &str = r#"((selectors) => {
     }
     return false;
   };
-  // An element's box as it can show: cut by every ancestor that clips.
+  // An element's box as it can show: cut by every ancestor that clips,
+  // except a box the height of the viewport (an app shell, a scrolling or
+  // clipped body), whose scroller the full-page capture unrolls.
+  const pageScroller = (a) => a.clientHeight >= innerHeight * 0.9;
   const shownBox = (el) => {
     const b = el.getBoundingClientRect();
     let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
-      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+      if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && !pageScroller(a)) {
         const ab = a.getBoundingClientRect();
         box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
       }
@@ -111,6 +114,14 @@ fn launch(io: &Io) -> Result<Browser, String> {
     let dangerous = io.env.get("PUPPETEER_DANGEROUS_NO_SANDBOX").map(String::as_str) == Some("true");
     let _ = default_chrome_args(&user_args, dangerous);
     Browser::launch(&exe, &user_args, dangerous).map_err(|e| e.message)
+}
+
+/// A `file://` URL for an absolute path, on Windows too (without the `\\?\\`
+/// prefix `canonicalize` adds there).
+fn file_url(path: &std::path::Path) -> String {
+    let shown = path.display().to_string();
+    let plain = std::path::PathBuf::from(shown.strip_prefix(r"\\?\").unwrap_or(&shown));
+    url::Url::from_file_path(&plain).map(|u| u.to_string()).unwrap_or_else(|_| format!("file://{shown}"))
 }
 
 fn parse_viewport(s: &str) -> Option<Viewport> {
@@ -236,7 +247,7 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
     } else {
         let path = io.cwd.join(&url);
         match path.canonicalize() {
-            Ok(p) => format!("file://{}", p.display()),
+            Ok(p) => file_url(&p),
             Err(_) => {
                 io.err(&format!("No page at {url}\n"));
                 return 2;

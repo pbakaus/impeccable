@@ -98,3 +98,27 @@ fn a_thesis_below_the_fold_a_cut_action_and_a_blank_stretch_fail() {
     assert!(text.contains("FAIL  primary action .buy: not wholly inside"), "{text}");
     assert!(text.contains("FAIL  longest empty stretch"), "{text}");
 }
+
+#[test]
+fn a_drawing_in_an_app_shell_below_the_fold_is_content() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("shell");
+    std::fs::write(
+        dir.join("index.html"),
+        format!(
+            "<!doctype html><style>{STYLE} html, body {{ height: 100%; overflow: hidden; }}
+             main {{ height: 100%; overflow-y: auto; }} .thesis {{ height: 300px; background: #c33; }}
+             svg {{ display: block; width: 390px; height: 1600px; }}</style>
+             <main><h1>Seeds</h1><div class=\"thesis\"></div><button class=\"buy\">Add</button>
+             <svg viewBox=\"0 0 10 10\" preserveAspectRatio=\"none\"><circle cx=\"5\" cy=\"5\" r=\"4.5\" fill=\"none\" stroke=\"#000\" stroke-width=\".05\"/></svg>
+             <p>End</p></main>"
+        ),
+    )
+    .unwrap();
+    let out = run(&dir, &["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+}
