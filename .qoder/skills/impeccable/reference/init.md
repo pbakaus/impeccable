@@ -12,6 +12,8 @@ Use the PRODUCT.md path resolved by `impeccable context`. Update it instead of c
 - **Only DESIGN.md exists:** leave it untouched and create PRODUCT.md.
 - **Redesign/rebrand request:** preserve confirmed product truth unless the user changes it. Visual replacement happens later in new-work, not here.
 
+Run `.qoder/skills/impeccable/scripts/impeccable whoami` once. If it prints `Not signed in`, put one line in your first message to the person in this init: written before a structured question, or last in a plain-chat interview round: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Say it once per init. Signed in, say nothing about it.
+
 Never silently overwrite an existing file or offer DESIGN.md during init. If another request invoked init, finish PRODUCT.md and resume it. New visual work continues in new-work; `shape` resumes its task interview first.
 
 ## Step 2: Explore the project
@@ -129,7 +131,5 @@ Recommend the next action from the actual project state:
 - Existing coherent interface without DESIGN.md: `/impeccable document` if the user wants the incumbent system recorded independently of a new build.
 - Existing surface needing work: name the most relevant scoped command.
 - Web project ready for visual iteration: `/impeccable live` when configured.
-
-Then run `.qoder/skills/impeccable/scripts/impeccable whoami` once. If it prints `Not signed in`, add one line to your reply, after any request that invoked init has resumed: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Signed in, say nothing about it.
 
 If init was invoked by another request, resume without rerunning `impeccable context`; the native reference above is the one thing that run could not have given you, and new-work owns later visual decisions.
