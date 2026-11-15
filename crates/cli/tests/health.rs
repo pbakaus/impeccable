@@ -117,7 +117,7 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     let first = run(&env, &root, &["detect", "--json", "."]);
     let body = scans(&fake).pop().expect("one upload");
     assert_eq!(body["coverage"], "full");
-    // The repo's name from its remote, never the folder's (Paul, REN-1553, 10 Nov).
+    // The repo's name from its remote, not its folder's.
     assert_eq!(body["label"], "my-site", "{body}");
     assert_eq!(body["filesScanned"], 4);
     assert!(body["findings"].as_u64().unwrap() >= 2, "{body}");
@@ -998,7 +998,8 @@ fn design_sync_reuses_health_repo_labels_and_omits_missing_ones() {
     for (i, (remote, expected)) in [
         (Some("git@GitHub.com:acme/my-site.git"), Some("my-site")),
         (Some("git@gitlab.com:group/sub/tool.git"), Some("tool")),
-        (None, None),
+        // No remote: the folder's name (Paul, REN-2028).
+        (None, Some("<folder>")),
         (Some("git@github.com:acme/repo\\secret.git"), None),
     ]
     .into_iter()
@@ -1029,6 +1030,7 @@ fn design_sync_reuses_health_repo_labels_and_omits_missing_ones() {
         let health = scans(&fake).pop().unwrap();
         assert_eq!(doc.get("label"), health.get("label"));
         match expected {
+            Some("<folder>") => assert_eq!(doc["label"].as_str(), root.file_name().and_then(|n| n.to_str())),
             Some(name) => assert_eq!(doc["label"], name),
             None => assert!(
                 doc.get("label").is_none(),
@@ -1316,15 +1318,15 @@ fn a_telemetry_opt_out_still_gets_the_sign_in_scan_and_is_told_what_was_sent() {
 }
 
 #[test]
-fn a_sign_in_in_a_repo_without_a_remote_says_no_name_was_sent() {
-    // Catches: the line claiming a name went when a repository without a remote has none to send.
+fn a_sign_in_in_a_repo_without_a_remote_sends_its_folders_name() {
+    // Catches: two local repositories both called "Local repository" in the app (Paul, REN-2028).
     let fake = Fake::start();
     fake.knobs.lock().unwrap().health = true;
     let env = fake.env("first-signin-noremote");
     let root = repo(&env, None);
     let err = login_in(&env, &root);
-    assert!(err.contains("Sent finding counts and foundations checks, never your code or file names."), "{err}");
-    assert!(scans(&fake)[0].get("label").is_none());
+    assert!(err.contains("Sent its name, finding counts and foundations checks, never your code or file names."), "{err}");
+    assert_eq!(scans(&fake)[0]["label"].as_str(), root.file_name().and_then(|n| n.to_str()));
 }
 
 #[test]

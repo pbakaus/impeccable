@@ -593,9 +593,7 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        // The repo's name from its remote, never the folder's: a folder name
-        // can say more than the person meant to share (Paul, REN-1553).
-        let label = remote.as_deref().and_then(repo_label);
+        let label = repo_name(&top, remote.as_deref());
         Some(Repo { key, stream, label })
     }
 }
@@ -617,6 +615,15 @@ pub(crate) fn critique_repo(
     repo_identity(&top, remote, env)
 }
 
+/// The repo's name as the service shows it: from its remote; with none, its folder's
+/// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
+fn repo_name(top: &str, remote: Option<&str>) -> Option<String> {
+    match remote {
+        Some(remote) => repo_label(remote),
+        None => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
+    }
+}
+
 /// The key and label from the remote read's outcome. A read that timed out is
 /// not a repo without a remote: falling back to the local id then would name a
 /// different project, so it sends no key.
@@ -626,7 +633,7 @@ fn repo_identity(
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
     let remote = remote.ok()?.and_then(|r| normalize_remote(&r));
-    let label = remote.as_deref().and_then(repo_label);
+    let label = repo_name(top, remote.as_deref());
     let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
@@ -1106,7 +1113,7 @@ mod tests {
         // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
         assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
-        // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
+        // A remote names the repository by its own name, never its host or owner.
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
         assert_eq!(repo_label("https://gitlab.com/group/sub/tool").as_deref(), Some("tool"));
         assert_eq!(repo_label("https://github.com"), None);
@@ -1187,7 +1194,8 @@ mod repo_identity_tests {
         let top = top.to_string_lossy().into_owned();
         assert_eq!(repo_identity(&top, Err(()), &env), None);
         let local = repo_identity(&top, Ok(None), &env).expect("local id");
-        assert_eq!(local.1, None);
+        // No remote: named after its folder (Paul, REN-2028).
+        assert_eq!(local.1.as_deref(), Some("repo"));
         assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
         let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
         assert_ne!(remote.0, local.0);
