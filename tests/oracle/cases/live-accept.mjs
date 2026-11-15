@@ -36,6 +36,20 @@ export default [
   A('live-accept-invalid-variant-regex', 'live-html', ['--id', ID, '--variant', '.*']),
   A('live-accept-markers-not-found', 'live-html', ['--id', 'nothere1', '--variant', '1']),
   A('live-accept-target-missing-value', 'live-html', ['--id', ID, '--variant', '1', '--target']),
+  // A stock Vite app keeps its markup in a template literal in src/main.js; wrap
+  // reaches it with --file, and accept finds the markers there too.
+  A('live-accept-vanilla-vite-main-js', 'live-html', ['--id', ID, '--variant', '1'], {
+    snap: ['src/main.js'],
+    setup: ws => write(ws, 'src/main.js',
+      "document.querySelector('#app').innerHTML = `\n" +
+      `<!-- impeccable-variants-start ${ID} -->\n` +
+      `<div data-impeccable-variants="${ID}" data-impeccable-variant-count="1" style="display: contents">\n` +
+      '<div data-impeccable-variant="original"><h1>Old</h1></div>\n' +
+      '<div data-impeccable-variant="1"><h1>New</h1></div>\n' +
+      '</div>\n' +
+      `<!-- impeccable-variants-end ${ID} -->\n` +
+      '`\n'),
+  }),
 
   // --- HTML source-preview accept / discard ---
   A('live-accept-html-variant-1-range', 'live-html', ['--id', ID, '--variant', '1', '--param-values', '{"lightness":0.65}'], { snap: ['index.html'], setup: stageWrappedHtml }),
