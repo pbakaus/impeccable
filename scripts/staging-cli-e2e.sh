@@ -76,6 +76,11 @@ R2="$H/first-repo"; mkdir -p "$R2"
 printf '%s\n' '<!doctype html><html><head><title>first</title></head><body><h1>First</h1><p style="color:#9ca3af;background:#6d28d9">Grey on purple</p></body></html>' > "$R2/index.html"
 git -C "$R2" init -q
 git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
+# A person installs before they sign in, so this run does too: the sign-in then reports this
+# machine's setup, and Home's "Agent connected" line has a machine from this run to show.
+(cd "$R2" && exec "$BIN" install --yes --providers=claude --scope=project) < /dev/null > "$H/install.out" 2>&1; rc=$?
+check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.claude/skills/impeccable/SKILL.md" ]'
+[ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
 url=""
