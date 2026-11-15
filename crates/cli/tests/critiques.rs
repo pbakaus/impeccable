@@ -755,6 +755,16 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
         .unwrap();
         assert!(!String::from_utf8_lossy(&out.stderr).contains(STALE_NOTICE));
     }
+    // A quiet save said nothing, so the shared notice is still owed.
+    let owed = |root: &Path| {
+        std::fs::read_dir(root.join("account"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .flat_map(|d| std::fs::read_dir(d.path()).into_iter().flatten().flatten())
+            .all(|f| !f.file_name().to_string_lossy().starts_with("stale-grant-notice-"))
+    };
+    assert!(owed(root));
     let hook = impeccable(&env, root, &["hook-before-edit"])
         .output()
         .unwrap();

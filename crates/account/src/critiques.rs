@@ -117,27 +117,22 @@ fn project_root(snapshot: &SavedReport) -> Option<&std::path::Path> {
 /// customer's agent one line, not one per report.
 fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option<String> {
     use sha2::{Digest, Sha256};
-    let project = root
-        .map(|r| r.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let project = root.map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
     let digest = Sha256::digest(project.as_bytes());
     let key: String = digest[..8].iter().map(|b| format!("{b:02x}")).collect();
-    let path = account.dir().join(format!("critique-sign-in-nudge-{key}"));
     let today = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0)
-        .to_string();
-    if crate::store::read_private(&path)
-        .ok()
-        .flatten()
-        .is_some_and(|b| b == today.as_bytes())
-    {
-        return None;
+        .unwrap_or(0);
+    let marker = |day: u64| account.dir().join(format!("critique-sign-in-nudge-{key}-{day}"));
+    let _ = crate::store::private_dir(&account.dir());
+    // Creating today's marker is the claim, so parallel saves print the line once.
+    match std::fs::OpenOptions::new().write(true).create_new(true).open(marker(today)) {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return None,
+        // A marker that can't be written never hides the line; it can only repeat it.
+        _ => {}
     }
-    // A failed marker write never hides the line; it can only repeat it.
-    let _ = crate::store::private_dir(&account.dir())
-        .and_then(|_| crate::store::write_private(&path, today.as_bytes()));
+    let _ = std::fs::remove_file(marker(today.saturating_sub(1)));
     Some("Keep this critique's history: impeccable login\n".into())
 }
 
@@ -216,7 +211,8 @@ fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
                 true
             });
         let say = offered && enabled(io);
-        if say {
+        // A quiet save prints nothing, so the shared notice stays owed.
+        if say && !quiet {
             crate::stale_grant::mark_shown(&account, state.login);
         }
         say.then(|| {
@@ -229,6 +225,8 @@ fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
     let session = if session.existing_access_token().is_none() {
         match crate::session::renew_for_upload(io, &account, started, "critiques-refresh") {
             Some(fresh) => fresh,
+            // Out of time, the refresh carries on and may still succeed.
+            None if left().is_none() => return not_saved(SLOW),
             None => return not_saved(format!("your sign-in expired; {RELOGIN}")),
         }
     } else {
