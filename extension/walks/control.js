@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { endWalk, fail, fence, fenced, hold, hooks, lookOnly, onAsk, onSignIn, ops, personHas, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -185,7 +185,9 @@ export async function command(name) {
     else say({ event: 'stopped', by: 'person' });
     return true;
   }
-  // Going on is checked again: while a sign-in still shows, the walk stays paused.
+  // Going on is checked again: while the debugger cannot get back on the tab (another extension's frame is in it), or
+  // a sign-in still shows, the walk stays paused.
+  if (GOING_ON[name] === current().state && walk && !(await regain())) return false;
   if (GOING_ON[name] === current().state && walk && (await signInNow())) { pauseFor('sign-in'); return false; }
   if (!Object.hasOwn(TOLD, name) || !dispatch({ type: name })) return false;
   say({ event: TOLD[name] });

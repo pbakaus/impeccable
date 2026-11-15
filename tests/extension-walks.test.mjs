@@ -347,7 +347,7 @@ describe('walk worker', () => {
     action: { async setPopup({ popup }) { toolbar.push({ popup }); }, async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle({ title }) { titles.push(title); } },
     debugger: { onEvent: event('debugger-event'), onDetach: event('detach') },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
-    tabs: { onRemoved: event('removed'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
+    tabs: { onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
   };
   const loaded = import('../extension/walks/worker.js');
@@ -825,6 +825,54 @@ describe('walk worker', () => {
       hooks.closing.splice(hooks.closing.indexOf(tidying), 1);
     }
   });
+
+  // Signing in while paused: Chrome pushes an extension's debugger off a tab that is still open, as `target_closed`,
+  // when another extension puts a frame of its own in the page (1Password's "Save login?" on the page a sign-in lands
+  // on), and refuses it back until that frame goes. The journey keeps its tab, or the one Chrome swapped in for it;
+  // only a tab that is gone ends it.
+  for (const [label, kept, push] of [
+    ['another extension’s frame pushes the debugger off the open tab', 11, ({ detach }) => detach(11)],
+    ['Chrome swaps the tab for another', 12, ({ detach, replaced }) => { replaced(12, 11); detach(11); }],
+    ['the tab is closed', null, ({ detach, removed }) => { detach(11); removed(11); }],
+  ]) {
+    it(`${kept === null ? 'ends' : 'keeps'} a journey paused at a sign-in when ${label}`, async () => {
+      const { ops, command, current, rearm, dispatch } = await walked();
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
+      await ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+      assert.equal(await command('pause'), true);
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 's1', url: 'http://localhost:3000/people' } });
+      const heard = told.length;
+      const { attach, sendCommand } = chrome.debugger;
+      const { get } = chrome.tabs;
+      const armed = [];
+      let refused = true;
+      chrome.debugger.attach = async () => { if (refused) throw new Error('Cannot access a chrome-extension:// URL of different extension'); };
+      chrome.debugger.sendCommand = (target, method, params) => { if (method === 'Fetch.enable') armed.push(target.tabId); return sendCommand(target, method, params); };
+      chrome.tabs.get = async (id) => { if (kept === null) throw new Error(`No tab with id: ${id}.`); return get(id); };
+      const fireAll = (name, ...args) => { for (const listener of listeners[name] ?? []) listener(...args); };
+      try {
+        push({ detach: (tabId) => fireAll('detach', { tabId }, 'target_closed'), replaced: (added, gone) => fireAll('replaced', added, gone), removed: (tabId) => fireAll('removed', tabId, {}) });
+        await settle(10);
+        if (kept === null) {
+          assert.deepEqual([current().state, current().failure?.reason], ['failed', 'tab-closed']);
+          assert.deepEqual(told.slice(heard).filter((m) => m.event === 'detached').map((m) => m.reason), ['target_closed']);
+          return;
+        }
+        assert.equal(await command('resume'), false, 'Continue waits while the debugger cannot get back on');
+        assert.equal(current().state, 'paused');
+        refused = false;
+        assert.equal(await command('resume'), true);
+        assert.equal(current().state, 'walking');
+        assert.deepEqual(armed, [kept], 'the guard is on the tab again before the walk goes on');
+        assert.deepEqual(told.slice(heard).filter((m) => m.event === 'detached'), [], 'the other end never hears the tab went');
+      } finally {
+        Object.assign(chrome.debugger, { attach, sendCommand });
+        chrome.tabs.get = get;
+      }
+    });
+  }
 
   // Last, as it ends the walk: Stop, or the socket going (it closes the walk), while the walk's tab is still being
   // opened ends the walk and closes it.

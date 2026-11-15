@@ -268,7 +268,7 @@ describe('account worker', () => {
       async sendMessage() {},
     },
     storage: { local: area(local), session: area(session), sync: { async get(defaults) { return defaults; } } },
-    tabs: { onCreated: none, onUpdated: none, onRemoved: none, async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
+    tabs: { onCreated: none, onUpdated: none, onRemoved: none, onReplaced: none, async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
     debugger: { onEvent: none, onDetach: none },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {}, async setPopup({ popup }) { toolbar.push({ popup }); } },
     sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); }, async setOptions({ enabled }) { offered.push(enabled); } },

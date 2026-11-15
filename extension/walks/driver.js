@@ -533,12 +533,98 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (!walk || source.tabId !== walk.tabId) return;
-  const tab = walk;
+  // Chrome says `target_closed` of a tab that is still open, too: another extension put a frame of its own in the page
+  // (a password manager's "Save login?" after a sign-in), and no extension's debugger may stay on a page that has one.
+  // Only the tab's own going ends the walk (`onRemoved`, or a tab no longer there when the walk tries to come back).
+  if (reason === 'target_closed') void lost(walk);
+  else gone(walk, reason);
+});
+
+/** The walk is over because its debugger is: the other end is told why. */
+function gone(tab, reason) {
+  if (walk !== tab) return;
   walk = null;
   say({ event: 'detached', reason });
   void letGo(tab, reason);
   void unstick(tab, reason);
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => { if (walk?.tabId === tabId) gone(walk, 'target_closed'); });
+// A tab Chrome swapped for another (a prerendered page taking its place): the walk follows it to the new one.
+chrome.tabs.onReplaced.addListener((added, removed) => {
+  if (walk?.tabId !== removed) return;
+  walk.tabId = added;
+  void lost(walk);
 });
+
+/** How often a walk pushed off its tab tries to get back on, while the tab is there. */
+const REGAIN_MS = 500;
+
+/**
+ * The debugger was pushed off a tab that is still open. The walk keeps it, and gets back on as soon as Chrome lets it
+ * (once the other extension's frame is gone); the other end hears nothing of it meanwhile. A pause holds every op;
+ * a walk that is walking has its commands refused until then.
+ */
+async function lost(tab) {
+  tab.lost = true;
+  tab.lookout = null;
+  if (tab.regaining) return;
+  tab.regaining = true;
+  try {
+    while (walk === tab && tab.lost && !(await regain(tab))) await sleep(REGAIN_MS);
+  } finally {
+    tab.regaining = false;
+  }
+}
+
+/** Gets the debugger back on the walked tab, if it was pushed off: resolves to whether the walk has its tab now. */
+export async function regain(tab = walk) {
+  if (!tab || walk !== tab) return false;
+  if (!tab.lost) return true;
+  tab.attaching ??= (async () => {
+    if (!(await chrome.tabs.get(tab.tabId).catch(() => null))) { gone(tab, 'target_closed'); return false; }
+    try {
+      await chrome.debugger.attach({ tabId: tab.tabId }, '1.3');
+    } catch {
+      // A refused attach can leave this extension's half of one behind ("Another debugger is already attached" on
+      // every try after): let go of it, so the next try starts clean.
+      await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
+      return false;
+    }
+    if (walk !== tab) { await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined); return false; }
+    tab.lost = false;
+    try {
+      await rearm(tab);
+    } catch {
+      // Chrome can let the debugger on and still refuse it the page while the other extension's frame is there
+      // ("Cannot access a chrome-extension:// URL of different extension"): off again, and `lost` tries again.
+      if (walk === tab) { tab.lost = true; await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined); }
+      return false;
+    }
+    return walk === tab && !tab.lost;
+  })().finally(() => { tab.attaching = null; });
+  return tab.attaching;
+}
+
+/**
+ * A new debugger starts with nothing on: the guard first, then what the walk had set up on the tab. The tab is checked
+ * against its site afresh, as the guard was off meanwhile.
+ */
+async function rearm(tab) {
+  await arm(cmd);
+  await cmd('Page.enable');
+  // Paused, the network stays unwatched until the walk goes on (`unhold`).
+  if (!hush) await cmd('Network.enable');
+  await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
+  const { frameTree } = await cmd('Page.getFrameTree');
+  tab.mainFrame = frameTree.frame.id;
+  tab.loader = frameTree.frame.loaderId;
+  if (tab.sized) await sizeTo(tab.sized);
+  if (tab.metrics) await cmd('Emulation.setDeviceMetricsOverride', tab.metrics);
+  for (const source of tab.newDocument ?? []) await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
+  for (const hook of hooks.opened) await hook(tab, true);
+  setUrl(frameTree.frame.url + (frameTree.frame.urlFragment ?? ''));
+}
 
 /**
  * A sized tab whose debugger left without clearing (Cancel on Chrome's bar) keeps its phone or tablet size until it
@@ -921,7 +1007,11 @@ export const ops = {
   },
 
   async evaluateOnNewDocument(req) {
-    return { value: await cmd('Page.addScriptToEvaluateOnNewDocument', { source: expression(req) }) };
+    const source = expression(req);
+    const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
+    // Kept for a debugger that has to come back (`rearm`).
+    (walk.newDocument ??= []).push(source);
+    return { value: added };
   },
 
   async setViewport({ width, height, deviceScaleFactor, mobile }) {
@@ -929,6 +1019,7 @@ export const ops = {
     if (walk.adopted) return {};
     await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile });
     walk.viewport = { width, height };
+    walk.metrics = { width, height, deviceScaleFactor, mobile };
     return {};
   },
 

@@ -133,7 +133,8 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
     },
     beat() { expires = Date.now() + lifeMs; if (glowing) glowing = Date.now() + glowLifeMs; },
     veil(on) { veiled = on; host.style.visibility = on ? 'hidden' : ''; showGlow(); },
-    remove() { gone = true; clearInterval(timer); host.remove(); glowHost.remove(); },
+    // A badge that went is gone from its world too: one put there again starts afresh.
+    remove() { gone = true; clearInterval(timer); host.remove(); glowHost.remove(); if (globalThis.__impeccableWalkBadge === api) delete globalThis.__impeccableWalkBadge; },
   };
   globalThis.__impeccableWalkBadge = api;
 }
@@ -174,14 +175,16 @@ async function push() {
   await call(`set(${JSON.stringify({ ...badgeState(current()), hidden: hidden(), ...(tab?.width ? { fit: { w: tab.width, h: tab.height } } : {}) })})`);
 }
 
-hooks.opened.push(async (tab) => {
+// `again`: the debugger came back to the tab (driver.js `rearm`), whose document is already there.
+hooks.opened.push(async (tab, again = false) => {
+  if (badge) clearInterval(badge.beat);
   badge = { tabId: tab.tabId, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
   await send(tab.tabId, 'Runtime.enable');
   await send(tab.tabId, 'Runtime.addBinding', { name: BINDING, executionContextName: WORLD });
   const source = `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3}, ${GLOW_LIFE_MS})`;
   await send(tab.tabId, 'Page.addScriptToEvaluateOnNewDocument', { source, worldName: WORLD });
   // The person's own tab already has its document: the badge goes into it now, in a world made for it.
-  if (tab.adopted) {
+  if (tab.adopted || again) {
     const { executionContextId } = await send(tab.tabId, 'Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: WORLD });
     await send(tab.tabId, 'Runtime.evaluate', { expression: source, contextId: executionContextId });
     if (badge) badge.context = executionContextId;
