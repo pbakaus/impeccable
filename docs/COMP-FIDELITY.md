@@ -35,10 +35,10 @@ Calibration on the moto run: comp vs itself 100%; comp shifted 12px 87% (match);
 
 ### 3. `build-phase.mjs`: phases as a state machine on disk
 
-`.impeccable/build/state.json`, phases `spec → plates → hero → sections → motion → responsive → review`, advanced only by the script:
+`.impeccable/build/state.json`, phases `comps → spec → plates → hero → sections → motion → responsive → review`, advanced only by the script:
 
 - `spec` gate: spec.json exists, measures this comp, has regions.
-- `plates` gate: every raster region's plate exists, decodes, is at least 1.5x the region's pixel width, and scores against the comp crop (`cover` alignment, kind-weighted, min 0.5).
+- `plates` gate: every raster region's plate exists, decodes, is at least 1.5x the region's pixel width, and scores against the comp crop (`cover` alignment, kind-weighted, min 0.4).
 - `hero` gate: `.impeccable/review/hero-repro.png` exists and comp-diff scores at least 0.72 with no region `missing` and at most a third `contradicted`. Writes `.impeccable/review/diff/hero/`. Attempts and scores are recorded.
 - later phases record the moment; `--force --reason` is allowed and recorded, never silent.
 
@@ -73,7 +73,7 @@ Both in both engines (static jsdom + browser bundle), fixtures under `tests/fixt
 
 - It does not judge lettering character, ornament, or motion. The reviewer still owns those.
 - It does not decide plates for the model: the model still names regions on the grid. The gate only refuses to proceed when a named raster region has no plate.
-- The hero threshold (0.72) and plate threshold (0.5) are calibrated on two runs and synthetic perturbations; they will move with evidence. Both are constants at the top of `build-phase.mjs`.
+- The hero threshold (0.72) and plate threshold (now 0.4) are calibrated on two runs and synthetic perturbations; they will move with evidence. Both are constants at the top of `crates/comp-verbs/src/build_phase.rs`.
 - Operate surfaces (dashboards, editors) have few or no plates; the spec/diff still apply, the plates gate is trivially satisfied.
 
 ## Evaluating it: first sweep (2026-08-16, gpt-5.6-sol, openai lane)
