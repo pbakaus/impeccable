@@ -623,8 +623,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                             serde_json::json!({"error": "invalid_request", "field": field}),
                         )
                     } else {
-                        record.lock().unwrap().critiques.push(v);
-                        json(200, serde_json::json!({"outcome": "recorded"}))
+                        let n = {
+                            let mut r = record.lock().unwrap();
+                            r.critiques.push(v);
+                            r.critiques.len()
+                        };
+                        // As the service answers while the critiques page is served.
+                        json(200, serde_json::json!({"outcome": "recorded", "url": format!("{issuer}/app/-/critiques?report=fake{n}")}))
                     }
                 }
             }
