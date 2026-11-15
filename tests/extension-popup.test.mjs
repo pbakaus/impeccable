@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true } } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false } } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -327,7 +327,8 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   Object.assign(globalThis, {
     document, location: { search: '' }, addEventListener() {},
     chrome: {
-      runtime: { async sendMessage(message) { sent.push(message); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk }[message.account]; } },
+      // A persona made is in the list from then on, as the worker's is.
+      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk, create }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -383,6 +384,25 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   await expired.press('start');
   assert.equal(expired.body.dataset.screen, 'home', 'a plan the server refuses goes back to the box');
 });
+
+// No personas yet is never a dead end: a description makes one, which is then picked; a refusal says why and keeps the words.
+for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
+  test(`the side panel with no personas makes one from a description: ${label}`, async () => {
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [], create });
+    assert.deepEqual([h.body.dataset.screen, h.acts().includes('send')], ['home', false]);
+    h.app.querySelector('textarea').value = '  A night-shift nurse who books shifts on her phone.  ';
+    await h.press('make');
+    assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.' }]);
+    if (create.ok) {
+      h.app.querySelector('textarea').value = 'Book a shift.';
+      await h.press('send');
+      assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ mine: 'rosa' }], 'the new persona is the one picked');
+    } else {
+      assert.ok(h.app.querySelector('[role="alert"]'), 'it says why');
+      assert.equal(h.app.querySelector('textarea').value, 'A night-shift nurse who books shifts on her phone.');
+    }
+  });
+}
 
 test('a walk that ended with no results page to open offers the way home', async () => {
   const h = await sidePanel({ view: STUBS.stopped, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });

@@ -20,8 +20,8 @@ const UNPACKED = BUILD.devHosts;
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
 const PANEL = chrome.runtime.getURL('walks/panel/');
-/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, a plan and the walk. */
-const PANEL_ASKS = ['status', 'sign-in', 'personas', 'plan', 'walk'];
+/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, to make one, a plan and the walk. */
+const PANEL_ASKS = ['status', 'sign-in', 'personas', 'create', 'plan', 'walk'];
 const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;

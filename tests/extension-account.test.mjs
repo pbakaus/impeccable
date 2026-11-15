@@ -277,10 +277,10 @@ describe('account worker', () => {
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
-  // The side panel may ask only whether this browser is signed in, and to sign in.
+  // The side panel may ask who is signed in, to sign in, the personas, to make one, a plan and the walk: never to remove one.
   for (const [label, sender, asks] of [
     ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }, ['status', 'sign-in', 'create', 'remove', 'walk']],
-    ['the walk side panel, but for the account’s status and sign-in', fromPanel, ['personas', 'create', 'remove', 'walk']],
+    ['the walk side panel removing a persona', fromPanel, ['remove']],
     ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }, ['status', 'sign-in', 'create', 'remove', 'walk']],
   ]) {
     it(`refuses ${label}`, async () => {
@@ -458,11 +458,11 @@ describe('account worker', () => {
     });
   }
 
-  // Making a persona: each answer the server gives, as the popup hears it.
+  // Making a persona: each answer the server gives, as the popup (or the side panel's empty home) hears it.
   const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
-  const create = (description) => ask({ account: 'create', description }, fromPopup);
-  for (const [status, body, answer] of [
-    [201, { persona: PERSONA }, { ok: true, persona: PERSONA }],
+  const create = (description, sender = fromPopup) => ask({ account: 'create', description }, sender);
+  for (const [status, body, answer, sender] of [
+    [201, { persona: PERSONA }, { ok: true, persona: PERSONA }, fromPanel],
     [200, { persona: PERSONA }, { ok: true, persona: PERSONA }],
     [400, { error: 'invalid', field: 'description' }, { ok: false, why: 'short' }],
     [403, { error: 'insufficient_scope' }, { ok: false, why: 'scope' }],
@@ -475,7 +475,7 @@ describe('account worker', () => {
       await loaded;
       startServer(() => json(404, {}), () => json(status, body));
       session.personaCreate = null;
-      assert.deepEqual(await create(`  A night-shift nurse, answer ${status}.  `), answer);
+      assert.deepEqual(await create(`  A night-shift nurse, answer ${status}.  `, sender), answer);
       assert.deepEqual(Object.keys(made.at(-1).body), ['description', 'requestId']);
       assert.equal(made.at(-1).body.description, `A night-shift nurse, answer ${status}.`);
     });

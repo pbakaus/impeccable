@@ -40,6 +40,16 @@ export const COPY = {
     width: 'Width',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
   },
+  /** No personas yet: one made from a description (account/worker.js `create`). A refusal keys on the worker's reason. */
+  make: {
+    describe: 'Describe someone who uses your site, in a sentence or two.',
+    action: 'Make persona',
+    making: 'Making your persona…',
+    short: 'Say a bit more about them.',
+    scope: 'Sign out and in again to make personas.',
+    limit: (max) => `You can have up to ${max || 3} personas.`,
+    later: 'Couldn’t make it right now. Try again later.',
+  },
   /** Talk to type: the mic in the ask box. A failure keys on the browser's error code; typing always still works. */
   voice: {
     talk: 'Talk to type',

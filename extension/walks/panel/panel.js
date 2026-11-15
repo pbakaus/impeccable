@@ -29,7 +29,7 @@ let signInFailed = false;
 let here;
 let hereUrl = '';
 /** Before a walk: the personas, the one picked, the task, and where the person is (`home`, `planning`, `plan`). */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop' };
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', describe: '', making: false };
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
@@ -136,11 +136,46 @@ function button(action, text, kind = 'sec', onclick = () => act(action)) {
 const picked = () => pre.personas?.[pre.pick] ?? null;
 const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
 
-async function loadPersonas() {
+/** The personas; `slug`, one of the person's own just made, is picked. */
+async function loadPersonas(slug) {
   const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
   pre.failed = answer?.why ?? null;
+  if (slug) pre.pick = Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0);
   if (!isLive(view)) render();
+}
+
+/** Why a persona wasn't made, in one line: anything the person can't fix here is "try again later". */
+const UNMADE = { short: COPY.make.short, scope: COPY.make.scope, 'not-pro': COPY.why['not-pro'] };
+const unmade = (answer) => (answer?.why === 'limit' ? COPY.make.limit(answer.max) : UNMADE[answer?.why] ?? COPY.make.later);
+
+/** Make persona: the description becomes the person's own persona (the draft takes up to about half a minute), then it is picked. */
+async function make(box) {
+  pre.describe = (box.value ?? pre.describe).trim();
+  if (!pre.describe) { box.focus(); return; }
+  pre.making = true;
+  pre.note = '';
+  render();
+  const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe }).catch(() => null);
+  pre.making = false;
+  if (!answer?.ok) { pre.note = unmade(answer); render(); return; }
+  pre.describe = '';
+  await loadPersonas(answer.persona?.slug);
+}
+
+/** No personas yet: a sentence or two about someone who uses the site, and Make persona. */
+function first() {
+  if (pre.making) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.make.making }), el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.describe, oninput: (event) => { pre.describe = event.target.value; } });
+  box.value = pre.describe;
+  box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
+  return [
+    top(hereUrl, { tools: true }),
+    el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.none })),
+    el('div', { class: 'box' },
+      pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
+      el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }), button('make', COPY.make.action, 'gold', () => { void make(box); })))),
+  ];
 }
 
 /** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
@@ -153,6 +188,7 @@ function unloaded() {
 function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
+  if (pre.personas?.length === 0) return first();
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
