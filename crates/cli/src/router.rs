@@ -313,8 +313,9 @@ pub(crate) fn scan_after_login(
             Some(url) => format!("See it in Foundations: {url}/-/foundations"),
             None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
+        let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
         io.err(&format!(
-            "Added this repository to your account: {found}. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(

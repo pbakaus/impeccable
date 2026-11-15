@@ -133,6 +133,8 @@ pub struct Synced {
     pub foundations: bool,
     /// The health counts landed, which records the repository too.
     pub health: bool,
+    /// The repository's name went with them; it has one only from a remote.
+    pub named: bool,
 }
 
 impl Synced {
@@ -180,6 +182,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
         return synced;
     };
+    synced.named = repo.label.is_some();
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
         return synced;
     };
