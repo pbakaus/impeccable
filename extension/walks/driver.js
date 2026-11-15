@@ -534,7 +534,13 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
       }, holds).then((became) => {
-        if (became === 'held') tab.heldWrites = (tab.heldWrites ?? 0) + 1;
+        if (became === 'held') {
+          tab.heldWrites = (tab.heldWrites ?? 0) + 1;
+          // For whoever debugs a walk in this worker's console: what was held, never its path (a path can carry a token).
+          let host = '?';
+          try { host = new URL(params.request.url).host; } catch { /* no address to name */ }
+          console.info('walk held a write', params.request?.method, host, params.resourceType);
+        }
         // A request that never went out never finishes either: it is not something the network is busy with.
         if (became === 'continued' || !params.networkId || !tab.inflight.delete(params.networkId)) return;
         if (tab.inflight.size === 0) tab.quietSince = Date.now();
