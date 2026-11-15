@@ -25,7 +25,7 @@ export const COPY = {
     start: 'Start',
     later: 'Not now',
   },
-  signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.', signingIn: 'Finish signing in in the window that opened.' },
+  signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.', signingIn: 'Finish in the window Chrome opened.' },
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', settings: 'Settings', back: 'Back' },
 
   home: {

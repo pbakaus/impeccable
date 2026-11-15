@@ -115,7 +115,8 @@ b { font-weight: 500; }
 .task.at .ic { width: 14px; height: 14px; }
 .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }
 .mid .face { margin-bottom: 12px; }
-.mid .cast .face { margin-bottom: 0; }
+.mid .cast { grid-template-columns: 64px; margin-top: 0; }
+.mid .cast .face { margin-bottom: 0; box-shadow: none; }
 .act { font-size: 17px; font-weight: 500; line-height: 1.35; color: var(--ink); }
 .task { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); text-wrap: balance; }
 .mid .task, .end .task { max-width: 30ch; }
