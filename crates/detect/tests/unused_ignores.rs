@@ -312,3 +312,81 @@ fn non_utf8_html_keeps_waived_findings_out_and_reports_the_stale_one() {
     assert!(!out.contains("side-tab"));
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// The regex engine's rule list is what lets a CSS or TSX scan leave a
+/// `low-contrast` or `tiny-text` waiver unjudged. It must still name every
+/// rule that engine reports, or a stale waiver for that rule goes unreported:
+/// run it over every antipattern fixture and check.
+#[test]
+fn regex_engine_rule_ids_name_every_rule_the_engine_reports() {
+    use impeccable_detect::detect_text::{
+        detect_text, regex_engine_rule_ids, should_run_page_analyzers, TextOptions,
+    };
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/antipatterns");
+    let mut stack = vec![root];
+    let mut scanned = 0;
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let file = path.to_string_lossy().into_owned();
+            let ids = regex_engine_rule_ids(should_run_page_analyzers(&content, &file));
+            let options = TextOptions::default();
+            for found in detect_text(&content, &file, &options) {
+                assert!(
+                    ids.contains(&found.antipattern.as_str()),
+                    "{file} reports {} but regex_engine_rule_ids does not list it",
+                    found.antipattern
+                );
+            }
+            scanned += 1;
+        }
+    }
+    assert!(scanned > 50, "only {scanned} fixtures scanned");
+}
+
+/// A CSS scan runs the regex engine, which has no `low-contrast` or
+/// `tiny-text` rule, so their waivers are not reported as stale and the run
+/// exits clean. The `bounce-easing` waiver beside them still is.
+#[test]
+fn a_css_scan_does_not_judge_element_rule_waivers() {
+    let dir =
+        std::env::temp_dir().join(format!("impeccable-unused-element-{}", std::process::id()));
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("muted.css"),
+        "/* impeccable-disable low-contrast, tiny-text: checked in the browser */\n.muted { color: #999; font-size: 10px; }\n",
+    )
+    .unwrap();
+    let args = [
+        "--no-design-system",
+        "--json",
+        "--report-unused-ignores",
+        "muted.css",
+    ];
+    let (code, out, err) = run_in(&dir, &args, &MissingHtmlEngine);
+    assert_eq!(code, 0, "{err}{out}");
+    assert_eq!(out, "[]\n");
+    std::fs::write(
+        dir.join("muted.css"),
+        "/* impeccable-disable low-contrast, bounce-easing */\n.muted { color: #999; }\n",
+    )
+    .unwrap();
+    let (code, out, err) = run_in(&dir, &args, &MissingHtmlEngine);
+    assert_eq!(code, 2, "{err}{out}");
+    let findings = json_findings(&out);
+    assert_eq!(
+        snippets(&findings),
+        vec!["impeccable-disable bounce-easing"]
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}

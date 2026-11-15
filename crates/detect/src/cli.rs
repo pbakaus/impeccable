@@ -29,7 +29,9 @@ use crate::list_rules::{
     collect_catalog_rules, format_list_rules_ids, format_list_rules_json, format_list_rules_text,
     LIST_RULES_SCAN_ERROR,
 };
-use crate::unused_ignores::{merge_unused_ignores, partition_unused_ignores, NEEDS_INLINE_IGNORES};
+use crate::unused_ignores::{
+    merge_unused_ignores, partition_unused_ignores, ScanEngine, NEEDS_INLINE_IGNORES,
+};
 use crate::util::{exists, re, D};
 
 pub const USAGE: &str = "Usage: impeccable detect [options] [file-or-dir-or-url...]
@@ -485,6 +487,7 @@ impl<'a> Ctx<'a> {
         // unused-ignore). A real IO failure is a scan error, same as the
         // first read, so the run says so instead of publishing ignores-off
         // findings.
+        let source_was_regex = source.is_some();
         let content = match source {
             Some(content) => content,
             None => match std::fs::read(file_path) {
@@ -492,12 +495,18 @@ impl<'a> Ctx<'a> {
                 Err(err) => return Err(EngineError::new(node_scan_error(file_path, &err))),
             },
         };
-        let design_system_loaded = options.design_system.is_some();
+        // The regex path is the one that handed back its text.
+        let engine = if source_was_regex {
+            ScanEngine::regex_for(&content, file_path)
+        } else {
+            ScanEngine::Html
+        };
         Ok(merge_unused_ignores(
             file_path,
             findings,
             &content,
-            design_system_loaded,
+            engine,
+            options.design_system.as_deref(),
         ))
     }
 
@@ -531,12 +540,12 @@ impl<'a> Ctx<'a> {
             },
         );
         if self.report_unused_ignores {
-            let design_system_loaded = opts.design_system.is_some();
             return Ok(merge_unused_ignores(
                 "<stdin>",
                 found,
                 &input,
-                design_system_loaded,
+                ScanEngine::regex_for(&input, "<stdin>"),
+                opts.design_system.as_deref(),
             ));
         }
         Ok(found)

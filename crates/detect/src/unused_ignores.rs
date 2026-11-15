@@ -10,7 +10,10 @@
 
 use impeccable_core::findings::Finding;
 use impeccable_core::inline_ignores::{apply_inline_ignores_reporting_unused, UnusedDirective};
-use impeccable_core::registry::get_antipattern;
+use impeccable_core::registry::{get_antipattern, ANTIPATTERNS};
+
+use crate::design_system::DesignSystem;
+use crate::detect_text::{regex_engine_rule_ids, should_run_page_analyzers};
 
 /// Finding id for a waiver that matched nothing.
 pub const UNUSED_IGNORE_ID: &str = "unused-ignore";
@@ -60,29 +63,76 @@ fn finding_for(file: &str, unused: &UnusedDirective) -> Finding {
     }
 }
 
+/// Which engine scanned a file, as far as judging its waivers needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanEngine {
+    /// The regex engine (CSS, JSX, TSX, Vue, Svelte, stdin, ...).
+    /// `page_analyzers` is whether its page analyzers ran on the file
+    /// ([`should_run_page_analyzers`]).
+    Regex { page_analyzers: bool },
+    /// The static HTML engine, which runs the element and page rules.
+    Html,
+}
+
+impl ScanEngine {
+    /// The engine [`detect_text`](crate::detect_text::detect_text) is for
+    /// `content` at `file_path`.
+    pub fn regex_for(content: &str, file_path: &str) -> Self {
+        ScanEngine::Regex {
+            page_analyzers: should_run_page_analyzers(content, file_path),
+        }
+    }
+}
+
 /// Whether a waiver naming `rule` can be judged on this run.
 ///
 /// Only a rule that could have produced a finding here can be called
-/// unused. That rules out two cases a report would get wrong:
+/// unused. That rules out these cases a report would get wrong:
 ///
 /// - ids no loaded rule answers to. A comment such as
 ///   `impeccable-disable overused-font because brand` parses `because` and
 ///   `brand` as ids, and prose that merely quotes a directive parses the
 ///   words after it. Telling a user to delete those is noise.
-/// - design-system rules when this scan loaded no design system
-///   (`--no-design-system`, `designSystem.enabled: false`, or no DESIGN.md).
-///   They cannot fire, so their waivers would all look stale while the
-///   project still needs them.
+/// - built-in rules the engine that scanned the file never runs. The regex
+///   engine cannot report `low-contrast` or `tiny-text`, so a CSS or TSX
+///   scan says nothing about a waiver naming them
+///   ([`regex_engine_rule_ids`]).
+/// - design-system rules the loaded design system cannot drive: none loaded
+///   (`--no-design-system`, `designSystem.enabled: false`, or no DESIGN.md),
+///   or a DESIGN.md that declares no fonts, colors, radii or fixed font
+///   sizes for the matching `design-system-*` check.
 ///
+/// Rule-pack ids are judged as before: the pack decides what its hooks run.
 /// `*` is always judged: it answers to every rule that ran.
-pub fn rule_can_fire(rule: &str, design_system_loaded: bool) -> bool {
+pub fn rule_can_fire(rule: &str, engine: ScanEngine, design_system: Option<&DesignSystem>) -> bool {
     if rule == "*" {
         return true;
     }
     if get_antipattern(rule).is_none() {
         return false;
     }
-    design_system_loaded || !rule.starts_with("design-system-")
+    if rule.starts_with("design-system-") {
+        let Some(ds) = design_system.filter(|ds| ds.present) else {
+            return false;
+        };
+        return match rule {
+            "design-system-font" => ds.has_fonts,
+            "design-system-color" => ds.has_colors,
+            "design-system-radius" => ds.has_radii,
+            "design-system-font-size" => ds.has_font_sizes,
+            _ => true,
+        };
+    }
+    match engine {
+        ScanEngine::Html => true,
+        ScanEngine::Regex { page_analyzers } => {
+            !is_built_in(rule) || regex_engine_rule_ids(page_analyzers).contains(&rule)
+        }
+    }
+}
+
+fn is_built_in(rule: &str) -> bool {
+    ANTIPATTERNS.iter().any(|ap| ap.id == rule)
 }
 
 /// Drop what the file's waivers would drop, then append an `unused-ignore`
@@ -93,13 +143,14 @@ pub fn merge_unused_ignores(
     file: &str,
     findings: Vec<Finding>,
     content: &str,
-    design_system_loaded: bool,
+    engine: ScanEngine,
+    design_system: Option<&DesignSystem>,
 ) -> Vec<Finding> {
     let (mut findings, unused) = apply_inline_ignores_reporting_unused(findings, Some(content));
     findings.extend(
         unused
             .into_iter()
-            .filter(|unused| rule_can_fire(&unused.rule, design_system_loaded))
+            .filter(|unused| rule_can_fire(&unused.rule, engine, design_system))
             .map(|unused| finding_for(file, &unused)),
     );
     findings
@@ -126,6 +177,22 @@ mod tests {
     use super::*;
     use impeccable_core::findings::finding;
 
+    const CSS: ScanEngine = ScanEngine::Regex {
+        page_analyzers: false,
+    };
+    const PAGE: ScanEngine = ScanEngine::Regex {
+        page_analyzers: true,
+    };
+
+    fn design_system(fonts: bool, colors: bool) -> DesignSystem {
+        DesignSystem {
+            present: true,
+            has_fonts: fonts,
+            has_colors: colors,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn merge_drops_the_live_waiver_and_reports_the_stale_rule() {
         let content = ".brand { font-family: Inter } /* impeccable-disable-line overused-font, bounce-easing */\n";
@@ -135,7 +202,7 @@ mod tests {
             "font-family: Inter",
             1.0,
         )];
-        let merged = merge_unused_ignores("brand.css", raw, content, false);
+        let merged = merge_unused_ignores("brand.css", raw, content, CSS, None);
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].antipattern, UNUSED_IGNORE_ID);
         assert_eq!(merged[0].severity, "warning");
@@ -154,14 +221,14 @@ mod tests {
     fn a_star_that_waived_a_finding_stays_quiet() {
         let content = "<!-- impeccable-disable * -->\n<div></div>\n";
         let raw = vec![finding("side-tab", "page.html", "border-left", 0.0)];
-        let merged = merge_unused_ignores("page.html", raw, content, false);
+        let merged = merge_unused_ignores("page.html", raw, content, ScanEngine::Html, None);
         assert!(merged.is_empty());
     }
 
     #[test]
     fn words_that_are_not_rule_ids_are_never_reported() {
         let content = "/* impeccable-disable overused-font because brand */\n.a { color: red }\n";
-        let merged = merge_unused_ignores("a.css", Vec::new(), content, false);
+        let merged = merge_unused_ignores("a.css", Vec::new(), content, CSS, None);
         let snippets: Vec<&str> = merged.iter().map(|f| f.snippet.as_str()).collect();
         assert_eq!(snippets, vec!["impeccable-disable overused-font"]);
     }
@@ -169,8 +236,10 @@ mod tests {
     #[test]
     fn design_system_waivers_wait_for_a_loaded_design_system() {
         let content = "<p>x</p> <!-- impeccable-disable-line design-system-font -->\n";
-        assert!(merge_unused_ignores("p.html", Vec::new(), content, false).is_empty());
-        let merged = merge_unused_ignores("p.html", Vec::new(), content, true);
+        let html = ScanEngine::Html;
+        assert!(merge_unused_ignores("p.html", Vec::new(), content, html, None).is_empty());
+        let ds = design_system(true, true);
+        let merged = merge_unused_ignores("p.html", Vec::new(), content, html, Some(&ds));
         assert_eq!(merged.len(), 1);
         assert_eq!(
             merged[0].snippet,
@@ -179,11 +248,79 @@ mod tests {
     }
 
     #[test]
+    fn a_design_system_without_fonts_leaves_font_waivers_alone() {
+        let content =
+            "/* impeccable-disable design-system-font, design-system-color */\n.a { margin: 0 }\n";
+        let colors_only = design_system(false, true);
+        let merged = merge_unused_ignores("a.css", Vec::new(), content, CSS, Some(&colors_only));
+        let snippets: Vec<&str> = merged.iter().map(|f| f.snippet.as_str()).collect();
+        assert_eq!(snippets, vec!["impeccable-disable design-system-color"]);
+        // A design system that did not load is the same as none.
+        let absent = DesignSystem {
+            present: false,
+            ..design_system(true, true)
+        };
+        assert!(merge_unused_ignores("a.css", Vec::new(), content, CSS, Some(&absent)).is_empty());
+    }
+
+    #[test]
+    fn a_regex_scan_leaves_element_rule_waivers_alone() {
+        let content =
+            "/* impeccable-disable low-contrast, tiny-text, bounce-easing */\n.a { margin: 0 }\n";
+        let merged = merge_unused_ignores("a.css", Vec::new(), content, CSS, None);
+        let snippets: Vec<&str> = merged.iter().map(|f| f.snippet.as_str()).collect();
+        assert_eq!(snippets, vec!["impeccable-disable bounce-easing"]);
+        // The HTML engine runs the element rules, so there they are judged.
+        let merged = merge_unused_ignores("a.html", Vec::new(), content, ScanEngine::Html, None);
+        assert_eq!(merged.len(), 3);
+    }
+
+    #[test]
+    fn page_analyzer_waivers_are_judged_only_where_the_analyzers_ran() {
+        assert!(!rule_can_fire("em-dash-overuse", CSS, None));
+        assert!(rule_can_fire("em-dash-overuse", PAGE, None));
+        assert!(rule_can_fire("bounce-easing", CSS, None));
+        assert!(rule_can_fire("side-tab", CSS, None));
+        assert!(rule_can_fire("codex-grid-background", CSS, None));
+        let full = "<!doctype html><html><body><p>x</p></body></html>\n";
+        assert_eq!(ScanEngine::regex_for(full, "page.vue"), PAGE);
+        assert_eq!(ScanEngine::regex_for(full, "page.tsx"), CSS);
+        assert_eq!(ScanEngine::regex_for(".a{}", "a.css"), CSS);
+    }
+
+    #[test]
     fn rule_can_fire_knows_catalog_ids_and_star() {
-        assert!(rule_can_fire("*", false));
-        assert!(rule_can_fire("overused-font", false));
-        assert!(!rule_can_fire("because", true));
-        assert!(!rule_can_fire("design-system-color", false));
-        assert!(rule_can_fire("design-system-color", true));
+        let ds = design_system(true, true);
+        assert!(rule_can_fire("*", CSS, None));
+        assert!(rule_can_fire("overused-font", CSS, None));
+        assert!(!rule_can_fire("because", ScanEngine::Html, Some(&ds)));
+        assert!(!rule_can_fire(
+            "design-system-color",
+            ScanEngine::Html,
+            None
+        ));
+        assert!(rule_can_fire(
+            "design-system-color",
+            ScanEngine::Html,
+            Some(&ds)
+        ));
+        assert!(!rule_can_fire("low-contrast", CSS, None));
+        assert!(!rule_can_fire("tiny-text", PAGE, None));
+        assert!(rule_can_fire("low-contrast", ScanEngine::Html, None));
+    }
+
+    /// Every id the regex engine is said to run is a catalog rule, and every
+    /// rule it reports on its own fixtures is one it is said to run, so a new
+    /// matcher cannot leave its waivers unjudged without a test failing.
+    #[test]
+    fn regex_engine_rule_ids_cover_what_the_engine_reports() {
+        let ids = regex_engine_rule_ids(true);
+        for id in &ids {
+            assert!(is_built_in(id), "{id} is not a catalog rule");
+        }
+        for id in regex_engine_rule_ids(false) {
+            assert!(ids.contains(&id));
+        }
+        assert!(!ids.contains(&"low-contrast") && !ids.contains(&"tiny-text"));
     }
 }
