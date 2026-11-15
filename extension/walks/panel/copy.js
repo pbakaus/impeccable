@@ -31,7 +31,7 @@ export const COPY = {
   home: {
     ask: (name) => `What should ${name} try?`,
     who: 'Personas',
-    send: 'Send',
+    send: 'Start',
     failed: 'Couldn’t load your personas.',
     retry: 'Try again',
     signIn: 'Sign in again',
@@ -39,11 +39,10 @@ export const COPY = {
     /** The width a journey runs at (REN-1890): the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
-    /** How the persona sees the page on this journey (../sight.js): the group, each choice, and the line under both. */
+    /** How the persona sees the page on this journey (../sight.js): the group, each choice, and what it means (its hover label). */
     sight: 'Sees',
     sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
-    sees: { normal: 'Sees the page as it is.', older: 'Older eyes: blurry and low contrast.', 'colour-blind': 'Colour-blind: red and green look alike.' },
-    pair: (width, sees) => `${width} · ${sees}`,
+    sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
   },
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
@@ -187,7 +186,7 @@ export const COPY = {
       site: 'Tidy',
       other: 'Your email',
       example: 'Mira',
-      next: 'Start a journey',
+      next: 'Let’s go',
     },
   },
 };

@@ -350,7 +350,6 @@ function home() {
           Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'false', title: COPY.voice.talk, 'aria-label': COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
           el('span', { class: 'grow' }),
           button('send', COPY.home.send, 'gold', send))),
-      voice ? null : el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
     ),
   ];
 }
@@ -412,7 +411,7 @@ function widths() {
 /** Normal, Older eyes or Colour-blind: how the persona sees the page on this journey alone. */
 function sights() {
   return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
-    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sights[sees], 'aria-label': COPY.home.sights[sees],
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sees[sees], 'aria-label': COPY.home.sights[sees],
     onclick: () => { pre.sees = sees; render(); },
   }, icon(look))));
 }

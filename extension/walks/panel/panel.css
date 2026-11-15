@@ -111,15 +111,26 @@ b { font-weight: 500; }
 .widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
 /* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
-.tabs { display: flex; justify-content: space-between; padding: 0 18px; }
-.tabs .widths { gap: 2px; padding: 4px 4px 2px; border-radius: 12px 12px 0 0; background: var(--paper-deep); }
-.box:has(.field:focus-within) .tabs .widths { background: var(--paper-raised); }
+/*
+ * Screen and Sees: tabs that grow out of the task box's top edge, in its grey, Screen flush left and Sees flush right.
+ * The outer side runs straight into the box's side; the inner foot curves out into the box's top (a concave fillet,
+ * drawn by a radial gradient beside the tab).
+ */
+.tabs { --tab: var(--paper-deep); --fillet: 12px; display: flex; justify-content: space-between; }
+.tabs .widths { position: relative; gap: 2px; padding: 4px 4px 2px; background: var(--tab); }
+.tabs .widths:not(.sights) { border-radius: 12px 12px 0 0; padding-left: 6px; }
+.tabs .sights { border-radius: 12px 12px 0 0; padding-right: 6px; }
+.tabs .widths::before { content: ""; position: absolute; bottom: 0; width: var(--fillet); height: var(--fillet); pointer-events: none; }
+.tabs .widths:not(.sights)::before { left: 100%; background: radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
+.tabs .sights::before { right: 100%; background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
+.tabs + .field { border-top-left-radius: 0; border-top-right-radius: 0; }
+.tabs + .field:focus-within { background: var(--tab); box-shadow: none; }
+.tabs .widths button[aria-pressed="true"] { background: var(--paper-raised); }
 .tabs button { position: relative; }
-/* A label above each icon, on hover and on keyboard focus. */
-.tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 2; padding: 4px 8px; border-radius: 6px;
-  background: var(--lacquer); color: var(--inst-text); font-size: 12px; font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
-.tabs .widths:not(.sights) button:first-child::after { left: 0; transform: none; }
-.tabs .sights button:last-child::after { left: auto; right: 0; transform: none; }
+/* What each icon means, in small muted words just above it, on hover and on keyboard focus. */
+.tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
+  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .sights button::after { left: auto; right: 0; }
 .tabs button:hover::after, .tabs button:focus-visible::after { opacity: 1; }
 .field .row + .row { margin-top: 10px; }
 .choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
