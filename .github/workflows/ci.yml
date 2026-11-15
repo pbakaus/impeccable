@@ -12,7 +12,8 @@ on:
         type: boolean
         default: false
   # Nightly full live-e2e matrix. The smoke groups already gate every PR; the
-  # full sweep is too slow for that, so it runs once a day against main.
+  # full sweep is too slow for that, so it runs once a day against next, where
+  # unreleased work lands (live-e2e-full checks next out on a schedule).
   schedule:
     - cron: '0 7 * * *'
 
@@ -79,7 +80,7 @@ jobs:
       - name: Check the pull request's base
         if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref != 'next' && !startsWith(github.head_ref, 'hotfix/')
         run: |
-          echo "::error title=Target next::Main moves only at a release. Retarget this pull request to next: gh pr edit ${{ github.event.pull_request.number }} --base next"
+          echo "::error title=Target next::Main moves only at a release. Retarget this pull request to next, then close and reopen it so CI runs against next (a base change alone starts no run): gh pr edit ${{ github.event.pull_request.number }} --base next && gh pr close ${{ github.event.pull_request.number }} && gh pr reopen ${{ github.event.pull_request.number }}"
           exit 1
 
       - name: Checkout repository
@@ -526,6 +527,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The nightly sweep tests unreleased work; a manual run tests the ref it was started on.
+          ref: ${{ github.event_name == 'schedule' && 'next' || '' }}
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
