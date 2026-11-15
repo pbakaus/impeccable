@@ -1460,6 +1460,37 @@ fn a_fixed_background_is_not_known_to_cover() {
 }
 
 #[test]
+fn a_pseudo_that_generates_no_box_is_no_analytic_surface() {
+    let site = Site::new("no-box-analytic-surface");
+    // Pale copy on a dark card reads well. A white pseudo stretched over
+    // the copy is its ground only where the pseudo generates a box that
+    // paints: the analytic surface asks what the sampled overlay mark asks.
+    let page = ".hero { position: relative; background: #17150f; } p { position: relative; color: #c9c4b8; }";
+    let body = "<div class=hero><p>Pale copy on a dark card</p></div>";
+    let mut reported = Vec::new();
+    for pseudo in [
+        "p::before { content: none; position: absolute; inset: 0; width: initial; background: #fff; }",
+        "p::before { content: normal; position: absolute; inset: 0; background: #fff; }",
+        "p::before { content: ''; position: absolute; inset: 0; display: none; background: #fff; }",
+        "p::before { content: ''; position: absolute; inset: 0; visibility: hidden; background: #fff; }",
+        "p::before { content: ''; position: absolute; inset: 0; opacity: 0; background: #fff; }",
+    ] {
+        let found = site.contrast(&format!("{page} {pseudo}"), body);
+        if !found.is_empty() {
+            reported.push(format!("{pseudo}: {found:?}"));
+        }
+    }
+    assert!(reported.is_empty(), "invented surface: {reported:#?}");
+    // The same pseudo with a box is the ground the copy sits on.
+    let found = site.contrast(
+        &format!("{page} p::before {{ content: ''; position: absolute; inset: 0; width: initial; background: #fff; }}"),
+        body,
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(!found[0].starts_with("sampled"), "{found:?}");
+}
+
+#[test]
 fn a_pseudo_overlay_split_across_rules_still_stops_the_walk() {
     let site = Site::new("split-pseudo");
     let body = "<div class=hero><p>White copy</p></div>";

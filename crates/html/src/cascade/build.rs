@@ -399,10 +399,10 @@ fn pseudo_decls(rule: &CssRule) -> IndexMap<String, String> {
 /// wins over the far offset (a CSS-wide reset keyword does not: `initial`,
 /// `unset`, and `revert` compute to `auto`, no user-agent sheet sizing a
 /// pseudo, and `revert-layer` rolls back to a lower cascade layer, which
-/// this cascade flattens, so it is read as the same reset, a limit on the
-/// silent side), and a `max-width` or `max-height` below the box (anything
-/// but `none`, `100%`, or such a reset) caps it, so such a pseudo is a
-/// decoration, not an overlay.
+/// this cascade flattens, so it is read as the same reset and a lower
+/// layer's size is not followed), and a `max-width` or `max-height` below
+/// the box (anything but `none`, `100%`, or such a reset) caps it, so such
+/// a pseudo is a decoration, not an overlay.
 fn pseudo_covers_box(decls: &IndexMap<String, String>) -> bool {
     let get = |k: &str| decls.get(k).map(|s| js::to_lower_case(js::trim(s)));
     let pseudo_pos = get("position").unwrap_or_default();
@@ -486,7 +486,10 @@ fn mark_pseudo_analytic(
             }
         }
     }
-    if pseudo_covers_box(decls) && decls.contains_key("content") {
+    // The surface is a pseudo that generates a box and paints, as the
+    // sampled overlay mark reads it: a stretched rule whose `content` is
+    // `none` paints nothing and is no ground.
+    if pseudo_covers_box(decls) && pseudo_paints_a_box(decls) {
         let surf_raw = resolve_root(
             &first_of("background-color", "background"),
             root_custom_props,
