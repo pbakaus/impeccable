@@ -99,6 +99,9 @@ b { font-weight: 500; }
 /* Five across in whatever width there is (about 64px at 400, 50px at 320). */
 .cast-row > * { width: min(64px, calc((100cqi - 4 * var(--gap)) / 5)); flex: none; }
 /* More than ten: two rows as one block that scrolls sideways, each tile at full size. */
+.cast.roomy { --gap: 14px; gap: 10px; }
+.cast.roomy .cast-row > * { width: 64px; }
+.cast.roomy .add .face { width: 48px; height: 48px; }
 .cast.wide { overflow-x: auto; padding: 5px 5px 8px; }
 .cast.wide .cast-row { justify-content: flex-start; width: max-content; }
 .cast.wide .cast-row > * { width: 64px; }

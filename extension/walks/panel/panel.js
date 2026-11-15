@@ -297,7 +297,7 @@ function appModal() {
         pre.appsOpen ? el('ul', { class: 'apps', 'aria-label': COPY.make.fromApp }, (pre.apps ?? []).map((app, i) => el('li', {},
           el('button', { type: 'button', 'data-act': `app-${i}`, 'aria-pressed': appKey(app) === pre.app ? 'true' : 'false', onclick: () => { void openApp(app); } }, app.name)))) : null),
       !chosen ? null : list === undefined ? el('div', { class: 'modal-mid' }, dots()) : !list?.length ? el('p', { class: 'task modal-mid', text: list === null ? COPY.make.appFailed : COPY.make.appNone })
-        : grid(list.map((each) => el('span', { class: 'cast-one', role: 'listitem' }, face(each, 44), el('span', { class: 'cast-name', text: each.name }))), { role: 'list', 'aria-label': chosen.name }),
+        : grid(list.map((each) => el('span', { class: 'cast-one', role: 'listitem' }, face(each, sized(list.length)), el('span', { class: 'cast-name', text: each.name }))), { role: 'list', 'aria-label': chosen.name }, list.length),
       el('div', { class: 'pair' }, button('cancel', COPY.make.cancel, 'sec', shut),
         el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'use-these', disabled: !ready, text: COPY.make.useThese, onclick: useApp }))));
 }
@@ -348,30 +348,32 @@ function maker() {
   return [...parts, appModal()];
 }
 
-/** The personas as a grid of faces, four to a row, and + last, which makes one. */
 /**
- * Faces in at most two rows of five, the second centred under the first. More than ten: still two rows, as one block
- * that scrolls sideways (`wide`).
+ * Faces in rows, the second centred under the first, + last where there is one. Six personas or fewer: four to a row,
+ * larger (`roomy`). More: at most two rows of five; past ten tiles, still two rows, as one block that scrolls sideways (`wide`).
  */
-const ROW = 5;
-function grid(tiles, props) {
-  const first = tiles.length <= ROW * 2 ? ROW : Math.ceil(tiles.length / 2);
-  const rows = [tiles.slice(0, first), tiles.slice(first)].filter((row) => row.length);
-  return el('div', { ...props, class: `cast scrolls${tiles.length > ROW * 2 ? ' wide' : ''}` }, rows.map((row) => el('div', { class: 'cast-row' }, row)));
+const roomy = (people) => people <= 6;
+const sized = (people) => (roomy(people) ? 48 : 44);
+function grid(tiles, props, people) {
+  const row = roomy(people) ? 4 : 5;
+  const first = tiles.length <= row * 2 ? row : Math.ceil(tiles.length / 2);
+  const rows = [tiles.slice(0, first), tiles.slice(first)].filter((each) => each.length);
+  return el('div', { ...props, class: `cast scrolls${roomy(people) ? ' roomy' : tiles.length > row * 2 ? ' wide' : ''}` }, rows.map((each) => el('div', { class: 'cast-row' }, each)));
 }
 
 function cast() {
   const full = (pre.personas ?? []).filter((each) => each.mine).length >= ownMax;
+  const people = pre.personas?.length ?? 0;
   return grid([
     ...(pre.personas ?? []).map((each, i) => el('button', {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
-    }, face(each, 44), el('span', { class: 'cast-name', text: each.name }))),
+    }, face(each, sized(people)), el('span', { class: 'cast-name', text: each.name }))),
     // At the limit of their own, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
         el('span', { class: 'face' }, icon('plus'))),
-  ], { role: 'group', 'aria-label': COPY.home.who });
+  ], { role: 'group', 'aria-label': COPY.home.who }, people);
 }
 
 /** Personas that didn't load: sign in again when the sign-in is gone, else try again. */

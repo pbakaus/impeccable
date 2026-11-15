@@ -436,6 +436,16 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
+// Six personas or fewer (+ the seventh tile): four to a row, larger. More: five to a row.
+for (const [people, rows] of [[6, [4, 3]], [7, [5, 3]]]) {
+  test(`the side panel's grid of ${people} personas and the + is rows of ${rows.join(' and ')}`, async () => {
+    const personas = Array.from({ length: people }, (_, i) => ({ name: `P${i}`, role: '', slug: `p${i}` }));
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas });
+    const drawn = h.app.querySelectorAll('.cast-row');
+    assert.deepEqual([drawn.map((row) => row.children.length), drawn.at(-1).children.at(-1).attributes['data-act']], [rows, 'make-persona']);
+  });
+}
+
 // The tab's address decides whose personas: an app's, or the six defaults. Make a persona's link opens a modal of the
 // person's apps: an app's own cast (without the defaults) becomes the grid, first picked, and stays for that address.
 test('the side panel asks for the personas of the tab’s address, and uses an app’s personas there once chosen', async () => {
