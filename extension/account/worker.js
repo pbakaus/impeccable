@@ -125,8 +125,9 @@ async function plan(message) {
   return planned.ok && Object.hasOwn(SERVER_DEVICE, message.device) ? { ...planned, width: (await takesWidths()) === null ? 'desktop' : message.device } : planned;
 }
 
-/** Who walks, as the side panel picked them: a name, and the face sheet's address when there is one. */
-const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: typeof who.face === 'string' && /^https?:\/\//.test(who.face) ? who.face.slice(0, 2048) : null } : null);
+/** Who walks, as the side panel picked them: a name, and the face sheet when there is one (session.js `faceOf`, a `data:` picture). */
+const FACE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: typeof who.face === 'string' && who.face.length <= 360_000 && FACE.test(who.face) ? who.face : null } : null);
 
 /** The width the side panel picked, as the server names it (walks/driver.js `DEVICES`); none is the tab as it is. */
 const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };

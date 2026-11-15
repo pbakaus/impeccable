@@ -68,9 +68,9 @@ const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
 /** An app's three keys, or null: each must be a string, as a regex's test reads a missing one as "undefined". */
 export const appOf = (p) => (['workspace', 'repo', 'app'].every((key) => typeof p?.[key] === 'string' && APP_PART.test(p[key])) ? { workspace: p.workspace, repo: p.repo, app: p.app } : null);
 /**
- * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, app?, sees?, about?, face? }`
+ * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, app?, sees?, about? }`
  * (`mine`: the person's own, by slug; `default`: one of the six; `app`: the app whose cast it is, as slugs repeat across
- * apps; `sees`: how it sees the page; `face`: its face sheet's https address).
+ * apps; `sees`: how it sees the page). Its face is fetched apart (`faceOf`).
  */
 const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
@@ -78,8 +78,10 @@ const personaOf = (p) => ({
   ...(p.sees === 'older-eyes' || p.sees === 'colour-blind' ? { sees: p.sees } : {}),
   ...(p.situation?.device === 'mobile' || p.situation?.device === 'tablet' ? { device: p.situation.device } : {}),
   ...(typeof (p.profile ?? p.about) === 'string' && (p.profile ?? p.about) ? { about: (p.profile ?? p.about).slice(0, 1500) } : {}),
-  ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
 });
+/** A face sheet's small copy, as the server's face door answers it: a picture of at most this many bytes. */
+const FACE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const FACE_BYTES = 256 * 1024;
 /** A waiting journey's id: an outing's, as the hand-off takes it (walks/handoff.js `ID`). */
 const WAITING_ID = /^[A-Za-z0-9_-]{1,80}$/;
 /** A plan's id: a signed string the server reads back, bound to the persona, task and site it was made for. */
@@ -225,6 +227,30 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
   }
   const read = async (at, path) => { const answer = await call(at, path); return answer && answer.status >= 200 && answer.status < 300 ? answer.json : null; };
 
+  /**
+   * A listed persona's face (`face: { src, crop }`) as a `data:` address the panel can paint: `src` is a short-lived
+   * link on `at`'s own face door that answers only with the bearer, so a CSS `url()` could never load it. A link
+   * anywhere else is never sent the token. Anything that goes wrong: null, and the panel shows the initial.
+   */
+  async function faceOf(at, face) {
+    const src = face?.src;
+    if (typeof src !== 'string' || src.length > 4096 || !src.startsWith(`${resourceFor(at)}/faces?link=`)) return null;
+    try {
+      const bearer = await token(at);
+      if (!bearer || issuer() !== at) return null;
+      const answer = await fetch(src, { headers: { authorization: `Bearer ${bearer}`, accept: FACE_TYPES.join(', ') }, ...sealed });
+      const type = answer.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+      if (!answer.ok || !FACE_TYPES.includes(type) || Number(answer.headers.get('content-length') ?? 0) > FACE_BYTES) return null;
+      const bytes = new Uint8Array(await answer.arrayBuffer());
+      if (bytes.length === 0 || bytes.length > FACE_BYTES) return null;
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      return `data:${type};base64,${btoa(binary)}`;
+    } catch {
+      return null;
+    }
+  }
+
   /** Asks `at`'s server to end each refresh token its record still holds to be ended, and forgets those it answered for. */
   async function retire(at) {
     const kept = await record(at).catch(() => null);
@@ -279,16 +305,19 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
-     * The signed-in person's personas, `[{ name, role, slug?, mine? }]`, or null. `url`: the tab's address, for the
-     * personas of the app there, else the six defaults (the server matches by host, REN-2039). `app`: one app's
-     * (`{ workspace, repo, app }`) instead.
+     * The signed-in person's personas, `[{ name, role, slug?, mine?, face? }]`, or null. `url`: the tab's address, for
+     * the personas of the app there, else the six defaults (the server matches by host, REN-2039). `app`: one app's
+     * (`{ workspace, repo, app }`) instead. `face`: the face sheet as a `data:` address, for those with one stored.
      */
     async personas({ url, app } = {}) {
+      const at = issuer();
       const one = appOf(app);
       const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
-      const list = await read(issuer(), `/personas${query}`);
-      const rows = Array.isArray(list?.personas) ? list.personas : null;
-      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf) ?? null;
+      const list = await read(at, `/personas${query}`);
+      const rows = Array.isArray(list?.personas) ? list.personas.filter((p) => typeof p?.name === 'string').slice(0, 100) : null;
+      if (!rows) return null;
+      const faces = await Promise.all(rows.map((p) => faceOf(at, p.face)));
+      return rows.map((p, i) => ({ ...personaOf(p), ...(faces[i] ? { face: faces[i] } : {}) }));
     },
 
     /** The person's apps, `[{ workspace, repo, app, name }]`, or null. */

@@ -549,6 +549,25 @@ describe('account worker', () => {
     });
   }
 
+  // The server's face link answers only with the bearer, so the panel gets the picture itself; a link off the door never sees the token.
+  it('hands the side panel each listed face as a picture fetched with the bearer, and sends no token off the door', async () => {
+    await loaded;
+    session.personaCreate = null;
+    const door = `${ISSUER}/extension/v1/faces?link=a.b`, away = 'https://elsewhere.example/extension/v1/faces?link=a.b';
+    const asked = [];
+    globalThis.fetch = async (url, init = {}) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-face', refresh_token: 'refresh-walk', expires_in: 900 });
+      if (url === `${ISSUER}/extension/v1/personas`) return json(200, { personas: ['Maya', 'Sam', 'Grace'].map((name, i) => ({ name, role: '', slug: `default:${name.toLowerCase()}`, default: true, face: { src: [door, away, `${door}x`][i], crop: { x: 0.17, y: 0.2, zoom: 3.6 } } })) });
+      asked.push(url);
+      return url === door && init.headers?.authorization?.startsWith('Bearer ') ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }) : new Response(null, { status: 404 });
+    };
+    const answer = await ask({ account: 'personas' }, fromPanel);
+    assert.deepEqual(answer.personas.map((p) => p.face ?? null), ['data:image/jpeg;base64,AQID', null, null]);
+    assert.equal(asked.includes(away), false);
+    records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
+  });
+
   it('sends nothing for a description under eight characters', async () => {
     await loaded;
     startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
