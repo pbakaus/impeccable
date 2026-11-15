@@ -158,6 +158,10 @@ fn collapsed_text_content(el: &StaticElement<'_>) -> String {
 
 /// JS: checks.mjs#isKickerCardContext(heading, kicker)
 fn is_kicker_card_context(heading: &StaticElement<'_>, kicker: &StaticElement<'_>) -> bool {
+    // An h1 heads the page, never a card, whatever wraps it.
+    if heading.tag_lower() == "h1" {
+        return false;
+    }
     match heading.closest(KICKER_CARD_CONTEXT_SELECTOR) {
         Some(item) => item.contains(kicker),
         None => false,
@@ -248,14 +252,19 @@ pub fn collect_kicker_candidates(doc: &StaticDocument) -> Vec<KickerCandidate> {
                 t
             }
         };
-        let heading_font_size = font_size_of(heading_style);
+        // A fluid `clamp()` heading reads at its largest size, as the hero
+        // rule reads it; the static engine computes no clamp.
+        let heading_font_size = match font_size_of(heading_style) {
+            n if n > 0.0 => n,
+            _ => resolve_hero_heading_size_px(sv_opt(heading_style, "fontSize")),
+        };
         let kicker_font_size = font_size_of(kicker_style);
         let kicker_letter_spacing =
             resolve_len_or_zero(sv(kicker_style, "letterSpacing"), kicker_font_size);
-        let kicker_font_variant = format!(
-            "{} {}",
+        let kicker_font_variant = impeccable_core::checks::text_rules::kicker_caps(
             sv(kicker_style, "fontVariant"),
-            sv(kicker_style, "fontVariantCaps")
+            sv(kicker_style, "fontVariantCaps"),
+            sv(kicker_style, "fontFamily"),
         );
         if !is_kicker_candidate(&KickerCandidateInput {
             heading_level,
@@ -270,22 +279,13 @@ pub fn collect_kicker_candidates(doc: &StaticDocument) -> Vec<KickerCandidate> {
         }) {
             continue;
         }
-        // The hero rule takes a tracked label over a display h1, at eyebrow
-        // size once its em floor is what counts. Under the fixed 1.6px floor
-        // the label is handed off only where the hero rule reports it: that
-        // rule reads case from text-transform and typed capitals (not
-        // small-caps) and passes over a dated meta line, so a label it leaves
-        // is kept here.
+        // The hero rule takes a label over a display h1 only where it
+        // reports it: that rule reads case from text-transform and typed
+        // capitals (not small-caps), stops at 14px and passes over a dated
+        // meta line, so a label it leaves is kept here.
         if heading_tag == "h1"
             && heading_font_size >= 48.0
-            && (kicker_letter_spacing >= 1.6
-                || (kicker_font_size <= 14.0
-                    && impeccable_core::checks::rules::hero_eyebrow_tracked(
-                        kicker_letter_spacing,
-                        kicker_font_size,
-                        Some(impeccable_core::checks::rules::HERO_EYEBROW_TRACKING_EM),
-                    )
-                    && !check_element_hero_eyebrow(&heading, heading_style, "h1").is_empty()))
+            && !check_element_hero_eyebrow(&heading, heading_style, "h1").is_empty()
         {
             continue;
         }

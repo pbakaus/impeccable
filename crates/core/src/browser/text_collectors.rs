@@ -56,6 +56,12 @@ pub const KICKER_CARD_MAX_VIEWPORTS: f64 = 2.0;
 /// and heading inside it share no card. Where the box or the viewport is not
 /// measured the ancestor counts, as before.
 pub fn is_kicker_card_context(dom: &dyn Dom, heading: ElId, kicker: ElId) -> bool {
+    // An h1 heads the page, never a card, whatever wraps it: a label set
+    // right before it is its eyebrow. A label further up the wrapper keeps
+    // the card reading.
+    if tag_lower(dom, heading) == "h1" && dom.previous_element_sibling(heading) == Some(kicker) {
+        return false;
+    }
     match dom.closest(heading, KICKER_CARD_CONTEXT_SELECTOR) {
         Ok(Some(item)) => {
             let viewport = dom.inner_height();
@@ -256,10 +262,10 @@ pub fn collect_kicker_candidates_with_elements(dom: &dyn Dom) -> Vec<(ElId, Kick
         let kicker_font_size = font_size_of(dom, kicker_type);
         let kicker_letter_spacing =
             resolve_len_or_zero(&dom.style(kicker_type, "letterSpacing"), kicker_font_size);
-        let kicker_font_variant = format!(
-            "{} {}",
-            dom.style(kicker_type, "fontVariant"),
-            dom.style(kicker_type, "fontVariantCaps")
+        let kicker_font_variant = crate::checks::text_rules::kicker_caps(
+            &dom.style(kicker_type, "fontVariant"),
+            &dom.style(kicker_type, "fontVariantCaps"),
+            &dom.style(kicker_type, "fontFamily"),
         );
         if !is_kicker_candidate(&KickerCandidateInput {
             heading_level,
@@ -274,25 +280,13 @@ pub fn collect_kicker_candidates_with_elements(dom: &dyn Dom) -> Vec<(ElId, Kick
         }) {
             continue;
         }
-        // The hero rule takes a tracked label over a display h1. Its em
-        // floor reaches only the labels that rule reads (the h1's own
-        // previous sibling, at eyebrow size), and under the fixed 1.6px floor
-        // the label is handed off only where the hero rule reports it: that
-        // rule reads case from text-transform and typed capitals (not
-        // small-caps) and passes over a dated meta line, so a label it leaves
-        // is kept here.
+        // The hero rule takes a label over a display h1 only where it
+        // reports it: that rule reads case from text-transform and typed
+        // capitals (not small-caps), stops at 14px and passes over a dated
+        // meta line, so a label it leaves is kept here.
         if heading_tag == "h1"
             && heading_font_size >= 48.0
-            && (kicker_letter_spacing >= crate::checks::rules::HERO_EYEBROW_TRACKING_PX
-                || (found.levels == 0
-                    && kicker_font_size <= 14.0
-                    && crate::checks::rules::hero_eyebrow_tracked(
-                        kicker_letter_spacing,
-                        kicker_font_size,
-                        Some(crate::checks::rules::HERO_EYEBROW_TRACKING_EM),
-                    )
-                    && !super::element_checks::check_element_hero_eyebrow_dom(dom, heading)
-                        .is_empty()))
+            && !super::element_checks::check_element_hero_eyebrow_dom(dom, heading).is_empty()
         {
             continue;
         }

@@ -70,10 +70,11 @@ case "$scopes" in *" critiques:write "*) pass "preflight: staging offers critiqu
 #    command approves it as the seeded person and delivers the code there. The host
 #    approves one sign-in per run, so this one also carries the CLI-first checks
 #    (REN-1918): it runs inside a fresh repository, which login scans and adds to the
-#    account, naming Home.
+#    account, naming Foundations. The repository has no remote, so it goes up unnamed
+#    and staging's Foundations shows what such a repository is called (REN-2028).
 R2="$H/first-repo"; mkdir -p "$R2"
 printf '%s\n' '<!doctype html><html><head><title>first</title></head><body><h1>First</h1><p style="color:#9ca3af;background:#6d28d9">Grey on purple</p></body></html>' > "$R2/index.html"
-git -C "$R2" init -q && git -C "$R2" remote add origin https://github.com/impeccable-e2e/staging-first-scan
+git -C "$R2" init -q
 git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
@@ -93,7 +94,8 @@ check "login: the CLI finished signing in" '[ $rc = 0 ]'
 if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
   info "setup: the Home link check runs against staging's issuer only"
 elif [ $health = 1 ]; then
-  check "setup: the sign-in's first scan names Home" 'grep -qF "See it on your Home: $HOME_URL" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
+  check "setup: the sign-in's first scan names Foundations" 'grep -qF "See it in Foundations: $HOME_URL/-/foundations" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
+  check "setup: a repository with no remote goes up without a name" 'grep -q "Sent finding counts and foundations checks" "$H/login.err"'
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
 

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable first-viewport <url> --thesis <selector> --action <selector> [--viewport WxH ...]\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}
