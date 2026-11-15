@@ -522,6 +522,9 @@ describe('account worker', () => {
     // One of the six everyone has (REN-2039): its `default:` slug, and how it sees, kept for the walk.
     ['lists a default persona', () => json(200, { personas: [{ name: 'Robert', role: '', profile: 'Retired.', slug: 'default:robert', default: true, sees: 'older-eyes' }] }), () => json(200, {}),
       { ok: true, personas: [{ name: 'Robert', role: '', slug: 'default:robert', default: true, sees: 'older-eyes', about: 'Retired.' }] }],
+    // A card on a phone or tablet: its screen, kept for the panel's Screen.
+    ['lists a default persona on her phone', () => json(200, { personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true, situation: { device: 'mobile', minutes: 3 } }] }), () => json(200, {}),
+      { ok: true, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true, device: 'mobile' }] }],
     // The tab's origin alone, never its path: the server answers the personas of the app at that host, or the defaults.
     ['for the tab’s address', () => json(200, { personas: [PERSONA], defaults: true, reason: 'no-app-here' }), () => json(200, {}), { ok: true, personas: [PERSONA] },
       { url: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?url=https%3A%2F%2Ftidy.example'],

@@ -375,11 +375,13 @@ test('the side panel shows a finished walk on its own tab alone, with one button
 
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
   const plan = { id: 'p-1', risky: true, steps: [{ text: 'Add a to-do', risky: false }, { text: 'Delete it', risky: true }] };
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }], plan: { ok: true, plan }, tab: 7 });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }, { name: 'Maya', role: '', slug: 'default:maya', default: true, device: 'mobile' }], plan: { ok: true, plan }, tab: 7 });
   assert.equal(h.body.dataset.screen, 'home');
+  await h.press('pick-2');
+  assert.equal(h.app.querySelector('[data-act="size-phone"]').attributes['aria-pressed'], 'true', 'the card’s own screen is filled in');
   await h.press('pick-1');
   const pressed = (act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-pressed'];
-  assert.equal(pressed('sees-colour-blind'), 'true', 'the card’s own sight is filled in');
+  assert.deepEqual([pressed('sees-colour-blind'), pressed('size-desktop')], ['true', 'true'], 'the card’s own sight is filled in, and the person’s own screen is back');
   const box = h.app.querySelector('textarea');
   box.value = 'Add a to-do, then delete it.';
   await h.press('send');

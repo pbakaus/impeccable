@@ -75,6 +75,7 @@ const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
   ...(LISTED.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : p.default === true ? { default: true } : appOf(p) ? { app: appOf(p) } : {}) } : {}),
   ...(p.sees === 'older-eyes' || p.sees === 'colour-blind' ? { sees: p.sees } : {}),
+  ...(p.situation?.device === 'mobile' || p.situation?.device === 'tablet' ? { device: p.situation.device } : {}),
   ...(typeof (p.profile ?? p.about) === 'string' && (p.profile ?? p.about) ? { about: (p.profile ?? p.about).slice(0, 1500) } : {}),
   ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
 });

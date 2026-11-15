@@ -44,6 +44,9 @@ const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
 const SIGHTS = { normal: 'eye', older: 'glasses', 'colour-blind': 'palette' };
 const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
+/** The screen a persona's card names (`device`, REN-2039), else the width the person last picked (`ownWidth`). */
+const SCREEN_OF = { mobile: 'phone', tablet: 'tablet' };
+let ownWidth = 'desktop';
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
 let walker = null;
 let walkUrl = null;
@@ -158,10 +161,11 @@ function button(action, text, kind = 'sec', onclick = () => act(action)) {
 /* ------------------------------ before a walk ------------------------------ */
 
 const picked = () => pre.personas?.[pre.pick] ?? null;
-/** Picks a persona, and with it how it sees the page, from its card: the person may change that for this journey. */
+/** Picks a persona, and with it how it sees the page and its screen, from its card: the person may change both for this journey. */
 function choose(i) {
   pre.pick = i;
   pre.sees = SEES_OF[pre.personas?.[i]?.sees] ?? 'normal';
+  pre.width = SCREEN_OF[pre.personas?.[i]?.device] ?? ownWidth;
 }
 /** How a walk names its persona: the person's own by slug; an app's by slug and its app, as slugs repeat across apps. */
 const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug, ...(person.app ? { app: person.app } : {}) } : null);
@@ -453,7 +457,7 @@ function stopMeter() {
 function widths() {
   return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.home.width }, WIDTHS.map((width) => el('button', {
     type: 'button', 'data-act': `size-${width}`, 'aria-pressed': pre.width === width ? 'true' : 'false', 'data-tip': COPY.home.widths[width], 'aria-label': COPY.home.widths[width],
-    onclick: () => { pre.width = width; void chrome.storage.local.set({ walkWidth: width }).catch(() => undefined); render(); },
+    onclick: () => { pre.width = width; ownWidth = width; void chrome.storage.local.set({ walkWidth: width }).catch(() => undefined); render(); },
   }, icon(width))));
 }
 
@@ -808,7 +812,7 @@ async function start() {
   // The stand-in states are a development build's alone: the store build draws no walk screen without a walk.
   const stub = BUILD.devHosts ? params.get('stub') : null;
   const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
-  if (WIDTHS.includes(walkWidth)) pre.width = walkWidth;
+  if (WIDTHS.includes(walkWidth)) pre.width = ownWidth = walkWidth;
   if (stub !== null) {
     const { STUBS, PRE } = await import('./stub.js');
     stubbed = true;
