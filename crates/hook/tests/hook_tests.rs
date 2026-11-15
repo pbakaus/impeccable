@@ -1055,6 +1055,7 @@ fn sensitive_and_generated_paths() {
         "/x/coverage/report.html",
         "/x/site/public/js/generated/counts.js",
         "/x/src/generated/schema.ts",
+        "/x/.impeccable/mocks/decision/option-a.html",
     ] {
         assert!(is_generated_path(p), "expected generated: {p}");
     }
@@ -1063,6 +1064,7 @@ fn sensitive_and_generated_paths() {
         "/x/src/generated-utils.ts",
         "/x/src/components/CodeGenerator.tsx",
         "/x/src/ui/regenerate-button.jsx",
+        "/x/node_modules-free/.impeccable-live/v1.html",
     ] {
         assert!(!is_generated_path(p), "unexpected generated: {p}");
     }
