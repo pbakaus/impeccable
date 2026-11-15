@@ -135,10 +135,11 @@ const name = () => view.who?.name || walker?.name || '';
 const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
 
 /** The site the panel walks; before a walk, Scan and the cog beside it, which opens the account (`accountMenu`) under it. */
-function top(url = hereUrl, { tools = false } = {}) {
+function top(url = hereUrl, { tools = false, back = null } = {}) {
   const host = hostOf(url);
   const open = tools && pre.menu;
   return el('div', { class: 'top' },
+    back ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: back }, icon('back')) : null,
     host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
     el('span', { class: 'grow' }),
     tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
@@ -673,7 +674,8 @@ function end() {
   el('span', { class: 'big-t' }, el('b', { text: label }), n > 0 && state === 'stopped' ? el('small', { text: COPY.end.beforeStop }) : null), icon('out'))
     : button('home', COPY.end.home, 'sec full', () => { ended = true; render(); });
   return [
-    top(view.site ?? hereUrl),
+    // The way back to the home, in the top row as on every other screen; the results stay one press away below.
+    top(view.site ?? hereUrl, { back: () => { ended = true; render(); } }),
     el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
       face(walking(), 132, state === 'done' ? 'delighted' : state === 'failed' ? 'confused' : 'neutral'),
       el('h2', { class: 'hd', role: 'status', text: head }),

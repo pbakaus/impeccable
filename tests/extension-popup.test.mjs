@@ -377,6 +377,9 @@ test('the side panel shows a finished walk on its own tab alone, with one button
   assert.deepEqual([h.opened.map((made) => made.url), h.body.dataset.screen], [[replayUrl], 'home'], 'the results open, and the panel goes home');
   const later = await sidePanel({ view: ended, status: signedIn, tab: 8 });
   assert.equal(later.body.dataset.screen, 'home', 'opened later on another tab');
+  const back = await sidePanel({ view: ended, status: signedIn, tab: 7 });
+  await back.press('back');
+  assert.deepEqual([back.body.dataset.screen, back.opened], ['home', []], 'Back in the top row goes home and opens nothing');
 });
 
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
