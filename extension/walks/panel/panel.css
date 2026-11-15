@@ -87,7 +87,9 @@ b { font-weight: 500; }
 .top { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .where { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .where b { color: var(--ink); }
-.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 40px; text-align: center; }
+/* The persona's part of the home and of Make a persona: centred between the top bar and the box, from the top with a scroll when there is no room. */
+.middle { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 24px 0 8px; }
+.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
 .hero .face { margin-bottom: 8px; }
 .name { font-family: var(--wordmark); font-weight: 200; font-size: 3.25rem; line-height: .9; color: var(--ink); }
 .about { margin-top: 6px; font-size: 17px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
@@ -288,7 +290,6 @@ b { font-weight: 500; }
 .apps button { width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; font-size: 14px; color: var(--ink); }
 .apps button:hover { background: var(--paper-deep); }
 .apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
-.screen-make .hero { margin-top: 36px; }
 
 /* ---------- talk to type: the waveform while the mic is on ---------- */
 /* A few thin rounded bars in one colour, eased each frame (voice.js `meter`); quiet, a flat line of short dots. */

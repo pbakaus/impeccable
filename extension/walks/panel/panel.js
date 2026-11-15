@@ -335,8 +335,7 @@ function maker() {
     el('div', { class: 'top' }, made || pre.making ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
       el('span', { class: 'grow' }),
       made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false, modalSite: siteOf(hereUrl) }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
-    hero,
-    el('span', { class: 'grow' }),
+    el('div', { class: 'middle' }, hero),
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
       el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
         el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
@@ -395,8 +394,9 @@ function home() {
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
   return [
     top(hereUrl, { tools: true }),
-    el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
-    cast(),
+    el('div', { class: 'middle' },
+      el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
+      cast()),
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
       // Screen on the left and Sees on the right, as tabs on the box's top edge.
