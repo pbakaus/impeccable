@@ -21,7 +21,7 @@ use crate::checks::embedded_content::{
 };
 use crate::checks::measures::{
     cream_from_class_list, is_cream_color, is_opaque_decorated_box,
-    is_screen_reader_only_text_style, resolve_length_px, SrOnlyMetrics, StyleMap,
+    is_screen_reader_only_text_style, parse_radius_corners, resolve_length_px, SrOnlyMetrics, StyleMap,
 };
 use crate::checks::rules::{
     check_flat_type_hierarchy_samples, flat_type_hierarchy_severity, is_card_like_from_props,
@@ -4804,6 +4804,213 @@ fn overprints(dom: &dyn Dom, top: ElId, victim: ElId) -> bool {
     !top_text.is_empty() && victim_text.starts_with(top_text.as_str())
 }
 
+/// How far two sibling cards have to overlap on each axis before one is
+/// laid over the other: a list's cards pulled up by 1px to share a border
+/// stay under it.
+const SIBLING_CARD_OVERLAP_MIN_PX: f64 = 8.0;
+
+/// Whether `e`'s `z-index` applies: a positioned box, or a flex or grid item.
+fn card_z_applies(dom: &dyn Dom, e: ElId) -> bool {
+    !matches!(dom.style(e, "position").as_str(), "static" | "")
+        || dom.parent(e).map_or(false, |p| {
+            matches!(dom.style(p, "display").as_str(), "flex" | "inline-flex" | "grid" | "inline-grid")
+        })
+}
+
+/// The `z-index` level `e` paints at among its siblings: its own `z-index`
+/// where that applies, else 0. A transform or a filter on a static box opens
+/// a layer at 0 but leaves its `z-index` unread.
+fn card_level(dom: &dyn Dom, e: ElId) -> f64 {
+    let z = parse_float(&dom.style(e, "zIndex"));
+    if card_z_applies(dom, e) && z.is_finite() {
+        z
+    } else {
+        0.0
+    }
+}
+
+/// Whether `e` opens a stacking context, by the predicate the contrast pass
+/// reads paint order with: a `z-index` that applies, an opacity under 1, a
+/// transform, a filter, a blend mode, `contain: paint`, `isolation:
+/// isolate`, a `will-change` hint for one of those, a fixed or sticky
+/// position. A capture that cannot say reads as none.
+fn card_opens_context(dom: &dyn Dom, e: ElId) -> bool {
+    super::visual::opens_stacking_context(dom, e) == Some(true)
+}
+
+/// Whether `e` paints as a layer of its own: a positioned box, or one that
+/// opens a stacking context.
+fn card_layered(dom: &dyn Dom, e: ElId) -> bool {
+    !matches!(dom.style(e, "position").as_str(), "static" | "") || card_opens_context(dom, e)
+}
+
+/// Which of two sibling cards paints on top, `a` coming first in tree order.
+/// A higher `z-index` wins where it applies (a positioned box, or a flex or
+/// grid item); on one level a box that paints as a layer of its own (a
+/// positioned one, or one that opens a stacking context, `isolation:
+/// isolate` included) paints after an in-flow one that does not, whichever
+/// comes first, and otherwise the later sibling paints last, once flex and
+/// grid `order` is counted.
+fn sibling_card_on_top(dom: &dyn Dom, parent: ElId, a: ElId, b: ElId) -> ElId {
+    let (za, zb) = (card_level(dom, a), card_level(dom, b));
+    if za != zb {
+        return if za > zb { a } else { b };
+    }
+    match (card_layered(dom, a), card_layered(dom, b)) {
+        (true, false) => a,
+        (false, true) => b,
+        _ if super::painted::later_sibling_paints_after(dom, parent, a, b) => b,
+        _ => a,
+    }
+}
+
+/// Whether text inside the card `under` still paints over the sibling card
+/// `top` laid on it. A card that opens no stacking context keeps none of its
+/// descendants: a paragraph at `position: relative; z-index: 2` in a static
+/// card joins the cards' own context and paints over a sibling at
+/// `z-index: 1`. The text paints with the outermost box between it and
+/// `under` that opens a context, or failing one the outermost positioned
+/// box, and with `under` itself when there is neither. `under_first` says
+/// whether `under` comes first in tree order.
+fn text_paints_over_card(dom: &dyn Dom, parent: ElId, under: ElId, top: ElId, under_first: bool, text: ElId) -> bool {
+    if card_opens_context(dom, under) {
+        return false;
+    }
+    let (mut context, mut positioned) = (None, None);
+    let mut cur = Some(text);
+    while let Some(e) = cur {
+        if e == under {
+            break;
+        }
+        if card_opens_context(dom, e) {
+            context = Some(e);
+        } else if card_layered(dom, e) {
+            positioned = Some(e);
+        }
+        cur = dom.parent(e);
+    }
+    if cur != Some(under) {
+        return false;
+    }
+    let Some(layer) = context.or(positioned) else { return false };
+    let (zt, zc) = (card_level(dom, layer), card_level(dom, top));
+    if zt != zc {
+        return zt > zc;
+    }
+    if !card_layered(dom, top) {
+        return true;
+    }
+    // Two layers on one level paint in tree order, which `layer` shares
+    // with `under`.
+    if under_first {
+        !super::painted::later_sibling_paints_after(dom, parent, under, top)
+    } else {
+        super::painted::later_sibling_paints_after(dom, parent, top, under)
+    }
+}
+
+/// The left and right edges of `rect` with rounded `corners` along the row
+/// at `y`, or `None` above or below it. `corners` are `(horizontal,
+/// vertical)` radii in top-left, top-right, bottom-right, bottom-left order.
+fn rounded_row_span(rect: &Rect, corners: &[(f64, f64); 4], y: f64) -> Option<(f64, f64)> {
+    if y < rect.top || y > rect.bottom {
+        return None;
+    }
+    // How far a corner of radii `(rx, ry)` pulls the edge in, `dy` px from
+    // the side it rounds into.
+    let inset = |(rx, ry): (f64, f64), dy: f64| {
+        if rx <= 0.0 || ry <= 0.0 || dy >= ry {
+            return 0.0;
+        }
+        let t = (ry - dy) / ry;
+        rx - rx * (1.0 - t * t).max(0.0).sqrt()
+    };
+    let [tl, tr, br, bl] = *corners;
+    let (from_top, from_bottom) = (y - rect.top, rect.bottom - y);
+    let left = rect.left + math_max(inset(tl, from_top), inset(bl, from_bottom));
+    let right = rect.right - math_max(inset(tr, from_top), inset(br, from_bottom));
+    Some((left, right))
+}
+
+/// The radii of `el`'s rounded corners as [`rounded_row_span`] reads them,
+/// scaled down where they overrun the box the way CSS scales them. `None`
+/// for a square box, or a `border-radius` this cannot resolve, which is read
+/// as square so the overlap still counts.
+fn card_corner_radii(dom: &dyn Dom, el: ElId, rect: &Rect) -> Option<[(f64, f64); 4]> {
+    let value = dom.style(el, "borderRadius");
+    let vertical_half = value.split_once('/').map_or(value.as_str(), |(_, v)| v);
+    let h = parse_radius_corners(Some(&value), rect.width)?;
+    let v = parse_radius_corners(Some(vertical_half), rect.height)?;
+    let mut c = [
+        (h.top_left, v.top_left),
+        (h.top_right, v.top_right),
+        (h.bottom_right, v.bottom_right),
+        (h.bottom_left, v.bottom_left),
+    ];
+    if c.iter().all(|(x, y)| *x <= 0.0 || *y <= 0.0) {
+        return None;
+    }
+    let fit = |len: f64, a: f64, b: f64| if a + b > len && a + b > 0.0 { len / (a + b) } else { 1.0 };
+    let f = [
+        fit(rect.width, c[0].0, c[1].0),
+        fit(rect.width, c[3].0, c[2].0),
+        fit(rect.height, c[0].1, c[3].1),
+        fit(rect.height, c[1].1, c[2].1),
+    ]
+    .into_iter()
+    .fold(1.0, math_min);
+    for (x, y) in &mut c {
+        *x *= f;
+        *y *= f;
+    }
+    Some(c)
+}
+
+/// Whether `overlap` lands on one of `el`'s text lines inside its painted
+/// `rect`: across at least 8px of the line and half its height. A DOM that
+/// cannot say where the lines are reads the painted rect as one line. Where
+/// the covering card is rounded (`cover` and its `corners`), only the part
+/// of the overlap inside its rounded shape counts: a pill's empty corner
+/// over the end of a line covers nothing.
+fn sibling_card_covers_a_line(
+    dom: &dyn Dom,
+    el: ElId,
+    rect: &Rect,
+    overlap: &Rect,
+    cover: &Rect,
+    corners: Option<&[(f64, f64); 4]>,
+) -> bool {
+    let lines = dom
+        .text_line_rects(el)
+        .map(|l| l.into_iter().filter(|r| r.all_finite()).collect::<Vec<_>>())
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| vec![rect.clone()]);
+    lines.iter().any(|line| {
+        let left = math_max(math_max(line.left, rect.left), overlap.left);
+        let right = math_min(math_min(line.right, rect.right), overlap.right);
+        let top = math_max(math_max(line.top, rect.top), overlap.top);
+        let bottom = math_min(math_min(line.bottom, rect.bottom), overlap.bottom);
+        let band = 0.5 * line.height;
+        if !(right - left >= SIBLING_CARD_OVERLAP_MIN_PX && bottom - top >= band) {
+            return false;
+        }
+        let Some(corners) = corners else { return true };
+        // A band of rows half the line tall, at the top or the bottom of the
+        // covered piece or as near the card's middle row as it fits: the
+        // shape is convex, so what it covers across the whole band is what
+        // it covers on the band's first and last rows.
+        let middle = (cover.top + cover.bottom - band) / 2.0;
+        [top, bottom - band, math_min(math_max(middle, top), bottom - band)].iter().any(|&y0| {
+            match (rounded_row_span(cover, corners, y0), rounded_row_span(cover, corners, y0 + band)) {
+                (Some((l0, r0)), Some((l1, r1))) => {
+                    math_min(right, math_min(r0, r1)) - math_max(left, math_max(l0, l1)) >= SIBLING_CARD_OVERLAP_MIN_PX
+                }
+                _ => false,
+            }
+        })
+    })
+}
+
 /// JS: checks.mjs#checkTextOcclusionDOM()
 pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
     let mut findings = Vec::new();
@@ -5383,6 +5590,81 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
                 ),
             ),
         });
+    }
+
+    // (iv) A card laid over a sibling card's words. Cards placed at fixed
+    // offsets shorter than their content (a report's visitor cards 220px
+    // apart round a 277px quote), or wider than their grid tracks, cover a
+    // line or two of the card beside them: far under the share the probe
+    // grid above needs, and often between its rows. The overlap is read from
+    // the boxes and the paint order of two cards with one parent, and it
+    // counts where it lands on a text line of the card underneath: a card
+    // over the empty body of the one behind it covers nothing a reader
+    // reads, and a shared 1px border is under the 8px floor.
+    for (i, a) in cards.iter().enumerate() {
+        for b in &cards[i + 1..] {
+            let Some(parent) = dom.parent(a.el) else { continue };
+            if dom.parent(b.el) != Some(parent) {
+                continue;
+            }
+            let ix = math_min(a.rect.right, b.rect.right) - math_max(a.rect.left, b.rect.left);
+            let iy = math_min(a.rect.bottom, b.rect.bottom) - math_max(a.rect.top, b.rect.top);
+            if ix < SIBLING_CARD_OVERLAP_MIN_PX || iy < SIBLING_CARD_OVERLAP_MIN_PX {
+                continue;
+            }
+            let (top, under) = if sibling_card_on_top(dom, parent, a.el, b.el) == b.el {
+                (b.el, a.el)
+            } else {
+                (a.el, b.el)
+            };
+            if effective_opacity_dom(dom, top) <= 0.02 {
+                continue;
+            }
+            // A clip or a mask can take away the very part of the box that
+            // overlaps; what it leaves painted is not known from the box.
+            let shaped = |e: ElId| {
+                ["clipPath", "webkitClipPath", "maskImage", "webkitMaskImage"]
+                    .iter()
+                    .any(|p| !matches!(dom.style(e, p).as_str(), "" | "none"))
+            };
+            // A rotated or skewed card's rect is its bounding box, whose empty
+            // corners cover nothing: the painted overlap cannot be read.
+            if shaped(top) || drawn_tilted(dom, top) || drawn_tilted(dom, under) {
+                continue;
+            }
+            let overlap = Rect::from_xywh(
+                math_max(a.rect.left, b.rect.left),
+                math_max(a.rect.top, b.rect.top),
+                ix,
+                iy,
+            );
+            let cover = if top == a.el { &a.rect } else { &b.rect };
+            let corners = card_corner_radii(dom, top, cover);
+            let covered = text_els.iter().find(|t| {
+                dom.contains(under, t.el)
+                    && !seen_victims.contains(&t.el)
+                    && !sr_only(t.el, &t.rect)
+                    && !text_paints_over_card(dom, parent, under, top, under == a.el, t.el)
+                    && sibling_card_covers_a_line(dom, t.el, &t.rect, &overlap, cover, corners.as_ref())
+            });
+            let Some(victim) = covered else { continue };
+            seen_victims.push(victim.el);
+            findings.push(ElFinding {
+                el: Some(victim.el),
+                finding: BrowserFinding::new(
+                    "text-occlusion",
+                    format!(
+                        "{} \"{}\" runs under {}, a sibling card laid {}px by {}px over {}",
+                        class_selector(dom, victim.el),
+                        slice_utf16_prefix(&victim.text, 24),
+                        class_selector(dom, top),
+                        number_to_string(math_round(ix)),
+                        number_to_string(math_round(iy)),
+                        class_selector(dom, under)
+                    ),
+                ),
+            });
+        }
     }
 
     // Text covered inside a drawn product mockup is covered on purpose:
@@ -8522,6 +8804,199 @@ mod tests {
         assert!(sliver.is_empty(), "{sliver:?}");
         let (shown, label) = run(40.0);
         assert!(shown.iter().any(|f| f.el == Some(label)), "{shown:?}");
+    }
+
+    /// The card that paints later is the one on top: the next sibling, or
+    /// the earlier one where a higher `z-index` raises it. The text of the
+    /// card underneath reports, and only where the overlap lands on one of
+    /// its lines.
+    #[test]
+    fn text_occlusion_reads_which_sibling_card_is_on_top() {
+        let run = |first_z: &str, quote_top: f64| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let board = d.add(Some(body), "div");
+            d.set_styles(board, OCCLUSION_BASE);
+            d.set_styles(board, &[("position", "relative")]);
+            d.set_rect(board, 0.0, 0.0, 400.0, 400.0);
+            let card = |d: &mut FakeDom, top: f64, z: &str| {
+                let c = d.add(Some(board), "article");
+                d.set_styles(c, OCCLUSION_BASE);
+                d.set_styles(
+                    c,
+                    &[("position", "absolute"), ("zIndex", z), ("backgroundColor", "rgb(255, 255, 255)"), ("borderTopWidth", "1px")],
+                );
+                d.set_rect(c, 0.0, top, 320.0, 200.0);
+                let p = d.add(Some(c), "p");
+                d.add_text(p, "A quote long enough to run to the card's last line");
+                d.set_styles(p, OCCLUSION_BASE);
+                d.set_styles(p, &[("fontSize", "14px"), ("lineHeight", "20px")]);
+                p
+            };
+            let first = card(&mut d, 0.0, first_z);
+            let second = card(&mut d, 160.0, "auto");
+            d.set_rect(first, 10.0, quote_top, 300.0, 180.0);
+            d.el_mut(first).text_line_rects = Some((0..9).map(|i| Rect::from_xywh(10.0, quote_top + 20.0 * i as f64, 300.0, 20.0)).collect());
+            d.set_rect(second, 10.0, 170.0, 300.0, 180.0);
+            d.el_mut(second).text_line_rects = Some((0..9).map(|i| Rect::from_xywh(10.0, 170.0 + 20.0 * i as f64, 300.0, 20.0)).collect());
+            mark_body_descendants(&mut d);
+            let hits = check_text_occlusion_dom(&d);
+            (hits.iter().map(|f| f.el).collect::<Vec<_>>(), first, second)
+        };
+        let (hits, first, _) = run("auto", 10.0);
+        assert_eq!(hits, vec![Some(first)], "the later card covers the first card's last lines");
+        let (hits, _, second) = run("2", 10.0);
+        assert_eq!(hits, vec![Some(second)], "a raised first card covers the second card's first lines");
+        // Lines that end above the overlap: the second card covers the empty
+        // body of the first, which reports nothing.
+        let (hits, _, _) = run("auto", -40.0);
+        assert!(hits.is_empty(), "{hits:?}");
+    }
+
+    /// A transform lifts a static card into a layer of its own, painted over
+    /// a later static sibling; a clip-path or a tilt on the card on top leaves
+    /// its painted shape unknown, so the overlap is not counted.
+    #[test]
+    fn text_occlusion_sibling_cards_follow_layers_and_skip_clipped_covers() {
+        let run = |first: &[(&str, &str)], second: &[(&str, &str)]| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let row = d.add(Some(body), "div");
+            d.set_styles(row, OCCLUSION_BASE);
+            d.set_rect(row, 0.0, 0.0, 600.0, 200.0);
+            let mut quotes = Vec::new();
+            for (x, extra) in [(0.0, first), (200.0, second)] {
+                let c = d.add(Some(row), "article");
+                d.set_styles(c, OCCLUSION_BASE);
+                d.set_styles(c, &[("backgroundColor", "rgb(255, 255, 255)"), ("borderTopWidth", "1px")]);
+                d.set_styles(c, extra);
+                d.set_rect(c, x, 0.0, 260.0, 100.0);
+                let p = d.add(Some(c), "p");
+                d.add_text(p, "A quote that runs the width of its card");
+                d.set_styles(p, OCCLUSION_BASE);
+                d.set_styles(p, &[("fontSize", "14px"), ("lineHeight", "20px")]);
+                d.set_rect(p, x + 10.0, 10.0, 240.0, 40.0);
+                d.el_mut(p).text_line_rects = Some(vec![Rect::from_xywh(x + 10.0, 10.0, 240.0, 20.0), Rect::from_xywh(x + 10.0, 30.0, 240.0, 20.0)]);
+                quotes.push(p);
+            }
+            mark_body_descendants(&mut d);
+            (check_text_occlusion_dom(&d).iter().map(|f| f.el).collect::<Vec<_>>(), quotes)
+        };
+        let (hits, quotes) = run(&[], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "the later card covers the first");
+        let (hits, quotes) = run(&[("transform", "matrix(1, 0, 0, 1, 0, 0)")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "a transformed first card paints over the second");
+        // A static card's `z-index` is not read, transform or not: a later
+        // positioned card at z-index 1 still paints over it.
+        let (hits, quotes) = run(
+            &[("transform", "matrix(1, 0, 0, 1, 0, 0)"), ("zIndex", "10")],
+            &[("position", "relative"), ("zIndex", "1")],
+        );
+        assert_eq!(hits, vec![Some(quotes[0])], "the positioned z-index 1 card is on top");
+        // `isolation: isolate` lifts the earlier card over its static
+        // sibling; a `will-change` hint for a property that opens no
+        // stacking context lifts nothing.
+        let (hits, quotes) = run(&[("isolation", "isolate")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "an isolated first card paints over the second");
+        let (hits, quotes) = run(&[("willChange", "color")], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "will-change: color leaves the first card under");
+        let (hits, quotes) = run(&[("willChange", "scroll-position, contents")], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "{hits:?}");
+        let (hits, quotes) = run(&[("willChange", "color, opacity")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "a will-change hint for opacity lifts the first card");
+        // `backdrop-filter` opens a layer too; the old substring match caught
+        // it through `filter`, the exact list must name it.
+        let (hits, quotes) = run(&[("willChange", "backdrop-filter")], &[]);
+        assert_eq!(hits, vec![Some(quotes[1])], "a will-change hint for backdrop-filter lifts the first card");
+        let (hits, _) = run(&[], &[("transform", "matrix(0.966, 0.259, -0.259, 0.966, 0, 0)")]);
+        assert!(hits.is_empty(), "a tilted cover: {hits:?}");
+        let (hits, _) = run(&[], &[("clipPath", "inset(0px 0px 0px 80px)")]);
+        assert!(hits.is_empty(), "{hits:?}");
+    }
+
+    /// A static card opens no stacking context, so a quote inside it at
+    /// `position: relative; z-index: 2` paints over a sibling card at
+    /// `z-index: 1` laid on the card: the words stay readable. Lowered to
+    /// `z-index: 0`, or wrapped in a card that opens a context of its own,
+    /// the quote is under the sibling again.
+    #[test]
+    fn text_occlusion_sibling_card_spares_text_raised_over_it() {
+        let run = |quote: &[(&str, &str)], first: &[(&str, &str)]| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let row = d.add(Some(body), "div");
+            d.set_styles(row, OCCLUSION_BASE);
+            d.set_rect(row, 0.0, 0.0, 600.0, 200.0);
+            let mut quotes = Vec::new();
+            for (x, extra) in [(0.0, first), (200.0, &[("position", "relative"), ("zIndex", "1")][..])] {
+                let c = d.add(Some(row), "article");
+                d.set_styles(c, OCCLUSION_BASE);
+                d.set_styles(c, &[("backgroundColor", "rgb(255, 255, 255)"), ("borderTopWidth", "1px")]);
+                d.set_styles(c, extra);
+                d.set_rect(c, x, 0.0, 260.0, 100.0);
+                let p = d.add(Some(c), "p");
+                d.add_text(p, "A quote that runs the width of its card");
+                d.set_styles(p, OCCLUSION_BASE);
+                d.set_styles(p, &[("fontSize", "14px"), ("lineHeight", "20px")]);
+                if x == 0.0 {
+                    d.set_styles(p, quote);
+                }
+                d.set_rect(p, x + 10.0, 10.0, 240.0, 40.0);
+                d.el_mut(p).text_line_rects = Some(vec![Rect::from_xywh(x + 10.0, 10.0, 240.0, 20.0), Rect::from_xywh(x + 10.0, 30.0, 240.0, 20.0)]);
+                quotes.push(p);
+            }
+            mark_body_descendants(&mut d);
+            (check_text_occlusion_dom(&d).iter().map(|f| f.el).collect::<Vec<_>>(), quotes)
+        };
+        let (hits, _) = run(&[("position", "relative"), ("zIndex", "2")], &[]);
+        assert!(hits.is_empty(), "a quote raised over the covering card: {hits:?}");
+        let (hits, quotes) = run(&[("position", "relative"), ("zIndex", "0")], &[]);
+        assert_eq!(hits, vec![Some(quotes[0])], "a quote at z-index 0 is under the z-index 1 card");
+        let (hits, quotes) = run(&[("position", "relative"), ("zIndex", "2")], &[("opacity", "0.99")]);
+        assert_eq!(hits, vec![Some(quotes[0])], "a card that opens a context keeps its quote inside it");
+        let (hits, quotes) = run(&[("position", "relative"), ("zIndex", "2")], &[("contain", "paint")]);
+        assert_eq!(hits, vec![Some(quotes[0])], "contain: paint keeps the quote inside its card");
+    }
+
+    /// A rounded card's rect is its bounding box: where the overlap lands
+    /// only in the empty corner outside its curve, the text beside it is not
+    /// covered. Squared off, the same overlap covers the line ends.
+    #[test]
+    fn text_occlusion_sibling_card_skips_empty_rounded_corners() {
+        let run = |radius: &str| {
+            let mut d = FakeDom::new();
+            let (_h, body) = d.with_page();
+            let row = d.add(Some(body), "div");
+            d.set_styles(row, OCCLUSION_BASE);
+            d.set_rect(row, 0.0, 0.0, 600.0, 300.0);
+            let first = d.add(Some(row), "article");
+            d.set_styles(first, OCCLUSION_BASE);
+            d.set_styles(first, &[("backgroundColor", "rgb(255, 255, 255)"), ("borderTopWidth", "1px")]);
+            d.set_rect(first, 0.0, 0.0, 260.0, 100.0);
+            let p = d.add(Some(first), "p");
+            d.add_text(p, "A quote that ends short of the corner");
+            d.set_styles(p, OCCLUSION_BASE);
+            d.set_styles(p, &[("fontSize", "14px"), ("lineHeight", "20px")]);
+            d.set_rect(p, 10.0, 10.0, 205.0, 40.0);
+            d.el_mut(p).text_line_rects = Some(vec![Rect::from_xywh(10.0, 10.0, 205.0, 20.0), Rect::from_xywh(10.0, 30.0, 205.0, 20.0)]);
+            let second = d.add(Some(row), "article");
+            d.set_styles(second, OCCLUSION_BASE);
+            d.set_styles(
+                second,
+                &[("backgroundColor", "rgb(255, 255, 255)"), ("borderTopWidth", "1px"), ("borderRadius", radius)],
+            );
+            d.set_rect(second, 200.0, 0.0, 260.0, 200.0);
+            mark_body_descendants(&mut d);
+            (check_text_occlusion_dom(&d).iter().map(|f| f.el).collect::<Vec<_>>(), p)
+        };
+        let (hits, _) = run("100px");
+        assert!(hits.is_empty(), "the overlap is the card's empty corner: {hits:?}");
+        let (hits, _) = run("50%");
+        assert!(hits.is_empty(), "a percentage radius rounds the same corner: {hits:?}");
+        let (hits, p) = run("0px");
+        assert_eq!(hits, vec![Some(p)], "a square card covers the line ends");
+        let (hits, p) = run("8px");
+        assert_eq!(hits, vec![Some(p)], "a small radius leaves the line ends covered");
     }
 
     #[test]

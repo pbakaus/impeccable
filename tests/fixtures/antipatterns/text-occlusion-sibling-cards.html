@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>text-occlusion, a card laid over a sibling card</title>
+<!--
+  Cards that land on the words of a sibling card. A review report drew its
+  visitor cards 220px apart while a long quote measured 277px, so the next
+  card covered the last line of the one above; a grid whose cards are wider
+  than their tracks does the same sideways. Only a line or two is covered,
+  far under the share the hit-test pass needs, so the overlap is read from
+  the boxes: two opaque, bordered or shadowed cards with one parent, the one
+  that paints later laid over a text line of the other.
+
+  Flag: cards wider than their grid tracks, stickies placed at fixed offsets
+  shorter than their content, absolute cards side by side, and a card pulled
+  over its neighbour by a negative margin, and a quote raised by its own
+  z-index inside a card whose contain: paint keeps it under the sibling.
+  Pass: cards that fit their tracks, list cards that share a 1px border, an
+  avatar stack, a card that covers only the empty body of the one behind it
+  (its title stays clear), a carousel's next slide parked over the
+  current one at opacity 0, a quote raised by its own z-index over the card
+  laid on its static card, and a round card whose bounding box reaches a
+  line only in the empty corner outside its curve, an isolated card laid
+  over the empty side of a later static card, and a later card over the
+  empty side of an earlier one whose will-change: color lifts nothing.
+  Browser engine only: these are layout facts.
+-->
+<style>
+  * { margin: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; color: #111111; background: #ffffff; }
+  .cols { display: grid; grid-template-columns: 620px 620px; gap: 20px; padding: 0 10px; }
+  .cols > div > h2 { font-size: 22px; line-height: 28px; padding: 10px 0 4px; }
+  section { padding: 6px 0; position: relative; }
+  section > h3 { font-size: 17px; line-height: 22px; color: #333333; margin-bottom: 4px; }
+  .card { background: #ffffff; border: 1px solid #d4d4d8; border-radius: 8px; padding: 10px; font-size: 13px; line-height: 18px; }
+  .card b { display: block; font-size: 13px; line-height: 18px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 160px); gap: 12px; }
+  .grid .card { width: 220px; height: 92px; }
+  .grid.fits .card { width: auto; }
+
+  .board { position: relative; height: 168px; }
+  .board .card { position: absolute; left: 0; width: 360px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); }
+
+  .side { position: relative; height: 96px; }
+  .side .card { position: absolute; top: 0; width: 260px; height: 92px; }
+
+  .pulled { display: flex; }
+  .pulled .card { width: 240px; height: 92px; flex: none; }
+  .pulled .card + .card { margin-left: -70px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
+
+  .list { width: 360px; }
+  .list .card { border-radius: 0; height: 64px; }
+  .list .card + .card { margin-top: -1px; }
+
+  .avatars { display: flex; }
+  .avatar { width: 40px; height: 40px; border-radius: 20px; border: 2px solid #ffffff; background: #4338ca; color: #ffffff; font-size: 13px; line-height: 36px; text-align: center; }
+  .avatar + .avatar { margin-left: -12px; }
+
+  .folders { position: relative; height: 150px; }
+  .folders .card { position: absolute; width: 320px; height: 120px; }
+  .folders .back { left: 0; top: 0; }
+  .folders .front { left: 0; top: 40px; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
+
+  .slides { position: relative; height: 96px; }
+  .slides .card { position: absolute; left: 0; top: 0; width: 360px; height: 92px; }
+  .slides .next { opacity: 0; }
+
+  .held .card { width: 360px; height: 110px; contain: paint; }
+  .held .card + .card { position: relative; z-index: 1; height: 64px; margin-top: -28px; padding-top: 40px; contain: none; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
+  .held .lifted { position: relative; z-index: 2; }
+
+  .raised .card { width: 360px; height: 64px; }
+  .raised .card + .card { position: relative; z-index: 1; margin-top: -30px; padding-top: 40px; box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.1); }
+  .raised .lifted { position: relative; z-index: 2; }
+
+  .corner { position: relative; height: 150px; }
+  .corner .card { position: absolute; }
+  .corner .note { left: 0; top: 0; width: 260px; height: 60px; }
+  .corner .note p { text-align: justify; text-align-last: justify; }
+  .corner .round { left: 230px; top: 30px; width: 120px; height: 120px; border-radius: 60px; }
+
+  .layers { display: flex; }
+  .layers .card { width: 260px; height: 64px; flex: none; }
+  .layers .card + .card { margin-left: -100px; }
+  .layers .over { isolation: isolate; padding-left: 120px; }
+  .layers .over + .card { padding-left: 110px; }
+  .layers .hinted { will-change: color; padding-right: 120px; }
+</style>
+</head>
+<body>
+  <div class="cols">
+    <div data-col="flag">
+      <h2>Should flag</h2>
+      <section>
+        <h3>Cards wider than their grid tracks</h3>
+        <div class="grid">
+          <article class="card"><b>Ana, first-time buyer</b><p class="flag-grid-quote">Found the price before the plan names and stopped there.</p></article>
+          <article class="card"><b>Ben, returning admin</b><p>Looked for the invoice link in settings, not in billing.</p></article>
+          <article class="card"><b>Cy, screen-reader user</b><p>Heard the plan cards announced without their prices.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>Stickies placed shorter than their content</h3>
+        <div class="board">
+          <article class="card" style="top: 0"><b>Dee, team lead</b><p class="flag-board-quote">I opened the pricing page first and the plan names sat below the fold, so I read prices without knowing what they bought, then went back up twice.</p></article>
+          <article class="card" style="top: 70px"><b>Eli, designer</b><p>The comparison table helped once I found it, three testimonials down the page.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>Absolute cards side by side</h3>
+        <div class="side">
+          <article class="card" style="left: 0"><b>Fay, analyst</b><p class="flag-side-quote">Exported the report and the totals row was missing from the file.</p></article>
+          <article class="card" style="left: 200px"><b>Gus, engineer</b><p>Copied the API key from the settings page.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A card pulled over its neighbour</h3>
+        <div class="pulled">
+          <article class="card"><b>Hal, owner</b><p class="flag-pulled-quote">Wanted one invoice for every workspace he pays for.</p></article>
+          <article class="card"><b>Ivy, support</b><p>Answered the same refund question three times.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A raised quote held in by contain: paint</h3>
+        <div class="held">
+          <article class="card"><b>Rae, planner</b><p class="lifted flag-contained-quote">Booked the venue in March, the caterer in April and the band in May, then wrote every date and deposit into one sheet so the whole team could check what was still owed before the day.</p></article>
+          <article class="card"><b>Sol, host</b></article>
+        </div>
+      </section>
+    </div>
+    <div data-col="pass">
+      <h2>Should pass</h2>
+      <section>
+        <h3>Cards that fit their tracks</h3>
+        <div class="grid fits">
+          <article class="card"><b>Jo, buyer</b><p class="pass-grid-fits">Found the plan she wanted on the first try.</p></article>
+          <article class="card"><b>Kai, admin</b><p>Found the invoices under billing.</p></article>
+          <article class="card"><b>Lu, tester</b><p>Heard every price read aloud.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>List cards sharing a border</h3>
+        <div class="list">
+          <article class="card"><p class="pass-shared-border">The first row of a bordered list, its bottom edge shared.</p></article>
+          <article class="card"><p>The second row, pulled up by one pixel.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>An avatar stack</h3>
+        <div class="avatars"><span class="avatar pass-avatar">AB</span><span class="avatar">CD</span><span class="avatar">EF</span></div>
+      </section>
+      <section>
+        <h3>A card over the empty body of the one behind</h3>
+        <div class="folders">
+          <article class="card back"><b class="pass-folder-title">Archived projects, 2025</b></article>
+          <article class="card front"><b>Current projects</b><p>Three projects are open this quarter.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A carousel's next slide parked at opacity 0</h3>
+        <div class="slides">
+          <article class="card"><b>Slide one</b><p class="pass-current-slide">The slide on screen, with the next one parked over it.</p></article>
+          <article class="card next"><b>Slide two</b><p>The next slide, not shown yet.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A quote raised over the card laid on it</h3>
+        <div class="raised">
+          <article class="card"><b>Nia, editor</b><p class="lifted pass-raised-quote">Wrote the summary first, the details after.</p></article>
+          <article class="card"><b>Oto, reviewer</b></article>
+        </div>
+      </section>
+      <section>
+        <h3>A round card's empty corner beside a line</h3>
+        <div class="corner">
+          <article class="card note"><b>Pia, accountant</b><p class="pass-corner-line">Kept every receipt for the audit.</p></article>
+          <article class="card round"><b>Quin</b></article>
+        </div>
+      </section>
+      <section>
+        <h3>An isolated card over a later static one</h3>
+        <div class="layers">
+          <article class="card over"><p class="pass-isolated-card">Paid the invoice on the day it arrived.</p></article>
+          <article class="card"><p>Filed it.</p></article>
+        </div>
+      </section>
+      <section>
+        <h3>A later card over one hinted will-change: color</h3>
+        <div class="layers">
+          <article class="card hinted"><p>Opened the plan.</p></article>
+          <article class="card"><p class="pass-hinted-under">Renewed it a year early.</p></article>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>
