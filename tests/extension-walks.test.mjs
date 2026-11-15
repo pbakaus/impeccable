@@ -273,7 +273,7 @@ describe('walk guard', () => {
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
   // `autofill`: Chrome filled it, which a script sees only as the `:autofill` state (its value reads empty).
-  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', disabled: attrs.disabled === true, readOnly: attrs.readOnly === true, matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
   // A selector of password fields, read as Chrome would: by `type`, or by an `autocomplete` token.
   const picks = (sel, f) => (/type="password"/.test(sel) && f.type === 'password') || [...sel.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token));
@@ -305,6 +305,8 @@ describe('walk lookout', () => {
     ['a shown password: a text field for the current password, holding one', doc({ passwords: [field({ autocomplete: 'current-password', value: 'x' })] }), { password: true, filled: true, focus: null }],
     ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
+    ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
+    ['a disabled placeholder holding dots', page(form(field({ type: 'email' })), form(field({ type: 'password', value: '••••••', disabled: true }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],

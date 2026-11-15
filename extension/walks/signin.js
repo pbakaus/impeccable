@@ -82,8 +82,9 @@ export function lookInPage() {
   const SECRETS = 'input[type="password" i], input[autocomplete~="current-password" i], input[autocomplete~="new-password" i], input[autocomplete~="one-time-code" i]';
   const fields = roots.flatMap((root) => [...root.querySelectorAll(SECRETS)].map((field) => ({ field, root })));
   // A password in a field, typed or filled, shown or hidden, always pauses the walk: nothing it runs may read it.
-  const filled = fields.some(({ field }) => Boolean(field.value) || autofilled(field));
-  const password = filled || fields.some(({ field, root }) => visible(field) && !changing(field, root));
+  // A disabled or read-only field holds no password the person typed or had filled (a "••••••" placeholder).
+  const filled = fields.some(({ field }) => !field.disabled && !field.readOnly && (Boolean(field.value) || autofilled(field)));
+  const password = filled || fields.some(({ field, root }) => visible(field) && !field.disabled && !changing(field, root));
 
   let focus = null;
   let el = document.activeElement;
@@ -100,7 +101,7 @@ export function lookInPage() {
   }
   if (!focus && el) {
     const tokens = String(el.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/);
-    if (el.tagName === 'INPUT' && String(el.type).toLowerCase() === 'password') focus = 'password';
+    if (el.tagName === 'INPUT' && (String(el.type).toLowerCase() === 'password' || tokens.some((token) => token === 'current-password' || token === 'new-password'))) focus = 'password';
     else if (tokens.some((token) => token.startsWith('cc-'))) focus = 'card';
     else if (tokens.includes('one-time-code')) focus = 'code';
   }
