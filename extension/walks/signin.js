@@ -5,7 +5,8 @@
 // The signs, each enough on its own:
 //   - the top-level document is going to, or is on, one of SIGN_IN_PAGES;
 //   - a password field is visible in the top document, a frame on its origin, or an open shadow root in either (a
-//     closed one is not seen);
+//     closed one is not seen), unless its form only changes a password (`lookInPage`); and not on a page the person
+//     already pressed Continue on at a sign-in (driver.js `signInShows`);
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -63,7 +64,14 @@ export function lookInPage() {
     const box = field.getBoundingClientRect();
     return box.width > 0 && box.height > 0 && (field.checkVisibility ? field.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : true);
   };
-  const password = roots.some((root) => [...root.querySelectorAll('input[type="password" i]')].some(visible));
+  // A form of two or more password fields and nothing to name an account by (no text, email or phone field) changes
+  // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
+  // a name or an email (signing in, signing up), is.
+  const changing = (field, root) => {
+    const types = [...(field.form ?? root).querySelectorAll('input')].filter(visible).map((input) => String(input.type).toLowerCase());
+    return types.filter((type) => type === 'password').length >= 2 && !types.some((type) => type === 'text' || type === 'email' || type === 'tel');
+  };
+  const password = roots.some((root) => [...root.querySelectorAll('input[type="password" i]')].some((field) => visible(field) && !changing(field, root)));
 
   let focus = null;
   let el = document.activeElement;

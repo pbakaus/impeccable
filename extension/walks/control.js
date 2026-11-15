@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { endWalk, fail, fence, fenced, hold, hooks, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { endWalk, fail, fence, fenced, hold, hooks, letPast, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -186,9 +186,11 @@ export async function command(name) {
     return true;
   }
   // Going on is checked again: while the debugger cannot get back on the tab (another extension's frame is in it), or
-  // a sign-in still shows, the walk stays paused.
+  // a sign-in host or a 401 still shows, the walk stays paused.
   if (GOING_ON[name] === current().state && walk && !(await regain())) return false;
-  if (GOING_ON[name] === current().state && walk && (await signInNow())) { pauseFor('sign-in'); return false; }
+  // Continue at a sign-in is the person's word that it is done: a password field still on this page pauses no more.
+  if (GOING_ON[name] === current().state && current().held === 'sign-in') letPast();
+  if (GOING_ON[name] === current().state && walk && (await signInNow())) { letPast(false); pauseFor('sign-in'); return false; }
   if (GOING_ON[name] === current().state && walk?.lost) return false;
   if (!Object.hasOwn(TOLD, name) || !dispatch({ type: name })) return false;
   say({ event: TOLD[name] });

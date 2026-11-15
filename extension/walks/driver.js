@@ -274,7 +274,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         if (hush || theirs) continue;
         // A sign-in on the page is a pause before it is a picture; a page that cannot be read is not filmed.
         const seen = await look();
-        if (signingIn(seen) || isSignInPage(tab.url)) { spotted(); continue; }
+        if (signInShows(tab, seen)) { spotted(); continue; }
         if (!seen || hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
@@ -380,6 +380,18 @@ export async function look() {
   return null;
 }
 
+/** A page by its address without query or fragment: where the person pressed Continue at a sign-in ({@link letPast}). */
+const pageOf = (url) => { try { const at = new URL(url); return at.origin + at.pathname; } catch { return ''; } };
+
+/**
+ * The person pressed Continue at a sign-in on this page: its password field no longer pauses the walk while the tab
+ * stays on it (a page the detector got wrong would pause it forever). A sign-in host and a 401 still do.
+ */
+export function letPast(on = true) { if (walk) walk.past = on ? pageOf(walk.url) : null; }
+
+/** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
+const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && tab.past !== pageOf(tab.url));
+
 /** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
 let spotted = () => undefined;
 export function onSignIn(listener) { spotted = listener; }
@@ -399,7 +411,7 @@ export async function signInNow() {
     if (walk.lost) return null;
     if (isSignInPage(walk.url)) return true;
     const seen = await look();
-    if (seen) return signingIn(seen);
+    if (seen) return signInShows(walk, seen);
     await sleep(READ_GAP_MS);
   }
   return null;
@@ -440,6 +452,8 @@ function watch() {
 function setUrl(url) {
   if (!walk || walk.url === url) return;
   walk.url = url;
+  // Another page: a sign-in on it pauses again.
+  if (walk.past && walk.past !== pageOf(url)) walk.past = null;
   say({ event: 'url', url });
   escaped(url);
 }

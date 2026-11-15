@@ -273,7 +273,15 @@ describe('walk guard', () => {
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
   const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
-  const doc = ({ passwords = [], frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : passwords) });
+  // `inputs`: every field of the page (`input`), the passwords among them unless given.
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords) });
+  // A form of these fields: each knows it (`field.form`), and the page holds them all.
+  const form = (...fields) => {
+    const own = { querySelectorAll: (sel) => (sel === 'input' ? fields : fields.filter((f) => f.type === 'password')) };
+    for (const f of fields) f.form = own;
+    return fields;
+  };
+  const page = (...forms) => doc({ inputs: forms.flat(), passwords: forms.flat().filter((f) => f.type === 'password') });
   const host = (root) => ({ tagName: 'DIV', shadowRoot: root });
   const frame = (inner) => ({ tagName: 'IFRAME', contentDocument: inner });
   const seen = (document, status = 200) => JSON.parse(vm.runInNewContext(`JSON.stringify((${lookInPage})())`, { document, performance: { getEntriesByType: () => [{ responseStatus: status }] } }));
@@ -283,6 +291,11 @@ describe('walk lookout', () => {
     ['a password field of no size', doc({ passwords: [field({ type: 'password' }, 0)] }), { password: false, focus: null }],
     ['a password field in a frame on its origin', doc({ frames: [frame(doc({ passwords: [field({ type: 'password' })] }))] }), { password: true, focus: null }],
     ['a password field in an open shadow root', doc({ hosts: [host(doc({ passwords: [field({ type: 'password' })] }))] }), { password: true, focus: null }],
+    // hr-pilot-vercel's own pages, as read from them (15 Nov): its login, and its settings signed in.
+    ['a login: a username and a password', page(form(field({ autocomplete: 'username' }), field({ type: 'password', autocomplete: 'current-password' }))), { password: true, focus: null }],
+    ['a sign-up: an email and two passwords', page(form(field({ type: 'email' }), field({ type: 'password' }), field({ type: 'password' }))), { password: true, focus: null }],
+    ['settings signed in: a profile with an email, and a change of password', page(form(field({}), field({ type: 'email' })), form(field({ type: 'password', id: 'current-password' }), field({ type: 'password', id: 'new-password' }))), { password: false, focus: null }],
+    ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
@@ -556,7 +569,7 @@ describe('walk worker', () => {
     });
   }
 
-  // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while it holds.
+  // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while a 401 holds.
   for (const [sign, show] of [
     ['a visible password field', () => { page.seen = { password: true }; }],
     ['a move to a sign-in host', () => fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } })],
@@ -572,7 +585,7 @@ describe('walk worker', () => {
       assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
       if (sign === 'a move to a sign-in host') assert.ok(sent.indexOf('Network.disable', before) < sent.findIndex((m, i) => i >= before && m.startsWith('Fetch.')), 'paused before the guard answered');
-      else {
+      else if (sign === 'a 401 asking for a password') {
         assert.equal(await command('resume'), false, 'Continue while it still shows');
         assert.equal(current().state, 'paused');
       }
@@ -582,6 +595,32 @@ describe('walk worker', () => {
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
+
+  // A page the detector reads as a sign-in that is not one (a settings page signed in): Continue is the person's word,
+  // and the walk goes on there. Another page with a password field pauses it again.
+  it('goes on at Continue past a password field on that page, and pauses again on the next', async () => {
+    const { ops, command, current } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l8', url: 'http://localhost:3000/settings' } });
+    page.seen = { password: true };
+    // Pictures, as a terminal walk takes one each step (the address stays the page's).
+    const asked = ops.screenshot({ format: 'png' });
+    await settle(20);
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.equal(await command('resume'), true, 'Continue while the field still shows');
+    await asked;
+    await ops.screenshot({ format: 'png' });
+    await settle(20);
+    assert.equal(current().state, 'walking', 'that page pauses no more');
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l9', url: 'http://localhost:3000/elsewhere' } });
+    const next = ops.screenshot({ format: 'png' });
+    await settle(20);
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in'], 'the next page pauses');
+    page.seen = {};
+    await command('resume');
+    await next;
+    // Off the page Continue was pressed on, for the tests after.
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l10', url: 'http://localhost:3000/' } });
+  });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it
   // is done after Continue.
@@ -661,7 +700,7 @@ describe('walk worker', () => {
     }
   });
 
-  it('keeps a sign-in pause the person takes over hushed, and turns a hand back during it into a pause', async () => {
+  it('keeps a sign-in pause the person takes over hushed, and goes on when they hand back', async () => {
     const { command, current } = await walked();
     page.seen = { password: true };
     await command('pause');
@@ -671,13 +710,12 @@ describe('walk worker', () => {
     const heard = told.length;
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l3', url: 'http://localhost:3000/callback?code=secret' } });
     assert.deepEqual(told.slice(heard).filter((m) => m.event !== 'takeover').map((m) => m.event), [], 'nothing of the page is told while they sign in');
-    assert.equal(await command('handback'), false, 'not handed back while the sign-in shows');
-    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
-    page.seen = {};
-    assert.equal(await command('resume'), true);
+    assert.equal(await command('handback'), true, 'handed back: the person is done, though a password field still shows');
     assert.equal(current().state, 'walking');
+    page.seen = {};
     await settle(5);
     assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/callback?code=secret', 'told once it goes on');
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l3b', url: 'http://localhost:3000/' } });
   });
 
   it('lets the person who took over at a sign-in sign in on a sign-in host, and neither the page nor the walk go there', async () => {
