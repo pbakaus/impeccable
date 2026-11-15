@@ -106,7 +106,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         }
         "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
-        "context" => impeccable_hook::run_context(rest, io),
+        "context" => {
+            let code = impeccable_hook::run_context(rest, io);
+            // init's sign-in line reads this, so a signed-out first run costs the agent no
+            // extra call. The stored state only: a context run never meets a Keychain prompt.
+            if code == 0 && !rest.iter().any(|a| a == "-h" || a == "--help") {
+                io.out(if impeccable_account::sign_in_recorded(io) { "ACCOUNT: signed in\n" } else { "ACCOUNT: not signed in\n" });
+            }
+            code
+        }
         "pin" => impeccable_context::run_pin(rest, io),
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
