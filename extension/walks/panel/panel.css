@@ -216,7 +216,7 @@ b { font-weight: 500; }
 .face.blank .who { width: 64%; height: 64%; margin-top: 18%; fill: currentColor; }
 .hero .ph { color: var(--mute-deep); }
 .skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-.hero .face.skel { border: 0; box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
+.hero .face.skel { border: 0; border-radius: 50%; box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
 .skel-name { width: 150px; height: 40px; margin-top: 4px; }
 .skel-line { width: 260px; height: 16px; margin-top: 10px; }
 .skel-line.short { width: 180px; margin-top: 4px; }
