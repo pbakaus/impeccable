@@ -99,7 +99,7 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
     }
 }
 
-const RELOGIN: &str = "sign in again with impeccable login";
+const RELOGIN: &str = "sign in again with npx impeccable login";
 
 fn not_saved(reason: impl std::fmt::Display) -> Option<String> {
     Some(format!("Not saved to Impeccable: {reason}\n"))
@@ -133,7 +133,7 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option
         _ => {}
     }
     let _ = std::fs::remove_file(marker(today.saturating_sub(1)));
-    Some("Keep this critique's history: impeccable login\n".into())
+    Some("Keep this critique's history: npx impeccable login\n".into())
 }
 
 fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
@@ -292,7 +292,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if choice == "status" {
         io.out(if enabled(io) {
             if crate::stale_grant::status(io, crate::oauth::CRITIQUES_SCOPE) {
-                "Critique sync: on, but this sign-in can't save yet. Run impeccable login.\n"
+                "Critique sync: on, but this sign-in can't save yet. Run npx impeccable login.\n"
             } else {
                 "Critique sync: on.\n"
             }

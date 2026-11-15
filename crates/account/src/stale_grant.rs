@@ -8,7 +8,7 @@ use crate::{
 use impeccable_common::Io;
 use std::time::Duration;
 
-const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
+const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.\n";
 const DEADLINE: Duration = Duration::from_secs(2);
 
 /// `within` is what is left of the caller's own wait: the check never extends it.

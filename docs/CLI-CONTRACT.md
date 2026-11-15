@@ -2606,9 +2606,9 @@ Exact output strings:
 - `<name> is now this project's design system.`, then `Wrote DESIGN.md and .impeccable/design.json.` and `Next: ask your agent for your next page, like /impeccable craft a pricing page. It builds in <name>.`
 - `<file> already exists, so nothing was written. To merge this world into it, run impeccable world <id> --print and fold its DESIGN.md into yours.`
 - `"<id>" isn't a world id. Copy the id from the world in the Impeccable worlds catalog.`
-- `Using a world needs your Impeccable account. Run impeccable login, then try again.`
-- `Your sign-in expired. Run impeccable login, then try again.`
-- `Using a world needs a fresh sign-in. Run impeccable login, then try again.`
+- `Using a world needs your Impeccable account. Run npx impeccable login, then try again.`
+- `Your sign-in expired. Run npx impeccable login, then try again.`
+- `Using a world needs a fresh sign-in. Run npx impeccable login, then try again.`
 - `The world <id> needs Pro. See impeccable.style/pricing`
 - `No world has the id <id>. Copy the id from the world in the Impeccable worlds catalog.`
 - `Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.`
@@ -2842,7 +2842,7 @@ and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 After the skills are installed, `impeccable install` on a terminal (stdin and
 stderr both TTYs, `CI` unset, no `-y`/`--yes`) with no sign-in stored offers
 one on stderr: what signing in unlocks, then `Sign in now? [Y/n]` (Enter is
-yes). No prints `Later: impeccable login`. Install's own output and exit code
+yes). No prints `Later: npx impeccable login`. Install's own output and exit code
 are unchanged by the offer and by everything after it.
 
 A yes runs `login`'s sign-in (its lines included). After a fresh sign-in, in
@@ -2859,7 +2859,7 @@ lines `login` ends with. Free gets no Loop offer.
 `impeccable login` on a machine whose stored sign-in to this account is still
 good opens no browser and prints no link (stdout stays empty, also under
 `--no-browser`). It exits 0 with `Already signed in to {account}. To sign in
-again: impeccable login --force` and the Pro line `whoami` prints, or, when the
+again: npx impeccable login --force` and the Pro line `whoami` prints, or, when the
 service cannot be reached, `Already signed in to {account}. Couldn't reach it
 to check the sign-in: {error}.` The browser sign-in goes ahead as before when
 there is no sign-in, it expired or the service ended it, it cannot be read, or

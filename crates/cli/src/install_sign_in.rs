@@ -80,7 +80,7 @@ fn offer_sign_in(
 ) {
     io.err(OFFER);
     if !ask(io, "Sign in now?") {
-        io.err("Later: impeccable login\n");
+        io.err("Later: npx impeccable login\n");
         init_next(io);
         return;
     }

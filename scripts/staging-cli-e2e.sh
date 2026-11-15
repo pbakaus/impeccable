@@ -243,7 +243,7 @@ check "logout: exits 0" '[ $rc = 0 ]'
 check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.out"'
 if [ $critiques = 1 ]; then
   critique critique2; rc=$?
-  check "critique: a signed-out save suggests signing in" '[ $rc = 0 ] && [ "$(sed -n 2p "$H/critique2.out")" = "Keep this critique'"'"'s history: impeccable login" ]'
+  check "critique: a signed-out save suggests signing in" '[ $rc = 0 ] && [ "$(sed -n 2p "$H/critique2.out")" = "Keep this critique'"'"'s history: npx impeccable login" ]'
   critique critique3
   check "critique: the suggestion is once a day per project" '[ -z "$(sed -n 2p "$H/critique3.out")" ]'
 fi
