@@ -160,7 +160,7 @@ b { font-weight: 500; }
 .cast .add[aria-disabled="true"] .face { opacity: .45; }
 .cast .add[aria-disabled="true"]:hover .face { border-color: var(--mute-deep); color: var(--muted); }
 /* The tip sits where a persona's name would, centred under the +, so it reads as the +'s own label. */
-.cast .add[data-tip]::after { content: attr(data-tip); align-self: center; width: max-content; max-width: 150px; margin: 0 -40px; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted);
+.cast .add[data-tip]::after { content: attr(data-tip); align-self: stretch; margin: 0 -8px; text-align: center; text-wrap: balance; font-size: 12px; line-height: 1.4; color: var(--muted);
   pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
 .cast .add[data-tip]:hover::after, .cast .add[data-tip]:focus-visible::after { opacity: 1; }
 .tabs button { position: static; }
