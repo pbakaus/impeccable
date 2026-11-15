@@ -138,9 +138,11 @@ function readBlock(text, socketOk, admitted) {
   if (typeof block.ticket !== 'string' || !TICKET.test(block.ticket)) return no('ticket');
   const { persona, errand } = block;
   // A role may be empty (a cast's person need not have one), and an errand's name is, for a goal given for the occasion.
-  if (!only(persona, ['name', 'role', 'visit', 'device']) || !line(persona.name, MAX.name) || !fits(persona.role, MAX.role)) return no('persona');
+  if (!only(persona, ['name', 'role', 'visit', 'device', 'sees']) || !line(persona.name, MAX.name) || !fits(persona.role, MAX.role)) return no('persona');
   if (persona.visit !== undefined && persona.visit !== 'new' && persona.visit !== 'returning') return no('persona');
   if (persona.device !== undefined && !DEVICES.includes(persona.device)) return no('persona');
+  // How the persona sees the page (REN-2039): the sight filter's default for this journey (sight.js).
+  if (persona.sees !== undefined && persona.sees !== 'older-eyes' && persona.sees !== 'colour-blind') return no('persona');
   if (!only(errand, ['name', 'goal', 'doneWhen']) || !fits(errand.name, MAX.errand) || !line(errand.goal, MAX.goal)) return no('errand');
   if (!Array.isArray(errand.doneWhen) || errand.doneWhen.length > MAX_DONE_WHEN || !errand.doneWhen.every((check) => line(check, MAX.check))) return no('errand');
   if (!Array.isArray(block.allow) || block.allow.length > MAX_ALLOW || !block.allow.every((origin) => typeof origin === 'string' && webOrigin(origin) === origin)) return no('allow');
@@ -150,7 +152,7 @@ function readBlock(text, socketOk, admitted) {
     ok: true,
     handoff: {
       outing: block.outing, socket: block.socket, ticket: block.ticket, url: block.url, allow: block.allow, site: site.origin,
-      persona: { name: persona.name, role: persona.role, ...(persona.visit ? { visit: persona.visit } : {}), ...(persona.device ? { device: persona.device } : {}) },
+      persona: { name: persona.name, role: persona.role, ...(persona.visit ? { visit: persona.visit } : {}), ...(persona.device ? { device: persona.device } : {}), ...(persona.sees ? { sees: persona.sees } : {}) },
       errand: { name: errand.name, goal: errand.goal, doneWhen: errand.doneWhen },
     },
   };

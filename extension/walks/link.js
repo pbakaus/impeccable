@@ -20,6 +20,7 @@
 import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
 import { DEVICES, adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
+import { SIGHTS } from './sight.js';
 import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
@@ -168,10 +169,10 @@ async function take(text, sender) {
 
 /**
  * A walk of the person's own tab, which main started (contact.js): its block, the tab, and the width it runs at
- * (driver.js `DEVICES`; anything else keeps the tab's own). Kept as `adopt`, never as
+ * (driver.js `DEVICES`; anything else keeps the tab's own), and how the persona sees it (sight.js). Kept as `adopt`, never as
  * `tabId`: there is no page of ours to reload for a fresh ticket, so a spent one ends the walk.
  */
-export async function adopt(text, tabId, device) {
+export async function adopt(text, tabId, device, sees) {
   await ready;
   const read = readStartedHandoff(text);
   if (!read.ok) return read;
@@ -180,7 +181,7 @@ export async function adopt(text, tabId, device) {
   try { at = new URL(tab?.url ?? '').origin; } catch { /* no address */ }
   if (at !== read.handoff.site) return { ok: false, why: 'tab' };
   if (isLive(current())) return { ok: false, why: 'busy' };
-  await chrome.storage.session.set({ handoff: { ...read.handoff, adopt: tabId, windowId: tab.windowId, ...(Object.hasOwn(DEVICES, device) ? { device } : {}) } });
+  await chrome.storage.session.set({ handoff: { ...read.handoff, adopt: tabId, windowId: tab.windowId, ...(Object.hasOwn(DEVICES, device) ? { device } : {}), ...(SIGHTS.includes(sees) ? { sees } : {}) } });
   await chrome.storage.local.set({ linked: true });
   rearm();
   dispatch({ type: 'handoff', handoff: read.handoff });

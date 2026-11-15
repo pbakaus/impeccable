@@ -1,6 +1,6 @@
-// How the persona sees the page: an experiment, off unless the options page turns it on (chrome.storage.local
-// `walkSight`). With it on, every picture the walk sends (stills and film) is drawn the way older eyes or colour-blind
-// eyes see it, with a small label in the corner. The persona works from that picture, and the replay is made of the
+// How the persona sees the page, for one journey: what the side panel picked (the hand-off's `sees`), else what the
+// persona's card says (its `persona.sees`, REN-2039), else normally. Older eyes or colour-blind, every picture the walk
+// sends (stills and film) is drawn the way those eyes see it, with a small label in the corner. The persona works from that picture, and the replay is made of the
 // same pictures, so whoever watches sees what it saw. Off, a picture goes as it came.
 import { COPY } from './panel/copy.js';
 
@@ -59,9 +59,14 @@ function label(ctx, text, right) {
   ctx.fillText(text, left + size * 0.6, size * 1.6);
 }
 
-/** A picture (base64, `format`) as the persona sees it, as base64 again; as it came while the experiment is off. */
+/** The ways a journey may see the page, as the side panel names them; and a persona card's names for them. */
+export const SIGHTS = ['normal', ...Object.keys(LOOKS)];
+const CARD = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
+
+/** A picture (base64, `format`) as the persona sees it, as base64 again; as it came for one who sees normally. */
 export async function seenAs(data, format = 'png', quality) {
-  const sight = (await chrome.storage.local.get('walkSight').catch(() => ({})))?.walkSight;
+  const { handoff } = await chrome.storage.session.get('handoff').catch(() => ({}));
+  const sight = handoff?.sees ?? CARD[handoff?.persona?.sees];
   const look = Object.hasOwn(LOOKS, sight) ? LOOKS[sight] : null;
   if (!look) return data;
   const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0))], { type: `image/${format}` }));

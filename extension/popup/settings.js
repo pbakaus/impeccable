@@ -37,15 +37,4 @@
     if (answer?.ok) draw(answer);
   });
   void ask('status').then(draw);
-
-  // How the persona sees the page (walks/sight.js): off (Normal) until chosen here.
-  const SIGHT = globalThis.IMPECCABLE_WORDS.sight;
-  const who = (value) => { $('sight-who').textContent = SIGHT.choices.find(([key]) => key === value)?.[2] ?? ''; };
-  $('sight-label').textContent = SIGHT.label;
-  for (const [value, name] of SIGHT.choices) $('sight').append(new Option(name, value));
-  void chrome.storage.local.get('walkSight').then(({ walkSight }) => { $('sight').value = walkSight ?? 'normal'; who($('sight').value); });
-  $('sight').addEventListener('change', (event) => {
-    who(event.target.value);
-    void (event.target.value === 'normal' ? chrome.storage.local.remove('walkSight') : chrome.storage.local.set({ walkSight: event.target.value }));
-  });
 })();

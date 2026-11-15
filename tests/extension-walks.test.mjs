@@ -61,6 +61,8 @@ describe('walk hand-off', () => {
     const read = readHandoff(JSON.stringify(block()), PAGE);
     assert.equal(read.ok, true);
     assert.equal(read.handoff.site, 'http://localhost:3000');
+    // How the persona sees the page (REN-2039) is kept for the sight filter (sight.js).
+    assert.equal(readHandoff(JSON.stringify(block({ persona: { name: 'Robert', role: '', sees: 'older-eyes' } })), PAGE).handoff.persona.sees, 'older-eyes');
   });
 
   // The store build takes a walk from our production pages alone; the build loaded unpacked, from staging and this machine too.
@@ -83,6 +85,7 @@ describe('walk hand-off', () => {
     ['a socket on the app host instead of its pair', PAGE, { socket: 'wss://app.impeccable.style/api/outings/o1/socket' }, 'socket'],
     ['a socket for another walk', PAGE, { socket: 'wss://impeccable.reviews/api/outings/o2/socket' }, 'socket'],
     ['an unknown field', PAGE, { extra: true }, 'malformed'],
+    ['a persona who sees in a way no filter draws', PAGE, { persona: { name: 'Robert', role: '', sees: 'x-ray' } }, 'persona'],
     ['another version', PAGE, { v: 2 }, 'v'],
     ['a start address off this machine and off the allow-list', PAGE, { url: 'https://example.com/' }, 'url'],
     ['an allow-list entry that is not an origin', PAGE, { allow: ['https://example.com/path'] }, 'allow'],
@@ -577,9 +580,10 @@ describe('walk worker', () => {
     assert.equal(sent.slice(atContinue).filter((m) => m === 'Input.dispatchMouseEvent').length, 3, 'one asked for after Continue is made');
   });
 
-  // The sight experiment (REN-1892): the persona's pictures are drawn as the options page chose, and go as taken
-  // without it. A picture here is raw RGBA bytes, pixel by pixel: red, green, blue, white, black.
-  it('sends the persona pictures as the chosen sight sees them, and untouched with none chosen', async () => {
+  // How the persona sees (REN-1892, REN-2038): the journey's pictures are drawn as the side panel picked for it, else as
+  // the persona's card says, and go as taken for one who sees normally. A picture here is raw RGBA bytes, pixel by
+  // pixel: red, green, blue, white, black.
+  it('sends the persona pictures as this journey’s sight sees them, and untouched for normal eyes', async () => {
     const { ops } = await walked();
     page.seen = {};
     const PIXELS = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255], [0, 0, 0]];
@@ -595,15 +599,19 @@ describe('walk worker', () => {
       }
       async convertToBlob() { return new Blob([this.px]); }
     };
-    const seen = async (sight) => {
-      if (sight) await chrome.storage.local.set({ walkSight: sight }); else await chrome.storage.local.remove('walkSight');
+    const { handoff: was } = await chrome.storage.session.get('handoff');
+    // `sight`: the panel's pick for this journey; `card`: the persona card's own.
+    const seen = async (sight, card) => {
+      await chrome.storage.session.set({ handoff: { ...was, ...(sight ? { sees: sight } : {}), persona: { name: 'Mira', role: '', ...(card ? { sees: card } : {}) } } });
       const { data } = (await ops.screenshot({ format: 'png' })).value;
       const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
       return { data, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
     };
     try {
       assert.equal((await seen(null)).data, taken, 'none chosen: the picture as taken');
-      assert.equal((await seen('normal')).data, taken, 'Normal: the picture as taken');
+      assert.equal((await seen('normal', 'older-eyes')).data, taken, 'Normal picked for a persona with older eyes: the picture as taken');
+      const card = await seen(null, 'colour-blind');
+      assert.ok(card.data !== taken && card.data === (await seen('colour-blind')).data, 'none picked: the card’s own');
       const [red, green, blue] = (await seen('colour-blind')).px;
       assert.ok(Math.abs(red[0] - red[1]) < 40 && Math.abs(green[0] - green[1]) < 40, `red and green both turn olive: ${red} ${green}`);
       assert.ok(blue[2] > blue[0] + 100, `blue stays blue: ${blue}`);
@@ -618,7 +626,7 @@ describe('walk worker', () => {
       await seen('older');
       assert.ok(box && box.y < 50 && box.x > 2108 / 2 && box.h >= 40, `the label sits top right, big enough to read when shrunk: ${JSON.stringify(box)}`);
     } finally {
-      await chrome.storage.local.remove('walkSight');
+      await chrome.storage.session.set({ handoff: was });
       answers['Page.captureScreenshot'] = kept.shot;
       Object.assign(globalThis, { createImageBitmap: kept.bitmap, OffscreenCanvas: kept.canvas });
     }

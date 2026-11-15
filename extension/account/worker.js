@@ -153,7 +153,7 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
   if (!started.ok) return started;
   const socket = socketOf(at);
   if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };
-  const taken = await adopt(JSON.stringify(started.handoff), message.tabId, message.device).catch(() => null);
+  const taken = await adopt(JSON.stringify(started.handoff), message.tabId, message.device, message.sees).catch(() => null);
   if (!taken?.ok) return { ok: false, why: 'failed' };
   // An approved plan approved its steps: the walk asks nothing mid-way, and its results wait behind the panel's button.
   planned(Boolean(approved));

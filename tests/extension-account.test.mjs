@@ -430,9 +430,10 @@ describe('account worker', () => {
       delete session.handoff;
       // The walks before this one are still waiting for their tab: ended, so this one may start.
       (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
-      assert.deepEqual(await ask({ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone' }, fromPopup), { ok: true, panel: true });
+      assert.deepEqual(await ask({ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone', sees: 'older' }, fromPopup), { ok: true, panel: true });
       assert.equal(posted.at(-1).body.device, device);
-      assert.equal(session.handoff.device, 'phone');
+      // How the persona sees goes with this journey alone (sight.js), and never to the server.
+      assert.deepEqual([session.handoff.device, session.handoff.sees, 'sees' in posted.at(-1).body], ['phone', 'older', false]);
     });
   }
 
