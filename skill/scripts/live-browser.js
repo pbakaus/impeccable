@@ -7843,7 +7843,7 @@
             saveInteractionPrefs();
             updateGlobalBarState();
             showToast('Click anything on the page to restyle it.', 8000);
-          } else if (!hasProjectContext && !liveBarHiddenByHelper) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
+          } else if (!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice()) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
@@ -10572,6 +10572,17 @@ void main() {
     // first click on the page already does something; the generate lane hides
     // the bar, and a Pick nobody can see or turn off would eat app clicks.
     return { pickActive: false, insertActive: false, firstRun: true };
+  }
+
+  // The missing-PRODUCT.md notice shows once per browser: a reconnect, a
+  // reload or the variants arriving would otherwise bring it back each time.
+  const CONTEXT_NOTICE_KEY = 'impeccable-live-context-notice';
+  function takeContextNotice() {
+    try {
+      if (localStorage.getItem(CONTEXT_NOTICE_KEY)) return false;
+      localStorage.setItem(CONTEXT_NOTICE_KEY, '1');
+    } catch { /* ignore */ }
+    return true;
   }
 
   function saveInteractionPrefs() {
