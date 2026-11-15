@@ -302,6 +302,29 @@ fn sarif_conflicts_with_github() {
 }
 
 #[test]
+fn sarif_conflicts_with_wiring_modes() {
+    let dir = temp("wiring");
+    std::fs::create_dir_all(&dir).unwrap();
+    for mode in ["--before", "--kept"] {
+        for args in [
+            &[mode, "--sarif", "page.html"][..],
+            &[mode, "--sarif", "--json", "page.html"][..],
+        ] {
+            let (code, out, err) = run_with(&dir, args, &MissingHtmlEngine, HashMap::new());
+            assert_eq!(code, 1, "{args:?} {err}");
+            assert!(out.is_empty(), "{out}");
+            assert_eq!(
+                err,
+                format!(
+                    "Error: {mode} works on local HTML files and cannot be used with --sarif\n"
+                )
+            );
+        }
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn sarif_conflicts_with_list_rules() {
     let dir = temp("list");
     std::fs::create_dir_all(&dir).unwrap();

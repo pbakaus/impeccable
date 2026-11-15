@@ -774,7 +774,7 @@ fn detect_cli(
         if cdp.is_some() {
             other.push("--cdp");
         }
-        for flag in ["--list-rules", "--github", "--changed"] {
+        for flag in ["--list-rules", "--github", "--sarif", "--changed"] {
             if has(&args, flag) {
                 other.push(flag);
             }
