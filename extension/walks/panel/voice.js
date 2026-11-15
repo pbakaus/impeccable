@@ -94,13 +94,15 @@ export function listen(Ctor, { base = '', lang = 'en-US', stallMs = STALL_MS, on
   };
 }
 
-/** How many bars the waveform shows, and how often a new one comes in from the right. */
-export const BARS = 28;
-const BAR_MS = 70;
+/** How many bars the waveform shows, how often a new level comes in from the right, and how far each frame eases towards it. */
+export const BARS = 14;
+const BAR_MS = 90;
+const EASE = 0.22;
 
 /**
  * The mic's level while listening, for the waveform: a stream of its own (getUserMedia), read by an AnalyserNode once
- * a frame, beside the speech recognition. `onLevels` gets the last BARS levels, 0 to 1, newest last. Resolves to
+ * a frame, beside the speech recognition. `onLevels` gets, each frame, the last BARS levels (0 to 1, newest last), each
+ * eased a little closer to what the mic heard, so the bars glide rather than jump. Resolves to
  * `stop`, which ends the stream's tracks, the frame loop and the audio context; or null where the mic can't be read
  * (listening goes on without moving bars).
  */
@@ -120,6 +122,7 @@ export async function meter({ media, Audio, frame, cancel, onLevels }) {
   }
   const wave = new Uint8Array(analyser.fftSize);
   const levels = Array(BARS).fill(0);
+  const shown = Array(BARS).fill(0);
   let id = 0;
   let last = -Infinity;
   const tick = (now = 0) => {
@@ -131,8 +134,9 @@ export async function meter({ media, Audio, frame, cancel, onLevels }) {
       // Speech sits low on this scale: lifted, so a normal voice fills most of a bar.
       levels.push(Math.min(1, Math.sqrt(sum / wave.length) * 4));
       levels.shift();
-      onLevels([...levels]);
     }
+    for (let i = 0; i < BARS; i++) shown[i] += (levels[i] - shown[i]) * EASE;
+    onLevels([...shown]);
     id = frame(tick);
   };
   id = frame(tick);

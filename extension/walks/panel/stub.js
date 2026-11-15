@@ -94,8 +94,8 @@ export const PRE = {
   'home-app': { personas: [...APP_CAST, MADE], task: TASK },
   'signing-in': { signingIn: true },
   // Talk to type: the bars as a voice moves them, newest on the right, the words heard so far; and a mic hearing nothing.
-  listening: { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Add a to-do, then rename it to', levels: [0.04, 0.06, 0.3, 0.55, 0.42, 0.7, 0.85, 0.5, 0.32, 0.6, 0.78, 0.45, 0.2, 0.08, 0.05, 0.36, 0.62, 0.9, 0.74, 0.48, 0.66, 0.52, 0.3, 0.58, 0.81, 0.63, 0.4, 0.22] },
-  'listening-quiet': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: '', levels: [0.05, 0.04, 0.06, 0.03, 0.02, 0.04, 0.05, 0.03, 0.02, 0.03, 0.04, 0.02, 0.03, 0.05, 0.04, 0.02, 0.03, 0.02, 0.04, 0.03, 0.02, 0.03, 0.04, 0.02, 0.03, 0.02, 0.03, 0.02] },
+  listening: { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Add a to-do, then rename it to', levels: [0.08, 0.22, 0.4, 0.62, 0.5, 0.78, 0.92, 0.66, 0.44, 0.7, 0.55, 0.3, 0.16, 0.06] },
+  'listening-quiet': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: '', levels: [0.01, 0.02, 0, 0.01, 0.02, 0.01, 0, 0.01, 0.02, 0, 0.01, 0.02, 0.01, 0] },
   // Make a persona: empty, typed, being made, made, refused; then home with the new one first. And an app's personas, in a modal.
   make: { personas: PERSONAS, screen: 'make', apps: APPS },
   'make-typed': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED },

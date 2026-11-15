@@ -72,8 +72,6 @@ export const COPY = {
     talk: 'Talk to type',
     stop: 'Stop listening',
     listening: 'Listening…',
-    /** Under the waveform while the mic hears nothing. */
-    quiet: 'Nothing heard yet. Speak up a little.',
     'not-allowed': 'The microphone is blocked. You can still type.',
     'audio-capture': 'No microphone found. You can still type.',
     network: 'Talking needs an internet connection. You can still type.',

@@ -357,29 +357,27 @@ function home() {
       el('div', { class: 'tabs' }, widths(), sights()),
       el('div', { class: 'field' }, box,
         voice ? listening(send) : el('div', { class: 'row' },
-          Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'false', title: COPY.voice.talk, 'aria-label': COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
+          Speech ? micButton() : null,
           el('span', { class: 'grow' }),
           button('send', COPY.home.send, 'gold', send))),
     ),
   ];
 }
 
-/** Reduced motion: the bars hold a still shape, and listening still shows. */
+/** Reduced motion: the bars hold a still, gentle arch, and listening still shows. */
 const still = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
-const STILL = Array.from({ length: BARS }, (_, i) => 0.25 + 0.2 * Math.abs(Math.sin(i * 0.7)));
-/** Nothing above a murmur in the last second or so. */
-const hushed = (levels) => !still() && Math.max(...(levels ?? [0]).slice(-14)) < 0.08;
+const STILL = Array.from({ length: BARS }, (_, i) => 0.12 + 0.3 * Math.sin((Math.PI * i) / (BARS - 1)));
 
-/** While listening: Stop, the waveform moving with the mic, and Send; a line when it hears nothing. */
+/** The mic: press to talk; while listening the same button, selected, stops it. */
+const micButton = () => el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic'));
+
+/** While listening: the mic (selected), the waveform moving with the mic's level (flat dots when quiet), and Start. */
 function listening(send) {
   const levels = still() ? STILL : pre.levels ?? Array(BARS).fill(0);
-  return [
-    el('div', { class: 'row voice-row' },
-      el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'true', title: COPY.voice.stop, 'aria-label': COPY.voice.stop, onclick: () => { void talk(); } }, icon('stop')),
-      el('div', { class: 'wave', 'aria-hidden': true, 'data-quiet': hushed(levels) ? 'yes' : 'no', 'data-still': still() ? 'yes' : undefined }, levels.map((level) => el('i', { style: `--l:${level.toFixed(3)}` }))),
-      button('send', COPY.home.send, 'gold', send)),
-    el('p', { class: 'choice wave-note', role: 'status', text: COPY.voice.quiet }),
-  ];
+  return el('div', { class: 'row voice-row' },
+    micButton(),
+    el('div', { class: 'wave', 'aria-hidden': true, 'data-still': still() ? 'yes' : undefined }, levels.map((level) => el('i', { style: `--l:${level.toFixed(3)}` }))),
+    button('send', COPY.home.send, 'gold', send));
 }
 
 /** New levels from the mic: the bars change in place, so the box keeps its words and the caret. */
@@ -387,7 +385,6 @@ function drawLevels(levels) {
   pre.levels = levels;
   const wave = app.querySelector('.wave');
   if (!wave) return;
-  wave.setAttribute('data-quiet', hushed(levels) ? 'yes' : 'no');
   wave.querySelectorAll('i').forEach((bar, i) => bar.style?.setProperty('--l', levels[i].toFixed(3)));
 }
 

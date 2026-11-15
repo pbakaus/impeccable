@@ -61,11 +61,12 @@ b { font-weight: 500; }
 .btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
 .pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pair .btn { width: 100%; }
-.mic { width: 40px; height: 40px; flex: none; display: inline-grid; place-items: center; border-radius: 10px; color: var(--gold-deep); }
-.mic:hover { background: var(--gray); color: var(--ink); }
+/* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold. */
+.mic { width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; color: var(--ink); }
+.mic:hover { background: var(--gray); }
 .mic .ic { width: 18px; height: 18px; }
-.mic[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--gold-wash); animation: listen 1.4s var(--ease) infinite; }
-@keyframes listen { 0%, 100% { box-shadow: 0 0 0 4px var(--gold-wash); } 50% { box-shadow: 0 0 0 7px var(--gold-wash); } }
+.mic[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+.mic[aria-pressed="true"]:hover { background: var(--gold-rich); }
 .mic-page #app { max-width: 420px; margin: 0 auto; }
 .err { font-size: 13px; line-height: 18px; color: var(--vermilion); text-wrap: balance; }
 .dots { display: inline-flex; gap: 4px; }
@@ -133,8 +134,11 @@ b { font-weight: 500; }
 .cast .add[aria-disabled="true"]::after { content: attr(data-tip); position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 150px; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted);
   pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
 .cast .add[aria-disabled="true"]:hover::after, .cast .add[aria-disabled="true"]:focus-visible::after { opacity: 1; }
-.tabs button { position: relative; }
-/* What each icon means, in small muted words just above it, on hover and on keyboard focus. */
+.tabs button { position: static; }
+/*
+ * What each icon means, in small muted words just above its group, on hover and on keyboard focus: Screen's from the
+ * box's left edge, Sees' to its right edge (the groups sit flush with them), whichever icon it is.
+ */
 .tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
   white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
 .tabs .sights button::after { left: auto; right: 0; }
@@ -234,7 +238,7 @@ b { font-weight: 500; }
 .face.blank .who { width: 62%; height: 62%; fill: currentColor; }
 .hero .ph { color: var(--mute-deep); }
 .skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-.hero .face.skel { border: 0; border-radius: 50%; color: var(--gray-2); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
+.hero .face.skel { display: inline-grid; place-items: center; border: 0; border-radius: 50%; color: var(--gray-2); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
 .skel-name { width: 150px; height: 40px; margin-top: 4px; }
 .skel-line { width: 260px; height: 16px; margin-top: 10px; }
 .skel-line.short { width: 180px; margin-top: 4px; }
@@ -261,11 +265,6 @@ b { font-weight: 500; }
 .screen-make .hero { margin-top: 36px; }
 
 /* ---------- talk to type: the waveform while the mic is on ---------- */
-.voice-row .mic { background: var(--gold); color: var(--on-gold); }
-.voice-row .mic .ic { width: 14px; height: 14px; fill: currentColor; }
-.wave { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 0 4px; }
-.wave i { --l: 0; flex: 1; max-width: 4px; height: calc(4px + var(--l) * 32px); border-radius: 2px; background: var(--gold-deep); transition: height .08s linear; }
-.wave i:nth-last-child(-n+6) { background: var(--ink); }
-.wave[data-quiet="yes"] i { background: var(--mute-deep); }
-.wave-note { display: none; text-align: center; }
-.wave[data-quiet="yes"] ~ .btn + .wave-note, .voice-row:has(.wave[data-quiet="yes"]) + .wave-note { display: block; }
+/* A few thin rounded bars in one colour, eased each frame (voice.js `meter`); quiet, a flat line of short dots. */
+.wave { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.wave i { --l: 0; width: 2px; flex: none; height: calc(2px + var(--l) * 22px); border-radius: 1px; background: var(--ink); opacity: .55; }
