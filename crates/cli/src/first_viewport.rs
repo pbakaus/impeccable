@@ -40,17 +40,31 @@ const MEASURE_JS: &str = r#"((selectors) => {
   const area = (r) => Math.max(0, r.r - r.l) * Math.max(0, r.b - r.t);
   // Hidden by visibility, opacity or display shows nothing, whatever its box.
   // A face turned away under `backface-visibility: hidden` (the back of a
-  // card that flips) is not on screen either.
+  // card that flips) is not on screen either: compose the transforms from
+  // the root and read where the face's normal points (m33 < 0 is away).
   const facesAway = (el) => {
     const chain = [];
     for (let n = el; n instanceof Element; n = n.parentElement) chain.unshift(n);
-    let sign = 1;
+    let m = new DOMMatrix();
     for (const n of chain) {
       const cs = getComputedStyle(n);
-      if (cs.transform && cs.transform !== 'none') sign *= Math.sign(new DOMMatrix(cs.transform).m11) || 1;
-      if (sign < 0 && cs.backfaceVisibility === 'hidden') return true;
+      if (cs.transform && cs.transform !== 'none') m = m.multiply(new DOMMatrix(cs.transform));
+      if (m.m33 < 0 && cs.backfaceVisibility === 'hidden') return true;
     }
     return false;
+  };
+  // An element's box as it can show: cut by every ancestor that clips.
+  const shownBox = (el) => {
+    const b = el.getBoundingClientRect();
+    let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+        const ab = a.getBoundingClientRect();
+        box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
+      }
+    }
+    return { whole: { l: b.left, t: b.top, r: b.right, b: b.bottom }, box };
   };
   const seen = (el) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, opacityProperty: true, visibilityProperty: true }) && !facesAway(el);
   const out = {};
@@ -58,9 +72,9 @@ const MEASURE_JS: &str = r#"((selectors) => {
   // image's reserved box is content, not an empty stretch.
   out.media = [...document.querySelectorAll('img, svg, canvas, video, picture, iframe, object, embed')]
     .filter((el) => !(el instanceof SVGElement && el.ownerSVGElement) && seen(el))
-    .map((el) => el.getBoundingClientRect())
-    .filter((r) => r.width > 0 && r.height > 0)
-    .map((r) => [Math.max(0, Math.floor(r.top + scrollY)), Math.ceil(r.bottom + scrollY)]);
+    .map((el) => shownBox(el).box)
+    .filter((r) => r.r > r.l && r.b > r.t)
+    .map((r) => [Math.max(0, Math.floor(r.t + scrollY)), Math.ceil(r.b + scrollY)]);
   for (const [key, sel] of Object.entries(selectors)) {
     if (!sel) continue;
     let els = [];
@@ -68,17 +82,10 @@ const MEASURE_JS: &str = r#"((selectors) => {
     let total = 0, shown = 0, inside = els.length > 0;
     for (const el of els) {
       if (!seen(el)) continue;
-      const b = el.getBoundingClientRect();
-      let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
-      const whole = area(box);
+      const { whole: b0, box } = shownBox(el);
+      const b = { top: b0.t, left: b0.l, bottom: b0.b, right: b0.r };
+      const whole = area(b0);
       if (whole === 0) continue;
-      for (let a = el.parentElement; a; a = a.parentElement) {
-        const cs = getComputedStyle(a);
-        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
-          const ab = a.getBoundingClientRect();
-          box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
-        }
-      }
       const visible = clip(box, { l: 0, t: 0, r: vw, b: vh });
       // A thesis that scrolls inside itself shows only its own box of the
       // whole: five plates in a row that shows two and a half show half.
@@ -122,7 +129,7 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, act
     // Lazy images below the fold would capture as blank boxes: load them all.
     let _ = page.evaluate(
         "(async () => { for (const i of document.querySelectorAll('img[loading=lazy]')) i.loading = 'eager'; \
-         await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; setTimeout(r, 5000); }))); \
+         await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 5000); }))); \
          await document.fonts.ready; await new Promise((r) => setTimeout(r, 400)); })()",
     );
     let label = format!("{}x{}", vp.width, vp.height);
