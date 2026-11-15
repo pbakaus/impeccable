@@ -11308,6 +11308,7 @@ void main() {
     }
     steerPendingMessage = keepExpanded ? restoreMessage : '';
     steerInputWasFocused = false;
+    syncGlobalBarExpandedLabels();
     syncPageChatChrome();
     syncPageChatFocusRing();
     if (opts?.error) showToast(String(opts.error), 5000);

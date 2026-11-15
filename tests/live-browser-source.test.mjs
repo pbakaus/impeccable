@@ -1897,3 +1897,13 @@ describe('Pending dock after Rollback', () => {
     assertNormalDock(context);
   });
 });
+
+describe('Global bar labels', () => {
+  // Catches hover widening the centred bar again (clicks meant for Pick landed on
+  // Insert), and active labels left collapsed after a Steer request finishes.
+  it('never widens on hover and restores active labels when Steer unlocks', () => {
+    assert.doesNotMatch(SOURCE, /:hover'\)|syncGlobalBarExpandedLabels\(true|applyGlobalBarLabelState\(true/);
+    const unlock = SOURCE.match(/function unlockSteerChat\(opts\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(unlock, /syncGlobalBarExpandedLabels\(\)/);
+  });
+});
