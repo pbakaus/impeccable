@@ -122,3 +122,26 @@ fn a_drawing_in_an_app_shell_below_the_fold_is_content() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "{text}");
 }
+
+#[test]
+fn a_thesis_a_full_height_wrapper_hides_fails() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("hidden");
+    std::fs::write(
+        dir.join("index.html"),
+        format!(
+            "<!doctype html><style>{STYLE} .frame {{ width: 97px; height: 100vh; overflow: hidden; }}
+             .thesis {{ width: 388px; height: 300px; background: #c33; }}</style>
+             <div class=\"frame\"><h1>Seeds</h1><button class=\"buy\">Add</button>
+             <div class=\"thesis\">The whole season on one packet, from seed to seed.</div></div>"
+        ),
+    )
+    .unwrap();
+    let out = run(&dir, &["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(text.contains("FAIL  thesis .thesis: 25% shows"), "{text}");
+}

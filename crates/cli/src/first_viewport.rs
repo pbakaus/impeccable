@@ -53,16 +53,17 @@ const MEASURE_JS: &str = r#"((selectors) => {
     }
     return false;
   };
-  // An element's box as it can show: cut by every ancestor that clips,
-  // except a box the height of the viewport (an app shell, a scrolling or
-  // clipped body), whose scroller the full-page capture unrolls.
+  // An element's box as it can show: cut by every ancestor that clips. For
+  // media rows only, a box the height of the viewport (an app shell, a
+  // scrolling or clipped body) does not cut, since the full-page capture
+  // unrolls its scroller; the thesis and action keep every clip.
   const pageScroller = (a) => a.clientHeight >= innerHeight * 0.9;
-  const shownBox = (el) => {
+  const shownBox = (el, forMedia = false) => {
     const b = el.getBoundingClientRect();
     let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
-      if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && !pageScroller(a)) {
+      if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && !(forMedia && pageScroller(a))) {
         const ab = a.getBoundingClientRect();
         box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
       }
@@ -75,7 +76,7 @@ const MEASURE_JS: &str = r#"((selectors) => {
   // image's reserved box is content, not an empty stretch.
   out.media = [...document.querySelectorAll('img, svg, canvas, video, picture, iframe, object, embed')]
     .filter((el) => !(el instanceof SVGElement && el.ownerSVGElement) && seen(el))
-    .map((el) => shownBox(el).box)
+    .map((el) => shownBox(el, true).box)
     .filter((r) => r.r > r.l && r.b > r.t)
     .map((r) => [Math.max(0, Math.floor(r.t + scrollY)), Math.ceil(r.b + scrollY)]);
   for (const [key, sel] of Object.entries(selectors)) {
