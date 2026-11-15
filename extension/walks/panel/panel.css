@@ -126,6 +126,13 @@ b { font-weight: 500; }
 .tabs + .field { border-top-left-radius: 0; border-top-right-radius: 0; }
 .tabs + .field:focus-within { background: var(--tab); box-shadow: none; }
 .tabs .widths button[aria-pressed="true"] { background: var(--paper-raised); }
+/* The + at the limit: greyed, still focusable, saying why just under it (it is always last, so nothing is under it). */
+.cast .add[aria-disabled="true"] { position: relative; cursor: default; }
+.cast .add[aria-disabled="true"] .face { opacity: .45; }
+.cast .add[aria-disabled="true"]:hover .face { border-color: var(--mute-deep); color: var(--muted); }
+.cast .add[aria-disabled="true"]::after { content: attr(data-tip); position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 150px; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted);
+  pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.cast .add[aria-disabled="true"]:hover::after, .cast .add[aria-disabled="true"]:focus-visible::after { opacity: 1; }
 .tabs button { position: relative; }
 /* What each icon means, in small muted words just above it, on hover and on keyboard focus. */
 .tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
@@ -224,10 +231,10 @@ b { font-weight: 500; }
 
 /* ---------- make a persona: laid out as the home, then a modal for an app's personas ---------- */
 .face.blank { background: var(--paper-deep); color: var(--mute-deep); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
-.face.blank .who { width: 64%; height: 64%; margin-top: 18%; fill: currentColor; }
+.face.blank .who { width: 62%; height: 62%; fill: currentColor; }
 .hero .ph { color: var(--mute-deep); }
 .skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
-.hero .face.skel { border: 0; border-radius: 50%; box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
+.hero .face.skel { border: 0; border-radius: 50%; color: var(--gray-2); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
 .skel-name { width: 150px; height: 40px; margin-top: 4px; }
 .skel-line { width: 260px; height: 16px; margin-top: 10px; }
 .skel-line.short { width: 180px; margin-top: 4px; }
@@ -235,8 +242,6 @@ b { font-weight: 500; }
 .field:has(.text:disabled) { opacity: .7; }
 .text:disabled { cursor: default; }
 .err.below { margin: 10px 4px 0; text-align: center; }
-.link { display: block; margin: 12px auto 0; font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
-.link:hover { color: var(--ink); }
 .scrim { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 20px; background: oklch(13% 0 0 / .32); }
 .modal { width: 100%; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px; border-radius: 16px; background: var(--paper-raised); box-shadow: 0 8px 32px oklch(13% 0 0 / .18); }
 .modal-head { display: flex; align-items: center; gap: 8px; }

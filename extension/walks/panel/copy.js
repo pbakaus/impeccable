@@ -49,7 +49,9 @@ export const COPY = {
     name: 'Your persona',
     about: 'Who they are, in a line.',
     describe: 'Tell us about your persona, and what to call them.',
-    action: 'Send',
+    action: 'Create',
+    /** On the + once the person has as many of their own as the server allows. */
+    full: (max) => `You can make up to ${max || 3} personas for now`,
     making: 'Making your persona…',
     confirm: 'Confirm',
     /** Personas an app already has, instead of a new one: a modal. */

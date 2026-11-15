@@ -102,6 +102,8 @@ export const PRE = {
   'make-making': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, making: true },
   'make-made': { personas: PERSONAS, screen: 'make', apps: APPS, made: MADE },
   'make-refused': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, note: COPY.make.limit(3) },
+  // Three of their own already: the + is greyed and says why.
+  'home-full': { personas: [MADE, { ...MADE, name: 'Theo', slug: 'theo', role: 'A shift lead, checks the rota between calls' }, { ...MADE, name: 'June', slug: 'june', role: 'A ward clerk, books cover for the night' }, ...PERSONAS], task: TASK, here: 'https://shop.example/' },
   'home-made': { personas: [MADE, ...PERSONAS], task: TASK, here: 'https://shop.example/' },
   'make-modal': { personas: PERSONAS, screen: 'make', apps: APPS, modal: true },
   'make-modal-app': { personas: PERSONAS, screen: 'make', apps: APPS, modal: true, app: 'acme/tidy/web', appPersonas: APP_CAST },
@@ -116,5 +118,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
+for (const name of ['home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

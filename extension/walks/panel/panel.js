@@ -193,6 +193,8 @@ async function loadPersonas() {
 /** Why a persona wasn't made, in one line: anything the person can't fix here is "try again later". */
 const UNMADE = { short: COPY.make.short, scope: COPY.make.scope, 'not-pro': COPY.why['not-pro'] };
 const unmade = (answer) => (answer?.why === 'limit' ? COPY.make.limit(answer.max) : UNMADE[answer?.why] ?? COPY.make.later);
+/** How many personas of their own the server lets a person have: its word on a refusal, else the 3 it allows today. */
+let ownMax = 3;
 
 /** Make a persona: the description becomes the person's own persona (the draft takes up to about half a minute), drawn in place. */
 async function make(box) {
@@ -204,7 +206,7 @@ async function make(box) {
   render();
   const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe }).catch(() => null);
   pre.making = false;
-  if (!answer?.ok) { pre.note = unmade(answer); render(); return; }
+  if (!answer?.ok) { if (answer?.why === 'limit' && Number.isInteger(answer.max)) ownMax = answer.max; pre.note = unmade(answer); render(); return; }
   pre.describe = '';
   pre.made = answer.persona ?? null;
   render();
@@ -247,7 +249,7 @@ function useApp() {
   void Promise.resolve(chrome.storage.local.get('appForSite')).then(({ appForSite } = {}) => chrome.storage.local.set({ appForSite: { ...appForSite, [site]: { ...appRef(app), name: app.name } } })).catch(() => undefined);
 }
 
-/** Closes the modal; focus goes back to the link that opened it. */
+/** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
@@ -273,21 +275,25 @@ function appModal() {
 
 const dots = () => el('span', { class: 'dots' }, el('i'), el('i'), el('i'));
 
-/** The face a persona not made yet has: a plain silhouette. */
-function blank() {
+/** A person, soft shapes only: a round head over a rounded shoulder curve, centred in its 24 × 24 box. */
+function silhouette() {
   const svg = document.createElementNS(SVG, 'svg');
   svg.setAttribute('class', 'who');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  const path = document.createElementNS(SVG, 'path');
-  path.setAttribute('d', 'M12 12.5a4.25 4.25 0 1 0 0-8.5a4.25 4.25 0 1 0 0 8.5zM3.5 22c.6-4.6 4.1-7.5 8.5-7.5s7.9 2.9 8.5 7.5z');
-  svg.append(path);
-  return el('span', { class: 'face blank', 'aria-hidden': true, style: 'width:112px;height:112px;' }, svg);
+  const head = document.createElementNS(SVG, 'circle');
+  for (const [key, value] of [['cx', '12'], ['cy', '7.6'], ['r', '3.8']]) head.setAttribute(key, value);
+  const shoulders = document.createElementNS(SVG, 'path');
+  shoulders.setAttribute('d', 'M4.6 18.6c0-3.4 3.3-5.6 7.4-5.6s7.4 2.2 7.4 5.6c0 1-.8 1.8-1.8 1.8H6.4c-1 0-1.8-.8-1.8-1.8z');
+  svg.append(head, shoulders);
+  return svg;
 }
+/** The face a persona not made yet has; `cls` adds the shimmer while it's made. */
+const blank = (cls = '') => el('span', { class: `face blank ${cls}`.trim(), 'aria-hidden': true, style: 'width:112px;height:112px;' }, silhouette());
 
 /**
  * Make a persona, laid out as the home: the face, name and line are placeholders until it's made, shimmer while it's
- * made, then show who was made, with Confirm. Below the box, a link to use an app's personas instead.
+ * made, then show who was made, with Confirm. Top right, a button to use an app's personas instead.
  */
 function maker() {
   const made = pre.made;
@@ -295,30 +301,34 @@ function maker() {
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }))
-    : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, el('span', { class: 'face skel', style: 'width:112px;height:112px;' }), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
+    : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
       : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
   return [
-    el('div', { class: 'top' }, made ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back'))),
+    el('div', { class: 'top' }, made ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
+      el('span', { class: 'grow' }),
+      made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
     hero,
     el('span', { class: 'grow' }),
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
       el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
         el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
-      pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null,
-      pre.making || !pre.apps?.length ? null : el('button', { class: 'link', type: 'button', 'data-act': 'from-app', onclick: () => { Object.assign(pre, { modal: true, appsOpen: false }); render(); app.querySelector('[data-act="apps"]')?.focus(); } }, COPY.make.fromApp)),
+      pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null),
     pre.modal ? appModal() : null,
   ];
 }
 
 /** The personas as a grid of faces, four to a row, and + last, which makes one. */
 function cast() {
+  const full = (pre.personas ?? []).filter((each) => each.mine).length >= ownMax;
   return el('div', { class: 'cast', role: 'group', 'aria-label': COPY.home.who },
     (pre.personas ?? []).map((each, i) => el('button', {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
     }, face(each, 48), el('span', { class: 'cast-name', text: each.name }))),
-    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
-      el('span', { class: 'face' }, icon('plus'))));
+    // At the limit of their own, the + stays (focusable, saying why) and does nothing.
+    full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
+      : el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
+        el('span', { class: 'face' }, icon('plus'))));
 }
 
 /** Personas that didn't load: sign in again when the sign-in is gone, else try again. */

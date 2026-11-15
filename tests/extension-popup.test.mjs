@@ -410,6 +410,10 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     // A list that came back empty is one that didn't load: never an empty home.
     const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [] });
     assert.deepEqual(empty.acts().filter((act) => act === 'retry' || act === 'make-persona'), ['retry']);
+    // Three of their own, the server's limit: the + says why and opens nothing.
+    const full = await sidePanel({ view: STUBS.idle, status: signedIn, personas: ['rosa', 'theo', 'june'].map((slug) => ({ name: slug, role: '', slug, mine: true })) });
+    await full.press('make-persona');
+    assert.deepEqual([full.body.dataset.screen, full.app.querySelector('[data-act="make-persona"]').attributes['aria-disabled']], ['home', 'true']);
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], create });
     await h.press('make-persona');
     assert.equal(h.body.dataset.screen, 'make');
