@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {}, connected } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {}, connected, search = '' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -331,7 +331,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   let front = tab;
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
   Object.assign(globalThis, {
-    document, location: { search: '' }, addEventListener() {},
+    document, location: { search }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
       runtime: { async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
@@ -575,6 +575,20 @@ test('the side panel’s cog opens the account in the panel: the email and Sign 
   await h.press('settings');
   await h.press('sign-out');
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
+});
+
+// History, beside the cog: on a stand-in alone until it is wired. A row opens its journey's page in a new tab; Back goes home.
+test('the side panel’s History opens from the top row, a row opens its journey in a new tab, and Back goes home', async () => {
+  const { HISTORY } = await import('../extension/walks/panel/stub.js');
+  const live = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  assert.equal(live.acts().includes('history'), false, 'not wired yet: a live panel shows no made-up journeys');
+  const h = await sidePanel({ search: '?stub=home' });
+  await h.press('history');
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('button.hist-row').length], ['history', HISTORY.length]);
+  await h.press('journey-1');
+  assert.deepEqual(h.opened, [{ url: HISTORY[1].url, active: true }]);
+  await h.press('back');
+  assert.equal(h.body.dataset.screen, 'home');
 });
 
 test('Scan opens again after going back: its box stays in the page between visits', async () => {

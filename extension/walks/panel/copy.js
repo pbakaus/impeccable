@@ -149,6 +149,31 @@ export const COPY = {
     see: (name) => `See ${name ? `${name}’s` : 'the'} journey`,
   },
 
+  /** Every journey started from the extension, newest first: the button beside the cog, and the screen it opens. */
+  history: {
+    open: 'History',
+    title: 'Your journeys',
+    none: 'No journeys yet. Yours will show up here.',
+    /** How a journey ended, as its end screen says it. */
+    ended: {
+      issues: (name, n) => `${name} found ${issues(n)}`,
+      done: (name) => `${name}’s done`,
+      stopped: (name) => `You stopped ${name}`,
+      failed: (name) => `${name} didn’t finish`,
+    },
+    when: (at, now = Date.now()) => {
+      const minutes = Math.floor((now - at) / 60_000);
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes} min ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours} h ago`;
+      const days = Math.floor(hours / 24);
+      if (days === 1) return 'Yesterday';
+      if (days < 7) return `${days} days ago`;
+      return new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    },
+  },
+
   failed: {
     'tab-closed': 'The tab was closed.',
     connection: 'The connection dropped.',

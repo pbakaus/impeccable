@@ -98,6 +98,7 @@ const ICONS = {
   close: ['M6 6l12 12M18 6L6 18'],
   check: ['M5 12.5l4.5 4.5L19 7.5'],
   down: ['M6 9l6 6 6-6'],
+  history: ['M3.5 12a8.5 8.5 0 1 0 2.5-6l-2.5 2.5', 'M3.5 4v4.5H8', 'M12 7.5V12l3 2'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
 function icon(name) {
@@ -143,6 +144,8 @@ function top(url = hereUrl, { tools = false, back = null } = {}) {
     host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
     el('span', { class: 'grow' }),
     tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
+    // TODO: drop `stubbed` once History is wired to the account worker: until then a real panel shows no made-up journeys.
+    tools && stubbed ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'history', title: COPY.history.open, 'aria-label': COPY.history.open, onclick: () => { pre.screen = 'history'; render(); } }, icon('history')) : null,
     tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.account.title, 'aria-label': COPY.account.title, 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': open ? 'account-menu' : undefined, onclick: () => { if (pre.menu) closeMenu(); else openMenu(); } }, icon('cog')) : null,
     open ? accountMenu() : null,
   );
@@ -685,6 +688,31 @@ function end() {
   ];
 }
 
+/* ------------------------------ history ------------------------------ */
+
+/**
+ * The journeys this person started from the extension, newest first; undefined while they come.
+ * TODO: wire to the account worker. For now the stand-in's list (stub.js `HISTORY`), set in stub mode alone.
+ */
+const historyItems = () => pre.history;
+
+/** History: every journey as a row (who, the task, how it ended, where and when); a row opens its page in a new tab. */
+function history() {
+  const items = historyItems();
+  const head = [top(hereUrl, { back: () => goHome() }), el('h2', { class: 'hd hist-hd', text: COPY.history.title })];
+  if (items === undefined) return [...head, el('div', { class: 'mid' }, dots())];
+  if (!items.length) return [...head, el('div', { class: 'mid' }, el('p', { class: 'task', text: COPY.history.none }))];
+  return [...head, el('ul', { class: 'hist scrolls', 'aria-label': COPY.history.title }, items.map((one, i) => el('li', {},
+    el('button', { type: 'button', class: 'hist-row', 'data-act': `journey-${i}`, 'data-outcome': one.outcome,
+      onclick: () => { void chrome.tabs.create({ url: one.url, active: true }).catch(() => undefined); } },
+    face(one.persona, 40),
+    el('span', { class: 'hist-t' },
+      el('span', { class: 'hist-task', text: one.task }),
+      el('span', { class: 'hist-end', text: COPY.history.ended[one.outcome](one.persona.name, one.issues) }),
+      el('span', { class: 'hist-meta', text: `${hostOf(one.site)} · ${COPY.history.when(one.at)}` })),
+    icon('out')))))];
+}
+
 /* ------------------------------ signed out, and no account ------------------------------ */
 
 const MARK = ['M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z', 'M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z'];
@@ -835,11 +863,11 @@ function render() {
   app.replaceChildren(...SCREENS[shown]().filter(Boolean));
   const now = kept && app.querySelector('.sofar');
   if (now) now.scrollTop = kept.top + (now.scrollHeight - kept.height);
-  for (const box of app.querySelectorAll('textarea.text')) { fade(box); box.addEventListener('scroll', () => fade(box)); box.addEventListener('input', () => fade(box)); }
+  for (const box of [...app.querySelectorAll('textarea.text'), ...app.querySelectorAll('ul.hist')]) { fade(box); box.addEventListener('scroll', () => fade(box)); box.addEventListener('input', () => fade(box)); }
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.
-Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup });
+Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
@@ -871,12 +899,12 @@ async function start() {
   const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
   if (WIDTHS.includes(walkWidth)) pre.width = ownWidth = walkWidth;
   if (stub !== null) {
-    const { STUBS, PRE } = await import('./stub.js');
+    const { STUBS, PRE, HISTORY } = await import('./stub.js');
     stubbed = true;
     // Listening, drawn still: the bars as the stand-in's levels, and Stop goes back to the box.
     if (PRE[stub]?.levels) voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} };
     view = STUBS[stub] ?? STUBS.idle;
-    Object.assign(pre, PRE[stub] ?? PRE.home);
+    Object.assign(pre, { history: HISTORY }, PRE[stub] ?? PRE.home);
     account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro', email: 'dana@example.com' };
     if (pre.personas?.length) choose(pre.pick);
     walker = picked();

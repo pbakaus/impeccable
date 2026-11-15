@@ -98,6 +98,25 @@ const MADE = { name: 'Rosa', role: 'A night-shift nurse who books her shifts on 
 const DESCRIBED = 'Rosa, a night-shift nurse who books her shifts on her phone: tired, in a hurry, one hand free.';
 const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risky: false }, { text: 'Add a to-do', risky: false }, { text: 'Rename it', risky: false }, { text: 'Delete it', risky: true }] };
 const TASK = HANDOFF.errand.goal;
+/** Journeys started from the extension, newest first, aged from when the stand-in loads. `outcome`: issues, done, stopped or failed. */
+const HOUR = 3_600_000;
+const JOURNEYS = [
+  ['Maya', 'Sign up with a new email and confirm it from the inbox.', 'https://shop.example', 0.2, 'issues', 3],
+  ['Robert', 'Add a to-do, rename it, then delete it.', 'https://tidy.example', 2, 'issues', 2],
+  ['Daniel', 'Find the pricing page and start a free trial on the yearly plan.', 'https://ledgerly.example', 5, 'done'],
+  ['Sam', 'Check out with two items in the basket and a discount code. Make sure the total changes when the code goes in, and that the red sale prices still read clearly.', 'https://shop.example', 26, 'issues', 1],
+  ['Priya', 'Send an invoice to a new client and mark it paid.', 'https://ledgerly.example', 31, 'stopped'],
+  ['Grace', 'Book a table for four on Friday evening.', 'https://bistro.example', 74, 'failed'],
+  ['Maya', 'Change the password from Settings.', 'https://tidy.example', 98, 'done'],
+  ['Robert', 'Read the latest post and leave a comment under it.', 'https://blog.example', 220, 'issues', 4],
+];
+const journey = ([who, task, site, hours, outcome, issues = 0], i) => ({
+  persona: PERSONAS.find((person) => person.name === who), task, site, at: Date.now() - hours * HOUR, outcome, issues,
+  url: `https://impeccable.reviews/app/${new URL(site).host.split('.')[0]}/outings/o-${(0x7f3a + i * 97).toString(16)}`,
+});
+export const HISTORY = JOURNEYS.map(journey);
+/** A long history: 25 journeys over about a month. */
+const LONG = Array.from({ length: 25 }, (_, i) => journey([...JOURNEYS[i % JOURNEYS.length].slice(0, 3), 0.2 + i * 29, ...JOURNEYS[i % JOURNEYS.length].slice(4)], i));
 /** Before a walk: the panel's own state, by stub name. */
 export const PRE = {
   home: { personas: PERSONAS, task: TASK, pick: 3, here: 'https://shop.example/' },
@@ -135,11 +154,16 @@ export const PRE = {
   plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3, here: 'https://shop.example/' },
   before: { personas: PERSONAS, screen: 'before' },
   'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3, here: 'https://shop.example/' },
+  // History (the button beside the cog): eight journeys, none yet, still coming, and a long list that scrolls inside.
+  history: { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/' },
+  'history-empty': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: [] },
+  'history-loading': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: undefined },
+  'history-long': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: LONG },
 };
 STUBS.before = STUBS.idle;
 STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-long']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];
