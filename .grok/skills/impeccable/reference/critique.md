@@ -41,6 +41,8 @@ Sub-agent gate (all harnesses):
 - If and only if sub-agents are unavailable, fall back sequentially: read [critique-rubric.md](critique-rubric.md) now, finish and record Assessment A, then run Assessment B, then synthesize, and emit the degraded banner.
 - Whichever path you take, declare it in the report header (see Report header provenance). Skipping sub-agents without the banner is the most common failure of this command.
 
+**Read-only or delegated run.** When this critique runs where it cannot spawn agents, write inside the reviewed repository, or ask anyone (a delegated subagent, CI, a headless call), run it this way rather than improvising (native platforms keep their own path above, which has no banner): read [critique-rubric.md](critique-rubric.md), then Assessment A inline, led by `⚠️ DEGRADED: single-context (delegated read-only run)`; Assessment B as `detect --json` on the sources plus `detect --json <url> --viewport <WxH>` at each target viewport (390x844 for phone), with no live-server or overlay; no Persist the Snapshot, said in Run Notes; and `Questions skipped: delegated run` in place of Ask the User.
+
 If browser automation is available, each assessment creates its own new tab. Never reuse an existing tab, even if it is already at the right URL. Desktop apps are the exception (see **Desktop apps** under Assessment B).
 
 ### Assessment A: Design Review
@@ -72,7 +74,7 @@ CLI scan:
 - Pass markup files/directories as `[target]`; do not pass CSS-only files.
 - For URLs, skip CLI scan and use browser visualization.
 - For very large trees (500+ scannable files), narrow scope or ask.
-- Exit code 0 = clean; 2 = findings.
+- Exit code 0 = no findings; 2 = findings. Report an empty result with what was scanned (files, URLs, viewports), never as clean: the detector does not judge layout.
 - If the detector entrypoint is missing or fails to load, report deterministic scan unavailable and continue with browser/manual review.
 
 Browser visualization is required for a viewable target when browser automation is available. Use a localhost dev/static URL for local files; avoid `file://` unless the available browser explicitly supports this workflow. Overlay flow:
@@ -257,9 +259,9 @@ Ask questions along these lines (adapt to the specific findings; do not ask gene
 - Every question must reference specific findings from the report. Never ask generic "who is your audience?" questions.
 - Keep it to 2-4 questions maximum. Respect the user's time.
 - Offer concrete options, not open-ended prompts.
-- Skipping is allowed only when the report listed **fewer than 3 Priority Issues**. Count them; do not judge the findings "straightforward" by feel. At 3 or more, the questions are required.
+- Skipping is allowed only when the report listed **fewer than 3 Priority Issues**, or on a read-only or delegated run. Count them; do not judge the findings "straightforward" by feel. At 3 or more on an interactive run, the questions are required.
 
-**Final-question gate.** The user-visible response must either include the targeted questions or carry the literal line `Questions skipped: <reason>` naming the count that permitted the skip. Each question must include 2-3 concrete answer options tied to the actual critique findings. Do not end with only open-ended questions, and do not end with neither: stopping after the report, having asked nothing and printed no skip line, is the most common way this command fails.
+**Final-question gate.** The user-visible response must either include the targeted questions or carry the literal line `Questions skipped: <reason>` naming the count or the delegated run that permitted the skip. Each question must include 2-3 concrete answer options tied to the actual critique findings. Do not end with only open-ended questions, and do not end with neither: stopping after the report, having asked nothing and printed no skip line, is the most common way this command fails.
 
 ### Recommended Actions
 
