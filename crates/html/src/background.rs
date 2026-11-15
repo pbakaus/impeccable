@@ -850,10 +850,10 @@ pub enum LevelPaint {
     /// Translucent paint only (uniform washes, then the element's own
     /// color), top to bottom. The walk goes on to the parent.
     Through(Vec<Rgba>),
-    /// An opaque color with no image over it, covering the box: the
-    /// analytic walk owns this level, and it is the ground of everything
-    /// painted above it.
-    Opaque,
+    /// An opaque color covering the box, with the uniform washes painted
+    /// over it, top to bottom: the ground of everything painted above it,
+    /// a level the analytic walk also owns.
+    Opaque { washes: Vec<Rgba>, color: Rgba },
     /// A level the walk gives up on, which the analytic walk owns without
     /// saying what lies beneath: an opaque gradient, a scrim that varies or
     /// has a stop the engine cannot read, an unparseable color, a color
@@ -1197,9 +1197,10 @@ pub fn analyze_level(cur: &StaticElement<'_>) -> LevelPaint {
         }
     }
     // An opaque color covers the box here: the clip gate above let it
-    // through, and no image lies over it.
-    if color.as_ref().is_some_and(|c| a_ge(c, 0.99)) {
-        return LevelPaint::Opaque;
+    // through, and no image lies over it. Its washes stay with it: the
+    // ground is the color under them, not the color alone.
+    if let Some(c) = color.as_ref().filter(|c| a_ge(c, 0.99)) {
+        return LevelPaint::Opaque { washes, color: *c };
     }
     washes.extend(color);
     LevelPaint::Through(washes)
@@ -1241,26 +1242,40 @@ pub struct ImageGround {
     pub over_opaque_color: bool,
 }
 
-/// What shows through a translucent image: the parent chain's ground as the
-/// analytic walk composites it, white at the root, unless a level on the
-/// way to the first opaque color is one the sampled walk gives up on, an
-/// image or paint it cannot read or place (a color clipped away from the
-/// padding, a blend), which makes it unknown. The analytic reader
-/// composites a color whatever its clip, so it is asked only once the walk
-/// has seen every level up to that color.
+/// What shows through a translucent image: the parent chain's ground,
+/// which the walk composites from what it read on the way up. Each level's
+/// uniform washes and translucent color lie over the next, bottom up, over
+/// the first opaque color, white at the root, with the washes painted over
+/// that color included. The analytic reader is not asked: it hands back an
+/// opaque color before it looks at a wash over it, and composites a color
+/// whatever its clip. A level on the way that the walk gives up on, an
+/// image or paint it cannot read or place, leaves the ground unknown.
 fn parent_ground(cur: &StaticElement<'_>, levels: &LevelCache) -> Option<Rgba> {
-    let Some(parent) = cur.parent_element() else {
-        return Some(Rgba::new(255.0, 255.0, 255.0, 1.0));
-    };
-    let mut probe = Some(parent);
-    while let Some(p) = probe {
+    // Top to bottom: the nearest level's paint first.
+    let mut paint: Vec<Rgba> = Vec::new();
+    let mut probe = cur.parent_element();
+    let base = loop {
+        let Some(p) = probe else {
+            break Rgba::new(255.0, 255.0, 255.0, 1.0);
+        };
         match &*levels.get(&p) {
             LevelPaint::Image(_) | LevelPaint::Stop => return None,
-            LevelPaint::Opaque => break,
-            LevelPaint::Through(_) => probe = p.parent_element(),
+            LevelPaint::Opaque { washes, color } => {
+                paint.extend(washes.iter().copied());
+                break *color;
+            }
+            LevelPaint::Through(through) => {
+                paint.extend(through.iter().copied());
+                probe = p.parent_element();
+            }
         }
-    }
-    resolve_background(&parent, None)
+    };
+    Some(
+        paint
+            .iter()
+            .rev()
+            .fold(base, |ground, over| composite_color_over(over, &ground)),
+    )
 }
 
 /// The walk the sampled path takes in place of [`resolve_background_info`]:
@@ -1272,7 +1287,7 @@ pub fn find_image_ground(el: &StaticElement<'_>, levels: &LevelCache) -> Option<
     let mut overlays: Vec<(NodeId, Rgba)> = Vec::new();
     while let Some(cur) = current {
         match &*levels.get(&cur) {
-            LevelPaint::Opaque | LevelPaint::Stop => return None,
+            LevelPaint::Opaque { .. } | LevelPaint::Stop => return None,
             LevelPaint::Through(paint) => overlays.extend(paint.iter().map(|c| (cur.id(), *c))),
             LevelPaint::Image(layer) => {
                 overlays.extend(layer.washes.iter().map(|c| (cur.id(), *c)));
@@ -1487,12 +1502,11 @@ mod tests {
     #[test]
     fn a_level_the_walk_gives_up_on_leaves_the_parent_ground_unknown() {
         // What a translucent pixel of the image composites over: the parent
-        // chain's ground as the analytic walk composites it, up to the first
-        // opaque color. A level the sampled walk gives up on, a color
-        // clipped away from the padding or paint it cannot reproduce, is not
-        // a ground the analytic reader may fill in: that reader composites
-        // the color whatever its clip, which would darken the ground under
-        // a child that may sit in the untinted padding.
+        // chain's ground, up to the first opaque color. A level the sampled
+        // walk gives up on, a color clipped away from the padding or paint
+        // it cannot reproduce, leaves it unknown: a color composited
+        // whatever its clip would darken the ground under a child that may
+        // sit in the untinted padding.
         let under = |wrap: &str| -> Option<(f64, f64, f64)> {
             let doc = document(&format!(
                 "<style>.wrap {{ {wrap} }} .x {{ background: url(a.png); }}</style>\
@@ -1513,7 +1527,12 @@ mod tests {
             let el = doc.query_selector(".x").expect("element");
             analyze_level(&el)
         };
-        assert!(matches!(level("background: #17150f;"), LevelPaint::Opaque));
+        assert!(matches!(level("background: #17150f;"), LevelPaint::Opaque { .. }));
+        // The washes over an opaque color stay with it for the ground.
+        assert!(matches!(
+            level("background: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)) #000;"),
+            LevelPaint::Opaque { washes, .. } if washes.len() == 1
+        ));
         assert!(matches!(
             level("background: #17150f; padding: 24px; background-clip: content-box;"),
             LevelPaint::Stop
@@ -1534,6 +1553,92 @@ mod tests {
         ] {
             assert_eq!(under(stopped), None, "{stopped}");
         }
+    }
+
+    #[test]
+    fn the_parent_ground_is_composited_from_what_the_walk_read() {
+        // What a translucent pixel of the image composites over is built
+        // from the levels the walk itself read on the way up: each level's
+        // uniform washes and translucent color, over the first opaque color,
+        // white at the root. The analytic reader hands back an opaque color
+        // before it looks at a wash painted over it, so asked for a parent
+        // washed light over black it answers black.
+        let under = |wrap: &str| -> Option<(f64, f64, f64)> {
+            let doc = document(&format!(
+                "<style>.wrap {{ {wrap} }} .x {{ background: url(a.png); }}</style>\
+                 <div class=wrap><p class=x>Text</p></div>"
+            ));
+            let el = doc.query_selector(".x").expect("element");
+            let ground = find_image_ground(&el, &LevelCache::default()).expect("image ground");
+            ground.under.map(|c| (c.r, c.g, c.b))
+        };
+        let rgb = |c: Rgba| Some((c.r, c.g, c.b));
+        let white = Rgba::new(255.0, 255.0, 255.0, 1.0);
+        let black = Rgba::new(0.0, 0.0, 0.0, 1.0);
+        let light = Rgba::new(255.0, 255.0, 255.0, 0.8);
+        let dark = Rgba::new(0.0, 0.0, 0.0, 0.7);
+        // A wash over the level's own opaque color.
+        assert_eq!(
+            under("background: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)) #000;"),
+            rgb(composite_color_over(&light, &black))
+        );
+        assert_eq!(
+            under("background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)) #fff;"),
+            rgb(composite_color_over(&dark, &white))
+        );
+        // A wash on a level with no color of its own: over the page.
+        assert_eq!(
+            under("background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7));"),
+            rgb(composite_color_over(&dark, &white))
+        );
+        // A wash over the level's translucent color, both over the page.
+        let half_red = Rgba::new(255.0, 0.0, 0.0, 0.5);
+        assert_eq!(
+            under(
+                "background-image: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)); \
+                 background-color: rgba(255, 0, 0, 0.5);"
+            ),
+            rgb(composite_color_over(&dark, &composite_color_over(&half_red, &white)))
+        );
+    }
+
+    #[test]
+    fn a_wash_free_parent_chain_reads_as_the_analytic_walk_does() {
+        // With no wash on the way up, the ground the walk composites is the
+        // one the analytic reader returns: the same translucent colors,
+        // bottom up, over the first opaque color or the page.
+        let chain = |outer: &str, wrap: &str| -> (Option<Rgba>, Option<Rgba>) {
+            let doc = document(&format!(
+                "<style>.outer {{ {outer} }} .wrap {{ {wrap} }} .x {{ background: url(a.png); }}</style>\
+                 <div class=outer><div class=wrap><p class=x>Text</p></div></div>"
+            ));
+            let el = doc.query_selector(".x").expect("element");
+            let wrap_el = doc.query_selector(".wrap").expect("wrap");
+            let ground = find_image_ground(&el, &LevelCache::default()).expect("image ground");
+            (ground.under, resolve_background(&wrap_el, None))
+        };
+        let white = Rgba::new(255.0, 255.0, 255.0, 1.0);
+        let half_black = Rgba::new(0.0, 0.0, 0.0, 0.5);
+        let half_red = Rgba::new(255.0, 0.0, 0.0, 0.5);
+        // Order matters: half black over half red over the page is not half
+        // red over half black over the page.
+        let (sampled, analytic) =
+            chain("background: rgba(255, 0, 0, 0.5);", "background: rgba(0, 0, 0, 0.5);");
+        assert_eq!(sampled, analytic);
+        assert_eq!(
+            sampled,
+            Some(composite_color_over(&half_black, &composite_color_over(&half_red, &white)))
+        );
+        let (sampled, analytic) = chain("background: #17150f;", "background: rgba(0, 0, 0, 0.5);");
+        assert_eq!(sampled, analytic);
+        assert_eq!(
+            sampled,
+            Some(composite_color_over(&half_black, &Rgba::new(23.0, 21.0, 15.0, 1.0)))
+        );
+        // A fill at or under alpha 0.1 is no paint to either walk.
+        let (sampled, analytic) = chain("background: rgba(0, 0, 0, 0.05);", "");
+        assert_eq!(sampled, analytic);
+        assert_eq!(sampled, Some(white));
     }
 
     fn document(html: &str) -> StaticDocument {

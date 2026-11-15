@@ -1930,9 +1930,9 @@ fn a_parent_color_clipped_away_from_its_padding_leaves_the_ground_unknown() {
     // to the white page, and without layout the walk cannot say whether the
     // child sits in the padding or the content box: what lies under a
     // translucent pixel is unknown, so dark copy over the light cutout is
-    // not scored against the darkened color. The analytic reader composites
-    // the color whatever its clip, which is why the sampled walk must not
-    // fall back to it here.
+    // not scored against the darkened color. A color composited whatever
+    // its clip would darken the ground, so the walk leaves it unknown
+    // rather than composite it.
     let page = |card: &str| {
         site.contrast(
             &format!(
@@ -1959,5 +1959,39 @@ fn a_parent_color_clipped_away_from_its_padding_leaves_the_ground_unknown() {
     ] {
         let found = page(covering);
         assert!(sampled_on("cutout.png", &found), "{covering}: {found:?}");
+    }
+}
+
+#[test]
+fn a_parent_wash_over_its_opaque_color_tints_the_ground() {
+    let site = Site::new("washed-parent");
+    // A uniform translucent gradient over the parent's opaque color is what
+    // a translucent pixel of the child's image composites over, so the walk
+    // builds that ground from the washes and the color it read itself: the
+    // analytic reader hands back the color beneath the wash. A wash on a
+    // level with no color of its own counts the same way, over the page.
+    let page = |card: &str| {
+        site.contrast(
+            &format!(
+                ".card {{ {card} }} .hero {{ background: url(cutout.png); }} p {{ color: #1a1816; }}"
+            ),
+            "<div class=card><div class=hero><p>Dark copy on a cutout over a card</p></div></div>",
+        )
+    };
+    // Washed light, the card is light, and the dark copy reads.
+    for light in [
+        "background: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)) #000;",
+        "background: linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8));",
+    ] {
+        let found = page(light);
+        assert!(found.is_empty(), "{light}: {found:?}");
+    }
+    // Washed dark, the card is dark, and the copy fails against it.
+    for dark in [
+        "background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)) #fff;",
+        "background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7));",
+    ] {
+        let found = page(dark);
+        assert!(sampled_on("cutout.png", &found), "{dark}: {found:?}");
     }
 }
