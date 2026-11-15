@@ -4,9 +4,8 @@
 //! Impeccable Loop. Each part is the verb that already does it; this only offers and
 //! sequences them.
 //!
-//! Nothing here runs for `install -y`, outside a terminal, in CI, against production
-//! before launch, or when a sign-in is already stored, so scripted installs and reruns
-//! are what they were.
+//! Nothing here runs for `install -y`, outside a terminal, in CI, or when a sign-in is
+//! already stored, so scripted installs and reruns are what they were.
 use impeccable_common::Io;
 use std::io::Write;
 
@@ -16,17 +15,13 @@ repository on your Home. With Pro, the detector catches more and Loop collects
 your agents' questions. No account yet? Signing in creates one.
 ";
 
-/// Impeccable hasn't launched: until it does, the offer shows only when the CLI points
-/// at another account service (staging or a local stack). The launch release sets this.
-const OFFERED_ON_PRODUCTION: bool = false;
-
 /// Whether install's end may offer the sign-in, before the stored one is read: that
 /// read can raise a Keychain prompt, which a scripted or CI install must never see.
-fn offered(args: &[String], terminal: bool, ci: bool, production: bool) -> bool {
+fn offered(args: &[String], terminal: bool, ci: bool) -> bool {
     let scripted = args
         .iter()
         .any(|a| matches!(a.as_str(), "-y" | "--yes" | "-h" | "--help"));
-    terminal && !ci && !scripted && (OFFERED_ON_PRODUCTION || !production)
+    terminal && !ci && !scripted
 }
 
 /// Whether to offer Loop's install after the sign-in.
@@ -41,12 +36,7 @@ pub(crate) fn after_install(
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
-    let production = impeccable_account::config::Account::from_env(&io.env)
-        .ok()
-        .is_none_or(|a| a.issuer == impeccable_account::config::DEFAULT_ACCOUNT_URL);
-    if !offered(args, terminal, io.env_truthy("CI"), production)
-        || impeccable_account::has_sign_in(io)
-    {
+    if !offered(args, terminal, io.env_truthy("CI")) || impeccable_account::has_sign_in(io) {
         return;
     }
     io.err(OFFER);
@@ -123,24 +113,22 @@ fn ask(io: &mut Io, question: &str) -> bool {
 mod tests {
     use super::*;
 
-    // Catches the offer reaching a scripted, CI or non-terminal install, or production
-    // before launch.
+    // Catches the offer reaching a scripted, CI or non-terminal install.
     #[test]
     fn offers_the_sign_in_only_to_a_person_not_signed_in() {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        for (flags, terminal, ci, production, want) in [
-            (&[][..], true, false, false, true),
-            (&[][..], true, false, true, OFFERED_ON_PRODUCTION),
-            (&["-y"][..], true, false, false, false),
-            (&["--yes"][..], true, false, false, false),
-            (&["--help"][..], true, false, false, false),
-            (&[][..], false, false, false, false),
-            (&[][..], true, true, false, false),
+        for (flags, terminal, ci, want) in [
+            (&[][..], true, false, true),
+            (&["-y"][..], true, false, false),
+            (&["--yes"][..], true, false, false),
+            (&["--help"][..], true, false, false),
+            (&[][..], false, false, false),
+            (&[][..], true, true, false),
         ] {
             assert_eq!(
-                offered(&args(flags), terminal, ci, production),
+                offered(&args(flags), terminal, ci),
                 want,
-                "{flags:?} {terminal} {ci} {production}"
+                "{flags:?} {terminal} {ci}"
             );
         }
     }

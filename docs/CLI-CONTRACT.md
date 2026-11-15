@@ -2773,10 +2773,7 @@ After the skills are installed, `impeccable install` on a terminal (stdin and
 stderr both TTYs, `CI` unset, no `-y`/`--yes`) with no sign-in stored offers
 one on stderr: what signing in unlocks, then `Sign in now? [Y/n]` (Enter is
 yes). No prints `Later: impeccable login`. Install's own output and exit code
-are unchanged by the offer and by everything after it. Until Impeccable
-launches, the offer shows only when `IMPECCABLE_ACCOUNT_URL` names an account
-service other than production (staging or a local stack); the launch release
-turns it on for production.
+are unchanged by the offer and by everything after it.
 
 A yes runs `login`'s sign-in (its lines included). After a fresh sign-in, in
 order: the setup report is scheduled; the MCP server is added for each coding
