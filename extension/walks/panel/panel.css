@@ -84,7 +84,7 @@ b { font-weight: 500; }
 .pro .mark, .pro .arrow { color: var(--gold); }
 
 /* ---------- screens ---------- */
-.top { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.top { position: relative; flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .where { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .where b { color: var(--ink); }
 /* The persona's part of the home and of Make a persona: centred between the top bar and the box, from the top with a scroll when there is no room. */
@@ -289,7 +289,7 @@ b { font-weight: 500; }
 .pick-app:hover { background: var(--gray); }
 .pick-app .ph { color: var(--muted); }
 .pick-app[aria-expanded="true"] .ic { transform: rotate(180deg); }
-.apps { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
+.apps, .acct { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
 .apps button { width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; font-size: 14px; color: var(--ink); }
 .apps button:hover { background: var(--paper-deep); }
 .apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
@@ -298,3 +298,9 @@ b { font-weight: 500; }
 /* A few thin rounded bars in one colour, eased each frame (voice.js `meter`); quiet, a flat line of short dots. */
 .wave { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 4px; }
 .wave i { --l: 0; width: 2px; flex: none; height: calc(2px + var(--l) * 22px); border-radius: 1px; background: var(--ink); opacity: .55; }
+
+/* ---------- the cog's account popover: the app picker's card, under the cog, its right edge on the cog's ---------- */
+.acct-scrim { position: fixed; inset: 0; z-index: 4; }
+.acct { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 240px; max-width: 100%; gap: 10px; padding: 12px; }
+.acct-who { display: flex; flex-direction: column; gap: 2px; padding: 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.acct-who b { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }

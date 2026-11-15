@@ -328,7 +328,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search: '' }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
+      runtime: { async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -545,6 +545,19 @@ test('the side panel shows only its loading dots until the account and its perso
   release.personas();
   for (let n = 0; n < 5; n += 1) await tick();
   assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().includes('send')], ['home', 0, true]);
+});
+
+// The account lives in the panel: the cog opens it under itself, never the options page in a window of its own (REN-2038).
+test('the side panel’s cog opens the account in the panel: the email and Sign out, which signs out', async () => {
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  const cog = () => h.app.querySelector('[data-act="settings"]');
+  await h.press('settings');
+  assert.deepEqual([cog().attributes['aria-expanded'], h.app.querySelector('b[data-email]')?.textContent, h.opened], ['true', signedIn.email, []]);
+  await h.press('settings');
+  assert.deepEqual([cog().attributes['aria-expanded'], h.acts().includes('sign-out')], ['false', false], 'a second press closes it');
+  await h.press('settings');
+  await h.press('sign-out');
+  assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
 });
 
 test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {

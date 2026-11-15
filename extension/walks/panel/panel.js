@@ -32,7 +32,7 @@ let hereUrl = '';
  * Before a walk: the personas, the one picked, the task, and where the person is (`home`, `make`, `planning`, `plan`).
  * `sees`: how the persona sees the page on this journey; Make a persona's description, and who it made.
  */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', making: false, made: null, signingIn: false };
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', making: false, made: null, signingIn: false, menu: false };
 /**
  * "Use a persona from your app", a modal over Make a persona (`modal`): the apps, the one picked (`workspace/repo/app`),
  * whether its dropdown is open, and that app's personas. The home's own are the app's at the tab's address (or the app
@@ -133,15 +133,40 @@ const name = () => view.who?.name || walker?.name || '';
 /** The persona walking, with its face when it is the one picked here. */
 const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
 
-/** The site the panel walks; before a walk, Scan and the settings (where the account is signed out) beside it. */
+/** The site the panel walks; before a walk, Scan and the cog beside it, which opens the account (`accountMenu`) under it. */
 function top(url = hereUrl, { tools = false } = {}) {
   const host = hostOf(url);
+  const open = tools && pre.menu;
   return el('div', { class: 'top' },
     host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
     el('span', { class: 'grow' }),
     tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
-    tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.top.settings, 'aria-label': COPY.top.settings, onclick: () => { void chrome.runtime.openOptionsPage?.()?.catch?.(() => undefined); } }, icon('cog')) : null,
+    tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.account.title, 'aria-label': COPY.account.title, 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': open ? 'account-menu' : undefined, onclick: () => { if (pre.menu) closeMenu(); else openMenu(); } }, icon('cog')) : null,
+    open ? accountMenu() : null,
   );
+}
+
+/** The account, in a popover under the cog: who is signed in, and Sign out. A click outside it, Esc, or the cog again closes it. */
+function accountMenu() {
+  return [
+    el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeMenu() }),
+    el('div', { class: 'acct', id: 'account-menu', role: 'dialog', 'aria-label': COPY.account.title },
+      account?.email ? el('p', { class: 'acct-who' }, el('small', { text: COPY.account.signedIn }), el('b', { 'data-email': true, text: account.email })) : null,
+      button('sign-out', COPY.account.signOut, 'sec full', () => { void signOut(); })),
+  ];
+}
+/** Opens the account popover, focus on Sign out; only signed in, as there is no one to show otherwise. */
+function openMenu() {
+  if (account?.signedIn !== true) return;
+  pre.menu = true;
+  render();
+  app.querySelector('[data-act="sign-out"]')?.focus();
+}
+/** Closes it; focus goes back to the cog. */
+function closeMenu() {
+  pre.menu = false;
+  render();
+  app.querySelector('[data-act="settings"]')?.focus();
 }
 
 /** Scan: the popup's own Scan screen (panel.html `#panel-scan`, driven by popup/popup.js), with the way back. */
@@ -278,8 +303,8 @@ function useApp() {
 
 /** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
-// Escape closes the modal wherever the focus is.
-document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); });
+// Escape closes the modal wherever the focus is, and the account popover.
+document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.menu) closeMenu(); });
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
 function appModal() {
@@ -694,6 +719,7 @@ async function signOut() {
   const answer = await chrome.runtime.sendMessage({ account: 'sign-out' }).catch(() => null);
   account = answer?.ok === true && answer.available === true ? answer : { ...account, signedIn: false };
   pre.personas = undefined;
+  pre.menu = false;
   render();
 }
 
@@ -765,6 +791,8 @@ const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': 
 function render() {
   const shown = screen();
   if (shown !== 'home') hush();
+  // The account popover belongs to the home: another screen closes it.
+  if (shown !== 'home' && shown !== 'loading') pre.menu = false;
   const focused = document.activeElement?.getAttribute?.('data-act');
   const body = document.body;
   body.dataset.state = view.state;
@@ -823,7 +851,7 @@ async function start() {
     if (PRE[stub]?.levels) voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} };
     view = STUBS[stub] ?? STUBS.idle;
     Object.assign(pre, PRE[stub] ?? PRE.home);
-    account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro' };
+    account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro', email: 'dana@example.com' };
     if (pre.personas?.length) choose(pre.pick);
     walker = picked();
     walkUrl = 'https://impeccable.reviews/app/tidy/outings/o-7f3a';

@@ -101,6 +101,12 @@ const TASK = HANDOFF.errand.goal;
 /** Before a walk: the panel's own state, by stub name. */
 export const PRE = {
   home: { personas: PERSONAS, task: TASK, pick: 3, here: 'https://shop.example/' },
+  // The account and its personas still coming: the top bar and the dots.
+  loading: { here: 'https://shop.example/' },
+  // Rosa's card says phone: picking her sets Screen to Phone.
+  'home-card-phone': { personas: [{ ...MADE, device: 'mobile' }, ...PERSONAS], task: TASK, pick: 4, here: 'https://shop.example/' },
+  // The cog pressed: who is signed in, and Sign out.
+  account: { personas: PERSONAS, task: TASK, pick: 3, here: 'https://shop.example/', menu: true },
   'home-sam': { personas: PERSONAS, task: TASK, pick: 4, here: 'https://shop.example/' },
   'home-app': { personas: [...APP_CAST, MADE], task: TASK },
   'signing-in': { signingIn: true },
@@ -133,5 +139,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];
