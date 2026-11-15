@@ -96,7 +96,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "loop" => crate::loop_install::run(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
-        "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
+        "install" => {
+            let code = impeccable_skills::run(args, io);
+            // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
+            if code == 0 {
+                crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
+            }
+            code
+        }
+        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => impeccable_hook::run_context(rest, io),
         "pin" => impeccable_context::run_pin(rest, io),
@@ -242,25 +250,25 @@ fn detect(
 /// is in the person's account at once (its foundations upload founds a Pro
 /// or Team city). Only the local detector runs; the person sees one line,
 /// and nothing here changes the sign-in's exit code.
-fn scan_after_login(
+pub(crate) fn scan_after_login(
     io: &mut Io,
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
-) {
+) -> &'static str {
     use impeccable_account::health;
     use std::io::Write;
     // CI, sync turned off, or a grant that can't record a repository: say
     // nothing. A telemetry opt-out doesn't stop it: signing in is the consent.
     if !health::wanted_at_sign_in(io) || !health::can_record(io) {
-        return;
+        return "skipped";
     }
     let cwd = io.cwd.display().to_string();
     let Some(root) = health::repo_top(&cwd) else {
         io.err("Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.\n");
-        return;
+        return "skipped";
     };
     if health::first_scan_done(&io.env, &root) {
-        return;
+        return "already";
     }
     io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
     let _ = io.stderr.flush();
@@ -279,29 +287,41 @@ fn scan_after_login(
     io.stderr = err;
     let Some(full) = report else {
         io.err("Couldn't scan this repository. Run impeccable detect here to add it to your account.\n");
-        return;
+        return "failed";
     };
     let (findings, files) = (full.findings.len(), full.files_scanned);
     let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io));
+    // Counted as Home counts them, so the two say the same number.
+    let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);
     let synced = health::after_sign_in_scan(io, &scan);
-    let found = match findings {
-        1 => "1 finding".to_string(),
-        n => format!("{n} findings"),
+    let plural = |n: usize, one: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {one}s")
+        }
     };
-    if synced.recorded() {
+    let mut found = format!("{} in {files} files", plural(findings, "finding"));
+    if to_fix > 0 {
+        found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
+    }
+    let recorded = synced.recorded();
+    if recorded {
+        // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
-            Some(url) => format!("See it on your Home: {url}"),
-            None => "Find it under Repositories in your Impeccable account.".to_string(),
+            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
         io.err(&format!(
-            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(
             "Scanned this repository ({found}), but couldn't add it to your account just now. Run impeccable detect here to try again.\n"
         ));
     }
+    if recorded { "done" } else { "failed" }
 }
 
 /// Design health's view of a full scan, with its foundations states.

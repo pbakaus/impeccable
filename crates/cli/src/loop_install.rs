@@ -567,6 +567,11 @@ fn with_taste(
     (value, ok)
 }
 
+/// Loop's app in ~/Applications, when it is installed.
+pub(crate) fn installed_app(io: &Io) -> Option<std::path::PathBuf> {
+    io.home().map(|home| home.join("Applications").join(APP)).filter(|app| app.exists())
+}
+
 /// `loop install` with Loop already there: nothing to do, so it succeeds, and opens the
 /// app as an install would (unless `--no-open`).
 /// Opens the installed app (unless `--no-open`). Called only under the install lock, so
@@ -657,11 +662,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     }
     check_platform(os)?;
     if !update {
-        if let Some(app) = io
-            .home()
-            .map(|home| home.join("Applications").join(APP))
-            .filter(|app| app.exists())
-        {
+        if let Some(app) = installed_app(io) {
             let _lock = install_lock(app.parent().unwrap_or(&app))?;
             return already_installed(&app, no_open);
         }

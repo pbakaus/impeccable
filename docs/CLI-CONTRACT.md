@@ -2837,6 +2837,23 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
+## `install` ends with the sign-in offer
+
+After the skills are installed, `impeccable install` on a terminal (stdin and
+stderr both TTYs, `CI` unset, no `-y`/`--yes`) with no sign-in stored offers
+one on stderr: what signing in unlocks, then `Sign in now? [Y/n]` (Enter is
+yes). No prints `Later: impeccable login`. Install's own output and exit code
+are unchanged by the offer and by everything after it.
+
+A yes runs `login`'s sign-in (its lines included). After a fresh sign-in, in
+order: the setup report is scheduled; the MCP server is added for each coding
+agent `loop connect` finds (an entry already there is kept); the repository's
+first scan runs as after `login`; then, on macOS when the setup answer's
+`plan.tier` is not `free` and Loop isn't installed, `Install Loop? [Y/n]`, and
+a yes runs `loop install --connect`. With Loop already installed, agents not
+yet connected to it are offered as after `login`. Install ends with the setup
+lines `login` ends with. Free gets no Loop offer.
+
 ## `login` when already signed in
 
 `impeccable login` on a machine whose stored sign-in to this account is still
