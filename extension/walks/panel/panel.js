@@ -11,6 +11,7 @@ import { resultLink } from '../handoff.js';
 import { emptyView, isLive, reduce } from '../view.js';
 import { BUILD } from '../../shared/build.js';
 import { BARS, listen, meter, speechCtor } from './voice.js';
+import { isLoopback } from '../guard.js';
 
 const params = new URLSearchParams(location.search);
 const app = document.getElementById('app');
@@ -36,7 +37,8 @@ const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null
 /**
  * "Use a persona from your app", a modal over Make a persona (`modal`): the apps, the one picked (`workspace/repo/app`),
  * whether its dropdown is open, and that app's personas. The home's own are the app's at the tab's address (or the app
- * the person chose for it, chrome.storage.local `appForSite`), else the six defaults; the person's own in both.
+ * the person chose for it, chrome.storage.local `appForSite`), else the six defaults; the person's own in both. A local
+ * address (`localSite`) always has the six: an app chosen there is for that pick only, never kept.
  */
 Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
@@ -213,13 +215,15 @@ async function keepApp(site, app) {
   await Promise.resolve(chrome.storage.local.set({ appForSite: next })).catch(() => undefined);
 }
 const forgetApp = (site) => { void keepApp(site, null); };
+/** This machine (`isLoopback`) or a `.test` name: the six defaults and the person's own, whatever app was chosen there. */
+const localSite = (site) => { try { const host = new URL(site).hostname; return isLoopback(host) || host.endsWith('.test'); } catch { return false; } };
 
 /** The personas for the tab's address, or of the app chosen for it; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
   // Asked again after a list that didn't load: the dots while it comes, not the failure.
   if (pre.personas === null) { pre.personas = undefined; if (screen() === 'home') render(); }
   const site = siteOf(hereUrl);
-  const chosen = site ? (await Promise.resolve(chrome.storage.local.get('appForSite')).catch(() => null))?.appForSite?.[site] : null;
+  const chosen = site && !localSite(site) ? (await Promise.resolve(chrome.storage.local.get('appForSite')).catch(() => null))?.appForSite?.[site] : null;
   const [answer, theirs] = await Promise.all([
     chrome.runtime.sendMessage({ account: 'personas', url: site }).catch(() => null),
     chosen ? chrome.runtime.sendMessage({ account: 'personas', app: appRef(chosen) }).catch(() => null) : null,
@@ -295,13 +299,13 @@ async function openApp(one) {
   app.querySelector('[data-act="apps"]')?.focus();
 }
 
-/** Use these personas: home shows the app's, then the person's own, the first picked; kept for this address. */
+/** Use these personas: home shows the app's, then the person's own, the first picked; kept for this address unless it is local. */
 function useApp() {
   const app = pre.apps.find((each) => appKey(each) === pre.app);
   // The site the modal was opened on: the tab may have moved since.
   const site = pre.modalSite;
   goHome([...pre.appPersonas, ...(pre.personas ?? []).filter((each) => each.mine)]);
-  if (site && !stubbed) void keepApp(site, app);
+  if (site && !stubbed && !localSite(site)) void keepApp(site, app);
 }
 
 /** Closes the modal; focus goes back to the button that opened it. */
