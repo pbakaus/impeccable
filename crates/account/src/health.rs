@@ -581,8 +581,8 @@ impl Repo {
         if !same(&top, root) {
             return None;
         }
-        let remote = git(root, &["config", "--get", "remote.origin.url"])
-            .and_then(|r| normalize_remote(&r));
+        let configured = git(root, &["config", "--get", "remote.origin.url"]);
+        let remote = configured.as_deref().and_then(normalize_remote);
         let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
@@ -593,7 +593,7 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        let label = repo_name(&top, remote.as_deref());
+        let label = repo_name(&top, configured.is_some(), remote.as_deref());
         Some(Repo { key, stream, label })
     }
 }
@@ -617,10 +617,13 @@ pub(crate) fn critique_repo(
 
 /// The repo's name as the service shows it: from its remote; with none, its folder's
 /// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
-fn repo_name(top: &str, remote: Option<&str>) -> Option<String> {
-    match remote {
-        Some(remote) => repo_label(remote),
-        None => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
+/// Only a repository with no remote at all: one whose remote can't be read as a
+/// host's URL (a local path) sends no name rather than its folder's.
+fn repo_name(top: &str, configured: bool, remote: Option<&str>) -> Option<String> {
+    match (remote, configured) {
+        (Some(remote), _) => repo_label(remote),
+        (None, true) => None,
+        (None, false) => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
     }
 }
 
@@ -632,8 +635,9 @@ fn repo_identity(
     remote: Result<Option<String>, ()>,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
-    let remote = remote.ok()?.and_then(|r| normalize_remote(&r));
-    let label = repo_name(top, remote.as_deref());
+    let configured = remote.ok()?;
+    let remote = configured.as_deref().and_then(normalize_remote);
+    let label = repo_name(top, configured.is_some(), remote.as_deref());
     let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
@@ -1196,6 +1200,10 @@ mod repo_identity_tests {
         let local = repo_identity(&top, Ok(None), &env).expect("local id");
         // No remote: named after its folder (Paul, REN-2028).
         assert_eq!(local.1.as_deref(), Some("repo"));
+        // A remote that is a local path is still a remote: no name, never the folder's.
+        for path in ["/srv/repos/site.git", "file:///srv/repos/site.git"] {
+            assert_eq!(repo_identity(&top, Ok(Some(path.into())), &env).expect("local id").1, None, "{path}");
+        }
         assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
         let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
         assert_ne!(remote.0, local.0);
