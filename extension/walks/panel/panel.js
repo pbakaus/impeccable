@@ -163,12 +163,24 @@ function choose(i) {
   pre.pick = i;
   pre.sees = SEES_OF[pre.personas?.[i]?.sees] ?? 'normal';
 }
-const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
+/** How a walk names its persona: the person's own by slug; an app's by slug and its app, as slugs repeat across apps. */
+const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug, ...(person.app ? { app: person.app } : {}) } : null);
 
 const appKey = (app) => `${app.workspace}/${app.repo}/${app.app}`;
 const appRef = (app) => ({ workspace: app.workspace, repo: app.repo, app: app.app });
 /** An app's own personas, without the six everyone has or the person's own. */
 const castOf = (answer) => (answer?.ok ? answer.personas.filter((person) => !person.default && !person.mine && refOf(person)) : null);
+
+/** The site whose personas were last asked for, so another tab on it asks nothing again. */
+let asked = null;
+/** The app chosen for a site (chrome.storage.local `appForSite`), kept or forgotten. */
+async function keepApp(site, app) {
+  const { appForSite = {} } = await Promise.resolve(chrome.storage.local.get('appForSite')).catch(() => ({}));
+  const next = { ...appForSite };
+  if (app) next[site] = { ...appRef(app), name: app.name }; else delete next[site];
+  await Promise.resolve(chrome.storage.local.set({ appForSite: next })).catch(() => undefined);
+}
+const forgetApp = (site) => { void keepApp(site, null); };
 
 /** The personas for the tab's address, or of the app chosen for it; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
@@ -180,10 +192,16 @@ async function loadPersonas() {
   ]);
   // An answer for an address the tab has since left: asked again for the new one.
   if (siteOf(hereUrl) !== site) { await loadPersonas(); return; }
+  // Once a plan is asked for, its persona is fixed: an answer that comes then changes nothing.
+  if (pre.screen === 'planning' || pre.screen === 'plan' || isLive(view)) return;
+  asked = site;
   const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
-  // The app the person chose for this address: its personas, then their own.
-  if (pre.personas && castOf(theirs)) pre.personas = [...castOf(theirs), ...pre.personas.filter((person) => person.mine)];
+  // The app the person chose for this address: its personas, then their own. One that has none any more is forgotten
+  // here, and the defaults the server sent stand.
+  const cast = castOf(theirs);
+  if (pre.personas && cast?.length) pre.personas = [...cast, ...pre.personas.filter((person) => person.mine)];
+  else if (chosen && cast) forgetApp(site);
   pre.failed = answer?.why ?? null;
   const at = was ? pre.personas?.findIndex((person) => person.slug === was.slug) ?? -1 : -1;
   if (at >= 0) pre.pick = at; else choose(0);
@@ -230,27 +248,31 @@ async function loadApps() {
 }
 
 /** One app's personas, in the modal. */
-async function openApp(app) {
-  const key = appKey(app);
+async function openApp(one) {
+  const key = appKey(one);
   Object.assign(pre, { app: key, appsOpen: false, appPersonas: undefined });
   render();
-  const answer = await chrome.runtime.sendMessage({ account: 'personas', app: appRef(app) }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', app: appRef(one) }).catch(() => null);
   if (pre.app !== key) return;
   pre.appPersonas = castOf(answer);
-  if (screen() === 'make') render();
+  if (screen() !== 'make') return;
+  render();
+  app.querySelector('[data-act="apps"]')?.focus();
 }
 
 /** Use these personas: home shows the app's, then the person's own, the first picked; kept for this address. */
 function useApp() {
   const app = pre.apps.find((each) => appKey(each) === pre.app);
-  const site = siteOf(hereUrl);
+  // The site the modal was opened on: the tab may have moved since.
+  const site = pre.modalSite;
   goHome([...pre.appPersonas, ...(pre.personas ?? []).filter((each) => each.mine)]);
-  if (!site || stubbed) return;
-  void Promise.resolve(chrome.storage.local.get('appForSite')).then(({ appForSite } = {}) => chrome.storage.local.set({ appForSite: { ...appForSite, [site]: { ...appRef(app), name: app.name } } })).catch(() => undefined);
+  if (site && !stubbed) void keepApp(site, app);
 }
 
 /** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
+// Escape closes the modal wherever the focus is.
+document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); });
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
 function appModal() {
@@ -303,18 +325,21 @@ function maker() {
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }))
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
       : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
-  return [
-    el('div', { class: 'top' }, made ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
+  const parts = [
+    el('div', { class: 'top' }, made || pre.making ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
       el('span', { class: 'grow' }),
-      made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
+      made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false, modalSite: siteOf(hereUrl) }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
     hero,
     el('span', { class: 'grow' }),
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
       el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
         el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
       pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null),
-    pre.modal ? appModal() : null,
   ];
+  // Open, the modal is all there is: what's behind it can't be reached.
+  if (!pre.modal) return parts;
+  for (const part of parts) part.setAttribute('inert', '');
+  return [...parts, appModal()];
 }
 
 /** The personas as a grid of faces, four to a row, and + last, which makes one. */
@@ -803,9 +828,14 @@ async function start() {
     });
     // Another address may be another app's: its personas, or the defaults.
     // Not under a plan or a walk: their persona stays the one they were started with.
-    const moved = (was) => { if (siteOf(hereUrl) !== siteOf(was) && pre.screen === 'home' && !isLive(view) && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); };
-    chrome.tabs.onActivated.addListener(() => { const was = hereUrl; void look().then(() => { moved(was); render(); }); });
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const was = hereUrl; hereUrl = change.url; moved(was); if (pre.screen === 'home' && !isLive(view)) render(); } });
+    // Asked only while the home shows, once the tab has settled on another site for half a second: the origin alone.
+    let settling = null;
+    const moved = () => {
+      clearTimeout(settling);
+      settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
+    };
+    chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; moved(); if (pre.screen === 'home' && !isLive(view)) render(); } });
     const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';

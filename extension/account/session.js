@@ -64,14 +64,16 @@ const SLUG = /^[a-z0-9-]{1,80}$/;
 /** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`, REN-2039). */
 const LISTED = /^(?:[a-z0-9-]{1,80}|default:[a-z]{1,20})$/;
 /** An app as the server lists it (`/apps`): its workspace, repository and app, and its name. */
-const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
+export const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
+const appOf = (p) => (['workspace', 'repo', 'app'].every((key) => APP_PART.test(p?.[key])) ? { workspace: p.workspace, repo: p.repo, app: p.app } : null);
 /**
- * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, sees?, about?, face? }` (`mine`:
- * the person's own, by slug; `default`: one of the six; `sees`: how it sees the page; `face`: its face sheet's https address).
+ * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, app?, sees?, about?, face? }`
+ * (`mine`: the person's own, by slug; `default`: one of the six; `app`: the app whose cast it is, as slugs repeat across
+ * apps; `sees`: how it sees the page; `face`: its face sheet's https address).
  */
 const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
-  ...(LISTED.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : p.default === true ? { default: true } : {}) } : {}),
+  ...(LISTED.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : p.default === true ? { default: true } : appOf(p) ? { app: appOf(p) } : {}) } : {}),
   ...(p.sees === 'older-eyes' || p.sees === 'colour-blind' ? { sees: p.sees } : {}),
   ...(typeof (p.profile ?? p.about) === 'string' && (p.profile ?? p.about) ? { about: (p.profile ?? p.about).slice(0, 1500) } : {}),
   ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
@@ -265,12 +267,13 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     retry() { void retire(issuer()); },
 
     /**
-     * Who is signed in: `{ email, name, pro, widths }`, or null. `pro` is the server's word alone: true only when it says
-     * so. `widths`: its walk door takes the width the person picked (REN-1890).
+     * Who is signed in: `{ email, name, pro, widths, ownApp }`, or null. `pro` is the server's word alone: true only when it
+     * says so. `widths`: its walk door takes the width the person picked (REN-1890); `ownApp`: an app persona's app beside
+     * its slug.
      */
     async me() {
       const me = await read(issuer(), '/me');
-      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true } : null;
+      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true, ownApp: me.ownApp === true } : null;
     },
 
     /**

@@ -14,6 +14,29 @@ let panel = null;
 let title = null;
 let walking = false;
 let pro = false;
+/** Whether Chrome offers the side panel at all, and whether the person is signed in without Pro (then it doesn't). */
+let offered = null;
+let noPro = false;
+
+/** Chrome offers the side panel to everyone but a person signed in without Pro, and always while a walk is under way (a hand-off kept is one). */
+function offer() {
+  const on = walking || !noPro;
+  if (on === offered) return;
+  offered = on;
+  void Promise.resolve(chrome.sidePanel.setOptions?.({ enabled: on })).catch(() => undefined);
+}
+
+/** Whether this browser is signed in without Pro, by the server's word: the side panel is not offered then. */
+export function withoutPro(on) {
+  noPro = on === true;
+  offer();
+}
+
+/** Right before something opens the side panel (a walk's start, a click on our page): offered, whatever the account. */
+export function offerPanel() {
+  offered = true;
+  void Promise.resolve(chrome.sidePanel.setOptions?.({ enabled: true })).catch(() => undefined);
+}
 
 function point() {
   const on = walking || pro;
@@ -38,4 +61,5 @@ onView((view) => {
   }
   walking = isLive(view);
   point();
+  offer();
 });

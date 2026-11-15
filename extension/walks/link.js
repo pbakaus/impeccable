@@ -21,6 +21,7 @@ import { BUILD } from '../shared/build.js';
 import { rearm } from './control.js';
 import { DEVICES, adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
 import { SIGHTS } from './sight.js';
+import { offerPanel } from './toolbar.js';
 import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
@@ -210,6 +211,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   }
   // A click on one of those pages opens the panel: called here and now, while Chrome still counts the click.
   if (message?.panel === 'open' && sender.id === chrome.runtime.id && sender.tab && panelPages.some((test) => test(sender.url ?? ''))) {
+    offerPanel();
     void chrome.sidePanel.open({ windowId: sender.tab.windowId }).catch(() => undefined);
   }
   return false;

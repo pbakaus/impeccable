@@ -377,6 +377,14 @@ describe('account worker', () => {
       assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false, JSON.stringify(said));
       assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], false]);
     }
+    // A walk under way (here, handed over and waiting) keeps the panel offered whatever the account; ended, it goes.
+    const { dispatch } = await import('../extension/walks/store.js');
+    dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
+    assert.equal(offered.at(-1), true, 'live: offered');
+    await ask({ account: 'status' }, fromPopup);
+    assert.equal(offered.at(-1), true, 'still offered without Pro while the walk is under way');
+    dispatch({ type: 'stop' });
+    assert.equal(offered.at(-1), false, 'the walk over: not offered');
     globalThis.fetch = served;
     await ask({ account: 'status' }, fromPopup);
     assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: '' }, { openPanelOnActionClick: true }], true]);
@@ -422,17 +430,19 @@ describe('account worker', () => {
   });
 
   // REN-1890: the width picked goes to the server only where its /me says it takes one (`widths`); the walk runs at it either way.
-  for (const [label, widths, device] of [['a server that takes widths', true, 'mobile'], ['an older server, which refuses a key it does not know', false, undefined]]) {
-    it(`starts a walk at Phone width, telling ${label} ${device ? 'the device' : 'nothing of it'}`, async () => {
+  // REN-2038: likewise an app persona's app beside its slug (`ownApp`), as slugs repeat across apps.
+  const TIDY = { workspace: 'acme', repo: 'tidy', app: 'web' };
+  for (const [label, widths, device] of [['a server that takes widths and apps', true, 'mobile'], ['an older server, which refuses a key it does not know', false, undefined]]) {
+    it(`starts a walk at Phone width, telling ${label} ${device ? 'the device and the app' : 'nothing of them'}`, async () => {
       await loaded;
       startServer(() => json(201, { handoff: HANDOFF }));
       const served = globalThis.fetch;
-      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(200, { email: 'mira@example.com', pro: true, ...(widths ? { widths } : {}) }) : served(url, init));
+      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(200, { email: 'mira@example.com', pro: true, ...(widths ? { widths, ownApp: true } : {}) }) : served(url, init));
       delete session.handoff;
       // The walks before this one are still waiting for their tab: ended, so this one may start.
       (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
-      assert.deepEqual(await ask({ account: 'walk', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, device: 'phone', sees: 'older' }, fromPopup), { ok: true, panel: true });
-      assert.equal(posted.at(-1).body.device, device);
+      assert.deepEqual(await ask({ account: 'walk', persona: { own: 'mira', app: TIDY }, task: 'Read the top story.', tabId: 7, device: 'phone', sees: 'older' }, fromPopup), { ok: true, panel: true });
+      assert.deepEqual([posted.at(-1).body.device, posted.at(-1).body.persona], [device, widths ? { own: 'mira', app: TIDY } : { own: 'mira' }]);
       // How the persona sees goes with this journey alone (sight.js), and never to the server.
       assert.deepEqual([session.handoff.device, session.handoff.sees, 'sees' in posted.at(-1).body], ['phone', 'older', false]);
     });

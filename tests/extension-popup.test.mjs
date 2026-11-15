@@ -439,7 +439,7 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
 test('the side panel asks for the personas of the tab’s address, and uses an app’s personas there once chosen', async () => {
   const maya = { name: 'Maya', role: '', slug: 'default:maya', default: true };
   const tidy = { workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' };
-  const cast = [maya, { name: 'Mira', role: '', slug: 'mira' }, { name: 'Alex', role: '', slug: 'alex' }];
+  const cast = [maya, { name: 'Mira', role: '', slug: 'mira', app: tidy }, { name: 'Alex', role: '', slug: 'alex', app: tidy }];
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], apps: { ok: true, apps: [tidy] }, cast });
   assert.equal(h.sent.find((m) => m.account === 'personas').url, 'https://tidy.example');
   await h.press('make-persona');
@@ -452,7 +452,7 @@ test('the side panel asks for the personas of the tab’s address, and uses an a
   assert.deepEqual([h.body.dataset.screen, h.app.querySelector('[data-act="pick-0"]').attributes['aria-label'], h.app.querySelector('[data-act="pick-0"]').attributes['aria-pressed']], ['home', 'Mira', 'true']);
   h.app.querySelector('textarea').value = 'Add a to-do.';
   await h.press('send');
-  assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ own: 'mira' }]);
+  assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ own: 'mira', app: tidy }], 'an app persona goes with its app');
   // The next panel on this address shows that app's personas again.
   const next = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], cast, appForSite: h.local.appForSite });
   assert.deepEqual([h.local.appForSite['https://tidy.example'].app, next.app.querySelector('[data-act="pick-0"]').attributes['aria-label']], ['web', 'Mira']);

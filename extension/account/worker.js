@@ -8,9 +8,9 @@
 import { BUILD } from '../shared/build.js';
 import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
-import { signedIn as pointToolbar } from '../walks/toolbar.js';
+import { offerPanel, signedIn as pointToolbar, withoutPro } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
-import { PLAN_ID, createSession, idbStore } from './session.js';
+import { APP_PART, PLAN_ID, createSession, idbStore } from './session.js';
 import { ALARM, checkIns } from './waiting.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
@@ -52,23 +52,12 @@ const proOf = (answer) => (answer.signedIn === false || answer.pro === false ? f
 const checkedIn = (answer, how) => { if (proOf(answer) === true) void agent.checkIn(how); return answer; };
 
 /** What the popup is told of the account. */
-/**
- * Whether Chrome offers the side panel (its side-panel menu): not to a person signed in without Pro, by the server's
- * word; to everyone else. Told only when it changes.
- */
-let offered = null;
-function offerPanel(on) {
-  if (on === offered) return;
-  offered = on;
-  void Promise.resolve(chrome.sidePanel.setOptions?.({ enabled: on })).catch(() => undefined);
-}
-
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
   // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
   pointToolbar(signedIn && answer.pro !== false);
-  offerPanel(!(signedIn && answer.pro === false));
+  withoutPro(signedIn && answer.pro === false);
   void agent.keep(signedIn ? proOf(answer) : false).catch(() => undefined);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
@@ -116,7 +105,9 @@ const TASK_MAX = 2000;
 /** The walk asked for, checked: `{ body, tab }`, or `{ why }`. */
 async function asked({ persona, task, tabId }) {
   const kind = ['own', 'mine'].find((key) => typeof persona?.[key] === 'string' && persona[key]);
-  const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind] } : null;
+  // An app persona's app goes with its slug (slugs repeat across apps), to a server that says it takes it.
+  const app = kind === 'own' && ['workspace', 'repo', 'app'].every((key) => APP_PART.test(persona.app?.[key])) ? { workspace: persona.app.workspace, repo: persona.app.repo, app: persona.app.app } : null;
+  const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind], ...(app && (await takes('ownApp')) ? { app } : {}) } : null;
   const goal = typeof task === 'string' ? task.trim() : '';
   if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { why: 'failed' };
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -143,13 +134,13 @@ const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
  * Whether the server in use takes a walk's width (`widths` on /me, REN-1890): its answer now, else the last it gave,
  * kept per server; null when it never answered. A walk then runs at Desktop rather than at a width it could not file.
  */
-async function takesWidths() {
-  const key = `widths:${issuer}`;
+async function takes(field) {
   const me = await session.me().catch(() => null);
-  if (me) { await chrome.storage.local.set({ [key]: me.widths }).catch(() => undefined); return me.widths; }
-  const kept = (await chrome.storage.local.get(key).catch(() => ({})))[key];
+  if (me) { await chrome.storage.local.set({ [`widths:${issuer}`]: me.widths, [`ownApp:${issuer}`]: me.ownApp }).catch(() => undefined); return me[field]; }
+  const kept = (await chrome.storage.local.get(`${field}:${issuer}`).catch(() => ({})))[`${field}:${issuer}`];
   return typeof kept === 'boolean' ? kept : null;
 }
+const takesWidths = () => takes('widths');
 
 async function walk({ plan: approved, walker, ...message }, panel = Promise.resolve(false)) {
   const ask = await asked(message);
@@ -231,10 +222,10 @@ const ANSWERS = {
     await chrome.tabs.create({ url: `${site}/app/-/billing/checkout?start=1`, active: true }).catch(() => undefined);
     return { ok: true };
   },
-  async 'sign-out'() { await session.signOut(); await agent.forget(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
+  async 'sign-out'() { await chrome.storage.local.remove('appForSite').catch(() => undefined); await session.signOut(); await agent.forget(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };
-    if (server !== issuer) await agent.forget();
+    if (server !== issuer) { await agent.forget(); await chrome.storage.local.remove('appForSite').catch(() => undefined); }
     issuer = server;
     await chrome.storage.local.set({ accountServer: server });
     return status().then(checkedIn);
@@ -247,6 +238,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!Object.hasOwn(ANSWERS, message.account)) { respond({ ok: false, why: 'unknown' }); return false; }
   // At once, while Chrome still counts the popup's click: whether the side panel opened is said in the answer.
   if (message.account === 'walk' && Number.isInteger(message.tabId)) {
+    offerPanel();
     const panel = chrome.sidePanel.open({ tabId: message.tabId }).then(() => true, () => false);
     void chosen.then(() => walk(message, panel)).then(respond, () => respond({ ok: false, why: 'failed' }));
     return true;
