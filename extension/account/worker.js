@@ -10,7 +10,7 @@ import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
 import { offerPanel, signedIn as pointToolbar, withoutPro } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
-import { APP_PART, PLAN_ID, createSession, idbStore } from './session.js';
+import { PLAN_ID, appOf, createSession, idbStore } from './session.js';
 import { ALARM, checkIns } from './waiting.js';
 
 const POPUP = chrome.runtime.getURL('popup/');
@@ -106,7 +106,8 @@ const TASK_MAX = 2000;
 async function asked({ persona, task, tabId }) {
   const kind = ['own', 'mine'].find((key) => typeof persona?.[key] === 'string' && persona[key]);
   // An app persona's app goes with its slug (slugs repeat across apps), to a server that says it takes it.
-  const app = kind === 'own' && ['workspace', 'repo', 'app'].every((key) => APP_PART.test(persona.app?.[key])) ? { workspace: persona.app.workspace, repo: persona.app.repo, app: persona.app.app } : null;
+  // A default (`default:robert`) and an app persona from an older list have none.
+  const app = kind === 'own' ? appOf(persona.app) : null;
   const ref = PRESETS.includes(persona?.preset) ? { preset: persona.preset } : kind ? { [kind]: persona[kind], ...(app && (await takes('ownApp')) ? { app } : {}) } : null;
   const goal = typeof task === 'string' ? task.trim() : '';
   if (!ref || !goal || goal.length > TASK_MAX || !Number.isInteger(tabId)) return { why: 'failed' };
