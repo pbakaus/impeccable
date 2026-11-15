@@ -30,6 +30,22 @@ pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, kind: Kind, quiet
     }
 }
 
+/// Whether this is the first time `kind` is reported on this sign-in, marking
+/// it so. Uploads that print their own line use it to add the one-time
+/// disclosure (how to stop) to the first one.
+pub(crate) fn first(account: &Account, login: u64, kind: Kind) -> bool {
+    let key = match kind {
+        Kind::Design => "design",
+        Kind::Critique => "critique",
+    };
+    let path = account.dir().join(format!("{key}-notice-{login}"));
+    if store::read_private(&path).ok().flatten().is_some() {
+        return false;
+    }
+    let _ = store::private_dir(&account.dir()).and_then(|_| store::write_private(&path, b"shown"));
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

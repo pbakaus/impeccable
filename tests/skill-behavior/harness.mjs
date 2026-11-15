@@ -449,6 +449,9 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
       tools,
       onStepFinish: (step) => {
         (trace.assistantTexts ??= []).push(step.text ?? '');
+        // A step's text comes before its tool calls: record how many calls preceded it.
+        (trace.textSteps ??= []).push({ text: step.text ?? '', callsBefore: trace.textStepCalls ?? 0 });
+        trace.textStepCalls = trace.toolCalls.length;
         saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages });
       },
       stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],

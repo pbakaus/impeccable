@@ -63,14 +63,19 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
+        "motion-capture" => impeccable_browser::motion::run(rest, io),
         "detect" => detect(rest, io, &engines, pack.rule_pack),
         "foundations" => crate::foundations::run(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
         "login" => {
             let code = impeccable_account::run_login(rest, io);
-            if code == 0 {
+            // Help exits 0 too; only a finished sign-in earns the follow-ups.
+            let help = rest.iter().any(|a| a == "--help" || a == "-h");
+            if code == 0 && !help {
                 crate::setup_report::schedule(io);
+                scan_after_login(io, &engines, pack.rule_pack);
+                crate::loop_install::after_login(io);
             }
             code
         }
@@ -78,6 +83,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "status" => impeccable_account::setup_status::run(rest, io),
         "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
@@ -90,7 +96,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "loop" => crate::loop_install::run(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
-        "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
+        "install" => {
+            let code = impeccable_skills::run(args, io);
+            // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
+            if code == 0 {
+                crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
+            }
+            code
+        }
+        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => impeccable_hook::run_context(rest, io),
         "pin" => impeccable_context::run_pin(rest, io),
@@ -231,6 +245,86 @@ fn detect(
     code
 }
 
+/// Right after a sign-in, once per repository from this machine: the full
+/// scan and upload a signed-in `impeccable detect` makes, so the repository
+/// is in the person's account at once (its foundations upload founds a Pro
+/// or Team city). Only the local detector runs; the person sees one line,
+/// and nothing here changes the sign-in's exit code.
+pub(crate) fn scan_after_login(
+    io: &mut Io,
+    engines: &impeccable_detect::Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> &'static str {
+    use impeccable_account::health;
+    use std::io::Write;
+    // CI, sync turned off, or a grant that can't record a repository: say
+    // nothing. A telemetry opt-out doesn't stop it: signing in is the consent.
+    if !health::wanted_at_sign_in(io) || !health::can_record(io) {
+        return "skipped";
+    }
+    let cwd = io.cwd.display().to_string();
+    let Some(root) = health::repo_top(&cwd) else {
+        io.err("Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.\n");
+        return "skipped";
+    };
+    if health::first_scan_done(&io.env, &root) {
+        return "already";
+    }
+    io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
+    let _ = io.stderr.flush();
+    let started = std::time::SystemTime::now();
+    let mut report = None;
+    // The findings stay off the terminal: the line below sums them up.
+    let out = std::mem::replace(&mut io.stdout, Box::new(std::io::sink()));
+    let err = std::mem::replace(&mut io.stderr, Box::new(std::io::sink()));
+    // Scan from the root, as `detect` there would: config, ignores and the
+    // design system are read from the working directory, not a subdirectory.
+    let cwd = std::mem::replace(&mut io.cwd, std::path::PathBuf::from(&root));
+    let args = [root.clone(), "--json".to_string()];
+    let _ = impeccable_detect::cli::run_detect_reporting(&args, io, engines, rule_pack, &mut report);
+    io.cwd = cwd;
+    io.stdout = out;
+    io.stderr = err;
+    let Some(full) = report else {
+        io.err("Couldn't scan this repository. Run impeccable detect here to add it to your account.\n");
+        return "failed";
+    };
+    let (findings, files) = (full.findings.len(), full.files_scanned);
+    let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io));
+    // Counted as Home counts them, so the two say the same number.
+    let to_fix = foundations.values().filter(|s| *s == "failing").count();
+    let scan = health_scan(full, foundations, started);
+    let synced = health::after_sign_in_scan(io, &scan);
+    let plural = |n: usize, one: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {one}s")
+        }
+    };
+    let mut found = format!("{} in {files} files", plural(findings, "finding"));
+    if to_fix > 0 {
+        found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
+    }
+    let recorded = synced.recorded();
+    if recorded {
+        // Foundations lists a person's own repositories from any space they're in.
+        let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            None => "Find it under Foundations in your Impeccable account.".to_string(),
+        };
+        let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
+        io.err(&format!(
+            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
+        ));
+    } else {
+        io.err(&format!(
+            "Scanned this repository ({found}), but couldn't add it to your account just now. Run impeccable detect here to try again.\n"
+        ));
+    }
+    if recorded { "done" } else { "failed" }
+}
+
 /// Design health's view of a full scan, with its foundations states.
 pub(crate) fn health_scan(
     full: impeccable_detect::cli::FullScan,
@@ -259,7 +353,12 @@ pub(crate) fn health_scan(
 
 /// Whether this invocation is a scan the Pro engine may take over: the
 /// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
+/// `detect --before` / `--kept` run no rules, and a Pro build older than
+/// those flags would ignore them and scan instead, so they stay here.
 pub fn is_scan(args: &[String], io: &Io) -> bool {
+    if args.iter().any(|a| a == "--before" || a == "--kept") {
+        return false;
+    }
     match args.first().map(String::as_str) {
         Some("detect" | "hook" | "hook-before-edit") => true,
         Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
@@ -278,11 +377,13 @@ const KNOWN_VERBS: &[&str] = &[
     "--version",
     "-v",
     "engine-probe",
+    "motion-capture",
     "ignores",
     "ignore",
     "login",
     "logout",
     "whoami",
+    "status",
     "world",
     "health",
     "foundations",
@@ -377,5 +478,17 @@ mod verb_tests {
             missing.is_empty(),
             "verbs run handles but KNOWN_VERBS lacks: {missing:?}"
         );
+    }
+
+    /// The wiring check runs no rules, so it never goes to a Pro build that
+    /// may predate its flags (#1291).
+    #[test]
+    fn the_wiring_check_is_not_a_scan() {
+        let (io, _) = impeccable_common::Io::captured("", std::env::temp_dir(), Default::default());
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(super::is_scan(&args(&["detect", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["detect", "--before", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["detect", "--kept", "--json", "page.html"]), &io));
+        assert!(!super::is_scan(&args(&["--kept", "page.html"]), &io));
     }
 }

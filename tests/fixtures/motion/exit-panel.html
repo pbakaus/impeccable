@@ -1,0 +1,4 @@
+<!doctype html><meta charset="utf-8"><title>exit-panel</title>
+<style>body{font:18px system-ui;margin:40px}button{margin-bottom:20px}#region{position:relative;width:500px;height:400px}#panel{width:120px;height:100px;background:#eedcc5;transition:width 600ms linear}#panel.open{width:320px}</style>
+<button id="go">Toggle panel</button><div id="region"><div id="panel">Panel</div></div>
+<script>document.querySelector('#go').onclick=()=>{document.querySelector('#panel').classList.toggle('open');};</script>

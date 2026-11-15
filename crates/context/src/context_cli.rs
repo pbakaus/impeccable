@@ -48,23 +48,38 @@ fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
 /// Claude Code's active user configuration directory. An explicit account is
 /// exclusive; a relative CLAUDE_CONFIG_DIR is resolved against the caller.
 pub fn claude_config_dir(cwd: &str, env: &Env) -> String {
+    claude_config_dir_under(cwd, env, &crate::util::homedir(env))
+}
+
+fn claude_config_dir_under(cwd: &str, env: &Env, home: &str) -> String {
     match env_nonempty(env, "CLAUDE_CONFIG_DIR") {
         Some(dir) => jsp::resolve(cwd, &[dir]),
-        None => jsp::join(&[&crate::util::homedir(env), ".claude"]),
+        None => jsp::join(&[home, ".claude"]),
     }
 }
 
 /// The user-level hook manifest this provider's harness loads:
 /// Claude's `$CLAUDE_CONFIG_DIR/settings.json` (default `~/.claude`); Codex and agents `$CODEX_HOME/hooks.json`
 /// (relative to cwd), or `~/.codex/hooks.json` when CODEX_HOME is unset or
-/// empty. A non-empty CODEX_HOME is exclusive.
+/// empty. A non-empty CODEX_HOME is exclusive. Cursor's `~/.cursor/hooks.json`
+/// and Grok's personal `~/.grok/hooks/impeccable.json` (which, unlike a
+/// project hook, needs no `/hooks-trust`) are where a global install writes
+/// those providers' hooks (#1190).
 pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<String> {
+    user_hook_manifest_under(provider_id, cwd, env, &crate::util::homedir(env))
+}
+
+/// `user_hook_manifest` with the home directory given, so an installer that
+/// already resolved home writes exactly the file the readers look up.
+pub fn user_hook_manifest_under(provider_id: &str, cwd: &str, env: &Env, home: &str) -> Option<String> {
     match provider_id {
-        "claude-code" => Some(jsp::join(&[&claude_config_dir(cwd, env), "settings.json"])),
+        "claude-code" => Some(jsp::join(&[&claude_config_dir_under(cwd, env, home), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
-            None => jsp::join(&[&crate::util::homedir(env), ".codex", "hooks.json"]),
+            None => jsp::join(&[home, ".codex", "hooks.json"]),
         }),
+        "cursor" => Some(jsp::join(&[home, ".cursor", "hooks.json"])),
+        "grok" => Some(jsp::join(&[home, ".grok", "hooks", "impeccable.json"])),
         _ => None,
     }
 }
@@ -152,7 +167,7 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         if let Some(raw) = read_json(&path) {
             if let Some(hooks) = raw.get("hooks") {
                 if crate::staleness::js_truthy(hooks) && value_has_hook_marker(hooks) {
-                    return "stop";
+                    return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
                 }
             }
         }
@@ -313,9 +328,38 @@ fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, 
     };
     parts.push([
         format!("MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session.{wiring}"),
-        format!("Once the changed web UI is finished, run the mechanical detector over it: `{} --json <changed targets>`.", provider.verb_cmd("detect")),
+        format!("Once the changed web UI is finished, run the mechanical detector over it: {} (without git, pass the changed files instead of `--changed`).", changed_detect_command(ctx, cwd, provider)),
         "Run it once, and not earlier during concept selection.".to_string(),
     ].join(" "));
+}
+
+/// `--changed` scans only cwd's subtree, so when context resolved a project
+/// other than cwd (an explicit `--target`, or a session started below or
+/// beside the project) the directive names the directory to run it from.
+/// The command then runs from that directory, so a launcher invoked by a
+/// relative path is spelled absolute against cwd.
+fn changed_detect_command(ctx: &Ctx, cwd: &str, provider: &Provider) -> String {
+    let same = |a: &str, b: &str| {
+        let canon = |p: &str| std::fs::canonicalize(p).map(|c| c.to_string_lossy().into_owned()).unwrap_or_else(|_| p.trim_end_matches(['/', '\\']).to_string());
+        canon(a) == canon(b)
+    };
+    if ctx.project_root.is_empty() || same(&ctx.project_root, cwd) {
+        return format!("`{} --json --changed`", provider.verb_cmd("detect"));
+    }
+    let raw = provider.self_raw.as_str();
+    let has_dir = raw.contains('/') || (cfg!(windows) && raw.contains('\\'));
+    let self_cmd = if has_dir && !jsp::is_absolute(raw) {
+        let resolved = jsp::resolve(cwd, &[raw]);
+        if !impeccable_common::launcher::is_cmd_launcher(&resolved) && resolved.chars().any(char::is_whitespace) {
+            // The cwd made this path absolute, so a space in it is new.
+            shell_arg(&resolved)
+        } else {
+            impeccable_common::launcher::spell_self(&resolved)
+        }
+    } else {
+        provider.self_cmd.clone()
+    };
+    format!("`{self_cmd} detect --json --changed` from `{}`", ctx.project_root)
 }
 
 /// `which <tool>` exit 0 (`where` on Windows).
@@ -1276,13 +1320,29 @@ mod user_scope_hook_tests {
 
     #[test]
     fn other_providers_do_not_borrow_codex_user_hooks() {
-        for provider in ["source", "cursor", "gemini", "claude-code"] {
+        for provider in ["source", "cursor", "grok", "gemini", "claude-code"] {
             let mut fixture = UserHookFixture::new(provider);
             fixture.put("home/.codex/hooks.json", CODEX_HOOK);
             fixture.put("custom-home/hooks.json", CODEX_HOOK);
             fixture.env.insert("CODEX_HOME".to_string(), fixture.root.join("custom-home").to_string_lossy().into_owned());
             assert_eq!(fixture.mode(), "none", "{provider}");
         }
+    }
+
+    #[test]
+    fn cursor_and_grok_user_hooks_supply_automatic_hook_coverage() {
+        // #1190: a global install writes these, so `context` must see them.
+        let fixture = UserHookFixture::new("cursor");
+        fixture.put("home/.cursor/hooks.json", r#"{"version":1,"hooks":{"postToolUse":[{"command":"\"/skills/impeccable/scripts/impeccable\" hook","matcher":"^Write$"}]}}"#);
+        assert_eq!(fixture.mode(), "per-edit");
+        let fixture = UserHookFixture::new("grok");
+        fixture.put("home/.grok/hooks/impeccable.json", CODEX_HOOK);
+        assert_eq!(fixture.mode(), "stop");
+        // Neither borrows the other's, nor Codex's.
+        let fixture = UserHookFixture::new("cursor");
+        fixture.put("home/.grok/hooks/impeccable.json", CODEX_HOOK);
+        fixture.put("home/.codex/hooks.json", CODEX_HOOK);
+        assert_eq!(fixture.mode(), "none");
     }
 
     #[test]
@@ -1704,6 +1764,38 @@ mod wiring_fallback_tests {
         let output = parts.render();
         assert!(output.contains("MANUAL_DETECTOR_REQUIRED"));
         assert!(!output.contains("repair with impeccable hooks on"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_relative_launcher_is_spelled_absolute_when_run_from_another_dir() {
+        let env = crate::util::Env::from([
+            ("IMPECCABLE_SELF".to_string(), ".claude/skills/impeccable/scripts/impeccable".to_string()),
+        ]);
+        let provider = crate::provider::detect(&env, "/repo/apps/b");
+        let mut ctx = crate::context::load_context("/repo/apps/b", &crate::target_args::TargetOptions::default(), &env);
+        ctx.project_root = "/repo/apps/a".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/repo/apps/b", &provider),
+            "`/repo/apps/b/.claude/skills/impeccable/scripts/impeccable detect --json --changed` from `/repo/apps/a`"
+        );
+        // Run from cwd itself, the command is printed as given.
+        ctx.project_root = "/repo/apps/b".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/repo/apps/b", &provider),
+            "`.claude/skills/impeccable/scripts/impeccable detect --json --changed`"
+        );
+        // A bare name resolves on PATH from anywhere.
+        let bare = crate::provider::detect(&crate::util::Env::from([("IMPECCABLE_SELF".to_string(), "impeccable".to_string())]), "/repo/apps/b");
+        ctx.project_root = "/repo/apps/a".to_string();
+        assert_eq!(super::changed_detect_command(&ctx, "/repo/apps/b", &bare), "`impeccable detect --json --changed` from `/repo/apps/a`");
+        // A cwd with a space is quoted once it lands in the absolute path.
+        let spaced = crate::provider::detect(&env, "/work/My Apps/b");
+        ctx.project_root = "/work/My Apps/a".to_string();
+        assert_eq!(
+            super::changed_detect_command(&ctx, "/work/My Apps/b", &spaced),
+            "`'/work/My Apps/b/.claude/skills/impeccable/scripts/impeccable' detect --json --changed` from `/work/My Apps/a`"
+        );
     }
 }
 
