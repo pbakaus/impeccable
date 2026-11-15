@@ -82,9 +82,10 @@ const MEASURE_JS: &str = r##"((selectors) => {
   // Figures in the first viewport (prices, percentages) and whether a
   // visible "sample" mark sits with each: in its own block or within 160px.
   const FIGURE = /(?:[$€£¥]\s?\d[\d,.]*|\d[\d,.]*\s?(?:USD|EUR|GBP|€|£)|\b\d+(?:\.\d+)?\s?%)/g;
-  const SAMPLE = /\b(sample|example|placeholder|illustrative|demo|mock|fictional)\b/i;
+  // A label a visitor can read: innerText leaves out hidden text.
+  const SAMPLE = /\b(sample|illustrative|placeholder|fictional)\b/i;
   const marks = [...document.querySelectorAll('body *')]
-    .filter((el) => el.childElementCount === 0 && SAMPLE.test(el.textContent || '') && seen(el))
+    .filter((el) => el.childElementCount === 0 && seen(el) && SAMPLE.test(el.innerText || ''))
     .map((el) => el.getBoundingClientRect());
   const near = (a, b) => Math.max(0, a.left - b.right, b.left - a.right) + Math.max(0, a.top - b.bottom, b.top - a.bottom) <= 160;
   out.figures = [];
@@ -98,8 +99,8 @@ const MEASURE_JS: &str = r##"((selectors) => {
     range.selectNodeContents(t);
     const r = range.getBoundingClientRect();
     if (r.width === 0 || r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
-    const block = el.closest('p, li, td, dd, dt, figure, article, section, div') || el;
-    const marked = SAMPLE.test(block.textContent || '') || marks.some((m) => near(m, r));
+    const block = el.closest('p, li, td, dd, dt, tr, label, figcaption') || el;
+    const marked = SAMPLE.test(block.innerText || '') || marks.some((m) => near(m, r));
     if (!marked) out.figures.push(...found);
   }
   // A link that goes nowhere: no href, "#", "javascript:", or a same-page
@@ -110,6 +111,9 @@ const MEASURE_JS: &str = r##"((selectors) => {
     const href = link ? (link.getAttribute('href') || '').trim() : null;
     out.deadLink = link !== null && (href === '' || href === '#' || /^javascript:/i.test(href)
       || (href.startsWith('#') && !document.getElementById(decodeURIComponent(href.slice(1)))));
+    // Any other link goes somewhere (a page, a new tab, mailto:, tel:, a
+    // download) without changing this document, so it is not clicked.
+    out.liveLink = link !== null && !out.deadLink;
   }
   for (const [key, sel] of Object.entries(selectors)) {
     if (!sel) continue;
@@ -138,19 +142,32 @@ const MEASURE_JS: &str = r##"((selectors) => {
 })"##;
 
 /// Click the primary action and report whether anything answers within
-/// 800ms: the page changes (DOM, attributes, text), the URL or hash moves, a
-/// form submits, or the page navigates away (the evaluation then fails).
+/// 800ms: an element changes that a quiet 1.2s watch before the click left
+/// alone (so a ticking clock or a carousel does not count), the URL or hash
+/// moves, the page scrolls, a form submits, or the page navigates away (the
+/// evaluation then fails).
 const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
   const el = document.querySelector(sel);
   if (!el) return resolve({ responded: false });
-  const href = location.href;
-  let changed = false;
-  const mo = new MutationObserver(() => { changed = true; });
-  mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
-  let submitted = false;
-  document.addEventListener('submit', () => { submitted = true; }, { capture: true, once: true });
-  el.click();
-  setTimeout(() => { mo.disconnect(); resolve({ responded: changed || submitted || location.href !== href }); }, 800);
+  const busy = new Set();
+  const watch = new MutationObserver((rs) => rs.forEach((r) => busy.add(r.target)));
+  const all = { subtree: true, childList: true, attributes: true, characterData: true };
+  watch.observe(document.documentElement, all);
+  setTimeout(() => {
+    watch.disconnect();
+    const background = (n) => { for (let a = n; a; a = a.parentNode) if (busy.has(a)) return true; return false; };
+    const href = location.href, y = scrollY;
+    let changed = false, submitted = false, scrolled = false;
+    const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r.target))) changed = true; });
+    mo.observe(document.documentElement, all);
+    document.addEventListener('submit', () => { submitted = true; }, { capture: true, once: true });
+    document.addEventListener('scroll', () => { scrolled = true; }, { capture: true, once: true });
+    el.click();
+    setTimeout(() => {
+      mo.disconnect();
+      resolve({ responded: changed || submitted || scrolled || scrollY !== y || location.href !== href });
+    }, 800);
+  }, 1200);
 }))"#;
 
 fn launch(io: &Io) -> Result<Browser, String> {
@@ -192,9 +209,11 @@ struct Options<'a> {
 
 /// The review capture's file name for a viewport, as new-work names them.
 fn capture_name(vp: Viewport) -> String {
+    // Only the two default widths take the reviewer's fixed names, so an
+    // extra --viewport never overwrites them.
     match vp.width {
-        w if w < 768 => "mobile.png".into(),
-        w if w >= 1024 => "desktop.png".into(),
+        390 => "mobile.png".into(),
+        1440 => "desktop.png".into(),
         w => format!("user-{w}.png"),
     }
 }
@@ -286,7 +305,8 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Resul
                 .collect()
         })
         .unwrap_or_default();
-    let (start, len) = fullpage::longest_empty_band(&img, &media);
+    let cut = (img.height() as f64) + 1.0 < shot.document_height;
+    let (start, len) = fullpage::longest_empty_band(&img, &media, cut);
     let limit = (vp.height as f64 * BLANK_MAX_SHARE).round() as u32;
     let ok = len <= limit;
     failed |= !ok;
@@ -296,10 +316,13 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Resul
         img.height(),
         if ok { String::new() } else { format!(" (at most {limit}px, 0.6 of the viewport)") }
     ));
-    // Last, since a click may change the page or leave it.
+    // Last, since a click may change the page or leave it, and on a fresh
+    // load: the full-page capture leaves the page laid out at its full height.
+    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
     let dead_link = measured["deadLink"].as_bool().unwrap_or(false);
-    let responded = !dead_link
-        && match page.evaluate(&format!("{CLICK_JS}({})", js_string(o.action))) {
+    let live_link = measured["liveLink"].as_bool().unwrap_or(false);
+    let responded = live_link
+        || !dead_link && match page.evaluate(&format!("{CLICK_JS}({})", js_string(o.action))) {
             Ok(EvalOutcome::Value(v)) => v["responded"].as_bool().unwrap_or(false),
             _ => true,
         };
@@ -308,7 +331,7 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Resul
         "{label}  {}  primary action {}: {}",
         if responded { "ok  " } else { "FAIL" },
         o.action,
-        if dead_link { "a link that goes nowhere" } else if responded { "answers a click" } else { "nothing happens when it is clicked" }
+        if dead_link { "a link that goes nowhere" } else if live_link { "a link that goes somewhere" } else if responded { "answers a click" } else { "nothing happens when it is clicked" }
     ));
     Ok((lines, failed))
 }

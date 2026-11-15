@@ -175,7 +175,7 @@ fn an_unmarked_price_and_a_dead_action_fail() {
     let out = run(&dir, &supplied);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(!text.contains("figures"), "{text}");
-    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
+    assert!(text.contains("ok    primary action .buy: a link that goes somewhere"), "{text}");
 }
 
 #[test]
@@ -192,4 +192,48 @@ fn capture_writes_the_review_files() {
         let bytes = std::fs::read(dir.join(".impeccable/review").join(name)).unwrap();
         assert!(bytes.starts_with(b"\x89PNG"), "{name}");
     }
+}
+
+#[test]
+fn hidden_or_unrelated_marks_and_background_motion_do_not_pass() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("strict");
+    let args = ["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"];
+    // A hidden "sample" and "for example" are no mark; a ticking clock does
+    // not make an inert button live.
+    page_with(
+        &dir,
+        "<p>Poppy seeds, $4.50 <span hidden>sample</span></p><p>Tomatoes, for example, $3.75</p>\
+         <p class=\"clock\">0</p><button class=\"buy\">Buy</button>\
+         <script>setInterval(() => { const c = document.querySelector('.clock'); c.textContent = +c.textContent + 1; }, 100);</script>",
+    );
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("FAIL  figures: 2 in the first viewport"), "{text}");
+    assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
+    // A new-tab link and a button that only scrolls are live.
+    page_with(&dir, "<a class=\"buy\" href=\"https://example.com/\" target=\"_blank\">Shop</a><div style=\"height: 3000px\"></div>");
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("ok    primary action .buy: a link that goes somewhere"), "{text}");
+    page_with(&dir, "<button class=\"buy\" onclick=\"window.scrollTo(0, 900)\">See the plates</button><div style=\"height: 3000px\"></div>");
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
+}
+
+#[test]
+fn an_extra_viewport_keeps_its_own_capture() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("names");
+    page_with(&dir, "<button class=\"buy\" onclick=\"this.textContent = 'Added'\">Buy</button>");
+    let out = run(
+        &dir,
+        &["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844", "--viewport", "640x900", "--capture", "shots"],
+    );
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    assert!(dir.join("shots/mobile.png").is_file() && dir.join("shots/user-640.png").is_file());
 }
