@@ -78,7 +78,7 @@ git -C "$R2" init -q
 git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
 # A person installs before they sign in, so this run does too: the sign-in then reports this
 # machine's setup, and Home's "Agent connected" line has a machine from this run to show.
-(cd "$R2" && exec "$BIN" install --providers=claude --scope=project) > "$H/install.out" 2>&1; rc=$?
+(cd "$R2" && exec "$BIN" install --yes --providers=claude --scope=project) < /dev/null > "$H/install.out" 2>&1; rc=$?
 check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.claude/skills/impeccable/SKILL.md" ]'
 [ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
