@@ -7331,6 +7331,18 @@ Revised 2026-10-26 after review (round 14 branch B): `low-contrast-borrowed-grou
 
 Merged origin/main with round 14 branch F (one report per colour pair), 2026-10-26: the four faint ghost words in `low-contrast-borrowed-grounds.html` shared one composited colour pair at opacity 0.06, so main's pair dedupe folded them into one report. Each now has its own ink at opacity 0.2 (still a ghost by opacity), as the fixture's rule of one colour per case asks. `detect-fixture-json-low-contrast-borrowed-grounds-html` and `detect-fixture-text-low-contrast-borrowed-grounds-html` re-recorded from the merged binary and reviewed by hand: the same 16 findings, the four ghost words at their new colours.
 
+## Recorded 2026-10-26: live boot resolves PRODUCT.md and DESIGN.md through the shared context resolver
+
+In `live-boot-monorepo-no-git-from-root`, live's walk ends at `<WS>/website`
+because the fixture has no Git root. The walk finds neither context document,
+so live uses the shared resolver to find `PRODUCT.md` and `DESIGN.md` in `<WS>`.
+Boot now writes both paths to `website/.impeccable/live/roots.json` and reaches
+`config_missing`. The previous golden stopped at `context_missing`. The
+re-recorded golden captures this change. See [#1022](https://github.com/pbakaus/impeccable/issues/1022).
+
+The new `live-boot-context-dir-override` case covers the same fallback with
+`IMPECCABLE_CONTEXT_DIR`.
+
 ## Recorded 2026-10-28: hook cache keys name the finding, not its line (#1202)
 
 The design hook remembered a finding as `rule:line[:value]`, so a line inserted above it made it fresh again. It now keys a finding on its rule and value (or snippet) plus its occurrence among identical findings, top to bottom (`docs/CLI-CONTRACT.md`, `findingCacheKeys`), and the per-edit pass keeps the deferred keys a Stop pass already reported. The 27 `hook-*` cases whose workspace snapshot holds `.impeccable/hook.cache.json` were re-recorded from the binary and reviewed by hand: only the `findings` arrays inside that cache file changed (`side-tab:2` is now `side-tab:border-left: 4px solid #6366f1#1`). Stdout, audit lines and exit codes are byte-identical; the pending ack prints the same labels as before.
