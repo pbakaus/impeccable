@@ -198,8 +198,9 @@ async function loadPersonas() {
   ]);
   // An answer for an address the tab has since left: asked again for the new one.
   if (siteOf(hereUrl) !== site) { await loadPersonas(); return; }
-  // Once a plan is asked for, its persona is fixed: an answer that comes then changes nothing.
-  if (pre.screen === 'planning' || pre.screen === 'plan' || isLive(view)) return;
+  // Once a plan is asked for, its persona is fixed: an answer that comes then changes nothing. Under a walk, only a
+  // list still coming is kept, for the home after it.
+  if (pre.screen === 'planning' || pre.screen === 'plan' || (isLive(view) && pre.personas !== undefined)) return;
   asked = site;
   const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
