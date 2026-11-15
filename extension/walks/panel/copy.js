@@ -39,7 +39,7 @@ export const COPY = {
     failed: 'Couldn’t load your personas.',
     retry: 'Try again',
     signIn: 'Sign in again',
-    make: 'Make a persona',
+    make: 'Create a persona',
     /** The width a journey runs at (REN-1890): the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },

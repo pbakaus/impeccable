@@ -397,7 +397,7 @@ function cast() {
     }, face(each, sized(people)), el('span', { class: 'cast-name', text: each.name }))),
     // At the limit of their own, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
-      : el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
+      : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
         el('span', { class: 'face' }, icon('plus'))),
   ], { role: 'group', 'aria-label': COPY.home.who }, people);
 }
