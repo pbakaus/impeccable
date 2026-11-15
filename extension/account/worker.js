@@ -20,8 +20,8 @@ const UNPACKED = BUILD.devHosts;
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
 const PANEL = chrome.runtime.getURL('walks/panel/');
-/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, the apps, to make one, a plan and the walk. */
-const PANEL_ASKS = ['status', 'sign-in', 'sign-out', 'get-pro', 'personas', 'apps', 'create', 'plan', 'walk'];
+/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, the apps, to make one, a plan, the walk and History. */
+const PANEL_ASKS = ['status', 'sign-in', 'sign-out', 'get-pro', 'personas', 'apps', 'create', 'plan', 'walk', 'journeys'];
 const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;
@@ -212,6 +212,7 @@ const ANSWERS = {
   create,
   personas,
   async apps() { const apps = await session.apps(); return apps ? { ok: true, apps } : { ok: false, why: 'apps' }; },
+  async journeys() { const journeys = await session.journeys(); return journeys ? { ok: true, journeys } : { ok: false, why: 'journeys' }; },
   plan,
   async remove({ slug }) { return session.removePersona(slug); },
   walk,

@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {}, connected, search = '' } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, journeys = { ok: false }, mic = null, appForSite, hold = {}, connected, search = '' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -334,7 +334,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
+      runtime: { async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -566,7 +566,7 @@ test('the side panel shows only its loading dots until the account and its perso
   const release = {};
   const hold = Object.fromEntries(['status', 'personas'].map((ask) => [ask, new Promise((done) => { release[ask] = done; })]));
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], hold });
-  const drawn = () => [h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().filter((act) => act !== 'scan' && act !== 'settings')];
+  const drawn = () => [h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().filter((act) => !['scan', 'history', 'settings'].includes(act))];
   assert.deepEqual(drawn(), ['loading', 1, []], 'the account still coming');
   release.status();
   for (let n = 0; n < 5; n += 1) await tick();
@@ -589,18 +589,32 @@ test('the side panel’s cog opens the account in the panel: the email and Sign 
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
 });
 
-// History, beside the cog: on a stand-in alone until it is wired. A row opens its journey's page in a new tab; Back goes home.
+// History, beside the cog: the account worker's `journeys`, the dots while they come. A row opens its journey's page in a new tab; Back goes home.
 test('the side panel’s History opens from the top row, a row opens its journey in a new tab, and Back goes home', async () => {
   const { HISTORY } = await import('../extension/walks/panel/stub.js');
-  const live = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
-  assert.equal(live.acts().includes('history'), false, 'not wired yet: a live panel shows no made-up journeys');
-  const h = await sidePanel({ search: '?stub=home' });
+  let answer;
+  const hold = { journeys: new Promise((done) => { answer = done; }) };
+  const mira = [{ name: 'Mira', role: '', slug: 'mira' }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys: { ok: true, journeys: HISTORY }, hold });
   await h.press('history');
-  assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('button.hist-row').length], ['history', HISTORY.length]);
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('span.dots').length, h.app.querySelectorAll('button.hist-row').length], ['history', 1, 0], 'the dots while they come');
+  answer();
+  for (let n = 0; n < 3; n += 1) await tick();
+  assert.deepEqual([h.app.querySelectorAll('button.hist-row').map((row) => row.attributes['data-outcome']), h.sent.filter((m) => m.account === 'journeys').length], [HISTORY.map((j) => j.outcome), 1]);
   await h.press('journey-1');
   assert.deepEqual(h.opened, [{ url: HISTORY[1].url, active: true }]);
   await h.press('back');
   assert.equal(h.body.dataset.screen, 'home');
+  // None, or none read: the empty line, never the dots.
+  for (const journeys of [{ ok: true, journeys: [] }, { ok: false, why: 'journeys' }]) {
+    const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys });
+    await empty.press('history');
+    assert.deepEqual([empty.app.querySelectorAll('span.dots').length, empty.app.querySelectorAll('button.hist-row').length, empty.app.querySelectorAll('p.task').length], [0, 0, 1]);
+  }
+  // A journey still going reads as one.
+  const going = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys: { ok: true, journeys: [{ ...HISTORY[0], outcome: 'running', issues: 0 }] } });
+  await going.press('history');
+  assert.deepEqual(going.app.querySelectorAll('button.hist-row').map((row) => row.attributes['data-outcome']), ['running']);
 });
 
 test('Scan opens again after going back: its box stays in the page between visits', async () => {

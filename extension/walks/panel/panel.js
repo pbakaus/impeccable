@@ -143,8 +143,7 @@ function top(url = hereUrl, { tools = false, back = null } = {}) {
     host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
     el('span', { class: 'grow' }),
     tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
-    // TODO: drop `stubbed` once History is wired to the account worker: until then a real panel shows no made-up journeys.
-    tools && stubbed ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'history', title: COPY.history.open, 'aria-label': COPY.history.open, onclick: () => { pre.screen = 'history'; render(); } }, icon('history')) : null,
+    tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'history', title: COPY.history.open, 'aria-label': COPY.history.open, onclick: () => { pre.screen = 'history'; void loadHistory(); render(); } }, icon('history')) : null,
     tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.account.title, 'aria-label': COPY.account.title, 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': open ? 'account-menu' : undefined, onclick: () => { if (pre.menu) closeMenu(); else openMenu(); } }, icon('cog')) : null,
     open ? accountMenu() : null,
   );
@@ -736,10 +735,22 @@ function end() {
 /* ------------------------------ history ------------------------------ */
 
 /**
- * The journeys this person started from the extension, newest first; undefined while they come.
- * TODO: wire to the account worker. For now the stand-in's list (stub.js `HISTORY`), set in stub mode alone.
+ * Every journey this person started (from here, the terminal or an agent), newest first, as the account worker reads
+ * them; undefined while they come, none when they couldn't be read. A stand-in keeps its own list (stub.js `HISTORY`).
  */
 const historyItems = () => pre.history;
+let historyLoad = null;
+function loadHistory() {
+  if (stubbed) return null;
+  // Asked once at a time: a second press while it comes waits on the same answer.
+  historyLoad ??= (async () => {
+    pre.history = undefined;
+    const answer = await chrome.runtime.sendMessage({ account: 'journeys' }).catch(() => null);
+    pre.history = answer?.ok ? answer.journeys : [];
+    if (pre.screen === 'history') render();
+  })().finally(() => { historyLoad = null; });
+  return historyLoad;
+}
 
 /** History: every journey as a row (who, the task, how it ended, and when); a row opens its page in a new tab. */
 function history() {

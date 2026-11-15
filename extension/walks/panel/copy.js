@@ -160,6 +160,7 @@ export const COPY = {
       done: (name) => `${name}’s done`,
       stopped: (name) => `You stopped ${name}`,
       failed: (name) => `${name} didn’t finish`,
+      running: (name) => `${name} is on the way`,
     },
     when: (at, now = Date.now()) => {
       const minutes = Math.floor((now - at) / 60_000);

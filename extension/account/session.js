@@ -15,6 +15,7 @@
 import {
   CLIENT_ID, authorizeUrl, challengeFor, codeBody, metadataUrl, randomText, readCallback, readMetadata, readTokens, refreshBody, resourceFor, revokeBody,
 } from './flow.js';
+import { isOutingPage } from '../walks/handoff.js';
 
 /** The refresh tokens' place on disk: one record per account server, by its exact origin, in this extension's IndexedDB. */
 export function idbStore(name = 'impeccable-account') {
@@ -84,6 +85,8 @@ const FACE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const FACE_BYTES = 256 * 1024;
 /** A waiting journey's id: an outing's, as the hand-off takes it (walks/handoff.js `ID`). */
 const WAITING_ID = /^[A-Za-z0-9_-]{1,80}$/;
+/** How a journey in History ended, as the server says it. */
+const OUTCOMES = ['issues', 'done', 'stopped', 'failed', 'running'];
 /** A plan's id: a signed string the server reads back, bound to the persona, task and site it was made for. */
 export const PLAN_ID = /^[A-Za-z0-9._~+/=-]{1,4096}$/;
 /** A plan as the server answers it: `{ id, steps: [{ text, risky }], risky }`, or null. */
@@ -318,6 +321,24 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (!rows) return null;
       const faces = await Promise.all(rows.map((p) => faceOf(at, p.face)));
       return rows.map((p, i) => ({ ...personaOf(p), ...(faces[i] ? { face: faces[i] } : {}) }));
+    },
+
+    /**
+     * History: the person's own journeys, newest first, `[{ id, task, persona: { name, face? }, at, outcome, issues, url }]`,
+     * or null. A row opens its `url`, so only one of our app's outing pages (walks/handoff.js) is kept.
+     */
+    async journeys() {
+      const at = issuer();
+      const list = await read(at, '/journeys');
+      const rows = Array.isArray(list?.journeys) ? list.journeys.filter((j) => typeof j?.id === 'string' && typeof j.task === 'string' && typeof j.persona?.name === 'string'
+        && Number.isFinite(j.at) && OUTCOMES.includes(j.outcome) && typeof j.url === 'string' && isOutingPage(j.url)).slice(0, 100) : null;
+      if (!rows) return null;
+      // One fetch per face, however many of the person's journeys it walked.
+      const faces = new Map();
+      const faceFor = (face) => { if (!faces.has(face?.src)) faces.set(face?.src, faceOf(at, face)); return faces.get(face?.src); };
+      const drawn = await Promise.all(rows.map((j) => faceFor(j.persona.face)));
+      return rows.map((j, i) => ({ id: j.id, task: j.task.slice(0, 2000), persona: { name: j.persona.name.slice(0, 120), ...(drawn[i] ? { face: drawn[i] } : {}) },
+        at: j.at, outcome: j.outcome, issues: Number.isInteger(j.issues) && j.issues > 0 ? j.issues : 0, url: j.url }));
     },
 
     /** The person's apps, `[{ workspace, repo, app, name }]`, or null. */
