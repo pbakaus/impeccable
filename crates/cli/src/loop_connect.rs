@@ -11,6 +11,7 @@
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
+use crate::loop_taste;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -18,38 +19,84 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// The Impeccable MCP server. A constant of the build: never taken from a flag, the
-/// environment or a server response.
+/// The Impeccable MCP servers. Constants of the build: the account service the CLI
+/// signs in to (`IMPECCABLE_ACCOUNT_URL`) chooses between them, and nothing else can name
+/// one. An entry is written into the agent's own global configuration and outlives the
+/// variable, so an account URL that is neither service is refused, never followed and
+/// never replaced by production.
 const MCP_URL: &str = "https://api.impeccable.style/mcp";
+const STAGING_MCP_URL: &str = "https://api.staging.impeccable.style/mcp";
+/// The account services, as `impeccable_account::config::normalize_origin` spells them.
+const ACCOUNTS: [(&str, &str); 2] = [
+    (impeccable_account::config::DEFAULT_ACCOUNT_URL, MCP_URL),
+    ("https://api.staging.impeccable.style", STAGING_MCP_URL),
+];
+thread_local! {
+    /// The server this command's account service names, set by every `init_mcp_url`
+    /// (not once per process), so a later call with another account never reuses the
+    /// first's. Per thread, as each command runs its connect on one.
+    static MCP_FOR_ACCOUNT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
 /// A build with the `test-mcp-url` feature (staging end-to-end runs only, like
 /// `test-release-keys`) may point connect at another https MCP server through
-/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they always use
-/// the constant above and ignore the variable.
+/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they ignore the
+/// variable.
 #[cfg(feature = "test-mcp-url")]
-static MCP_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+thread_local! {
+    static MCP_OVERRIDE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
 
 fn mcp_url() -> &'static str {
     #[cfg(feature = "test-mcp-url")]
     if let Some(url) = MCP_OVERRIDE.get() {
         return url;
     }
-    MCP_URL
+    MCP_FOR_ACCOUNT.get().unwrap_or(MCP_URL)
+}
+
+/// The MCP server of the account service `raw` names (`IMPECCABLE_ACCOUNT_URL`, unset
+/// for production), or why there is none.
+fn mcp_for_account(raw: Option<&str>) -> Result<&'static str> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(MCP_URL);
+    };
+    let origin = impeccable_account::config::normalize_origin(raw);
+    ACCOUNTS
+        .iter()
+        .find(|(account, _)| origin.as_deref() == Some(*account))
+        .map(|(_, mcp)| *mcp)
+        .ok_or_else(|| {
+            "IMPECCABLE_ACCOUNT_URL isn't the Impeccable account or its staging service, so no MCP server was added. Unset it to connect to Impeccable.".into()
+        })
 }
 
 /// In a `test-mcp-url` build, a set but unusable `IMPECCABLE_MCP_URL` is refused, never
 /// replaced by production: falling back would send a staging run's agents to production.
-fn init_mcp_url(_io: &Io) -> Result<()> {
+fn init_mcp_url(io: &Io) -> Result<()> {
     #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = _io.env("IMPECCABLE_MCP_URL") {
+    if let Some(url) = io.env("IMPECCABLE_MCP_URL") {
         let usable = url::Url::parse(url)
             .ok()
-            .filter(|u| u.scheme() == "https" && u.host_str().is_some() && u.as_str() == url);
+            .filter(|u| {
+                // A local stack serves plain http on this machine only, its MCP on `api.localhost`.
+                let loopback = impeccable_account::config::loopback_url(u);
+                (u.scheme() == "https" || (u.scheme() == "http" && loopback))
+                    && u.host_str().is_some()
+                    && u.as_str() == url
+            });
         if usable.is_none() || url.contains(char::is_whitespace) {
-            return Err("IMPECCABLE_MCP_URL must be a plain https URL.".into());
+            MCP_OVERRIDE.set(None);
+            return Err("IMPECCABLE_MCP_URL must be a plain https URL, or http on localhost.".into());
         }
-        let _ = MCP_OVERRIDE.set(url.to_string());
+        // Leaked once per call, in test builds only.
+        MCP_OVERRIDE.set(Some(Box::leak(url.to_string().into_boxed_str())));
+        return Ok(());
     }
-    Ok(())
+    #[cfg(feature = "test-mcp-url")]
+    MCP_OVERRIDE.set(None);
+    let url = mcp_for_account(io.env("IMPECCABLE_ACCOUNT_URL"));
+    MCP_FOR_ACCOUNT.set(url.as_ref().ok().copied());
+    url.map(|_| ())
 }
 const MCP_NAME: &str = "impeccable";
 /// Why an existing entry of that name isn't the one connect would write.
@@ -106,7 +153,26 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
 /// `loop connect [--agent claude|codex]`: the full text report, sign-in and follow-up
 /// steps included, for every agent or just the one named.
 pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
-    let (out, connected, failed, _) = connect_agents(io, only)?;
+    connect_text(io, only).0
+}
+
+/// [`connect_only`], plus the agents this run connected: when one agent fails, the
+/// others are still connected and the result is an error naming the failure.
+pub(crate) fn connect_text(io: &Io, only: Option<&str>) -> (Result<String>, Vec<String>) {
+    match connect_agents(io, only) {
+        Err(e) => (Err(e), Vec::new()),
+        Ok((out, connected, failed, rows)) => {
+            let agents = rows
+                .iter()
+                .filter(|r| r["result"] == "connected")
+                .filter_map(|r| r["agent"].as_str().map(str::to_owned))
+                .collect();
+            (connect_report(out, only, connected, failed), agents)
+        }
+    }
+}
+
+fn connect_report(out: String, only: Option<&str>, connected: usize, failed: usize) -> Result<String> {
     if connected == 0 && failed == 0 {
         if let Some(harness) = only {
             return Err(format!("{}: not found.", label(harness)));
@@ -151,6 +217,8 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
     // Checked before any agent's configuration changes.
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
+    // Taken second, as --mcp-only takes it alone, so the two never add at once.
+    let _mcp_lock = mcp_lock(io)?;
     let mut out = String::new();
     let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
@@ -163,7 +231,13 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
             rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
             continue;
         };
-        match connect_one(&agent, &helper, &support) {
+        let file = rule_file(harness, &agent.root);
+        let noted = note_missing_rule_file(&support, &file);
+        let result = connect_one(&agent, &helper, &support);
+        if noted && result.is_err() && fs::symlink_metadata(&file).is_err() {
+            forget_missing_rule_file(&support, &file);
+        }
+        match result {
             Ok(manual) => {
                 connected += 1;
                 out.push_str(&format!(
@@ -194,7 +268,10 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
 /// `loop status [--json]`: what Loop and each agent look like right now, read only.
 /// Nothing is written and no lock is taken; the agents' CLIs are never run.
 pub(crate) fn status(io: &Io) -> Result<Value> {
-    init_mcp_url(io)?;
+    // Reading never needs the account's server: on an origin connect would refuse, an
+    // entry is judged against production's, as disconnect does. Failing here would also
+    // silence login's Loop offer.
+    let _ = init_mcp_url(io);
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
@@ -265,6 +342,12 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     }))
 }
 
+/// Whether a `status` agent row is connected all the way: Loop's record names it, and its
+/// MCP server, hooks and instruction are all in place.
+pub(crate) fn agent_connected(a: &Value) -> bool {
+    a["connected"] == true && a["hooks"] == true && a["instruction"] == true && a["mcp"] == "registered"
+}
+
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
@@ -276,11 +359,7 @@ pub(crate) fn status_text(v: &Value) -> String {
         let label = a["label"].as_str().unwrap_or("Agent");
         if a["detected"] != true {
             out.push_str(&format!("{label}: not found.\n"));
-        } else if a["connected"] == true
-            && a["hooks"] == true
-            && a["instruction"] == true
-            && a["mcp"] == "registered"
-        {
+        } else if agent_connected(a) {
             out.push_str(&format!("{label}: connected.\n"));
         } else {
             out.push_str(&format!(
@@ -300,23 +379,9 @@ pub(crate) fn status_text(v: &Value) -> String {
     out
 }
 
-/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
-/// working installation is never undone by a failed reconnect. The MCP server is never
-/// removed here: a failure says how to remove it.
-fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
-    if agent.harness == "codex" {
-        if let Some(other) = read_record(support, "codex")
-            .filter(|r| r["enabled"] == true)
-            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
-            .filter(|dir| *dir != agent.root)
-        {
-            return Err(format!(
-                "Codex is already connected for {}; run impeccable loop disconnect first.",
-                other.display()
-            ));
-        }
-    }
-    // 1. The MCP server: added only when the agent has none of that name.
+/// The MCP server, added only when the agent has none of that name. True when this call
+/// added it; an entry of that name that differs is left alone and is an error.
+fn ensure_mcp(agent: &Agent) -> Result<bool> {
     let mut added = false;
     match read_entry(agent) {
         Entry::Exact => {}
@@ -352,6 +417,75 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             }
         }
     }
+    Ok(added)
+}
+
+/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, for a
+/// person without the Loop app (any OS). No hooks, no taste block, no Loop records: each
+/// agent signs in to the server itself on first use.
+pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
+    let rows = (|| -> Result<(String, usize, usize, Vec<Value>)> {
+        if let Some(h) = only {
+            if !AGENTS.iter().any(|(a, _)| *a == h) {
+                return Err(format!("Unknown agent: {h}. Use claude or codex."));
+            }
+        }
+        init_mcp_url(io)?;
+        let home = home(io)?;
+        let _lock = mcp_lock(io)?;
+        let (mut out, mut rows, mut connected, mut failed) = (String::new(), Vec::new(), 0, 0);
+        for (harness, label) in AGENTS {
+            if only.is_some_and(|h| h != harness) {
+                continue;
+            }
+            let Some(agent) = agent(io, &home, harness) else {
+                out.push_str(&format!("{label}: not found, skipped.\n"));
+                rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
+                continue;
+            };
+            match ensure_mcp(&agent) {
+                Ok(added) => {
+                    connected += 1;
+                    let what = if added { "MCP server added" } else { "MCP server already there" };
+                    out.push_str(&format!("{label}: {what}.\n  Sign in: {}\n", sign_in(harness)));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": sign_in(harness) }));
+                }
+                Err(e) => {
+                    failed += 1;
+                    out.push_str(&format!("{label}: not connected: {e}\n"));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "failed", "error": e }));
+                }
+            }
+        }
+        Ok((out, connected, failed, rows))
+    })();
+    match rows {
+        Err(e) => (Err(e.clone()), json!({ "ok": false, "error": e, "agents": [] }), false),
+        Ok((out, connected, failed, rows)) => {
+            let ok = failed == 0 && connected > 0;
+            (connect_report(out, only, connected, failed), json!({ "ok": ok, "agents": rows }), ok)
+        }
+    }
+}
+
+/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
+/// working installation is never undone by a failed reconnect. The MCP server is never
+/// removed here: a failure says how to remove it.
+fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
+    if agent.harness == "codex" {
+        if let Some(other) = read_record(support, "codex")
+            .filter(|r| r["enabled"] == true)
+            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
+            .filter(|dir| *dir != agent.root)
+        {
+            return Err(format!(
+                "Codex is already connected for {}; run impeccable loop disconnect first.",
+                other.display()
+            ));
+        }
+    }
+    // 1. The MCP server.
+    let added = ensure_mcp(agent)?;
     let with_mcp = |why: String| -> String {
         if added {
             format!(
@@ -448,7 +582,9 @@ fn shadowed_advice(root: &Path) -> String {
 /// today's environment), each on its own. Waking stops first; the hooks go; MCP servers
 /// stay, with the exact command to remove each.
 pub(crate) fn disconnect(io: &Io) -> Result<String> {
-    init_mcp_url(io)?;
+    // Disconnect adds no server, so an account URL connect would refuse never blocks it;
+    // the URL only decides whether a recorded entry still matches.
+    let _ = init_mcp_url(io);
     let home = home(io)?;
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
@@ -457,6 +593,11 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // A connect that stopped part way is rolled back first, so its hooks are either
     // gone or committed (and then undone below).
     let found = installed_specs(OWNER).map_err(|(_, m)| m)?;
+    // The taste block goes before the engine's undo, so the engine finds each rule file
+    // exactly as it wrote it and cleans up after itself (a file it created goes too).
+    let every: Vec<&Spec> = found.pending.iter().chain(&found.committed).collect();
+    let (taste_ok, created) = remove_taste(&home, &support, &every, &mut out);
+    failed |= !taste_ok;
     let mut rolled_back = Vec::new();
     for spec in &found.pending {
         let label = label(&spec.harness);
@@ -531,6 +672,13 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         }
         out.push_str(&mcp_stays(&support, spec));
     }
+    // A rule file connect created for the taste block alone goes once it is empty
+    // again. A file the person had before, even an empty one, stays, as does a link.
+    for file in created {
+        if fs::symlink_metadata(&file).is_ok_and(|m| m.is_file() && m.len() == 0) {
+            let _ = fs::remove_file(&file);
+        }
+    }
     if out.is_empty() {
         out.push_str("Nothing to disconnect.\n");
     }
@@ -568,9 +716,9 @@ fn missing_loop(helper: &Path) -> String {
 }
 
 fn home(io: &Io) -> Result<PathBuf> {
-    io.env("HOME")
-        .filter(|h| !h.is_empty() && Path::new(h).is_absolute())
-        .map(PathBuf::from)
+    // The engine's one reading of home: USERPROFILE first on Windows, HOME elsewhere.
+    io.home()
+        .filter(|h| h.is_absolute())
         .ok_or_else(|| "HOME is not set to an absolute path.".into())
 }
 
@@ -667,11 +815,13 @@ fn resolve(io: &Io, harness: &str) -> Option<PathBuf> {
         let p = PathBuf::from(path);
         return runnable(&p).then_some(p);
     }
-    io.env("PATH")?
-        .split(':')
-        .map(Path::new)
+    // Windows finds a CLI by its extension (npm installs `claude.cmd`), and separates
+    // PATH entries with `;`, which split_paths knows.
+    let names: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
+    let path = io.env("PATH")?;
+    std::env::split_paths(path)
         .filter(|d| d.is_absolute())
-        .map(|d| d.join(harness))
+        .flat_map(|d| names.iter().map(move |ext| d.join(format!("{harness}{ext}"))))
         .find(|p| runnable(p))
 }
 
@@ -943,7 +1093,21 @@ fn support_dir(home: &Path) -> Result<PathBuf> {
 /// One connect or disconnect at a time, across the engine, the agents' MCP entries and
 /// the helper's records.
 fn lock(support: &Path) -> Result<fs::File> {
-    let path = support.join(".connect.lock");
+    lock_at(&support.join(".connect.lock"))
+}
+
+/// One change to the agents' MCP servers at a time, with or without Loop: kept under
+/// the engine's own folder (IMPECCABLE_HOME, else ~/.impeccable) so `--mcp-only` makes
+/// no Loop folder on a machine without Loop.
+fn mcp_lock(io: &Io) -> Result<fs::File> {
+    let dir = impeccable_account::config::impeccable_home(&io.env)
+        .ok_or("HOME is not set to an absolute path.")?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    lock_at(&dir.join(".mcp-connect.lock"))
+}
+
+fn lock_at(path: &Path) -> Result<fs::File> {
+    let path = path.to_path_buf();
     if fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
         return Err(format!(
             "{} isn't a plain file; refusing to write there.",
@@ -1082,6 +1246,292 @@ fn publish_bytes(support: &Path, name: &str, bytes: &[u8]) -> Result<()> {
     })
 }
 
+/// What connect does about the taste block (`--taste`, `--no-taste`, or neither).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Taste {
+    /// Neither flag: a person at a terminal is asked once; anything else skips it.
+    Ask,
+    /// Never ask (the JSON form): with no flag, nothing is added.
+    Skip,
+    Yes,
+    No,
+}
+
+/// The person's answer for each rule file, in connect's note: `"on"` (added) or
+/// `"off"` (declined). The rule file itself never carries it.
+const TASTE_KEY: &str = "taste";
+/// The rule files that were missing when a connect first wrote to them, in connect's
+/// note. Once the taste block and the engine's block are both out, disconnect deletes
+/// such a file if nothing is left in it; a file the person had, even empty, stays.
+const TASTE_NEW_KEY: &str = "tasteCreated";
+
+/// Before a connect writes to `file`: note it when it doesn't exist yet, returning
+/// whether this call noted it. Called with the connect lock held. A failure only means
+/// an emptied file stays later.
+fn note_missing_rule_file(support: &Path, file: &Path) -> bool {
+    if fs::symlink_metadata(file).is_ok() {
+        return false;
+    }
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let key = json!(file.display().to_string());
+    if !note[TASTE_NEW_KEY].is_array() {
+        note[TASTE_NEW_KEY] = json!([]);
+    }
+    if note[TASTE_NEW_KEY].as_array().is_some_and(|a| a.contains(&key)) {
+        return false;
+    }
+    note[TASTE_NEW_KEY].as_array_mut().unwrap().push(key);
+    publish(support, TARGETS, &note).is_ok()
+}
+
+/// A connect that failed before writing `file`: it didn't create it after all.
+fn forget_missing_rule_file(support: &Path, file: &Path) {
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let key = json!(file.display().to_string());
+    if let Some(list) = note[TASTE_NEW_KEY].as_array_mut() {
+        list.retain(|v| *v != key);
+        let _ = publish(support, TARGETS, &note);
+    }
+}
+
+/// The agent's user-level rule file in this config folder, the one the engine's
+/// instruction block lives in.
+fn rule_file(harness: &str, root: &Path) -> PathBuf {
+    root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
+}
+
+fn tilde(home: &Path, path: &Path) -> String {
+    path.strip_prefix(home)
+        .map_or_else(|_| path.display().to_string(), |rest| format!("~/{}", rest.display()))
+}
+
+/// The rule files of `agents` that are connected: an agent counts when the engine
+/// holds a committed installation for its config folder.
+fn taste_targets(io: &Io, home: &Path, agents: &[String]) -> Vec<PathBuf> {
+    let installed = installed_specs(OWNER).map(|f| f.committed).unwrap_or_default();
+    AGENTS
+        .iter()
+        .filter(|(h, _)| agents.iter().any(|a| a == h))
+        .filter_map(|(h, _)| agent(io, home, h))
+        .filter(|a| installed.iter().any(|s| s.harness == a.harness && s.root == a.root))
+        .map(|a| rule_file(a.harness, &a.root))
+        .collect()
+}
+
+fn row(file: &Path, result: &str) -> Value {
+    json!({ "file": file.display().to_string(), "result": result })
+}
+
+/// After a connect: keep the taste block where the person said yes, and ask once (or
+/// follow the flag) for the rule files never asked about. A block the person deleted by
+/// hand is not put back unless they pass `--taste`; `--no-taste` takes it out. Returns
+/// the report lines and one JSON row per rule file changed or asked about.
+pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (String, Vec<Value>) {
+    use std::io::IsTerminal;
+    let (mut out, mut rows) = (String::new(), Vec::new());
+    let Ok(home) = home(io) else { return (out, rows) };
+    let Ok(support) = support_dir(&home) else { return (out, rows) };
+    let targets = taste_targets(io, &home, agents);
+    if targets.is_empty() {
+        return (out, rows);
+    }
+    let note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
+    let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) =
+        targets.into_iter().partition(|f| loop_taste::present(f));
+    // Asked about: files with no answer yet, and with --taste every file without the block.
+    let ask: Vec<PathBuf> = absent
+        .into_iter()
+        .filter(|f| choice == Taste::Yes || !answered(f))
+        .collect();
+    let yes = match choice {
+        _ if ask.is_empty() => None,
+        Taste::Yes => Some(true),
+        Taste::No => Some(false),
+        Taste::Ask if io.stdin_is_tty && std::io::stdout().is_terminal() => {
+            let files: Vec<String> = ask.iter().map(|f| tilde(&home, f)).collect();
+            io.out(&format!(
+                "Let your agents use your Impeccable taste? This adds 3 lines to {}. [Y/n] ",
+                files.join(" and ")
+            ));
+            let _ = std::io::Write::flush(&mut io.stdout);
+            let mut line = String::new();
+            Some(
+                std::io::stdin()
+                    .read_line(&mut line)
+                    .is_ok_and(|n| yes_answer(n, &line)),
+            )
+        }
+        Taste::Ask | Taste::Skip => None,
+    };
+    // The answer was taken without the lock; the files and the note change under it.
+    let _lock = match lock(&support) {
+        Ok(l) => l,
+        Err(e) => {
+            if yes.is_some() || !present.is_empty() {
+                out.push_str(&format!("Taste: nothing changed: {e}\n"));
+            }
+            return (out, rows);
+        }
+    };
+    // A disconnect or another connect may have run while the person was answering, so
+    // the files are looked at again now: only agents still connected are touched, a
+    // block taken out meanwhile is not put back, and the answer covers only the files
+    // it was asked about.
+    let asked = ask;
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
+    let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = taste_targets(io, &home, agents)
+        .into_iter()
+        .partition(|f| loop_taste::present(f));
+    let ask: Vec<PathBuf> = absent
+        .into_iter()
+        .filter(|f| asked.contains(f) && (choice == Taste::Yes || !answered(f)))
+        .collect();
+    if !note[TASTE_KEY].is_object() {
+        note[TASTE_KEY] = json!({});
+    }
+    let before = note[TASTE_KEY].clone();
+    let mut record = |file: &Path, answer: &str| {
+        note[TASTE_KEY][file.display().to_string()] = json!(answer);
+    };
+    for file in &present {
+        let shown = tilde(&home, file);
+        if choice == Taste::No {
+            match loop_taste::take_out(file) {
+                Ok(_) => {
+                    record(file, "off");
+                    out.push_str(&format!("Taste: removed from {shown}.\n"));
+                    rows.push(row(file, "removed"));
+                }
+                Err(e) => {
+                    out.push_str(&format!("Taste: left in {shown}: {e}\n"));
+                    rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+                }
+            }
+            continue;
+        }
+        // Rewritten in place, so a block from an older wording is brought up to date.
+        match loop_taste::add(file) {
+            Ok(changed) => {
+                record(file, "on");
+                if changed {
+                    rows.push(row(file, "updated"));
+                }
+            }
+            Err(e) => {
+                out.push_str(&format!("Taste: couldn't update {shown}: {e}\n"));
+                rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+            }
+        }
+    }
+    for file in &ask {
+        let shown = tilde(&home, file);
+        match yes {
+            Some(true) => match loop_taste::add(file) {
+                Ok(_) => {
+                    record(file, "on");
+                    out.push_str(&format!("Taste: added to {shown}.\n"));
+                    if let Some(over) = file.parent().and_then(|root| root_override("codex", root)).filter(|_| file.ends_with("AGENTS.md")) {
+                        out.push_str(&format!(
+                            "  Codex reads {} instead; copy the taste lines there too.\n",
+                            tilde(&home, &over)
+                        ));
+                    }
+                    rows.push(row(file, "added"));
+                }
+                Err(e) => {
+                    out.push_str(&format!("Taste: not added to {shown}: {e}\n"));
+                    rows.push(json!({ "file": file.display().to_string(), "result": "failed", "error": e }));
+                }
+            },
+            Some(false) => {
+                record(file, "off");
+                rows.push(row(file, "declined"));
+            }
+            None => rows.push(row(file, "skipped")),
+        }
+    }
+    if yes.is_none() && !ask.is_empty() {
+        out.push_str("To let your agents use your Impeccable taste: impeccable loop connect --taste\n");
+    }
+    if note[TASTE_KEY] != before {
+        if let Err(e) = publish(&support, TARGETS, &note) {
+            out.push_str(&format!("Taste: couldn't record your answer: {e}\n"));
+            rows.push(json!({
+                "file": support.join(TARGETS).display().to_string(),
+                "result": "failed",
+                "error": format!("couldn't record your answer: {e}"),
+            }));
+        }
+    }
+    (out, rows)
+}
+
+fn yes_answer(bytes_read: usize, line: &str) -> bool {
+    bytes_read > 0 && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
+}
+
+/// Disconnect: take the taste block out of every rule file connect put it in, and of
+/// the rule files of the installations being removed, then forget the answers so a
+/// later connect asks again. An answer whose file could not be changed is kept, so the
+/// next disconnect tries that file again. Called with the connect lock held. Returns
+/// whether all went well and the files connect created that the block came out of.
+fn remove_taste(
+    home: &Path,
+    support: &Path,
+    specs: &[&Spec],
+    out: &mut String,
+) -> (bool, Vec<PathBuf>) {
+    let mut note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
+    let answers = note[TASTE_KEY].as_object().cloned().unwrap_or_default();
+    let mut files: Vec<PathBuf> = answers.keys().map(PathBuf::from).collect();
+    for spec in specs {
+        let file = rule_file(&spec.harness, &spec.root);
+        if !files.contains(&file) {
+            files.push(file);
+        }
+    }
+    let new_files: Vec<Value> = note[TASTE_NEW_KEY].as_array().cloned().unwrap_or_default();
+    let mut ok = true;
+    let (mut created, mut kept, mut kept_new) = (Vec::new(), serde_json::Map::new(), Vec::new());
+    for file in &files {
+        let key = file.display().to_string();
+        match loop_taste::take_out(file) {
+            Ok(taken) => {
+                if taken {
+                    out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));
+                }
+                if taken && new_files.contains(&json!(key)) {
+                    created.push(file.clone());
+                }
+            }
+            Err(e) => {
+                ok = false;
+                out.push_str(&format!(
+                    "  The taste lines in {} were left in place: {e}\n",
+                    tilde(home, file)
+                ));
+                if let Some(answer) = answers.get(&key) {
+                    kept.insert(key.clone(), answer.clone());
+                }
+                if new_files.contains(&json!(key)) {
+                    kept_new.push(json!(key));
+                }
+            }
+        }
+    }
+    if kept != answers || kept_new != new_files {
+        note[TASTE_KEY] = Value::Object(kept);
+        note[TASTE_NEW_KEY] = Value::Array(kept_new);
+        if let Err(e) = publish(support, TARGETS, &note) {
+            ok = false;
+            out.push_str(&format!("  Couldn't forget the taste answers: {e}\n"));
+        }
+    }
+    (ok, created)
+}
+
 fn sign_in(harness: &str) -> &'static str {
     if harness == "claude" {
         "in Claude Code, run /mcp, choose impeccable, then Authenticate."
@@ -1124,7 +1574,7 @@ mod mcp_url_tests {
     use super::*;
 
     #[test]
-    fn a_shipped_build_always_uses_the_built_in_mcp_url() {
+    fn a_shipped_build_ignores_the_mcp_override() {
         // Catches: a variable redirecting a customer's agents to another MCP server.
         let mut env = std::collections::HashMap::new();
         env.insert("IMPECCABLE_MCP_URL".to_string(), "https://evil.example/mcp".to_string());
@@ -1134,6 +1584,43 @@ mod mcp_url_tests {
         assert_eq!(mcp_url(), "https://api.impeccable.style/mcp");
         #[cfg(feature = "test-mcp-url")]
         assert_eq!(mcp_url(), "https://evil.example/mcp");
+    }
+
+    #[test]
+    fn the_account_service_picks_its_own_mcp_server_and_nothing_else() {
+        // Catches: IMPECCABLE_ACCOUNT_URL writing another server into an agent's global
+        // config, or falling back to production for a run aimed elsewhere.
+        assert_eq!(mcp_for_account(None), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some(" ")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://api.impeccable.style/")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://API.staging.impeccable.style")), Ok("https://api.staging.impeccable.style/mcp"));
+        for other in ["https://evil.example", "https://api.impeccable.style.evil.test", "http://127.0.0.1:8787", "https://impeccable.style", "not a url"] {
+            assert!(mcp_for_account(Some(other)).is_err(), "{other}");
+        }
+    }
+
+    #[test]
+    fn each_call_takes_its_own_account_server() {
+        // Catches (#1464 review): the first call's server sticking for the process, so a
+        // later production call in it writes staging (or the reverse).
+        let io_for = |account: Option<&str>| {
+            let mut env = std::collections::HashMap::new();
+            if let Some(a) = account {
+                env.insert("IMPECCABLE_ACCOUNT_URL".to_string(), a.to_string());
+            }
+            Io::captured("", std::env::temp_dir(), env).0
+        };
+        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), STAGING_MCP_URL);
+        assert!(init_mcp_url(&io_for(None)).is_ok());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), MCP_URL);
+        // A refused account leaves no earlier server behind.
+        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
+        assert!(init_mcp_url(&io_for(Some("https://evil.example"))).is_err());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), MCP_URL);
     }
 
     #[test]
@@ -1148,6 +1635,20 @@ mod mcp_url_tests {
             assert!(init_mcp_url(&io).is_err(), "{bad:?}");
             #[cfg(not(feature = "test-mcp-url"))]
             assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
+        }
+        // A local stack's http server on this machine is usable in a test build, `api.localhost` included (j9).
+        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "http://api.localhost:8787/mcp", "https://staging.example/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), good.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_ok(), "{good:?}");
+        }
+        #[cfg(feature = "test-mcp-url")]
+        for bad in ["http://127.0.0.1.evil.test/mcp", "http://localhost.evil.test/mcp", "http://192.168.1.2/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
         }
     }
 }

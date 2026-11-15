@@ -6,10 +6,11 @@
     "agents/impeccable-documenter.md": 4000,
     "agents/impeccable-finish-reviewer.md": 17000,
     "agents/impeccable-manual-edit-applier.md": 8000,
+    "agents/impeccable-motion-reviewer.md": 6750,
     "reference/adapt.md": 12000,
     "reference/adapt.native.md": 4250,
     "reference/android.md": 5500,
-    "reference/animate.md": 5750,
+    "reference/animate.md": 8750,
     "reference/audit.md": 12000,
     "reference/audit.native.md": 8750,
     "reference/bolder.md": 3750,
@@ -49,7 +50,7 @@
     "reference/region-map.md": 3500,
     "reference/routing.md": 3500,
     "reference/shape.md": 3750,
-    "reference/typeset.md": 6750,
+    "reference/typeset.md": 7250,
     "reference/visualize.md": 14750
   },
   "uses": {

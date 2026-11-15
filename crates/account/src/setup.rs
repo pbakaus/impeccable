@@ -307,7 +307,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if verb == "status" {
         io.out(if read(io).is_some_and(|v| v["sync"] != false) {
             if crate::stale_grant::status(io, "setup:write") {
-                "Setup status: on, but this sign-in can't save yet. Run impeccable login.\n"
+                "Setup status: on, but this sign-in can't save yet. Run npx impeccable login.\n"
             } else {
                 "Setup status: on. This machine reports where Impeccable is installed, once a day.\n"
             }

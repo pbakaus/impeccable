@@ -50,7 +50,7 @@ pub type CustomPropMap<'a> = Option<&'a dyn CustomProps>;
 
 static INLINE_BG_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(&format!(
-        r"(?i)background(?:-color)?{ws}*:{ws}*([^;]+)",
+        r"(?i)(?:^|[;{ws}])background(?:-color)?{ws}*:{ws}*([^;]+)",
         ws = js::WS
     ))
     .expect("INLINE_BG_RE")
@@ -76,13 +76,20 @@ static CURRENTCOLOR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new("(?i)^currentcolor$").expect("CURRENTCOLOR_RE"));
 
 /// `rawStyle.match(/background(?:-color)?\s*:\s*([^;]+)/i)` → trimmed value.
+/// The inline `background` / `background-color` value that wins: the last
+/// `!important` one, else the last one declared, so a later
+/// `background: url(...)` shorthand is what is read, not the
+/// `background-color` it reset. Only whole declaration names match: a
+/// `--background` custom property is not a background.
 fn inline_bg(el: &StaticElement<'_>) -> String {
     let raw = el.get_attribute("style").unwrap_or("");
-    INLINE_BG_RE
-        .captures(raw)
-        .map(|m| js::trim(&m[1]).to_string())
-        .unwrap_or_default()
+    let values: Vec<String> = INLINE_BG_RE.captures_iter(raw).map(|m| js::trim(&m[1]).to_string()).collect();
+    let important = |v: &&String| IMPORTANT_RE.is_match(v);
+    let winner = values.iter().filter(important).last().or_else(|| values.last()).cloned().unwrap_or_default();
+    js::trim(&IMPORTANT_RE.replace(&winner, "")).to_string()
 }
+static IMPORTANT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(&format!(r"(?i)!{ws}*important{ws}*$", ws = js::WS)).expect("IMPORTANT_RE"));
 
 fn hex_to_rgba(h: &str) -> Rgba {
     let p = |s: &str| js::parse_int(s, 16);
@@ -250,7 +257,7 @@ pub fn resolve_text_surface(
 /// `background-repeat` longhands an author declared; a `background`
 /// shorthand arrives whole in `backgroundImage`, and its size and repeat
 /// are read out of it.
-fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
+pub(crate) fn gradient_tile_misses(style: &StyleValues, bg_image: &str, font_size: f64) -> bool {
     if !GRADIENT_RE.is_match(bg_image) || URL_CALL_RE.is_match(bg_image) {
         return false;
     }

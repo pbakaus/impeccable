@@ -307,7 +307,7 @@ fn service_answers_map_to_one_actionable_line_each() {
     let (f, env) = signed_in("world-errors");
     let dir = project("errors");
     let cases = [
-        (403, r#"{"error":"insufficient_scope"}"#, "Using a world needs a fresh sign-in. Run impeccable login, then try again.\n"),
+        (403, r#"{"error":"insufficient_scope"}"#, "Using a world needs a fresh sign-in. Run npx impeccable login, then try again.\n"),
         (403, r#"{"error":"forbidden","reason":"pro_required"}"#, "The world kinpaku needs Pro. See impeccable.style/pricing\n"),
         (404, r#"{"error":"not_found"}"#, "No world has the id kinpaku. Copy the id from the world in the Impeccable worlds catalog.\n"),
         (200, "<html>maintenance</html>", "Your Impeccable account sent a world this CLI can't read. Update the Impeccable CLI and try again.\n"),
@@ -332,7 +332,7 @@ fn signed_out_and_bad_ids_never_reach_the_service() {
     let out = run(&env, &dir, &["world", "kinpaku"]);
     assert_eq!(
         text(&out.stderr),
-        "Using a world needs your Impeccable account. Run impeccable login, then try again.\n"
+        "Using a world needs your Impeccable account. Run npx impeccable login, then try again.\n"
     );
     let out = run(&env, &dir, &["world", "../etc"]);
     assert_eq!(

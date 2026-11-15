@@ -82,6 +82,12 @@ pub trait HtmlEngine {
         options: &ScanOptions,
         stderr: &mut dyn std::io::Write,
     ) -> Result<Vec<Finding>, EngineError>;
+
+    /// `detect --before` / `--kept`: the page's wiring inventory
+    /// ([`crate::wiring`]). Engines that cannot parse a page keep the default.
+    fn wiring_inventory(&self, _path: &str) -> Result<crate::wiring::WiringInventory, EngineError> {
+        Err(EngineError::new("this build cannot read a page's wiring"))
+    }
 }
 
 /// The browser engine (`cli/engine/engines/browser/detect-url.mjs`

@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --changed reads the changed files from git, and this directory is not inside a git work tree. Pass the files or directories to scan instead.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

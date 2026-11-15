@@ -8,7 +8,7 @@ use crate::{
 use impeccable_common::Io;
 use std::time::Duration;
 
-const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
+const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.\n";
 const DEADLINE: Duration = Duration::from_secs(2);
 
 /// `within` is what is left of the caller's own wait: the check never extends it.
@@ -21,19 +21,35 @@ pub(crate) fn offers(account: &Account, scope: &str, within: Duration) -> bool {
     // Metadata is a credential-free read. Bound DNS as well as HTTP without
     // leaving an upload running after the caller stops waiting.
     crate::session::read_within(within, move || {
-        oauth::metadata(&Client::with_deadline(&account, within), &account).is_ok_and(|m| {
-            match scope.as_str() {
-                oauth::HEALTH_SCOPE => m.health,
-                oauth::FOUNDATIONS_SCOPE => m.foundations,
-                oauth::TASTE_READ_SCOPE => m.taste,
-                oauth::DESIGN_SCOPE => m.design,
-                oauth::CRITIQUES_SCOPE => m.critiques,
-                "setup:write" => m.setup,
-                _ => false,
-            }
-        })
+        oauth::metadata(&Client::with_deadline(&account, within), &account)
+            .is_ok_and(|m| offered(&m, &scope))
     })
     .unwrap_or(false)
+}
+
+/// The scopes a sign-in asks for beyond the base ones, each only while the service
+/// lists it (`oauth::scopes`).
+const OPTIONAL: [&str; 7] = [
+    oauth::HEALTH_SCOPE,
+    "setup:write",
+    oauth::FOUNDATIONS_SCOPE,
+    oauth::DESIGN_SCOPE,
+    oauth::CRITIQUES_SCOPE,
+    oauth::TASTE_READ_SCOPE,
+    oauth::WORLDS_SCOPE,
+];
+
+fn offered(m: &oauth::Metadata, scope: &str) -> bool {
+    match scope {
+        oauth::HEALTH_SCOPE => m.health,
+        oauth::FOUNDATIONS_SCOPE => m.foundations,
+        oauth::TASTE_READ_SCOPE => m.taste,
+        oauth::DESIGN_SCOPE => m.design,
+        oauth::CRITIQUES_SCOPE => m.critiques,
+        oauth::WORLDS_SCOPE => m.worlds,
+        "setup:write" => m.setup,
+        _ => false,
+    }
 }
 
 fn denied_path(account: &Account, login: u64) -> std::path::PathBuf {
@@ -63,6 +79,25 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
     }
 }
 
+/// Whether a fresh sign-in would add a scope this one lacks and the service now offers:
+/// then `login` signs in again rather than saying it already is.
+/// Every scope `oauth::scopes` can ask for is checked, against one metadata read.
+pub(crate) fn fresh_sign_in_adds(account: &Account, state: &State) -> bool {
+    let missing: Vec<&str> = OPTIONAL
+        .into_iter()
+        .filter(|scope| !holds(account, state, scope))
+        .collect();
+    if missing.is_empty() {
+        return false;
+    }
+    let account = account.clone();
+    crate::session::read_within(DEADLINE, move || {
+        oauth::metadata(&Client::with_deadline(&account, DEADLINE), &account)
+            .is_ok_and(|m| missing.iter().any(|scope| offered(&m, scope)))
+    })
+    .unwrap_or(false)
+}
+
 pub(crate) fn status(io: &Io, scope: &str) -> bool {
     let Ok(account) = Account::from_env(&io.env) else {
         return false;
@@ -72,6 +107,16 @@ pub(crate) fn status(io: &Io, scope: &str) -> bool {
         .is_some_and(|s| {
             s.signed_in && !holds(&account, &s, scope) && offers(&account, scope, DEADLINE)
         })
+}
+
+fn notice_path(account: &Account, login: u64) -> std::path::PathBuf {
+    account.dir().join(format!("stale-grant-notice-{login}"))
+}
+
+/// A feature told the person to sign in again in its own words, so the shared
+/// notice is not owed on this login any more.
+pub(crate) fn mark_shown(account: &Account, login: u64) {
+    let _ = store::write_private(&notice_path(account, login), b"shown");
 }
 
 /// `scope` is absent for a health 403, which is itself enough evidence.
@@ -88,7 +133,7 @@ pub(crate) fn emit(
         return;
     }
     let store = Store::new(account);
-    let path = account.dir().join(format!("stale-grant-notice-{login}"));
+    let path = notice_path(account, login);
     let shown = || store::read_private(&path).ok().flatten().is_some();
     if shown() {
         return;

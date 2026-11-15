@@ -12,6 +12,8 @@ Use the PRODUCT.md path resolved by `impeccable context`. Update it instead of c
 - **Only DESIGN.md exists:** leave it untouched and create PRODUCT.md.
 - **Redesign/rebrand request:** preserve confirmed product truth unless the user changes it. Visual replacement happens later in new-work, not here.
 
+Run `.gemini/skills/impeccable/scripts/impeccable whoami` once. If it prints `Not signed in`, put one line in your first message to the person in this init: written before a structured question, or last in a plain-chat interview round: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Say it once per init. Signed in, say nothing about it.
+
 Never silently overwrite an existing file or offer DESIGN.md during init. If another request invoked init, finish PRODUCT.md and resume it. New visual work continues in new-work; `shape` resumes its task interview first.
 
 ## Step 2: Explore the project

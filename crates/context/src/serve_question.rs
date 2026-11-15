@@ -1281,11 +1281,14 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
     }
     let wants_browser = !a.has("no-open") && !a.has("wait") && !a.has("stop") && !a.has("schema") && !a.has("update");
     if wants_browser && !env_set(&env, "IMPECCABLE_QUESTION_FORCE") {
+        // `claude -p` and the Agent SDK set an sdk-* entrypoint: nobody is there to answer.
+        let unattended = env.get("CLAUDE_CODE_ENTRYPOINT").is_some_and(|v| v.starts_with("sdk"));
         let headless = env_set(&env, "CI")
+            || unattended
             || (env_set(&env, "SSH_CONNECTION") && !env_set(&env, "DISPLAY"))
             || (cfg!(target_os = "linux") && !env_set(&env, "DISPLAY") && !env_set(&env, "WAYLAND_DISPLAY"));
         if headless {
-            io.out("serve-question: no browser detected in this environment (CI/headless/remote); use the structured question tool instead. Set IMPECCABLE_QUESTION_FORCE=1 to serve anyway.\n");
+            io.out("serve-question: no browser here (CI, headless or remote). Ask with the structured question tool; if no one can answer, take the default (the assigned card, else your recommended option), say in one line what you chose and how to change it, and carry on. Set IMPECCABLE_QUESTION_FORCE=1 to serve anyway.\n");
             return 2;
         }
     }
