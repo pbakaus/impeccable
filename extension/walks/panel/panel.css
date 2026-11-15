@@ -61,12 +61,12 @@ b { font-weight: 500; }
 .btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
 .pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pair .btn { width: 100%; }
-/* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold, faint. */
+/* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold. */
 .mic { width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; color: var(--ink); }
 .mic:hover { background: var(--gray); }
 .mic .ic { width: 18px; height: 18px; }
-.mic[aria-pressed="true"] { background: color-mix(in oklch, var(--gold) 25%, transparent); color: var(--ink); }
-.mic[aria-pressed="true"]:hover { background: color-mix(in oklch, var(--gold) 38%, transparent); }
+.mic[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+.mic[aria-pressed="true"]:hover { background: var(--gold-rich); }
 .mic-page #app { max-width: 420px; margin: 0 auto; }
 .err { font-size: 13px; line-height: 18px; color: var(--vermilion); text-wrap: balance; }
 .dots { display: inline-flex; gap: 4px; }
