@@ -458,7 +458,7 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
 }
 
 // Six personas or fewer (+ the seventh tile): four to a row, larger. More: five to a row.
-for (const [people, rows] of [[6, [4, 3]], [7, [5, 3]]]) {
+for (const [people, rows] of [[3, [4]], [4, [3, 2]], [5, [3, 3]], [6, [4, 3]], [7, [5, 3]]]) {
   test(`the side panel's grid of ${people} personas and the + is rows of ${rows.join(' and ')}`, async () => {
     const personas = Array.from({ length: people }, (_, i) => ({ name: `P${i}`, role: '', slug: `p${i}` }));
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas });

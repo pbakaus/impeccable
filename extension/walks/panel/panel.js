@@ -377,14 +377,15 @@ function maker() {
 }
 
 /**
- * Faces in rows, the second centred under the first, + last where there is one. Six personas or fewer: four to a row,
- * larger (`roomy`). More: at most two rows of five; past ten tiles, still two rows, as one block that scrolls sideways (`wide`).
+ * Faces in rows, the second centred under the first, + last where there is one. Six personas or fewer, larger (`roomy`):
+ * one row up to four tiles, else two even rows (three and two, three and three, four and three). More: at most two rows of five; past ten tiles, still two rows, as one block that scrolls sideways (`wide`).
  */
 const roomy = (people) => people <= 6;
 const sized = (people) => (roomy(people) ? 48 : 44);
 function grid(tiles, props, people) {
   const row = roomy(people) ? 4 : 5;
-  const first = tiles.length <= row * 2 ? row : Math.ceil(tiles.length / 2);
+  // Six or fewer: one row while the tiles fit in four, else two rows as even as they go, the longer on top (5 tiles: 3 and 2).
+  const first = roomy(people) ? (tiles.length <= row ? row : Math.ceil(tiles.length / 2)) : tiles.length <= row * 2 ? row : Math.ceil(tiles.length / 2);
   const rows = [tiles.slice(0, first), tiles.slice(first)].filter((each) => each.length);
   return el('div', { ...props, class: `cast scrolls${roomy(people) ? ' roomy' : tiles.length > row * 2 ? ' wide' : ''}` }, rows.map((each) => el('div', { class: 'cast-row' }, each)));
 }
