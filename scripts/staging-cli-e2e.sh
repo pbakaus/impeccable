@@ -80,6 +80,9 @@ git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.na
 # machine's setup, and Home's "Agent connected" line has a machine from this run to show.
 (cd "$R2" && exec "$BIN" install --yes --providers=claude --scope=project) < /dev/null > "$H/install.out" 2>&1; rc=$?
 check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.claude/skills/impeccable/SKILL.md" ]'
+# init's sign-in line reads context's account line, so the agent spends no call on whoami.
+acct() { (cd "$R2" && IMPECCABLE_NO_UPDATE_CHECK=1 exec "$BIN" context) < /dev/null 2>/dev/null | grep '^ACCOUNT:'; }
+check "context: says a fresh install is not signed in" '[ "$(acct)" = "ACCOUNT: not signed in" ]'
 [ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
@@ -96,6 +99,7 @@ for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2;
 if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "still running 620 s after the approval"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
+check "context: says the install is signed in" '[ "$(acct)" = "ACCOUNT: signed in" ]'
 if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
   info "setup: the Home link check runs against staging's issuer only"
 elif [ $health = 1 ]; then
