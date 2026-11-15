@@ -112,8 +112,15 @@ fn skill_versions(io: &Io) -> Value {
     let cwd = io.cwd.to_string_lossy().to_string();
     let home = impeccable_context::util::homedir(&io.env);
     let project = project_root(&io.cwd);
-    for base in [home.clone(), project].into_iter().filter(|b| !b.is_empty()) {
-        for (h, dir) in [("claude", ".claude"), ("codex", ".agents"), ("codex", ".codex")] {
+    // Codex reads a repository's skills from .agents only; a stray project
+    // .codex copy is not an installation.
+    let user_dirs: &[(&str, &str)] = &[("claude", ".claude"), ("codex", ".agents"), ("codex", ".codex")];
+    let project_dirs: &[(&str, &str)] = &[("claude", ".claude"), ("codex", ".agents")];
+    for (base, dirs) in [(home, user_dirs), (project, project_dirs)] {
+        if base.is_empty() {
+            continue;
+        }
+        for &(h, dir) in dirs {
             if skills.get(h).is_some() {
                 continue;
             }
@@ -286,9 +293,18 @@ mod skill_version_tests {
         let skill = repo.join(".claude/skills/impeccable");
         std::fs::create_dir_all(&skill).unwrap();
         std::fs::write(skill.join("SKILL.md"), "---\nname: impeccable\nversion: 4.9.1\n---\n").unwrap();
-        let env: HashMap<String, String> = [("HOME".to_string(), home.to_string_lossy().to_string())].into();
+        let env: HashMap<String, String> = [
+            ("HOME".to_string(), home.to_string_lossy().to_string()),
+            ("USERPROFILE".to_string(), home.to_string_lossy().to_string()),
+        ]
+        .into();
         let (io, _) = Io::captured("", sub, env);
-        assert_eq!(skill_versions(&io)["claude"], "4.9.1");
+        let codex_copy = repo.join(".codex/skills/impeccable");
+        std::fs::create_dir_all(&codex_copy).unwrap();
+        std::fs::write(codex_copy.join("SKILL.md"), "---\nname: impeccable\nversion: 4.8.0\n---\n").unwrap();
+        let skills = skill_versions(&io);
+        assert_eq!(skills["claude"], "4.9.1");
+        assert!(skills.get("codex").is_none(), "a project .codex copy is not an install: {skills}");
         let _ = std::fs::remove_dir_all(&base);
     }
 }
