@@ -54,7 +54,7 @@ fn a_page_that_opens_on_its_thesis_passes() {
         format!(
             "<!doctype html><style>{STYLE} .thesis {{ height: 300px; background: #c33; }}
              .buy {{ transform: rotate(180deg); backface-visibility: hidden; }}</style>
-             <h1>Seeds</h1><div class=\"thesis\"></div><button class=\"buy\">Add to basket</button>
+             <h1>Seeds</h1><div class=\"thesis\"></div><button class=\"buy\" onclick=\"this.textContent = 'Added'\">Add to basket</button>
              <p>One</p><p>Two</p><p>Three</p>"
         ),
     )
@@ -62,7 +62,7 @@ fn a_page_that_opens_on_its_thesis_passes() {
     let out = run(&dir, &["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "{text}");
-    assert_eq!(text.matches("ok  ").count(), 3, "{text}");
+    assert_eq!(text.matches("ok  ").count(), 5, "{text}");
 }
 
 #[test]
@@ -112,7 +112,7 @@ fn a_drawing_in_an_app_shell_below_the_fold_is_content() {
             "<!doctype html><style>{STYLE} html, body {{ height: 100%; overflow: hidden; }}
              main {{ height: 100%; overflow-y: auto; }} .thesis {{ height: 300px; background: #c33; }}
              svg {{ display: block; width: 390px; height: 1600px; }}</style>
-             <main><h1>Seeds</h1><div class=\"thesis\"></div><button class=\"buy\">Add</button>
+             <main><h1>Seeds</h1><div class=\"thesis\"></div><button class=\"buy\" onclick=\"this.textContent = 'Added'\">Add</button>
              <svg viewBox=\"0 0 10 10\" preserveAspectRatio=\"none\"><circle cx=\"5\" cy=\"5\" r=\"4.5\" fill=\"none\" stroke=\"#000\" stroke-width=\".05\"/></svg>
              <p>End</p></main>"
         ),
@@ -144,4 +144,52 @@ fn a_thesis_a_full_height_wrapper_hides_fails() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("FAIL  thesis .thesis: 25% shows"), "{text}");
+}
+
+fn page_with(dir: &Path, body: &str) {
+    std::fs::write(dir.join("index.html"), format!("<!doctype html><style>{STYLE}</style><h1>Seeds</h1><div class=\"thesis\">{body}</div>")).unwrap();
+}
+
+#[test]
+fn an_unmarked_price_and_a_dead_action_fail() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("figures");
+    let args = ["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"];
+    // A price with no sample mark, and a link that goes nowhere.
+    page_with(&dir, "<p>Poppy seeds, $4.50 a packet</p><a class=\"buy\" href=\"#\">Buy</a>");
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("FAIL  figures: 1 in the first viewport with no sample mark beside them ($4.50)"), "{text}");
+    assert!(text.contains("FAIL  primary action .buy: a link that goes nowhere"), "{text}");
+    // A button nothing listens to.
+    page_with(&dir, "<p>Poppy seeds, $4.50 a packet <small>sample price</small></p><button class=\"buy\">Buy</button>");
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("ok    figures"), "{text}");
+    assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
+    // Figures the user supplied, and a link to a real page.
+    page_with(&dir, "<p>Poppy seeds, $4.50 a packet</p><a class=\"buy\" href=\"https://example.com/shop\">Buy</a>");
+    let mut supplied = args.to_vec();
+    supplied.push("--figures-supplied");
+    let out = run(&dir, &supplied);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    assert!(!text.contains("figures"), "{text}");
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
+}
+
+#[test]
+fn capture_writes_the_review_files() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("capture");
+    page_with(&dir, "<button class=\"buy\" onclick=\"this.textContent = 'Added'\">Buy</button>");
+    let out = run(&dir, &["index.html", "--thesis", ".thesis", "--action", ".buy", "--capture", ".impeccable/review"]);
+    assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
+    for name in ["mobile.png", "desktop.png"] {
+        let bytes = std::fs::read(dir.join(".impeccable/review").join(name)).unwrap();
+        assert!(bytes.starts_with(b"\x89PNG"), "{name}");
+    }
 }

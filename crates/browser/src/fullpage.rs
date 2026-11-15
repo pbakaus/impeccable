@@ -875,6 +875,8 @@ const EMPTY_ROW_STEP: i32 = 28;
 /// boxes (a card on a page, a label in a frame), so an empty stretch inside a
 /// box is found too. Rows inside a `media` span (a drawing, an image's box,
 /// as `[top, bottom)` rows) always hold content, however sparse they paint.
+/// A run that reaches the bottom is the page's blank tail, not a gap between
+/// content, and does not count.
 pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)]) -> (u32, u32) {
     let (w, h) = img.dimensions();
     let raw = img.as_raw();
@@ -882,8 +884,8 @@ pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)]) -> (u32, u32) {
     let luma = |p: &[u8]| (p[0] as i32 * 299 + p[1] as i32 * 587 + p[2] as i32 * 114) / 1000;
     let mut best = (0u32, 0u32);
     let mut run_start: Option<u32> = None;
-    for y in 0..=h {
-        let empty = y < h && !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
+    for y in 0..h {
+        let empty = !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
             let row = &raw[y as usize * row_len..(y as usize + 1) * row_len];
             let mut edges = 0usize;
             let mut prev = luma(&row[0..3]);
