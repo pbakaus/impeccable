@@ -38,13 +38,36 @@ const MEASURE_JS: &str = r#"((selectors) => {
   const vw = innerWidth, vh = innerHeight;
   const clip = (r, c) => ({ l: Math.max(r.l, c.l), t: Math.max(r.t, c.t), r: Math.min(r.r, c.r), b: Math.min(r.b, c.b) });
   const area = (r) => Math.max(0, r.r - r.l) * Math.max(0, r.b - r.t);
+  // Hidden by visibility, opacity or display shows nothing, whatever its box.
+  // A face turned away under `backface-visibility: hidden` (the back of a
+  // card that flips) is not on screen either.
+  const facesAway = (el) => {
+    const chain = [];
+    for (let n = el; n instanceof Element; n = n.parentElement) chain.unshift(n);
+    let sign = 1;
+    for (const n of chain) {
+      const cs = getComputedStyle(n);
+      if (cs.transform && cs.transform !== 'none') sign *= Math.sign(new DOMMatrix(cs.transform).m11) || 1;
+      if (sign < 0 && cs.backfaceVisibility === 'hidden') return true;
+    }
+    return false;
+  };
+  const seen = (el) => el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, opacityProperty: true, visibilityProperty: true }) && !facesAway(el);
   const out = {};
+  // Drawn and embedded media, in document rows: a sparse drawing or a lazy
+  // image's reserved box is content, not an empty stretch.
+  out.media = [...document.querySelectorAll('img, svg, canvas, video, picture, iframe, object, embed')]
+    .filter((el) => !(el instanceof SVGElement && el.ownerSVGElement) && seen(el))
+    .map((el) => el.getBoundingClientRect())
+    .filter((r) => r.width > 0 && r.height > 0)
+    .map((r) => [Math.max(0, Math.floor(r.top + scrollY)), Math.ceil(r.bottom + scrollY)]);
   for (const [key, sel] of Object.entries(selectors)) {
     if (!sel) continue;
     let els = [];
     try { els = [...document.querySelectorAll(sel)]; } catch (e) { out[key] = { error: 'not a valid selector' }; continue; }
     let total = 0, shown = 0, inside = els.length > 0;
     for (const el of els) {
+      if (!seen(el)) continue;
       const b = el.getBoundingClientRect();
       let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
       const whole = area(box);
@@ -96,7 +119,12 @@ fn js_string(s: &str) -> String {
 fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, action: Option<&str>) -> Result<(Vec<String>, bool), String> {
     page.set_viewport(vp).map_err(|e| e.message)?;
     page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
-    let _ = page.evaluate("(async () => { await document.fonts.ready; await new Promise(r => setTimeout(r, 400)); })()");
+    // Lazy images below the fold would capture as blank boxes: load them all.
+    let _ = page.evaluate(
+        "(async () => { for (const i of document.querySelectorAll('img[loading=lazy]')) i.loading = 'eager'; \
+         await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; setTimeout(r, 5000); }))); \
+         await document.fonts.ready; await new Promise((r) => setTimeout(r, 400)); })()",
+    );
     let label = format!("{}x{}", vp.width, vp.height);
     let mut lines = Vec::new();
     let mut failed = false;
@@ -139,7 +167,15 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, act
     }
     let shot = fullpage::capture_full_page(page, MAX_CAPTURE_HEIGHT, 90).map_err(|e| e.message)?;
     let img = fullpage::decode_jpeg(&shot.jpeg_base64).ok_or("the full-page capture did not decode")?;
-    let (start, len) = fullpage::longest_empty_band(&img);
+    let media: Vec<(u32, u32)> = measured["media"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| Some((r[0].as_f64()? as u32, r[1].as_f64()? as u32)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let (start, len) = fullpage::longest_empty_band(&img, &media);
     let limit = (vp.height as f64 * BLANK_MAX_SHARE).round() as u32;
     let ok = len <= limit;
     failed |= !ok;
@@ -180,7 +216,11 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
             }
         }
     }
-    let Some(url) = url else {
+    let (Some(url), Some(thesis), Some(action)) = (
+        url,
+        thesis.filter(|s| !s.trim().is_empty()),
+        action.filter(|s| !s.trim().is_empty()),
+    ) else {
         io.err(USAGE);
         return 2;
     };
@@ -211,7 +251,7 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
     for vp in viewports {
         let result = match browser.new_page() {
             Ok(mut page) => {
-                let r = check(&mut page, &url, vp, thesis.as_deref(), action.as_deref());
+                let r = check(&mut page, &url, vp, Some(&thesis), Some(&action));
                 page.close();
                 r
             }

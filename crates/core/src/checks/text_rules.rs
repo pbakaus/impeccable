@@ -232,7 +232,7 @@ pub fn kicker_caps(font_variant: &str, font_variant_caps: &str, font_family: &st
     let face = first.trim().trim_matches(|c| c == '"' || c == '\'');
     // "SC" also names Simplified Chinese cuts (Noto Sans SC, PingFang SC),
     // which set no small caps.
-    re!(CHINESE_FACE_RE, r"(?i)^(noto|pingfang|source han|hiragino|microsoft|harmonyos|misans|lxgw|zcool|ma shan|long cang|zhi mang|liu jian)");
+    re!(CHINESE_FACE_RE, r"(?i)^(noto|pingfang|source han|hiragino|microsoft|harmonyos|misans|lxgw|zcool|ma shan|long cang|zhi mang|liu jian|songti|heiti|kaiti|yuanti|baoli|libian|lantinghei|lantingxian|weibei|xingkai|hannotate|hanzipen|wawati|yuppy|st(heiti|song|kaiti|fangsong|xihei|zhongsong|hupo|caiyun|xingkai|liti)|lisong|fangsong|apple lisung|wenquanyi|droid sans fallback)");
     let face_caps = if SMALL_CAPS_FACE_RE.is_match(face) && !CHINESE_FACE_RE.is_match(face) {
         " small-caps"
     } else {

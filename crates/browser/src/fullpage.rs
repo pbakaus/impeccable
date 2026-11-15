@@ -873,8 +873,9 @@ const EMPTY_ROW_STEP: i32 = 28;
 /// The start and length, in rows, of the longest run of rows that hold no
 /// content: unlike [`longest_uniform_band`], a row may cross several flat
 /// boxes (a card on a page, a label in a frame), so an empty stretch inside a
-/// box is found too.
-pub fn longest_empty_band(img: &RgbImage) -> (u32, u32) {
+/// box is found too. Rows inside a `media` span (a drawing, an image's box,
+/// as `[top, bottom)` rows) always hold content, however sparse they paint.
+pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)]) -> (u32, u32) {
     let (w, h) = img.dimensions();
     let raw = img.as_raw();
     let row_len = w as usize * 3;
@@ -882,7 +883,7 @@ pub fn longest_empty_band(img: &RgbImage) -> (u32, u32) {
     let mut best = (0u32, 0u32);
     let mut run_start: Option<u32> = None;
     for y in 0..=h {
-        let empty = y < h && {
+        let empty = y < h && !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
             let row = &raw[y as usize * row_len..(y as usize + 1) * row_len];
             let mut edges = 0usize;
             let mut prev = luma(&row[0..3]);
@@ -1390,7 +1391,9 @@ mod tests {
                 img.put_pixel(x, y, image::Rgb([40, 20, 20]));
             }
         }
-        assert_eq!(longest_empty_band(&img), (200, 800));
+        assert_eq!(longest_empty_band(&img, &[]), (200, 800));
+        // An outlined drawing there paints a few edges a row, and is content.
+        assert_eq!(longest_empty_band(&img, &[(250, 950)]), (200, 50));
     }
 
     #[test]
