@@ -2832,6 +2832,7 @@
       cursor: 'pointer', transition: 'filter 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap',
     });
+    touchTarget(accept);
     accept.textContent = '\u2713 Accept';
     accept.addEventListener('mouseenter', () => accept.style.filter = 'brightness(1.08)');
     accept.addEventListener('mouseleave', () => accept.style.filter = 'none');
