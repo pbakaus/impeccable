@@ -365,6 +365,18 @@ describe('account worker', () => {
   });
 
   // Before any walk (a walk under way keeps the icon on its panel too). Chrome offers no side panel to an account without Pro.
+  it('reads History for the side panel: the server’s rows, and never one whose link is off our app', async () => {
+    await loaded;
+    const row = (id, url) => ({ id, task: 'Buy a mug.', persona: { name: 'Dana' }, at: 1, outcome: 'issues', issues: 2, url });
+    globalThis.fetch = async (url) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-history', refresh_token: 'refresh-walk', expires_in: 900 });
+      if (url === `${ISSUER}/extension/v1/journeys`) return json(200, { ok: true, journeys: [row('o7', 'https://app.impeccable.style/app/acme/outings/o7'), row('o8', 'https://evil.example.com/app/acme/outings/o8')] });
+      return json(404, {});
+    };
+    const answer = await ask({ account: 'journeys' }, fromPanel);
+    assert.deepEqual([answer.ok, answer.journeys.map((j) => [j.id, j.outcome, j.issues, j.url])], [true, [['o7', 'issues', 2, 'https://app.impeccable.style/app/acme/outings/o7']]]);
+  });
   it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
     await loaded;
     startServer(() => json(404, {}));
