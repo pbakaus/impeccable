@@ -653,7 +653,8 @@ async function start() {
     if (pre.personas?.length) choose(pre.pick);
     walker = picked();
     walkUrl = 'https://impeccable.reviews/app/tidy/outings/o-7f3a';
-    hereUrl = 'https://tidy.example/';
+    // A stand-in with the defaults is on an address none of the person's apps is at.
+    hereUrl = pre.defaults ? 'https://shop.example/' : 'https://tidy.example/';
     act = (action) => { view = reduce(view, { type: action }); render(); };
   } else {
     act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
