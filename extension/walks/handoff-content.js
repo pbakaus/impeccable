@@ -11,8 +11,9 @@
     const text = block.textContent ?? '';
     if (text === '' || text === passed) return;
     passed = text;
-    // The page learns whether the walk was taken (`taken`) or why not, on the block itself.
-    chrome.runtime.sendMessage({ handoff: text }).then((answer) => {
+    // The page learns whether the walk was taken (`taken`) or why not, on the block itself. How the persona sees the
+    // page goes beside the block (`data-sees`): an older build ignores it there, and refuses it inside.
+    chrome.runtime.sendMessage({ handoff: text, ...(block.dataset.sees ? { sees: block.dataset.sees } : {}) }).then((answer) => {
       block.dataset.impeccable = answer?.ok ? 'taken' : `refused:${answer?.why ?? 'unknown'}`;
       if (answer?.ok) watch();
     }, () => undefined);

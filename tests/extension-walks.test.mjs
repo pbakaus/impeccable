@@ -396,6 +396,35 @@ describe('walk worker', () => {
     assert.equal(titles.filter((title) => title === COPY.failed['switched-off']).length, 1);
   });
 
+  // A journey from the command or an agent comes through our page, with no panel to pick: the card's sight, beside the
+  // block (an older build refuses it inside), draws its pictures. One pixel each: red, then white.
+  it('draws the pictures of a journey our page hands over as the persona card’s sight sees them', async () => {
+    await loaded;
+    const { seenAs } = await import('../extension/walks/sight.js');
+    const taken = btoa(String.fromCharCode(255, 0, 0, 255, 255, 255, 255, 255));
+    const kept = { bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+    globalThis.createImageBitmap = async (blob) => ({ width: 2, height: 1, px: new Uint8ClampedArray(await blob.arrayBuffer()), close() {} });
+    globalThis.OffscreenCanvas = class {
+      getContext() { const canvas = this; return { drawImage(bitmap) { canvas.px = bitmap.px; }, getImageData: () => ({ data: canvas.px }), putImageData({ data }) { canvas.px = data; } }; }
+      async convertToBlob() { return new Blob([this.px]); }
+    };
+    const walk = async (sees) => {
+      const before = sockets.length;
+      const answer = await new Promise((resolve) => { for (const listener of listeners.message) listener({ handoff: JSON.stringify(block()), ...(sees ? { sees } : {}) }, fromPage, resolve); });
+      for (let turn = 0; turn < 50 && sockets.length === before; turn++) await new Promise((resolve) => setImmediate(resolve));
+      const seen = await seenAs(taken, 'png');
+      sockets.at(-1).onclose({ reason: 'cancelled' });
+      return { ok: answer.ok, changed: seen !== taken };
+    };
+    try {
+      assert.deepEqual(await walk('older-eyes'), { ok: true, changed: true });
+      assert.deepEqual(await walk('x-ray'), { ok: true, changed: false }, 'a sight no filter draws: the picture as taken');
+      assert.deepEqual(await walk(null), { ok: true, changed: false });
+    } finally {
+      Object.assign(globalThis, { createImageBitmap: kept.bitmap, OffscreenCanvas: kept.canvas });
+    }
+  });
+
   // A reload mid-hand-off loses the walk: added, the extension reloads only the start pages that cannot have handed one over.
   it('reloads, once added, only the start pages its content script is not on and no hand-off came from', async () => {
     await loaded;

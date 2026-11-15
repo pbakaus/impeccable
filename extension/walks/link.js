@@ -22,7 +22,7 @@ import { rearm } from './control.js';
 import { DEVICES, adoptIn, grant, openIn, watchedFromTerminal } from './driver.js';
 import { SIGHTS } from './sight.js';
 import { offerPanel } from './toolbar.js';
-import { isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
+import { CARD_SIGHTS, isOutingPage, readHandoff, readStartedHandoff } from './handoff.js';
 import { current, dispatch, ready } from './store.js';
 import { ON_TAB, isLive } from './view.js';
 
@@ -136,12 +136,15 @@ export function unlinked({ opened = false, reason = '' } = {}) {
   tries += 1;
 }
 
-async function take(text, sender) {
+async function take(text, sender, sees) {
   await ready;
   // Chrome's own account of who sent it: the top frame of a tab on our outing page, through this extension's script.
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !sender.tab || !isOutingPage(sender.url ?? '')) return { ok: false, why: 'origin' };
   const read = readHandoff(text, sender.url);
   if (!read.ok) return read;
+  // How the persona's card says it sees the page: beside the block on the page (its `data-sees`), never in it, as
+  // builds before the sight filter refuse a block that carries it. No panel picks on this path, so the card's holds.
+  if (read.handoff.persona.sees === undefined && CARD_SIGHTS.includes(sees)) read.handoff.persona = { ...read.handoff.persona, sees };
   const before = await kept();
   const from = { windowId: sender.tab.windowId, tabId: sender.tab.id, terminal: new URL(sender.url).searchParams.get('from') === 'terminal' };
   if (isLive(current())) {
@@ -206,7 +209,7 @@ export const opensPanel = (test) => { panelPages.push(test); };
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.handoff === 'string') {
-    void take(message.handoff, sender).then(respond, () => respond({ ok: false, why: 'malformed' }));
+    void take(message.handoff, sender, message.sees).then(respond, () => respond({ ok: false, why: 'malformed' }));
     return true;
   }
   // A click on one of those pages opens the panel: called here and now, while Chrome still counts the click.

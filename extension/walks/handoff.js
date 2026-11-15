@@ -32,6 +32,8 @@ const MAX_ALLOW = 8;
 const MAX_DONE_WHEN = 6;
 /** The screen sizes a walk runs at. A contract with the web app: change it there and here together. */
 const DEVICES = ['desktop', 'mobile', 'tablet'];
+/** How a persona's card says it sees the page (REN-2039), for the sight filter (sight.js). */
+export const CARD_SIGHTS = ['older-eyes', 'colour-blind'];
 /**
  * The most each line may hold. `errand`, `goal` and `check` are the web app's own limits, copied here because this
  * folder loads with no build step. A contract with the web app: change it there and here together
@@ -142,7 +144,7 @@ function readBlock(text, socketOk, admitted) {
   if (persona.visit !== undefined && persona.visit !== 'new' && persona.visit !== 'returning') return no('persona');
   if (persona.device !== undefined && !DEVICES.includes(persona.device)) return no('persona');
   // How the persona sees the page (REN-2039): the sight filter's default for this journey (sight.js).
-  if (persona.sees !== undefined && persona.sees !== 'older-eyes' && persona.sees !== 'colour-blind') return no('persona');
+  if (persona.sees !== undefined && !CARD_SIGHTS.includes(persona.sees)) return no('persona');
   if (!only(errand, ['name', 'goal', 'doneWhen']) || !fits(errand.name, MAX.errand) || !line(errand.goal, MAX.goal)) return no('errand');
   if (!Array.isArray(errand.doneWhen) || errand.doneWhen.length > MAX_DONE_WHEN || !errand.doneWhen.every((check) => line(check, MAX.check))) return no('errand');
   if (!Array.isArray(block.allow) || block.allow.length > MAX_ALLOW || !block.allow.every((origin) => typeof origin === 'string' && webOrigin(origin) === origin)) return no('allow');
