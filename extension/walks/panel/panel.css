@@ -110,8 +110,19 @@ b { font-weight: 500; }
 .widths button:hover { color: var(--ink); }
 .widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
+/* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
+.tabs { display: flex; justify-content: space-between; padding: 0 18px; }
+.tabs .widths { gap: 2px; padding: 4px 4px 2px; border-radius: 12px 12px 0 0; background: var(--paper-deep); }
+.box:has(.field:focus-within) .tabs .widths { background: var(--paper-raised); }
+.tabs button { position: relative; }
+/* A label above each icon, on hover and on keyboard focus. */
+.tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 2; padding: 4px 8px; border-radius: 6px;
+  background: var(--lacquer); color: var(--inst-text); font-size: 12px; font-weight: 500; line-height: 1.3; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .widths:not(.sights) button:first-child::after { left: 0; transform: none; }
+.tabs .sights button:last-child::after { left: auto; right: 0; transform: none; }
+.tabs button:hover::after, .tabs button:focus-visible::after { opacity: 1; }
 .field .row + .row { margin-top: 10px; }
-.choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
 .task.at { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
 .task.at .ic { width: 14px; height: 14px; }
 .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }

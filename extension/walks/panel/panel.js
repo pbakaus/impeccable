@@ -303,14 +303,14 @@ function home() {
     cast(),
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
+      // Screen on the left and Sees on the right, as tabs on the box's top edge.
+      el('div', { class: 'tabs' }, widths(), sights()),
       el('div', { class: 'field' }, box,
-        voice ? listening(send) : [
-          el('div', { class: 'row' }, widths(), sights()),
-          el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
-          el('div', { class: 'row' },
-            Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'false', title: COPY.voice.talk, 'aria-label': COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
-            el('span', { class: 'grow' }),
-            button('send', COPY.home.send, 'gold', send))]),
+        voice ? listening(send) : el('div', { class: 'row' },
+          Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'false', title: COPY.voice.talk, 'aria-label': COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
+          el('span', { class: 'grow' }),
+          button('send', COPY.home.send, 'gold', send))),
+      voice ? null : el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
     ),
   ];
 }
@@ -364,15 +364,15 @@ function stopMeter() {
 /** Desktop, Tablet or Phone: the width the journey runs at, kept for next time. */
 function widths() {
   return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.home.width }, WIDTHS.map((width) => el('button', {
-    type: 'button', 'data-act': `size-${width}`, 'aria-pressed': pre.width === width ? 'true' : 'false', title: COPY.home.widths[width], 'aria-label': COPY.home.widths[width],
+    type: 'button', 'data-act': `size-${width}`, 'aria-pressed': pre.width === width ? 'true' : 'false', 'data-tip': COPY.home.widths[width], 'aria-label': COPY.home.widths[width],
     onclick: () => { pre.width = width; void chrome.storage.local.set({ walkWidth: width }).catch(() => undefined); render(); },
   }, icon(width))));
 }
 
 /** Normal, Older eyes or Colour-blind: how the persona sees the page on this journey alone. */
 function sights() {
-  return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
-    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', title: COPY.home.sights[sees], 'aria-label': COPY.home.sights[sees],
+  return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sights[sees], 'aria-label': COPY.home.sights[sees],
     onclick: () => { pre.sees = sees; render(); },
   }, icon(look))));
 }
