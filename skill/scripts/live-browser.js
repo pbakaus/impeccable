@@ -10755,13 +10755,11 @@ void main() {
     });
   }
 
-  function syncGlobalBarExpandedLabels(expanded = globalBarEl?.matches(':hover')) {
-    const expandInactive = !!(expanded && !pageChatExpanded);
-    applyGlobalBarLabelState(expandInactive, pageChatExpanded);
-
-    if (expandInactive && globalBarEl && globalBarEl.scrollWidth > window.innerWidth - 16) {
-      applyGlobalBarLabelState(false);
-    }
+  // Only active modes show their label. Hover never widens the bar: it sits
+  // centred, so growing labels slid the icons out from under the pointer and a
+  // click meant for Pick landed on Insert. The title tooltip names the rest.
+  function syncGlobalBarExpandedLabels() {
+    applyGlobalBarLabelState(false, pageChatExpanded);
   }
 
   function pageChatCollapsedWidthPx() {
@@ -11167,7 +11165,7 @@ void main() {
     if (!pageChatEl || !pageChatInput) return false;
     pageChatExpanded = true;
     pageChatEl.dataset.expanded = 'true';
-    syncGlobalBarExpandedLabels(false);
+    syncGlobalBarExpandedLabels();
     pageChatEl.style.width = pageChatExpandedWidth();
     pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
     pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
@@ -11602,7 +11600,7 @@ void main() {
     pageChatEl.dataset.expanded = 'false';
     pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
     pageChatEl.style.cursor = 'pointer';
-    syncGlobalBarExpandedLabels(globalBarEl?.matches(':hover'));
+    syncGlobalBarExpandedLabels();
     if (blur) {
       pageChatInput.blur();
       pageChatInput.style.pointerEvents = 'none';
@@ -12048,7 +12046,7 @@ void main() {
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
 
-    // Button factory: icon-only at rest, label slides in on hover/active.
+    // Button factory: icon-only at rest, label slides in while active.
     function makeIconBtn({ id, svg, label, ariaLabel, labelFont, onClick }) {
       const b = el('button', {
         position: 'relative',
@@ -12078,10 +12076,8 @@ void main() {
         if (!labelEl || (!force && b.dataset.active === 'true')) return;
         labelEl.style.maxWidth = '0'; labelEl.style.opacity = '0'; labelEl.style.marginLeft = '0'; labelEl.style.transform = 'translateX(-4px)';
       };
-      // Per-button hover only changes color (no layout). The label expand/
-      // collapse is driven by the bar-level mouseenter/mouseleave so moving
-      // the mouse between adjacent buttons doesn't trigger per-button width
-      // thrashing - the whole bar grows once and shrinks once.
+      // Hover only changes color, never layout: the label shows while the
+      // mode is active (see syncGlobalBarExpandedLabels).
       b.addEventListener('mouseenter', () => { if (b.dataset.active !== 'true') b.style.color = P.text; });
       b.addEventListener('mouseleave', () => { if (b.dataset.active !== 'true') b.style.color = P.textDim; });
       b.addEventListener('click', onClick);
@@ -12356,19 +12352,6 @@ void main() {
     exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
     inner.appendChild(exitBtn);
 
-    // Bar-level hover: expand mode labels unless Steer is using the space.
-    // Buttons with dataset.active="true" ignore collapse (their label stays).
-    globalBarEl.addEventListener('mouseenter', () => {
-      syncGlobalBarExpandedLabels(true);
-      syncPageChatExpandedWidth();
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
-    globalBarEl.addEventListener('mouseleave', () => {
-      syncGlobalBarExpandedLabels(false);
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
     globalBarEl.addEventListener('pointerdown', () => {
       try { window.focus(); } catch { /* in-app preview may block */ }
     }, true);
@@ -12433,7 +12416,7 @@ void main() {
     // If the bar is currently under the cursor, keep all labels expanded -
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
-    syncGlobalBarExpandedLabels(globalBarEl && globalBarEl.matches(':hover'));
+    syncGlobalBarExpandedLabels();
 
     if (detectBadge) {
       detectBadge.style.display = (detectActive && detectCount > 0) ? 'inline' : 'none';
