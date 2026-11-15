@@ -1259,7 +1259,7 @@ describe('walk glow', () => {
     ['asking on it', view('walking', { ask: { kind: 'pay', what: 'Pay $12' } }), true, true],
     ['paused', view('paused'), true, false],
     ['taken over', view('takeover'), true, false],
-    ['walking a tab of its own', view('walking'), false, false],
+    ['walking a tab of its own', view('walking'), false, true],
   ]) {
     it(`${glow ? 'glows' : 'does not glow'} ${label}`, async () => { assert.equal((await badge()).badgeState(shown, adopted).glow, glow); });
   }

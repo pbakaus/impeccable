@@ -9,7 +9,7 @@
 // the walk's page (handoff-content.js) or, while a walk is under way, from the toolbar icon (toolbar.js). So a
 // question the walk asks (delete, pay, send, another site) is asked here too, with Yes and No.
 //
-// On a walk of the person's own tab it also draws the glow: a soft moving border inside the page, in the same world,
+// While it walks or asks it also draws the glow: a soft gold blur along the page's edges, in the same world,
 // that takes no clicks. It is out of every picture the way the badge is (the veil), shows only while the walk is
 // walking, and goes with the badge at the end. Should the debugger leave without a word (nothing can reach the page
 // then), it goes by itself when its heartbeat stops: within GLOW_LIFE_MS.
@@ -43,12 +43,14 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
     button:focus-visible { outline: 2px solid oklch(70% 0.12 188); outline-offset: 2px; }
     button[hidden] { display: none; }
   `;
+  // A soft blur along the screen's edges in the brand's gold, breathing by opacity alone (cheap on the GPU, unlike an
+  // animated box-shadow), and still where motion is reduced.
   const GLOW = `
     :host { all: initial; position: fixed; inset: 0; z-index: 2147483646; pointer-events: none; }
-    .glow { position: absolute; inset: 0; border-radius: 2px; pointer-events: none;
-      box-shadow: inset 0 0 0 2px oklch(68% 0.17 300 / 0.85), inset 0 0 18px 4px oklch(68% 0.17 300 / 0.45);
-      animation: breathe 2.4s ease-in-out infinite; }
-    @keyframes breathe { 50% { box-shadow: inset 0 0 0 2px oklch(68% 0.17 300 / 0.55), inset 0 0 28px 8px oklch(68% 0.17 300 / 0.25); } }
+    .glow { position: absolute; inset: 0; pointer-events: none; will-change: opacity;
+      box-shadow: inset 0 0 28px 6px oklch(84% 0.19 80.46 / 0.55), inset 0 0 90px 24px oklch(84% 0.19 80.46 / 0.22);
+      animation: breathe 2.8s ease-in-out infinite; }
+    @keyframes breathe { 50% { opacity: 0.55; } }
     @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
   `;
   const glowHost = document.createElement('impeccable-walk-glow');
@@ -137,15 +139,15 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
 }
 
 /** What the badge says for a view. */
-export function badgeState(view, adopted = false) {
+export function badgeState(view) {
   const name = view.who?.name ?? '';
   const step = view.steps.at(-1)?.n ?? 0;
   if (view.ask) {
     const what = view.ask.kind === 'go' ? COPY.ask.go(name, view.ask.what) : view.ask.what;
-    return { state: 'asking', step, title: COPY.ask.title, sub: what, resume: COPY.ask.yes, go: 'yes', no: COPY.ask.no, stop: COPY.badge.stop, glow: adopted };
+    return { state: 'asking', step, title: COPY.ask.title, sub: what, resume: COPY.ask.yes, go: 'yes', no: COPY.ask.no, stop: COPY.badge.stop, glow: true };
   }
   const title = view.state === 'paused' ? COPY.badge.paused(name) : view.state === 'takeover' ? COPY.badge.yours : COPY.badge.here(name);
-  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop, glow: adopted && view.state === 'walking' };
+  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop, glow: view.state === 'walking' };
 }
 
 let badge = null;
@@ -169,11 +171,11 @@ async function push() {
   if (!badge || !ON_TAB.includes(current().state)) return;
   const tab = await chrome.tabs.get(badge.tabId).catch(() => null);
   // Said with every state, so a document that begins mid-film starts out hidden too.
-  await call(`set(${JSON.stringify({ ...badgeState(current(), badge.adopted), hidden: hidden(), ...(tab?.width ? { fit: { w: tab.width, h: tab.height } } : {}) })})`);
+  await call(`set(${JSON.stringify({ ...badgeState(current()), hidden: hidden(), ...(tab?.width ? { fit: { w: tab.width, h: tab.height } } : {}) })})`);
 }
 
 hooks.opened.push(async (tab) => {
-  badge = { tabId: tab.tabId, adopted: tab.adopted === true, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
+  badge = { tabId: tab.tabId, context: null, beat: setInterval(() => { void call('beat()'); }, BEAT_MS) };
   await send(tab.tabId, 'Runtime.enable');
   await send(tab.tabId, 'Runtime.addBinding', { name: BINDING, executionContextName: WORLD });
   const source = `(${badgeInPage})(${JSON.stringify(BINDING)}, ${BEAT_MS * 3}, ${GLOW_LIFE_MS})`;
