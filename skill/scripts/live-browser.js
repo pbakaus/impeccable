@@ -10577,7 +10577,10 @@ void main() {
   // The missing-PRODUCT.md notice shows once per browser: a reconnect, a
   // reload or the variants arriving would otherwise bring it back each time.
   const CONTEXT_NOTICE_KEY = 'impeccable-live-context-notice';
+  let contextNoticeShown = false;
   function takeContextNotice() {
+    if (contextNoticeShown) return false;
+    contextNoticeShown = true;
     try {
       if (localStorage.getItem(CONTEXT_NOTICE_KEY)) return false;
       localStorage.setItem(CONTEXT_NOTICE_KEY, '1');

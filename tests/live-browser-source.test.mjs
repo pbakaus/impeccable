@@ -1049,8 +1049,8 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /function takeContextNotice\(\) \{\s*try \{\s*if \(localStorage\.getItem\(CONTEXT_NOTICE_KEY\)\) return false;\s*localStorage\.setItem\(CONTEXT_NOTICE_KEY, '1'\);/,
-      'the "No PRODUCT.md" notice shows once per browser, not on every reconnect or reload',
+      /function takeContextNotice\(\) \{\s*if \(contextNoticeShown\) return false;\s*contextNoticeShown = true;\s*try \{\s*if \(localStorage\.getItem\(CONTEXT_NOTICE_KEY\)\) return false;\s*localStorage\.setItem\(CONTEXT_NOTICE_KEY, '1'\);/,
+      'the "No PRODUCT.md" notice shows once per browser, and once per page when storage is blocked',
     );
     assert.match(
       SOURCE,
