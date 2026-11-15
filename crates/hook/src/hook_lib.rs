@@ -2224,6 +2224,47 @@ fn normalize_grok_event(
     out
 }
 
+/// The workspace folder that contains `edited` (the deepest one when folders
+/// nest), else the first folder. Separators and, on Windows, case are compared
+/// loosely, since Antigravity may report either spelling.
+fn antigravity_workspace_root(roots: &[Value], edited: Option<&str>) -> Option<String> {
+    let roots: Vec<&str> = roots.iter().filter_map(Value::as_str).filter(|r| !r.is_empty()).collect();
+    let norm = |p: &str| {
+        let p = p.replace('\\', "/");
+        let p = p.trim_end_matches('/').to_string();
+        if cfg!(windows) { p.to_lowercase() } else { p }
+    };
+    let holder = edited.map(norm).and_then(|file| {
+        roots
+            .iter()
+            .filter(|r| {
+                let root = norm(r);
+                file == root || file.starts_with(&format!("{root}/"))
+            })
+            .max_by_key(|r| norm(r).len())
+            .copied()
+    });
+    holder.or_else(|| roots.first().copied()).map(str::to_string)
+}
+
+#[cfg(test)]
+mod antigravity_workspace_root_tests {
+    use super::antigravity_workspace_root;
+    use serde_json::json;
+
+    #[test]
+    fn an_edit_belongs_to_the_folder_holding_its_file() {
+        let roots = json!(["/work/repo-a", "/work/repo-b", "/work/repo-b/packages/ui"]);
+        let roots = roots.as_array().unwrap();
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-b/src/page.html")).as_deref(), Some("/work/repo-b"));
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-b/packages/ui/a.tsx")).as_deref(), Some("/work/repo-b/packages/ui"));
+        // A sibling whose name only starts the same way is not a match.
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-ab/x.css")).as_deref(), Some("/work/repo-a"));
+        assert_eq!(antigravity_workspace_root(roots, None).as_deref(), Some("/work/repo-a"));
+        assert_eq!(antigravity_workspace_root(&[], Some("/x")), None);
+    }
+}
+
 /// Antigravity (`agy` CLI, IDE, 2.0) sends camelCase `conversationId`,
 /// `workspacePaths`, `toolCall: { id, name, args }`, and on Stop
 /// `continuationActive` and `terminationReason`.
@@ -2231,16 +2272,6 @@ fn normalize_antigravity_event(
     event: &Map<String, Value>,
     project_cwd: &str,
 ) -> Map<String, Value> {
-    let cwd = str_field(event, "cwd")
-        .map(str::to_string)
-        .or_else(|| match event.get("workspacePaths") {
-            Some(Value::Array(roots)) => match roots.first() {
-                Some(Value::String(r)) if !r.is_empty() => Some(r.clone()),
-                _ => None,
-            },
-            _ => None,
-        })
-        .unwrap_or_else(|| project_cwd.to_string());
     let session_id = event
         .get("conversationId")
         .filter(|v| truthy_value(Some(v)))
@@ -2268,6 +2299,16 @@ fn normalize_antigravity_event(
         }
     }
     let mut out = event.clone();
+    // A multi-root workspace lists every folder; the edit belongs to the one
+    // that holds its file, and `record_session_root` carries that into Stop.
+    let edited = tool_input.get("file_path").and_then(Value::as_str);
+    let cwd = str_field(event, "cwd")
+        .map(str::to_string)
+        .or_else(|| match event.get("workspacePaths") {
+            Some(Value::Array(roots)) => antigravity_workspace_root(roots, edited),
+            _ => None,
+        })
+        .unwrap_or_else(|| project_cwd.to_string());
     out.insert("cwd".into(), Value::String(cwd));
     out.insert("session_id".into(), session_id);
     out.insert("tool_name".into(), tool_name);
