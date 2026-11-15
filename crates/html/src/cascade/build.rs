@@ -373,20 +373,32 @@ fn pseudo_prop_key(prop: &str) -> String {
 
 /// The declarations of one `::before` / `::after` rule, by lowercased
 /// property, with `inset` expanded to its four sides in declaration order
-/// so a side named later wins, as it does in CSS. An `inset` holding a
-/// `var()` leaves its marker in the sides (`inset_side_slots`); this
-/// sheet-wide read resolves no side, so it takes the marker for a side not
-/// known to be zero.
+/// so a side named later wins, as it does in CSS, and an `!important`
+/// declaration winning over a normal one whatever the order, as it does
+/// within one rule (a later important one replaces anything). An `inset`
+/// holding a `var()` leaves its marker in the sides (`inset_side_slots`);
+/// this sheet-wide read resolves no side, so it takes the marker for a side
+/// not known to be zero.
 fn pseudo_decls(rule: &CssRule) -> IndexMap<String, String> {
     let mut decls: IndexMap<String, String> = IndexMap::new();
+    let mut important: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut set = |key: String, value: String, is_important: bool| {
+        if !is_important && important.contains(&key) {
+            return;
+        }
+        if is_important {
+            important.insert(key.clone());
+        }
+        decls.insert(key, value);
+    };
     for d in &rule.declarations {
         let key = pseudo_prop_key(&d.prop);
         if key == "inset" {
             for (side, value) in SIDES.iter().zip(inset_side_slots(&d.value)) {
-                decls.insert(side.to_string(), value);
+                set(side.to_string(), value, d.important);
             }
         }
-        decls.insert(key, d.value.clone());
+        set(key, d.value.clone(), d.important);
     }
     decls
 }

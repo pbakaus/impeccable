@@ -1488,6 +1488,33 @@ fn a_pseudo_that_generates_no_box_is_no_analytic_surface() {
     );
     assert_eq!(found.len(), 1, "{found:?}");
     assert!(!found[0].starts_with("sampled"), "{found:?}");
+    // Within one rule an `!important` declaration wins over a normal one
+    // whatever the order: the marks read the rule's winning declarations.
+    let mut wrong = Vec::new();
+    for (pseudo, surface) in [
+        (
+            "p::before { content: '' !important; content: none; position: absolute; inset: 0; width: initial; background: #fff; }",
+            true,
+        ),
+        (
+            "p::before { content: none !important; content: ''; position: absolute; inset: 0; background: #fff; }",
+            false,
+        ),
+        (
+            "p::before { content: ''; position: absolute; inset: 0; background: #fff !important; background: none; }",
+            true,
+        ),
+        (
+            "p::before { content: ''; position: absolute !important; position: static; inset: 0; background: #fff; }",
+            true,
+        ),
+    ] {
+        let found = site.contrast(&format!("{page} {pseudo}"), body);
+        if found.is_empty() == surface {
+            wrong.push(format!("{pseudo}: {found:?}"));
+        }
+    }
+    assert!(wrong.is_empty(), "importance ignored: {wrong:#?}");
 }
 
 #[test]
