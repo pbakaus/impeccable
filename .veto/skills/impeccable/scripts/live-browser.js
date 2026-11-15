@@ -30,6 +30,14 @@
     window.__IMPECCABLE_LIVE_INIT__ = false; // reset so the real load can init
     return;
   }
+  // The user just exited this helper's session: a reload in the next minute,
+  // before the agent removes the script tag (a carbonize edit reloads the
+  // page), must not bring Live back.
+  const EXITED_KEY = 'impeccable-live-exited';
+  try {
+    const [t, at] = (sessionStorage.getItem(EXITED_KEY) || '').split(' ');
+    if (t === TOKEN && Date.now() - Number(at) < 60_000) return;
+  } catch { /* storage blocked */ }
 
   //
   // Design tokens
@@ -103,7 +111,7 @@
   ]);
 
   // Command vocabulary (values + labels + icons) comes from the canonical source,
-  // skill/scripts/live/vocabulary.mjs, which live-server.mjs serializes into
+  // crates/live/src/vocabulary.rs, which the engine's live server serializes into
   // window.__IMPECCABLE_VOCAB__ when it serves /live.js (same injection path as
   // the token/port above, so it is always present here). The icons stack above
   // each chip label and recolor to C.brand when selected (strokes use
@@ -116,13 +124,12 @@
   });
 
   // The Live chrome inventory (which surfaces exist, and the element ids each
-  // one owns) comes from the canonical source, skill/scripts/live/ui-surfaces.mjs,
-  // which the /live.js assembler serializes into these globals alongside the
-  // token/port/vocabulary. This file is served raw and injected as a classic
-  // script, so it cannot import that module; the private impeccable-site repo
-  // imports it directly to check its Live UI lab holds a snapshot for every
-  // surface, which only works while the list has exactly one definition.
-  // Add a surface in ui-surfaces.mjs, not here.
+  // one owns) comes from the canonical source, SURFACES in
+  // crates/live/src/vocabulary.rs, which the /live.js assembler
+  // (crates/live/src/browser_assets.rs) serializes into these globals alongside
+  // the token/port/vocabulary. This file is served raw and injected as a classic
+  // script, so it cannot import that list, which must keep exactly one
+  // definition. Add a surface in vocabulary.rs, not here.
   const LIVE_CHROME_MOUNT_CONTRACT = Array.isArray(window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__)
     ? window.__IMPECCABLE_LIVE_MOUNT_CONTRACT__
     : ['root', 'transport', 'state', 'actions'];
@@ -153,9 +160,9 @@
   // behind checkpoint), and without this the bar jumps backward mid-generation.
   // Unranked phases always pass so we never block a phase we do not model.
   //
-  // Every `agent_phase` name here is emitted by recordAgentPhase() in
-  // live-server.mjs and listed in AGENT_PHASES in live/vocabulary.mjs, which the
-  // event validator enforces. This file is served raw and injected as an IIFE,
+  // Every `agent_phase` name here is recorded by record_agent_phase() in
+  // crates/live/src/server_state.rs and listed in AGENT_PHASES in
+  // crates/live/src/vocabulary.rs, which the event validator enforces. This file is served raw and injected as an IIFE,
   // so it cannot import that list; adding a phase means adding it in both.
   // `queued`, `generating`, `variants_progress`, and `variants_ready` are set
   // locally by this file and never arrive over the wire.
@@ -212,7 +219,7 @@
   // Survives cleanupAcceptedSession on purpose: the id of an accept whose
   // POST was acknowledged (intent durable, epoch fenced) but whose actual
   // source promotion hasn't reported back yet. Accept is optimistic, so the
-  // teardown nulls pendingAcceptedSession long before live-accept.mjs runs;
+  // teardown nulls pendingAcceptedSession long before `impeccable live-accept` runs;
   // this marker is what lets the SSE 'error' branch still recognize a late
   // accept failure and say the variant was not saved (issue #384). Released
   // when the real accept result arrives or a new session starts.
@@ -1728,7 +1735,7 @@
     return btn;
   }
 
-  // Insert mode helpers (mirrors skill/scripts/live/insert-ui.mjs)
+  // Insert mode helpers (the engine's insert checks are in crates/live/src/event_validation.rs)
 
   function detectInsertAxisFromStyle(style) {
     const display = style?.display || 'block';
@@ -2710,7 +2717,7 @@
       return el('div', { display: 'none' });
     }
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '6px',
+      display: 'flex', alignItems: 'center', gap: touchPrimary() ? '2px' : '6px',
       padding: '1px 2px',
     });
 
@@ -2825,6 +2832,7 @@
       cursor: 'pointer', transition: 'filter 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap',
     });
+    touchTarget(accept);
     accept.textContent = '\u2713 Accept';
     accept.addEventListener('mouseenter', () => accept.style.filter = 'brightness(1.08)');
     accept.addEventListener('mouseleave', () => accept.style.filter = 'none');
@@ -2845,6 +2853,7 @@
       fontFamily: FONT, fontSize: '11px', color: BP.textDim,
       cursor: 'pointer', transition: 'color 0.12s ease, border-color 0.12s ease',
     });
+    touchTarget(discard);
     discard.textContent = '\u2715';
     discard.title = 'Discard all variants';
     discard.addEventListener('mouseenter', () => { discard.style.color = BP.text; discard.style.borderColor = BP.text; });
@@ -2945,6 +2954,12 @@
     return container;
   }
 
+  /** A finger needs 44px; a mouse keeps the compact bar. */
+  function touchTarget(b) {
+    if (touchPrimary()) Object.assign(b.style, { minWidth: '44px', minHeight: '44px' });
+    return b;
+  }
+
   function navBtn(text) {
     const b = el('button', {
       width: '26px', height: '26px', borderRadius: '5px',
@@ -2957,7 +2972,7 @@
     b.textContent = text;
     b.addEventListener('mouseenter', () => { b.style.borderColor = BP.text; });
     b.addEventListener('mouseleave', () => { b.style.borderColor = BP.hairline; });
-    return b;
+    return touchTarget(b);
   }
 
   function actionLabel() {
@@ -6237,7 +6252,7 @@
   // carry that answer back, so the journal, `live-status`, and `live-resume`
   // can tell "the user is comparing variants" from "nothing ever rendered".
 
-  // Mirror of the caps in live/event-validation.mjs. Trimming here keeps a
+  // Mirror of the caps in crates/live/src/event_validation.rs. Trimming here keeps a
   // stack-trace-sized error from being rejected outright and lost.
   const MOUNT_URL_MAX = 2000;
   const MOUNT_ERROR_MAX = 1000;
@@ -6462,7 +6477,7 @@
     removeVariantStateStylesheet();
     clearMountErrorCard();
     clearSession();
-    clearHandled();
+    clearHandled(sessionId);
     resetSessionFileMeta();
     currentSessionId = null;
     parameterGenerationState = 'idle';
@@ -7513,8 +7528,25 @@
   let liveBarHiddenByHelper = false;
 
   function applyLiveBarPreference(hidden) {
+    const wasHidden = liveBarHiddenByHelper;
     liveBarHiddenByHelper = hidden === true;
     setLiveBarHidden(liveBarHiddenByHelper);
+    // A hidden bar has no Pick or Insert control, so a choice remembered
+    // from a visible session stops capturing the page's clicks until the
+    // bar is back. The stored prefs stay as they are.
+    if (liveBarHiddenByHelper && !wasHidden && state === 'PICKING') {
+      clearInsertPicking();
+      hideHighlight();
+      setLiveState('IDLE');
+      syncPageInteractionCursor();
+    } else if (!liveBarHiddenByHelper && wasHidden) {
+      enterPickingIfArmed();
+      syncPageInteractionCursor();
+    }
+  }
+
+  function enterPickingIfArmed() {
+    if (state === 'IDLE' && (pickActive || insertActive) && !liveBarHiddenByHelper) setLiveState('PICKING');
   }
 
   // A plain live session must never notice this code: hiding remembers the
@@ -7819,13 +7851,21 @@
           hasProjectContext = !!msg.hasProjectContext;
           // The generate lane runs without PRODUCT.md by design and never
           // sends the user to init, so its quiet chrome skips this notice.
-          if (!hasProjectContext && !liveBarHiddenByHelper) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
+          // A first session gets the first move instead: what to click
+          // matters more than a missing file, and it shows once.
+          if (liveFirstRun && !liveBarHiddenByHelper) {
+            liveFirstRun = false;
+            if (!insertActive) pickActive = true;
+            saveInteractionPrefs();
+            updateGlobalBarState();
+            showToast('Click anything on the page to restyle it.', 8000);
+          } else if (!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice()) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
           restoreFromActiveSessions(msg.activeSessions, 'sse_connected');
           recoverMissedGenerationCompletion(msg.activeSessions);
-          if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
+          enterPickingIfArmed();
           syncPageInteractionCursor();
           syncPageChatFocus('sse-connected');
           break;
@@ -8022,7 +8062,7 @@
   function handleServerLost() {
     const recoveryState = currentSessionId ? state : 'IDLE';
     if (state === 'GENERATING' || state === 'CYCLING' || state === 'SAVING') {
-      showToast('Live server connection lost. Your session is saved; reopen this page or restart live-poll.mjs to continue.', 6000);
+      showToast('Live server connection lost. Your session is saved; reopen this page or restart `impeccable live-poll` to continue.', 6000);
     }
     hideBar();
     hideHighlight();
@@ -10543,7 +10583,25 @@ void main() {
         return { pickActive: !!prefs.pickActive, insertActive: false };
       }
     } catch { /* ignore */ }
-    return { pickActive: false, insertActive: false };
+    // Nothing stored: this browser's first Live session here. Pick turns on
+    // when the helper connects with the bar visible (see `connected`), so the
+    // first click on the page already does something; the generate lane hides
+    // the bar, and a Pick nobody can see or turn off would eat app clicks.
+    return { pickActive: false, insertActive: false, firstRun: true };
+  }
+
+  // The missing-PRODUCT.md notice shows once per browser: a reconnect, a
+  // reload or the variants arriving would otherwise bring it back each time.
+  const CONTEXT_NOTICE_KEY = 'impeccable-live-context-notice';
+  let contextNoticeShown = false;
+  function takeContextNotice() {
+    if (contextNoticeShown) return false;
+    contextNoticeShown = true;
+    try {
+      if (localStorage.getItem(CONTEXT_NOTICE_KEY)) return false;
+      localStorage.setItem(CONTEXT_NOTICE_KEY, '1');
+    } catch { /* ignore */ }
+    return true;
   }
 
   function saveInteractionPrefs() {
@@ -10561,6 +10619,7 @@ void main() {
   }
 
   let pickActive = loadInteractionPrefs().pickActive;
+  let liveFirstRun = loadInteractionPrefs().firstRun === true;
   let insertActive = loadInteractionPrefs().insertActive;
   let configureKind = 'replace';
   let insertLineEl = null;
@@ -10614,7 +10673,7 @@ void main() {
   const STEER_AWAIT_TIMEOUT_MS = 120000;
   const AGENT_STATUS_POLL_MS = 5000;
   const AGENT_DISCONNECTED_MARK = 'oklch(62% 0 0 / 0.78)';
-  const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run live-poll.mjs to connect';
+  const AGENT_DISCONNECTED_TIP = 'Agent disconnected - run impeccable live-poll to connect';
   // The indicator tracks whether a poll is parked, which is what decides if
   // steering can reach the agent right now. That goes quiet two ways, and they
   // need different copy: nobody is polling at all, or the agent took the work
@@ -10726,13 +10785,11 @@ void main() {
     });
   }
 
-  function syncGlobalBarExpandedLabels(expanded = globalBarEl?.matches(':hover')) {
-    const expandInactive = !!(expanded && !pageChatExpanded);
-    applyGlobalBarLabelState(expandInactive, pageChatExpanded);
-
-    if (expandInactive && globalBarEl && globalBarEl.scrollWidth > window.innerWidth - 16) {
-      applyGlobalBarLabelState(false);
-    }
+  // Only active modes show their label. Hover never widens the bar: it sits
+  // centred, so growing labels slid the icons out from under the pointer and a
+  // click meant for Pick landed on Insert. The title tooltip names the rest.
+  function syncGlobalBarExpandedLabels() {
+    applyGlobalBarLabelState(false, pageChatExpanded);
   }
 
   function pageChatCollapsedWidthPx() {
@@ -11138,7 +11195,7 @@ void main() {
     if (!pageChatEl || !pageChatInput) return false;
     pageChatExpanded = true;
     pageChatEl.dataset.expanded = 'true';
-    syncGlobalBarExpandedLabels(false);
+    syncGlobalBarExpandedLabels();
     pageChatEl.style.width = pageChatExpandedWidth();
     pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
     pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
@@ -11205,7 +11262,7 @@ void main() {
       return head + 'The agent is still busy with the current generation - your message was not lost, but it never got picked up. Send it again once the variants land.';
     }
     if (!agentPollingConnected) {
-      return head + 'No agent is polling right now. Run live-poll.mjs, then send it again.';
+      return head + 'No agent is polling right now. Run impeccable live-poll, then send it again.';
     }
     return head + 'The agent picked it up but never replied with steer_done. Check the agent session for a stalled or failed steer.';
   }
@@ -11281,6 +11338,7 @@ void main() {
     }
     steerPendingMessage = keepExpanded ? restoreMessage : '';
     steerInputWasFocused = false;
+    syncGlobalBarExpandedLabels();
     syncPageChatChrome();
     syncPageChatFocusRing();
     if (opts?.error) showToast(String(opts.error), 5000);
@@ -11573,7 +11631,7 @@ void main() {
     pageChatEl.dataset.expanded = 'false';
     pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
     pageChatEl.style.cursor = 'pointer';
-    syncGlobalBarExpandedLabels(globalBarEl?.matches(':hover'));
+    syncGlobalBarExpandedLabels();
     if (blur) {
       pageChatInput.blur();
       pageChatInput.style.pointerEvents = 'none';
@@ -12019,7 +12077,7 @@ void main() {
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
 
-    // Button factory: icon-only at rest, label slides in on hover/active.
+    // Button factory: icon-only at rest, label slides in while active.
     function makeIconBtn({ id, svg, label, ariaLabel, labelFont, onClick }) {
       const b = el('button', {
         position: 'relative',
@@ -12049,10 +12107,8 @@ void main() {
         if (!labelEl || (!force && b.dataset.active === 'true')) return;
         labelEl.style.maxWidth = '0'; labelEl.style.opacity = '0'; labelEl.style.marginLeft = '0'; labelEl.style.transform = 'translateX(-4px)';
       };
-      // Per-button hover only changes color (no layout). The label expand/
-      // collapse is driven by the bar-level mouseenter/mouseleave so moving
-      // the mouse between adjacent buttons doesn't trigger per-button width
-      // thrashing - the whole bar grows once and shrinks once.
+      // Hover only changes color, never layout: the label shows while the
+      // mode is active (see syncGlobalBarExpandedLabels).
       b.addEventListener('mouseenter', () => { if (b.dataset.active !== 'true') b.style.color = P.text; });
       b.addEventListener('mouseleave', () => { if (b.dataset.active !== 'true') b.style.color = P.textDim; });
       b.addEventListener('click', onClick);
@@ -12319,27 +12375,20 @@ void main() {
       color: P.textDim, fontFamily: FONT, fontSize: '0', lineHeight: '0',
       cursor: 'pointer', transition: 'color 0.12s ease, background 0.12s ease',
     });
+    touchTarget(exitBtn);
     exitBtn.id = PREFIX + '-exit';
     exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
     exitBtn.title = 'Exit live mode';
     exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
     exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
-    exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
+    // source: 'user' keeps a reconnect (the reload a carbonize edit triggers) from cancelling it.
+    exitBtn.addEventListener('click', () => {
+      try { sessionStorage.setItem(EXITED_KEY, TOKEN + ' ' + Date.now()); } catch { /* storage blocked */ }
+      sendEvent({ type: 'exit', source: 'user' });
+      teardown();
+    });
     inner.appendChild(exitBtn);
 
-    // Bar-level hover: expand mode labels unless Steer is using the space.
-    // Buttons with dataset.active="true" ignore collapse (their label stays).
-    globalBarEl.addEventListener('mouseenter', () => {
-      syncGlobalBarExpandedLabels(true);
-      syncPageChatExpandedWidth();
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
-    globalBarEl.addEventListener('mouseleave', () => {
-      syncGlobalBarExpandedLabels(false);
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
     globalBarEl.addEventListener('pointerdown', () => {
       try { window.focus(); } catch { /* in-app preview may block */ }
     }, true);
@@ -12404,7 +12453,7 @@ void main() {
     // If the bar is currently under the cursor, keep all labels expanded -
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
-    syncGlobalBarExpandedLabels(globalBarEl && globalBarEl.matches(':hover'));
+    syncGlobalBarExpandedLabels();
 
     if (detectBadge) {
       detectBadge.style.display = (detectActive && detectCount > 0) ? 'inline' : 'none';
@@ -13859,7 +13908,7 @@ void main() {
       scout.observe(document.body, { childList: true, subtree: true });
     }
 
-    if (state === 'IDLE' && (pickActive || insertActive)) setLiveState('PICKING');
+    enterPickingIfArmed();
     syncPageInteractionCursor();
     syncPageChatFocus('init-complete');
   }

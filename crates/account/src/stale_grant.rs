@@ -8,7 +8,7 @@ use crate::{
 use impeccable_common::Io;
 use std::time::Duration;
 
-const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
+const NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.\n";
 const DEADLINE: Duration = Duration::from_secs(2);
 
 /// `within` is what is left of the caller's own wait: the check never extends it.
@@ -21,18 +21,35 @@ pub(crate) fn offers(account: &Account, scope: &str, within: Duration) -> bool {
     // Metadata is a credential-free read. Bound DNS as well as HTTP without
     // leaving an upload running after the caller stops waiting.
     crate::session::read_within(within, move || {
-        oauth::metadata(&Client::with_deadline(&account, within), &account).is_ok_and(|m| {
-            match scope.as_str() {
-                oauth::HEALTH_SCOPE => m.health,
-                oauth::FOUNDATIONS_SCOPE => m.foundations,
-                oauth::DESIGN_SCOPE => m.design,
-                oauth::CRITIQUES_SCOPE => m.critiques,
-                "setup:write" => m.setup,
-                _ => false,
-            }
-        })
+        oauth::metadata(&Client::with_deadline(&account, within), &account)
+            .is_ok_and(|m| offered(&m, &scope))
     })
     .unwrap_or(false)
+}
+
+/// The scopes a sign-in asks for beyond the base ones, each only while the service
+/// lists it (`oauth::scopes`).
+const OPTIONAL: [&str; 7] = [
+    oauth::HEALTH_SCOPE,
+    "setup:write",
+    oauth::FOUNDATIONS_SCOPE,
+    oauth::DESIGN_SCOPE,
+    oauth::CRITIQUES_SCOPE,
+    oauth::TASTE_READ_SCOPE,
+    oauth::WORLDS_SCOPE,
+];
+
+fn offered(m: &oauth::Metadata, scope: &str) -> bool {
+    match scope {
+        oauth::HEALTH_SCOPE => m.health,
+        oauth::FOUNDATIONS_SCOPE => m.foundations,
+        oauth::TASTE_READ_SCOPE => m.taste,
+        oauth::DESIGN_SCOPE => m.design,
+        oauth::CRITIQUES_SCOPE => m.critiques,
+        oauth::WORLDS_SCOPE => m.worlds,
+        "setup:write" => m.setup,
+        _ => false,
+    }
 }
 
 fn denied_path(account: &Account, login: u64) -> std::path::PathBuf {
@@ -52,6 +69,7 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
             .flatten()
             .is_none(),
         oauth::FOUNDATIONS_SCOPE => state.foundations,
+        oauth::TASTE_READ_SCOPE => state.taste,
         "setup:write" => store::read_private(&account.dir().join("setup-grant.json"))
             .ok()
             .flatten()
@@ -59,6 +77,25 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
             .is_some_and(|g| g["login"] == state.login && g["allowed"] == true),
         _ => state.scopes.iter().any(|s| s == scope),
     }
+}
+
+/// Whether a fresh sign-in would add a scope this one lacks and the service now offers:
+/// then `login` signs in again rather than saying it already is.
+/// Every scope `oauth::scopes` can ask for is checked, against one metadata read.
+pub(crate) fn fresh_sign_in_adds(account: &Account, state: &State) -> bool {
+    let missing: Vec<&str> = OPTIONAL
+        .into_iter()
+        .filter(|scope| !holds(account, state, scope))
+        .collect();
+    if missing.is_empty() {
+        return false;
+    }
+    let account = account.clone();
+    crate::session::read_within(DEADLINE, move || {
+        oauth::metadata(&Client::with_deadline(&account, DEADLINE), &account)
+            .is_ok_and(|m| missing.iter().any(|scope| offered(&m, scope)))
+    })
+    .unwrap_or(false)
 }
 
 pub(crate) fn status(io: &Io, scope: &str) -> bool {
@@ -70,6 +107,16 @@ pub(crate) fn status(io: &Io, scope: &str) -> bool {
         .is_some_and(|s| {
             s.signed_in && !holds(&account, &s, scope) && offers(&account, scope, DEADLINE)
         })
+}
+
+fn notice_path(account: &Account, login: u64) -> std::path::PathBuf {
+    account.dir().join(format!("stale-grant-notice-{login}"))
+}
+
+/// A feature told the person to sign in again in its own words, so the shared
+/// notice is not owed on this login any more.
+pub(crate) fn mark_shown(account: &Account, login: u64) {
+    let _ = store::write_private(&notice_path(account, login), b"shown");
 }
 
 /// `scope` is absent for a health 403, which is itself enough evidence.
@@ -86,7 +133,7 @@ pub(crate) fn emit(
         return;
     }
     let store = Store::new(account);
-    let path = account.dir().join(format!("stale-grant-notice-{login}"));
+    let path = notice_path(account, login);
     let shown = || store::read_private(&path).ok().flatten().is_some();
     if shown() {
         return;
@@ -121,6 +168,7 @@ mod tests {
         State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![],
             issuer: account.issuer.clone(),
             generation: login,
@@ -131,6 +179,44 @@ mod tests {
             login,
             signed_out_at: 0,
         }
+    }
+
+    #[test]
+    fn taste_is_offered_and_noticed_once_for_an_older_sign_in() {
+        use crate::http::Client;
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let issuer = format!("http://{}", listener.local_addr().unwrap());
+        let home = std::env::temp_dir().join(format!("taste-stale-{}", oauth::random_b64(12)));
+        let account = Account { home: home.clone(), issuer: issuer.clone() };
+        let server = std::thread::spawn(move || {
+            // One explicit offers check, then the first notice's metadata check.
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0; 8192];
+                let _ = stream.read(&mut buf);
+                let body = serde_json::json!({
+                    "issuer":issuer, "authorization_endpoint":format!("{issuer}/authorize"),
+                    "token_endpoint":format!("{issuer}/token"),
+                    "code_challenge_methods_supported":["S256"],
+                    "authorization_response_iss_parameter_supported":true,
+                    "scopes_supported":["taste:read"]
+                }).to_string();
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+            }
+        });
+        let store = Store::new(&account);
+        store.write_state(&state(&account, 1)).unwrap();
+        assert!(oauth::metadata(&Client::new(&account), &account).unwrap().taste);
+        let (mut io, cap) = Io::captured("", home.clone(), Default::default());
+        emit(&mut io, &account, 1, Some(oauth::TASTE_READ_SCOPE), DEADLINE, false);
+        emit(&mut io, &account, 1, Some(oauth::TASTE_READ_SCOPE), DEADLINE, false);
+        assert_eq!(&*cap.stderr.borrow(), NOTICE.as_bytes());
+        let mut granted = state(&account, 1);
+        granted.taste = true;
+        assert!(holds(&account, &granted, oauth::TASTE_READ_SCOPE));
+        server.join().unwrap();
+        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

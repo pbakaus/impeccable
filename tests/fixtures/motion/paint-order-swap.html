@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>paint-order-swap</title>
+<style>
+body { font: 18px system-ui; margin: 40px; }
+button { margin-bottom: 20px; }
+#region { position: relative; width: 500px; height: 400px; }
+#card { position: relative; width: 180px; height: 100px; padding: 20px; box-sizing: border-box; background: #eedcc5; view-transition-name: card; }
+::view-transition-group(card) { animation-duration: 600ms; animation-timing-function: linear; }
+#card { z-index: 2; } #sibling { position: absolute; left: 80px; top: 30px; width: 130px; height: 100px; z-index: 1; background: #b4cbd5; view-transition-name: sibling; } ::view-transition-group(card) { z-index: 0; } ::view-transition-group(sibling) { z-index: 3; animation-duration: 600ms; }
+</style>
+<button id="go">Run motion</button><div id="region"><div id="card">Top at rest</div><div id="sibling">Top during transition</div></div>
+<script>
+go.onclick = () => document.startViewTransition(() => { card.style.width = '280px'; });
+</script>

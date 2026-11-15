@@ -101,12 +101,41 @@ impl Client {
     }
 
     pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<serde_json::Value, ApiError> {
+        self.get_json_with(url, bearer, &[])
+    }
+
+    /// [`Client::get_json`] with extra request headers.
+    pub fn get_json_with(
+        &self,
+        url: &str,
+        bearer: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
         let mut req = self.agent.get(url).set("accept", "application/json");
+        for (name, value) in headers {
+            req = req.set(name, value);
+        }
         if let Some(token) = bearer {
             req = req.set("authorization", &bearer_header(token)?);
         }
         json_body(req.call())
+    }
+
+    /// Conditional taste read. A 304 has no JSON body.
+    pub fn get_taste(
+        &self, url: &str, bearer: &str, etag: Option<&str>,
+    ) -> Result<(u16, Option<String>, serde_json::Value), ApiError> {
+        self.checked(url)?;
+        let mut req = self.agent.get(url)
+            .set("accept", "application/json")
+            .set("authorization", &bearer_header(bearer)?);
+        if let Some(etag) = etag { req = req.set("if-none-match", etag); }
+        let resp = req.call().map_err(classify)?;
+        let status = resp.status();
+        let etag = resp.header("etag").map(str::to_string);
+        let body = if status == 304 { serde_json::Value::Null } else { json_body(Ok(resp))? };
+        Ok((status, etag, body))
     }
 
     pub fn post_form(
@@ -172,6 +201,9 @@ impl Client {
     }
 }
 
+/// What a 2xx answer that is not JSON reads as: the service did answer.
+pub const NOT_JSON: &str = "the service sent an answer that is not JSON";
+
 fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Value, ApiError> {
     let resp = result.map_err(classify)?;
     let mut buf = Vec::new();
@@ -180,7 +212,7 @@ fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::
         .read_to_end(&mut buf)
         .map_err(read_error)?;
     serde_json::from_slice(&buf)
-        .map_err(|_| ApiError::Network("the service sent an answer that is not JSON".into()))
+        .map_err(|_| ApiError::Network(NOT_JSON.into()))
 }
 
 fn classify(e: ureq::Error) -> ApiError {

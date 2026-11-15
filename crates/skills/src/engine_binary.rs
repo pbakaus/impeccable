@@ -1,10 +1,14 @@
-//! After a skill directory is written, make it self-contained: when its
-//! `scripts/VERSION` names an engine release and no
-//! `scripts/bin/<os>-<arch>/impeccable[.exe]` is present, download that
-//! release's binary for this platform from this repo's `engine-v<version>`
-//! GitHub Release (the same asset naming the launcher uses), verify it against
-//! the digest the skill dir's own `scripts/engine-checksums.txt` records, and
-//! set the executable bit. Not part of the JS; see the crate docs.
+//! After a skill directory is written, make sure its engine exists: when its
+//! `scripts/VERSION` names an engine release, fetch that release's binary for
+//! this platform from this repo's `engine-v<version>` GitHub Release (the same
+//! asset naming the launcher uses), verify it against the digest the skill
+//! dir's own `scripts/engine-checksums.txt` records, and put it in the
+//! version-pinned user cache the launchers read
+//! (`$IMPECCABLE_HOME` or `~/.impeccable`, then `bin/<version>/`), with the
+//! `<digest> <size>` stamp that lets them skip the rehash. One copy per
+//! machine, not one per harness skill dir (#1175). A skill dir that already
+//! holds `scripts/bin/<os>-<arch>/` (an offline bundle) is left as it is. Not
+//! part of the JS; see the crate docs.
 
 use std::collections::HashMap;
 
@@ -43,6 +47,37 @@ pub fn platform_tag() -> Option<(&'static str, &'static str)> {
 pub fn binary_path(skill_dir: &str, os: &str, arch: &str) -> String {
     let name = if os == "windows" { "impeccable.exe" } else { "impeccable" };
     jsp::join(&[skill_dir, "scripts", "bin", &format!("{os}-{arch}"), name])
+}
+
+/// Where the launchers look for a version's engine:
+/// `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable[.exe]`.
+pub fn cache_binary_path(sys: &Sys, version: &str, os: &str) -> String {
+    let root = sys
+        .env
+        .get("IMPECCABLE_HOME")
+        .filter(|v| !v.is_empty())
+        .cloned()
+        .unwrap_or_else(|| jsp::join(&[&sys.home, ".impeccable"]));
+    let name = if os == "windows" { "impeccable.exe" } else { "impeccable" };
+    jsp::join(&[&root, "bin", version, name])
+}
+
+/// The cached engine is good when its stamp holds the expected digest and
+/// the binary's size and the binary is not newer than the stamp: the rule
+/// the launchers apply before they run it without rehashing.
+fn cache_is_verified(cached: &str, expected: &str) -> bool {
+    let (Ok(bin), Ok(stamp_meta)) = (std::fs::metadata(cached), std::fs::metadata(format!("{cached}.verified"))) else {
+        return false;
+    };
+    let Ok(stamp) = util::read_text(&format!("{cached}.verified")) else { return false };
+    let mut fields = stamp.split_whitespace();
+    let fresh = match (bin.modified(), stamp_meta.modified()) {
+        (Ok(b), Ok(v)) => b <= v,
+        _ => false,
+    };
+    fields.next().is_some_and(|d| d.eq_ignore_ascii_case(expected))
+        && fields.next() == Some(bin.len().to_string().as_str())
+        && fresh
 }
 
 /// The release asset URL for a version and platform. Engine releases are
@@ -106,11 +141,11 @@ pub fn ensure_executable_scripts(skill_dir: &str) {
     }
 }
 
-/// Install the engine binary into every skill dir in `skill_dirs` that needs
-/// one. Prints one line per binary installed; download failures are reported
-/// on stderr and do not fail the install (the launcher fetches the binary on
-/// first run as a fallback). Also repairs the executable bit on the launcher
-/// and any binaries already present in those dirs.
+/// Make sure the engine every skill dir in `skill_dirs` pins is in the user
+/// cache. Prints one line per binary installed; download failures are
+/// reported on stderr and do not fail the install (the launcher fetches the
+/// binary on first run as a fallback). Also repairs the executable bit on the
+/// launcher and any binaries already present in those dirs.
 pub fn install_engine_binaries(sys: &Sys, io: &mut Io, skill_dirs: &[String]) {
     for skill_dir in skill_dirs {
         ensure_executable_scripts(skill_dir);
@@ -122,58 +157,64 @@ pub fn install_engine_binaries(sys: &Sys, io: &mut Io, skill_dirs: &[String]) {
         .filter(|v| !v.is_empty())
         .cloned()
         .unwrap_or_else(|| DEFAULT_DOWNLOAD_BASE.to_string());
-    let mut cache: HashMap<String, Result<Vec<u8>, String>> = HashMap::new();
+    let asset = asset_name(os, arch);
+    // One attempt per version, whatever the number of skill dirs.
+    let mut done: HashMap<String, ()> = HashMap::new();
     for skill_dir in skill_dirs {
         let version_file = jsp::join(&[skill_dir, "scripts", "VERSION"]);
         let Ok(raw) = util::read_text(&version_file) else { continue };
-        let version = raw.trim();
-        if version.is_empty() {
+        let version = raw.trim().to_string();
+        if version.is_empty() || done.contains_key(&version) {
             continue;
         }
-        let dest = binary_path(skill_dir, os, arch);
-        if util::exists(&dest) {
+        // An offline bundle stages its own binary; the launcher runs it.
+        if util::exists(&binary_path(skill_dir, os, arch)) {
             continue;
         }
-        let url = asset_url(&base, version, os, arch);
-        let fetched = cache
-            .entry(version.to_string())
-            .or_insert_with(|| {
-                // Resolve the digest before any network traffic: no line, no download.
-                let asset = asset_name(os, arch);
-                let manifest = jsp::join(&[skill_dir, "scripts", "engine-checksums.txt"]);
-                let expected = util::read_text(&manifest)
-                    .ok()
-                    .and_then(|text| manifest_digest(&text, version, &asset))
-                    .ok_or_else(|| {
-                        format!("no checksum for engine {version} ({asset}) in {manifest}; refusing the unverified download")
-                    })?;
-                fetch_binary(&url, &expected)
-            })
-            .clone();
-        match fetched {
-            Ok(bytes) => {
-                let written = util::mkdir_p(&jsp::dirname(&dest))
-                    .and_then(|_| util::write_bytes(&dest, &bytes))
-                    .and_then(|_| util::set_executable(&dest));
-                match written {
-                    Ok(()) => io.out(&format!(
-                        "Installed impeccable engine v{version} ({os}-{arch}) into: {}\n",
-                        sys.format_path_for_display(&dest)
-                    )),
-                    Err(e) => io.err(&format!(
-                        "Could not write the impeccable engine v{version} ({os}-{arch}) into {}: {e}\n",
-                        sys.format_path_for_display(&dest)
-                    )),
-                }
-            }
+        done.insert(version.clone(), ());
+        // Resolve the digest before any network traffic: no line, no download.
+        let manifest = jsp::join(&[skill_dir, "scripts", "engine-checksums.txt"]);
+        let Some(expected) = util::read_text(&manifest).ok().and_then(|text| manifest_digest(&text, &version, &asset)) else {
+            io.err(&format!(
+                "Could not download the impeccable engine v{version} for {os}-{arch}: no checksum for engine {version} ({asset}) in {manifest}; refusing the unverified download. The launcher fetches it on first run.\n"
+            ));
+            continue;
+        };
+        let cached = cache_binary_path(sys, &version, os);
+        if cache_is_verified(&cached, &expected) {
+            // A cache restored without modes would pass the stamp yet be
+            // skipped by the POSIX launcher, so put the bit back.
+            let _ = util::set_executable(&cached);
+            continue;
+        }
+        let url = asset_url(&base, &version, os, arch);
+        let bytes = match fetch_binary(&url, &expected) {
+            Ok(bytes) => bytes,
             Err(e) => {
-                if !e.is_empty() {
-                    io.err(&format!(
-                        "Could not download the impeccable engine v{version} for {os}-{arch} ({url}): {e}. The launcher fetches it on first run.\n"
-                    ));
-                    // Report once per version, then stay quiet for its siblings.
-                    cache.insert(version.to_string(), Err(String::new()));
-                }
+                io.err(&format!(
+                    "Could not download the impeccable engine v{version} for {os}-{arch} ({url}): {e}. The launcher fetches it on first run.\n"
+                ));
+                continue;
+            }
+        };
+        // Stage beside the target and rename, so a launcher never runs half a file.
+        let staging = format!("{cached}.part.{}", std::process::id());
+        let written = util::mkdir_p(&jsp::dirname(&cached))
+            .and_then(|_| util::write_bytes(&staging, &bytes))
+            .and_then(|_| util::set_executable(&staging))
+            .and_then(|_| std::fs::rename(&staging, &cached).map_err(|e| e.to_string()))
+            .and_then(|_| util::write_bytes(&format!("{cached}.verified"), format!("{expected} {}\n", bytes.len()).as_bytes()));
+        match written {
+            Ok(()) => io.out(&format!(
+                "Installed impeccable engine v{version} ({os}-{arch}) into: {}\n",
+                sys.format_path_for_display(&cached)
+            )),
+            Err(e) => {
+                let _ = std::fs::remove_file(&staging);
+                io.err(&format!(
+                    "Could not write the impeccable engine v{version} ({os}-{arch}) into {}: {e}\n",
+                    sys.format_path_for_display(&cached)
+                ));
             }
         }
     }
@@ -200,6 +241,92 @@ mod tests {
             binary_path("/s", "windows", "arm64"),
             jsp::join(&["/s", "scripts", "bin", "windows-arm64", "impeccable.exe"])
         );
+    }
+
+    /// Serves `body` to every request on 127.0.0.1 and counts them.
+    fn counting_server(body: &'static [u8]) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = hits.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                let _ = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(body));
+            }
+        });
+        (base, hits)
+    }
+
+    #[test]
+    fn install_fills_the_version_cache_once_and_copies_into_no_skill_dir() {
+        // #1175: one 16 MB engine per machine, not one per harness skill dir.
+        let Some((os, arch)) = platform_tag() else { return };
+        const BODY: &[u8] = b"#!/bin/sh\necho engine\n";
+        let digest = hex(&Sha256::digest(BODY));
+        let root = std::env::temp_dir().join(format!("impeccable-cache-only-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let home = root.join("cache").to_string_lossy().into_owned();
+        let dirs: Vec<String> = ["claude", "agents"].iter().map(|h| {
+            let d = root.join(h);
+            std::fs::create_dir_all(d.join("scripts")).unwrap();
+            std::fs::write(d.join("scripts/VERSION"), "7.7.7\n").unwrap();
+            std::fs::write(d.join("scripts/engine-checksums.txt"), format!("7.7.7 {} {digest}\n", asset_name(os, arch))).unwrap();
+            d.to_string_lossy().into_owned()
+        }).collect();
+        let (base, hits) = counting_server(BODY);
+        let env: util::Env = [
+            ("IMPECCABLE_DOWNLOAD_BASE".to_string(), base),
+            ("IMPECCABLE_HOME".to_string(), home.clone()),
+        ].into();
+        for _ in 0..2 {
+            let (mut io, captured) = Io::captured("", root.clone(), env.clone());
+            install_engine_binaries(&Sys::new(env.clone(), root.to_string_lossy().into_owned()), &mut io, &dirs);
+            assert_eq!(String::from_utf8_lossy(&captured.stderr.borrow()), "");
+        }
+        let cached = cache_binary_path(&Sys::new(env.clone(), String::new()), "7.7.7", os);
+        assert_eq!(std::fs::read(&cached).unwrap(), BODY);
+        assert_eq!(util::read_text(&format!("{cached}.verified")).unwrap(), format!("{digest} {}\n", BODY.len()));
+        for d in &dirs {
+            assert!(!util::exists(&binary_path(d, os, arch)), "no copy in {d}");
+        }
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "one download for both dirs and both runs");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_verified_cache_that_lost_its_executable_bit_gets_it_back() {
+        use std::os::unix::fs::PermissionsExt;
+        let Some((os, arch)) = platform_tag() else { return };
+        const BODY: &[u8] = b"#!/bin/sh\necho engine\n";
+        let digest = hex(&Sha256::digest(BODY));
+        let root = std::env::temp_dir().join(format!("impeccable-cache-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let skill = root.join("skill");
+        std::fs::create_dir_all(skill.join("scripts")).unwrap();
+        std::fs::write(skill.join("scripts/VERSION"), "7.7.8\n").unwrap();
+        std::fs::write(skill.join("scripts/engine-checksums.txt"), format!("7.7.8 {} {digest}\n", asset_name(os, arch))).unwrap();
+        // A refused port: any download attempt would fail and print.
+        let env: util::Env = [
+            ("IMPECCABLE_DOWNLOAD_BASE".to_string(), "http://127.0.0.1:9".to_string()),
+            ("IMPECCABLE_HOME".to_string(), root.join("cache").to_string_lossy().into_owned()),
+        ].into();
+        let cached = cache_binary_path(&Sys::new(env.clone(), String::new()), "7.7.8", os);
+        util::mkdir_p(&jsp::dirname(&cached)).unwrap();
+        std::fs::write(&cached, BODY).unwrap();
+        std::fs::set_permissions(&cached, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::write(format!("{cached}.verified"), format!("{digest} {}\n", BODY.len())).unwrap();
+        let (mut io, captured) = Io::captured("", root.clone(), env.clone());
+        install_engine_binaries(&Sys::new(env, root.to_string_lossy().into_owned()), &mut io, &[skill.to_string_lossy().into_owned()]);
+        assert_eq!(String::from_utf8_lossy(&captured.stderr.borrow()), "", "a cache hit makes no request");
+        assert_eq!(std::fs::metadata(&cached).unwrap().permissions().mode() & 0o111, 0o111);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -480,6 +480,7 @@ mod notice_regressions {
         let state = crate::store::State {
             schema: 1,
             foundations: false,
+            taste: false,
             scopes: vec![crate::oauth::DESIGN_SCOPE.into()],
             issuer: account.issuer.clone(),
             generation: 1,

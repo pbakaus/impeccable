@@ -70,4 +70,5 @@ jobs:
             --close-days 14 \
             --maintainers "pbakaus" \
             --regular-contributors "pbakaus,abdulwahabone" \
-            --auto-close-regulars
+            --auto-close-regulars \
+            --never-close-authors "mvanhorn"

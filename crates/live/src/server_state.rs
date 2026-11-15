@@ -20,7 +20,9 @@ pub const DEFAULT_POLL_TIMEOUT: i64 = 600_000;
 pub const SSE_HEARTBEAT_INTERVAL_MS: u64 = 30_000;
 pub const CHAT_POLL_FRESHNESS_MS: i64 = 60_000;
 pub const POLL_LEASE_EXPIRY_TIMER_GRACE_MS: i64 = 2;
-pub const EXIT_TIMER_MS: u64 = 8000;
+/// How long a session outlives its last open tab. A minute covers a tab closed by
+/// mistake and reopened, or a slow reload; the bar's exit button ends it at once.
+pub const EXIT_TIMER_MS: u64 = 60_000;
 pub const PREFLIGHT_TIMEOUT_MS: u64 = 15_000;
 
 pub struct PendingEntry {
@@ -408,11 +410,15 @@ impl ServerState {
             .map(|e| &e.event)
     }
 
-    /// JS: cancelQueuedAnonymousExitEvents()
+    /// Cancels the exit the all-tabs-closed timer queued, once a tab reconnects.
+    /// An exit the user sent from the bar (`source: "user"`) stays queued: a
+    /// reconnect after it is the page reloading, not the user coming back.
     pub fn cancel_queued_anonymous_exit_events(&mut self) -> usize {
         let before = self.pending_events.len();
         self.pending_events.retain(|entry| {
-            !(ev_str(&entry.event, "type") == Some("exit") && !truthy(entry.event.get("id")))
+            !(ev_str(&entry.event, "type") == Some("exit")
+                && !truthy(entry.event.get("id"))
+                && ev_str(&entry.event, "source") != Some("user"))
         });
         let removed = before - self.pending_events.len();
         if removed > 0 {
@@ -652,7 +658,7 @@ impl ServerState {
     }
 
     /// JS: the /events GET handler's timer arming: after the last SSE client
-    /// leaves, queue an anonymous `exit` 8 s later if still nobody.
+    /// leaves, queue an anonymous `exit` [`EXIT_TIMER_MS`] later if still nobody.
     pub fn arm_exit_timer(&mut self) {
         self.exit_timer_gen += 1;
         let gen = self.exit_timer_gen;

@@ -165,7 +165,7 @@ Notes:
 
 ## Project files and git
 
-Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/*.md`. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
+Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/ignore.md`. Critique reports stay local unless `reports.commit` is true. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
 
 <details>
 <summary><b>Copy the <code>.gitignore</code> entries</b></summary>
@@ -175,7 +175,7 @@ Impeccable writes its working files under `.impeccable/`. A few are shared proje
 # Ephemeral output, runtime state, and per-dev overrides.
 # The **/ prefix covers .impeccable at the repo root or in a nested workspace.
 # Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, surfaces/*.md, critique/*.md.
+# design.json, surfaces/*.md, critique/ignore.md.
 **/.impeccable/config.local.json
 **/.impeccable/hook.cache.json
 **/.impeccable/hook.pending.json
@@ -222,7 +222,7 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 [![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=impeccable)
 
-Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux runners.
+Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux and Windows runners.
 
 ## License
 

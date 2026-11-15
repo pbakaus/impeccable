@@ -500,3 +500,69 @@ fn secure_lock_file(path: &Path, file: &fs::File) -> Result<(), (&'static str, S
 }
 #[cfg(test)]
 mod tests;
+
+/// Validate `spec` and run one verb on it (`plan`, `apply`, `status`, `undo`), as
+/// `impeccable agents <verb> --spec` does, for callers in this workspace that build
+/// their spec in code. Errors are `(code, message)`.
+pub fn run_spec(verb: &str, spec: &Spec) -> Result<Value, (String, String)> {
+    cli::validate(spec).map_err(|m| ("invalid_request".to_string(), m))?;
+    cli::operate(verb, spec).map_err(|(code, msg, _)| (code.to_string(), msg))
+}
+
+/// What `owner` has installed, read from the engine's journals rather than today's
+/// environment, so a caller can undo what was installed.
+#[derive(Default)]
+pub struct Installed {
+    /// Committed installations, as the spec each one installed.
+    pub committed: Vec<Spec>,
+    /// Applies that stopped part way, as the spec each one was installing; roll them
+    /// back with [`recover_spec`].
+    pub pending: Vec<Spec>,
+    /// Journal or pending files that can't be read, so their owner is unknown.
+    pub unreadable: Vec<PathBuf>,
+}
+
+/// Every installation `owner` made. Other owners' journals and pending transactions are
+/// left out; a file that can't be read is reported, never skipped silently.
+pub fn installed_specs(owner: &str) -> Result<Installed, (String, String)> {
+    let home = cli::agents_home().map_err(|(c, m, _)| (c.to_string(), m))?;
+    let entries = match fs::read_dir(&home) {
+        Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Installed::default()),
+        Err(e) => return Err(("io_error".into(), e.to_string())),
+    };
+    let mut found = Installed::default();
+    for path in entries {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if name.ends_with(".pending.json") {
+            let tx = fs::read(&path)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<PendingTransaction>(&b).ok());
+            match tx {
+                Some(tx) if tx.desired_spec.owner == owner => found.pending.push(tx.desired_spec),
+                Some(_) => {}
+                None => found.unreadable.push(path),
+            }
+            continue;
+        }
+        if !name.ends_with(".json") {
+            continue;
+        }
+        match read_journal(&path) {
+            Ok(Some(j)) if j.spec.owner == owner => found.committed.push(j.spec),
+            Ok(_) => {}
+            Err(_) => found.unreadable.push(path),
+        }
+    }
+    found.unreadable.sort();
+    Ok(found)
+}
+
+/// Roll back any pending transaction of `spec`'s installation (an apply that stopped
+/// part way), as `impeccable agents recover` does.
+pub fn recover_spec(spec: &Spec) -> Result<Value, (String, String)> {
+    run_spec("recover", spec)
+}

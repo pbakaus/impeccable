@@ -141,7 +141,7 @@ fn form_encode(s: &str) -> String {
     out
 }
 
-fn fetch_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, scope: &str, key: &str, mode: Option<&str>, grain: Option<&str>, platform: Option<&str>, reroll: usize) -> Option<Value> {
+fn fetch_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, scope: &str, key: &str, mode: Option<&str>, grain: Option<&str>, platform: Option<&str>, reroll: usize, settled: bool) -> Option<Value> {
     let mut params = vec![("scope", scope.to_string()), ("key", key.to_string()), ("reroll", reroll.to_string())];
     if let Some(m) = mode {
         params.push(("mode", m.to_string()));
@@ -170,8 +170,7 @@ fn fetch_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, scope: &str, key: &s
     }
     let text = res.into_string().ok()?;
     let roll: Value = serde_json::from_str(&text).ok()?;
-    let ch = roll.get("challengers")?.as_array()?;
-    if ch.is_empty() {
+    if !settled && roll.get("challengers")?.as_array()?.is_empty() {
         return None;
     }
     Some(roll)
@@ -399,6 +398,9 @@ pub struct SeedArgs {
     /// The engine generated `key` itself this run (no `--from`, no
     /// `IMPECCABLE_CONCEPT_SEED`), so it has no ledger to look for.
     pub fresh_key: bool,
+    /// `--replace-world`: the user asked to replace a seeded world, so this
+    /// direction roll deals catalog worlds instead of settling on it.
+    pub replace_world: bool,
 }
 
 fn unit(scope: &str, salt: &str, key: &str) -> f64 {
@@ -454,6 +456,9 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     if register.is_some() && scope != "direction" {
         return Err("concept-seed: --register applies to direction rounds only".into());
     }
+    if a.replace_world && scope != "direction" {
+        return Err("concept-seed: --replace-world applies to direction rounds only".into());
+    }
     let mode: Option<&str> = match &a.mode {
         None => None,
         Some(Some(m)) if SEED_MODES.contains(&m.as_str()) => Some(m.as_str()),
@@ -498,25 +503,49 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     }
     let dealt_str = dealt.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ");
 
+    let ctx = load_context(cwd, &TargetOptions::default(), env);
+    // A seeded world settles every roll until the user asks to replace it;
+    // that one direction roll passes --replace-world and deals worlds again.
+    let seeded = crate::context::seeded_world(ctx.design.as_deref());
+    let settled_world = seeded.as_ref().filter(|_| !a.replace_world).map(|id| {
+        let exit = if scope == "direction" { t::SETTLED_REPLACE_EXIT } else { "" };
+        format!("WORLD: settled ({id}, seeded from the catalog). The structures below are dealt inside it; do not roll, re-pick or replace the world.{exit}\n")
+    });
+    let replacing = seeded.as_ref().filter(|_| a.replace_world).map(|id| fill(t::REPLACING_WORLD, &[("WORLD", id)])).unwrap_or_default();
+    // Bolder deals foreign worlds, which a settled world never shows: the
+    // round runs as a plain re-roll of structures and says so.
+    let settled_bolder = settled_world.is_some() && register == Some("bolder");
+    let round_register = if settled_bolder { None } else { register };
+    let compositions_enabled = env.get("IMPECCABLE_COMPOSITIONS").map(|v| v == "1").unwrap_or(false);
+
     // data resolution
     let catalog_dir = env.get("IMPECCABLE_CATALOG_DIR").filter(|v| !v.is_empty()).cloned().unwrap_or_else(|| {
         crate::provider::detect(env, cwd).skill_dir.map(|d| jsp::join(&[&d, "scripts"])).unwrap_or_else(|| ".".to_string())
     });
     let data: Option<RollData> = if let Some(local) = load_local(&catalog_dir) {
-        let sel = select_approved_challengers(scope, key, reroll, mode, &local.concepts)?;
+        let (approved_count, challengers) = if settled_world.is_some() {
+            (local.concepts.iter().filter(|c| c.get("status").and_then(Value::as_str) == Some("approved")).count(), vec![])
+        } else {
+            let sel = select_approved_challengers(scope, key, reroll, mode, &local.concepts)?;
+            (sel.approved.len(), sel.picks)
+        };
         let comps = select_approved_compositions(scope, key, reroll, mode, grain, platform, &local.compositions, 3);
         Some(RollData {
             source: "local".into(),
             pool_revision: approved_pool_revision(&local.concepts),
             hand_id: None,
-            approved_count: sel.approved.len().to_string(),
+            approved_count: approved_count.to_string(),
             catalog_count: local.concepts.len().to_string(),
-            challengers: sel.picks,
+            challengers,
             compositions: comps.picks,
             composition_match: Some(comps.match_),
         })
+    } else if settled_world.is_some() && !compositions_enabled {
+        // No world candidates will be printed and no composition input needs
+        // the API. The grounded structural deal needs no network request.
+        None
     } else {
-        fetch_roll(env, cwd, budget, scope, key, mode, grain, platform, reroll).map(|roll| RollData {
+        fetch_roll(env, cwd, budget, scope, key, mode, grain, platform, reroll, settled_world.is_some()).map(|roll| RollData {
             source: "api".into(),
             pool_revision: vs(&roll, "poolRevision"),
             hand_id: roll.get("handId").and_then(Value::as_str).map(str::to_string),
@@ -534,11 +563,23 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
             },
             composition_match: None,
         })
-    };
+    }.or_else(|| settled_world.as_ref().map(|_| RollData {
+        // A settled world needs no catalog to deal grounded structures. Use
+        // the full roll's blocks rather than suggesting a network retry to
+        // obtain world candidates that must never be shown here.
+        source: "settled".into(),
+        pool_revision: "none".into(),
+        hand_id: None,
+        approved_count: "0".into(),
+        catalog_count: "0".into(),
+        challengers: vec![],
+        compositions: vec![],
+        composition_match: None,
+    }));
 
     let mode_flag = mode.map(|m| format!(" --mode {}", m)).unwrap_or_default();
     let reroll_flag = if reroll > 0 { format!(" --reroll {}", reroll) } else { String::new() };
-    let register_flag = register.map(|r| format!(" --register {}", r)).unwrap_or_default();
+    let register_flag = register.map(|r| format!(" --register {}", r)).unwrap_or_default() + if a.replace_world { " --replace-world" } else { "" };
     let mode_or_unscoped = mode.unwrap_or("unscoped").to_string();
     let scope_upper = scope.to_uppercase();
     let build_index_s = build_index.to_string();
@@ -557,7 +598,7 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     ];
     let promoted = if scope == "direction" { fill(t::PROMOTED_DIRECTION, &common) } else { fill(t::PROMOTED_SURFACE, &common) };
     let challenger_instruction = if scope == "direction" { t::CHALLENGER_DIRECTION.to_string() } else { t::CHALLENGER_SURFACE.to_string() };
-    let authority = if scope == "direction" { t::AUTHORITY_DIRECTION.to_string() } else { t::AUTHORITY_SURFACE.to_string() };
+    let authority = replacing + if scope == "direction" { t::AUTHORITY_DIRECTION } else { t::AUTHORITY_SURFACE };
     // MODE RULES ride after RICHNESS (after AUTHORITY on the degraded paths,
     // which carry no RICHNESS), on every round including re-rolls.
     let mode_block = mode.map(|m| format!("\n{}", mode_rules_block(env, cwd, m))).unwrap_or_default();
@@ -589,7 +630,6 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
         return Ok((scope, reroll, fill(t::DEGRADED_BODY, &pairs), true, RollMeta { worlds: vec![], api: false, pool_revision: None, hand_id: None }));
     };
 
-    let compositions_enabled = env.get("IMPECCABLE_COMPOSITIONS").map(|v| v == "1").unwrap_or(false);
     let compositions: Vec<Value> = if compositions_enabled { data.compositions.clone() } else { vec![] };
     let grain_note = match &data.composition_match {
         Some(m) if m.grain.is_some() => {
@@ -619,9 +659,10 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
         String::new()
     };
     let reroll_block = if reroll > 0 {
-        let tag = register.map(|r| format!(" ({} REGISTER, user-requested)", r.to_uppercase())).unwrap_or_default();
-        let derive = if register.is_some() { "" } else { t::REROLL_DERIVE_TEXT };
-        fill(t::REROLL_BLOCK, &[("REROLL", &reroll.to_string()), ("REROLL_REGISTER_TAG", &tag), ("REROLL_DERIVE", derive)])
+        let tag = round_register.map(|r| format!(" ({} REGISTER, user-requested)", r.to_uppercase())).unwrap_or_default();
+        let derive = if round_register.is_some() { "" } else { t::REROLL_DERIVE_TEXT };
+        let unavailable = if settled_bolder { t::SETTLED_BOLDER } else { "" };
+        format!("{unavailable}{}", fill(t::REROLL_BLOCK, &[("REROLL", &reroll.to_string()), ("REROLL_REGISTER_TAG", &tag), ("REROLL_DERIVE", derive)]))
     } else {
         String::new()
     };
@@ -632,16 +673,18 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
     } else {
         String::new()
     };
-    let assigned_block = match register {
+    let assigned_block = match round_register {
         None => fill(t::ASSIGNED_BLOCK, &[("ASSIGNED_OR_DEALT", &assigned_or_dealt), ("PROMOTEDINSTRUCTION", &promoted)]),
         Some("safer") => t::SAFER_BLOCK.to_string(),
         _ => t::BOLDER_BLOCK.to_string(),
     };
-    let round_challenger_instruction = if register == Some("bolder") { t::BOLDER_CHALLENGER.to_string() } else { challenger_instruction };
+    let round_challenger_instruction = if round_register == Some("bolder") { t::BOLDER_CHALLENGER.to_string() } else { challenger_instruction };
     // The safer register spends its hand unseen, so it prints no challenger
     // and records no world.
     let mut worlds: Vec<Value> = Vec::new();
-    let challenger_section = if register == Some("safer") {
+    let challenger_section = if let Some(world) = &settled_world {
+        format!("{}{}", world, composition_block)
+    } else if round_register == Some("safer") {
         String::new()
     } else {
         for c in &data.challengers {
@@ -658,7 +701,7 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
             ],
         )
     };
-    let restated = match register {
+    let restated = match round_register {
         None => restated_assigned_or_dealt,
         Some(r) => fill(t::RESTATED_REGISTER, &[("REGISTER", r), ("KEY", key)]),
     };
@@ -776,6 +819,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         candidate_count: num(val("--candidate-count")).unwrap_or(7.0),
         build_path: crate::context_cli::recorded_build_path(&ctx, &cwd),
         fresh_key,
+        replace_world: idx("--replace-world").is_some(),
     };
     match render_concept_seed(&env, &cwd, &mut budget, &seed) {
         Ok((text, meta)) => {
@@ -865,6 +909,94 @@ mod tests {
         let code = run(&argv, &mut io);
         let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
         (code, out.replace('\\', "/"))
+    }
+
+    #[test]
+    fn settled_rolls_replace_only_the_world_candidates() {
+        let (proj, skill) = fixture("settled-roll", &[("mode-persuade", MODE_FILE)]);
+        let args = ["--scope", "surface", "--mode", "persuade", "--from", "k1"];
+        let (code, empty) = seed(&proj, &skill, true, &args);
+        assert_eq!(code, 0);
+        assert!(empty.contains("CHALLENGERS:\n"), "{empty}");
+        assert!(empty.contains("     SOURCE ID: "), "{empty}");
+        assert!(empty.contains("     QUALITY BAR: "), "{empty}");
+        let catalog = load_local(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/concept-catalog").to_string_lossy()).unwrap();
+        let before = empty.split("CHALLENGERS:\n").next().unwrap();
+        let after = empty.split("PRODUCT.md and DESIGN.md constrain").nth(1).unwrap();
+        // Only a seeded world settles the roll: a project with its own design
+        // system keeps its challengers (new-work.md's established-world path).
+        for seeded in [true] {
+            if seeded {
+                std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n# Design\n").unwrap();
+            } else {
+                std::fs::remove_file(proj.join("DESIGN.md")).unwrap();
+                std::fs::create_dir_all(proj.join("src")).unwrap();
+                std::fs::write(proj.join("src/theme.css"), ":root { --ground: white; --ink: black; --accent: red; }\n").unwrap();
+            }
+            let (code, out) = seed(&proj, &skill, true, &args);
+            assert_eq!(code, 0);
+            let label = if seeded { "teletext-service, seeded from the catalog" } else { "this project's own design system" };
+            let world = format!("WORLD: settled ({label}). The structures below are dealt inside it; do not roll, re-pick or replace the world.\n");
+            assert_eq!(out, format!("{before}{world}PRODUCT.md and DESIGN.md constrain{after}"));
+            for c in &catalog.concepts {
+                assert!(!out.contains(&vs(c, "form")), "{out}");
+            }
+            for forbidden in ["CHALLENGERS:\n", "QUALITY BAR:", "SOURCE ID:", "/worlds/cards/"] {
+                assert!(!out.contains(forbidden), "{out}");
+            }
+            let record: Value = serde_json::from_str(&std::fs::read_to_string(proj.join(".impeccable/questions/roll.json")).unwrap()).unwrap();
+            assert!(record.get("worlds").is_none());
+            let (code, direction) = seed(&proj, &skill, true, &["--scope", "direction", "--from", "k1"]);
+            assert_eq!(code, 0);
+            assert!(direction.contains(&world.replace(".\n", &format!(".{}\n", t::SETTLED_REPLACE_EXIT))), "{direction}");
+            assert!(!direction.contains("CHALLENGERS:\n"));
+        }
+        // Once code carries a seeded world, its catalog id still names it.
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let (code, out) = seed(&proj, &skill, true, &args);
+        assert_eq!(code, 0);
+        assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."));
+    }
+
+    #[test]
+    fn a_settled_bolder_round_runs_as_a_plain_reroll_inside_the_world() {
+        // Catches: BOLDER_BLOCK forbidding grounded directions while the
+        // settled world removed every challenger, leaving an empty hand.
+        let (proj, skill) = fixture("settled-bolder", &[("mode-persuade", MODE_FILE)]);
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let (code, out) = seed(&proj, &skill, true, &["--scope", "direction", "--mode", "persuade", "--from", "k1", "--reroll", "1", "--register", "bolder"]);
+        assert_eq!(code, 0);
+        assert!(out.contains(t::SETTLED_BOLDER), "{out}");
+        assert!(out.contains("ASSIGNED INDEX: "), "{out}");
+        assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."), "{out}");
+        for forbidden in [t::BOLDER_BLOCK, t::BOLDER_CHALLENGER, "(BOLDER REGISTER, user-requested)", "REGISTER (restated", "CHALLENGERS:\n"] {
+            assert!(!out.contains(forbidden), "{forbidden}\n{out}");
+        }
+        // The rerun line still reproduces the round the user asked for.
+        assert!(out.contains("--reroll 1 --register bolder --candidate-count"), "{out}");
+    }
+
+    #[test]
+    fn replace_world_deals_worlds_again_and_says_what_the_rewrite_drops() {
+        let (proj, skill) = fixture("replace-world", &[("mode-persuade", MODE_FILE)]);
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let args = ["--scope", "direction", "--mode", "persuade", "--from", "k1", "--replace-world"];
+        let (code, out) = seed(&proj, &skill, true, &args);
+        assert_eq!(code, 0);
+        assert!(out.contains(&fill(t::REPLACING_WORLD, &[("WORLD", "teletext-service")])), "{out}");
+        assert!(out.contains("CHALLENGERS:\n"), "{out}");
+        assert!(!out.contains("WORLD: settled"), "{out}");
+        assert!(out.contains("--from k1 --replace-world --candidate-count"), "{out}");
+        // Bolder works again once the world is up for replacement.
+        let (_, bolder) = seed(&proj, &skill, true, &["--scope", "direction", "--from", "k1", "--reroll", "1", "--register", "bolder", "--replace-world"]);
+        assert!(bolder.contains(t::BOLDER_BLOCK) && !bolder.contains(t::SETTLED_BOLDER), "{bolder}");
+        // A surface roll never replaces the world.
+        let (code, _) = seed(&proj, &skill, true, &["--scope", "surface", "--from", "k1", "--replace-world"]);
+        assert_eq!(code, 1);
+        // With no seeded world the flag changes nothing but the rerun line.
+        std::fs::remove_file(proj.join("DESIGN.md")).unwrap();
+        let (_, plain) = seed(&proj, &skill, true, &args);
+        assert!(!plain.contains("WORLD: replacing") && plain.contains("CHALLENGERS:\n"), "{plain}");
     }
 
     #[test]
@@ -1159,6 +1291,10 @@ mod tests {
     /// request as (method, url, X-Impeccable-Client, body).
     type Seen = std::sync::Arc<std::sync::Mutex<Vec<(String, String, String, String, String)>>>;
     fn roll_api() -> (String, Seen) {
+        roll_api_with_compositions_only(false)
+    }
+
+    fn roll_api_with_compositions_only(compositions_only: bool) -> (String, Seen) {
         let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
         let base = format!("http://127.0.0.1:{}/api", server.server_addr().to_ip().unwrap().port());
         let seen: Seen = Default::default();
@@ -1177,6 +1313,12 @@ mod tests {
                         { "id": "microfiche-reader", "form": "Microfiche", "spark": "s", "system": ["r"], "webLeverage": "w" }
                     ]
                 });
+                let roll = if compositions_only {
+                    serde_json::json!({
+                        "poolRevision": "0123456789ab", "handId": "00112233445566778899aabbccddeeff", "approvedCount": 2, "catalogCount": 3,
+                        "compositions": [{ "id": "working-layout", "form": "Working layout", "spark": "composition evidence", "system": ["Keep the hierarchy"], "webLeverage": "Responsive structure" }]
+                    })
+                } else { roll };
                 let text = if req.url().starts_with("/api/roll") { roll.to_string() } else { "{}".to_string() };
                 let _ = req.respond(tiny_http::Response::from_string(text));
             }
@@ -1185,7 +1327,13 @@ mod tests {
     }
 
     fn seed_api(proj: &std::path::Path, skill: &std::path::Path, base: &str, args: &[&str]) -> String {
+        seed_api_options(proj, skill, base, args, false, false)
+    }
+
+    fn seed_api_options(proj: &std::path::Path, skill: &std::path::Path, base: &str, args: &[&str], compositions: bool, off: bool) -> String {
         let env = Env::from([
+            ("IMPECCABLE_COMPOSITIONS".into(), if compositions { "1" } else { "0" }.into()),
+            ("IMPECCABLE_NO_TELEMETRY".into(), if off { "1" } else { "0" }.into()),
             ("IMPECCABLE_SKILL_DIR".into(), skill.to_string_lossy().into_owned()),
             ("IMPECCABLE_CATALOG_DIR".into(), proj.join("no-such-catalog").to_string_lossy().into_owned()),
             ("IMPECCABLE_API_URL".into(), base.to_string()),
@@ -1208,6 +1356,44 @@ mod tests {
     fn chosen_bodies(seen: &Seen) -> Vec<String> {
         let ping = regex::Regex::new(r#","pingId":"[0-9a-f]{32}""#).unwrap();
         seen.lock().unwrap().iter().filter(|r| r.0 == "POST").map(|r| ping.replace(&r.3, r#","pingId":"<PING>""#).into_owned()).collect()
+    }
+
+    #[test]
+    fn settled_rolls_skip_world_only_api_requests_and_keep_composition_headers() {
+        let (proj, skill) = fixture("settled-api", &[("mode-persuade", MODE_FILE)]);
+        std::fs::write(proj.join("DESIGN.md"), "---\nworld: teletext-service\n---\n").unwrap();
+        let (base, seen) = roll_api_with_compositions_only(true);
+        for scope in ["surface", "direction"] {
+            let out = seed_api(&proj, &skill, &base, &["--scope", scope, "--from", "k1"]);
+            assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."));
+            assert!(!out.contains("CHALLENGERS:"));
+            assert!(seen.lock().unwrap().is_empty());
+            assert!(out.contains("source: settled; approved pool: none; 0/0 human-approved"));
+            assert!(out.contains("PRESENTATION"));
+            assert!(!out.contains("rerun this command once"));
+        }
+        for off in [false, true] {
+            let out = seed_api_options(&proj, &skill, &base, &["--scope", "surface", "--from", "k1"], true, off);
+            assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."));
+            assert!(!out.contains("QUALITY BAR:"));
+            assert!(!out.contains("Microfiche"));
+            assert!(out.contains("COMPOSITION CHALLENGERS (identity-free;"), "{out}");
+            assert!(out.contains("Working layout"), "{out}");
+            assert!(out.contains("TELEMETRY:"), "{out}");
+            let req = seen.lock().unwrap().last().unwrap().clone();
+            assert_eq!(req.0, "GET");
+            assert!(req.2.starts_with("impeccable/"));
+            assert_eq!(req.4, if off { "off" } else { "" });
+        }
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        // A server that still sends worlds cannot leak them into the roll or ledger.
+        let (base, _) = roll_api();
+        let out = seed_api_options(&proj, &skill, &base, &["--scope", "surface", "--from", "k2"], true, false);
+        assert!(!out.contains("QUALITY BAR:"));
+        assert!(!out.contains("Microfiche"));
+        let round = tl(&proj).round("k2", Some(0)).unwrap();
+        assert!(round.dealt.is_empty());
+        assert_eq!(round.pool_revision.as_deref(), Some("0123456789ab"));
     }
 
     #[test]

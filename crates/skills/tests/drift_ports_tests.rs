@@ -721,9 +721,26 @@ fn global_install_rewrites_grok_project_hooks_to_the_global_skill_path() {
     // the engine writes the launcher form pointing at the same global root.
     assert!(manifest_names_launcher(&format!("{home}/.claude/settings.json"), &home, ".claude"));
     assert!(!std::path::Path::new(&format!("{home}/.claude/settings.local.json")).exists());
-    assert!(manifest_names_launcher(&format!("{tmp}/.codex/hooks.json"), &home, ".agents"));
-    assert!(manifest_names_launcher(&format!("{tmp}/.cursor/hooks.json"), &home, ".cursor"));
-    let grok_manifest = format!("{tmp}/.grok/hooks/impeccable.json");
+    // #1190: Codex, Cursor and Grok load a global hook from home, so that is
+    // where a global install puts it, and the project gets none of them.
+    assert!(manifest_names_launcher(&format!("{home}/.codex/hooks.json"), &home, ".agents"));
+    assert!(manifest_names_launcher(&format!("{home}/.cursor/hooks.json"), &home, ".cursor"));
+    for rel in [".codex", ".cursor", ".grok"] {
+        assert!(!std::path::Path::new(&format!("{tmp}/{rel}")).exists(), "{rel} written into the project");
+    }
+    let shown = |p: &str| if cfg!(windows) { p.to_string() } else { p.replacen(&home, "~", 1) };
+    assert!(
+        r.stdout.contains(&format!(
+            "Installed hooks into: {}, {}, {}, {}",
+            shown(&jsp::join(&[&home, ".claude", "settings.json"])),
+            shown(&jsp::join(&[&home, ".codex", "hooks.json"])),
+            shown(&jsp::join(&[&home, ".cursor", "hooks.json"])),
+            shown(&jsp::join(&[&home, ".grok", "hooks", "impeccable.json"])),
+        )),
+        "{}",
+        r.stdout
+    );
+    let grok_manifest = format!("{home}/.grok/hooks/impeccable.json");
     let grok_hooks = read(&grok_manifest);
     assert!(
         manifest_names_launcher(&grok_manifest, &home, ".grok"),
@@ -733,6 +750,170 @@ fn global_install_rewrites_grok_project_hooks_to_the_global_skill_path() {
         !grok_hooks.contains("\\\".grok/skills/impeccable/scripts/hook.mjs\\\"") && !grok_hooks.contains("hook.mjs"),
         "grok hook still points at the project-relative bundle command: {grok_hooks}"
     );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// #1190 end to end: a global install moves the Codex, Cursor and Grok hooks
+/// that an older global install left in the project to home, keeping the
+/// user's own project entries, and leaves Copilot's in the project. A repeat
+/// install from another project with such leftovers, home hooks already
+/// current, drops only those leftovers.
+#[test]
+fn global_install_moves_project_hooks_home_without_duplicates() {
+    let root = temp_root("home-hooks-e2e");
+    let project = format!("{root}/project");
+    let other = format!("{root}/other");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&project, &other, &home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    std::fs::create_dir_all(format!("{other}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&project, &[".agents", ".cursor", ".grok", ".github"]);
+    // The shipped manifests, so the home hooks count as wired.
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        let rel = match target.provider { ".agents" => ".codex/hooks.json", ".cursor" => ".cursor/hooks.json", ".grok" => ".grok/hooks/impeccable.json", _ => continue };
+        write(&format!("{bundle_root}/{rel}"), &(target.manifest)().to_string());
+    }
+    let env = base_env(&home, &tmpdir, &bundle_root);
+    let launcher = |p: &str| jsp::join(&[&home, p, "skills", "impeccable", "scripts", "impeccable"]);
+    let leftovers = |dir: &str| {
+        let cursor = launcher(".cursor");
+        write(&format!("{dir}/.cursor/hooks.json"), &json!({ "version": 1, "hooks": { "postToolUse": [
+            { "command": format!("[ ! -f '{cursor}' ] || '{cursor}' hook"), "matcher": "^Write$", "timeout": 5 },
+            { "command": "./format.sh" },
+        ] } }).to_string());
+        let codex = launcher(".agents");
+        write(&format!("{dir}/.codex/hooks.json"), &json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|apply_patch", "hooks": [{ "type": "command", "command": format!("[ ! -f '{codex}' ] || '{codex}' hook") }] }] } }).to_string());
+    };
+    leftovers(&project);
+    let args = ["install", "-y", "--providers=codex,cursor,grok,github", "--scope=global"];
+
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    for (manifest, provider) in [("{home}/.codex/hooks.json", ".agents"), ("{home}/.cursor/hooks.json", ".cursor"), ("{home}/.grok/hooks/impeccable.json", ".grok")] {
+        let manifest = manifest.replace("{home}", &home);
+        assert!(manifest_names_launcher(&manifest, &home, provider), "{manifest}");
+    }
+    let cursor_after: Value = serde_json::from_str(&read(&format!("{project}/.cursor/hooks.json"))).unwrap();
+    assert_eq!(cursor_after, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
+    assert!(!std::path::Path::new(&format!("{project}/.codex/hooks.json")).exists());
+    assert!(!std::path::Path::new(&format!("{project}/.grok")).exists());
+    // Copilot's hook stays in the repo, naming the .github skill (each OS
+    // spells the launcher path its own way, so compare with one separator).
+    let copilot = read(&format!("{project}/.github/hooks/impeccable.json")).replace("\\\\", "/").replace('\\', "/");
+    assert!(copilot.contains(".github/skills/impeccable/scripts/impeccable"), "{copilot}");
+
+    // Same project again: everything is in place, nothing is rewritten.
+    let home_codex = read(&format!("{home}/.codex/hooks.json"));
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Skills are up to date"), "{}", r.stdout);
+    assert!(!r.stdout.contains("Installed hooks into"), "{}", r.stdout);
+    assert_eq!(read(&format!("{home}/.codex/hooks.json")), home_codex);
+
+    // Another project with leftovers: only those go, home stays as it was.
+    leftovers(&other);
+    let r = run_cli(&args, &other, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let other_cursor: Value = serde_json::from_str(&read(&format!("{other}/.cursor/hooks.json"))).unwrap();
+    assert_eq!(other_cursor, json!({ "version": 1, "hooks": { "postToolUse": [{ "command": "./format.sh" }] } }));
+    assert!(!std::path::Path::new(&format!("{other}/.codex/hooks.json")).exists());
+    assert_eq!(read(&format!("{home}/.codex/hooks.json")), home_codex);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A repeat Global install over a home Codex/Cursor/Grok manifest that still
+/// holds a dead `node .../hook.mjs` entry (PR #1378 review): the marker alone
+/// is not an installed hook, so the home manifest is rewritten to the current
+/// launcher command, and the user's own entries in it stay.
+#[test]
+fn repeat_global_install_rewrites_a_legacy_home_hook() {
+    let root = temp_root("home-hooks-legacy-repeat");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&project, &[".agents", ".cursor", ".grok"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        let rel = match target.provider { ".agents" => ".codex/hooks.json", ".cursor" => ".cursor/hooks.json", ".grok" => ".grok/hooks/impeccable.json", _ => continue };
+        write(&format!("{bundle_root}/{rel}"), &(target.manifest)().to_string());
+    }
+    let env = base_env(&home, &tmpdir, &bundle_root);
+    let args = ["install", "-y", "--providers=codex,cursor,grok", "--scope=global"];
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+
+    // An older install's home manifests: legacy `.mjs` commands only.
+    let legacy = |p: &str, script: &str| format!("node '{}'", jsp::join(&[&home, p, "skills", "impeccable", "scripts", script]));
+    write(&format!("{home}/.codex/hooks.json"), &json!({ "hooks": {
+        "PostToolUse": [{ "matcher": "apply_patch", "hooks": [{ "type": "command", "command": legacy(".agents", "hook.mjs") }] }],
+        "SessionStart": [{ "hooks": [{ "type": "command", "command": "./hello.sh" }] }],
+    } }).to_string());
+    write(&format!("{home}/.cursor/hooks.json"), &json!({ "version": 1, "hooks": { "preToolUse": [{ "command": legacy(".cursor", "hook-before-edit.mjs") }] } }).to_string());
+    write(&format!("{home}/.grok/hooks/impeccable.json"), &json!({ "hooks": { "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": legacy(".grok", "hook.mjs") }] }] } }).to_string());
+
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(r.stdout.contains("Installed hooks into:"), "{}", r.stdout);
+    for (rel, provider) in [(".codex/hooks.json", ".agents"), (".cursor/hooks.json", ".cursor"), (".grok/hooks/impeccable.json", ".grok")] {
+        let manifest = format!("{home}/{rel}");
+        let text = read(&manifest);
+        assert!(!text.contains(".mjs"), "legacy home hook survived: {text}");
+        assert!(manifest_names_launcher(&manifest, &home, provider), "{text}");
+        assert!(impeccable_skills::hook_manifest::home_hook_is_current(&sys_for(&project, &env), &home, provider), "{text}");
+    }
+    let codex: Value = serde_json::from_str(&read(&format!("{home}/.codex/hooks.json"))).unwrap();
+    assert_eq!(codex["hooks"]["SessionStart"], json!([{ "hooks": [{ "type": "command", "command": "./hello.sh" }] }]));
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A repeat Global install whose home hooks are already current, run in a
+/// project that still holds a legacy `.mjs` Codex manifest naming a project
+/// skill (PR #1378 review): the stale-manifest repair retargets it at the
+/// home skill, so it must run before the duplicate cleanup, as `update` does,
+/// or the project file is left as a second home hook.
+#[test]
+fn repeat_global_install_prunes_a_legacy_project_hook_it_repairs() {
+    let root = temp_root("home-hooks-repair-then-prune");
+    let project = format!("{root}/project");
+    let home = format!("{root}/home");
+    let tmpdir = format!("{root}/tmp");
+    for d in [&project, &home, &tmpdir] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    let bundle_root = create_fake_universal_bundle(&project, &[".agents"]);
+    for target in impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS {
+        if target.provider == ".agents" {
+            write(&format!("{bundle_root}/.codex/hooks.json"), &(target.manifest)().to_string());
+        }
+    }
+    let env = base_env(&home, &tmpdir, &bundle_root);
+    let args = ["install", "-y", "--providers=codex", "--scope=global"];
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    assert!(manifest_names_launcher(&format!("{home}/.codex/hooks.json"), &home, ".agents"));
+
+    // A v3-era project manifest: a dead `node .../hook.mjs` naming the
+    // project's own skill copy.
+    let legacy = format!("node '{}'", jsp::join(&[&project, ".agents", "skills", "impeccable", "scripts", "hook.mjs"]));
+    write(&format!("{project}/.codex/hooks.json"), &json!({ "hooks": {
+        "PostToolUse": [{ "matcher": "Edit|Write|apply_patch", "hooks": [{ "type": "command", "command": legacy }] }],
+    } }).to_string());
+
+    let r = run_cli(&args, &project, &env);
+    assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
+    let project_codex = format!("{project}/.codex/hooks.json");
+    if std::path::Path::new(&project_codex).exists() {
+        let text = read(&project_codex);
+        assert!(!text.contains("impeccable"), "a second home hook was left in the project: {text}");
+    }
+    assert!(manifest_names_launcher(&format!("{home}/.codex/hooks.json"), &home, ".agents"));
     std::fs::remove_dir_all(&root).ok();
 }
 
@@ -881,12 +1062,12 @@ fn cursor_impeccable_events(manifest: &str) -> Vec<(String, String)> {
     out
 }
 
-/// A user-scope Cursor install keeps the skill under home but its hook in the
-/// project's `.cursor/hooks.json` (#1069 review). `update --user` has to
-/// migrate that project manifest off the retired `preToolUse` gate, with or
-/// without hook consent. An older `update --user` also wrote the gate into
-/// `~/.cursor/hooks.json`; that file is global, so it is migrated in place,
-/// never pruned, and its foreign entries and other keys stay.
+/// An older user-scope Cursor install put its hook in the project's
+/// `.cursor/hooks.json` (#1069 review). `update --user` migrates that project
+/// manifest off the retired `preToolUse` gate without hook consent; with it,
+/// the hook moves to `~/.cursor/hooks.json` (#1190) and the project keeps only
+/// the user's own entries. The home manifest is global, so it is migrated in
+/// place, never pruned, and its foreign entries and other keys stay.
 #[test]
 fn user_scope_update_migrates_the_project_cursor_gate() {
     for (no_hooks, home_foreign) in [(true, true), (false, true), (true, false), (false, false)] {
@@ -934,14 +1115,18 @@ fn user_scope_update_migrates_the_project_cursor_gate() {
         assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
 
         let ours = cursor_impeccable_events(&project_manifest);
-        assert!(!ours.is_empty(), "{}", read(&project_manifest));
-        for (event, command) in &ours {
-            assert_eq!(event, "postToolUse", "{}", read(&project_manifest));
-            assert!(command.contains(&slash_norm(&launcher)) && command.ends_with(" hook"), "{command}");
-        }
         let project_value: Value = serde_json::from_str(&read(&project_manifest)).unwrap();
         assert_eq!(project_value["hooks"]["preToolUse"], json!([{ "command": "./audit.sh", "matcher": "Shell" }]));
-        assert_eq!(project_value["hooks"]["postToolUse"][0]["matcher"], "^Write$");
+        if no_hooks {
+            assert!(!ours.is_empty(), "{}", read(&project_manifest));
+            for (event, command) in &ours {
+                assert_eq!(event, "postToolUse", "{}", read(&project_manifest));
+                assert!(command.contains(&slash_norm(&launcher)) && command.ends_with(" hook"), "{command}");
+            }
+            assert_eq!(project_value["hooks"]["postToolUse"][0]["matcher"], "^Write$");
+        } else {
+            assert!(ours.is_empty(), "{}", read(&project_manifest));
+        }
 
         let home_ours = cursor_impeccable_events(&home_manifest);
         assert!(!home_ours.is_empty() && home_ours.iter().all(|(event, _)| event == "postToolUse"), "{}", read(&home_manifest));
@@ -955,9 +1140,9 @@ fn user_scope_update_migrates_the_project_cursor_gate() {
     }
 }
 
-/// `update --user` writes non-Claude hooks into the project, so it reads hook
-/// consent from the project too: a project that declined hooks gets none, even
-/// with `-y` and no choice recorded at home (#1069 review).
+/// `update --user` reads hook consent from the project it runs in: a project
+/// that declined hooks gets none, even with `-y` and no choice recorded at
+/// home (#1069 review), and that includes the home manifests (#1190).
 #[test]
 fn user_scope_update_honors_the_projects_declined_hook_consent() {
     let root = temp_root("cursor-user-declined");
@@ -984,10 +1169,10 @@ fn user_scope_update_honors_the_projects_declined_hook_consent() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// A fresh hook from `update --user` lands where `install --user` puts it: the
-/// project's `.cursor/hooks.json`, naming the home launcher, never home's.
+/// A fresh hook from `update --user` lands where `install --user` puts it:
+/// `~/.cursor/hooks.json`, naming the home launcher, never the project (#1190).
 #[test]
-fn user_scope_update_writes_the_cursor_hook_into_the_project() {
+fn user_scope_update_writes_the_cursor_hook_under_home() {
     let root = temp_root("cursor-user-update-hook");
     let project = format!("{root}/project");
     let home = format!("{root}/home");
@@ -1006,15 +1191,15 @@ fn user_scope_update_writes_the_cursor_hook_into_the_project() {
     let r = run_cli(&["update", "-y", "--user"], &project, &env);
     assert_eq!(r.code, 0, "{}\n{}", r.stdout, r.stderr);
 
-    let project_manifest = format!("{project}/.cursor/hooks.json");
+    let home_manifest = format!("{home}/.cursor/hooks.json");
     let launcher = slash_norm(&jsp::join(&[&home, ".cursor", "skills", "impeccable", "scripts", "impeccable"]));
-    let ours = cursor_impeccable_events(&project_manifest);
-    assert!(!ours.is_empty(), "{}", read(&project_manifest));
+    let ours = cursor_impeccable_events(&home_manifest);
+    assert!(!ours.is_empty(), "{}", read(&home_manifest));
     for (event, command) in &ours {
-        assert_eq!(event, "postToolUse", "{}", read(&project_manifest));
+        assert_eq!(event, "postToolUse", "{}", read(&home_manifest));
         assert!(command.contains(&launcher), "{command}");
     }
-    assert!(!std::path::Path::new(&format!("{home}/.cursor/hooks.json")).exists());
+    assert!(!std::path::Path::new(&format!("{project}/.cursor")).exists());
     std::fs::remove_dir_all(&root).ok();
 }
 
