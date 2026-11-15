@@ -1316,6 +1316,18 @@ fn a_telemetry_opt_out_still_gets_the_sign_in_scan_and_is_told_what_was_sent() {
 }
 
 #[test]
+fn a_sign_in_in_a_repo_without_a_remote_says_no_name_was_sent() {
+    // Catches: the line claiming a name went when a repository without a remote has none to send.
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().health = true;
+    let env = fake.env("first-signin-noremote");
+    let root = repo(&env, None);
+    let err = login_in(&env, &root);
+    assert!(err.contains("Sent finding counts and foundations checks, never your code or file names."), "{err}");
+    assert!(scans(&fake)[0].get("label").is_none());
+}
+
+#[test]
 fn the_sign_in_scan_leaves_design_md_to_detect() {
     // Catches: file contents uploading during sign-in with their one-time notice swallowed.
     let fake = Fake::start();
