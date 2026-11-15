@@ -17,7 +17,7 @@ export const COPY = {
   copy: { action: 'Copy command', done: 'Copied' },
 
   /** Signed in, and the server says the account has no Impeccable Pro. */
-  notPro: { line: 'This account doesn’t have Impeccable Pro.' },
+  notPro: { line: 'This account doesn’t have Impeccable Pro.', getPro: 'Get Pro', other: 'Use another account' },
   /** Chrome's notice when an agent asks for a journey (account/waiting.js): who, where and what, in one line. */
   agent: {
     title: 'Your agent wants to start a journey',

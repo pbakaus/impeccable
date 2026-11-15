@@ -45,6 +45,11 @@ b { font-weight: 500; }
 .face.is-thinking { animation: ring 1.6s var(--ease) infinite; }
 
 /* ---------- controls ---------- */
+/* What scrolls inside the panel (the task box, the steps, a wide grid): a thin rounded thumb and no track. */
+.scrolls::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrolls::-webkit-scrollbar-track { background: transparent; }
+.scrolls::-webkit-scrollbar-thumb { border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+.scrolls::-webkit-scrollbar-thumb:hover { background: color-mix(in oklch, var(--ink) 35%, transparent); }
 .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .mark { width: 18px; height: 18px; flex: none; fill: currentColor; color: var(--ink); }
 .mark.big { width: 36px; height: 36px; }
@@ -82,27 +87,34 @@ b { font-weight: 500; }
 .top { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .where { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .where b { color: var(--ink); }
-.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 20px; text-align: center; }
+.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 40px; text-align: center; }
 .hero .face { margin-bottom: 8px; }
 .name { font-family: var(--wordmark); font-weight: 200; font-size: 3.25rem; line-height: .9; color: var(--ink); }
 .about { margin-top: 6px; font-size: 17px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
 /* Four to a row, and a shorter last row centred under them. */
-.cast { flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; width: 100%; max-width: calc(4 * 64px + 3 * 14px); margin: 20px auto 0; }
-.cast button { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; border-radius: 10px; }
+.cast { --gap: 8px; container-type: inline-size; flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 20px auto 0; }
+.cast-row { display: flex; justify-content: center; gap: var(--gap); }
+/* Five across in whatever width there is (about 64px at 400, 50px at 320). */
+.cast-row > * { width: min(64px, calc((100cqi - 4 * var(--gap)) / 5)); flex: none; }
+/* More than ten: two rows as one block that scrolls sideways, each tile at full size. */
+.cast.wide { overflow-x: auto; padding: 5px 5px 8px; }
+.cast.wide .cast-row { justify-content: flex-start; width: max-content; }
+.cast.wide .cast-row > * { width: 64px; }
+.cast button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; border-radius: 10px; }
 .cast .face { padding: 0; }
 .cast button.sel .face { box-shadow: 0 0 0 2px var(--paper-raised), 0 0 0 4px var(--gold); }
 .cast button:hover .face { border-color: var(--gold-rich); }
-.cast-name { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.cast-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
 .cast button.sel .cast-name { color: var(--ink); font-weight: 600; }
 .cast .add { justify-content: flex-start; }
-.cast .add .face { width: 48px; height: 48px; background: none; border: 1.5px dashed var(--mute-deep); color: var(--muted); }
+.cast .add .face { width: 44px; height: 44px; background: none; border: 1.5px dashed var(--mute-deep); color: var(--muted); }
 .cast .add:hover .face { border-color: var(--gold-deep); color: var(--ink); }
 .cast .add .ic { width: 20px; height: 20px; }
 .box { flex: none; margin-top: auto; padding-top: 16px; }
 .box .err { margin: 0 4px 10px; text-align: center; }
 .field { border-radius: 16px; background: var(--paper-deep); padding: 14px 12px 12px 16px; }
 .field:focus-within { background: var(--paper-raised); box-shadow: inset 0 0 0 1.5px var(--gold-rich), 0 0 0 4px var(--gold-wash); }
-.text { display: block; width: 100%; min-height: 44px; resize: none; font-size: 15px; line-height: 1.45; color: var(--ink); padding-bottom: 12px; outline: none; }
+.text { display: block; width: 100%; min-height: calc(3 * 1.45em + 12px); resize: none; field-sizing: content; max-height: calc(6 * 1.45em + 12px); overflow-y: auto; font-size: 15px; line-height: 1.45; color: var(--ink); padding-bottom: 12px; outline: none; }
 .text::placeholder { color: var(--faint); }
 .row { display: flex; align-items: center; gap: 8px; }
 .row .btn { padding: 0 22px; }
@@ -127,11 +139,11 @@ b { font-weight: 500; }
 .tabs + .field { border-top-left-radius: 0; border-top-right-radius: 0; }
 .tabs + .field:focus-within { background: var(--tab); box-shadow: none; }
 .tabs .widths button[aria-pressed="true"] { background: var(--paper-raised); }
-/* The + at the limit: greyed, still focusable, saying why just under it (it is always last, so nothing is under it). */
+/* The + at the limit: greyed, still focusable, saying why just under it, ending at its right (it is last, so nothing is under it or after it). */
 .cast .add[aria-disabled="true"] { position: relative; cursor: default; }
 .cast .add[aria-disabled="true"] .face { opacity: .45; }
 .cast .add[aria-disabled="true"]:hover .face { border-color: var(--mute-deep); color: var(--muted); }
-.cast .add[aria-disabled="true"]::after { content: attr(data-tip); position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 150px; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted);
+.cast .add[aria-disabled="true"]::after { content: attr(data-tip); position: absolute; top: calc(100% + 2px); right: 0; width: max-content; max-width: 150px; text-align: right; font-size: 12px; line-height: 1.4; color: var(--muted);
   pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
 .cast .add[aria-disabled="true"]:hover::after, .cast .add[aria-disabled="true"]:focus-visible::after { opacity: 1; }
 .tabs button { position: static; }
@@ -167,7 +179,9 @@ b { font-weight: 500; }
 .walk-head .hd { font-size: 2.25rem; }
 .ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
 .ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
-.sofar { flex: none; display: flex; flex-direction: column; margin-top: 24px; }
+.sofar { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 24px; }
+/* A walk fills the panel exactly: the header and Stop stay put, and only the steps scroll. */
+#app.screen-walking { height: 100%; min-height: 0; }
 /* Every row has the same side padding and a border (clear but for the current one), so no number moves when the current step moves on. */
 .sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 13px 9px 12px; border: 1px solid transparent; border-top-color: var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
 .sofar li:first-child { border-top-color: transparent; }
@@ -190,6 +204,7 @@ b { font-weight: 500; }
 .command-line { display: block; padding: 10px 12px; border-radius: 10px; background: var(--paper-deep); font-family: var(--mono); font-size: 12px; color: var(--ink); }
 .btn.sm { height: 32px; padding: 0 12px; }
 .btn.full { width: 100%; }
+.stack { width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 8px; }
 .icon-only { width: 32px; padding: 0; }
 .btn-sec .ic { color: var(--muted); }
 .btn-sec:disabled { color: var(--mute-deep); }
@@ -253,7 +268,7 @@ b { font-weight: 500; }
 .modal-head h2 { flex: 1; font-size: 15px; font-weight: 600; color: var(--ink); }
 .modal-mid { display: flex; justify-content: center; padding: 8px 0; text-align: center; }
 .modal .cast { margin: 0 auto; }
-.cast-one { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; }
+.cast-one { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; }
 .drop { display: flex; flex-direction: column; gap: 6px; }
 .pick-app { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 0 14px; border-radius: 10px; background: var(--paper-deep); font-size: 14px; color: var(--ink); }
 .pick-app:hover { background: var(--gray); }

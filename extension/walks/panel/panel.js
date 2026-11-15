@@ -268,7 +268,7 @@ function appModal() {
         pre.appsOpen ? el('ul', { class: 'apps', 'aria-label': COPY.make.fromApp }, (pre.apps ?? []).map((app, i) => el('li', {},
           el('button', { type: 'button', 'data-act': `app-${i}`, 'aria-pressed': appKey(app) === pre.app ? 'true' : 'false', onclick: () => { void openApp(app); } }, app.name)))) : null),
       !chosen ? null : list === undefined ? el('div', { class: 'modal-mid' }, dots()) : !list?.length ? el('p', { class: 'task modal-mid', text: list === null ? COPY.make.appFailed : COPY.make.appNone })
-        : el('div', { class: 'cast', role: 'list', 'aria-label': chosen.name }, list.map((each) => el('span', { class: 'cast-one', role: 'listitem' }, face(each, 48), el('span', { class: 'cast-name', text: each.name })))),
+        : grid(list.map((each) => el('span', { class: 'cast-one', role: 'listitem' }, face(each, 44), el('span', { class: 'cast-name', text: each.name }))), { role: 'list', 'aria-label': chosen.name }),
       el('div', { class: 'pair' }, button('cancel', COPY.make.cancel, 'sec', shut),
         el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'use-these', disabled: !ready, text: COPY.make.useThese, onclick: useApp }))));
 }
@@ -318,17 +318,29 @@ function maker() {
 }
 
 /** The personas as a grid of faces, four to a row, and + last, which makes one. */
+/**
+ * Faces in at most two rows of five, the second centred under the first. More than ten: still two rows, as one block
+ * that scrolls sideways (`wide`).
+ */
+const ROW = 5;
+function grid(tiles, props) {
+  const first = tiles.length <= ROW * 2 ? ROW : Math.ceil(tiles.length / 2);
+  const rows = [tiles.slice(0, first), tiles.slice(first)].filter((row) => row.length);
+  return el('div', { ...props, class: `cast scrolls${tiles.length > ROW * 2 ? ' wide' : ''}` }, rows.map((row) => el('div', { class: 'cast-row' }, row)));
+}
+
 function cast() {
   const full = (pre.personas ?? []).filter((each) => each.mine).length >= ownMax;
-  return el('div', { class: 'cast', role: 'group', 'aria-label': COPY.home.who },
-    (pre.personas ?? []).map((each, i) => el('button', {
+  return grid([
+    ...(pre.personas ?? []).map((each, i) => el('button', {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
-    }, face(each, 48), el('span', { class: 'cast-name', text: each.name }))),
+    }, face(each, 44), el('span', { class: 'cast-name', text: each.name }))),
     // At the limit of their own, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
-        el('span', { class: 'face' }, icon('plus'))));
+        el('span', { class: 'face' }, icon('plus'))),
+  ], { role: 'group', 'aria-label': COPY.home.who });
 }
 
 /** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
@@ -343,7 +355,7 @@ function home() {
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
   // Every account has personas, the six defaults at least: a list that came back empty is one that didn't load.
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.failed }), unloaded())];
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
+  const box = el('textarea', { class: 'text scrolls', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
   const send = () => { hush(); pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
@@ -561,7 +573,7 @@ function walkingScreen() {
     el('div', { class: 'walk-head' }, face(walking(), 112, moodOf(view.steps.at(-1))), el('h2', { class: 'hd', role: 'status', text: COPY.walking.line(name()) })),
     question(),
     held(),
-    steps.length > 0 ? el('ol', { class: 'sofar' }, steps.map((step, i) => el('li', { class: i === 0 ? 'now' : '', 'data-n': step.n, 'data-issue': step.issue ? 'yes' : undefined },
+    steps.length > 0 ? el('ol', { class: 'sofar scrolls' }, steps.map((step, i) => el('li', { class: i === 0 ? 'now' : '', 'data-n': step.n, 'data-issue': step.issue ? 'yes' : undefined },
       el('span', { class: 'n', text: String(step.n) }),
       el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : el('p', { class: 'task', text: COPY.walking.first(name()) }),
     el('span', { class: 'grow' }),
@@ -633,9 +645,22 @@ function signedOut() {
     pre.signingIn ? el('p', { class: 'task', role: 'status', text: COPY.signedOut.signingIn }) : null)];
 }
 
-/** Signed in without Impeccable Pro, by the server's word: one line, and the settings, where the account is signed out. */
+/** Signed out from the panel: the account as the worker then says it, else simply signed out. */
+async function signOut() {
+  const answer = await chrome.runtime.sendMessage({ account: 'sign-out' }).catch(() => null);
+  account = answer?.ok === true && answer.available === true ? answer : { ...account, signedIn: false };
+  pre.personas = undefined;
+  render();
+}
+
+/**
+ * Signed in without Impeccable Pro, by the server's word (Chrome then offers no side panel; this shows only in one
+ * already open): one line, Get Pro, and another account.
+ */
 const notPro = () => [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.notPro.line }),
-  button('settings', COPY.top.settings, 'sec', () => { void chrome.runtime.openOptionsPage?.()?.catch?.(() => undefined); }))];
+  el('div', { class: 'stack' },
+    button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
+    button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); })))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
 function terminal() {
@@ -705,7 +730,12 @@ function render() {
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   app.className = `screen screen-${shown}`;
   if (shown !== 'scan') { const box = document.getElementById('panel-scan'); if (box && box !== app) box.hidden = true; }
+  // A step list the person scrolled away from its top (the current step) stays where they put it as new steps come.
+  const list = app.querySelector('.sofar');
+  const kept = list && list.scrollTop > 4 ? { top: list.scrollTop, height: list.scrollHeight } : null;
   app.replaceChildren(...SCREENS[shown]().filter(Boolean));
+  const now = kept && app.querySelector('.sofar');
+  if (now) now.scrollTop = kept.top + (now.scrollHeight - kept.height);
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.

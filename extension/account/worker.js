@@ -21,7 +21,7 @@ const UNPACKED = BUILD.devHosts;
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
 const PANEL = chrome.runtime.getURL('walks/panel/');
 /** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, the apps, to make one, a plan and the walk. */
-const PANEL_ASKS = ['status', 'sign-in', 'personas', 'apps', 'create', 'plan', 'walk'];
+const PANEL_ASKS = ['status', 'sign-in', 'sign-out', 'get-pro', 'personas', 'apps', 'create', 'plan', 'walk'];
 const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;
@@ -52,11 +52,23 @@ const proOf = (answer) => (answer.signedIn === false || answer.pro === false ? f
 const checkedIn = (answer, how) => { if (proOf(answer) === true) void agent.checkIn(how); return answer; };
 
 /** What the popup is told of the account. */
+/**
+ * Whether Chrome offers the side panel (its side-panel menu): not to a person signed in without Pro, by the server's
+ * word; to everyone else. Told only when it changes.
+ */
+let offered = null;
+function offerPanel(on) {
+  if (on === offered) return;
+  offered = on;
+  void Promise.resolve(chrome.sidePanel.setOptions?.({ enabled: on })).catch(() => undefined);
+}
+
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
   // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
   pointToolbar(signedIn && answer.pro !== false);
+  offerPanel(!(signedIn && answer.pro === false));
   void agent.keep(signedIn ? proOf(answer) : false).catch(() => undefined);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
@@ -212,6 +224,13 @@ const ANSWERS = {
   walk,
   status,
   async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(checkedIn).then(welcome) : { ok: false, why: done.why }; },
+  /** Get Pro: the pricing page's own link, on the website of the server signed in to (its checkout, after sign-in and terms). */
+  async 'get-pro'() {
+    const site = siteOf(issuer);
+    if (!site) return { ok: false };
+    await chrome.tabs.create({ url: `${site}/app/-/billing/checkout?start=1`, active: true }).catch(() => undefined);
+    return { ok: true };
+  },
   async 'sign-out'() { await session.signOut(); await agent.forget(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };

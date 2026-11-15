@@ -115,6 +115,10 @@ export const PRE = {
   'make-refused': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, note: COPY.make.limit(3) },
   // Three of their own already: the + is greyed and says why.
   'home-full': { personas: [MADE, { ...MADE, name: 'Theo', slug: 'theo', role: 'A shift lead, checks the rota between calls' }, { ...MADE, name: 'June', slug: 'june', role: 'A ward clerk, books cover for the night' }, ...PERSONAS], task: TASK, here: 'https://shop.example/' },
+  // A task longer than the box: it grows to six lines, then scrolls inside.
+  'home-long': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Sign up with a new email, confirm it from the inbox, then fill in the profile: a name, a photo and a short bio. Then go to Settings and turn on two-step sign-in with an authenticator app. Then sign out, sign back in with the code, and check that the bio still shows on the profile page. If anything asks for a phone number, skip it and say where it asked.' },
+  // An app with more personas than two rows of five: one two-row block that scrolls sideways, the + still last.
+  'home-wide': { personas: [...APP_CAST, ...['Ines', 'Kofi', 'Hana', 'Noor', 'Tomasz', 'Lena', 'Yusuf'].map((name) => ({ name, role: 'A visitor', slug: name.toLowerCase() }))], task: TASK },
   'home-made': { personas: [MADE, ...PERSONAS], task: TASK, here: 'https://shop.example/' },
   'make-modal': { personas: PERSONAS, screen: 'make', apps: APPS, modal: true },
   'make-modal-app': { personas: PERSONAS, screen: 'make', apps: APPS, modal: true, app: 'acme/tidy/web', appPersonas: APP_CAST },
@@ -129,5 +133,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
+for (const name of ['home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

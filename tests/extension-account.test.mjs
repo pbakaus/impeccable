@@ -249,8 +249,9 @@ describe('account worker', () => {
   /** The tabs the worker opened, and the side panels. */
   const opened = [];
   const panels = [];
-  /** What the toolbar icon was pointed at, in order. */
+  /** What the toolbar icon was pointed at, in order; and whether Chrome offers the side panel, in order. */
   const toolbar = [];
+  const offered = [];
   const session = {};
   const local = {};
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
@@ -270,18 +271,18 @@ describe('account worker', () => {
     tabs: { onCreated: none, onUpdated: none, onRemoved: none, async create(tab) { opened.push(tab); }, async get(id) { return { id, index: 0, windowId: 1, url: id === 9 ? 'chrome://settings/' : 'https://news.example.com/' }; } },
     debugger: { onEvent: none, onDetach: none },
     action: { async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {}, async setPopup({ popup }) { toolbar.push({ popup }); } },
-    sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
+    sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); }, async setOptions({ enabled }) { offered.push(enabled); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
   const loaded = import('../extension/account/worker.js');
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
-  // The side panel may ask who is signed in, to sign in, the personas, to make one, a plan and the walk: never to remove one.
+  // The side panel may ask who is signed in, to sign in or out, Get Pro, the personas, to make one, a plan and the walk: never to remove one.
   for (const [label, sender, asks] of [
-    ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }, ['status', 'sign-in', 'create', 'remove', 'walk']],
+    ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }, ['status', 'sign-in', 'get-pro', 'create', 'remove', 'walk']],
     ['the walk side panel removing a persona', fromPanel, ['remove']],
-    ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }, ['status', 'sign-in', 'create', 'remove', 'walk']],
+    ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }, ['status', 'sign-in', 'get-pro', 'create', 'remove', 'walk']],
   ]) {
     it(`refuses ${label}`, async () => {
       await loaded;
@@ -363,7 +364,7 @@ describe('account worker', () => {
     assert.equal(notices.length, 1);
   });
 
-  // Before any walk (a walk under way keeps the icon on its panel too).
+  // Before any walk (a walk under way keeps the icon on its panel too). Chrome offers no side panel to an account without Pro.
   it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
     await loaded;
     startServer(() => json(404, {}));
@@ -374,13 +375,13 @@ describe('account worker', () => {
     for (const said of [{ pro: false }, {}]) {
       globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', ...said }) : served(url, init));
       assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false, JSON.stringify(said));
-      assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+      assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], false]);
     }
     globalThis.fetch = served;
     await ask({ account: 'status' }, fromPopup);
-    assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
+    assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: '' }, { openPanelOnActionClick: true }], true]);
     await ask({ account: 'sign-out' }, fromPopup);
-    assert.deepEqual(toolbar.slice(-2), [{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }]);
+    assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], true], 'signed out: the panel is offered again');
     records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
   });
 
