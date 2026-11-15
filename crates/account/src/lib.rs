@@ -316,7 +316,7 @@ fn already_signed_in_inner(io: &mut Io, unless_stale: bool) -> Option<()> {
 fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
     match e {
         Ok(Entitlement { pro: true, .. }) => io.err("Pro rules: included.\n"),
-        Ok(_) => io.err("Pro rules: not included with this account.\n"),
+        Ok(_) => io.err("Plan: Free. Pro adds Detector Pro, dozens of extra rules. See impeccable.style/pricing\n"),
         Err(e) => io.err(&format!("Couldn't check Pro access: {e}.\n")),
     }
 }

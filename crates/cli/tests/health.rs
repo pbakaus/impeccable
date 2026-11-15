@@ -1211,7 +1211,7 @@ fn the_first_sign_in_inside_a_repo_scans_and_adds_it_once() {
     let root = repo(&env, Some("https://github.com/acme/my-site"));
     let err = login_in(&env, &root);
     assert!(err.contains("Added this repository to your account"), "{err}");
-    assert!(err.contains("Find it under Repositories"), "{err}");
+    assert!(err.contains("Find it under Foundations"), "{err}");
     assert_eq!(scans(&fake).len(), 1);
     assert_eq!(fake.hits("/cli/v1/foundations"), 1);
     // Nothing is written into the work tree.

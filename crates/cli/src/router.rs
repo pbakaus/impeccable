@@ -290,20 +290,30 @@ pub(crate) fn scan_after_login(
     };
     let (findings, files) = (full.findings.len(), full.files_scanned);
     let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io));
+    // Counted as Home counts them, so the two say the same number.
+    let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);
     let synced = health::after_sign_in_scan(io, &scan);
-    let found = match findings {
-        1 => "1 finding".to_string(),
-        n => format!("{n} findings"),
+    let plural = |n: usize, one: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {one}s")
+        }
     };
+    let mut found = format!("{} in {files} files", plural(findings, "finding"));
+    if to_fix > 0 {
+        found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
+    }
     let recorded = synced.recorded();
     if recorded {
+        // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
-            Some(url) => format!("See it on your Home: {url}"),
-            None => "Find it under Repositories in your Impeccable account.".to_string(),
+            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
         io.err(&format!(
-            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}. Sent its name, finding counts and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(

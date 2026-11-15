@@ -62,6 +62,18 @@ pub(crate) fn after_install(
         End::Offer if impeccable_account::has_sign_in(io) => return,
         End::Offer => {}
     }
+    offer_sign_in(io, engines, rule_pack);
+    // The offer printed after install's own "Done!", so its next step goes last.
+    io.err(
+        "\nNow type /impeccable init in your AI coding agent's chat to set up design context.\n",
+    );
+}
+
+fn offer_sign_in(
+    io: &mut Io,
+    engines: &impeccable_detect::Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) {
     io.err(OFFER);
     if !ask(io, "Sign in now?") {
         io.err("Later: impeccable login\n");
