@@ -474,7 +474,7 @@ function hear() {
       pre.task = text.slice(0, 2000);
       const box = app.querySelector('textarea.text');
       // The newest words in view: a long talk outgrows the box.
-      if (box) { box.value = pre.task; box.scrollTop = box.scrollHeight; }
+      if (box) { box.value = pre.task; box.scrollTop = box.scrollHeight; fade(box); }
       // Only on final words: an interim guess can run long and then shrink.
       if (text.length > 2000 && settled && voice) { pre.note = COPY.voice.full; voice.stop(); }
     },
@@ -483,6 +483,13 @@ function hear() {
   // A recognizer that failed to start has already ended: keep no dead handle, or the button stays pressed.
   if (!ended) { voice = heard; startMeter(heard); }
   render();
+}
+
+/** A task box whose words run past an edge fades there (`data-fade`: `top`, `bottom`, both or none), rather than looking cut off. */
+function fade(box) {
+  const top = box.scrollTop > 1;
+  const bottom = box.scrollTop + box.clientHeight < box.scrollHeight - 1;
+  box.setAttribute('data-fade', [top && 'top', bottom && 'bottom'].filter(Boolean).join(' '));
 }
 
 /** Ends listening at once, keeping the words so far: on Send, and when the panel leaves the box. */
@@ -736,6 +743,7 @@ function render() {
   app.replaceChildren(...SCREENS[shown]().filter(Boolean));
   const now = kept && app.querySelector('.sofar');
   if (now) now.scrollTop = kept.top + (now.scrollHeight - kept.height);
+  for (const box of app.querySelectorAll('textarea.text')) { fade(box); box.addEventListener('scroll', () => fade(box)); box.addEventListener('input', () => fade(box)); }
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.

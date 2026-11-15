@@ -116,6 +116,15 @@ b { font-weight: 500; }
 .field:focus-within { background: var(--paper-raised); box-shadow: inset 0 0 0 1.5px var(--gold-rich), 0 0 0 4px var(--gold-wash); }
 .text { display: block; width: 100%; min-height: calc(3 * 1.45em + 12px); resize: none; field-sizing: content; max-height: calc(6 * 1.45em + 12px); overflow-y: auto; font-size: 15px; line-height: 1.45; color: var(--ink); padding-bottom: 12px; outline: none; }
 .text::placeholder { color: var(--faint); }
+/* The row under the words (the mic, the waveform, the button) keeps clear of them. */
+.field .text + .row { margin-top: 10px; }
+/*
+ * Words past the box's edge fade out over 18px there (panel.js \`fade\`); the scrollbar's 6px strip stays unmasked.
+ */
+.text[data-fade~="top"], .text[data-fade~="bottom"] { mask-size: calc(100% - 6px) 100%, 6px 100%; mask-position: 0 0, 100% 0; mask-repeat: no-repeat; }
+.text[data-fade="bottom"] { mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent), linear-gradient(#000, #000); }
+.text[data-fade="top"] { mask-image: linear-gradient(to bottom, transparent, #000 18px), linear-gradient(#000, #000); }
+.text[data-fade="top bottom"] { mask-image: linear-gradient(to bottom, transparent, #000 18px, #000 calc(100% - 18px), transparent), linear-gradient(#000, #000); }
 .row { display: flex; align-items: center; gap: 8px; }
 .row .btn { padding: 0 22px; }
 .widths { flex: none; display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--gray); }
