@@ -104,6 +104,7 @@ mod mac {
         let app = root.join(APP);
         fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
         fs::copy("/bin/sleep", app.join("Contents/MacOS/Impeccable Loop")).unwrap();
+        fs::copy("/bin/echo", app.join("Contents/MacOS/loop-hook")).unwrap();
         fs::write(app.join("Contents/Info.plist"), format!(r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Impeccable Loop</string><key>CFBundleShortVersionString</key><string>{version}</string></dict></plist>"#)).unwrap();
         // The Info.plist invalidates the copied binary's Apple signature, so macOS kills the
         // launched bundle and shows a "damaged" dialog. Re-sign it ad hoc.
@@ -290,6 +291,68 @@ mod mac {
             "1.1.0"
         );
         clean(&apps);
+    }
+
+    fn quarantine(path: &Path) {
+        assert!(Command::new("/usr/bin/xattr")
+            .args(["-w", "com.apple.quarantine", "0081;00000000;;"])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success());
+    }
+
+    #[test]
+    fn a_blocked_loop_is_reinstalled_and_one_still_blocked_says_so() {
+        // Catches (REN-1865): update calling a quarantined Loop "already current", which
+        // left macOS's "damaged" dialog in every agent session, and an update that put back
+        // a still-quarantined copy saying "Updated".
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let bytes = fixture("1.0.0", &source.0);
+        let pins = pin("1.0.0", &bytes);
+        let (base, server) = serve(bytes.clone(), "1.0.0");
+        let mut io = io(&home.0, &base);
+        run_inner(&args("install"), &io, &pins, "macos").unwrap();
+        server.join().unwrap();
+        let helper = home
+            .0
+            .join("Applications")
+            .join(APP)
+            .join("Contents/MacOS/loop-hook");
+        quarantine(&helper);
+        let (base, server) = serve(bytes, "1.0.0");
+        io.env.insert("IMPECCABLE_DOWNLOAD_BASE".into(), base);
+        let result = run_inner(&args("update"), &io, &pins, "macos");
+        // Checked before the join: an update that never downloads would leave it waiting.
+        assert!(
+            result
+                .as_deref()
+                .is_ok_and(|r| !r.contains("already current")),
+            "{result:?}"
+        );
+        server.join().unwrap();
+        assert!(!crate::loop_connect::blocked(&helper));
+        // The release itself carries the flag: the update says Loop is still blocked.
+        quarantine(&helper);
+        quarantine(&source.0.join(APP).join("Contents/MacOS/loop-hook"));
+        let zip = source.0.join("quarantined.zip");
+        assert!(Command::new("/usr/bin/ditto")
+            .args(["-c", "-k", "--keepParent"])
+            .arg(source.0.join(APP))
+            .arg(&zip)
+            .status()
+            .unwrap()
+            .success());
+        let bytes = fs::read(&zip).unwrap();
+        let pins = pin("1.0.0", &bytes);
+        let (base, server) = serve(bytes, "1.0.0");
+        io.env.insert("IMPECCABLE_DOWNLOAD_BASE".into(), base);
+        let result = run_inner(&args("update"), &io, &pins, "macos");
+        server.join().unwrap();
+        assert!(result.is_err(), "{result:?}");
+        assert!(crate::loop_connect::blocked(&helper));
+        clean(&home.0.join("Applications"));
     }
 
     #[test]

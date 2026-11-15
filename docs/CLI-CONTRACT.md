@@ -2427,7 +2427,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   replacing. A launch that fails adds `Couldn't open Loop (<why>). Open it from <path>.`
   and still exits 0.
 - `impeccable loop update [--no-open]` replaces an installed app with the highest
-  pinned version. An already current app exits 0. A running Loop is asked to quit
+  pinned version. An already current app exits 0, unless macOS blocks it (as
+  `loop status`'s `blocked`): then the same release is downloaded again and swapped
+  in. A swapped-in app still blocked is not opened and exits non-zero. A running Loop is asked to quit
   (SIGTERM to the processes whose executable is exactly this bundle's, never by name)
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
@@ -2442,6 +2444,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
   synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
   session that Loop will wake it. An older or unreadable bundle gets no such hook.
+  From Loop 0.1.3, whose own hook reading accepts it, every hook command is
+  guarded: `/usr/bin/xattr -p com.apple.quarantine '<helper>' 2>/dev/null |
+  /usr/bin/grep -Eq '^[0-9a-fA-F]{2}[0-389abAB][0-9a-fA-F];' || exec '<helper>'
+  <agent> <kind>`. A helper macOS would refuse (quarantined, not approved) is
+  never run, so no "damaged" dialog appears; the hook exits 0 with no output.
+  Older or unreadable bundles keep `'<helper>' <agent> <kind>`. A connect over
+  hooks of the other form replaces them through the journal.
   An existing `[mcp_servers.impeccable]` that differs only in its approval mode
   still counts as connect's own. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
@@ -2510,7 +2519,12 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   wake record names that folder. A home with nothing installed is answered
   without creating any file. The text form says connected only when the MCP
   server, the hooks, the instruction block and the record all hold.
-  The JSON form is `{loop:{installed, version}, agents:[{agent, label, detected,
+  `loop.blocked` is true when the helper carries a `com.apple.quarantine` flag
+  whose flags field (four hex digits before the first `;`) has 0x40, the
+  person's approval, clear: Loop is signed but not notarized, so macOS refuses
+  to run it. It is read with `getxattr`, no process. The text form then says
+  only that macOS is blocking Loop and to run `impeccable loop update`.
+  The JSON form is `{loop:{installed, version, blocked}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
 - `impeccable loop connect --agent claude|codex` connects only that agent. Its text
   report keeps the sign-in and follow-up lines. An agent CLI's own output goes

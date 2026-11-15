@@ -706,9 +706,12 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     if !app.exists() && update {
         return Err("Loop is not installed. Use impeccable loop install.".into());
     }
+    // macOS refuses a quarantined Loop; a fresh copy of the same release carries no flag.
+    let helper = |app: &Path| app.join("Contents/MacOS/loop-hook");
+    let was_blocked = update && crate::loop_connect::blocked(&helper(&app));
     if update {
         let installed = plist(&app, "CFBundleShortVersionString")?;
-        if installed == version.to_string() {
+        if installed == version.to_string() && !was_blocked {
             return Ok(format!("Loop {version} is already current.\n"));
         }
         // Never replace a newer build (a local or later one) with an older pinned release.
@@ -754,6 +757,11 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         quit_running(&app, QUIT_WAIT)?;
     }
     swap(&staged, &app, &backup, update)?;
+    if crate::loop_connect::blocked(&helper(&app)) {
+        return Err(format!(
+            "Loop {version} is installed, but macOS is still blocking it, so your agents won't wake."
+        ));
+    }
     if !no_open {
         let status = Command::new("/usr/bin/open")
             .arg(&app)
@@ -765,7 +773,13 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     }
     Ok(format!(
         "{} Loop {version} in {}.\n",
-        if update { "Updated" } else { "Installed" },
+        if was_blocked {
+            "Reinstalled"
+        } else if update {
+            "Updated"
+        } else {
+            "Installed"
+        },
         app.display()
     ))
 }
