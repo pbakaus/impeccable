@@ -210,6 +210,8 @@ async function cmd(method, params) {
   } catch (err) {
     let message = String(err?.message ?? err);
     try { message = JSON.parse(message).message ?? message; } catch { /* not JSON: as it came */ }
+    // On the tab, and refused it while another extension's frame is in the page: as good as pushed off (`lost`).
+    if (message.includes('URL of different extension') && walk) void lost(walk);
     throw fail('Error', message);
   }
 }
@@ -393,6 +395,8 @@ const READ_GAP_MS = 100;
 export async function signInNow() {
   for (let tries = 0; tries < READS; tries++) {
     if (!walk) return false;
+    // Pushed off the tab (`lost`): nothing to read until the walk is back on it.
+    if (walk.lost) return null;
     if (isSignInPage(walk.url)) return true;
     const seen = await look();
     if (seen) return signingIn(seen);

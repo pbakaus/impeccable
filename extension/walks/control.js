@@ -189,6 +189,7 @@ export async function command(name) {
   // a sign-in still shows, the walk stays paused.
   if (GOING_ON[name] === current().state && walk && !(await regain())) return false;
   if (GOING_ON[name] === current().state && walk && (await signInNow())) { pauseFor('sign-in'); return false; }
+  if (GOING_ON[name] === current().state && walk?.lost) return false;
   if (!Object.hasOwn(TOLD, name) || !dispatch({ type: name })) return false;
   say({ event: TOLD[name] });
   release();

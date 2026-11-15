@@ -830,8 +830,11 @@ describe('walk worker', () => {
   // when another extension puts a frame of its own in the page (1Password's "Save login?" on the page a sign-in lands
   // on), and refuses it back until that frame goes. The journey keeps its tab, or the one Chrome swapped in for it;
   // only a tab that is gone ends it.
-  for (const [label, kept, push] of [
+  // `refusing`: what Chrome refuses while the frame is there: the debugger's attach, or every command once the frame
+  // lands after the debugger got back on.
+  for (const [label, kept, push, refusing = 'attach'] of [
     ['another extension’s frame pushes the debugger off the open tab', 11, ({ detach }) => detach(11)],
+    ['another extension’s frame lets the debugger back on but refuses it the page', 11, ({ detach }) => detach(11), 'command'],
     ['Chrome swaps the tab for another', 12, ({ detach, replaced }) => { replaced(12, 11); detach(11); }],
     ['the tab is closed', null, ({ detach, removed }) => { detach(11); removed(11); }],
   ]) {
@@ -847,14 +850,20 @@ describe('walk worker', () => {
       const { attach, sendCommand } = chrome.debugger;
       const { get } = chrome.tabs;
       const armed = [];
-      let refused = true;
-      chrome.debugger.attach = async () => { if (refused) throw new Error('Cannot access a chrome-extension:// URL of different extension'); };
-      chrome.debugger.sendCommand = (target, method, params) => { if (method === 'Fetch.enable') armed.push(target.tabId); return sendCommand(target, method, params); };
+      let refused = refusing === 'attach';
+      const refusal = () => new Error('Cannot access a chrome-extension:// URL of different extension');
+      chrome.debugger.attach = async () => { if (refused && refusing === 'attach') throw refusal(); };
+      chrome.debugger.sendCommand = async (target, method, params) => {
+        if (refused && refusing === 'command') throw refusal();
+        if (method === 'Fetch.enable') armed.push(target.tabId);
+        return sendCommand(target, method, params);
+      };
       chrome.tabs.get = async (id) => { if (kept === null) throw new Error(`No tab with id: ${id}.`); return get(id); };
       const fireAll = (name, ...args) => { for (const listener of listeners[name] ?? []) listener(...args); };
       try {
         push({ detach: (tabId) => fireAll('detach', { tabId }, 'target_closed'), replaced: (added, gone) => fireAll('replaced', added, gone), removed: (tabId) => fireAll('removed', tabId, {}) });
         await settle(10);
+        refused = true;
         if (kept === null) {
           assert.deepEqual([current().state, current().failure?.reason], ['failed', 'tab-closed']);
           assert.deepEqual(told.slice(heard).filter((m) => m.event === 'detached').map((m) => m.reason), ['target_closed']);
@@ -865,7 +874,7 @@ describe('walk worker', () => {
         refused = false;
         assert.equal(await command('resume'), true);
         assert.equal(current().state, 'walking');
-        assert.deepEqual(armed, [kept], 'the guard is on the tab again before the walk goes on');
+        assert.deepEqual([...new Set(armed)], [kept], 'the guard is on the tab again before the walk goes on');
         assert.deepEqual(told.slice(heard).filter((m) => m.event === 'detached'), [], 'the other end never hears the tab went');
       } finally {
         Object.assign(chrome.debugger, { attach, sendCommand });
