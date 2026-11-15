@@ -264,7 +264,7 @@ fn provider_prompt_options() -> Vec<(&'static str, &'static str, CheckboxOption)
         .map(|input| {
             let (provider, label) = harness_display_name(input).expect("every picker input has a PROVIDER_DISPLAY row");
             let label = label.to_string();
-            let hint = format!("({provider}/skills)");
+            let hint = format!("({provider}/{})", skills_dir_name(provider));
             let search_text = format!("{label} {input} {provider} {hint}");
             (*input, provider, CheckboxOption { label, hint: Some(hint), search_text })
         })
@@ -385,6 +385,24 @@ fn choose_install_scope(sys: &Sys, prompt: &mut Prompt, io: &mut Io, project_roo
         if explicit.is_none() {
             return Err(Flow::Throw(format!("Unknown install scope: {v}. Use --scope=project or --scope=global.")));
         }
+    }
+    // User-only providers (Muse) have no project skills folder: Muse reads
+    // ~/workspace/custom-skills only, so a project destination can never be
+    // read back. When Muse is among the targets its copy still lands in the
+    // global dir (see copy_provider_skills); when it is the only target the
+    // install as a whole is global, and an explicit project scope is an
+    // error rather than a silent install into <project>/workspace/skills.
+    let muse_only = !targets.is_empty() && targets.iter().all(|t| is_user_only_provider(t));
+    if muse_only {
+        if explicit == Some(Scope::Project) {
+            return Err(Flow::Throw(
+                "Muse is a global-only harness: it reads skills from ~/workspace/custom-skills, so --scope=project has nowhere valid to install. Re-run with --scope=global.".to_string(),
+            ));
+        }
+        return Ok(Scope::User);
+    }
+    if targets.iter().any(|t| is_user_only_provider(t)) && explicit == Some(Scope::Project) {
+        out(io, "Note: Muse is global-only; its skill installs into ~/workspace/custom-skills regardless of the project scope chosen for the other harnesses.");
     }
     if let Some(s) = explicit {
         return Ok(s);
@@ -625,7 +643,7 @@ fn link(flags: &[String], io: &mut Io) -> R<()> {
     // launcher/binary executable bit there too (through the symlink), so a
     // checkout whose copier dropped modes still runs.
     for provider in &targets {
-        let skills_dir = util::jsp::join(&[&root, provider, "skills"]);
+        let skills_dir = util::jsp::join(&[&root, provider, skills_dir_name(provider)]);
         for skill in util::read_dir_names(&skills_dir).unwrap_or_default() {
             let dir = util::jsp::join(&[&skills_dir, &skill]);
             if util::is_dir(&dir) {

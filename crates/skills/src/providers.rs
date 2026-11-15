@@ -146,6 +146,24 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
     }
 }
 
+/// The folder under a provider's config dir that holds its skills, on both
+/// the bundle side (`<bundle>/<provider>/<name>`) and the generated-output
+/// side. Every provider uses `skills` except Muse, whose layout is
+/// `workspace/custom-skills`.
+pub fn skills_dir_name(provider: &str) -> &'static str {
+    match provider {
+        "workspace" => "custom-skills",
+        _ => "skills",
+    }
+}
+
+/// Providers with no project-level skills folder at all. Muse reads user
+/// custom skills from ~/workspace/custom-skills only, so a project-scope
+/// install target for it can never be read back by Muse.
+pub fn is_user_only_provider(provider: &str) -> bool {
+    provider == "workspace"
+}
+
 fn has_home_override(provider: &str) -> bool {
     matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode" | "workspace")
 }
@@ -184,6 +202,13 @@ impl Sys {
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
     pub fn provider_skills_dir_candidates(&self, root: &str, provider: &str, scope: Option<Scope>) -> Vec<String> {
+        if is_user_only_provider(provider) {
+            // Muse has no project layout: every scope resolves to the global
+            // custom-skills dir under the real home, never
+            // <root>/workspace/skills, which Muse does not read.
+            let home = self.home.clone();
+            return vec![self.user_provider_skills_dir(&home, provider)];
+        }
         if scope == Some(Scope::User) {
             return vec![self.user_provider_skills_dir(root, provider)];
         }
@@ -1031,6 +1056,20 @@ mod tests {
         assert_eq!(sys.user_provider_skills_dir(&home, "workspace"), jsp::join(&[home, "workspace", "custom-skills"]));
         assert_eq!(
             sys.provider_skills_dir_candidates(&home, "workspace", Some(Scope::User)),
+            vec![jsp::join(&[home, "workspace", "custom-skills"])]
+        );
+
+        // Muse is user-only with a nonstandard skills folder name.
+        assert_eq!(skills_dir_name("workspace"), "custom-skills");
+        assert_eq!(skills_dir_name(".claude"), "skills");
+        assert!(is_user_only_provider("workspace"));
+        assert!(!is_user_only_provider(".claude"));
+
+        // Even asked from a project root at project scope, Muse candidates
+        // resolve to the global custom-skills dir, never
+        // <project>/workspace/skills.
+        assert_eq!(
+            sys.provider_skills_dir_candidates("/some/project", "workspace", Some(Scope::Project)),
             vec![jsp::join(&[home, "workspace", "custom-skills"])]
         );
     }
