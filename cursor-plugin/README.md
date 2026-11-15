@@ -1,6 +1,6 @@
 # Impeccable for Cursor
 
-Design and refine interfaces with Impeccable: one skill, specialist agents, and a pre-edit design check. Invoke `/impeccable polish`, `/impeccable audit`, or describe the design work you want.
+Design and refine interfaces with Impeccable: one skill, specialist agents, and a design check after each edit. Invoke `/impeccable polish`, `/impeccable audit`, or describe the design work you want.
 
 ## Installation
 
@@ -14,11 +14,11 @@ Use either that installation or the plugin, not both, to avoid duplicate skills 
 
 ## Local plugin preview
 
-From the Impeccable repository, run `bun run build`, then copy `dist/cursor-plugin` into `~/.cursor/plugins/local/impeccable`. Do not overwrite an existing installation. Cursor 3.15.6 rejects symlinks whose targets are outside its local-plugin directory, so use a real copy. Reload Cursor, then inspect Customize for the skill and four agents, and Hooks for `preToolUse` execution. A marketplace installation with the same name takes precedence over a local preview. Local plugins are user-wide, even when testing with a separate editor profile; remove the temporary copy when finished.
+From the Impeccable repository, run `bun run build`, then copy `dist/cursor-plugin` into `~/.cursor/plugins/local/impeccable`. Do not overwrite an existing installation. Cursor 3.15.6 rejects symlinks whose targets are outside its local-plugin directory, so use a real copy. Reload Cursor, then inspect Customize for the skill and four agents, and Hooks for `postToolUse` execution. A marketplace installation with the same name takes precedence over a local preview. Local plugins are user-wide, even when testing with a separate editor profile; remove the temporary copy when finished.
 
 Use a synthetic project outside the plugin directory to test context resolution. The documented `workspaceOpen`/`pluginPaths` alternative did not execute reliably during the 3.15.6 smoke test; it is not the verified preview path.
 
-The pre-edit hook uses Cursor's existing POSIX launcher integration. Windows shell behavior and remote environments require separate verification before advertising support for this plugin's hook.
+The post-edit hook uses Cursor's existing POSIX launcher integration. Windows shell behavior and remote environments require separate verification before advertising support for this plugin's hook.
 
 ## Verification status
 
@@ -33,7 +33,7 @@ A native `impeccable-asset-producer` handoff resolved the supplied skill scripts
 - Public repository: https://github.com/pbakaus/impeccable
 - Marketplace manifest: `.cursor-plugin/marketplace.json`; plugin source: `cursor-plugin/`.
 - Native manifest, skill, agents, hook, logo, and license are generated from source by `bun run build:release` and kept current by the generated-output workflow. Do not hand-edit `cursor-plugin/`.
-- Verify `/impeccable` discovery, an installed-path context invocation, agent discovery and handoff paths, and a real pre-edit hook event in Cursor.
+- Verify `/impeccable` discovery, an installed-path context invocation, agent discovery and handoff paths, and a real post-edit hook event in Cursor.
 - After merge and verification, submit the repository at https://cursor.com/marketplace/publish. Submission and publication require maintainer approval. Replace this preparation notice and add the actual listing link only after acceptance.
 
 References: [Cursor plugins](https://cursor.com/docs/plugins), [plugin reference](https://cursor.com/docs/reference/plugins), [hooks](https://cursor.com/docs/hooks).
