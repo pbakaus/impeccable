@@ -24,9 +24,11 @@
 //     the hand-off allowed them or they are on this machine.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
 //     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
-//   - writing unapproved (REN-2034): while the walk drives, even a write to its own origins fails unless the server
-//     opened writes (`writes`) or the person said Yes to the deed. Paused or taken over, the person drives: only the
-//     rule above holds, so their own sign-in goes through (driver.js `holding`).
+//   - writing unapproved (REN-2034): even a write to its own origins is refused (a 403, or aborted for a form the top
+//     of the page sent) unless the server opened writes (`writes`) or the person said Yes to the deed. Service
+//     workers are bypassed, so what one would answer for the page passes the hold too. Taken over, or paused at a
+//     sign-in once it has shown for a moment, the person drives: only the rule above holds, so their own sign-in
+//     goes through (driver.js `holding`).
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
 //     opens; a native dialog is dismissed. The one file a walk ever gives a page is the drawn sample photo shipped
 //     beside this file (driver.js `upload`): the op says where, never which file.
@@ -212,26 +214,38 @@ export async function arm(send) {
 /**
  * Answers one held request, always: let through, or aborted. A request this cannot judge is aborted. `refused` hears
  * the address before the abort is sent, so whoever asked for the navigation knows why it failed by the time it does.
- * `holding`: writes are held (REN-2034), so a write fails even where the guard would let it go.
- * Resolves to what became of the request: `continued`, `refused` or `gone`.
+ * `holding`: writes are held (REN-2034), so a write is refused (a 403) even where the guard would let it go.
+ * Resolves to what became of the request: `continued`, `held`, `refused` or `gone`.
  */
 export async function held(send, paused, mainFrame, allowed, writable, refused, holding = false) {
   let answer = 'block';
   try { answer = verdict(paused, mainFrame, allowed, writable); } catch { /* unreadable: refused */ }
-  // The write hold (REN-2034): a write the guard would let through still fails, untold, while writes are not open.
+  // The write hold (REN-2034): a write the guard would let through is held, untold, while writes are not open.
   if (holding && answer === 'continue' && !reads(paused)) answer = 'hold';
   const pass = answer === 'continue';
   if (answer === 'block') refused(String(paused.request?.url ?? '').slice(0, 500));
   // Aborted leaves the tab where it was: a form the top of the page sent stays on its page, not on Chrome's error page.
-  const stays = answer === 'block' || (answer === 'hold' && paused.resourceType === 'Document' && paused.frameId === mainFrame);
+  const top = paused.resourceType === 'Document' && paused.frameId === mainFrame;
   try {
     if (pass) await send('Fetch.continueRequest', { requestId: paused.requestId });
-    else await send('Fetch.failRequest', { requestId: paused.requestId, errorReason: stays ? 'Aborted' : 'BlockedByClient' });
+    // A held write is refused as a server would refuse it: a page takes a network error for a blip and sends it again.
+    else if (answer === 'hold' && !top) await send('Fetch.fulfillRequest', { requestId: paused.requestId, responseCode: 403, responseHeaders: refusal(paused), body: REFUSAL });
+    else await send('Fetch.failRequest', { requestId: paused.requestId, errorReason: answer === 'block' || answer === 'hold' ? 'Aborted' : 'BlockedByClient' });
   } catch {
     // The request is already gone with its page (a newer navigation took its place while it was held).
     return 'gone';
   }
-  return pass ? 'continued' : 'refused';
+  return pass ? 'continued' : answer === 'hold' ? 'held' : 'refused';
+}
+
+/** The body of a held write's refusal, base64 as `Fetch.fulfillRequest` takes it. */
+const REFUSAL = btoa('Held by Impeccable: this journey may not change anything here.');
+/** A refusal's headers: plain text, readable by a page on another of the walk's origins (CORS needs the origin named). */
+function refusal(paused) {
+  const headers = [{ name: 'Content-Type', value: 'text/plain; charset=utf-8' }];
+  const asked = Object.entries(paused.request?.headers ?? {}).find(([name]) => name.toLowerCase() === 'origin')?.[1];
+  if (asked && asked !== 'null') headers.push({ name: 'Access-Control-Allow-Origin', value: asked }, { name: 'Access-Control-Allow-Credentials', value: 'true' }, { name: 'Vary', value: 'Origin' });
+  return headers;
 }
 
 /* ------------------------------ popups ------------------------------ */

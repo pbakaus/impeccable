@@ -484,6 +484,8 @@ describe('walk worker', () => {
   // A walked tab on a stubbed debugger, opened after the tests above: every command the walk sends it, in order,
   // and what the other end is told.
   const sent = [];
+  /** Each command's params, beside `sent`. */
+  const args = [];
   const told = [];
   const page = { seen: {} };
   const answers = {
@@ -503,7 +505,7 @@ describe('walk worker', () => {
     await loaded;
     Object.assign(chrome.debugger, {
       async attach() {}, async detach() {},
-      async sendCommand(_target, method) { sent.push(method); return (answers[method] ?? (() => ({})))(); },
+      async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(); },
     });
     Object.assign(chrome.tabs, {
       async create() { return { id: 11, windowId: 1 }; }, async get() { return { id: 11, windowId: 1, width: 800, height: 600, active: true }; },
@@ -537,11 +539,10 @@ describe('walk worker', () => {
     fire('Page.javascriptDialogOpening', { type: 'alert', message: 'Hello' });
     await settle(250);
     assert.equal(since(paused, 'Page.captureScreenshot'), 0, 'no picture is taken while paused');
-    assert.ok(sent.includes('Network.disable'));
+    assert.ok(!sent.includes('Network.disable'), 'the network stays on: a service worker stays bypassed (REN-2034)');
     assert.deepEqual(told.slice(heard).map((m) => m.event ?? 'reply'), [], 'nothing of the page is told');
     assert.equal(await command('resume'), true);
     await settle(150);
-    assert.equal(since(paused, 'Network.enable'), 1);
     assert.ok(since(paused, 'Page.captureScreenshot') > 0, 'the film rolls again');
     assert.equal(told.slice(heard).find((m) => m.event === 'url')?.url, 'http://localhost:3000/next', 'and the other end hears where the tab is now');
     await ops.cdp({ method: 'Page.stopScreencast' });
@@ -598,14 +599,17 @@ describe('walk worker', () => {
   ]) {
     it(`pauses itself at ${sign}, until the sign-in is gone`, async () => {
       const { ops, command, current, COPY } = await walked();
-      const before = sent.length;
-      show();
+      // What the walk was doing as the guard first answered the tab.
+      const { sendCommand } = chrome.debugger;
+      let answeredWhile;
+      chrome.debugger.sendCommand = async (target, method, params) => { if (method.startsWith('Fetch.')) answeredWhile ??= current().state; return sendCommand(target, method, params); };
+      try { show(); } finally { setTimeout(() => { chrome.debugger.sendCommand = sendCommand; }, 10); }
       let answered = false;
       const asked = ops.url().then(() => { answered = true; });
       await settle(20);
       assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
-      if (sign === 'a move to a sign-in host') assert.ok(sent.indexOf('Network.disable', before) < sent.findIndex((m, i) => i >= before && m.startsWith('Fetch.')), 'paused before the guard answered');
+      if (sign === 'a move to a sign-in host') assert.equal(answeredWhile, 'paused', 'paused before the guard answered');
       else if (sign === 'a 401 asking for a password') {
         assert.equal(await command('resume'), false, 'Continue while it still shows');
         assert.equal(current().state, 'paused');
@@ -800,7 +804,7 @@ describe('walk worker', () => {
     assert.equal(current().state, 'walking');
   });
 
-  // REN-2034: while the walk drives, every write the tab sends fails, the walk's own site's too, unless writes are open.
+  // REN-2034: every write the tab sends is held (refused), the walk's own site's too, unless writes are open.
   const SITE = 'http://localhost:3000';
   let writes = 0;
   const answeredAs = async (method, url, resourceType = 'XHR') => {
@@ -810,13 +814,22 @@ describe('walk worker', () => {
     return sent.slice(at).filter((m) => m.startsWith('Fetch.'));
   };
 
-  it('holds every write while the walk drives, the site’s own too, and lets one out only while the server has writes open', async () => {
+  it('bypasses the tab’s service workers once the network is on, so what one would send passes the hold', async () => {
+    await walked();
+    const at = sent.indexOf('Network.setBypassServiceWorker');
+    assert.ok(at > sent.indexOf('Network.enable'));
+    assert.deepEqual(args[at], { bypass: true });
+  });
+
+  it('holds every write while the walk drives, the site’s own too, lets one out only while the server has writes open, and never holds a read', async () => {
     const { ops } = await walked();
     for (const [method, url, resourceType, closed, open] of [
-      ['POST', `${SITE}/api/todos`, 'XHR', 'fail', 'continue'],
-      ['DELETE', `${SITE}/api/todos/1`, 'Fetch', 'fail', 'continue'],
+      ['POST', `${SITE}/api/todos`, 'XHR', 'fulfill', 'continue'],
+      ['DELETE', `${SITE}/api/todos/1`, 'Fetch', 'fulfill', 'continue'],
       ['POST', `${SITE}/todos`, 'Document', 'fail', 'continue'],
-      ['GET', `${SITE}/api/todos`, 'XHR', 'continue', 'continue'],
+      // A link to another page of the site, and the data a client-side router fetches for it (Next.js `?_rsc=`).
+      ['GET', `${SITE}/login`, 'Document', 'continue', 'continue'],
+      ['GET', `${SITE}/login?_rsc=1x`, 'Fetch', 'continue', 'continue'],
       ['HEAD', `${SITE}/`, 'Fetch', 'continue', 'continue'],
       ['OPTIONS', 'https://api.example.com/todos', 'Preflight', 'continue', 'continue'],
       ['POST', 'https://example.com/collect', 'Ping', 'fail', 'fail'],
@@ -827,50 +840,60 @@ describe('walk worker', () => {
       assert.deepEqual(await answeredAs(method, url, resourceType), [`Fetch.${open}Request`], `${method} ${url}, open`);
     }
     await ops.writes({ open: false });
-    // A form the top of the page sent stays on its page (aborted); any other write is blocked.
-    const { sendCommand } = chrome.debugger;
-    const reasons = [];
-    chrome.debugger.sendCommand = async (target, method, params) => { if (method === 'Fetch.failRequest') reasons.push(params.errorReason); return sendCommand(target, method, params); };
-    try {
-      await answeredAs('POST', `${SITE}/todos`, 'Document');
-      await answeredAs('POST', `${SITE}/api/todos`);
-    } finally {
-      chrome.debugger.sendCommand = sendCommand;
-    }
-    assert.deepEqual(reasons, ['Aborted', 'BlockedByClient']);
+    // A held write is refused as a server would refuse it (a 403), so the app does not send it again; a form the top
+    // of the page sent is aborted, so the tab stays on its page.
+    let at = sent.length;
+    await answeredAs('POST', `${SITE}/api/todos`);
+    assert.equal(args[sent.indexOf('Fetch.fulfillRequest', at)].responseCode, 403);
+    at = sent.length;
+    await answeredAs('POST', `${SITE}/todos`, 'Document');
+    assert.equal(args[sent.indexOf('Fetch.failRequest', at)].errorReason, 'Aborted');
   });
 
-  it('lets the person’s writes out while paused or taken over, closes the server’s writes as it stops, and holds them again once it goes on', async () => {
+  it('never queues an open: refused while paused, so a close before Continue leaves writes held', async () => {
+    const { ops, command } = await walked();
+    page.seen = {};
+    await ops.writes({ open: false });
+    assert.equal(await command('pause'), true);
+    await assert.rejects(ops.writes({ open: true }), { name: 'Paused' });
+    assert.deepEqual(await ops.writes({ open: false }), {});
+    assert.equal(await command('resume'), true);
+    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest']);
+  });
+
+  it('holds writes through a plain pause, lets the person’s out once they take over, and holds them again once handed back', async () => {
     const { ops, command, current } = await walked();
     page.seen = {};
-    for (const [stop, go] of [['pause', 'resume'], ['takeover', 'handback']]) {
-      await ops.writes({ open: true });
-      assert.equal(await command(stop), true);
-      assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.continueRequest'], `the person's own, ${stop}`);
-      if (stop === 'takeover') {
-        // An open waits out a take-over, as its deed does; a close is done whoever drives.
-        await assert.rejects(ops.writes({ open: true }), { name: 'TakenOver' });
-        assert.deepEqual(await ops.writes({ open: false }), {});
-      }
-      assert.equal(await command(go), true);
-      assert.equal(current().state, 'walking');
-      assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.failRequest'], `held again after ${go}`);
-    }
+    await ops.writes({ open: true });
+    assert.equal(await command('pause'), true);
+    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest'], 'paused: the server’s writes closed with it');
+    assert.equal(await command('resume'), true);
+    await ops.writes({ open: true });
+    assert.equal(await command('takeover'), true);
+    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.continueRequest'], 'the person’s own');
+    await assert.rejects(ops.writes({ open: true }), { name: 'TakenOver' });
+    assert.deepEqual(await ops.writes({ open: false }), {}, 'a close is done whoever drives');
+    assert.equal(await command('handback'), true);
+    assert.equal(current().state, 'walking');
+    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest'], 'held again');
   });
 
-  it('lets the person’s own sign-in out while the walk is paused at a sign-in, and holds writes again once it goes on', async () => {
-    const { command, current } = await walked();
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'w1', url: `${SITE}/login` } });
-    page.seen = { password: true };
-    await command('pause');
-    await command('resume');
+  it('holds a write the page sends with a sign-in it brought on, and lets the person’s own sign-in out once the pause has shown', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+    const { command, current, SIGN_IN_SETTLE_MS } = await walked();
+    page.seen = {};
+    // The page moves itself to a sign-in host and writes at once: the pause is the page's doing, the write is not the person's.
+    fire('Fetch.requestPaused', { requestId: 'w-signin', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'https://accounts.google.com/signin' } });
+    fire('Fetch.requestPaused', { requestId: 'w-with-it', resourceType: 'XHR', frameId: 'main', request: { method: 'POST', url: `${SITE}/api/todos` } });
+    await settle(5);
+    assert.deepEqual(args.slice(-2).map((a) => a.responseCode ?? a.errorReason), ['Aborted', 403], 'the move refused, the write held');
+    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest']);
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    t.mock.timers.tick(SIGN_IN_SETTLE_MS);
     assert.deepEqual(await answeredAs('POST', `${SITE}/login`, 'Document'), ['Fetch.continueRequest'], 'their sign-in');
     assert.deepEqual(await answeredAs('POST', 'https://example.com/collect'), ['Fetch.failRequest'], 'never another site');
-    page.seen = {};
     assert.equal(await command('resume'), true);
     assert.deepEqual(await answeredAs('POST', `${SITE}/login`, 'Document'), ['Fetch.failRequest'], 'walking again');
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'w2', url: `${SITE}/` } });
   });
 
   it('takes no picture of a page it cannot read', async () => {
@@ -1295,15 +1318,17 @@ describe('walk worker', () => {
     const { ops, command } = await ownTab();
     page.seen = {};
     const write = async () => { const at = sent.length; move(`${SHOP}/api/cart/1`, { resourceType: 'XHR', request: { method: 'DELETE', url: `${SHOP}/api/cart/1` } }); await settle(5); return fetched(at); };
-    for (const [answer, done] of [['yes', 'Fetch.continueRequest'], ['no', 'Fetch.failRequest']]) {
+    // `late`: the server closed writes (it gave up on the deed) before the person answered.
+    for (const [answer, late, done] of [['yes', false, 'Fetch.continueRequest'], ['no', false, 'Fetch.fulfillRequest'], ['yes', true, 'Fetch.fulfillRequest']]) {
       const deed = ops.mouse({ ...click, ask: { kind: 'delete', what: 'Remove the oat milk' } });
       await settle(20);
-      assert.deepEqual(await write(), ['Fetch.failRequest'], 'not before the answer');
+      assert.deepEqual(await write(), ['Fetch.fulfillRequest'], 'not before the answer');
+      if (late) await ops.writes({ open: false });
       assert.equal(await command(answer), true);
       if (answer === 'yes') await deed; else await assert.rejects(deed, { name: 'Declined' });
-      assert.deepEqual(await write(), [done], answer);
+      assert.deepEqual(await write(), [done], `${answer}${late ? ' after a close' : ''}`);
       await ops.writes({ open: false });
-      assert.deepEqual(await write(), ['Fetch.failRequest'], 'closed by the server');
+      assert.deepEqual(await write(), ['Fetch.fulfillRequest'], 'closed by the server');
     }
   });
 

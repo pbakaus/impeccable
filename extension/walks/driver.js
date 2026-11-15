@@ -49,19 +49,42 @@ export const fenced = () => fences;
 export function fence() {
   fences += 1;
   // Writes opened for a deed close with it: whatever stops the walk walking settles that deed (REN-2034).
-  if (walk) walk.writesOpen = false;
+  shutWrites();
 }
 
 /**
- * The write hold (REN-2034): while the walk drives, every write the tab sends fails, unless writes are open: by the
- * server's `writes`, or by the person's Yes to a deed ({@link letWrite}). Paused or taken over, the person drives
- * (control.js), and their own writes, a sign-in's included, go as the guard lets them.
+ * The write hold (REN-2034): every write the tab sends is held, unless writes are open: by the server's `writes`, or
+ * by the person's Yes to a deed ({@link letWrite}). The person drives only once they took the tab over, or while the
+ * walk is paused at a sign-in, and then only what the tab sends once that has shown for a moment: a write the page
+ * queued with what brought the pause on (a page can bring a sign-in pause on, never a take-over) stays held. A plain
+ * pause holds them as walking does.
  */
-let personDrives = false;
-export function drivenByPerson(on) { personDrives = on; }
-const holding = (tab) => !personDrives && !tab.writesOpen;
-/** The person said Yes to a deed: its writes go out until the server closes them, or the walk stops walking. */
-export function letWrite() { if (walk) walk.writesOpen = true; }
+let driver = { by: null, since: 0 };
+export function drivenBy(by) { if (by !== driver.by) driver = { by, since: Date.now() }; }
+/** How long a sign-in pause shows before what the tab sends is taken for the person's own: nobody signs in faster. */
+export const SIGN_IN_SETTLE_MS = 1500;
+const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && at - driver.since >= SIGN_IN_SETTLE_MS);
+const holding = (tab, at) => !tab.writesOpen && !persons(at);
+/** Counts each close: a Yes given after one opens nothing (a late Yes to a deed the server already gave up on). */
+let writesShut = 0;
+export const writesNow = () => writesShut;
+function shutWrites() {
+  writesShut += 1;
+  if (walk) walk.writesOpen = false;
+}
+/** The person said Yes to a deed, asked when the closes stood at `asked`: its writes go out until the server closes them, or the walk stops walking. */
+export function letWrite(asked) { if (walk && asked === writesShut) walk.writesOpen = true; }
+
+/**
+ * Network on, with the tab's service workers bypassed: a write a service worker would answer or send for the page
+ * passes the walk's Fetch hold instead (the server's own browser bypasses them for its hold too). Chrome keeps the
+ * bypass only while Network is on (measured: `Network.disable` drops it), so a pause leaves Network on. A tab that
+ * will not be bypassed is not walked.
+ */
+async function watchNetwork() {
+  await cmd('Network.enable');
+  await cmd('Network.setBypassServiceWorker', { bypass: true });
+}
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
 // `answered`: a pause during a question settles it, and the other end waits on that answer.
 const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered']);
@@ -197,6 +220,7 @@ const sendTo = (tabId) => (method, params) => send(tabId, method, params);
 
 /** The tab's requests are no longer held, before the debugger leaves it: past `cmd`, which refuses once the walk is ending. */
 async function unhook(tab) {
+  shutWrites();
   tab.writesOpen = false;
   await send(tab.tabId, 'Fetch.disable').catch(() => undefined);
 }
@@ -354,14 +378,12 @@ async function cut() {
 let heldAtSignIn = false;
 
 /**
- * The walk is paused: from here nothing is taken or told of the page, and the network is not watched, until
+ * The walk is paused: from here nothing is taken or told of the page, and the network is not heard, until
  * {@link unhold}. `signIn` when it is held at a sign-in.
  */
 export async function hold(signIn = false) {
   heldAtSignIn = signIn;
-  if (hush) return;
   hush = true;
-  if (walk) await cmd('Network.disable').catch(() => undefined);
 }
 
 /** The walk goes on: the network is watched again, afresh, and the other end is told where the tab now is. */
@@ -374,7 +396,6 @@ export async function unhold() {
   // What the network was busy with went unheard while paused: only what it asks from now on counts.
   tab.inflight.clear();
   tab.quietSince = Date.now();
-  await cmd('Network.enable').catch(() => undefined);
   say({ event: 'url', url: tab.url });
 }
 
@@ -486,6 +507,8 @@ function escaped(url) {
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (!walk || source.tabId !== walk.tabId) return;
+  // Paused, the network is not heard: it stays on only so the service-worker bypass holds (`watchNetwork`).
+  if (hush && method.startsWith('Network.')) return;
   // The tab as it was when the event came: one that shows the tab off its site ends the walk mid-way through.
   const watchers = walk.watchers;
   const tell = (event) => { for (const listener of watchers) listener(event); };
@@ -493,6 +516,8 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   switch (method) {
     case 'Fetch.requestPaused': {
       const tab = walk;
+      // Decided as it arrives, before anything below can pause the walk: a write that came with the cause of a pause is not the person's.
+      const holds = holding(tab, Date.now());
       // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
@@ -508,7 +533,14 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, writable, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
-      }, holding(tab)).then((became) => {
+      }, holds).then((became) => {
+        if (became === 'held') {
+          tab.heldWrites = (tab.heldWrites ?? 0) + 1;
+          // For whoever debugs a walk in this worker's console: what was held, never its path (a path can carry a token).
+          let host = '?';
+          try { host = new URL(params.request.url).host; } catch { /* no address to name */ }
+          console.info('walk held a write', params.request?.method, host, params.resourceType);
+        }
         // A request that never went out never finishes either: it is not something the network is busy with.
         if (became === 'continued' || !params.networkId || !tab.inflight.delete(params.networkId)) return;
         if (tab.inflight.size === 0) tab.quietSince = Date.now();
@@ -651,8 +683,7 @@ export async function regain(tab = walk) {
 async function rearm(tab) {
   await arm(cmd);
   await cmd('Page.enable');
-  // Paused, the network stays unwatched until the walk goes on (`unhold`).
-  if (!hush) await cmd('Network.enable');
+  await watchNetwork();
   await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
   const { frameTree } = await cmd('Page.getFrameTree');
   tab.mainFrame = frameTree.frame.id;
@@ -892,7 +923,7 @@ async function adopt(name, allow) {
     const writable = [...new Set([site, ...allowedFor(allow)])];
     walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
-    await cmd('Network.enable');
+    await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
     const { frameTree } = await cmd('Page.getFrameTree');
     walk.mainFrame = frameTree.frame.id;
@@ -946,7 +977,7 @@ export const ops = {
       still();
       walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
-      await cmd('Network.enable');
+      await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
       const { frameTree } = await cmd('Page.getFrameTree');
       walk.mainFrame = frameTree.frame.id;
@@ -1151,8 +1182,11 @@ export const ops = {
   },
 
   // Opens or closes the tab's writes (REN-2034): the server opens them only around a deed fixed code approved.
+  // A close, at once and whoever drives; an open only while walking (control.js), at once, and never queued.
   async writes({ open }) {
-    walk.writesOpen = open === true;
+    if (open !== true) shutWrites();
+    else if (walk) walk.writesOpen = true;
+    else throw fail('OutingClosed', 'no tab is open');
     return {};
   },
 
