@@ -31,8 +31,15 @@ function workflowOf(errand) {
 }
 
 function whoOf(persona, before) {
-  return { name: text(persona?.name, 120) || before?.name || '', role: text(persona?.role, 200) || before?.role || '', visit: persona?.visit ?? before?.visit ?? null, device: persona?.device ?? before?.device ?? 'desktop' };
+  const name = text(persona?.name, 120) || before?.name || '';
+  // The face the server sent (`brief`), kept while the name stays the same.
+  const face = faceOf(persona?.face) ?? (before?.name === name ? before?.face : null);
+  return { name, role: text(persona?.role, 200) || before?.role || '', visit: persona?.visit ?? before?.visit ?? null, device: persona?.device ?? before?.device ?? 'desktop', ...(face ? { face } : {}) };
 }
+
+/** A persona's face as the panel paints it: a `data:` picture of its face sheet, small enough to keep; else null. */
+const FACE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+export const faceOf = (face) => (typeof face === 'string' && face.length <= 360_000 && FACE.test(face) ? face : null);
 
 /** Kinds of question a walk asks the person: a deed the server marked (delete, pay, send), or another site (go). */
 const ASKS = ['delete', 'pay', 'send', 'go'];

@@ -131,8 +131,8 @@ function face(person, size, mood = 'neutral', cls = '') {
 const hostOf = (url) => { try { return /^https?:/.test(url) ? new URL(url).host : ''; } catch { return ''; } };
 const siteOf = (url) => { try { return /^https?:/.test(url) ? new URL(url).origin : ''; } catch { return ''; } };
 const name = () => view.who?.name || walker?.name || '';
-/** The persona walking, with its face when it is the one picked here. */
-const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
+/** The persona walking, with its face: the one picked here, else the one the server sent (a walk started elsewhere). */
+const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name(), face: view.who?.face ?? null });
 
 /** The site the panel walks; before a walk, Scan and the cog beside it, which opens the account (`accountMenu`) under it. */
 function top(url = hereUrl, { tools = false, back = null } = {}) {

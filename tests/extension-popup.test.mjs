@@ -382,6 +382,19 @@ test('the side panel shows a finished walk on its own tab alone, with one button
   assert.deepEqual([back.body.dataset.screen, back.opened], ['home', []], 'Back in the top row goes home and opens nothing');
 });
 
+// A walk started from the terminal or the walk page has no persona picked here: its face is the one the server sends.
+test('the side panel wears the face the server sends for a walk started elsewhere, and the letter without one', async () => {
+  const { reduce } = await import('../extension/walks/view.js');
+  const face = 'data:image/jpeg;base64,/9j/AAAA';
+  const shown = async (persona) => {
+    const h = await sidePanel({ view: reduce(STUBS.walking, { type: 'brief', persona }), status: signedIn });
+    const head = h.app.querySelector('.walk-head').children.find((node) => node.className.split(' ').includes('face'));
+    return [String(head.attributes.style).includes(`url("${face}")`), head.children.length];
+  };
+  assert.deepEqual(await shown({ name: 'Talia', role: 'Employee', face }), [true, 0]);
+  assert.deepEqual(await shown({ name: 'Talia', role: 'Employee', face: 'https://elsewhere.example/t.jpg' }), [false, 1], 'only a data: picture');
+});
+
 // The list keeps its rows, so they can slide to their new places rather than being drawn again.
 test('the side panel’s steps list keeps its rows as a step comes, and the current step is the newest', async () => {
   const { reduce } = await import('../extension/walks/view.js');

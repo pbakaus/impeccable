@@ -8,6 +8,7 @@
 import { BUILD } from '../shared/build.js';
 import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
+import { faceOf } from '../walks/view.js';
 import { offerPanel, signedIn as pointToolbar, withoutPro } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { PLAN_ID, appOf, createSession, idbStore } from './session.js';
@@ -126,8 +127,7 @@ async function plan(message) {
 }
 
 /** Who walks, as the side panel picked them: a name, and the face sheet when there is one (session.js `faceOf`, a `data:` picture). */
-const FACE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
-const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: typeof who.face === 'string' && who.face.length <= 360_000 && FACE.test(who.face) ? who.face : null } : null);
+const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: who.name.slice(0, 120), face: faceOf(who.face) } : null);
 
 /** The width the side panel picked, as the server names it (walks/driver.js `DEVICES`); none is the tab as it is. */
 const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
