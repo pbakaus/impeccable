@@ -9,15 +9,19 @@
 use impeccable_common::Io;
 use std::io::Write;
 
-const OFFER: &str = "\nSign in to keep your critiques and audits in your Impeccable account and see this
+const OFFER: &str =
+    "\nSign in to keep your critiques and audits in your Impeccable account and see this
 repository on your Home. With Pro, the detector catches more and Loop collects
 your agents' questions. No account yet? Signing in creates one.
 ";
 
-/// Whether install's end offers the sign-in.
-fn offered(args: &[String], terminal: bool, ci: bool, signed_in: bool) -> bool {
-    let scripted = args.iter().any(|a| matches!(a.as_str(), "-y" | "--yes" | "-h" | "--help"));
-    terminal && !ci && !scripted && !signed_in
+/// Whether install's end may offer the sign-in, before the stored one is read: that
+/// read can raise a Keychain prompt, which a scripted or CI install must never see.
+fn offered(args: &[String], terminal: bool, ci: bool) -> bool {
+    let scripted = args
+        .iter()
+        .any(|a| matches!(a.as_str(), "-y" | "--yes" | "-h" | "--help"));
+    terminal && !ci && !scripted
 }
 
 /// Whether to offer Loop's install after the sign-in.
@@ -32,7 +36,7 @@ pub(crate) fn after_install(
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
-    if !offered(args, terminal, io.env_truthy("CI"), impeccable_account::has_sign_in(io)) {
+    if !offered(args, terminal, io.env_truthy("CI")) || impeccable_account::has_sign_in(io) {
         return;
     }
     io.err(OFFER);
@@ -40,40 +44,52 @@ pub(crate) fn after_install(
         io.err("Later: impeccable login\n");
         return;
     }
-    let impeccable_account::LoginOutcome::SignedIn(account) = impeccable_account::login_after_install(io) else {
+    let impeccable_account::LoginOutcome::SignedIn(account) =
+        impeccable_account::login_after_install(io)
+    else {
         // Declined, timed out or refused: the sign-in said why. The skills are installed.
         return;
     };
     crate::setup_report::schedule(io);
 
     // The MCP server for each coding agent; an entry already there is kept.
-    match crate::loop_connect::connect_mcp(io, None).0 {
+    let (connected, report, _) = crate::loop_connect::connect_mcp(io, None);
+    match connected {
         Ok(text) => io.err(&text),
-        Err(e) => io.err(&format!("{e}\nRun impeccable loop connect --mcp-only once that is sorted.\n")),
+        // No agent on this machine: nothing to rerun, the message says so.
+        Err(e) if no_agent_found(&report) => io.err(&format!("{e}\n")),
+        Err(e) => io.err(&format!(
+            "{e}\nRun impeccable loop connect --mcp-only once that is sorted.\n"
+        )),
     }
     crate::router::scan_after_login(io, engines, rule_pack);
 
-    let status = impeccable_account::setup_status::read_for(io, &account);
-    let includes_loop = status.as_ref().is_some_and(impeccable_account::setup_status::plan_includes_loop);
+    let includes_loop = impeccable_account::setup_status::read_for(io, &account)
+        .as_ref()
+        .is_some_and(impeccable_account::setup_status::plan_includes_loop);
     let installed = crate::loop_install::installed_app(io).is_some();
     if loop_offered(cfg!(target_os = "macos"), includes_loop, installed) {
         io.err("\nImpeccable Loop is a Mac app that keeps every question your agents ask in one place.\n");
         if ask(io, "Install Loop?") {
             crate::loop_install::run(&["install".into(), "--connect".into()], io);
-            // Loop is in now, so the setup lines are read again to say so.
-            if let Some(v) = impeccable_account::setup_status::read_for(io, &account) {
-                impeccable_account::setup_status::print(io, &v);
-            }
-            return;
+        } else {
+            io.err("Later: impeccable loop install\n");
         }
-        io.err("Later: impeccable loop install\n");
     } else {
         // Loop already here: offer to connect the agents it doesn't have yet.
         crate::loop_install::after_login(io);
     }
-    if let Some(v) = status {
+    // Read after the steps above, so the lines include what they just connected.
+    if let Some(v) = impeccable_account::setup_status::read_for(io, &account) {
         impeccable_account::setup_status::print(io, &v);
     }
+}
+
+/// Whether the MCP step found no coding agent at all, rather than failing on one.
+fn no_agent_found(report: &serde_json::Value) -> bool {
+    report["agents"]
+        .as_array()
+        .is_some_and(|rows| !rows.is_empty() && rows.iter().all(|r| r["result"] == "not_found"))
 }
 
 /// A yes/no question on stderr; Enter means yes. Keys pressed before the question
@@ -97,21 +113,33 @@ fn ask(io: &mut Io, question: &str) -> bool {
 mod tests {
     use super::*;
 
-    // Catches the offer reaching a scripted or CI install, or a rerun once signed in.
+    // Catches the offer reaching a scripted, CI or non-terminal install.
     #[test]
     fn offers_the_sign_in_only_to_a_person_not_signed_in() {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        for (flags, terminal, ci, signed_in, want) in [
-            (&[][..], true, false, false, true),
-            (&["-y"][..], true, false, false, false),
-            (&["--yes"][..], true, false, false, false),
-            (&["--help"][..], true, false, false, false),
-            (&[][..], false, false, false, false),
-            (&[][..], true, true, false, false),
-            (&[][..], true, false, true, false),
+        for (flags, terminal, ci, want) in [
+            (&[][..], true, false, true),
+            (&["-y"][..], true, false, false),
+            (&["--yes"][..], true, false, false),
+            (&["--help"][..], true, false, false),
+            (&[][..], false, false, false),
+            (&[][..], true, true, false),
         ] {
-            assert_eq!(offered(&args(flags), terminal, ci, signed_in), want, "{flags:?} {terminal} {ci} {signed_in}");
+            assert_eq!(
+                offered(&args(flags), terminal, ci),
+                want,
+                "{flags:?} {terminal} {ci}"
+            );
         }
+    }
+
+    // Catches the MCP step's rerun hint shown when there is no agent to connect.
+    #[test]
+    fn tells_apart_no_agent_from_a_failed_connect() {
+        let rows = |r: &[&str]| serde_json::json!({ "agents": r.iter().map(|x| serde_json::json!({ "result": x })).collect::<Vec<_>>() });
+        assert!(no_agent_found(&rows(&["not_found", "not_found"])));
+        assert!(!no_agent_found(&rows(&["not_found", "failed"])));
+        assert!(!no_agent_found(&rows(&[])));
     }
 
     // Catches Loop offered on Free (Loop is Pro and up), off a Mac, or again once installed.
@@ -123,7 +151,11 @@ mod tests {
             (false, true, false, false),
             (true, true, true, false),
         ] {
-            assert_eq!(loop_offered(mac, includes, installed), want, "{mac} {includes} {installed}");
+            assert_eq!(
+                loop_offered(mac, includes, installed),
+                want,
+                "{mac} {includes} {installed}"
+            );
         }
     }
 }
