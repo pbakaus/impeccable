@@ -382,6 +382,18 @@ test('the side panel shows a finished walk on its own tab alone, with one button
   assert.deepEqual([back.body.dataset.screen, back.opened], ['home', []], 'Back in the top row goes home and opens nothing');
 });
 
+// The list keeps its rows, so they can slide to their new places rather than being drawn again.
+test('the side panel’s steps list keeps its rows as a step comes, and the current step is the newest', async () => {
+  const { reduce } = await import('../extension/walks/view.js');
+  const h = await sidePanel({ view: STUBS.walking, status: signedIn });
+  const rows = () => h.app.querySelector('.sofar').children;
+  const before = [...rows()];
+  await h.show(reduce(STUBS.walking, { type: 'step', step: { n: 7, did: 'Clicked “Delete”' } }));
+  const after = rows();
+  assert.deepEqual([after.length, after.slice(1).every((row, i) => row === before[i]), after.filter((row) => row.className === 'now').map((row) => row.attributes['data-n'])],
+    [before.length + 1, true, ['7']]);
+});
+
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
   const plan = { id: 'p-1', risky: true, steps: [{ text: 'Add a to-do', risky: false }, { text: 'Delete it', risky: true }] };
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }, { name: 'Maya', role: '', slug: 'default:maya', default: true, device: 'mobile' }], plan: { ok: true, plan }, tab: 7 });

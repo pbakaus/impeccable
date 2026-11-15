@@ -43,6 +43,9 @@ const MORE = [
   { n: 12, did: 'Opened “Settings”', said: 'Small grey text. Hard to read.' },
 ];
 const walkingLong = run(walking, MORE.map((step) => ({ type: 'step', step })));
+/** A walk under way that gains a step every 1.5 s (panel.js), to watch the list grow: two steps, then the rest. */
+const walkingLive = run(waiting, [{ type: 'opened', name: 'Robert', site: HANDOFF.site }, ...STEPS.slice(0, 2).map((step) => ({ type: 'step', step }))]);
+export const FEED = { 'walking-live': [...STEPS.slice(2), ...MORE] };
 const outcome = (issues) => ({
   finished: true, steps: 8, ms: 41_000,
   doneWhen: HANDOFF.errand.doneWhen.map((text) => ({ text, met: true })),
@@ -61,6 +64,7 @@ export const STUBS = {
   waiting,
   walking,
   'walking-long': walkingLong,
+  'walking-live': walkingLive,
   paused: run(walking, [{ type: 'pause' }]),
   'paused-sign-in': run(walking, [{ type: 'pause', why: 'sign-in' }]),
   takeover: run(walking, [{ type: 'takeover' }]),

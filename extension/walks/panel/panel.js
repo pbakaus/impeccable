@@ -80,7 +80,6 @@ function el(tag, props = {}, ...children) {
 const SVG = 'http://www.w3.org/2000/svg';
 const ICONS = {
   mic: ['M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z', 'M5 11a7 7 0 0 0 14 0M12 18v3'],
-  stop: ['M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z'],
   out: ['M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
   cursor: ['M5 3l14 7-6 2-2 6z'],
   camera: ['M4 8h3l2-2.5h6L17 8h3v11H4z', 'M8.5 13a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0'],
@@ -651,8 +650,54 @@ function walkingScreen() {
       el('span', { class: 'n', text: String(step.n) }),
       el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : el('p', { class: 'task', text: COPY.walking.first(name()) }),
     el('span', { class: 'grow' }),
-    el('div', { class: 'bar' }, el('button', { type: 'button', 'data-act': 'stop', onclick: () => act('stop') }, icon('stop'), COPY.controls.stop)),
+    el('div', { class: 'bar' }, el('button', { type: 'button', 'data-act': 'stop', onclick: () => act('stop') }, COPY.controls.stop)),
   ];
+}
+
+/* The steps list stays one list from drawing to drawing (`keepSteps`), so a new step eases in at the top, the rows
+   below slide down to make room, and the gold card fades from the old step (FLIP: where each row was, where it is
+   now, then the difference undone). Transform and opacity only; none with reduced motion. */
+const STEP_MS = 240;
+/** The steps list's animations under way: cancelled by the next drawing, whichever screen it is. */
+let stepMoves = [];
+const isSteps = (node) => typeof node?.className === 'string' && node.className.split(' ').includes('sofar');
+
+/** The rows drawn into the list shown: a step already there keeps its row (its class and words brought up to date). */
+function keepSteps(list, drawn) {
+  const had = new Map([...list.children].map((row) => [row.getAttribute('data-n'), row]));
+  list.replaceChildren(...[...drawn.children].map((row) => {
+    const kept = had.get(row.getAttribute('data-n'));
+    if (!kept) return row;
+    kept.className = row.className;
+    if (row.getAttribute('data-issue')) kept.setAttribute('data-issue', 'yes');
+    kept.replaceChildren(...row.children);
+    return kept;
+  }));
+  return list;
+}
+
+/** Where each row of the list is, and which one is the current step, before it changes. */
+const placed = (list) => typeof list.getBoundingClientRect === 'function'
+  ? { tops: new Map([...list.children].map((row) => [row, row.getBoundingClientRect().top])), now: [...list.children].find((row) => row.className === 'now') }
+  : null;
+
+/** Once a step was added: the new row comes in, the others move from where they were, the old current step's card fades. */
+function ease(list, was) {
+  if (!was || still() || typeof list.animate !== 'function' || list.children.length <= was.tops.size) return;
+  const timing = { duration: STEP_MS, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease').trim() || 'ease-out' };
+  for (const row of list.children) {
+    const top = was.tops.get(row);
+    if (top === undefined) stepMoves.push(row.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], timing));
+    else {
+      const by = top - row.getBoundingClientRect().top;
+      if (Math.abs(by) > 0.5) stepMoves.push(row.animate([{ transform: `translateY(${by}px)` }, { transform: 'none' }], timing));
+    }
+  }
+  if (was.now && was.now.className !== 'now') {
+    stepMoves.push(was.now.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing, pseudoElement: '::before' }));
+    const words = was.now.querySelector('.t');
+    if (words) stepMoves.push(words.animate([{ opacity: 0.3 }, { opacity: 1 }], timing));
+  }
 }
 
 /* ------------------------------ the end ------------------------------ */
@@ -861,9 +906,17 @@ function render() {
   // A step list the person scrolled away from its top (the current step) stays where they put it as new steps come.
   const list = app.querySelector('.sofar');
   const kept = list && list.scrollTop > 4 ? { top: list.scrollTop, height: list.scrollHeight } : null;
-  app.replaceChildren(...SCREENS[shown]().filter(Boolean));
+  const drawn = SCREENS[shown]().filter(Boolean);
+  // On the walking screen the steps list is the one already shown, its rows kept, so they can move (`ease`).
+  const steps = shown === 'walking' && list ? drawn.findIndex(isSteps) : -1;
+  const was = steps >= 0 ? placed(list) : null;
+  for (const move of stepMoves) move.cancel();
+  stepMoves = [];
+  if (steps >= 0) drawn[steps] = keepSteps(list, drawn[steps]);
+  app.replaceChildren(...drawn);
   const now = kept && app.querySelector('.sofar');
   if (now) now.scrollTop = kept.top + (now.scrollHeight - kept.height);
+  if (steps >= 0) ease(drawn[steps], was);
   for (const box of [...app.querySelectorAll('textarea.text'), ...app.querySelectorAll('ul.hist')]) { fade(box); box.addEventListener('scroll', () => fade(box)); box.addEventListener('input', () => fade(box)); }
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
@@ -900,7 +953,7 @@ async function start() {
   const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
   if (WIDTHS.includes(walkWidth)) pre.width = ownWidth = walkWidth;
   if (stub !== null) {
-    const { STUBS, PRE, HISTORY } = await import('./stub.js');
+    const { STUBS, PRE, HISTORY, FEED } = await import('./stub.js');
     stubbed = true;
     // Listening, drawn still: the bars as the stand-in's levels, and Stop goes back to the box.
     if (PRE[stub]?.levels) voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} };
@@ -913,6 +966,10 @@ async function start() {
     // A stand-in with the defaults is on an address none of the person's apps is at (`here`).
     hereUrl = pre.here ?? 'https://tidy.example/';
     act = (action) => { view = reduce(view, { type: action }); render(); };
+    // A stand-in that goes on: its next step every 1.5 s while the walk is live.
+    const feed = [...(FEED[stub] ?? [])];
+    const next = () => { if (feed.length === 0 || !isLive(view)) return; view = reduce(view, { type: 'step', step: feed.shift() }); render(); setTimeout(next, 1500); };
+    if (feed.length > 0) setTimeout(next, 1500);
   } else {
     act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
     chrome.storage.session.onChanged.addListener((changes) => {

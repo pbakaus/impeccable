@@ -200,19 +200,21 @@ b { font-weight: 500; }
 /* A walk fills the panel exactly: the header and Stop stay put, and only the steps scroll. */
 #app.screen-walking { height: 100%; min-height: 0; }
 /* Every row has the same side padding and a border (clear but for the current one), so no number moves when the current step moves on. */
-.sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 13px 9px 12px; border: 1px solid transparent; border-top-color: var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
+.sofar li { position: relative; isolation: isolate; display: flex; gap: 12px; align-items: baseline; padding: 9px 13px 9px 12px; border: 1px solid transparent; border-top-color: var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
+/* The current step's gold card is every row's ::before, shown on the current one, so it can fade as the walk moves on (panel.js `ease`). */
+.sofar li::before { content: ""; position: absolute; inset: -1px; z-index: -1; border: 1px solid var(--gold-rich); border-radius: 12px; background: var(--gold-wash); opacity: 0; pointer-events: none; }
+.sofar li.now::before { opacity: 1; }
 .sofar li:first-child { border-top-color: transparent; }
 /* The step's number: one fixed column, right-aligned, figures all one width (1 to 99 line up on their last digit). */
 .sofar .n { width: 2ch; flex: none; text-align: right; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mute-deep); }
 .sofar .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sofar li.now { padding-top: 12px; padding-bottom: 12px; border-color: var(--gold-rich); border-radius: 12px; background: var(--gold-wash); color: var(--ink); font-size: 15px; }
+.sofar li.now { padding-top: 12px; padding-bottom: 12px; color: var(--ink); font-size: 15px; }
 .sofar li.now + li { border-top-color: transparent; }
 .sofar li.now .n { color: var(--gold-deep); }
 .sofar li.now q { font-size: 13px; color: var(--muted); }
 .screen-walking > .task { margin-top: 24px; text-align: center; }
 .bar { position: sticky; bottom: 0; flex: none; height: 44px; margin-top: 16px; display: flex; border-radius: 10px; overflow: hidden; background: var(--lacquer); border: 1px solid var(--lacquer-edge); color: var(--inst-text); }
 .bar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; }
-.bar .ic { color: var(--gold); }
 .end { flex: none; display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 56px; text-align: center; }
 .end .face { margin-bottom: 14px; }
 .end.is-still .face { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
