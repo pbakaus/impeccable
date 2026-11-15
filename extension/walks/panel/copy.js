@@ -125,8 +125,6 @@ export const COPY = {
    * is paused; no screenshots are taken while it is paused.
    */
   signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
-  /** Fine print under the sign-in pause, in the side panel only. */
-  signInSoon: 'Signing in for you is coming soon.',
   /** Before a deed the server marked (delete, pay, send), or before another site, on a journey with no plan: nothing is done until Yes. */
   ask: {
     title: 'Are you sure?',

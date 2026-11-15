@@ -549,7 +549,7 @@ function question() {
 
 /** A walk that paused itself (a sign-in) or was held goes on only by the person's word. */
 function held() {
-  if (view.state === 'paused') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }), view.held === 'sign-in' ? el('small', { class: 'soon', text: COPY.signInSoon }) : null, button('resume', COPY.controls.resume, 'gold'));
+  if (view.state === 'paused') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }), button('resume', COPY.controls.resume, 'gold'));
   if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), button('handback', COPY.controls.handback, 'gold'));
   return null;
 }
@@ -562,7 +562,7 @@ function walkingScreen() {
     question(),
     held(),
     steps.length > 0 ? el('ol', { class: 'sofar' }, steps.map((step, i) => el('li', { class: i === 0 ? 'now' : '', 'data-n': step.n, 'data-issue': step.issue ? 'yes' : undefined },
-      el('span', { class: 'n', text: String(step.n).padStart(2, '0') }),
+      el('span', { class: 'n', text: String(step.n) }),
       el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : el('p', { class: 'task', text: COPY.walking.first(name()) }),
     el('span', { class: 'grow' }),
     el('div', { class: 'bar' }, el('button', { type: 'button', 'data-act': 'stop', onclick: () => act('stop') }, icon('stop'), COPY.controls.stop)),
