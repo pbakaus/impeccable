@@ -169,13 +169,14 @@ fn an_unmarked_price_and_a_dead_action_fail() {
     assert!(text.contains("ok    figures"), "{text}");
     assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
     // Figures the user supplied, and a link to a real page.
-    page_with(&dir, "<p>Poppy seeds, $4.50 a packet</p><a class=\"buy\" href=\"https://example.com/shop\">Buy</a>");
+    std::fs::write(dir.join("shop.html"), "<!doctype html><p>Shop</p>").unwrap();
+    page_with(&dir, "<p>Poppy seeds, $4.50 a packet</p><a class=\"buy\" href=\"shop.html\">Buy</a>");
     let mut supplied = args.to_vec();
     supplied.push("--figures-supplied");
     let out = run(&dir, &supplied);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(!text.contains("figures"), "{text}");
-    assert!(text.contains("ok    primary action .buy: a link that goes somewhere"), "{text}");
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
 }
 
 #[test]
@@ -236,4 +237,38 @@ fn an_extra_viewport_keeps_its_own_capture() {
     );
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(dir.join("shots/mobile.png").is_file() && dir.join("shots/user-640.png").is_file());
+}
+
+#[test]
+fn a_link_that_cancels_fails_and_late_or_busy_pages_still_answer() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("probe");
+    let args = ["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"];
+    page_with(&dir, "<a class=\"buy\" href=\"shop.html\" onclick=\"event.preventDefault()\">Buy</a>");
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
+    // The app toggles a class on body all the time; the button's dialog
+    // under body still counts.
+    page_with(
+        &dir,
+        "<button class=\"buy\" onclick=\"document.body.append(Object.assign(document.createElement('dialog'), { open: true, textContent: 'Added' }))\">Buy</button>\
+         <script>setInterval(() => document.body.classList.toggle('tick'), 100);</script>",
+    );
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
+    // A button mounted a second after load is waited for, then clicked.
+    std::fs::write(
+        dir.join("index.html"),
+        format!(
+            "<!doctype html><style>{STYLE}</style><h1>Seeds</h1><div class=\"thesis\">Plates</div>\
+             <script>setTimeout(() => {{ const b = document.createElement('button'); b.className = 'buy'; b.textContent = 'Buy'; \
+             b.onclick = () => {{ b.textContent = 'Added'; }}; document.querySelector('.thesis').append(b); }}, 1000);</script>"
+        ),
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
 }

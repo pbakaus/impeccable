@@ -111,9 +111,11 @@ const MEASURE_JS: &str = r##"((selectors) => {
     const href = link ? (link.getAttribute('href') || '').trim() : null;
     out.deadLink = link !== null && (href === '' || href === '#' || /^javascript:/i.test(href)
       || (href.startsWith('#') && !document.getElementById(decodeURIComponent(href.slice(1)))));
-    // Any other link goes somewhere (a page, a new tab, mailto:, tel:, a
-    // download) without changing this document, so it is not clicked.
-    out.liveLink = link !== null && !out.deadLink;
+    // A link that leaves this tab (a new tab, a download, mailto:, tel:)
+    // changes nothing here, so it is not clicked; a same-tab link is, and
+    // must navigate or answer like any button.
+    out.liveLink = link !== null && !out.deadLink && (link.target === '_blank' || link.hasAttribute('download')
+      || /^(mailto|tel|sms):/i.test(href));
   }
   for (const [key, sel] of Object.entries(selectors)) {
     if (!sel) continue;
@@ -142,23 +144,35 @@ const MEASURE_JS: &str = r##"((selectors) => {
 })"##;
 
 /// Click the primary action and report whether anything answers within
-/// 800ms: an element changes that a quiet 1.2s watch before the click left
-/// alone (so a ticking clock or a carousel does not count), the URL or hash
-/// moves, the page scrolls, a form submits, or the page navigates away (the
-/// evaluation then fails).
+/// 800ms: a change the page was not already making on its own (a quiet 1.2s
+/// watch first records each element and kind of change, so a ticking clock or
+/// a class the app toggles on body does not count, but a dialog added under
+/// it does), the URL or hash moves, the page scrolls, a form submits, or the
+/// page navigates away (the evaluation then fails). It waits up to 3s for an
+/// action mounted after load.
 const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
-  const el = document.querySelector(sel);
-  if (!el) return resolve({ responded: false });
-  const busy = new Set();
-  const watch = new MutationObserver((rs) => rs.forEach((r) => busy.add(r.target)));
   const all = { subtree: true, childList: true, attributes: true, characterData: true };
+  const key = (r) => r.type + ':' + (r.attributeName || '');
+  const busy = new Map();
+  const watch = new MutationObserver((rs) => rs.forEach((r) => {
+    if (!busy.has(r.target)) busy.set(r.target, new Set());
+    busy.get(r.target).add(key(r));
+  }));
   watch.observe(document.documentElement, all);
-  setTimeout(() => {
+  const started = Date.now();
+  const go = () => {
+    const el = document.querySelector(sel);
+    if (!el) {
+      if (Date.now() - started < 3000) return setTimeout(go, 100);
+      watch.disconnect();
+      return resolve({ responded: false });
+    }
+    if (Date.now() - started < 1200) return setTimeout(go, 1200 - (Date.now() - started));
     watch.disconnect();
-    const background = (n) => { for (let a = n; a; a = a.parentNode) if (busy.has(a)) return true; return false; };
+    const background = (r) => busy.get(r.target)?.has(key(r));
     const href = location.href, y = scrollY;
     let changed = false, submitted = false, scrolled = false;
-    const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r.target))) changed = true; });
+    const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r))) changed = true; });
     mo.observe(document.documentElement, all);
     document.addEventListener('submit', () => { submitted = true; }, { capture: true, once: true });
     document.addEventListener('scroll', () => { scrolled = true; }, { capture: true, once: true });
@@ -167,7 +181,8 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
       mo.disconnect();
       resolve({ responded: changed || submitted || scrolled || scrollY !== y || location.href !== href });
     }, 800);
-  }, 1200);
+  };
+  go();
 }))"#;
 
 fn launch(io: &Io) -> Result<Browser, String> {
@@ -218,16 +233,21 @@ fn capture_name(vp: Viewport) -> String {
     }
 }
 
-fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Result<(Vec<String>, bool), String> {
-    let (thesis, action) = (Some(o.thesis), Some(o.action));
-    page.set_viewport(vp).map_err(|e| e.message)?;
-    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
-    // Lazy images below the fold would capture as blank boxes: load them all.
+/// Let the page finish arriving: lazy images loaded (below the fold they would
+/// capture as blank boxes), fonts ready, and a short beat for late scripts.
+fn settle(page: &mut Page<'_>) {
     let _ = page.evaluate(
         "(async () => { for (const i of document.querySelectorAll('img[loading=lazy]')) i.loading = 'eager'; \
          await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 5000); }))); \
          await document.fonts.ready; await new Promise((r) => setTimeout(r, 400)); })()",
     );
+}
+
+fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Result<(Vec<String>, bool), String> {
+    let (thesis, action) = (Some(o.thesis), Some(o.action));
+    page.set_viewport(vp).map_err(|e| e.message)?;
+    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
+    settle(page);
     let label = format!("{}x{}", vp.width, vp.height);
     let mut lines = Vec::new();
     let mut failed = false;
@@ -319,6 +339,7 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Resul
     // Last, since a click may change the page or leave it, and on a fresh
     // load: the full-page capture leaves the page laid out at its full height.
     page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
+    settle(page);
     let dead_link = measured["deadLink"].as_bool().unwrap_or(false);
     let live_link = measured["liveLink"].as_bool().unwrap_or(false);
     let responded = live_link
