@@ -146,7 +146,8 @@ b { font-weight: 500; }
 .tabs .widths:not(.sights)::before { left: 100%; background: radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
 .tabs .sights::before { right: 100%; background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
 .tabs + .field { border-top-left-radius: 0; border-top-right-radius: 0; }
-.tabs + .field:focus-within { background: var(--tab); box-shadow: none; }
+/* The tabs' grey, named here: `--tab` is set on .tabs, a sibling, so it does not reach the box. */
+.tabs + .field:focus-within { background: var(--paper-deep); box-shadow: none; }
 .tabs .widths button[aria-pressed="true"] { background: var(--paper-raised); }
 /* The + at the limit: greyed, still focusable, saying why just under it, ending at its right (it is last, so nothing is under it or after it). */
 .cast .add[aria-disabled="true"] { position: relative; cursor: default; }
