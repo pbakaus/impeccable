@@ -2717,7 +2717,7 @@
       return el('div', { display: 'none' });
     }
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '6px',
+      display: 'flex', alignItems: 'center', gap: touchPrimary() ? '2px' : '6px',
       padding: '1px 2px',
     });
 
