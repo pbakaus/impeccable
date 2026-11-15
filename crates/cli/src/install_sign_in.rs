@@ -63,7 +63,11 @@ pub(crate) fn after_install(
         End::Offer => {}
     }
     offer_sign_in(io, engines, rule_pack);
-    // The offer printed after install's own "Done!", so its next step goes last.
+}
+
+/// The offer prints after install's own "Done!", so its init step is said again,
+/// before the setup lines whose `Next:` closes a fresh sign-in.
+fn init_next(io: &mut Io) {
     io.err(
         "\nNow type /impeccable init in your AI coding agent's chat to set up design context.\n",
     );
@@ -77,12 +81,14 @@ fn offer_sign_in(
     io.err(OFFER);
     if !ask(io, "Sign in now?") {
         io.err("Later: impeccable login\n");
+        init_next(io);
         return;
     }
     let impeccable_account::LoginOutcome::SignedIn(account) =
         impeccable_account::login_after_install(io)
     else {
         // Declined, timed out or refused: the sign-in said why. The skills are installed.
+        init_next(io);
         return;
     };
     crate::setup_report::schedule(io);
@@ -114,6 +120,7 @@ fn offer_sign_in(
         // Loop already here: offer to connect the agents it doesn't have yet.
         crate::loop_install::after_login(io);
     }
+    init_next(io);
     // Read after the steps above, so the lines include what they just connected.
     if let Some(v) = impeccable_account::setup_status::read_for(io, &account) {
         impeccable_account::setup_status::print(io, &v);
