@@ -164,7 +164,10 @@ const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? {
 
 /** The personas for the tab's address; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
-  const answer = await chrome.runtime.sendMessage({ account: 'personas', site: siteOf(hereUrl) }).catch(() => null);
+  const site = siteOf(hereUrl);
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', site }).catch(() => null);
+  // An answer for an address the tab has since left: asked again for the new one.
+  if (siteOf(hereUrl) !== site) { await loadPersonas(); return; }
   const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
   pre.defaults = answer?.defaults === true;
@@ -408,7 +411,8 @@ async function go(start) {
   walker = { name: person.name, face: person.face ?? null };
   ended = false;
   const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.runAt ?? pre.width, sees: pre.sees }).catch(() => null);
-  if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
+  // How the persona sees was for this journey alone: the next starts from the card again.
+  if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; choose(pre.pick); return; }
   pre.note = WHY[answer?.why] ?? COPY.why.failed;
   // A plan the server no longer takes (expired, or for another task or site): back to the box, to send again.
   if (answer?.why === 'plan') { pre.screen = 'home'; pre.plan = null; }
@@ -666,7 +670,8 @@ async function start() {
       render();
     });
     // Another address may be another app's: its personas, or the defaults.
-    const moved = (was) => { if (siteOf(hereUrl) !== siteOf(was) && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); };
+    // Not under a plan or a walk: their persona stays the one they were started with.
+    const moved = (was) => { if (siteOf(hereUrl) !== siteOf(was) && pre.screen === 'home' && !isLive(view) && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); };
     chrome.tabs.onActivated.addListener(() => { const was = hereUrl; void look().then(() => { moved(was); render(); }); });
     chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const was = hereUrl; hereUrl = change.url; moved(was); if (pre.screen === 'home' && !isLive(view)) render(); } });
     const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);

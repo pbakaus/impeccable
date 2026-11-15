@@ -99,10 +99,10 @@ export const PRE = {
   'make-making': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, making: true },
   'make-made': { personas: [...PERSONAS, MADE], screen: 'make', said: DESCRIBED, made: MADE },
   'make-refused': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, note: COPY.make.limit(3) },
-  planning: { personas: PERSONAS, task: TASK, screen: 'planning', pick: 3 },
-  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3 },
+  planning: { personas: PERSONAS, task: TASK, screen: 'planning', pick: 3, defaults: true },
+  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3, defaults: true },
   before: { personas: PERSONAS, screen: 'before' },
-  'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3 },
+  'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3, defaults: true },
 };
 STUBS.before = STUBS.idle;
 STUBS['tab-group'] = STUBS.idle;

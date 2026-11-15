@@ -368,6 +368,8 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }], plan: { ok: true, plan }, tab: 7 });
   assert.equal(h.body.dataset.screen, 'home');
   await h.press('pick-1');
+  const pressed = (act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-pressed'];
+  assert.equal(pressed('sees-colour-blind'), 'true', 'the card’s own sight is filled in');
   const box = h.app.querySelector('textarea');
   box.value = 'Add a to-do, then delete it.';
   await h.press('send');
@@ -375,10 +377,14 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('[data-risky]').length, h.app.querySelectorAll('[data-confirm]').length], ['plan', 1, 1]);
   await h.press('edit');
   assert.deepEqual([h.body.dataset.screen, h.app.querySelector('textarea').value], ['home', 'Add a to-do, then delete it.']);
+  await h.press('sees-older');
   await h.press('send');
   await h.press('start');
-  // How the persona sees goes with the journey: the card's own, unless the person picks another for this one.
-  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId, m.walker.name, m.sees]), [[{ mine: 'alex' }, 'p-1', 7, 'Alex', 'colour-blind']]);
+  // How the persona sees goes with the journey: the one picked for it, and the next journey starts from the card again.
+  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId, m.walker.name, m.sees]), [[{ mine: 'alex' }, 'p-1', 7, 'Alex', 'older']]);
+  await h.show(STUBS.stopped);
+  await h.press('home');
+  assert.equal(pressed('sees-colour-blind'), 'true');
   const expired = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], plan: { ok: true, plan }, walk: { ok: false, why: 'plan' } });
   assert.equal(expired.app.querySelector('[data-act="sees-normal"]').attributes['aria-pressed'], 'true', 'a card that says nothing sees normally');
   await expired.press('sees-older');
