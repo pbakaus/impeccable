@@ -614,7 +614,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
 }
 
 static PROVIDER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
+    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/|workspace/custom-skills/").unwrap()
 });
 
 /// JS: normalizeForHash(content)

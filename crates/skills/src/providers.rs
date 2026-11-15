@@ -9,7 +9,7 @@ pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
     ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
-    ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
+    ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe", "workspace",
 ];
 
 const PROVIDER_ALIASES: &[(&str, &str)] = &[
@@ -32,6 +32,7 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("hermes", ".hermes"),
     ("xai", ".grok"),
     ("kiro", ".kiro"),
+    ("muse", "workspace"),
     ("opencode", ".opencode"),
     ("pi", ".pi"),
     ("omp", ".omp"),
@@ -66,6 +67,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".trae", "Trae", "trae"),
     (".trae-cn", "Trae CN", "trae-cn"),
     (".vibe", "Mistral Vibe", "vibe"),
+    ("workspace", "Muse", "muse"),
 ];
 
 /// Harnesses that read another provider's dir: (input name, label, provider
@@ -75,7 +77,7 @@ const SHARED_DIR_HARNESSES: &[(&str, &str, &str)] = &[("replit", "Replit Agent",
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
     "antigravity", "claude", "codex", "replit", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
-    "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
+    "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe", "muse",
 ];
 
 pub const DEFAULT_TARGETS: &[&str] = &[".claude", ".agents"];
@@ -137,12 +139,15 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
         ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
+        // Muse (Meta's personal agent) keeps user custom skills in
+        // ~/workspace/custom-skills/<name>/SKILL.md, not in a dot-dir.
+        "workspace" => Some(jsp::join(&[home, "workspace", "custom-skills"])),
         _ => None,
     }
 }
 
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
+    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode" | "workspace")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -380,6 +385,13 @@ impl Sys {
         // hint for the same dir is the specific one and stands in for it.
         let mut detections = Vec::new();
         for provider in PROVIDER_DIRS {
+            // Muse is user-scope only: a `workspace/` folder in a project
+            // root is a common monorepo layout, not a Muse mark, so the
+            // generic project-dir signal must not fire for it. Muse is
+            // detected through its home hint (~/workspace/custom-skills).
+            if *provider == "workspace" {
+                continue;
+            }
             if hinted.iter().any(|d| d.scope == Scope::Project && d.provider == *provider) {
                 continue;
             }
@@ -522,6 +534,11 @@ const HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".qoder", "qoder"),
     Hint::Home(".rovodev", "rovo-dev"),
     Hint::Home(".vibe", "vibe"),
+    // Muse detection signal: the custom-skills folder inside the user's
+    // Muse workspace. This is an assumption documented in the PR: Muse has
+    // no dot-dir config folder, and ~/workspace/custom-skills is where its
+    // user skills live, so its presence is the most specific on-disk mark.
+    Hint::Home("workspace/custom-skills", "muse"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -997,6 +1014,25 @@ mod tests {
             let env = Env::from([("DSH_HOME".into(), value.into())]);
             assert_eq!(dsh_global_home(&env, home, home), expected);
         }
+    }
+
+    #[test]
+    fn muse_provider_resolves_paths() {
+        assert_eq!(normalize_provider_name("muse"), Some("workspace"));
+        assert_eq!(normalize_provider_name("workspace"), Some("workspace"));
+        assert_eq!(provider_display_name("workspace"), "Muse");
+        assert_eq!(provider_input_name("workspace"), "muse");
+        assert_eq!(harness_display_name("muse"), Some(("workspace", "Muse")));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
+
+        // User scope: Muse custom skills live in ~/workspace/custom-skills.
+        assert_eq!(sys.user_provider_skills_dir(&home, "workspace"), jsp::join(&[home, "workspace", "custom-skills"]));
+        assert_eq!(
+            sys.provider_skills_dir_candidates(&home, "workspace", Some(Scope::User)),
+            vec![jsp::join(&[home, "workspace", "custom-skills"])]
+        );
     }
 
     #[test]
