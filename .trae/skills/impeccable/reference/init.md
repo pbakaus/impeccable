@@ -12,8 +12,6 @@ Use the PRODUCT.md path resolved by `impeccable context`. Update it instead of c
 - **Only DESIGN.md exists:** leave it untouched and create PRODUCT.md.
 - **Redesign/rebrand request:** preserve confirmed product truth unless the user changes it. Visual replacement happens later in new-work, not here.
 
-If `impeccable context` printed `ACCOUNT: not signed in` (or printed no `ACCOUNT:` line and `.trae/skills/impeccable/scripts/impeccable whoami` prints `Not signed in`), put one line in your first message to the person in this init, before any question, structured or plain-chat: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Say it once per init. Signed in, say nothing about it.
-
 Never silently overwrite an existing file or offer DESIGN.md during init. If another request invoked init, finish PRODUCT.md and resume it. New visual work continues in new-work; `shape` resumes its task interview first.
 
 ## Step 2: Explore the project
@@ -25,6 +23,8 @@ Treat repository evidence as a hypothesis, not user approval. Note visual maturi
 Form a platform hypothesis: `web`, `ios`, `android`, or `adaptive` (one product that genuinely adapts its design language per OS). Mobile web remains `web`; a native wrapper around a website does not make its design language native.
 
 ## Step 3: Interview for product truth
+
+**Your first message opens with the sign-in when it's missing.** If `impeccable context` printed `ACCOUNT: not signed in` (or printed no `ACCOUNT:` line and `.trae/skills/impeccable/scripts/impeccable whoami` prints `Not signed in`), the first line of your first message to the person, before any question, structured or plain-chat, is: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Say it once per init. Signed in, say nothing about it.
 
 Ask the user directly to clarify what you cannot infer. Ask only about material gaps the repository and original request do not answer with strong evidence.
 
