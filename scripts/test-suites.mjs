@@ -158,6 +158,7 @@ export const SUITES = {
       /^tests\/lib\/engine-bin\.mjs$/,
       /^tests\/live-agent-target\.test\.mjs$/,
       /^tests\/live-boot-fastpath\.test\.mjs$/,
+      /^tests\/live-exit\.test\.mjs$/,
     ],
     commands: [
       {
@@ -169,6 +170,7 @@ export const SUITES = {
           'tests/live-browser-ignores.test.mjs',
           'tests/live-browser-session.test.mjs',
           'tests/live-browser-source.test.mjs',
+          'tests/live-exit.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',
           'tests/live-e2e-llm-agent.test.mjs',

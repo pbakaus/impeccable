@@ -43,10 +43,22 @@ async function startServer() {
 /** Opens the overlay's event stream and waits for its connected frame. */
 async function connectOverlay(server) {
   const controller = new AbortController();
-  const res = await fetch(`${server.base}/events?token=${server.token}`, { signal: controller.signal });
-  const reader = res.body.getReader();
-  let text = '';
-  while (!text.includes('"connected"')) text += new TextDecoder().decode((await reader.read()).value);
+  const timer = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(`${server.base}/events?token=${server.token}`, { signal: controller.signal });
+    const reader = res.body.getReader();
+    let text = '';
+    while (!text.includes('"connected"')) {
+      const { done, value } = await reader.read();
+      if (done) throw new Error('event stream closed before it connected');
+      text += new TextDecoder().decode(value);
+    }
+  } catch (err) {
+    controller.abort();
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   return () => controller.abort();
 }
 
