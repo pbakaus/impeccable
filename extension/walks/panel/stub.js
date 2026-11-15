@@ -110,6 +110,8 @@ export const PRE = {
   'home-sam': { personas: PERSONAS, task: TASK, pick: 4, here: 'https://shop.example/' },
   'home-app': { personas: [...APP_CAST, MADE], task: TASK },
   'signing-in': { signingIn: true },
+  // Just signed in: the moment before the panel goes on.
+  connected: { personas: PERSONAS, task: TASK, pick: 3, here: 'https://shop.example/', connected: true },
   // Talk to type: the bars as a voice moves them, newest on the right, the words heard so far; and a mic hearing nothing.
   listening: { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Add a to-do, then rename it to', levels: [0.08, 0.22, 0.4, 0.62, 0.5, 0.78, 0.92, 0.66, 0.44, 0.7, 0.55, 0.3, 0.16, 0.06] },
   'listening-quiet': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: '', levels: [0.01, 0.02, 0, 0.01, 0.02, 0.01, 0, 0.01, 0.02, 0, 0.01, 0.02, 0.01, 0] },
@@ -139,5 +141,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

@@ -32,7 +32,7 @@ let hereUrl = '';
  * Before a walk: the personas, the one picked, the task, and where the person is (`home`, `make`, `planning`, `plan`).
  * `sees`: how the persona sees the page on this journey; Make a persona's description, and who it made.
  */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', making: false, made: null, signingIn: false, menu: false };
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', making: false, made: null, signingIn: false, menu: false, connected: false };
 /**
  * "Use a persona from your app", a modal over Make a persona (`modal`): the apps, the one picked (`workspace/repo/app`),
  * whether its dropdown is open, and that app's personas. The home's own are the app's at the tab's address (or the app
@@ -96,6 +96,7 @@ const ICONS = {
   plus: ['M12 5v14M5 12h14'],
   back: ['M19 12H5M11 6l-6 6 6 6'],
   close: ['M6 6l12 12M18 6L6 18'],
+  check: ['M5 12.5l4.5 4.5L19 7.5'],
   down: ['M6 9l6 6 6-6'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
@@ -705,8 +706,26 @@ async function signIn(control) {
   signInFailed = answer?.ok !== true;
   if (!signInFailed) account = answer.available === true ? answer : null;
   if (account?.signedIn === true) void loadPersonas();
+  // Only a sign-in that worked, to an account with Pro, says so ("Sign in again" runs while `account` still says signed in).
+  if (!signInFailed && account?.signedIn === true && account.pro !== false) connect();
   render();
 }
+
+/**
+ * Just signed in (here, or in the popup, which the sign-in window closes: the worker's `connected` in
+ * chrome.storage.session): "You're connected" holds for a moment once drawn, then the panel goes on (first run or home).
+ */
+const CONNECTED_MS = 2000;
+let connectedFor = null;
+function connect() {
+  pre.connected = true;
+  void Promise.resolve(chrome.storage.session.remove('connected')).catch(() => undefined);
+}
+
+const connected = () => [el('div', { class: 'mid connected', role: 'status' },
+  el('span', { class: 'done-mark' }, icon('check')),
+  el('h2', { class: 'hd', text: COPY.connected.line }),
+  account?.email ? el('p', { class: 'task' }, `${COPY.connected.who} `, el('b', { 'data-email': true, text: account.email })) : null)];
 
 function signedOut() {
   const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', disabled: pre.signingIn, onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), pre.signingIn ? dots() : el('span', { class: 'arrow', text: '→' }));
@@ -720,6 +739,7 @@ async function signOut() {
   account = answer?.ok === true && answer.available === true ? answer : { ...account, signedIn: false };
   pre.personas = undefined;
   pre.menu = false;
+  pre.connected = false;
   render();
 }
 
@@ -783,16 +803,19 @@ function screen() {
   if (!account) return 'terminal';
   if (account.signedIn !== true) return 'signed-out';
   if (account.pro === false) return 'not-pro';
+  if (pre.connected) return 'connected';
   return pre.screen;
 }
 
-const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, home, make: maker, planning, plan: planned, scan };
+const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, connected, home, make: maker, planning, plan: planned, scan };
 
 function render() {
   const shown = screen();
   if (shown !== 'home') hush();
   // The account popover belongs to the home: another screen closes it.
   if (shown !== 'home' && shown !== 'loading') pre.menu = false;
+  // The moment's time runs from when it is first drawn; a stand-in holds it.
+  if (shown === 'connected' && !connectedFor && !stubbed) connectedFor = setTimeout(() => { pre.connected = false; connectedFor = null; render(); }, CONNECTED_MS);
   const focused = document.activeElement?.getAttribute?.('data-act');
   const body = document.body;
   body.dataset.state = view.state;
@@ -862,6 +885,8 @@ async function start() {
     act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
     chrome.storage.session.onChanged.addListener((changes) => {
       if (changes.walker || changes.walkUrl) void knowWalk().then(render);
+      // Signed in from the popup while the panel is open.
+      if (changes.connected?.newValue === true) { connect(); void knowAccount().then(render); }
       if (!changes.view) return;
       view = changes.view.newValue ?? emptyView(false);
       if (isLive(view)) ended = false;
@@ -877,8 +902,9 @@ async function start() {
     };
     chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
     chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; moved(); if (pre.screen === 'home' && !isLive(view)) render(); } });
-    const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
+    const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
+    if (just === true) connect();
     if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
     if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }

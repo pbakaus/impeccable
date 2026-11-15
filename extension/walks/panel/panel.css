@@ -304,3 +304,8 @@ b { font-weight: 500; }
 .acct { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 240px; max-width: 100%; gap: 10px; padding: 12px; }
 .acct-who { display: flex; flex-direction: column; gap: 2px; padding: 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 .acct-who b { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ---------- just signed in: a gold check, then the panel goes on ---------- */
+.done-mark { width: 72px; height: 72px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); margin-bottom: 4px; }
+.done-mark .ic { width: 34px; height: 34px; stroke-width: 2.4; }
+.connected .task b { color: var(--ink); overflow-wrap: anywhere; }

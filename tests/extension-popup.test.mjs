@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {} } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {}, connected } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -319,7 +319,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   const sent = [];
   const opened = [];
   const local = { firstRunSeen, appForSite };
-  const session = { view };
+  const session = { view, connected };
   const changed = [];
   const activated = [];
   let front = tab;
@@ -515,7 +515,8 @@ for (const [label, status, offers] of [
   // The server says who has Impeccable Pro: without it, Get Pro or another account, and no personas asked for.
   ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, ['get-pro', 'another-account']],
 ]) {
-  test(`with no walk running, the side panel offers ${offers.join(' and ')}: ${label}`, async () => {
+  test(`with no walk running, the side panel offers ${offers.join(' and ')}: ${label}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
     assert.deepEqual(h.acts(), offers);
     if (offers[0] === 'get-pro') {
@@ -528,7 +529,14 @@ for (const [label, status, offers] of [
     if (offers[0] !== 'sign-in') return;
     await h.press('sign-in');
     assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');
+    // "You're connected" with the email and nothing to press, for a moment; then the home.
+    const moment = (panel) => [panel.body.dataset.screen, panel.app.querySelector('b[data-email]')?.textContent, panel.acts()];
+    assert.deepEqual(moment(h), ['connected', signedIn.email, []]);
+    t.mock.timers.tick(2000);
     assert.deepEqual([h.body.dataset.account, h.body.dataset.screen, h.acts().includes('send')], ['signed-in', 'home', true]);
+    // Signed in from the popup, which the sign-in window closed: the panel opened next says it too, once.
+    const next = await sidePanel({ view: STUBS.idle, status: signedIn, connected: true, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+    assert.deepEqual([moment(next), next.session.connected], [['connected', signedIn.email, []], undefined]);
   });
 }
 

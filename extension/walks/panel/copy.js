@@ -29,6 +29,8 @@ export const COPY = {
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', back: 'Back' },
   /** The cog's popover: who is signed in, and Sign out. */
   account: { title: 'Account', signedIn: 'Signed in as', signOut: 'Sign out' },
+  /** Just signed in: a moment, then the panel goes on. */
+  connected: { line: 'You’re connected', who: 'Signed in as' },
 
   home: {
     ask: (name) => `What should ${name} try?`,

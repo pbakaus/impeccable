@@ -573,7 +573,7 @@ describe('account worker', () => {
     chrome.identity.launchWebAuthFlow = async ({ url }) => `${REDIRECT}?${new URLSearchParams({ code: 'code-0123456789', state: new URL(url).searchParams.get('state'), iss: ISSUER })}`;
     const tabs = opened.length;
     for (let n = 0; n < 2; n += 1) assert.equal((await ask({ account: 'sign-in' }, fromPanel)).signedIn, true);
-    assert.deepEqual(opened.slice(tabs).map((tab) => tab.url), ['https://impeccable.reviews/pro/welcome']);
+    assert.deepEqual([opened.slice(tabs).map((tab) => tab.url), session.connected], [['https://impeccable.reviews/pro/welcome'], true], 'and the side panel says it is connected');
     const page = { id: 'ext', frameId: 0, url: 'https://impeccable.reviews/pro/welcome', tab: { id: 12, windowId: 3 } };
     const before = panels.length;
     for (const sender of [{ ...page, url: 'https://impeccable.reviews/pricing' }, { ...page, url: 'https://evil.example/pro/welcome' }, { ...page, id: 'other' }, page]) {

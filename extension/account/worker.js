@@ -215,7 +215,14 @@ const ANSWERS = {
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
   status,
-  async 'sign-in'() { const done = await session.signIn(); return done.ok ? status().then(checkedIn).then(welcome) : { ok: false, why: done.why }; },
+  // `connected`: the side panel says "You're connected" once, even when the sign-in started in the popup, which the sign-in window closes.
+  async 'sign-in'() {
+    const done = await session.signIn();
+    if (!done.ok) return { ok: false, why: done.why };
+    const answer = await status().then(checkedIn).then(welcome);
+    if (answer.signedIn === true && answer.pro !== false) await Promise.resolve(chrome.storage.session?.set({ connected: true })).catch(() => undefined);
+    return answer;
+  },
   /** Get Pro: the pricing page's own link, on the website of the server signed in to (its checkout, after sign-in and terms). */
   async 'get-pro'() {
     const site = siteOf(issuer);
