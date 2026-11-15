@@ -2402,10 +2402,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   signed in, when the service has no such read (404: `this account service
   doesn't offer it yet`), or when the answer isn't `version: 1` with a
   `places` list.
-- The setup lines are at most three: `Connected: ...` (places `on`, and
+- The setup lines are at most four: `Connected: ...` (places `on`, and
   `quiet` marked so), `Not connected yet: ...` (`off`, and `needs-pro`
-  marked `(Pro)`), and `Next: <label>[: <command or https url>]` from the
-  service's `next`. The places print in the service's order under the names
+  marked `(Pro)`), the agent place's `fix.line` when the service sets one
+  (what a machine reported, such as an unfinished change), and
+  `Next: <label>[: <command or https url>]` from the service's `next`. The places print in the service's order under the names
   Your agent, Agent tools, Loop, Chrome extension and GitHub pull requests;
   an unknown kind prints as sent, and an `unavailable` place or an unknown
   state is left out. The CLI never computes a next step and never rewrites a
