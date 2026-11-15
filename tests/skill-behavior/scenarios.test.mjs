@@ -671,6 +671,9 @@ for (const modelId of resolveModelList()) {
             schema: 1, issuer, generation: 1, login: 1, signed_in: true, backend: 'file', token_endpoint: `${issuer}/oauth/token`,
           }), { mode: 0o600 });
         }
+        // The fixture mirrors crates/account's store; if that layout moves, fail here, not as a model miss.
+        const account = execFileSync(ENGINE_BIN, ['context'], { cwd: workspace, env: { ...process.env, IMPECCABLE_HOME: home, IMPECCABLE_ACCOUNT_URL: '', IMPECCABLE_NO_UPDATE_CHECK: '1' }, encoding: 'utf8' }).match(/^ACCOUNT: .*$/m)?.[0];
+        assert.equal(account, signedIn ? 'ACCOUNT: signed in' : 'ACCOUNT: not signed in', 'the IMPECCABLE_HOME fixture no longer gives the intended sign-in state');
         try {
           const { trace, text } = await runTurn({
             workspace,
