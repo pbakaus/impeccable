@@ -109,6 +109,16 @@ pub(crate) fn status(io: &Io, scope: &str) -> bool {
         })
 }
 
+fn notice_path(account: &Account, login: u64) -> std::path::PathBuf {
+    account.dir().join(format!("stale-grant-notice-{login}"))
+}
+
+/// A feature told the person to sign in again in its own words, so the shared
+/// notice is not owed on this login any more.
+pub(crate) fn mark_shown(account: &Account, login: u64) {
+    let _ = store::write_private(&notice_path(account, login), b"shown");
+}
+
 /// `scope` is absent for a health 403, which is itself enough evidence.
 /// `within` is what is left of the upload's wait; with none left the notice stays owed.
 pub(crate) fn emit(
@@ -123,7 +133,7 @@ pub(crate) fn emit(
         return;
     }
     let store = Store::new(account);
-    let path = account.dir().join(format!("stale-grant-notice-{login}"));
+    let path = notice_path(account, login);
     let shown = || store::read_private(&path).ok().flatten().is_some();
     if shown() {
         return;

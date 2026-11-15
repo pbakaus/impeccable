@@ -63,6 +63,8 @@ scopes=" $(printf '%s' "$meta" | jq -r '.scopes_supported|join(" ")') "
 case "$scopes" in *" rules:read "*) pass "preflight: staging offers rules:read" ;; *) fail "preflight: staging offers rules:read"; finish 2 ;; esac
 health=0
 case "$scopes" in *" health:write "*) pass "preflight: staging offers health:write"; health=1 ;; *) info "staging does not offer health:write; design health skipped" ;; esac
+critiques=0
+case "$scopes" in *" critiques:write "*) pass "preflight: staging offers critiques:write"; critiques=1 ;; *) info "staging does not offer critiques:write; critique saves skipped" ;; esac
 
 # 1. Sign in: the CLI prints the authorize URL and waits on its loopback; pristine's
 #    command approves it as the seeded person and delivers the code there. The host
@@ -220,11 +222,31 @@ if kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; fi
 wait "$p"; rc=$?
 check "setup: a second login says so and opens nothing" '[ $rc = 0 ] && ! grep -q "^https://" "$H/login3.out" && grep -q "^Already signed in to " "$H/login3.err"'
 
+# 5c. Journey 3: a saved critique says where it went, in one line after its path.
+critique() {
+  printf '# Critique\nThe header crowds the first screen.\n' > "$R2/critique-body.md"
+  (cd "$R2" && IMPECCABLE_CRITIQUE_META='{"target":"the homepage","total_score":28,"max_score":40,"na_heuristics":"","p0_count":1,"p1_count":2}' \
+    exec "$BIN" critique-storage write index.html critique-body.md) > "$H/$1.out" 2> "$H/$1.err"
+}
+if [ $critiques = 1 ]; then
+  : > "$R2/index.html"
+  critique critique1; rc=$?
+  saved=$(sed -n 2p "$H/critique1.out")
+  check "critique: a signed-in save prints its app link" '[ $rc = 0 ] && [ -f "$(sed -n 1p "$H/critique1.out")" ] && case "$saved" in "Saved to Impeccable: https://"*) true ;; *) false ;; esac'
+  info "critique: the save said: ${saved:-nothing} $(head -c 200 "$H/critique1.err" | tr '\n' ' ')"
+fi
+
 # 6. Sign out (A). That revokes the grant, so B's next refresh must fail too.
 "$BIN" logout > "$H/logout.out" 2>&1; rc=$?
 check "logout: exits 0" '[ $rc = 0 ]'
 "$BIN" whoami > "$H/whoami2.out" 2>&1
 check "logout: whoami says not signed in" 'grep -q "^Not signed in" "$H/whoami2.out"'
+if [ $critiques = 1 ]; then
+  critique critique2; rc=$?
+  check "critique: a signed-out save suggests signing in" '[ $rc = 0 ] && [ "$(sed -n 2p "$H/critique2.out")" = "Keep this critique'"'"'s history: impeccable login" ]'
+  critique critique3
+  check "critique: the suggestion is once a day per project" '[ -z "$(sed -n 2p "$H/critique3.out")" ]'
+fi
 expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
 check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ] && grep -q "^Your sign-in expired" "$H/sb3.out"'
 info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
