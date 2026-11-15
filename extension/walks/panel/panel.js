@@ -825,7 +825,8 @@ function render() {
   body.dataset.ask = view.ask?.kind ?? '';
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   app.className = `screen screen-${shown}`;
-  if (shown !== 'scan') { const box = document.getElementById('panel-scan'); if (box && box !== app) box.hidden = true; }
+  // Scan's box lives in the page, not in a screen: put it back in the body before the screens are swapped, or it goes with them.
+  if (shown !== 'scan') { const box = document.getElementById('panel-scan'); if (box && box !== app) { box.hidden = true; if (box.parentElement !== document.body) document.body.append(box); } }
   // A step list the person scrolled away from its top (the current step) stays where they put it as new steps come.
   const list = app.querySelector('.sofar');
   const kept = list && list.scrollTop > 4 ? { top: list.scrollTop, height: list.scrollHeight } : null;

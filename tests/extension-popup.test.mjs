@@ -302,8 +302,9 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     setAttribute(name, value) { this.attributes[name] = String(value); },
     getAttribute(name) { return this.attributes[name] ?? null; },
     addEventListener(type, callback) { (this.listeners[type] ??= []).push(callback); },
-    append(...kids) { this.children.push(...kids.filter((kid) => typeof kid === 'object')); },
-    replaceChildren(...kids) { this.children = []; this.append(...kids); },
+    // A node lives in one place, as in a page: appending it elsewhere takes it from its old parent.
+    append(...kids) { for (const kid of kids.filter((k) => typeof k === 'object')) { if (kid.parentElement && kid.parentElement !== this) kid.parentElement.children = kid.parentElement.children.filter((k) => k !== kid); kid.parentElement = this; this.children.push(kid); } },
+    replaceChildren(...kids) { for (const kid of this.children) kid.parentElement = null; this.children = []; this.append(...kids); },
     focus() { document.activeElement = this; },
     *nodes() { for (const kid of this.children) { yield kid; yield* kid.nodes(); } },
     // Enough of a selector for the panel: `tag`, `.class` and `[attr]` / `[attr="value"]`, one of each at most.
@@ -315,7 +316,12 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; },
   });
   const app = make('main');
-  const document = { body: make('body'), activeElement: null, getElementById: () => app, createElement: make, createElementNS: (_, tag) => make(tag) };
+  // panel.html's Scan box sits in the page beside #app, found only while it is still in the page.
+  const scanBox = make('section');
+  scanBox.attributes.id = 'panel-scan';
+  const body = make('body');
+  body.append(app, scanBox);
+  const document = { body, activeElement: null, getElementById: (id) => id === 'panel-scan' ? [...body.nodes()].find((n) => n.attributes.id === 'panel-scan') ?? null : app, createElement: make, createElementNS: (_, tag) => make(tag) };
   const sent = [];
   const opened = [];
   const local = { firstRunSeen, appForSite };
@@ -566,6 +572,17 @@ test('the side panel’s cog opens the account in the panel: the email and Sign 
   await h.press('settings');
   await h.press('sign-out');
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
+});
+
+test('Scan opens again after going back: its box stays in the page between visits', async () => {
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+  for (let visit = 0; visit < 2; visit += 1) {
+    await h.press('scan');
+    assert.equal(h.body.dataset.screen, 'scan');
+    assert.ok(h.app.querySelector('.scan-wrap')?.children.some((kid) => kid.attributes.id === 'panel-scan'), `visit ${visit + 1} shows the Scan box`);
+    await h.press('back');
+    assert.equal(h.body.dataset.screen, 'home');
+  }
 });
 
 test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
