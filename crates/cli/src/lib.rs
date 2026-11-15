@@ -12,6 +12,7 @@ pub mod capture_service;
 
 pub mod reviewed_entry;
 
+mod first_viewport;
 mod font_render;
 mod foundations;
 mod router;

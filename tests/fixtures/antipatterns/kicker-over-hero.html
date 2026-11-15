@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Kicker Over Hero Fixture</title>
+  <style>
+    /* Left column: an eyebrow above a page's h1 that kicker-above-heading
+       SHOULD flag. Right column: meta lines and Chinese faces it should NOT.
+       Each case has a unique h1 so snippets map back to expectations. */
+    :root { --caps: "IM Fell English SC", Georgia, serif; }
+    body { margin: 0; padding: 24px; font-family: Georgia, serif; background: #fbf3e1; color: #591510; }
+    .grid { display: grid; grid-template-columns: 560px 560px; gap: 32px; }
+    .case { width: 520px; min-height: 200px; margin: 0 0 24px; padding: 16px; border: 1px solid #c9bfb2; }
+    .case h1 { margin: 0; font-weight: 400; line-height: 1; font-size: 64px; }
+    .case h1.fluid { font-size: clamp(2.3rem, 4.5vw, 4.3rem); }
+    .label { margin: 0 0 8px; font-size: 14.4px; letter-spacing: 0.14em; color: #7a4036; }
+    .face-caps { font-family: var(--caps); }
+    .variant-caps { font-family: Georgia, serif; font-variant: small-caps; }
+    .alegreya { font-family: "Alegreya Sans SC", sans-serif; font-size: 15px; }
+    .noto { font-family: "Noto Sans SC", sans-serif; }
+    .songti { font-family: "Songti SC", serif; }
+    .untracked { font-family: var(--caps); letter-spacing: 0; }
+  </style>
+</head>
+<body>
+  <main class="grid">
+    <div class="col" id="should-flag">
+      <div class="case">
+        <p class="label face-caps">Bloom seeds · Packet 1 of 4</p>
+        <h1 class="fluid">Grow the whole year</h1>
+      </div>
+      <article class="case">
+        <p class="label variant-caps">Field journal · Volume two</p>
+        <h1>Field notes for the season</h1>
+      </article>
+      <article class="case">
+        <p class="label face-caps">Bloom seeds</p>
+        <h1>Seeds that come back</h1>
+      </article>
+      <div class="case">
+        <p class="label alegreya">Heirloom seed company</p>
+        <h1>Plant once, save forever</h1>
+      </div>
+    </div>
+    <div class="col" id="should-pass">
+      <div class="case">
+        <p class="label face-caps">Essay · 6 min read</p>
+        <h1>On saving seed</h1>
+      </div>
+      <div class="case">
+        <p class="label face-caps">Notes · March 2026</p>
+        <h1>Spring sowing notes</h1>
+      </div>
+      <div class="case">
+        <p class="label face-caps">Guides / Sowing</p>
+        <h1>How to sow poppies</h1>
+      </div>
+      <div class="case">
+        <p class="label noto">Bloom seeds</p>
+        <h1>Seeds for every season</h1>
+      </div>
+      <div class="case">
+        <p class="label songti">Bloom seeds</p>
+        <h1>Seeds from the old garden</h1>
+      </div>
+      <div class="case">
+        <p class="label untracked">Bloom seeds</p>
+        <h1>Seeds set without tracking</h1>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
