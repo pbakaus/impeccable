@@ -45,8 +45,8 @@ export function asksForPassword(response) {
 
 /**
  * Runs in the walked tab, in a world of the walk's own (never the page's), and reads the page for the signs above and
- * for where typing would land. Self-contained: it is sent as text. Answers `{ password, status, focus }`: whether a
- * password field is visible, the top document's HTTP status, and what has focus when typing must not reach it
+ * for where typing would land. Self-contained: it is sent as text. Answers `{ password, filled, status, focus }`: whether a
+ * password field is visible, whether one holds a password, the top document's HTTP status, and what has focus when typing must not reach it
  * (`password`, `card`, `code`, or `frame` for a frame on another origin), else null.
  */
 export function lookInPage() {
@@ -71,7 +71,10 @@ export function lookInPage() {
     const types = [...(field.form ?? root).querySelectorAll('input')].filter(visible).map((input) => String(input.type).toLowerCase());
     return types.filter((type) => type === 'password').length >= 2 && !types.some((type) => type === 'text' || type === 'email' || type === 'tel');
   };
-  const password = roots.some((root) => [...root.querySelectorAll('input[type="password" i]')].some((field) => visible(field) && !changing(field, root)));
+  // A password in a field (typed or filled) always pauses the walk: nothing it runs may read it.
+  const fields = roots.flatMap((root) => [...root.querySelectorAll('input[type="password" i]')].filter(visible).map((field) => ({ field, root })));
+  const filled = fields.some(({ field }) => Boolean(field.value));
+  const password = fields.some(({ field, root }) => Boolean(field.value) || !changing(field, root));
 
   let focus = null;
   let el = document.activeElement;
@@ -93,7 +96,7 @@ export function lookInPage() {
     else if (tokens.includes('one-time-code')) focus = 'code';
   }
   const status = performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0;
-  return { password, status, focus };
+  return { password, filled, status, focus };
 }
 
 /** Whether what {@link lookInPage} saw is a sign-in. */

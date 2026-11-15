@@ -384,13 +384,13 @@ export async function look() {
 const pageOf = (url) => { try { const at = new URL(url); return at.origin + at.pathname; } catch { return ''; } };
 
 /**
- * The person pressed Continue at a sign-in on this page: its password field no longer pauses the walk while the tab
- * stays on it (a page the detector got wrong would pause it forever). A sign-in host and a 401 still do.
+ * The person pressed Continue at a sign-in on this page: its empty password field no longer pauses the walk while the
+ * tab stays on it (a page the detector got wrong would pause it forever). A sign-in host and a 401 still do.
  */
 export function letPast(on = true) { if (walk) walk.past = on ? pageOf(walk.url) : null; }
 
 /** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
-const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && tab.past !== pageOf(tab.url));
+const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && (tab.past !== pageOf(tab.url) || seen.filled === true));
 
 /** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
 let spotted = () => undefined;

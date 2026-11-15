@@ -272,7 +272,7 @@ describe('walk guard', () => {
 
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
-  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
   const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords) });
   // A form of these fields: each knows it (`field.form`), and the page holds them all.
@@ -295,6 +295,8 @@ describe('walk lookout', () => {
     ['a login: a username and a password', page(form(field({ autocomplete: 'username' }), field({ type: 'password', autocomplete: 'current-password' }))), { password: true, focus: null }],
     ['a sign-up: an email and two passwords', page(form(field({ type: 'email' }), field({ type: 'password' }), field({ type: 'password' }))), { password: true, focus: null }],
     ['settings signed in: a profile with an email, and a change of password', page(form(field({}), field({ type: 'email' })), form(field({ type: 'password', id: 'current-password' }), field({ type: 'password', id: 'new-password' }))), { password: false, focus: null }],
+    ['settings signed in, a password already in the change of password', page(form(field({ type: 'password', id: 'current-password', value: 'x' }), field({ type: 'password', id: 'new-password' }))), { password: true, filled: true, focus: null }],
+    ['a login with its password filled', page(form(field({ autocomplete: 'username' }), field({ type: 'password', value: 'x' }))), { password: true, filled: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
@@ -303,7 +305,7 @@ describe('walk lookout', () => {
     ['focus on a password field in a frame on its origin', doc({ active: frame(doc({ active: field({ type: 'password' }) })) }), { password: false, focus: 'password' }],
     ['focus on a plain field', doc({ active: field({ autocomplete: 'email' }) }), { password: false, focus: null }],
   ]) {
-    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { ...expected, status: 200 }); });
+    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, ...expected, status: 200 }); });
   }
 
   it('sees a 401 page', () => { assert.equal(seen(doc(), 401).status, 401); });
@@ -611,6 +613,13 @@ describe('walk worker', () => {
     await ops.screenshot({ format: 'png' });
     await settle(20);
     assert.equal(current().state, 'walking', 'that page pauses no more');
+    page.seen = { password: true, filled: true };
+    const filled = ops.screenshot({ format: 'png' });
+    await settle(20);
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in'], 'a password in a field there pauses it again');
+    page.seen = { password: true };
+    assert.equal(await command('resume'), true);
+    await filled;
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l9', url: 'http://localhost:3000/elsewhere' } });
     const next = ops.screenshot({ format: 'png' });
     await settle(20);
