@@ -30,6 +30,14 @@
     window.__IMPECCABLE_LIVE_INIT__ = false; // reset so the real load can init
     return;
   }
+  // The user just exited this helper's session: a reload in the next minute,
+  // before the agent removes the script tag (a carbonize edit reloads the
+  // page), must not bring Live back.
+  const EXITED_KEY = 'impeccable-live-exited';
+  try {
+    const [t, at] = (sessionStorage.getItem(EXITED_KEY) || '').split(' ');
+    if (t === TOKEN && Date.now() - Number(at) < 60_000) return;
+  } catch { /* storage blocked */ }
 
   //
   // Design tokens
@@ -2709,7 +2717,7 @@
       return el('div', { display: 'none' });
     }
     const row = el('div', {
-      display: 'flex', alignItems: 'center', gap: '6px',
+      display: 'flex', alignItems: 'center', gap: touchPrimary() ? '2px' : '6px',
       padding: '1px 2px',
     });
 
@@ -2824,6 +2832,7 @@
       cursor: 'pointer', transition: 'filter 0.12s ease, transform 0.1s ease',
       whiteSpace: 'nowrap',
     });
+    touchTarget(accept);
     accept.textContent = '\u2713 Accept';
     accept.addEventListener('mouseenter', () => accept.style.filter = 'brightness(1.08)');
     accept.addEventListener('mouseleave', () => accept.style.filter = 'none');
@@ -2844,6 +2853,7 @@
       fontFamily: FONT, fontSize: '11px', color: BP.textDim,
       cursor: 'pointer', transition: 'color 0.12s ease, border-color 0.12s ease',
     });
+    touchTarget(discard);
     discard.textContent = '\u2715';
     discard.title = 'Discard all variants';
     discard.addEventListener('mouseenter', () => { discard.style.color = BP.text; discard.style.borderColor = BP.text; });
@@ -2944,6 +2954,12 @@
     return container;
   }
 
+  /** A finger needs 44px; a mouse keeps the compact bar. */
+  function touchTarget(b) {
+    if (touchPrimary()) Object.assign(b.style, { minWidth: '44px', minHeight: '44px' });
+    return b;
+  }
+
   function navBtn(text) {
     const b = el('button', {
       width: '26px', height: '26px', borderRadius: '5px',
@@ -2956,7 +2972,7 @@
     b.textContent = text;
     b.addEventListener('mouseenter', () => { b.style.borderColor = BP.text; });
     b.addEventListener('mouseleave', () => { b.style.borderColor = BP.hairline; });
-    return b;
+    return touchTarget(b);
   }
 
   function actionLabel() {
@@ -7843,7 +7859,7 @@
             saveInteractionPrefs();
             updateGlobalBarState();
             showToast('Click anything on the page to restyle it.', 8000);
-          } else if (!hasProjectContext && !liveBarHiddenByHelper) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
+          } else if (!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice()) showToast(`No PRODUCT.md found. Variants will be brand-agnostic. Run ${IMPECCABLE_COMMAND} init to generate one.`, 7000);
           console.log('[impeccable] Live mode connected.');
           syncAgentPollingUi(!!msg.agentPolling);
           startAgentStatusPoll();
@@ -10574,6 +10590,20 @@ void main() {
     return { pickActive: false, insertActive: false, firstRun: true };
   }
 
+  // The missing-PRODUCT.md notice shows once per browser: a reconnect, a
+  // reload or the variants arriving would otherwise bring it back each time.
+  const CONTEXT_NOTICE_KEY = 'impeccable-live-context-notice';
+  let contextNoticeShown = false;
+  function takeContextNotice() {
+    if (contextNoticeShown) return false;
+    contextNoticeShown = true;
+    try {
+      if (localStorage.getItem(CONTEXT_NOTICE_KEY)) return false;
+      localStorage.setItem(CONTEXT_NOTICE_KEY, '1');
+    } catch { /* ignore */ }
+    return true;
+  }
+
   function saveInteractionPrefs() {
     try {
       localStorage.setItem(INTERACTION_PREFS_KEY, JSON.stringify({ pickActive, insertActive }));
@@ -10755,13 +10785,11 @@ void main() {
     });
   }
 
-  function syncGlobalBarExpandedLabels(expanded = globalBarEl?.matches(':hover')) {
-    const expandInactive = !!(expanded && !pageChatExpanded);
-    applyGlobalBarLabelState(expandInactive, pageChatExpanded);
-
-    if (expandInactive && globalBarEl && globalBarEl.scrollWidth > window.innerWidth - 16) {
-      applyGlobalBarLabelState(false);
-    }
+  // Only active modes show their label. Hover never widens the bar: it sits
+  // centred, so growing labels slid the icons out from under the pointer and a
+  // click meant for Pick landed on Insert. The title tooltip names the rest.
+  function syncGlobalBarExpandedLabels() {
+    applyGlobalBarLabelState(false, pageChatExpanded);
   }
 
   function pageChatCollapsedWidthPx() {
@@ -11167,7 +11195,7 @@ void main() {
     if (!pageChatEl || !pageChatInput) return false;
     pageChatExpanded = true;
     pageChatEl.dataset.expanded = 'true';
-    syncGlobalBarExpandedLabels(false);
+    syncGlobalBarExpandedLabels();
     pageChatEl.style.width = pageChatExpandedWidth();
     pageChatEl.style.cursor = steerLocked ? 'default' : 'text';
     pageChatInput.placeholder = PAGE_CHAT_PLACEHOLDER_EXPANDED;
@@ -11310,6 +11338,7 @@ void main() {
     }
     steerPendingMessage = keepExpanded ? restoreMessage : '';
     steerInputWasFocused = false;
+    syncGlobalBarExpandedLabels();
     syncPageChatChrome();
     syncPageChatFocusRing();
     if (opts?.error) showToast(String(opts.error), 5000);
@@ -11602,7 +11631,7 @@ void main() {
     pageChatEl.dataset.expanded = 'false';
     pageChatEl.style.width = PAGE_CHAT_COLLAPSED_W;
     pageChatEl.style.cursor = 'pointer';
-    syncGlobalBarExpandedLabels(globalBarEl?.matches(':hover'));
+    syncGlobalBarExpandedLabels();
     if (blur) {
       pageChatInput.blur();
       pageChatInput.style.pointerEvents = 'none';
@@ -12048,7 +12077,7 @@ void main() {
     inner.id = PREFIX + '-global-bar-inner';
     globalBarEl.appendChild(inner);
 
-    // Button factory: icon-only at rest, label slides in on hover/active.
+    // Button factory: icon-only at rest, label slides in while active.
     function makeIconBtn({ id, svg, label, ariaLabel, labelFont, onClick }) {
       const b = el('button', {
         position: 'relative',
@@ -12078,10 +12107,8 @@ void main() {
         if (!labelEl || (!force && b.dataset.active === 'true')) return;
         labelEl.style.maxWidth = '0'; labelEl.style.opacity = '0'; labelEl.style.marginLeft = '0'; labelEl.style.transform = 'translateX(-4px)';
       };
-      // Per-button hover only changes color (no layout). The label expand/
-      // collapse is driven by the bar-level mouseenter/mouseleave so moving
-      // the mouse between adjacent buttons doesn't trigger per-button width
-      // thrashing - the whole bar grows once and shrinks once.
+      // Hover only changes color, never layout: the label shows while the
+      // mode is active (see syncGlobalBarExpandedLabels).
       b.addEventListener('mouseenter', () => { if (b.dataset.active !== 'true') b.style.color = P.text; });
       b.addEventListener('mouseleave', () => { if (b.dataset.active !== 'true') b.style.color = P.textDim; });
       b.addEventListener('click', onClick);
@@ -12348,27 +12375,20 @@ void main() {
       color: P.textDim, fontFamily: FONT, fontSize: '0', lineHeight: '0',
       cursor: 'pointer', transition: 'color 0.12s ease, background 0.12s ease',
     });
+    touchTarget(exitBtn);
     exitBtn.id = PREFIX + '-exit';
     exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
     exitBtn.title = 'Exit live mode';
     exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
     exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
-    exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
+    // source: 'user' keeps a reconnect (the reload a carbonize edit triggers) from cancelling it.
+    exitBtn.addEventListener('click', () => {
+      try { sessionStorage.setItem(EXITED_KEY, TOKEN + ' ' + Date.now()); } catch { /* storage blocked */ }
+      sendEvent({ type: 'exit', source: 'user' });
+      teardown();
+    });
     inner.appendChild(exitBtn);
 
-    // Bar-level hover: expand mode labels unless Steer is using the space.
-    // Buttons with dataset.active="true" ignore collapse (their label stays).
-    globalBarEl.addEventListener('mouseenter', () => {
-      syncGlobalBarExpandedLabels(true);
-      syncPageChatExpandedWidth();
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
-    globalBarEl.addEventListener('mouseleave', () => {
-      syncGlobalBarExpandedLabels(false);
-      schedulePendingDockPosition();
-      setTimeout(schedulePendingDockPosition, 260);
-    });
     globalBarEl.addEventListener('pointerdown', () => {
       try { window.focus(); } catch { /* in-app preview may block */ }
     }, true);
@@ -12433,7 +12453,7 @@ void main() {
     // If the bar is currently under the cursor, keep all labels expanded -
     // otherwise clicking a toggle that deactivates (e.g. closing DESIGN.md)
     // would collapse its label while the user's mouse is still on the bar.
-    syncGlobalBarExpandedLabels(globalBarEl && globalBarEl.matches(':hover'));
+    syncGlobalBarExpandedLabels();
 
     if (detectBadge) {
       detectBadge.style.display = (detectActive && detectCount > 0) ? 'inline' : 'none';

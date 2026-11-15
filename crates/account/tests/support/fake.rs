@@ -77,6 +77,8 @@ pub struct Record {
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
     pub setups: Vec<serde_json::Value>,
+    /// The `Impeccable-Project` header of each setup read (`GET /cli/v1/setup`).
+    pub setup_projects: Vec<Option<String>>,
     pub designs: Vec<serde_json::Value>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
@@ -297,6 +299,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .routes
         .get(&(method.clone(), path.to_string()))
         .cloned();
+    if method == "GET" && path == "/cli/v1/setup" {
+        record.lock().unwrap().setup_projects.push(headers.get("impeccable-project").cloned());
+    }
     let (status, extra, out): (u16, Vec<(String, String)>, Vec<u8>) = if let Some(c) = custom {
         let authorized = bearer
             .as_ref()
@@ -618,8 +623,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                             serde_json::json!({"error": "invalid_request", "field": field}),
                         )
                     } else {
-                        record.lock().unwrap().critiques.push(v);
-                        json(200, serde_json::json!({"outcome": "recorded"}))
+                        let n = {
+                            let mut r = record.lock().unwrap();
+                            r.critiques.push(v);
+                            r.critiques.len()
+                        };
+                        // As the service answers while the critiques page is served.
+                        json(200, serde_json::json!({"outcome": "recorded", "url": format!("{issuer}/app/-/critiques?report=fake{n}")}))
                     }
                 }
             }

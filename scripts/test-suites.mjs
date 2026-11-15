@@ -87,6 +87,7 @@ export const SUITES = {
           'tests/hermes-plugin.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/cursor-plugin.test.mjs',
+          'tests/motion-capture.test.mjs',
           'tests/vscode-extension.test.mjs',
           'tests/process-group.test.mjs',
           'tests/release.test.mjs',
@@ -157,6 +158,7 @@ export const SUITES = {
       /^tests\/lib\/engine-bin\.mjs$/,
       /^tests\/live-agent-target\.test\.mjs$/,
       /^tests\/live-boot-fastpath\.test\.mjs$/,
+      /^tests\/live-exit\.test\.mjs$/,
     ],
     commands: [
       {
@@ -168,6 +170,7 @@ export const SUITES = {
           'tests/live-browser-ignores.test.mjs',
           'tests/live-browser-session.test.mjs',
           'tests/live-browser-source.test.mjs',
+          'tests/live-exit.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',
           'tests/live-e2e-llm-agent.test.mjs',

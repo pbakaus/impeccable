@@ -58,10 +58,11 @@ pub fn has_scannable_extension_with(filename: &str, extra_exts: &[ExtensionEntry
 }
 
 // JS: GENERATED_PATH (case-insensitive). Build output, declaration files,
-// minified bundles and lockfiles: the hook and `detect --changed` skip them.
+// minified bundles, lockfiles and Impeccable's own throwaway files under
+// .impeccable/ (comps, snapshots): the hook and `detect --changed` skip them.
 re!(
     GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
+    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage|\.impeccable)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
 );
 
 pub fn is_generated_path(p: &str) -> bool {

@@ -63,18 +63,19 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             io.out(&format!("impeccable-engine {VERSION}\n"));
             0
         }
+        "motion-capture" => impeccable_browser::motion::run(rest, io),
         "detect" => detect(rest, io, &engines, pack.rule_pack),
         "foundations" => crate::foundations::run(rest, io, &engines, pack.rule_pack),
         "ignores" | "ignore" => impeccable_detect::run_ignores(rest, io),
         // Account sign-in. These never dispatch to the Pro engine.
         "login" => {
             let code = impeccable_account::run_login(rest, io);
-            if code == 0 {
+            // Help exits 0 too; only a finished sign-in earns the follow-ups.
+            let help = rest.iter().any(|a| a == "--help" || a == "-h");
+            if code == 0 && !help {
                 crate::setup_report::schedule(io);
-                // `--help` exits 0 without signing in: nothing to scan for.
-                if !rest.iter().any(|a| a == "--help" || a == "-h") {
-                    scan_after_login(io, &engines, pack.rule_pack);
-                }
+                scan_after_login(io, &engines, pack.rule_pack);
+                crate::loop_install::after_login(io);
             }
             code
         }
@@ -82,6 +83,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
+        "status" => impeccable_account::setup_status::run(rest, io),
         "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
@@ -94,9 +96,25 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "loop" => crate::loop_install::run(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
-        "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
+        "install" => {
+            let code = impeccable_skills::run(args, io);
+            // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
+            if code == 0 {
+                crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
+            }
+            code
+        }
+        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
-        "context" => impeccable_hook::run_context(rest, io),
+        "context" => {
+            let code = impeccable_hook::run_context(rest, io);
+            // init's sign-in line reads this, so a signed-out first run costs the agent no
+            // extra call. The stored state only: a context run never meets a Keychain prompt.
+            if code == 0 && !rest.iter().any(|a| a == "-h" || a == "--help") {
+                io.out(if impeccable_account::sign_in_recorded(io) { "ACCOUNT: signed in\n" } else { "ACCOUNT: not signed in\n" });
+            }
+            code
+        }
         "pin" => impeccable_context::run_pin(rest, io),
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
@@ -129,6 +147,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             Some(&mut crate::component_capture::NativeComponentCapturer),
         ),
         // comp-fidelity verbs (crates/comp-verbs over crates/comp)
+        "first-viewport" => crate::first_viewport::run(rest, io),
         "comp-spec" => impeccable_comp_verbs::run_comp_spec(rest, io),
         "comp-diff" => impeccable_comp_verbs::run_comp_diff(rest, io),
         "font-match" => {
@@ -241,25 +260,25 @@ fn detect(
 /// is in the person's account at once (its foundations upload founds a Pro
 /// or Team city). Only the local detector runs; the person sees one line,
 /// and nothing here changes the sign-in's exit code.
-fn scan_after_login(
+pub(crate) fn scan_after_login(
     io: &mut Io,
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
-) {
+) -> &'static str {
     use impeccable_account::health;
     use std::io::Write;
     // CI, sync turned off, or a grant that can't record a repository: say
     // nothing. A telemetry opt-out doesn't stop it: signing in is the consent.
     if !health::wanted_at_sign_in(io) || !health::can_record(io) {
-        return;
+        return "skipped";
     }
     let cwd = io.cwd.display().to_string();
     let Some(root) = health::repo_top(&cwd) else {
         io.err("Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.\n");
-        return;
+        return "skipped";
     };
     if health::first_scan_done(&io.env, &root) {
-        return;
+        return "already";
     }
     io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
     let _ = io.stderr.flush();
@@ -278,25 +297,42 @@ fn scan_after_login(
     io.stderr = err;
     let Some(full) = report else {
         io.err("Couldn't scan this repository. Run impeccable detect here to add it to your account.\n");
-        return;
+        return "failed";
     };
     let (findings, files) = (full.findings.len(), full.files_scanned);
     let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io));
+    // Counted as Home counts them, so the two say the same number.
+    let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);
     let synced = health::after_sign_in_scan(io, &scan);
-    let found = match findings {
-        1 => "1 finding".to_string(),
-        n => format!("{n} findings"),
+    let plural = |n: usize, one: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {one}s")
+        }
     };
-    if synced.recorded() {
+    let mut found = format!("{} in {files} files", plural(findings, "finding"));
+    if to_fix > 0 {
+        found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
+    }
+    let recorded = synced.recorded();
+    if recorded {
+        // Foundations lists a person's own repositories from any space they're in.
+        let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            None => "Find it under Foundations in your Impeccable account.".to_string(),
+        };
+        let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
         io.err(&format!(
-            "Added this repository to your account: {found} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. Find it under Repositories in your Impeccable account.\n"
+            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
         ));
     } else {
         io.err(&format!(
             "Scanned this repository ({found}), but couldn't add it to your account just now. Run impeccable detect here to try again.\n"
         ));
     }
+    if recorded { "done" } else { "failed" }
 }
 
 /// Design health's view of a full scan, with its foundations states.
@@ -351,11 +387,13 @@ const KNOWN_VERBS: &[&str] = &[
     "--version",
     "-v",
     "engine-probe",
+    "motion-capture",
     "ignores",
     "ignore",
     "login",
     "logout",
     "whoami",
+    "status",
     "world",
     "health",
     "foundations",
@@ -392,6 +430,7 @@ const KNOWN_VERBS: &[&str] = &[
     "generate-image",
     "serve-question",
     "component-review",
+    "first-viewport",
     "comp-spec",
     "comp-diff",
     "font-match",

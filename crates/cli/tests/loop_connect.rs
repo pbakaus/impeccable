@@ -151,6 +151,28 @@ fn connect_refuses_plainly_without_loop() {
 }
 
 #[test]
+fn mcp_only_connects_the_server_without_loop_and_writes_nothing_of_loops() {
+    // Catches: a person without the Loop app had no command that gave their agents the MCP server.
+    let b = Box::new("mcp-only");
+    let out = b.run(&["loop", "connect", "--mcp-only"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(claude_entry(&b.home().join(".claude.json"))["url"], URL);
+    assert!(codex_config(&b).contains(URL), "{}", codex_config(&b));
+    assert!(!b.home().join(".claude/settings.json").exists(), "no hooks");
+    assert!(!b.support().exists(), "no Loop records");
+    // Again: the entry is already there, nothing is added twice.
+    let again = b.run(&["loop", "connect", "--mcp-only", "--agent", "codex", "--json"]);
+    assert!(again.status.success(), "{}", text(&again));
+    let v: serde_json::Value = serde_json::from_slice(&again.stdout).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["agents"][0]["agent"], "codex");
+    assert_eq!(v["agents"][0]["added"], false);
+    assert_eq!(codex_config(&b).matches("[mcp_servers.impeccable]").count(), 1);
+    // It answers no question about taste.
+    assert!(!b.run(&["loop", "connect", "--mcp-only", "--taste"]).status.success());
+}
+
+#[test]
 fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
     // Catches (Loop journey C2 and C3): no command connected a customer's agents to Needs you.
     let b = Box::new("roundtrip");
@@ -747,6 +769,22 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
 }
 
 #[test]
+fn status_answers_on_an_account_connect_refuses() {
+    // Catches: status failing outright on a local or unknown account service, which also
+    // silenced login's Loop offer there.
+    let mut b = Box::new("status-other-account");
+    b.install_loop();
+    b.env.insert("IMPECCABLE_ACCOUNT_URL".into(), "http://127.0.0.1:9/".into());
+    let out = b.run(&["loop", "status", "--json"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["loop"]["installed"], true, "{v}");
+    assert_eq!(v["agents"][0]["mcp"], "absent", "{v}");
+    let out = b.run(&["loop", "connect", "--mcp-only", "--json"]);
+    assert!(!out.status.success(), "connect still refuses: {}", text(&out));
+}
+
+#[test]
 fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     // Catches: Loop's Settings and first-run panel having no way to see or drive connect.
     let b = Box::new("status-json");
@@ -949,6 +987,18 @@ fn an_agents_override_file_is_named_instead_of_reported_connected() {
     fs::write(b.home().join(".codex/AGENTS.override.md"), rules).unwrap();
     let status = b.run(&["loop", "status"]);
     assert!(!text(&status).contains("hidden by"), "{}", text(&status));
+}
+
+#[test]
+fn login_help_never_offers_to_connect_loop() {
+    // Catches: `login --help` exits 0 like a sign-in, so the Loop offer ran after help and
+    // could change an agent's MCP settings and hooks without anyone signing in.
+    let b = Box::new("login-help");
+    b.install_loop();
+    let out = b.run(&["login", "--help"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("Loop is installed"), "{}", text(&out));
+    assert!(claude_entry(&b.home().join(".claude.json")).is_null(), "nothing written");
 }
 
 const TASTE_START: &str = "<!-- impeccable:taste -->";
