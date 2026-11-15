@@ -875,15 +875,18 @@ const EMPTY_ROW_STEP: i32 = 28;
 /// boxes (a card on a page, a label in a frame), so an empty stretch inside a
 /// box is found too. Rows inside a `media` span (a drawing, an image's box,
 /// as `[top, bottom)` rows) always hold content, however sparse they paint.
-pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)]) -> (u32, u32) {
+/// A run that reaches the bottom is the page's blank tail, not a gap between
+/// content, and does not count, unless the capture was `cut` short of the
+/// page's end, when more content follows it.
+pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)], cut: bool) -> (u32, u32) {
     let (w, h) = img.dimensions();
     let raw = img.as_raw();
     let row_len = w as usize * 3;
     let luma = |p: &[u8]| (p[0] as i32 * 299 + p[1] as i32 * 587 + p[2] as i32 * 114) / 1000;
     let mut best = (0u32, 0u32);
     let mut run_start: Option<u32> = None;
-    for y in 0..=h {
-        let empty = y < h && !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
+    for y in 0..h {
+        let empty = !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
             let row = &raw[y as usize * row_len..(y as usize + 1) * row_len];
             let mut edges = 0usize;
             let mut prev = luma(&row[0..3]);
@@ -905,6 +908,11 @@ pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)]) -> (u32, u32) {
                 run_start = None;
             }
             _ => {}
+        }
+    }
+    if let (true, Some(start)) = (cut, run_start) {
+        if h - start > best.1 {
+            best = (start, h - start);
         }
     }
     best
@@ -1391,9 +1399,18 @@ mod tests {
                 img.put_pixel(x, y, image::Rgb([40, 20, 20]));
             }
         }
-        assert_eq!(longest_empty_band(&img, &[]), (200, 800));
+        assert_eq!(longest_empty_band(&img, &[], false), (200, 800));
         // An outlined drawing there paints a few edges a row, and is content.
-        assert_eq!(longest_empty_band(&img, &[(250, 950)]), (200, 50));
+        assert_eq!(longest_empty_band(&img, &[(250, 950)], false), (200, 50));
+        // A blank tail is not a gap, unless the capture was cut before the end.
+        let mut tail = img.clone();
+        for y in 1000..1200 {
+            for x in 30..360 {
+                tail.put_pixel(x, y, image::Rgb([200, 180, 140]));
+            }
+        }
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], false), (0, 0));
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], true), (1000, 200));
     }
 
     #[test]

@@ -28,12 +28,12 @@ const BLANK_MAX_SHARE: f64 = 0.6;
 /// Full-page captures stop here.
 const MAX_CAPTURE_HEIGHT: f64 = 20000.0;
 
-const USAGE: &str = "Usage: impeccable first-viewport <url> --thesis <selector> --action <selector> [--viewport WxH ...]\n";
+const USAGE: &str = "Usage: impeccable first-viewport <url> --thesis <selector> --action <selector> [--viewport WxH ...] [--capture <dir>] [--figures-supplied]\n";
 
 /// Each selector's share of its painted area inside the first viewport, and
 /// whether its box sits wholly inside it, clipped by every ancestor that
 /// clips (a scroller shows only its own box).
-const MEASURE_JS: &str = r#"((selectors) => {
+const MEASURE_JS: &str = r##"((selectors) => {
   window.scrollTo(0, 0);
   const vw = innerWidth, vh = innerHeight;
   const clip = (r, c) => ({ l: Math.max(r.l, c.l), t: Math.max(r.t, c.t), r: Math.min(r.r, c.r), b: Math.min(r.b, c.b) });
@@ -79,6 +79,44 @@ const MEASURE_JS: &str = r#"((selectors) => {
     .map((el) => shownBox(el, true).box)
     .filter((r) => r.r > r.l && r.b > r.t)
     .map((r) => [Math.max(0, Math.floor(r.t + scrollY)), Math.ceil(r.b + scrollY)]);
+  // Figures in the first viewport (prices, percentages) and whether a
+  // visible "sample" mark sits with each: in its own block or within 160px.
+  const FIGURE = /(?:[$€£¥]\s?\d[\d,.]*|\d[\d,.]*\s?(?:USD|EUR|GBP|€|£)|\b\d+(?:\.\d+)?\s?%)/g;
+  // A label a visitor can read: innerText leaves out hidden text.
+  const SAMPLE = /\b(sample|illustrative|placeholder|fictional)\b/i;
+  const marks = [...document.querySelectorAll('body *')]
+    .filter((el) => el.childElementCount === 0 && seen(el) && SAMPLE.test(el.innerText || ''))
+    .map((el) => el.getBoundingClientRect());
+  const near = (a, b) => Math.max(0, a.left - b.right, b.left - a.right) + Math.max(0, a.top - b.bottom, b.top - a.bottom) <= 160;
+  out.figures = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+    const el = t.parentElement;
+    if (!el || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(el.tagName) || !seen(el)) continue;
+    const found = (t.textContent || '').match(FIGURE);
+    if (!found) continue;
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    const r = range.getBoundingClientRect();
+    if (r.width === 0 || r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw) continue;
+    const block = el.closest('p, li, td, dd, dt, tr, label, figcaption') || el;
+    const marked = SAMPLE.test(block.innerText || '') || marks.some((m) => near(m, r));
+    if (!marked) out.figures.push(...found);
+  }
+  // A link that goes nowhere: no href, "#", "javascript:", or a same-page
+  // anchor the page does not hold.
+  const actionEl = selectors.action ? document.querySelector(selectors.action) : null;
+  if (actionEl) {
+    const link = actionEl.closest('a');
+    const href = link ? (link.getAttribute('href') || '').trim() : null;
+    out.deadLink = link !== null && (href === '' || href === '#' || /^javascript:/i.test(href)
+      || (href.startsWith('#') && !document.getElementById(decodeURIComponent(href.slice(1)))));
+    // A link that leaves this tab (a new tab, a download, mailto:, tel:)
+    // changes nothing here, so it is not clicked; a same-tab link is, and
+    // must navigate or answer like any button.
+    out.liveLink = link !== null && !out.deadLink && (link.target === '_blank' || link.hasAttribute('download')
+      || /^(mailto|tel|sms):/i.test(href));
+  }
   for (const [key, sel] of Object.entries(selectors)) {
     if (!sel) continue;
     let els = [];
@@ -103,7 +141,53 @@ const MEASURE_JS: &str = r#"((selectors) => {
     out[key] = { matched: els.length, share: total ? shown / total : 0, inside: total > 0 && inside };
   }
   return out;
-})"#;
+})"##;
+
+/// Click the primary action and report whether anything answers within
+/// 800ms: a change the page was not already making on its own (a quiet 1.2s
+/// watch first records each element and kind of change, so a ticking clock or
+/// a class the app toggles on body does not count, but a dialog added under
+/// it does), the URL or hash moves, the page scrolls, a form submits, or the
+/// page navigates away (the evaluation then fails). It waits up to 3s for an
+/// action mounted after load.
+const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
+  const all = { subtree: true, childList: true, attributes: true, characterData: true };
+  const key = (r) => r.type + ':' + (r.attributeName || '');
+  const busy = new Map();
+  const watch = new MutationObserver((rs) => rs.forEach((r) => {
+    if (!busy.has(r.target)) busy.set(r.target, new Set());
+    busy.get(r.target).add(key(r));
+  }));
+  watch.observe(document.documentElement, all);
+  const started = Date.now();
+  const go = () => {
+    const el = document.querySelector(sel);
+    if (!el) {
+      if (Date.now() - started < 3000) return setTimeout(go, 100);
+      watch.disconnect();
+      return resolve({ responded: false });
+    }
+    if (Date.now() - started < 1200) return setTimeout(go, 1200 - (Date.now() - started));
+    watch.disconnect();
+    const background = (r) => busy.get(r.target)?.has(key(r));
+    const href = location.href, y = scrollY;
+    let changed = false, submitted = false, scrolled = false, navigating = false;
+    // Navigation counts when it starts, however slowly the next page answers.
+    const navStarted = () => { navigating = true; };
+    if (window.navigation) navigation.addEventListener('navigate', navStarted, { once: true });
+    else addEventListener('beforeunload', navStarted, { once: true });
+    const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r))) changed = true; });
+    mo.observe(document.documentElement, all);
+    document.addEventListener('submit', () => { submitted = true; }, { capture: true, once: true });
+    document.addEventListener('scroll', () => { scrolled = true; }, { capture: true, once: true });
+    el.click();
+    setTimeout(() => {
+      mo.disconnect();
+      resolve({ responded: changed || submitted || scrolled || navigating || scrollY !== y || location.href !== href });
+    }, 800);
+  };
+  go();
+}))"#;
 
 fn launch(io: &Io) -> Result<Browser, String> {
     let exe = discovery::find_browser(&io.env)?;
@@ -135,15 +219,39 @@ fn js_string(s: &str) -> String {
 }
 
 /// One viewport's lines and whether any failed.
-fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, action: Option<&str>) -> Result<(Vec<String>, bool), String> {
-    page.set_viewport(vp).map_err(|e| e.message)?;
-    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
-    // Lazy images below the fold would capture as blank boxes: load them all.
+struct Options<'a> {
+    thesis: &'a str,
+    action: &'a str,
+    figures_supplied: bool,
+    capture: Option<&'a std::path::Path>,
+}
+
+/// The review capture's file name for a viewport, as new-work names them.
+fn capture_name(vp: Viewport) -> String {
+    // Only the two default widths take the reviewer's fixed names, so an
+    // extra --viewport never overwrites them.
+    match vp.width {
+        390 => "mobile.png".into(),
+        1440 => "desktop.png".into(),
+        w => format!("user-{w}.png"),
+    }
+}
+
+/// Let the page finish arriving: lazy images loaded (below the fold they would
+/// capture as blank boxes), fonts ready, and a short beat for late scripts.
+fn settle(page: &mut Page<'_>) {
     let _ = page.evaluate(
         "(async () => { for (const i of document.querySelectorAll('img[loading=lazy]')) i.loading = 'eager'; \
          await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 5000); }))); \
          await document.fonts.ready; await new Promise((r) => setTimeout(r, 400)); })()",
     );
+}
+
+fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Result<(Vec<String>, bool), String> {
+    let (thesis, action) = (Some(o.thesis), Some(o.action));
+    page.set_viewport(vp).map_err(|e| e.message)?;
+    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
+    settle(page);
     let label = format!("{}x{}", vp.width, vp.height);
     let mut lines = Vec::new();
     let mut failed = false;
@@ -184,8 +292,35 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, act
         };
         lines.push(line);
     }
+    if !o.figures_supplied {
+        let figures: Vec<&str> = measured["figures"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+        let ok = figures.is_empty();
+        failed |= !ok;
+        lines.push(if ok {
+            format!("{label}  ok    figures: every price or percentage in the first viewport carries a sample mark")
+        } else {
+            let shown: Vec<&str> = figures.iter().take(4).copied().collect();
+            format!(
+                "{label}  FAIL  figures: {} in the first viewport with no sample mark beside them ({}{}); mark invented figures as samples, or pass --figures-supplied when the user gave them",
+                figures.len(),
+                shown.join(", "),
+                if figures.len() > 4 { ", …" } else { "" }
+            )
+        });
+    }
     let shot = fullpage::capture_full_page(page, MAX_CAPTURE_HEIGHT, 90).map_err(|e| e.message)?;
     let img = fullpage::decode_jpeg(&shot.jpeg_base64).ok_or("the full-page capture did not decode")?;
+    if let Some(dir) = o.capture {
+        let rgba: Vec<u8> = img.as_raw().chunks(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+        let png = impeccable_comp::png_io::encode_png(
+            &impeccable_comp::raster::Image { width: img.width() as usize, height: img.height() as usize, data: rgba },
+            &[],
+        )?;
+        let path = dir.join(capture_name(vp));
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        std::fs::write(&path, png).map_err(|e| e.to_string())?;
+        lines.push(format!("{label}  saved {}", path.display()));
+    }
     let media: Vec<(u32, u32)> = measured["media"]
         .as_array()
         .map(|rows| {
@@ -194,7 +329,8 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, act
                 .collect()
         })
         .unwrap_or_default();
-    let (start, len) = fullpage::longest_empty_band(&img, &media);
+    let cut = (img.height() as f64) + 1.0 < shot.document_height;
+    let (start, len) = fullpage::longest_empty_band(&img, &media, cut);
     let limit = (vp.height as f64 * BLANK_MAX_SHARE).round() as u32;
     let ok = len <= limit;
     failed |= !ok;
@@ -204,6 +340,24 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, thesis: Option<&str>, act
         img.height(),
         if ok { String::new() } else { format!(" (at most {limit}px, 0.6 of the viewport)") }
     ));
+    // Last, since a click may change the page or leave it, and on a fresh
+    // load: the full-page capture leaves the page laid out at its full height.
+    page.goto(url, "load", NAV_TIMEOUT).map_err(|e| e.message)?;
+    settle(page);
+    let dead_link = measured["deadLink"].as_bool().unwrap_or(false);
+    let live_link = measured["liveLink"].as_bool().unwrap_or(false);
+    let responded = live_link
+        || !dead_link && match page.evaluate(&format!("{CLICK_JS}({})", js_string(o.action))) {
+            Ok(EvalOutcome::Value(v)) => v["responded"].as_bool().unwrap_or(false),
+            _ => true,
+        };
+    failed |= !responded;
+    lines.push(format!(
+        "{label}  {}  primary action {}: {}",
+        if responded { "ok  " } else { "FAIL" },
+        o.action,
+        if dead_link { "a link that goes nowhere" } else if live_link { "a link that goes somewhere" } else if responded { "answers a click" } else { "nothing happens when it is clicked" }
+    ));
     Ok((lines, failed))
 }
 
@@ -212,11 +366,15 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
     let mut thesis: Option<String> = None;
     let mut action: Option<String> = None;
     let mut viewports: Vec<Viewport> = Vec::new();
+    let mut figures_supplied = false;
+    let mut capture: Option<String> = None;
     let mut it = rest.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--thesis" => thesis = it.next().cloned(),
             "--action" => action = it.next().cloned(),
+            "--figures-supplied" => figures_supplied = true,
+            "--capture" => capture = it.next().cloned(),
             "--viewport" => match it.next().and_then(|v| parse_viewport(v)) {
                 Some(v) => viewports.push(v),
                 None => {
@@ -265,12 +423,14 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
             return 2;
         }
     };
+    let capture_dir = capture.map(|c| io.cwd.join(c));
+    let options = Options { thesis: &thesis, action: &action, figures_supplied, capture: capture_dir.as_deref() };
     let mut any_failed = false;
     let mut out = String::new();
     for vp in viewports {
         let result = match browser.new_page() {
             Ok(mut page) => {
-                let r = check(&mut page, &url, vp, Some(&thesis), Some(&action));
+                let r = check(&mut page, &url, vp, &options);
                 page.close();
                 r
             }
