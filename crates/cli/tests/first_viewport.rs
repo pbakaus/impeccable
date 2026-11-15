@@ -272,3 +272,40 @@ fn a_link_that_cancels_fails_and_late_or_busy_pages_still_answer() {
     let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
     assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
 }
+
+/// Serves "/" at once and "/slow" after three seconds, on a loopback port.
+fn slow_server() -> u16 {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body = if req.starts_with("GET /slow") {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    "<!doctype html><p>Shop</p>".to_string()
+                } else {
+                    format!("<!doctype html><style>{STYLE}</style><h1>Seeds</h1><div class=\"thesis\"><a class=\"buy\" href=\"/slow\">Shop</a></div>")
+                };
+                let _ = write!(stream, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+            });
+        }
+    });
+    port
+}
+
+#[test]
+fn a_link_to_a_slow_page_answers_when_navigation_starts() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("slow");
+    let url = format!("http://127.0.0.1:{}/", slow_server());
+    let out = run(&dir, &[&url, "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
+}

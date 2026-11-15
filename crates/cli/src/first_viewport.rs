@@ -171,7 +171,11 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
     watch.disconnect();
     const background = (r) => busy.get(r.target)?.has(key(r));
     const href = location.href, y = scrollY;
-    let changed = false, submitted = false, scrolled = false;
+    let changed = false, submitted = false, scrolled = false, navigating = false;
+    // Navigation counts when it starts, however slowly the next page answers.
+    const navStarted = () => { navigating = true; };
+    if (window.navigation) navigation.addEventListener('navigate', navStarted, { once: true });
+    else addEventListener('beforeunload', navStarted, { once: true });
     const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r))) changed = true; });
     mo.observe(document.documentElement, all);
     document.addEventListener('submit', () => { submitted = true; }, { capture: true, once: true });
@@ -179,7 +183,7 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
     el.click();
     setTimeout(() => {
       mo.disconnect();
-      resolve({ responded: changed || submitted || scrolled || scrollY !== y || location.href !== href });
+      resolve({ responded: changed || submitted || scrolled || navigating || scrollY !== y || location.href !== href });
     }, 800);
   };
   go();
