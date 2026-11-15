@@ -139,7 +139,7 @@ Source files use placeholders that get replaced per-provider:
 
 They are generated distribution artifacts, not authoring surfaces. Normal development PRs should be source-first: edit and stage `skill/`, `scripts/`, `cli/`, `extension/`, and `tests/`; do not stage regenerated provider permutations unless the task is explicitly a release/generated-output sync or a build-system change. Run `bun run build` for validation after editing `skill/`, transformer code, or provider behavior. Use `bun run build:release` only when intentionally refreshing tracked harness outputs.
 
-After source changes land on `main`, `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to `main`. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR.
+After source changes land on `next` (and when a release promotes it to `main`), `.github/workflows/sync-generated-output.yml` runs `bun run build:release` and commits generated provider output directly back to that branch. Treat generated harness diffs as release artifacts and keep them out of feature PRs unless they are the point of the PR.
 
 Local state files inside harness directories (e.g. `.claude/scheduled_tasks.lock`, `.claude/settings.local.json`) ARE gitignored.
 
@@ -305,7 +305,7 @@ Workflow for any component:
 
 1. Bump the manifest version (see Versioning above).
 2. Add a changelog entry to `site/pages/changelog.astro` (see **Website changelog** above for placement and tone). Skill entries use a bare `vX.Y.Z` label; CLI and extension entries use the prefixed forms `CLI vX.Y.Z` and `Extension vX.Y.Z`. The release script extracts notes by matching this label, so the prefix matters.
-3. Commit and push to `main`.
+3. Land it on `next` like any change, then promote `next` to `main`: `git fetch origin && git push origin origin/next:main` (a fast-forward; only the maintainer's ruleset bypass may push to `main`). Run the release from `main`. Until this step nothing reaches users: `main` is what the plugin marketplace, submodules and copies install. After a `hotfix/` pull request lands on `main`, merge `main` (with its generated-output commit) back into `next` the same day, so the next promotion still fast-forwards.
 4. Run `bun run release:<skill|cli|ext>`. Preview first with `node scripts/release.mjs <component> --dry-run`. A skill release is always followed by the CLI release at the same version (its changelog entry uses the `CLI vX.Y.Z` label) and `npm publish`.
 5. Skill only: `npx impeccable install` / `update` serve the version in impeccable-site's `published-skill.json`, a signed pointer that does not follow the release by itself (site `docs/PUBLISHED-SKILL.md`). On a branch from site main, run `bun run skill:publish-pointer <version>` (it verifies the release signature and checksum), commit the pointer, and merge; the main deploy then serves it. Redeploying without moving the pointer republishes the old version. The release script warns when `impeccable.style/api/version` still lags.
 
@@ -321,7 +321,7 @@ The skill launcher, the npm shim (`cli/bin/cli.js`), and `impeccable install` al
 
 1. Publish engine `engine-v<ENGINE_VERSION>`: `bun run release:engine` tags and pushes; `release-engine.yml` builds the five `impeccable-<os>-<arch>[.exe]` binaries plus a `.sha256` beside each and publishes the release on this repo. The whole workspace builds from source, so nothing has to ship ahead of it.
 2. Publish the five `@impeccable/cli-<os>-<arch>@<ENGINE_VERSION>` npm platform packages.
-3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `main`).
+3. Only then tag/publish the skill or CLI release, and only then merge a branch that bumps `ENGINE_VERSION` (the `sync-generated-output.yml` workflow rewrites provider dirs on merge to `next` and `main`).
 
 `scripts/check-engine-release.mjs` verifies step 1 and 2 for the pinned version (ranged-GET each release asset, registry-probe each npm package, compare `skill/scripts/engine-checksums.txt` with each published `.sha256`; honors `IMPECCABLE_DOWNLOAD_BASE`). It exits non-zero and names exactly which assets are missing. `scripts/release.mjs` runs it as a hard gate before tagging the **skill** and **CLI** components and refuses to proceed when any asset is absent; the **extension** release is exempt because it ships a vendored WASM detector and never execs the engine. `IMPECCABLE_SKIP_ENGINE_CHECK=1` bypasses the gate only for the case where the assets exist but the registry probe is unreachable. CI's `engine-release-ready` job runs the same script as a hard gate, so missing release assets fail CI.
 
