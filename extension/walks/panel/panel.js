@@ -10,7 +10,7 @@ import { COPY } from './copy.js';
 import { resultLink } from '../handoff.js';
 import { emptyView, isLive, reduce } from '../view.js';
 import { BUILD } from '../../shared/build.js';
-import { listen, speechCtor } from './voice.js';
+import { BARS, listen, meter, speechCtor } from './voice.js';
 
 const params = new URLSearchParams(location.search);
 const app = document.getElementById('app');
@@ -34,11 +34,10 @@ let hereUrl = '';
  */
 const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', said: '', making: false, made: null, signingIn: false };
 /**
- * Whose personas the home shows: the app at the tab's address, else the six defaults (`defaults`), the person's own in
- * both. Make a persona's "Use personas from your app": the apps, the one open (`workspace/repo/app`), the list shown,
- * and that app's personas.
+ * Make a persona's "Use personas from your app": the apps, the one open (`workspace/repo/app`), the list shown, and
+ * that app's personas. (The home's own are the app's at the tab's address, else the six defaults; the person's own in both.)
  */
-Object.assign(pre, { defaults: false, apps: undefined, app: null, appsOpen: false, appPersonas: undefined });
+Object.assign(pre, { apps: undefined, app: null, appsOpen: false, appPersonas: undefined });
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
@@ -54,6 +53,8 @@ let ended = false;
 /** Talk to type (voice.js): the browser's speech recognition, none where it has none; and the listening under way. */
 const Speech = speechCtor();
 let voice = null;
+/** While listening: the mic's level as bars (voice.js `meter`), newest last, and how to end the stream that reads it. */
+let metering = null;
 /** A press waiting on the microphone answer, so a second press does nothing. */
 let asking = false;
 
@@ -165,12 +166,11 @@ const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? {
 /** The personas for the tab's address; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
   const site = siteOf(hereUrl);
-  const answer = await chrome.runtime.sendMessage({ account: 'personas', site }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', url: site }).catch(() => null);
   // An answer for an address the tab has since left: asked again for the new one.
   if (siteOf(hereUrl) !== site) { await loadPersonas(); return; }
   const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
-  pre.defaults = answer?.defaults === true;
   pre.failed = answer?.why ?? null;
   const at = was ? pre.personas?.findIndex((person) => person.slug === was.slug) ?? -1 : -1;
   if (at >= 0) pre.pick = at; else choose(0);
@@ -291,9 +291,8 @@ function unloaded() {
 function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
-  if (pre.personas?.length === 0) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.none }), cast())];
-  const defaults = pre.defaults ? el('p', { class: 'task cast-note', 'data-defaults': true, text: COPY.home.defaults }) : null;
-  if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
+  // Every account has personas, the six defaults at least: a list that came back empty is one that didn't load.
+  if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.failed }), unloaded())];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
   const send = () => { hush(); pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
@@ -302,18 +301,64 @@ function home() {
     top(hereUrl, { tools: true }),
     el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
     cast(),
-    defaults,
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
       el('div', { class: 'field' }, box,
-        el('div', { class: 'row' }, widths(), sights()),
-        el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
-        el('div', { class: 'row' },
-          Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
-          el('span', { class: 'grow' }),
-          button('send', COPY.home.send, 'gold', send))),
+        voice ? listening(send) : [
+          el('div', { class: 'row' }, widths(), sights()),
+          el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
+          el('div', { class: 'row' },
+            Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'false', title: COPY.voice.talk, 'aria-label': COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
+            el('span', { class: 'grow' }),
+            button('send', COPY.home.send, 'gold', send))]),
     ),
   ];
+}
+
+/** Reduced motion: the bars hold a still shape, and listening still shows. */
+const still = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+const STILL = Array.from({ length: BARS }, (_, i) => 0.25 + 0.2 * Math.abs(Math.sin(i * 0.7)));
+/** Nothing above a murmur in the last second or so. */
+const hushed = (levels) => !still() && Math.max(...(levels ?? [0]).slice(-14)) < 0.08;
+
+/** While listening: Stop, the waveform moving with the mic, and Send; a line when it hears nothing. */
+function listening(send) {
+  const levels = still() ? STILL : pre.levels ?? Array(BARS).fill(0);
+  return [
+    el('div', { class: 'row voice-row' },
+      el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': 'true', title: COPY.voice.stop, 'aria-label': COPY.voice.stop, onclick: () => { void talk(); } }, icon('stop')),
+      el('div', { class: 'wave', 'aria-hidden': true, 'data-quiet': hushed(levels) ? 'yes' : 'no', 'data-still': still() ? 'yes' : undefined }, levels.map((level) => el('i', { style: `--l:${level.toFixed(3)}` }))),
+      button('send', COPY.home.send, 'gold', send)),
+    el('p', { class: 'choice wave-note', role: 'status', text: COPY.voice.quiet }),
+  ];
+}
+
+/** New levels from the mic: the bars change in place, so the box keeps its words and the caret. */
+function drawLevels(levels) {
+  pre.levels = levels;
+  const wave = app.querySelector('.wave');
+  if (!wave) return;
+  wave.setAttribute('data-quiet', hushed(levels) ? 'yes' : 'no');
+  wave.querySelectorAll('i').forEach((bar, i) => bar.style?.setProperty('--l', levels[i].toFixed(3)));
+}
+
+/** The mic's level for the waveform, beside the recognition `heard`: nothing to read where motion is reduced. */
+function startMeter(heard) {
+  pre.levels = null;
+  if (still() || !navigator.mediaDevices?.getUserMedia || !globalThis.AudioContext) return;
+  void meter({ media: navigator.mediaDevices, Audio: globalThis.AudioContext, frame: (tick) => requestAnimationFrame(tick), cancel: (id) => cancelAnimationFrame(id), onLevels: drawLevels }).then((stop) => {
+    if (!stop) return;
+    // Listening ended while the stream was being opened.
+    if (voice !== heard) { stop(); return; }
+    metering = stop;
+  });
+}
+
+function stopMeter() {
+  const stop = metering;
+  metering = null;
+  pre.levels = null;
+  stop?.();
 }
 
 /** Desktop, Tablet or Phone: the width the journey runs at, kept for next time. */
@@ -375,10 +420,10 @@ function hear() {
       // Only on final words: an interim guess can run long and then shrink.
       if (text.length > 2000 && settled && voice) { pre.note = COPY.voice.full; voice.stop(); }
     },
-    onEnd: (error) => { ended = true; voice = null; if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
+    onEnd: (error) => { ended = true; voice = null; stopMeter(); if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
   });
   // A recognizer that failed to start has already ended: keep no dead handle, or the button stays pressed.
-  if (!ended) voice = heard;
+  if (!ended) { voice = heard; startMeter(heard); }
   render();
 }
 
@@ -386,6 +431,7 @@ function hear() {
 function hush() {
   const was = voice;
   voice = null;
+  stopMeter();
   was?.drop();
 }
 
@@ -651,14 +697,16 @@ async function start() {
   if (stub !== null) {
     const { STUBS, PRE } = await import('./stub.js');
     stubbed = true;
+    // Listening, drawn still: the bars as the stand-in's levels, and Stop goes back to the box.
+    if (PRE[stub]?.levels) voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} };
     view = STUBS[stub] ?? STUBS.idle;
     Object.assign(pre, PRE[stub] ?? PRE.home);
     account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro' };
     if (pre.personas?.length) choose(pre.pick);
     walker = picked();
     walkUrl = 'https://impeccable.reviews/app/tidy/outings/o-7f3a';
-    // A stand-in with the defaults is on an address none of the person's apps is at.
-    hereUrl = pre.defaults ? 'https://shop.example/' : 'https://tidy.example/';
+    // A stand-in with the defaults is on an address none of the person's apps is at (`here`).
+    hereUrl = pre.here ?? 'https://tidy.example/';
     act = (action) => { view = reduce(view, { type: action }); render(); };
   } else {
     act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
@@ -684,5 +732,8 @@ async function start() {
   }
   render();
 }
+
+// The panel closing ends the mic: the recognition and the stream the bars read.
+addEventListener('pagehide', () => hush());
 
 void start();

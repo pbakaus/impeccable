@@ -89,25 +89,27 @@ const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risk
 const TASK = HANDOFF.errand.goal;
 /** Before a walk: the panel's own state, by stub name. */
 export const PRE = {
-  home: { personas: PERSONAS, task: TASK, pick: 3, defaults: true },
-  'home-sam': { personas: PERSONAS, task: TASK, pick: 4, defaults: true },
+  home: { personas: PERSONAS, task: TASK, pick: 3, here: 'https://shop.example/' },
+  'home-sam': { personas: PERSONAS, task: TASK, pick: 4, here: 'https://shop.example/' },
   'home-app': { personas: [...APP_CAST, MADE], task: TASK },
-  'home-empty': { personas: [] },
   'signing-in': { signingIn: true },
+  // Talk to type: the bars as a voice moves them, newest on the right, the words heard so far; and a mic hearing nothing.
+  listening: { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Add a to-do, then rename it to', levels: [0.04, 0.06, 0.3, 0.55, 0.42, 0.7, 0.85, 0.5, 0.32, 0.6, 0.78, 0.45, 0.2, 0.08, 0.05, 0.36, 0.62, 0.9, 0.74, 0.48, 0.66, 0.52, 0.3, 0.58, 0.81, 0.63, 0.4, 0.22] },
+  'listening-quiet': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: '', levels: [0.05, 0.04, 0.06, 0.03, 0.02, 0.04, 0.05, 0.03, 0.02, 0.03, 0.04, 0.02, 0.03, 0.05, 0.04, 0.02, 0.03, 0.02, 0.04, 0.03, 0.02, 0.03, 0.04, 0.02, 0.03, 0.02, 0.03, 0.02] },
   make: { personas: PERSONAS, screen: 'make', apps: APPS },
   'make-apps': { personas: PERSONAS, screen: 'make', apps: APPS, app: 'acme/tidy/web', appsOpen: true, appPersonas: APP_CAST },
   'make-making': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, making: true },
   'make-made': { personas: [...PERSONAS, MADE], screen: 'make', said: DESCRIBED, made: MADE },
   'make-refused': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, note: COPY.make.limit(3) },
-  planning: { personas: PERSONAS, task: TASK, screen: 'planning', pick: 3, defaults: true },
-  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3, defaults: true },
+  planning: { personas: PERSONAS, task: TASK, screen: 'planning', pick: 3, here: 'https://shop.example/' },
+  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3, here: 'https://shop.example/' },
   before: { personas: PERSONAS, screen: 'before' },
-  'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3, defaults: true },
+  'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3, here: 'https://shop.example/' },
 };
 STUBS.before = STUBS.idle;
 STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['home-sam', 'home-app', 'make-apps', 'home-empty', 'make', 'make-making', 'make-made', 'make-refused']) STUBS[name] = STUBS.idle;
+for (const name of ['home-sam', 'home-app', 'make-apps', 'listening', 'listening-quiet', 'make', 'make-making', 'make-made', 'make-refused']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

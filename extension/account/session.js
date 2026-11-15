@@ -62,7 +62,7 @@ const SIGNED_IN = ['signed-in', 'refreshing'];
 /** A persona's name in the person's own list, as the server gives it. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
 /** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`, REN-2039). */
-const LISTED = /^(?:default:)?[a-z0-9-]{1,80}$/;
+const LISTED = /^(?:[a-z0-9-]{1,80}|default:[a-z]{1,20})$/;
 /** An app as the server lists it (`/apps`): its workspace, repository and app, and its name. */
 const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
 /**
@@ -274,16 +274,16 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
-     * The signed-in person's personas, `{ personas: [{ name, role, slug?, mine? }], defaults }`, or null. `site`: the tab's
-     * origin, for the personas of the app at that address; `defaults` says none of theirs is, so these are the six.
-     * `app`: one app's (`{ workspace, repo, app }`) instead.
+     * The signed-in person's personas, `[{ name, role, slug?, mine? }]`, or null. `url`: the tab's address, for the
+     * personas of the app there, else the six defaults (the server matches by host, REN-2039). `app`: one app's
+     * (`{ workspace, repo, app }`) instead.
      */
-    async personas({ site, app } = {}) {
+    async personas({ url, app } = {}) {
       const one = app && ['workspace', 'repo', 'app'].every((key) => APP_PART.test(app[key]));
-      const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : site ? `?${new URLSearchParams({ site })}` : '';
+      const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
       const list = await read(issuer(), `/personas${query}`);
       const rows = Array.isArray(list?.personas) ? list.personas : null;
-      return rows ? { personas: rows.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf), defaults: list.defaults === true } : null;
+      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf) ?? null;
     },
 
     /** The person's apps, `[{ workspace, repo, app, name }]`, or null. */

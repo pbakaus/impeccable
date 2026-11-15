@@ -193,13 +193,13 @@ async function create({ description }) {
  * The personas, and the description of one still being made (or sent and never answered), for the popup to wait on.
  * None: `signed-out` when no sign-in is kept any more (the server ended it), else `personas`.
  */
-async function personas({ site, app }) {
-  // `site`: the side panel's tab, by its origin alone; `app`: one app's, from Make a persona.
+async function personas({ url, app }) {
+  // `url`: the side panel's tab, by its origin alone (the server matches an app by host); `app`: one app's, from Make a persona.
   let origin = null;
-  try { origin = /^https?:\/\//.test(site) ? new URL(site).origin : null; } catch { /* no address */ }
-  const [list, was] = await Promise.all([session.personas({ ...(origin ? { site: origin } : {}), ...(app ? { app } : {}) }), making ? null : kept()]);
+  try { origin = /^https?:\/\//.test(url) ? new URL(url).origin : null; } catch { /* no address */ }
+  const [list, was] = await Promise.all([session.personas({ ...(origin ? { url: origin } : {}), ...(app ? { app } : {}) }), making ? null : kept()]);
   const creating = making?.description ?? (was?.open ? was.description : null);
-  if (list) return { ok: true, personas: list.personas, ...(list.defaults ? { defaults: true } : {}), ...(creating ? { creating } : {}) };
+  if (list) return { ok: true, personas: list, ...(creating ? { creating } : {}) };
   return { ok: false, why: (await session.signedIn().catch(() => true)) ? 'personas' : 'signed-out' };
 }
 

@@ -84,9 +84,10 @@ b { font-weight: 500; }
 .hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; margin-top: 20px; text-align: center; }
 .hero .face { margin-bottom: 8px; }
 .name { font-family: var(--wordmark); font-weight: 200; font-size: 3.25rem; line-height: .9; color: var(--ink); }
-.about { margin-top: 6px; font-size: 15px; line-height: 1.5; color: var(--text); text-wrap: pretty; }
-.cast { flex: none; display: grid; grid-template-columns: repeat(4, 64px); justify-content: center; gap: 10px 14px; margin: 20px auto 0; }
-.cast button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; border-radius: 10px; }
+.about { margin-top: 6px; font-size: 17px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
+/* Four to a row, and a shorter last row centred under them. */
+.cast { flex: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; width: 100%; max-width: calc(4 * 64px + 3 * 14px); margin: 20px auto 0; }
+.cast button { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; border-radius: 10px; }
 .cast .face { padding: 0; }
 .cast button.sel .face { box-shadow: 0 0 0 2px var(--paper-raised), 0 0 0 4px var(--gold); }
 .cast button:hover .face { border-color: var(--gold-rich); }
@@ -96,7 +97,6 @@ b { font-weight: 500; }
 .cast .add .face { width: 48px; height: 48px; background: none; border: 1.5px dashed var(--mute-deep); color: var(--muted); }
 .cast .add:hover .face { border-color: var(--gold-deep); color: var(--ink); }
 .cast .add .ic { width: 20px; height: 20px; }
-.cast-note { margin: 12px auto 0; max-width: 30ch; text-align: center; }
 .box { flex: none; margin-top: auto; padding-top: 16px; }
 .box .err { margin: 0 4px 10px; text-align: center; }
 .field { border-radius: 16px; background: var(--paper-deep); padding: 14px 12px 12px 16px; }
@@ -116,8 +116,6 @@ b { font-weight: 500; }
 .task.at .ic { width: 14px; height: 14px; }
 .mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }
 .mid .face { margin-bottom: 12px; }
-.mid .cast { grid-template-columns: 64px; margin-top: 0; }
-.mid .cast .face { margin-bottom: 0; box-shadow: none; }
 .act { font-size: 17px; font-weight: 500; line-height: 1.35; color: var(--ink); }
 .task { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); text-wrap: balance; }
 .mid .task, .end .task { max-width: 30ch; }
@@ -224,3 +222,13 @@ b { font-weight: 500; }
 .apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
 .from-app .cast { margin-top: 4px; }
 .from-app > .dots { align-self: center; margin: 8px 0; }
+
+/* ---------- talk to type: the waveform while the mic is on ---------- */
+.voice-row .mic { background: var(--gold); color: var(--on-gold); }
+.voice-row .mic .ic { width: 14px; height: 14px; fill: currentColor; }
+.wave { flex: 1; min-width: 0; height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 2px; padding: 0 4px; }
+.wave i { --l: 0; flex: 1; max-width: 4px; height: calc(4px + var(--l) * 32px); border-radius: 2px; background: var(--gold-deep); transition: height .08s linear; }
+.wave i:nth-last-child(-n+6) { background: var(--ink); }
+.wave[data-quiet="yes"] i { background: var(--mute-deep); }
+.wave-note { display: none; text-align: center; }
+.wave[data-quiet="yes"] ~ .btn + .wave-note, .voice-row:has(.wave[data-quiet="yes"]) + .wave-note { display: block; }

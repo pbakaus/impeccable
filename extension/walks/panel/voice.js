@@ -93,3 +93,55 @@ export function listen(Ctor, { base = '', lang = 'en-US', stallMs = STALL_MS, on
     drop: () => { over = true; quiet(rec); try { rec.abort(); } catch { /* already ended */ } },
   };
 }
+
+/** How many bars the waveform shows, and how often a new one comes in from the right. */
+export const BARS = 28;
+const BAR_MS = 70;
+
+/**
+ * The mic's level while listening, for the waveform: a stream of its own (getUserMedia), read by an AnalyserNode once
+ * a frame, beside the speech recognition. `onLevels` gets the last BARS levels, 0 to 1, newest last. Resolves to
+ * `stop`, which ends the stream's tracks, the frame loop and the audio context; or null where the mic can't be read
+ * (listening goes on without moving bars).
+ */
+export async function meter({ media, Audio, frame, cancel, onLevels }) {
+  let stream;
+  try { stream = await media.getUserMedia({ audio: true }); } catch { return null; }
+  let context;
+  let analyser;
+  try {
+    context = new Audio();
+    analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    context.createMediaStreamSource(stream).connect(analyser);
+  } catch {
+    for (const track of stream.getTracks()) track.stop();
+    return null;
+  }
+  const wave = new Uint8Array(analyser.fftSize);
+  const levels = Array(BARS).fill(0);
+  let id = 0;
+  let last = -Infinity;
+  const tick = (now = 0) => {
+    if (now - last >= BAR_MS) {
+      last = now;
+      analyser.getByteTimeDomainData(wave);
+      let sum = 0;
+      for (const v of wave) sum += ((v - 128) / 128) ** 2;
+      // Speech sits low on this scale: lifted, so a normal voice fills most of a bar.
+      levels.push(Math.min(1, Math.sqrt(sum / wave.length) * 4));
+      levels.shift();
+      onLevels([...levels]);
+    }
+    id = frame(tick);
+  };
+  id = frame(tick);
+  let over = false;
+  return () => {
+    if (over) return;
+    over = true;
+    cancel(id);
+    for (const track of stream.getTracks()) track.stop();
+    void Promise.resolve(context.close?.()).catch(() => undefined);
+  };
+}

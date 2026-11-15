@@ -32,13 +32,10 @@ export const COPY = {
     ask: (name) => `What should ${name} try?`,
     who: 'Personas',
     send: 'Send',
-    none: 'No personas yet. Press + to make one.',
     failed: 'Couldn’t load your personas.',
     retry: 'Try again',
     signIn: 'Sign in again',
     make: 'Make a persona',
-    /** Under the grid when no app of the person's is at the tab's address. */
-    defaults: 'No app of yours is at this address, so these are the defaults.',
     /** The width a journey runs at (REN-1890): the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
@@ -71,6 +68,8 @@ export const COPY = {
     talk: 'Talk to type',
     stop: 'Stop listening',
     listening: 'Listening…',
+    /** Under the waveform while the mic hears nothing. */
+    quiet: 'Nothing heard yet. Speak up a little.',
     'not-allowed': 'The microphone is blocked. You can still type.',
     'audio-capture': 'No microphone found. You can still type.',
     network: 'Talking needs an internet connection. You can still type.',

@@ -511,9 +511,9 @@ describe('account worker', () => {
     // One of the six everyone has (REN-2039): its `default:` slug, and how it sees, kept for the walk.
     ['lists a default persona', () => json(200, { personas: [{ name: 'Robert', role: '', profile: 'Retired.', slug: 'default:robert', default: true, sees: 'older-eyes' }] }), () => json(200, {}),
       { ok: true, personas: [{ name: 'Robert', role: '', slug: 'default:robert', default: true, sees: 'older-eyes', about: 'Retired.' }] }],
-    // The tab's origin alone, never its path: the server answers that app's personas, or the defaults and says so.
-    ['for the tab’s address, told they are the defaults', () => json(200, { personas: [PERSONA], defaults: true }), () => json(200, {}), { ok: true, personas: [PERSONA], defaults: true },
-      { site: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?site=https%3A%2F%2Ftidy.example'],
+    // The tab's origin alone, never its path: the server answers the personas of the app at that host, or the defaults.
+    ['for the tab’s address', () => json(200, { personas: [PERSONA], defaults: true, reason: 'no-app-here' }), () => json(200, {}), { ok: true, personas: [PERSONA] },
+      { url: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?url=https%3A%2F%2Ftidy.example'],
     ['for one app', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] },
       { app: { workspace: 'acme', repo: 'tidy', app: 'web' } }, '/extension/v1/personas?workspace=acme&repo=tidy&app=web'],
     ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],

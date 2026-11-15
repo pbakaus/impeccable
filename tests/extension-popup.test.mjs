@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], defaults = false, apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false } } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -328,12 +328,22 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search: '' }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas, ...(defaults ? { defaults } : {}) }, apps, plan, walk, create }[message.account]; } },
+      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
     },
   });
+  // `mic`: a browser that hears (speech recognition, the microphone given) and whose mic level can be read; it counts
+  // the streams opened and ended, the frames asked for and cancelled, and the audio contexts closed.
+  Object.assign(globalThis, mic ? {
+    webkitSpeechRecognition: class { start() { this.onstart?.(); } stop() { this.onend?.(); } abort() {} },
+    AudioContext: class { createAnalyser() { return { getByteTimeDomainData() {} }; } createMediaStreamSource() { return { connect() {} }; } async close() { mic.closed += 1; } },
+    requestAnimationFrame: () => { mic.frames += 1; return mic.frames; },
+    cancelAnimationFrame: () => { mic.cancelled += 1; },
+  } : { webkitSpeechRecognition: undefined, AudioContext: undefined });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, writable: true, value: { language: 'en-GB', permissions: { query: async () => ({ state: 'granted' }) },
+    mediaDevices: { async getUserMedia() { mic.opened += 1; return { getTracks: () => [{ stop() { mic.stopped += 1; } }] }; } } } });
   await import(`${pathToFileURL(path.join(root, 'walks/panel/panel.js')).href}?n=${panels += 1}`);
   for (let n = 0; n < 5; n += 1) await tick();
   const acts = () => app.querySelectorAll('[data-act]').map((node) => node.attributes['data-act']);
@@ -394,11 +404,13 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   assert.deepEqual([expired.body.dataset.screen, expired.sent.find((m) => m.account === 'walk').sees], ['home', 'older'], 'a plan the server refuses goes back to the box');
 });
 
-// No personas yet is never a dead end: + opens Make a persona, a description makes one, and Use them picks it; a refusal says why and keeps the words.
+// + opens Make a persona: a description makes one, and Use them picks it; a refusal says why and keeps the words.
 for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
-  test(`the side panel with no personas makes one from a description: ${label}`, async () => {
-    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [], create });
-    assert.deepEqual([h.body.dataset.screen, h.acts().includes('send')], ['home', false]);
+  test(`the side panel makes a persona from a description: ${label}`, async () => {
+    // A list that came back empty is one that didn't load: never an empty home.
+    const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [] });
+    assert.deepEqual(empty.acts().filter((act) => act === 'retry' || act === 'make-persona'), ['retry']);
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], create });
     await h.press('make-persona');
     assert.equal(h.body.dataset.screen, 'make');
     h.app.querySelector('textarea').value = '  A night-shift nurse who books shifts on her phone.  ';
@@ -417,12 +429,12 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
-// The tab's address decides whose personas: an app's, or the six defaults with a line saying why. The + screen also
-// offers an app's own cast, without the defaults, to pick one from.
-test('the side panel says when it shows the defaults, and takes a persona from one of the person’s apps', async () => {
+// The tab's address decides whose personas: an app's, or the six defaults. The + screen also offers an app's own
+// cast, without the defaults, to pick one from.
+test('the side panel asks for the personas of the tab’s address, and takes one from one of the person’s apps', async () => {
   const maya = { name: 'Maya', role: '', slug: 'default:maya', default: true };
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], defaults: true, apps: { ok: true, apps: [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }] }, cast: [maya, { name: 'Mira', role: '', slug: 'mira' }] });
-  assert.deepEqual([h.sent.find((m) => m.account === 'personas').site, h.app.querySelectorAll('[data-defaults]').length], ['https://tidy.example', 1]);
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], apps: { ok: true, apps: [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }] }, cast: [maya, { name: 'Mira', role: '', slug: 'mira' }] });
+  assert.equal(h.sent.find((m) => m.account === 'personas').url, 'https://tidy.example');
   await h.press('make-persona');
   await h.press('apps');
   await h.press('app-0');
@@ -432,6 +444,23 @@ test('the side panel says when it shows the defaults, and takes a persona from o
   h.app.querySelector('textarea').value = 'Add a to-do.';
   await h.press('send');
   assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ own: 'mira' }]);
+});
+
+// The waveform reads the mic beside the speech recognition: its stream and frame loop end on Stop and on Send.
+test('the side panel’s mic opens a stream for the waveform while listening, and ends it on Stop and on Send', async () => {
+  const mic = { opened: 0, stopped: 0, frames: 0, cancelled: 0, closed: 0 };
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], mic });
+  const waves = () => h.app.querySelectorAll('.wave').length;
+  await h.press('mic');
+  await tick();
+  assert.deepEqual([waves(), mic.opened, mic.frames > 0], [1, 1, true]);
+  await h.press('mic');
+  assert.deepEqual([waves(), mic.stopped, mic.cancelled, mic.closed], [0, 1, 1, 1], 'Stop: the stream, the frames and the context end');
+  await h.press('mic');
+  await tick();
+  h.app.querySelector('textarea').value = 'Add a to-do.';
+  await h.press('send');
+  assert.deepEqual([mic.opened, mic.stopped, mic.closed], [2, 2, 2], 'Send ends it too');
 });
 
 test('a walk that ended with no results page to open offers the way home', async () => {
