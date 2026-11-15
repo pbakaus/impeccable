@@ -30,14 +30,15 @@ let here;
 let hereUrl = '';
 /**
  * Before a walk: the personas, the one picked, the task, and where the person is (`home`, `make`, `planning`, `plan`).
- * `sees`: how the persona sees the page on this journey; Make a persona's description, what it sent, and who it made.
+ * `sees`: how the persona sees the page on this journey; Make a persona's description, and who it made.
  */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', said: '', making: false, made: null, signingIn: false };
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', making: false, made: null, signingIn: false };
 /**
- * Make a persona's "Use personas from your app": the apps, the one open (`workspace/repo/app`), the list shown, and
- * that app's personas. (The home's own are the app's at the tab's address, else the six defaults; the person's own in both.)
+ * "Use a persona from your app", a modal over Make a persona (`modal`): the apps, the one picked (`workspace/repo/app`),
+ * whether its dropdown is open, and that app's personas. The home's own are the app's at the tab's address (or the app
+ * the person chose for it, chrome.storage.local `appForSite`), else the six defaults; the person's own in both.
  */
-Object.assign(pre, { apps: undefined, app: null, appsOpen: false, appPersonas: undefined });
+Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
@@ -91,6 +92,7 @@ const ICONS = {
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
   plus: ['M12 5v14M5 12h14'],
   back: ['M19 12H5M11 6l-6 6 6 6'],
+  close: ['M6 6l12 12M18 6L6 18'],
   down: ['M6 9l6 6 6-6'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
@@ -163,14 +165,25 @@ function choose(i) {
 }
 const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
 
-/** The personas for the tab's address; the one picked stays picked where it is still listed. */
+const appKey = (app) => `${app.workspace}/${app.repo}/${app.app}`;
+const appRef = (app) => ({ workspace: app.workspace, repo: app.repo, app: app.app });
+/** An app's own personas, without the six everyone has or the person's own. */
+const castOf = (answer) => (answer?.ok ? answer.personas.filter((person) => !person.default && !person.mine && refOf(person)) : null);
+
+/** The personas for the tab's address, or of the app chosen for it; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
   const site = siteOf(hereUrl);
-  const answer = await chrome.runtime.sendMessage({ account: 'personas', url: site }).catch(() => null);
+  const chosen = site ? (await Promise.resolve(chrome.storage.local.get('appForSite')).catch(() => null))?.appForSite?.[site] : null;
+  const [answer, theirs] = await Promise.all([
+    chrome.runtime.sendMessage({ account: 'personas', url: site }).catch(() => null),
+    chosen ? chrome.runtime.sendMessage({ account: 'personas', app: appRef(chosen) }).catch(() => null) : null,
+  ]);
   // An answer for an address the tab has since left: asked again for the new one.
   if (siteOf(hereUrl) !== site) { await loadPersonas(); return; }
   const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
+  // The app the person chose for this address: its personas, then their own.
+  if (pre.personas && castOf(theirs)) pre.personas = [...castOf(theirs), ...pre.personas.filter((person) => person.mine)];
   pre.failed = answer?.why ?? null;
   const at = was ? pre.personas?.findIndex((person) => person.slug === was.slug) ?? -1 : -1;
   if (at >= 0) pre.pick = at; else choose(0);
@@ -181,17 +194,15 @@ async function loadPersonas() {
 const UNMADE = { short: COPY.make.short, scope: COPY.make.scope, 'not-pro': COPY.why['not-pro'] };
 const unmade = (answer) => (answer?.why === 'limit' ? COPY.make.limit(answer.max) : UNMADE[answer?.why] ?? COPY.make.later);
 
-/** Make a persona: the description becomes the person's own persona (the draft takes up to about half a minute), shown as the reply. */
+/** Make a persona: the description becomes the person's own persona (the draft takes up to about half a minute), drawn in place. */
 async function make(box) {
   if (pre.making) return;
   pre.describe = (box.value ?? pre.describe).trim();
   if (!pre.describe) { box.focus(); return; }
   pre.making = true;
-  pre.said = pre.describe;
   pre.note = '';
   render();
   const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe }).catch(() => null);
-  if (answer?.ok) await loadPersonas();
   pre.making = false;
   if (!answer?.ok) { pre.note = unmade(answer); render(); return; }
   pre.describe = '';
@@ -199,74 +210,103 @@ async function make(box) {
   render();
 }
 
-/** Back home, with `person` picked when there is one: listed already, or added to the list for this address. */
-function leaveMake(person) {
-  if (person) {
-    let at = pre.personas?.findIndex((each) => each.slug === person.slug && Boolean(each.mine) === Boolean(person.mine)) ?? -1;
-    if (at < 0) { pre.personas = [...(pre.personas ?? []), person]; at = pre.personas.length - 1; }
-    choose(at);
-  }
-  Object.assign(pre, { screen: 'home', said: '', made: null, note: '', appsOpen: false });
+/** Home again; with `list` (the persona just made first, or an app's), the grid shows it, its first picked. */
+function goHome(list) {
+  if (list) { pre.personas = list; choose(0); }
+  Object.assign(pre, { screen: 'home', made: null, note: '', modal: false, appsOpen: false });
   render();
 }
 
-const appKey = (app) => `${app.workspace}/${app.repo}/${app.app}`;
+/** Confirm: the persona made goes first in the grid, picked. */
+const confirmMade = () => goHome([pre.made, ...(pre.personas ?? []).filter((each) => !(each.mine && each.slug === pre.made.slug))]);
 
-/** Make a persona's apps, asked once each time it opens. */
+/** The person's apps, asked each time Make a persona opens. */
 async function loadApps() {
   const answer = await chrome.runtime.sendMessage({ account: 'apps' }).catch(() => null);
   pre.apps = answer?.ok ? answer.apps : null;
   if (screen() === 'make') render();
 }
 
-/** One app's personas, for "Use personas from your app": its own cast, without the six everyone has. */
+/** One app's personas, in the modal. */
 async function openApp(app) {
   const key = appKey(app);
   Object.assign(pre, { app: key, appsOpen: false, appPersonas: undefined });
   render();
-  const answer = await chrome.runtime.sendMessage({ account: 'personas', app: { workspace: app.workspace, repo: app.repo, app: app.app } }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', app: appRef(app) }).catch(() => null);
   if (pre.app !== key) return;
-  pre.appPersonas = answer?.ok ? answer.personas.filter((person) => !person.default && !person.mine && refOf(person)) : null;
+  pre.appPersonas = castOf(answer);
   if (screen() === 'make') render();
 }
 
-/** "Use personas from your app": the apps in a list that opens under its button, then the app's personas to pick from. */
-function fromApp() {
-  if (!pre.apps?.length) return null;
-  const chosen = pre.apps.find((app) => appKey(app) === pre.app);
+/** Use these personas: home shows the app's, then the person's own, the first picked; kept for this address. */
+function useApp() {
+  const app = pre.apps.find((each) => appKey(each) === pre.app);
+  const site = siteOf(hereUrl);
+  goHome([...pre.appPersonas, ...(pre.personas ?? []).filter((each) => each.mine)]);
+  if (!site || stubbed) return;
+  void Promise.resolve(chrome.storage.local.get('appForSite')).then(({ appForSite } = {}) => chrome.storage.local.set({ appForSite: { ...appForSite, [site]: { ...appRef(app), name: app.name } } })).catch(() => undefined);
+}
+
+/** Closes the modal; focus goes back to the link that opened it. */
+const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
+
+/** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
+function appModal() {
+  const chosen = pre.apps?.find((app) => appKey(app) === pre.app);
   const list = pre.appPersonas;
-  return el('div', { class: 'from-app' },
-    el('p', { class: 'label', text: COPY.make.fromApp }),
-    el('button', { class: 'pick-app', type: 'button', 'data-act': 'apps', 'aria-expanded': pre.appsOpen ? 'true' : 'false', onclick: () => { pre.appsOpen = !pre.appsOpen; render(); } },
-      el('span', { text: chosen?.name ?? COPY.make.pickApp }), icon('down')),
-    pre.appsOpen ? el('ul', { class: 'apps', 'aria-label': COPY.make.fromApp }, pre.apps.map((app, i) => el('li', {},
-      el('button', { type: 'button', 'data-act': `app-${i}`, 'aria-pressed': appKey(app) === pre.app ? 'true' : 'false', onclick: () => { void openApp(app); } }, app.name)))) : null,
-    !chosen ? null : list === undefined ? dots() : !list?.length ? el('p', { class: 'task', text: list === null ? COPY.make.appFailed : COPY.make.appNone })
-      : el('div', { class: 'cast', role: 'group', 'aria-label': chosen.name }, list.map((each, i) => el('button', {
-        type: 'button', title: each.name, 'aria-label': each.name, 'data-act': `use-${i}`, onclick: () => leaveMake(each),
-      }, face(each, 48), el('span', { class: 'cast-name', text: each.name })))));
+  const ready = Boolean(chosen && list?.length);
+  return el('div', { class: 'scrim', onclick: (event) => { if (event.target === event.currentTarget) shut(); } },
+    el('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'modal-title',
+      onkeydown: (event) => { if (event.key === 'Escape') shut(); } },
+      el('div', { class: 'modal-head' }, el('h2', { id: 'modal-title', text: COPY.make.fromApp }),
+        el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'close', title: COPY.make.close, 'aria-label': COPY.make.close, onclick: shut }, icon('close'))),
+      el('div', { class: 'drop' },
+        el('button', { class: 'pick-app', type: 'button', 'data-act': 'apps', 'aria-haspopup': 'true', 'aria-expanded': pre.appsOpen ? 'true' : 'false', onclick: () => { pre.appsOpen = !pre.appsOpen; render(); } },
+          el('span', { class: chosen ? '' : 'ph', text: chosen?.name ?? COPY.make.pickApp }), icon('down')),
+        pre.appsOpen ? el('ul', { class: 'apps', 'aria-label': COPY.make.fromApp }, (pre.apps ?? []).map((app, i) => el('li', {},
+          el('button', { type: 'button', 'data-act': `app-${i}`, 'aria-pressed': appKey(app) === pre.app ? 'true' : 'false', onclick: () => { void openApp(app); } }, app.name)))) : null),
+      !chosen ? null : list === undefined ? el('div', { class: 'modal-mid' }, dots()) : !list?.length ? el('p', { class: 'task modal-mid', text: list === null ? COPY.make.appFailed : COPY.make.appNone })
+        : el('div', { class: 'cast', role: 'list', 'aria-label': chosen.name }, list.map((each) => el('span', { class: 'cast-one', role: 'listitem' }, face(each, 48), el('span', { class: 'cast-name', text: each.name })))),
+      el('div', { class: 'pair' }, button('cancel', COPY.make.cancel, 'sec', shut),
+        el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'use-these', disabled: !ready, text: COPY.make.useThese, onclick: useApp }))));
 }
 
 const dots = () => el('span', { class: 'dots' }, el('i'), el('i'), el('i'));
 
-/** Make a persona, as a chat: the panel asks, the person describes someone, and the persona made is the reply. */
+/** The face a persona not made yet has: a plain silhouette. */
+function blank() {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('class', 'who');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(SVG, 'path');
+  path.setAttribute('d', 'M12 12.5a4.25 4.25 0 1 0 0-8.5a4.25 4.25 0 1 0 0 8.5zM3.5 22c.6-4.6 4.1-7.5 8.5-7.5s7.9 2.9 8.5 7.5z');
+  svg.append(path);
+  return el('span', { class: 'face blank', 'aria-hidden': true, style: 'width:112px;height:112px;' }, svg);
+}
+
+/**
+ * Make a persona, laid out as the home: the face, name and line are placeholders until it's made, shimmer while it's
+ * made, then show who was made, with Confirm. Below the box, a link to use an app's personas instead.
+ */
 function maker() {
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.ask, oninput: (event) => { pre.describe = event.target.value; } });
+  const made = pre.made;
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.describe, disabled: pre.making, oninput: (event) => { pre.describe = event.target.value; } });
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
-  const made = pre.made;
+  const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }))
+    : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, el('span', { class: 'face skel', style: 'width:112px;height:112px;' }), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
+      : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
   return [
-    el('div', { class: 'top' }, el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => leaveMake() }, icon('back')), el('span', { class: 'where' }, el('b', { text: COPY.make.title }))),
-    made || pre.making || pre.said ? null : fromApp(),
-    el('div', { class: 'chat', role: 'log' },
-      el('p', { class: 'msg' }, COPY.make.ask),
-      pre.said ? el('p', { class: 'msg mine', text: pre.said }) : null,
-      pre.making ? el('p', { class: 'msg', 'data-state': 'making' }, COPY.make.making, ' ', dots()) : null,
-      pre.note ? el('p', { class: 'msg err', role: 'alert', text: pre.note }) : null,
-      made ? el('div', { class: 'msg made', 'data-slug': made.slug }, face(made, 72), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }),
-        button('use', COPY.make.use, 'gold full', () => leaveMake(pre.personas?.find((each) => each.mine && each.slug === made.slug) ?? made))) : null),
+    el('div', { class: 'top' }, made ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back'))),
+    hero,
     el('span', { class: 'grow' }),
-    made || pre.making ? null : el('div', { class: 'box' }, el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }), button('make', COPY.make.action, 'gold', () => { void make(box); })))),
+    made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
+      el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
+        el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
+      pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null,
+      pre.making || !pre.apps?.length ? null : el('button', { class: 'link', type: 'button', 'data-act': 'from-app', onclick: () => { Object.assign(pre, { modal: true, appsOpen: false }); render(); app.querySelector('[data-act="apps"]')?.focus(); } }, COPY.make.fromApp)),
+    pre.modal ? appModal() : null,
   ];
 }
 
@@ -277,7 +317,7 @@ function cast() {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
     }, face(each, 48), el('span', { class: 'cast-name', text: each.name }))),
-    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', said: '', made: null, note: '', appsOpen: false }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
+    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
       el('span', { class: 'face' }, icon('plus'))));
 }
 

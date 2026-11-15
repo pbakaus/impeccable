@@ -45,17 +45,20 @@ export const COPY = {
     sees: { normal: 'Sees the page as it is.', older: 'Older eyes: blurry and low contrast.', 'colour-blind': 'Colour-blind: red and green look alike.' },
     pair: (width, sees) => `${width} · ${sees}`,
   },
-  /** Make a persona: a short chat, where one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
+  /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
-    title: 'Make a persona',
-    ask: 'Who uses your site? Describe them in a sentence or two.',
-    describe: 'Describe them…',
+    name: 'Your persona',
+    about: 'Who they are, in a line.',
+    describe: 'Tell us about your persona, and what to call them.',
     action: 'Send',
-    making: 'Making them…',
-    use: 'Use them',
-    /** Personas an app already has, instead of a new one. */
-    fromApp: 'Use personas from your app',
+    making: 'Making your persona…',
+    confirm: 'Confirm',
+    /** Personas an app already has, instead of a new one: a modal. */
+    fromApp: 'Use a persona from your app',
     pickApp: 'Pick an app',
+    useThese: 'Use these personas',
+    cancel: 'Cancel',
+    close: 'Close',
     appNone: 'That app has no personas yet.',
     appFailed: 'Couldn’t load that app’s personas.',
     short: 'Say a bit more about them.',

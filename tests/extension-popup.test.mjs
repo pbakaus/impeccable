@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -318,7 +318,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   const document = { body: make('body'), activeElement: null, getElementById: () => app, createElement: make, createElementNS: (_, tag) => make(tag) };
   const sent = [];
   const opened = [];
-  const local = { firstRunSeen };
+  const local = { firstRunSeen, appForSite };
   const session = { view };
   const changed = [];
   const activated = [];
@@ -417,8 +417,9 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     await h.press('make');
     assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.' }]);
     if (create.ok) {
-      await h.press('use');
-      assert.equal(h.body.dataset.screen, 'home');
+      assert.deepEqual(h.acts().filter((act) => act !== 'make'), ['confirm'], 'Confirm is the only way on');
+      await h.press('confirm');
+      assert.deepEqual([h.body.dataset.screen, h.app.querySelector('[data-act="pick-0"]').attributes['aria-pressed']], ['home', 'true'], 'first in the grid, picked');
       h.app.querySelector('textarea').value = 'Book a shift.';
       await h.press('send');
       assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ mine: 'rosa' }], 'the new persona is the one picked');
@@ -429,21 +430,28 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
-// The tab's address decides whose personas: an app's, or the six defaults. The + screen also offers an app's own
-// cast, without the defaults, to pick one from.
-test('the side panel asks for the personas of the tab’s address, and takes one from one of the person’s apps', async () => {
+// The tab's address decides whose personas: an app's, or the six defaults. Make a persona's link opens a modal of the
+// person's apps: an app's own cast (without the defaults) becomes the grid, first picked, and stays for that address.
+test('the side panel asks for the personas of the tab’s address, and uses an app’s personas there once chosen', async () => {
   const maya = { name: 'Maya', role: '', slug: 'default:maya', default: true };
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], apps: { ok: true, apps: [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }] }, cast: [maya, { name: 'Mira', role: '', slug: 'mira' }] });
+  const tidy = { workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' };
+  const cast = [maya, { name: 'Mira', role: '', slug: 'mira' }, { name: 'Alex', role: '', slug: 'alex' }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], apps: { ok: true, apps: [tidy] }, cast });
   assert.equal(h.sent.find((m) => m.account === 'personas').url, 'https://tidy.example');
   await h.press('make-persona');
+  await h.press('from-app');
   await h.press('apps');
   await h.press('app-0');
   assert.deepEqual(h.sent.at(-1), { account: 'personas', app: { workspace: 'acme', repo: 'tidy', app: 'web' } });
-  assert.deepEqual(h.acts().filter((act) => act.startsWith('use-')), ['use-0'], 'the app’s own cast, not the defaults');
-  await h.press('use-0');
+  assert.equal(h.app.querySelectorAll('span.cast-one').length, 2, 'the app’s own cast, not the defaults');
+  await h.press('use-these');
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelector('[data-act="pick-0"]').attributes['aria-label'], h.app.querySelector('[data-act="pick-0"]').attributes['aria-pressed']], ['home', 'Mira', 'true']);
   h.app.querySelector('textarea').value = 'Add a to-do.';
   await h.press('send');
   assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ own: 'mira' }]);
+  // The next panel on this address shows that app's personas again.
+  const next = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], cast, appForSite: h.local.appForSite });
+  assert.deepEqual([h.local.appForSite['https://tidy.example'].app, next.app.querySelector('[data-act="pick-0"]').attributes['aria-label']], ['web', 'Mira']);
 });
 
 // The waveform reads the mic beside the speech recognition: its stream and frame loop end on Stop and on Send.

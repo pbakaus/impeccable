@@ -211,28 +211,38 @@ b { font-weight: 500; }
 .tg-pill { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--paper-raised); border: 1px solid oklch(13% 0 0 / .45); font-size: 11px; font-weight: 600; color: var(--ink); }
 .tg-pill .face-letter { font-size: 11px; }
 
-/* ---------- make a persona: a short chat ---------- */
-.chat { flex: none; display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-.msg { max-width: 88%; align-self: flex-start; padding: 10px 14px; border-radius: 16px 16px 16px 4px; background: var(--paper-deep); font-size: 15px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
-.msg.mine { align-self: flex-end; border-radius: 16px 16px 4px 16px; background: var(--gold-wash); border: 1px solid var(--gold-pale); }
-.msg[data-state="making"] { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
-.msg.err { background: none; padding: 0 4px; font-size: 13px; }
-.msg.made { width: 88%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 16px 16px; text-align: center; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
-.msg.made .face { margin-bottom: 6px; box-shadow: 0 0 0 3px var(--paper-raised), 0 0 0 5px var(--gold); }
-.msg.made .name { font-size: 2.25rem; }
-.msg.made .about { margin: 0 0 10px; font-size: 14px; }
-.screen-make .top .where b { font-weight: 600; }
-.from-app { flex: none; display: flex; flex-direction: column; gap: 8px; margin-top: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
-.from-app .label { font-size: 13px; font-weight: 500; color: var(--ink); }
+/* ---------- make a persona: laid out as the home, then a modal for an app's personas ---------- */
+.face.blank { background: var(--paper-deep); color: var(--mute-deep); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
+.face.blank .who { width: 64%; height: 64%; margin-top: 18%; fill: currentColor; }
+.hero .ph { color: var(--mute-deep); }
+.skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.hero .face.skel { border: 0; box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
+.skel-name { width: 150px; height: 40px; margin-top: 4px; }
+.skel-line { width: 260px; height: 16px; margin-top: 10px; }
+.skel-line.short { width: 180px; margin-top: 4px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.field:has(.text:disabled) { opacity: .7; }
+.text:disabled { cursor: default; }
+.err.below { margin: 10px 4px 0; text-align: center; }
+.link { display: block; margin: 12px auto 0; font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.link:hover { color: var(--ink); }
+.scrim { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 20px; background: oklch(13% 0 0 / .32); }
+.modal { width: 100%; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px; border-radius: 16px; background: var(--paper-raised); box-shadow: 0 8px 32px oklch(13% 0 0 / .18); }
+.modal-head { display: flex; align-items: center; gap: 8px; }
+.modal-head h2 { flex: 1; font-size: 15px; font-weight: 600; color: var(--ink); }
+.modal-mid { display: flex; justify-content: center; padding: 8px 0; text-align: center; }
+.modal .cast { margin: 0 auto; }
+.cast-one { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; }
+.drop { display: flex; flex-direction: column; gap: 6px; }
 .pick-app { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 0 14px; border-radius: 10px; background: var(--paper-deep); font-size: 14px; color: var(--ink); }
 .pick-app:hover { background: var(--gray); }
+.pick-app .ph { color: var(--muted); }
 .pick-app[aria-expanded="true"] .ic { transform: rotate(180deg); }
 .apps { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
 .apps button { width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; font-size: 14px; color: var(--ink); }
 .apps button:hover { background: var(--paper-deep); }
 .apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
-.from-app .cast { margin-top: 4px; }
-.from-app > .dots { align-self: center; margin: 8px 0; }
+.screen-make .hero { margin-top: 36px; }
 
 /* ---------- talk to type: the waveform while the mic is on ---------- */
 .voice-row .mic { background: var(--gold); color: var(--on-gold); }
