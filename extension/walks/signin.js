@@ -4,9 +4,11 @@
 //
 // The signs, each enough on its own:
 //   - the top-level document is going to, or is on, one of SIGN_IN_PAGES;
-//   - a password field is visible in the top document, a frame on its origin, or an open shadow root in either (a
-//     closed one is not seen), unless its form only changes a password (`lookInPage`); and not on a page the person
-//     already pressed Continue on at a sign-in (driver.js `signInShows`);
+//   - a password field (or one for a password or a one-time code by its `autocomplete`) is visible in the top
+//     document, a frame on its origin, or an open shadow root in either (a closed one is not seen), unless its form
+//     only changes a password (`lookInPage`); and not on a page the person already pressed Continue on at a sign-in
+//     (driver.js `signInShows`);
+//   - any such field, shown or hidden, holds a value or Chrome's autofill: always, Continue or not;
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -67,14 +69,21 @@ export function lookInPage() {
   // A form of two or more password fields and nothing to name an account by (no text, email or phone field) changes
   // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
   // a name or an email (signing in, signing up), is.
+  // A password field, or one that says it takes a password or a one-time code whatever its type (a "show password"
+  // toggle turns it to text; a code step is a text field).
+  const SECRET = ['current-password', 'new-password', 'one-time-code'];
+  const secret = (input) => String(input.type).toLowerCase() === 'password' || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
   const changing = (field, root) => {
-    const types = [...(field.form ?? root).querySelectorAll('input')].filter(visible).map((input) => String(input.type).toLowerCase());
-    return types.filter((type) => type === 'password').length >= 2 && !types.some((type) => type === 'text' || type === 'email' || type === 'tel');
+    const inputs = [...(field.form ?? root).querySelectorAll('input')].filter(visible);
+    return inputs.filter(secret).length >= 2 && !inputs.some((input) => !secret(input) && ['text', 'email', 'tel'].includes(String(input.type).toLowerCase()));
   };
-  // A password in a field (typed or filled) always pauses the walk: nothing it runs may read it.
-  const fields = roots.flatMap((root) => [...root.querySelectorAll('input[type="password" i]')].filter(visible).map((field) => ({ field, root })));
-  const filled = fields.some(({ field }) => Boolean(field.value));
-  const password = fields.some(({ field, root }) => Boolean(field.value) || !changing(field, root));
+  // Chrome keeps an autofilled value from scripts (`value` is empty) until the person acts: the filled look counts too.
+  const autofilled = (field) => ['autofill', '-webkit-autofill'].some((state) => { try { return field.matches(`:${state}`); } catch { return false; } });
+  const SECRETS = 'input[type="password" i], input[autocomplete~="current-password" i], input[autocomplete~="new-password" i], input[autocomplete~="one-time-code" i]';
+  const fields = roots.flatMap((root) => [...root.querySelectorAll(SECRETS)].map((field) => ({ field, root })));
+  // A password in a field, typed or filled, shown or hidden, always pauses the walk: nothing it runs may read it.
+  const filled = fields.some(({ field }) => Boolean(field.value) || autofilled(field));
+  const password = filled || fields.some(({ field, root }) => visible(field) && !changing(field, root));
 
   let focus = null;
   let el = document.activeElement;

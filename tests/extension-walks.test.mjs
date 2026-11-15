@@ -272,9 +272,12 @@ describe('walk guard', () => {
 
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
-  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  // `autofill`: Chrome filled it, which a script sees only as the `:autofill` state (its value reads empty).
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
-  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords) });
+  // A selector of password fields, read as Chrome would: by `type`, or by an `autocomplete` token.
+  const picks = (sel, f) => (/type="password"/.test(sel) && f.type === 'password') || [...sel.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token));
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords.filter((f) => picks(sel, f))) });
   // A form of these fields: each knows it (`field.form`), and the page holds them all.
   const form = (...fields) => {
     const own = { querySelectorAll: (sel) => (sel === 'input' ? fields : fields.filter((f) => f.type === 'password')) };
@@ -297,6 +300,10 @@ describe('walk lookout', () => {
     ['settings signed in: a profile with an email, and a change of password', page(form(field({}), field({ type: 'email' })), form(field({ type: 'password', id: 'current-password' }), field({ type: 'password', id: 'new-password' }))), { password: false, focus: null }],
     ['settings signed in, a password already in the change of password', page(form(field({ type: 'password', id: 'current-password', value: 'x' }), field({ type: 'password', id: 'new-password' }))), { password: true, filled: true, focus: null }],
     ['a login with its password filled', page(form(field({ autocomplete: 'username' }), field({ type: 'password', value: 'x' }))), { password: true, filled: true, focus: null }],
+    ['a hidden password field holding a password', doc({ passwords: [field({ type: 'password', value: 'x' }, 0)] }), { password: true, filled: true, focus: null }],
+    ['settings signed in, Chrome’s autofill in the change of password', page(form(field({ type: 'password', autofill: true }), field({ type: 'password' }))), { password: true, filled: true, focus: null }],
+    ['a shown password: a text field for the current password, holding one', doc({ passwords: [field({ autocomplete: 'current-password', value: 'x' })] }), { password: true, filled: true, focus: null }],
+    ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
@@ -617,10 +624,12 @@ describe('walk worker', () => {
     const filled = ops.screenshot({ format: 'png' });
     await settle(20);
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in'], 'a password in a field there pauses it again');
+    assert.equal(await command('resume'), false, 'and Continue waits while it is filled');
     page.seen = { password: true };
     assert.equal(await command('resume'), true);
     await filled;
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l9', url: 'http://localhost:3000/elsewhere' } });
+    // Another page of an app routed by its hash: a new address, so a new page.
+    fire('Page.navigatedWithinDocument', { frameId: 'main', url: 'http://localhost:3000/settings#/elsewhere' });
     const next = ops.screenshot({ format: 'png' });
     await settle(20);
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in'], 'the next page pauses');
@@ -629,6 +638,31 @@ describe('walk worker', () => {
     await next;
     // Off the page Continue was pressed on, for the tests after.
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l10', url: 'http://localhost:3000/' } });
+  });
+
+  // A script can wait (`awaitPromise`) for a password to be filled, then read it: what it found never goes out.
+  it('refuses a script whose page got a password filled while it ran, and pauses at the sign-in', async () => {
+    const { ops, command, current } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l11', url: 'http://localhost:3000/account' } });
+    page.seen = {};
+    const { sendCommand } = chrome.debugger;
+    let fill;
+    chrome.debugger.sendCommand = async (target, method, params) => {
+      if (!String(params?.expression).includes('waitForFill')) return sendCommand(target, method, params);
+      return new Promise((done) => { fill = () => { page.seen = { password: true, filled: true }; done({ result: { value: 'hunter2' } }); }; });
+    };
+    try {
+      const read = ops.evaluate({ fn: 'waitForFill', args: [] }).then((out) => out, (err) => err.name);
+      for (let turn = 0; turn < 50 && !fill; turn++) await settle(1);
+      fill();
+      assert.equal(await read, 'Paused', 'refused, as a paused op is, and never answered with what it read');
+      assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    } finally {
+      chrome.debugger.sendCommand = sendCommand;
+      page.seen = {};
+      await command('resume');
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l12', url: 'http://localhost:3000/' } });
+    }
   });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it

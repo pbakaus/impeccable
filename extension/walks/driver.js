@@ -380,17 +380,15 @@ export async function look() {
   return null;
 }
 
-/** A page by its address without query or fragment: where the person pressed Continue at a sign-in ({@link letPast}). */
-const pageOf = (url) => { try { const at = new URL(url); return at.origin + at.pathname; } catch { return ''; } };
-
 /**
  * The person pressed Continue at a sign-in on this page: its empty password field no longer pauses the walk while the
- * tab stays on it (a page the detector got wrong would pause it forever). A sign-in host and a 401 still do.
+ * tab stays at this very address, query and fragment too, so a page routed by its hash is a new page (a page the
+ * detector got wrong would pause it forever). A sign-in host and a 401 still do.
  */
-export function letPast(on = true) { if (walk) walk.past = on ? pageOf(walk.url) : null; }
+export function letPast(on = true) { if (walk) walk.past = on && walk.url ? walk.url : null; }
 
 /** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
-const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && (tab.past !== pageOf(tab.url) || seen.filled === true));
+const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && (!tab.past || tab.past !== tab.url || seen.filled === true));
 
 /** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
 let spotted = () => undefined;
@@ -453,7 +451,7 @@ function setUrl(url) {
   if (!walk || walk.url === url) return;
   walk.url = url;
   // Another page: a sign-in on it pauses again.
-  if (walk.past && walk.past !== pageOf(url)) walk.past = null;
+  if (walk.past && walk.past !== url) walk.past = null;
   say({ event: 'url', url });
   escaped(url);
 }

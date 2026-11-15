@@ -128,8 +128,16 @@ for (const [name, run] of Object.entries(ops)) {
           continue;
         }
         let out;
-        try { out = await acting(req); } catch (err) { if (at === fenced()) throw err; }
-        if (at === fenced()) return out;
+        let failed = null;
+        try { out = await acting(req); } catch (err) { failed = err; }
+        // A look is checked again once done: a script can wait for a password to be filled, so what it found (or its
+        // error) never goes out if a sign-in or a filled field shows now, or the page can't be read.
+        if (at === fenced() && LOOKING.has(name)) {
+          const signIn = await signInNow();
+          if (signIn) pauseFor('sign-in');
+          if (signIn !== false) throw overtaken();
+        }
+        if (at === fenced()) { if (failed) throw failed; return out; }
       }
       if (ACTS.has(name)) throw overtaken();
     }
