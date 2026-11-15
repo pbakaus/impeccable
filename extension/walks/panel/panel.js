@@ -696,7 +696,7 @@ function end() {
  */
 const historyItems = () => pre.history;
 
-/** History: every journey as a row (who, the task, how it ended, where and when); a row opens its page in a new tab. */
+/** History: every journey as a row (who, the task, how it ended, and when); a row opens its page in a new tab. */
 function history() {
   const items = historyItems();
   const head = [top(hereUrl, { back: () => goHome() }), el('h2', { class: 'hd hist-hd', text: COPY.history.title })];
@@ -708,8 +708,9 @@ function history() {
     face(one.persona, 40),
     el('span', { class: 'hist-t' },
       el('span', { class: 'hist-task', text: one.task }),
-      el('span', { class: 'hist-end', text: COPY.history.ended[one.outcome](one.persona.name, one.issues) }),
-      el('span', { class: 'hist-meta', text: `${hostOf(one.site)} · ${COPY.history.when(one.at)}` })),
+      el('span', { class: 'hist-foot' },
+        el('span', { class: 'hist-end', text: COPY.history.ended[one.outcome](one.persona.name, one.issues) }),
+        el('span', { class: 'hist-when', text: COPY.history.when(one.at) }))),
     icon('out')))))];
 }
 

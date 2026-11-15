@@ -318,12 +318,14 @@ b { font-weight: 500; }
 .hist .face-letter { font-size: 1.4rem; }
 .hist-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .hist-task { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--ink); }
-.hist-end { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.4; color: var(--text); }
+/* The bottom line: how it ended on the left, when on the right. */
+.hist-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hist-end { min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.4; color: var(--text); }
 .hist-end::before { content: ""; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--mute-deep); }
 [data-outcome="issues"] .hist-end::before { background: var(--gold-deep); }
 [data-outcome="failed"] .hist-end { color: var(--vermilion); }
 [data-outcome="failed"] .hist-end::before { background: var(--vermilion); }
-.hist-meta { font-size: 12px; line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-when { flex: none; font-size: 12px; line-height: 1.4; color: var(--muted); white-space: nowrap; }
 .hist-row > .ic { margin-top: 2px; color: var(--mute-deep); }
 .hist-row:hover > .ic { color: var(--ink); }
 
