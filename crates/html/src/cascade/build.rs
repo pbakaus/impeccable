@@ -396,9 +396,13 @@ fn pseudo_decls(rule: &CssRule) -> IndexMap<String, String> {
 /// having been expanded into the sides) with no declared size to keep it
 /// small. Opposing offsets stretch a box only while its size is `auto` (or
 /// `100%`): a declared `width`, `height`, `inline-size`, or `block-size`
-/// wins over the far offset, and a `max-width` or `max-height` below the
-/// box (anything but `none`, `100%`, or the initial value) caps it, so such
-/// a pseudo is a decoration, not an overlay.
+/// wins over the far offset (a CSS-wide reset keyword does not: `initial`,
+/// `unset`, and `revert` compute to `auto`, no user-agent sheet sizing a
+/// pseudo, and `revert-layer` rolls back to a lower cascade layer, which
+/// this cascade flattens, so it is read as the same reset, a limit on the
+/// silent side), and a `max-width` or `max-height` below the box (anything
+/// but `none`, `100%`, or such a reset) caps it, so such a pseudo is a
+/// decoration, not an overlay.
 fn pseudo_covers_box(decls: &IndexMap<String, String>) -> bool {
     let get = |k: &str| decls.get(k).map(|s| js::to_lower_case(js::trim(s)));
     let pseudo_pos = get("position").unwrap_or_default();
@@ -410,15 +414,21 @@ fn pseudo_covers_box(decls: &IndexMap<String, String>) -> bool {
         return true;
     }
     let zero_len = |k: &str| get(k).is_some_and(|s| ZERO_LEN_RE.is_match(&s));
+    // The CSS-wide keywords reset a size to its initial value: `auto` for
+    // the four size properties, `none` for the maximums. A size so reset
+    // stretches as an undeclared one does. `revert-layer` is among them
+    // because the cascade flattens `@layer`, so a lower layer's size is not
+    // followed.
+    let reset = |v: &str| matches!(v, "initial" | "unset" | "revert" | "revert-layer");
     let lets_stretch = |keys: [&str; 2]| {
         keys.iter().all(|k| match get(k) {
             None => true,
-            Some(v) => v == "auto" || v == "100%",
+            Some(v) => v == "auto" || v == "100%" || reset(&v),
         })
     };
     let uncapped = |k: &str| match get(k) {
         None => true,
-        Some(v) => matches!(v.as_str(), "none" | "100%" | "initial" | "unset" | "revert"),
+        Some(v) => matches!(v.as_str(), "none" | "100%") || reset(&v),
     };
     SIDES.iter().all(|side| zero_len(side))
         && lets_stretch(["width", "inline-size"])

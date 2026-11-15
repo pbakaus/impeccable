@@ -280,9 +280,14 @@ pub fn attachment_depends_on_layout(attachment: &str) -> bool {
 
 /// Whether a `background-position` keeps the image inside its box: edge and
 /// center keywords and percentages from 0 to 100 align the image to the
-/// box, a zero length is an edge. Any other length (`0 200px`), a
-/// percentage outside that range, a `calc()`, or an unresolved `var()` can
-/// push the image out and expose what is under it.
+/// box, a zero length is an edge. A percentage is a share of the room the
+/// box has around the image (the positioning area less the image), so one
+/// measured from the far edge in the three- and four-value form is the
+/// same share from the other side: `right 25% top 0` is `75% 0`, and with
+/// the image sized to the box no percentage moves it at all. Any other
+/// length (`0 200px`, `right 200px top 0`), a percentage outside that
+/// range, a `calc()`, or an unresolved `var()` can push the image out and
+/// expose what is under it.
 fn position_stays_in_box(position: &str) -> bool {
     let position = position.trim().to_ascii_lowercase();
     size_components(&position).into_iter().all(|token| {
@@ -704,6 +709,11 @@ mod tests {
         assert!(!wash_fills_box("no-repeat", "auto", "calc(50% - 10px) 0", 16.0));
         assert!(!wash_fills_box("repeat-x", "auto", "0 200px", 16.0));
         assert!(wash_fills_box("repeat", "auto", "0 200px", 16.0));
+        // A far-edge percentage is the same share of the room from the
+        // other side; a far-edge length shifts the wash as any length does.
+        assert!(wash_fills_box("no-repeat", "100% 100%", "right 50% top 0", 16.0));
+        assert!(wash_fills_box("no-repeat", "auto", "left 10% bottom 10%", 16.0));
+        assert!(!wash_fills_box("no-repeat", "100% 100%", "right 200px top 0", 16.0));
         // A small patch, or one that tiles along one axis only, leaves
         // samples the wash does not reach.
         assert!(!wash_fills_box("no-repeat", "20px 20px", "", 16.0));
@@ -727,6 +737,16 @@ mod tests {
         assert!(!covers_at("no-repeat", "cover", "var(--pos)"));
         assert!(!covers_at("no-repeat", "cover", "150% 0"));
         assert!(!covers_at("no-repeat", "cover", "0 -20%"));
+        // An offset measured from the far edge: a percentage is the same
+        // share of the room from the other side (`right 25%` is `75%`), a
+        // length shifts the image as one from the near edge does.
+        assert!(covers_at("no-repeat", "100% 100%", "right 50% top 0"));
+        assert!(covers_at("no-repeat", "cover", "right 25% top 0"));
+        assert!(covers_at("no-repeat", "cover", "left 10% bottom 10%"));
+        assert!(covers_at("no-repeat", "cover", "right 0 bottom 0"));
+        assert!(!covers_at("no-repeat", "100% 100%", "right 200px top 0"));
+        assert!(!covers_at("no-repeat", "cover", "right 150% top 0"));
+        assert!(!covers_at("no-repeat", "cover", "right -10% top 0"));
         assert!(covers_at("repeat", "100% 100%", "0 200px"));
         assert!(!covers_at("repeat-x", "100% 100%", "0 200px"));
     }

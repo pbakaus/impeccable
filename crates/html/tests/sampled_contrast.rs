@@ -1206,6 +1206,26 @@ fn a_stretched_pseudo_that_paints_stops_the_walk() {
             ".hero::before { content: ''; position: absolute; inset: 0; background: var(--scrim); }",
             false,
         ),
+        // A size reset with a CSS-wide keyword is its initial value, `auto`:
+        // the pseudo stretches between its offsets as with no size at all.
+        (
+            ".hero::before { content: ''; position: absolute; inset: 0; width: initial; background: rgba(0, 0, 0, 0.6); }",
+            false,
+        ),
+        (
+            ".hero::before { content: ''; position: absolute; inset: 0; height: unset; max-height: revert-layer; background: rgba(0, 0, 0, 0.6); }",
+            false,
+        ),
+        (
+            ".hero::before { content: ''; position: absolute; inset: 0; inline-size: revert; block-size: initial; background: rgba(0, 0, 0, 0.6); }",
+            false,
+        ),
+        // An opaque fill with a reset size is the analytic path's pseudo
+        // surface, read through the same stretch check.
+        (
+            ".hero::before { content: ''; position: absolute; inset: 0; width: initial; background: #111; }",
+            false,
+        ),
         // Too faint to count, painting nothing, not stretched over the box,
         // or never rendered for want of `content`: the image is still the
         // ground.
