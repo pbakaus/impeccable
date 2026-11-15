@@ -30,6 +30,14 @@
     window.__IMPECCABLE_LIVE_INIT__ = false; // reset so the real load can init
     return;
   }
+  // The user just exited this helper's session: a reload in the next minute,
+  // before the agent removes the script tag (a carbonize edit reloads the
+  // page), must not bring Live back.
+  const EXITED_KEY = 'impeccable-live-exited';
+  try {
+    const [t, at] = (sessionStorage.getItem(EXITED_KEY) || '').split(' ');
+    if (t === TOKEN && Date.now() - Number(at) < 60_000) return;
+  } catch { /* storage blocked */ }
 
   //
   // Design tokens
@@ -2844,6 +2852,7 @@
       fontFamily: FONT, fontSize: '11px', color: BP.textDim,
       cursor: 'pointer', transition: 'color 0.12s ease, border-color 0.12s ease',
     });
+    touchTarget(discard);
     discard.textContent = '\u2715';
     discard.title = 'Discard all variants';
     discard.addEventListener('mouseenter', () => { discard.style.color = BP.text; discard.style.borderColor = BP.text; });
@@ -2944,6 +2953,12 @@
     return container;
   }
 
+  /** A finger needs 44px; a mouse keeps the compact bar. */
+  function touchTarget(b) {
+    if (touchPrimary()) Object.assign(b.style, { minWidth: '44px', minHeight: '44px' });
+    return b;
+  }
+
   function navBtn(text) {
     const b = el('button', {
       width: '26px', height: '26px', borderRadius: '5px',
@@ -2956,7 +2971,7 @@
     b.textContent = text;
     b.addEventListener('mouseenter', () => { b.style.borderColor = BP.text; });
     b.addEventListener('mouseleave', () => { b.style.borderColor = BP.hairline; });
-    return b;
+    return touchTarget(b);
   }
 
   function actionLabel() {
@@ -12359,12 +12374,18 @@ void main() {
       color: P.textDim, fontFamily: FONT, fontSize: '0', lineHeight: '0',
       cursor: 'pointer', transition: 'color 0.12s ease, background 0.12s ease',
     });
+    touchTarget(exitBtn);
     exitBtn.id = PREFIX + '-exit';
     exitBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>';
     exitBtn.title = 'Exit live mode';
     exitBtn.addEventListener('mouseenter', () => { exitBtn.style.color = 'oklch(58% 0.15 35)'; exitBtn.style.background = P.exitHover; });
     exitBtn.addEventListener('mouseleave', () => { exitBtn.style.color = P.textDim; exitBtn.style.background = 'transparent'; });
-    exitBtn.addEventListener('click', () => { sendEvent({ type: 'exit' }); teardown(); });
+    // source: 'user' keeps a reconnect (the reload a carbonize edit triggers) from cancelling it.
+    exitBtn.addEventListener('click', () => {
+      try { sessionStorage.setItem(EXITED_KEY, TOKEN + ' ' + Date.now()); } catch { /* storage blocked */ }
+      sendEvent({ type: 'exit', source: 'user' });
+      teardown();
+    });
     inner.appendChild(exitBtn);
 
     globalBarEl.addEventListener('pointerdown', () => {

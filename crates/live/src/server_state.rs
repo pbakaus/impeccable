@@ -410,11 +410,15 @@ impl ServerState {
             .map(|e| &e.event)
     }
 
-    /// JS: cancelQueuedAnonymousExitEvents()
+    /// Cancels the exit the all-tabs-closed timer queued, once a tab reconnects.
+    /// An exit the user sent from the bar (`source: "user"`) stays queued: a
+    /// reconnect after it is the page reloading, not the user coming back.
     pub fn cancel_queued_anonymous_exit_events(&mut self) -> usize {
         let before = self.pending_events.len();
         self.pending_events.retain(|entry| {
-            !(ev_str(&entry.event, "type") == Some("exit") && !truthy(entry.event.get("id")))
+            !(ev_str(&entry.event, "type") == Some("exit")
+                && !truthy(entry.event.get("id"))
+                && ev_str(&entry.event, "source") != Some("user"))
         });
         let removed = before - self.pending_events.len();
         if removed > 0 {
