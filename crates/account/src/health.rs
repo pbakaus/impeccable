@@ -365,13 +365,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             {
                 Some(format!("off because {reason}"))
             } else if !signed_in {
-                Some("off until you sign in with `impeccable login`".to_string())
+                Some("off until you sign in with `npx impeccable login`".to_string())
             } else {
                 None
             };
             match why_not {
                 None if crate::stale_grant::status(io, crate::oauth::HEALTH_SCOPE) => {
-                    io.out("Design health: on, but this sign-in can't save yet. Run impeccable login.\n")
+                    io.out("Design health: on, but this sign-in can't save yet. Run npx impeccable login.\n")
                 }
                 None => io.out(&format!(
                     "Design health: on. Each full `impeccable detect` of a git repo saves its counts to {}: findings by rule and opaque fingerprints, never code or file names.\n",
@@ -429,7 +429,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     1
                 }
                 Err(SessionError::NotSignedIn | SessionError::Expired) => {
-                    io.err("Sync is off. To delete what was saved, run `impeccable login` and then `impeccable health forget`.\n");
+                    io.err("Sync is off. To delete what was saved, run `npx impeccable login` and then `impeccable health forget`.\n");
                     1
                 }
                 Err(e) => {

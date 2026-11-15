@@ -212,7 +212,7 @@ fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
     fake.knobs.lock().unwrap().health_denied = true;
     let first = run(&env, &root, &["detect", "."]);
     let second = run(&env, &root, &["detect", "."]);
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.";
+    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
     assert!(String::from_utf8_lossy(&first.stderr).contains(hint));
     assert!(!String::from_utf8_lossy(&second.stderr).contains(hint));
     // A repo without a remote keeps a random id outside the work tree:
@@ -305,7 +305,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     assert!(String::from_utf8_lossy(&loud.stderr).contains(notice));
 
     fake.knobs.lock().unwrap().health_denied = true;
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.";
+    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(hint));
     let loud = run(&env, &root, &["detect", "."]);
@@ -1142,7 +1142,7 @@ fn design_notice_is_once_after_success_and_again_after_sign_in() {
 
 #[test]
 fn stale_design_and_foundations_grants_require_current_service_offering() {
-    let notice = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.";
+    let notice = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
     for feature in ["design", "foundations"] {
         let (fake, env) = signed_in(&format!("stale-{feature}"));
         let root = repo(&env, Some("https://github.com/acme/stale"));

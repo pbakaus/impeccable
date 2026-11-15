@@ -300,7 +300,7 @@ fn already_signed_in_inner(io: &mut Io, unless_stale: bool) -> Option<()> {
     match session::entitlement(&mut session) {
         Ok(e) => {
             pro::settle(&account, login, e.pro);
-            io.err(&format!("Already signed in to {name}. To sign in again: impeccable login --force\n"));
+            io.err(&format!("Already signed in to {name}. To sign in again: npx impeccable login --force\n"));
             report_entitlement(io, &Ok(e));
             Some(())
         }
@@ -429,11 +429,11 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Err(SessionError::NotSignedIn) => {
-            io.err("Not signed in. Run `impeccable login`.\n");
+            io.err("Not signed in. Run `npx impeccable login`.\n");
             1
         }
         Err(SessionError::Expired) => {
-            io.err("Your sign-in expired. Run `impeccable login`.\n");
+            io.err("Your sign-in expired. Run `npx impeccable login`.\n");
             1
         }
         Err(e) => {

@@ -182,7 +182,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
         Err(SessionError::NotSignedIn | SessionError::Expired) => {
-            io.err("Not signed in. Run impeccable login.\n");
+            io.err("Not signed in. Run npx impeccable login.\n");
             return 1;
         }
         Err(SessionError::Api(ApiError::Status { status: 404, .. })) => {

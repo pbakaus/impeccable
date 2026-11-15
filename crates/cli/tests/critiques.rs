@@ -154,8 +154,8 @@ fn gates_and_service_failures_preserve_the_saved_report() {
     .unwrap();
     // Every refusal keeps the report and says why in one line, with the fix.
     for (status, reason) in [
-        (401, "your sign-in expired; sign in again with impeccable login"),
-        (403, "this sign-in can't save critiques; sign in again with impeccable login"),
+        (401, "your sign-in expired; sign in again with npx impeccable login"),
+        (403, "this sign-in can't save critiques; sign in again with npx impeccable login"),
         (409, "it was made before you deleted your critique history"),
         (429, "you've reached the upload limit (10 a minute, 200 a day); the next critique after that will upload"),
         (404, "the account service had a problem (HTTP 404); the next critique will upload"),
@@ -702,7 +702,7 @@ fn signed_out_saves_suggest_signing_in_once_a_day_per_project() {
     let root = Path::new(&env["IMPECCABLE_HOME"]);
     std::fs::create_dir_all(root).unwrap();
     std::fs::write(root.join("report.md"), "# Report\nCrowded header.").unwrap();
-    let nudge = "Keep this critique's history: impeccable login";
+    let nudge = "Keep this critique's history: npx impeccable login";
     assert_eq!(said(&write(&env, root)), nudge);
     assert_eq!(said(&write(&env, root)), "");
     // Another project gets its own line the same day.
@@ -717,7 +717,7 @@ fn signed_out_saves_suggest_signing_in_once_a_day_per_project() {
     assert_eq!(fake.hits("/cli/v1/critiques"), 0);
 }
 
-const STALE_NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run impeccable login to turn it on.\n";
+const STALE_NOTICE: &str = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.\n";
 
 #[test]
 fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
@@ -770,7 +770,7 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
         .unwrap();
     assert!(!String::from_utf8_lossy(&hook.stderr).contains(STALE_NOTICE));
     // Once the service offers the scope, each save says why it wasn't saved.
-    let cant = "Not saved to Impeccable: this sign-in can't save critiques; sign in again with impeccable login";
+    let cant = "Not saved to Impeccable: this sign-in can't save critiques; sign in again with npx impeccable login";
     let out = write(&env, root);
     assert!(out.stderr.is_empty());
     assert_eq!(said(&out), cant);
@@ -782,11 +782,11 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
     for (args, expected) in [
         (
             vec!["critiques", "status"],
-            "Critique sync: on, but this sign-in can't save yet. Run impeccable login.\n",
+            "Critique sync: on, but this sign-in can't save yet. Run npx impeccable login.\n",
         ),
         (
             vec!["setup", "status"],
-            "Setup status: on, but this sign-in can't save yet. Run impeccable login.\n",
+            "Setup status: on, but this sign-in can't save yet. Run npx impeccable login.\n",
         ),
     ] {
         let out = impeccable(&env, root, &args).output().unwrap();
@@ -821,7 +821,7 @@ fn stale_sign_in_notice_is_shared_and_status_checks_current_offerings() {
         .unwrap();
     assert_eq!(
         String::from_utf8_lossy(&status.stdout),
-        "Design health: on, but this sign-in can't save yet. Run impeccable login.\n"
+        "Design health: on, but this sign-in can't save yet. Run npx impeccable login.\n"
     );
     login(&env);
     let before = fake.hits(metadata);
