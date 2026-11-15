@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch:
     inputs:
       skill_workflow:
@@ -74,6 +74,14 @@ jobs:
         # The workspace's floor (package.json devEngines); the published shim's is held by cli-shim-floor (#850).
         node-version: [22.18.0, 24]
     steps:
+      # Main is what users install (the plugin marketplace, submodules and copies read it), so it moves only at a
+      # release: work merges into `next`, and main takes `next` (or a `hotfix/` branch) when a release ships.
+      - name: Check the pull request's base
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref != 'next' && !startsWith(github.head_ref, 'hotfix/')
+        run: |
+          echo "::error title=Target next::Main moves only at a release. Retarget this pull request to next: gh pr edit ${{ github.event.pull_request.number }} --base next"
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
