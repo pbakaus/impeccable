@@ -46,7 +46,22 @@ export const hushed = () => hush;
  */
 let fences = 0;
 export const fenced = () => fences;
-export function fence() { fences += 1; }
+export function fence() {
+  fences += 1;
+  // Writes opened for a deed close with it: whatever stops the walk walking settles that deed (REN-2034).
+  if (walk) walk.writesOpen = false;
+}
+
+/**
+ * The write hold (REN-2034): while the walk drives, every write the tab sends fails, unless writes are open: by the
+ * server's `writes`, or by the person's Yes to a deed ({@link letWrite}). Paused or taken over, the person drives
+ * (control.js), and their own writes, a sign-in's included, go as the guard lets them.
+ */
+let personDrives = false;
+export function drivenByPerson(on) { personDrives = on; }
+const holding = (tab) => !personDrives && !tab.writesOpen;
+/** The person said Yes to a deed: its writes go out until the server closes them, or the walk stops walking. */
+export function letWrite() { if (walk) walk.writesOpen = true; }
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
 // `answered`: a pause during a question settles it, and the other end waits on that answer.
 const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered']);
@@ -180,6 +195,12 @@ export const lookOnly = () => Boolean(walk?.adopted && !stillHome(walk.url, walk
 export const send = (tabId, method, params) => chrome.debugger.sendCommand({ tabId }, method, params);
 const sendTo = (tabId) => (method, params) => send(tabId, method, params);
 
+/** The tab's requests are no longer held, before the debugger leaves it: past `cmd`, which refuses once the walk is ending. */
+async function unhook(tab) {
+  tab.writesOpen = false;
+  await send(tab.tabId, 'Fetch.disable').catch(() => undefined);
+}
+
 /** The walk lets go of the tab, whoever ended it. The debugger is already off, or never coming back. */
 async function letGo(tab, why) {
   hush = false;
@@ -196,6 +217,7 @@ export async function endWalk(told, why, { tidy = false } = {}) {
   if (walk !== tab) return;
   walk = null;
   await unsize(tab);
+  await unhook(tab);
   await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
   say(told);
   await letGo(tab, why);
@@ -486,7 +508,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, writable, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
-      }).then((became) => {
+      }, holding(tab)).then((became) => {
         // A request that never went out never finishes either: it is not something the network is busy with.
         if (became === 'continued' || !params.networkId || !tab.inflight.delete(params.networkId)) return;
         if (tab.inflight.size === 0) tab.quietSince = Date.now();
@@ -1128,6 +1150,12 @@ export const ops = {
     return { value: { active: tab.active, width: tab.width, height: tab.height, groupId: tab.groupId, window: { focused: win.focused, state: win.state, width: win.width, height: win.height } } };
   },
 
+  // Opens or closes the tab's writes (REN-2034): the server opens them only around a deed fixed code approved.
+  async writes({ open }) {
+    walk.writesOpen = open === true;
+    return {};
+  },
+
   // The debugger leaves; the tab stays as the walk left it.
   async close() {
     stopOpening();
@@ -1137,6 +1165,7 @@ export const ops = {
     walk = null;
     if (tab) {
       await unsize(tab);
+      await unhook(tab);
       await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
       await letGo(tab, 'closed');
       if (terminal !== null && !tab.adopted) await chrome.tabs.remove(tab.tabId).catch(() => undefined);

@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { endWalk, fail, fence, fenced, hold, hooks, letPast, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk } from './driver.js';
+import { drivenByPerson, endWalk, fail, fence, fenced, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -112,6 +112,8 @@ for (const [name, run] of Object.entries(ops)) {
   const acting = unseen(name, run);
   ops[name] = async (req) => {
     if (name === 'cdp' && req?.method === 'Page.stopScreencast') return acting(req);
+    // A close of the tab's writes is done whoever drives; an open waits for the walk to have the tab, as its deed does.
+    if (name === 'writes' && req?.open !== true) return acting(req);
     const ask = askOf(name, req);
     let agreed = ask === null;
     for (;;) {
@@ -123,7 +125,9 @@ for (const [name, run] of Object.entries(ops)) {
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');
           if (said !== 'yes' || at !== fenced()) throw overtaken();
-          // Looked at afresh before it is done: a sign-in that showed meanwhile still pauses it.
+          // The Yes opens the deed's writes (REN-2034) until the server closes them or the walk stops walking. Looked at
+          // afresh before it is done: a sign-in that showed meanwhile still pauses it, and closes them.
+          letWrite();
           agreed = true;
           continue;
         }
@@ -218,6 +222,8 @@ onView((view) => {
   walking = view.state === 'walking';
   // Taken over, or a question standing: the film takes nothing of it (the badge shows the question, badge.js `hidden`).
   personHas(view.state === 'takeover' || Boolean(view.ask));
+  // Paused or taken over, the person drives: the tab's writes are theirs, not held (driver.js `holding`).
+  drivenByPerson(view.state === 'paused' || view.state === 'takeover');
   // A question the walk no longer stands behind is over, unanswered.
   if (answering && !view.ask) settle('void');
   // Only the person's own take-over at a sign-in opens the sign-in pages to the tab: a page can fake a sign-in
