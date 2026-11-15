@@ -64,8 +64,9 @@ const SLUG = /^[a-z0-9-]{1,80}$/;
 /** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`, REN-2039). */
 const LISTED = /^(?:[a-z0-9-]{1,80}|default:[a-z]{1,20})$/;
 /** An app as the server lists it (`/apps`): its workspace, repository and app, and its name. */
-export const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
-const appOf = (p) => (['workspace', 'repo', 'app'].every((key) => APP_PART.test(p?.[key])) ? { workspace: p.workspace, repo: p.repo, app: p.app } : null);
+const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
+/** An app's three keys, or null: each must be a string, as a regex's test reads a missing one as "undefined". */
+export const appOf = (p) => (['workspace', 'repo', 'app'].every((key) => typeof p?.[key] === 'string' && APP_PART.test(p[key])) ? { workspace: p.workspace, repo: p.repo, app: p.app } : null);
 /**
  * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, app?, sees?, about?, face? }`
  * (`mine`: the person's own, by slug; `default`: one of the six; `app`: the app whose cast it is, as slugs repeat across
@@ -282,7 +283,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      * (`{ workspace, repo, app }`) instead.
      */
     async personas({ url, app } = {}) {
-      const one = app && ['workspace', 'repo', 'app'].every((key) => APP_PART.test(app[key]));
+      const one = appOf(app);
       const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
       const list = await read(issuer(), `/personas${query}`);
       const rows = Array.isArray(list?.personas) ? list.personas : null;
@@ -293,7 +294,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async apps() {
       const list = await read(issuer(), '/apps');
       const rows = Array.isArray(list?.apps) ? list.apps : null;
-      return rows?.filter((a) => ['workspace', 'repo', 'app'].every((key) => APP_PART.test(a?.[key]))).slice(0, 50)
+      return rows?.filter((a) => appOf(a)).slice(0, 50)
         .map((a) => ({ workspace: a.workspace, repo: a.repo, app: a.app, name: typeof a.name === 'string' && a.name ? a.name.slice(0, 80) : `${a.repo}/${a.app}` })) ?? null;
     },
 

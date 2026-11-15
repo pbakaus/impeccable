@@ -422,12 +422,15 @@ describe('account worker', () => {
     assert.equal(posted.length, sent, 'the server is not asked');
   });
 
-  it('starts a walk with one of the person’s own personas as `mine`, never `own`', async () => {
-    await loaded;
-    startServer(() => json(201, { handoff: HANDOFF }));
-    await ask({ account: 'walk', persona: { mine: 'night-nurse' }, task: 'Read the top story.', tabId: 7 }, fromPopup);
-    assert.deepEqual(posted.at(-1).body.persona, { mine: 'night-nurse' });
-  });
+  for (const [label, persona] of [['one of the person’s own personas as `mine`, never `own`', { mine: 'night-nurse' }], ['a default persona, which has no app (REN-2039)', { own: 'default:robert' }]]) {
+    it(`starts a walk with ${label}`, async () => {
+      await loaded;
+      startServer(() => json(201, { handoff: HANDOFF }));
+      const sent = posted.length;
+      await ask({ account: 'walk', persona, task: 'Read the top story.', tabId: 7 }, fromPopup);
+      assert.deepEqual(posted.slice(sent).map((p) => p.body.persona), [persona]);
+    });
+  }
 
   // REN-1890: the width picked goes to the server only where its /me says it takes one (`widths`); the walk runs at it either way.
   // REN-2038: likewise an app persona's app beside its slug (`ownApp`), as slugs repeat across apps.
