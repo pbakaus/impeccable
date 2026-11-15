@@ -74,6 +74,38 @@ pub fn ensure_dir_ignored(dir: &str, patterns: &[&str]) {
     let _ = std::fs::create_dir_all(dir).and_then(|_| std::fs::write(&file, next));
 }
 
+/// Undoes [`ensure_dir_ignored`] for `patterns` when a project opts in to
+/// committing that directory: removes only those lines (and the header when
+/// nothing else is left), keeps every line the user wrote, and deletes the
+/// file when it held only what the engine put there. Best effort.
+pub fn release_dir_ignored(dir: &str, patterns: &[&str]) {
+    let file = jsp::join(&[dir, ".gitignore"]);
+    let Ok(current) = std::fs::read_to_string(&file) else { return };
+    if !current.lines().next().is_some_and(|l| l.trim() == RUNTIME_IGNORE_HEADER) {
+        return; // not a file the engine wrote
+    }
+    let kept: Vec<&str> = current
+        .lines()
+        .skip(1)
+        .filter(|l| !patterns.contains(&l.trim()))
+        .collect();
+    if kept.iter().all(|l| l.trim().is_empty()) {
+        let _ = std::fs::remove_file(&file);
+    } else if kept.len() + 1 != current.lines().count() {
+        let _ = std::fs::write(&file, format!("{RUNTIME_IGNORE_HEADER}\n{}\n", kept.join("\n")));
+    }
+}
+
+
+/// The comps (`.impeccable/mocks/`) and captures (`.impeccable/review/`) of
+/// a design round are runtime output the agent writes with its own tools, so
+/// every engine verb that precedes those writes makes both ignore themselves.
+pub fn ignore_runtime_output(root: &str) {
+    for dir in [".impeccable/mocks", ".impeccable/review"] {
+        ensure_dir_ignored(&jsp::join(&[root, dir]), &["*"]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -158,6 +190,18 @@ mod tests {
         std::fs::write(&file, "mine.txt").unwrap();
         ensure_dir_ignored(&d, &["state.json"]);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "mine.txt\nstate.json\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ignore_runtime_output_covers_mocks_and_review() {
+        let dir = std::env::temp_dir().join(format!("impeccable-runtime-ignore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        ignore_runtime_output(&dir.to_string_lossy());
+        for runtime in ["mocks", "review"] {
+            let file = dir.join(".impeccable").join(runtime).join(".gitignore");
+            assert_eq!(std::fs::read_to_string(file).unwrap(), format!("{}\n*\n", RUNTIME_IGNORE_HEADER));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

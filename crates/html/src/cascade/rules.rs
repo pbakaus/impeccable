@@ -98,11 +98,15 @@ pub struct DeclMeta {
 }
 
 /// A winning declaration in the specified store: `{ ...meta, prop, value }`.
+/// `shorthand_reset` marks the `backgroundColor: transparent` a `background`
+/// shorthand with an image and no color implies (issue #964), so the hover
+/// pass can tell it from an explicit `background-color: transparent`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecifiedDecl {
     pub meta: DeclMeta,
     pub prop: String,
     pub value: String,
+    pub shorthand_reset: bool,
 }
 
 /// JS: css-cascade.mjs#compareStaticPriority(a, b)
@@ -409,18 +413,30 @@ pub fn apply_static_declaration<K: Hash + Eq>(
     meta: &DeclMeta,
 ) {
     let map = specified.map.entry(node).or_default();
-    let mut expanded = expand_static_declaration(prop, value);
-    expanded.extend(expand_border_radius_corners(prop, value));
-    expanded.extend(internal_border_style_expansion(prop, value));
-    expanded.extend(extra_specified_expansions(prop, value));
-    expanded.extend(background_longhands(prop, value));
-    for (expanded_prop, expanded_value) in expanded {
+    let mut expanded: Vec<(String, String, bool)> = expand_static_declaration(prop, value)
+        .into_iter()
+        .chain(expand_border_radius_corners(prop, value))
+        .chain(internal_border_style_expansion(prop, value))
+        .chain(extra_specified_expansions(prop, value))
+        .map(|(p, v)| (p, v, false))
+        .collect();
+    expanded.extend(super::shorthand::expand_background_color_reset(prop, value));
+    // The sampled path's background longhands (#560) come after the reset:
+    // a literal color they read beside the image names the slot, so it is
+    // not a reset the shorthand implies, and a later entry wins the key.
+    expanded.extend(
+        background_longhands(prop, value)
+            .into_iter()
+            .map(|(p, v)| (p, v, false)),
+    );
+    for (expanded_prop, expanded_value, shorthand_reset) in expanded {
         let existing = map.get(&expanded_prop).map(|d| &d.meta);
         if compare_static_priority(existing, meta) {
             let next = SpecifiedDecl {
                 meta: meta.clone(),
                 prop: expanded_prop.clone(),
                 value: expanded_value,
+                shorthand_reset,
             };
             map.insert(expanded_prop, next);
         }

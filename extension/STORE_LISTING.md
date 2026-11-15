@@ -13,7 +13,7 @@ Detect AI slop and design anti-patterns in any web page. Open DevTools and see w
 
 ## Detailed description
 
-Impeccable detects 61 common UI anti-patterns directly in your browser. Open the Impeccable panel in DevTools on any page and overlays highlight issues, from AI-generated design tells to accessibility and quality problems.
+Impeccable detects 62 common UI anti-patterns directly in your browser. Open the Impeccable panel in DevTools on any page and overlays highlight issues, from AI-generated design tells to accessibility and quality problems.
 
 WHAT IT DETECTS
 
@@ -61,7 +61,7 @@ FEATURES
 - Works on any website, including pages with a strict Content Security Policy
 - Runs 100% locally, no data sent anywhere
 
-The same 61 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
+The same 62 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
 
 Open source at https://github.com/pbakaus/impeccable
 

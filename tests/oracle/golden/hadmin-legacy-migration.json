@@ -1,7 +1,7 @@
 {
   "steps": [
     {
-      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n  wiring .claude: not wired (missing or stale entries)\n  wiring .agents: not wired (missing or stale entries)\n  wiring .cursor: not wired (missing or stale entries)\n  wiring .github: not wired (missing or stale entries)\n  wiring .grok: not wired (missing or stale entries)\n  wiring .gemini: not wired (missing or stale entries)\nenabled in config, not wired in any harness; repair with: impeccable hooks on\n",
       "stderr": "",
       "exit": 0,
       "signal": null
@@ -13,7 +13,7 @@
       "signal": null
     },
     {
-      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule, side-tab\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json (not present)\n  ignoreRules:  legacy-rule, side-tab\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n  wiring .claude: not wired (missing or stale entries)\n  wiring .agents: not wired (missing or stale entries)\n  wiring .cursor: not wired (missing or stale entries)\n  wiring .github: not wired (missing or stale entries)\n  wiring .grok: not wired (missing or stale entries)\n  wiring .gemini: not wired (missing or stale entries)\nenabled in config, not wired in any harness; repair with: impeccable hooks on\n",
       "stderr": "",
       "exit": 0,
       "signal": null

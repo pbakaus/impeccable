@@ -1,0 +1,7 @@
+{
+  "stdout": "{\n  \"projectRoot\": \"<WS>\",\n  \"repoRoot\": \"<WS>\",\n  \"isMonorepo\": false,\n  \"productPath\": \"PRODUCT.md\",\n  \"designPath\": null,\n  \"platform\": \"web\",\n  \"ruleRegistryAvailable\": true,\n  \"findings\": [\n    {\n      \"id\": \"spent-build-artifacts\",\n      \"artifact\": \"build output\",\n      \"path\": \".impeccable/mocks\",\n      \"severity\": \"mention\",\n      \"summary\": \"The last build shipped and left 1 rejected comp, gate diff, or capture file(s) that nothing reads any more: `.impeccable/mocks/comp-2.png`.\",\n      \"fix\": \"Delete those files to reclaim the space; the next gate run recaptures what it needs. Leave the rest of both directories: a re-ship reads the approved comp, its sidecar, `review/hero.json`, and `review/native/` (`build-phase restore-comp` recovers a lost approved comp). Doctor never deletes files.\"\n    }\n  ],\n  \"workspaces\": []\n}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

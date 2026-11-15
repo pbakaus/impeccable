@@ -45,6 +45,18 @@ describe('createTransformer factory', () => {
     expect(parsed.body).toBe('Body.');
   });
 
+  test('descriptionKey swaps in a provider description, falling back to the shared one', () => {
+    const transform = createTransformer({ ...baseConfig, descriptionKey: 'claudeCodeDescription' });
+    transform([
+      { name: 'own', description: 'Shared text', claudeCodeDescription: 'Short text', body: 'Body.' },
+      { name: 'shared', description: 'Shared text', claudeCodeDescription: '', body: 'Body.' },
+    ], TEST_DIR);
+    const read = (n) => parseFrontmatter(fs.readFileSync(path.join(TEST_DIR, `cursor/.test/skills/${n}/SKILL.md`), 'utf-8')).frontmatter;
+    expect(read('own').description).toBe('Short text');
+    expect(read('shared').description).toBe('Shared text');
+    expect(read('own')).not.toHaveProperty('claude-code-description');
+  });
+
   test('should only emit allowlisted fields', () => {
     const config = { ...baseConfig, frontmatterFields: ['license'] };
     const transform = createTransformer(config);

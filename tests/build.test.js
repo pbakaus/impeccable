@@ -255,6 +255,37 @@ Do not redesign the approved crop.`;
     expect(cursorAgent).not.toContain('maxTurns:');
   });
 
+  test('integration: subagents keep every tool unless a harness can deny some (#1328)', () => {
+    // A `tools` allowlist cuts a subagent off from MCP tools. Writers declare
+    // nothing and inherit everything; a reviewer denies writes where the
+    // harness documents a denylist (Claude Code) and inherits elsewhere.
+    fs.mkdirSync(path.join(TEST_DIR, 'skill/agents'), { recursive: true });
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/SKILL.src.md'), '---\nname: test-skill\ndescription: A test skill\n---\n\nBody.');
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/agents/reviewer.md'), '---\nname: reviewer\ndescription: Reviews a build\ndisallowed-tools: Write, Edit, NotebookEdit\nmodel: inherit\n---\n\nReview only.');
+    fs.writeFileSync(path.join(TEST_DIR, 'skill/agents/writer.md'), '---\nname: writer\ndescription: Writes assets\nmodel: inherit\n---\n\nWrite assets.');
+
+    const DIST_DIR = path.join(TEST_DIR, 'dist');
+    const { skills } = utils.readSourceFiles(TEST_DIR);
+    const patterns = utils.readPatterns(TEST_DIR);
+    transformers.transformClaudeCode(skills, DIST_DIR, patterns);
+    transformers.transformGrok(skills, DIST_DIR, patterns);
+    transformers.transformCursor(skills, DIST_DIR, patterns);
+
+    const read = (rel) => fs.readFileSync(path.join(DIST_DIR, rel), 'utf-8');
+    const claudeReviewer = read('claude-code/.claude/agents/reviewer.md');
+    expect(claudeReviewer).toContain('disallowedTools: Write, Edit, NotebookEdit');
+    expect(claudeReviewer).not.toContain('tools: ');
+    expect(read('claude-code/.claude/agents/writer.md')).not.toMatch(/^(tools|disallowedTools):/m);
+
+    // Grok documents no frontmatter denylist, so its reviewer inherits all tools.
+    const grokReviewer = read('grok/.grok/agents/reviewer.md');
+    expect(grokReviewer).not.toMatch(/^(tools|disallowedTools):/m);
+
+    // Cursor enforces read-only itself; the denylist still marks the reviewer.
+    expect(read('cursor/.cursor/agents/reviewer.md')).toContain('readonly: true');
+    expect(read('cursor/.cursor/agents/writer.md')).not.toContain('readonly:');
+  });
+
   test('integration: verify transformations are correct', () => {
     const skillContent = `---
 name: audit
@@ -471,6 +502,7 @@ describe('degraded-mode fallback reference generation', () => {
       'documenter.md',
       'finish-reviewer.md',
       'manual-edit-applier.md',
+      'motion-reviewer.md',
     ]);
   });
 
@@ -548,6 +580,7 @@ describe('GitHub Copilot custom agent generation', () => {
       'impeccable-documenter.agent.md',
       'impeccable-finish-reviewer.agent.md',
       'impeccable-manual-edit-applier.agent.md',
+      'impeccable-motion-reviewer.agent.md',
     ]);
   });
 
@@ -591,6 +624,7 @@ describe('GitHub Copilot custom agent generation', () => {
       'documenter.md',
       'finish-reviewer.md',
       'manual-edit-applier.md',
+      'motion-reviewer.md',
     ]);
   });
 });
@@ -619,6 +653,7 @@ describe('Cursor subagent generation', () => {
       'impeccable-documenter.md',
       'impeccable-finish-reviewer.md',
       'impeccable-manual-edit-applier.md',
+      'impeccable-motion-reviewer.md',
     ]);
   });
 
@@ -635,9 +670,8 @@ describe('Cursor subagent generation', () => {
       expect(frontmatter).not.toContain('tools:');
       expect(frontmatter).not.toContain('effort:');
       expect(frontmatter).not.toContain('maxTurns:');
-      // The finish reviewer is the only role whose tool list has no Write or
-      // Edit; it reviews, the other three write.
-      if (name === 'impeccable-finish-reviewer.md') {
+      // Both reviewers omit Write and Edit; production roles can write.
+      if (name === 'impeccable-finish-reviewer.md' || name === 'impeccable-motion-reviewer.md') {
         expect(frontmatter).toContain('readonly: true');
       } else {
         expect(frontmatter).not.toContain('readonly:');

@@ -184,18 +184,21 @@ pub fn cursor_hook_manifest(command: &str, timeout_seconds: i64) -> serde_json::
 /// post-edit hook. The gate verb keeps working, so this is a migration, not
 /// a broken hook.
 pub fn cursor_manifest_has_retired_gate(manifest: &serde_json::Value) -> bool {
-    fn any_marker(v: &serde_json::Value) -> bool {
-        match v {
-            serde_json::Value::String(s) => is_impeccable_hook_command(s),
-            serde_json::Value::Array(a) => a.iter().any(any_marker),
-            serde_json::Value::Object(o) => o.values().any(any_marker),
-            _ => false,
-        }
-    }
     manifest
         .get("hooks")
         .and_then(|h| h.get(CURSOR_RETIRED_HOOK_EVENT))
-        .is_some_and(any_marker)
+        .is_some_and(value_has_impeccable_hook_marker)
+}
+
+/// True when any string under `v` is an Impeccable hook command of either
+/// era and any verb.
+pub fn value_has_impeccable_hook_marker(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::String(s) => is_impeccable_hook_command(s),
+        serde_json::Value::Array(a) => a.iter().any(value_has_impeccable_hook_marker),
+        serde_json::Value::Object(o) => o.values().any(value_has_impeccable_hook_marker),
+        _ => false,
+    }
 }
 
 /// Moves a Cursor manifest's launcher-form `preToolUse` gate entry to the

@@ -13,7 +13,7 @@
       "signal": null
     },
     {
-      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n",
+      "stdout": "Impeccable design hook\n  state:        enabled\n  shared file:  .impeccable/config.json\n  local file:   .impeccable/config.local.json\n  ignoreRules:  (none)\n  ignoreFiles:  (none)\n  ignoreValues: (none)\n  maxFindings:  5\n  maxChars:     8000\n  env override: unset\n  cache file:   .impeccable/hook.cache.json (not present)\n  wiring .claude: wired\n  wiring .agents: not wired (missing or stale entries)\n  wiring .cursor: wired\n  wiring .github: not wired (missing or stale entries)\n  wiring .grok: not wired (missing or stale entries)\n  wiring .gemini: not wired (missing or stale entries)\n",
       "stderr": "",
       "exit": 0,
       "signal": null

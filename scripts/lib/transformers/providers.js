@@ -8,6 +8,8 @@
  * - providerTags: markdown block tags kept for this target (e.g. <codex>...</codex>)
  * - frontmatterFields: which optional fields to emit beyond name + description
  * - bodyTransform: optional function (body, skill) => transformed body
+ * - descriptionKey: optional skill property used as the frontmatter description
+ *   instead of the shared one (falls back to it when empty)
  */
 export const PROVIDERS = {
   cursor: {
@@ -29,6 +31,10 @@ export const PROVIDERS = {
     providerTags: ['claude-code', 'claude'],
     configDir: '.claude',
     displayName: 'Claude Code',
+    // Claude Code caps its skill listing (1% of the context window in characters) and lists
+    // a skill that doesn't fit as its bare name, so it gets the short description
+    // (SKILL.src.md `claude-code-description`; tests/skill-behavior/README.md).
+    descriptionKey: 'claudeCodeDescription',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
     // allowed-tools omitted: Claude Code blocks skill activation in non-interactive
     // sessions when the field is present (issue #736). Other providers keep it.

@@ -123,13 +123,18 @@ function buildCodexAgent(agent, body) {
   return `${lines.join('\n')}\n`;
 }
 
-function buildClaudeAgent(agent, body) {
+// Leaving `tools` out grants every tool, MCP servers included; an allowlist
+// shuts MCP out (#1328). Only Claude Code documents a `disallowedTools`
+// denylist. Grok reads the same format but documents none, so there a role
+// inherits everything rather than trusting a key Grok may ignore.
+function buildClaudeAgent(agent, body, config = {}) {
   const frontmatter = {
     name: agent.claudeName || agent.name,
     description: agent.description,
   };
 
   if (agent.tools) frontmatter.tools = agent.tools;
+  if (agent.disallowedTools && config.provider === 'claude-code') frontmatter.disallowedTools = agent.disallowedTools;
   if (agent.model) frontmatter.model = agent.model;
   if (agent.effort) frontmatter.effort = agent.effort;
   if (agent.maxTurns) frontmatter.maxTurns = agent.maxTurns;
@@ -157,8 +162,8 @@ function buildCopilotAgent(agent, body) {
 // scope: `.cursor/agents/`; user scope: `~/.cursor/agents/`). Fields: name,
 // description (drives auto-delegation), model (`inherit` maps directly to our
 // value), readonly, is_background. `readonly` is derived from the agent's own
-// tool list: a role that declares tools but neither Write nor Edit is a
-// reader, and Cursor can enforce that. effort/max-turns are skipped: Cursor's
+// tool lists: a role that denies Write and Edit, or declares tools without
+// them, is a reader, and Cursor can enforce that. effort/max-turns are skipped: Cursor's
 // effort option requires an explicit model id, incompatible with `inherit`.
 function buildCursorAgent(agent, body) {
   const frontmatter = {
@@ -167,8 +172,11 @@ function buildCursorAgent(agent, body) {
     model: agent.model || 'inherit',
   };
 
-  const tools = String(agent.tools || '').split(',').map(t => t.trim()).filter(Boolean);
-  if (tools.length > 0 && !tools.includes('Write') && !tools.includes('Edit')) {
+  const list = (value) => String(value || '').split(',').map(t => t.trim()).filter(Boolean);
+  const tools = list(agent.tools);
+  const denied = list(agent.disallowedTools);
+  const deniesWrites = denied.includes('Write') && denied.includes('Edit');
+  if (deniesWrites || (tools.length > 0 && !tools.includes('Write') && !tools.includes('Edit'))) {
     frontmatter.readonly = true;
   }
   // The parent thread waits on each role's return; none of these run detached.
@@ -207,7 +215,7 @@ function buildAgentFile(config, agent, body) {
   if (config.agentFormat === 'claude-md') {
     return {
       filename: `${agent.claudeName || agent.name}.md`,
-      content: buildClaudeAgent(agent, body),
+      content: buildClaudeAgent(agent, body, config),
     };
   }
 
@@ -242,6 +250,7 @@ export function createTransformer(config) {
     frontmatterFields = [],
     bodyTransform,
     placeholderProvider,
+    descriptionKey,
     providerTags = [provider],
     writeOpenAIMetadata = false,
     includeVersion = true,
@@ -277,7 +286,7 @@ export function createTransformer(config) {
       // Build frontmatter
       const frontmatterObj = {
         name: skillName,
-        description: skill.description,
+        description: (descriptionKey && skill[descriptionKey]) || skill.description,
       };
       if (skillsVersion && includeVersion && !versionInMetadata) {
         frontmatterObj.version = skillsVersion;

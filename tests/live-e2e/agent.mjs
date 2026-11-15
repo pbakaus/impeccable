@@ -1599,22 +1599,28 @@ function renderHoistedInlineStyleRule({ variantId, hoistId, declarations, styleM
  *   - non-default visible variants use style={{display: 'none'}}
  *   - inner element class= becomes className=, style="..." becomes JSX style={{ ... }}
  *   - data-impeccable-params stays a single-quoted JSON string (JSX-legal)
+ * The style element's open and close tags come from the engine's
+ * cssAuthoring (styleTag with SESSION_ID filled in, styleClose), like a real
+ * agent reads them; without cssAuthoring they fall back to a plain <style>.
  */
-function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, styleMode }) {
+function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, cssAuthoring }) {
   const isJsx = commentSyntax.open === '{/*';
   const isSvelte = !!file && file.endsWith('.svelte');
-  const isAstroGlobalCss = styleMode === 'astro-global-prefixed';
+  const styleOpen = cssAuthoring?.styleTag
+    ? cssAuthoring.styleTag.replace('SESSION_ID', sessionId)
+    : '<style data-impeccable-css="' + sessionId + '">';
+  const styleClose = cssAuthoring?.styleClose || '</style>';
 
   const styleLines = isJsx
     ? [
-        indent + '  <style data-impeccable-css="' + sessionId + '">{`',
+        indent + '  ' + styleOpen + '{`',
         ...output.scopedCss.split('\n').map((l) => indent + '    ' + l),
-        indent + '  `}</style>',
+        indent + '  `}' + styleClose,
       ]
     : [
-        indent + '  <style' + (isAstroGlobalCss ? ' is:inline' : '') + ' data-impeccable-css="' + sessionId + '">',
+        indent + '  ' + styleOpen,
         ...output.scopedCss.split('\n').map((l) => indent + '    ' + l),
-        indent + '  </style>',
+        indent + '  ' + styleClose,
       ];
 
   const variantBlocks = output.variants.map((v, i) => {
@@ -1642,7 +1648,7 @@ function renderVariantsBlock({ sessionId, indent, output, commentSyntax, file, s
  * both against a whole file (wrapper already in source) and against a
  * standalone wrapper block (deferred source write, agent writes it now).
  */
-function spliceVariantsIntoLines(lines, { sessionId, output, commentSyntax, file, styleMode }) {
+function spliceVariantsIntoLines(lines, { sessionId, output, commentSyntax, file, cssAuthoring }) {
   // Find the "Variants: insert below this line" comment line — definitive
   // marker, robust to any indentation off-by-one. Matches in any comment
   // style (HTML / JSX / Astro).
@@ -1665,7 +1671,7 @@ function spliceVariantsIntoLines(lines, { sessionId, output, commentSyntax, file
     output,
     commentSyntax,
     file,
-    styleMode,
+    cssAuthoring,
   });
 
   const endMarkerIdx = lines.findIndex((line, index) =>
@@ -1699,7 +1705,7 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
     output,
     commentSyntax: wrapInfo.commentSyntax,
     file: wrapInfo.file,
-    styleMode: wrapInfo.styleMode,
+    cssAuthoring: wrapInfo.cssAuthoring,
   });
   await fs.writeFile(filePath, next.join('\n'), 'utf-8');
 }
@@ -1721,7 +1727,7 @@ async function writeDeferredWrapperWithVariants({ tmp, wrapInfo, sessionId, outp
     output,
     commentSyntax: wrapInfo.commentSyntax,
     file: wrapInfo.file,
-    styleMode: wrapInfo.styleMode,
+    cssAuthoring: wrapInfo.cssAuthoring,
   });
   const startIdx = wrapInfo.replaceStartLine - 1;
   const endIdx = wrapInfo.replaceEndLine - 1; // may be startIdx-1 for insertion

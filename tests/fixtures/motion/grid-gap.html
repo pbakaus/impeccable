@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Unchanged grid gap motion</title>
+<style>
+body { margin: 40px; } #region { width: 500px; height: 400px; }
+#grid { display: grid; grid-template-columns: 100px 100px; width: 400px; height: 100px; gap: 0; }
+#first, #second { background: #eedcc5; }
+</style><button id="go">Run motion</button><div id="region"><div id="grid"><div id="first">First</div><div id="second">Second</div></div></div>
+<script>go.onclick = () => grid.animate([{gap:'0px'}, {gap:'60px'}], {duration:600, fill:'both'});</script>

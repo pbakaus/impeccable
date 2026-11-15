@@ -230,18 +230,19 @@ describe('hook manifest builders', () => {
       const handler = manifest.hooks[event][0].hooks[0];
       assert.equal(handler.command, `[ ! -f "${launcher}" ] || sh "${launcher}" hook`, `${event} command`);
       assert.equal(handler.windows, windowsForm, `${event} windows`);
+      const codexWindows = 'cmd /c if exist "${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" '
+        + '"${CLAUDE_PLUGIN_ROOT}\\skills\\impeccable\\scripts\\impeccable.cmd" hook';
+      assert.equal(handler.commandWindows, codexWindows, `${event} commandWindows`);
       assert.deepEqual(handler.env, { IMPECCABLE_HOOK_HARNESS: 'vscode' }, `${event} env`);
     }
   });
 
-  it('emits commandWindows only for Codex-shaped manifests', () => {
-    // Codex reads a `commandWindows` sibling; Claude, Cursor, Grok, and Copilot
-    // have no per-platform field, and an unknown key is a risk under a strict
-    // parser, so it stays off everywhere else.
-    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest()];
+  it('emits commandWindows for Codex and the shared Claude plugin manifest', () => {
+    // Codex reads `commandWindows` from both its own manifests and the shared
+    // Claude plugin manifest. Other provider-specific manifests stay unchanged.
+    const withWindows = [buildCodexHooksManifest(), buildCodexPluginHooksManifest(), buildClaudePluginHooksManifest()];
     const without = [
       buildClaudeSettingsManifest(),
-      buildClaudePluginHooksManifest(),
       buildCursorHooksManifest(),
       buildGitHubHooksManifest(),
       buildGrokHooksManifest(),

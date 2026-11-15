@@ -38,6 +38,30 @@ pub const ALLOWED_EXTS: &[&str] = &[
     ".less", ".ts", ".js",
 ];
 
+/// Plain scripts: mostly not UI (a server, a CLI, a config file), so the hook
+/// scans them only in a project that uses Impeccable (#1237). Markup, style
+/// and component files are UI wherever they are.
+pub const PLAIN_SCRIPT_EXTS: &[&str] = &[".ts", ".js"];
+
+/// Whether `root` uses Impeccable: a PRODUCT.md or DESIGN.md where context
+/// resolution looks (the root, `.agents/context`, `docs`), or an `.impeccable`
+/// folder. A few stats, paid only for a plain script.
+pub fn uses_impeccable(root: &str) -> bool {
+    use impeccable_context::context::{DESIGN_NAMES, FALLBACK_DIRS, PRODUCT_NAMES};
+    if exists(&jsp::join(&[root, ".impeccable"])) {
+        return true;
+    }
+    std::iter::once(root.to_string())
+        .chain(FALLBACK_DIRS.iter().map(|d| jsp::join(&[root, d])))
+        .any(|dir| PRODUCT_NAMES.iter().chain(DESIGN_NAMES.iter()).any(|name| exists(&jsp::join(&[&dir, name]))))
+}
+
+/// False for a plain script (not claimed by a configured extension) in a
+/// project that does not use Impeccable.
+pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str) -> bool {
+    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root)
+}
+
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
 ];
@@ -68,19 +92,13 @@ re!(
     .join("|")
 );
 
-// JS: GENERATED_PATH (case-insensitive).
-re!(
-    GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
-);
 
 pub fn is_sensitive_path(p: &str) -> bool {
     SENSITIVE_PATH_RE.is_match(p)
 }
 
-pub fn is_generated_path(p: &str) -> bool {
-    GENERATED_PATH_RE.is_match(p)
-}
+/// Lives in `impeccable-detect` so `detect --changed` skips the same paths.
+pub use impeccable_detect::file_system::is_generated_path;
 
 /// JS: truthy(value) — `/^(1|true|yes|on)$/i` on a string (no trim).
 pub fn truthy(value: Option<&str>) -> bool {
@@ -213,6 +231,7 @@ pub fn get_pending_path(cwd: &str) -> String {
 /// `lib/provider.mjs`: the process cwd, the environment, the command names
 /// printed in messages, and the detector engines.
 pub struct Runtime<'a> {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub proc_cwd: String,
     pub env: HashMap<String, String>,
     /// `IMPECCABLE_COMMAND` (`/impeccable` or `$impeccable`).
@@ -239,6 +258,7 @@ impl<'a> Runtime<'a> {
         let win32 = cfg!(windows);
         let self_command = self_command_spelling(self_cmd, win32);
         Runtime {
+            rule_pack: None,
             proc_cwd,
             env,
             impeccable_command,
@@ -300,7 +320,7 @@ pub fn resolve_project_cwd(
 }
 
 /// JS: looksLikeProjectRoot(dir)
-fn looks_like_project_root(dir: &str) -> bool {
+pub fn looks_like_project_root(dir: &str) -> bool {
     [".git", "package.json", ".impeccable"]
         .iter()
         .any(|m| exists(&jsp::join(&[dir, m])))
@@ -1305,13 +1325,13 @@ fn format_deduped_finding_line(rt: &Runtime, f: &Finding, seen_rules: &mut Vec<S
 /// JS: directiveFooter({ mode })
 pub fn directive_footer(rt: &Runtime, short: bool) -> String {
     if short {
-        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, ask in one line.".to_string();
+        return "Triage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, leave it with a reason.".to_string();
     }
     [
         "Triage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:".to_string(),
         "- Real design problem: fix it. Keep intentional design as designed.".to_string(),
         format!("- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `{} ignore-value <rule> \"<value>\" --reason \"<who decided: evidence>\"` with the pair shown on the finding line, or value \"*\" plus `--file <path>` when the line shows none. Write \"user confirmed\" in a reason only when the user did.", rt.hook_admin_command),
-        "- Unsure: leave it as is and ask the user in one line.".to_string(),
+        "- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.".to_string(),
         format!("Self-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: {} hooks.", rt.impeccable_command),
     ]
     .join("\n")
@@ -1626,6 +1646,7 @@ pub fn should_emit_ack_for_file(file_path: &str, config: &HookConfig) -> bool {
 /// The detector option object the hook builds (`{ designSystem? }`).
 #[derive(Default, Clone)]
 pub struct HookScanOptions {
+    pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
     pub design_system: Option<Rc<DesignSystem>>,
     /// `ScanOptions::ignored_linked_stylesheet`, from the hook's
     /// `detector.ignoreFiles`.
@@ -1645,7 +1666,7 @@ impl HookScanOptions {
             design_system: self.design_system.clone(),
             viewport: None,
             profile: None,
-            rule_pack: None,
+            rule_pack: self.rule_pack,
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
@@ -1681,7 +1702,7 @@ pub fn design_system_options_for_file(
         Some(Rc::new(move |path: &str| is_ignored_file(&proc_cwd, path, &cwd, &globs)))
     };
     if !config.design_system_enabled {
-        return HookScanOptions { ignored_linked_stylesheet, ..HookScanOptions::default() };
+        return HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..HookScanOptions::default() };
     }
     let project = impeccable_context::context::resolve_project(
         project_cwd,
@@ -1697,7 +1718,7 @@ pub fn design_system_options_for_file(
     } else {
         &project.repo_root
     };
-    HookScanOptions { ignored_linked_stylesheet, ..design_system_options(config, root) }
+    HookScanOptions { rule_pack: rt.rule_pack, ignored_linked_stylesheet, ..design_system_options(config, root) }
 }
 
 /// The detector the hook drives: the regex engine from `impeccable-detect`
@@ -1711,7 +1732,7 @@ pub fn detector_detect_text(
         profile: None,
         design_system: scan.design_system.as_deref(),
         inline_ignores: true,
-        rule_pack: None,
+        rule_pack: scan.rule_pack,
         tokens: None,
     };
     detect_text(content, file_path, &opts)

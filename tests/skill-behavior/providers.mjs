@@ -9,15 +9,19 @@
  * @ai-sdk/google for the same reason — uniform tool-use semantics across all
  * three keeps the harness tiny.
  *
- * .env is loaded from the repo root (copied from impeccable-evals). Tests
- * skip cleanly when the matching key is unset rather than failing CI.
+ * Provider keys come from the environment (CI) or the shared dev keys file,
+ * ~/.config/impeccable/dev.env (see tests/lib/dev-keys.mjs), and are passed
+ * to each SDK explicitly, so they never enter process.env. Repo-root .env
+ * still supplies non-key settings. Tests skip cleanly when the matching key
+ * is unset rather than failing CI.
  */
-import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
-import { google } from '@ai-sdk/google';
-import { openai } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { devKey, PROVIDER_KEY_NAME } from '../lib/dev-keys.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -32,6 +36,8 @@ function loadEnv() {
     const eq = trimmed.indexOf('=');
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
+    // Provider keys live in the dev keys file, never in process.env.
+    if (PROVIDER_KEY_NAME.test(key)) continue;
     let value = trimmed.slice(eq + 1).trim();
     if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
     if (value.startsWith("'") && value.endsWith("'")) value = value.slice(1, -1);
@@ -58,28 +64,24 @@ export function detectProvider(modelId) {
 export function hasKey(provider) {
   const meta = PROVIDERS[provider];
   if (!meta) return false;
-  return Boolean(process.env[meta.envKey]);
+  return Boolean(devKey(meta.envKey));
 }
 
 export function getModel(modelId) {
   const provider = detectProvider(modelId);
-  if (provider === 'anthropic') return anthropic(modelId);
-  if (provider === 'openai') return openai(modelId);
+  if (provider === 'anthropic') return createAnthropic({ apiKey: devKey('ANTHROPIC_API_KEY') })(modelId);
+  if (provider === 'openai') return createOpenAI({ apiKey: devKey('OPENAI_API_KEY') })(modelId);
   if (provider === 'google') {
-    // The @ai-sdk/google provider reads GOOGLE_GENERATIVE_AI_API_KEY by
-    // default; the evals .env stores the same value under
-    // GOOGLE_CLOUD_API_KEY. Mirror it so the SDK picks it up automatically.
-    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && process.env.GOOGLE_CLOUD_API_KEY) {
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
-    }
-    return google(modelId);
+    // The key is stored as GOOGLE_CLOUD_API_KEY; hand it to the SDK directly
+    // rather than mirroring it into its default GOOGLE_GENERATIVE_AI_API_KEY.
+    return createGoogleGenerativeAI({ apiKey: devKey('GOOGLE_CLOUD_API_KEY') })(modelId);
   }
   if (provider === 'deepseek') {
     // DeepSeek's official Claude Code integration exposes an Anthropic-
     // compatible endpoint authenticated with a Bearer token.
     const deepseek = createAnthropic({
       baseURL: 'https://api.deepseek.com/anthropic',
-      authToken: process.env.DEEPSEEK_API_KEY,
+      authToken: devKey('DEEPSEEK_API_KEY'),
       name: 'deepseek.anthropic',
     });
     return deepseek(modelId);

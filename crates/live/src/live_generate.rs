@@ -344,6 +344,7 @@ fn run_boot(args: &[String], original_cwd: &std::path::Path, io: &Io, dev_url_hi
     if payload.get("ok").and_then(Value::as_bool) != Some(true) {
         let error = payload.get("error").and_then(Value::as_str).unwrap_or("").to_string();
         let text = match error.as_str() {
+            "no_page" => "There is nothing for Live to open yet. Offer to build the first page with impeccable craft <what they want> and start Live once it exists. Do not create a page unless the user asks for one.",
             "config_missing" | "config_invalid" => "The live config is missing or invalid: follow reference/live-setup.md to create .impeccable/live/config.json, then rerun this command.",
             "target_selection_required" => "Several apps live here: ask the user which one, then rerun this command with --target <a file inside that app>.",
             "context_missing" => "The boot refused for missing context even though this verb asks it to proceed; rerun with the boot's own flags to see why.",

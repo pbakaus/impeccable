@@ -12,6 +12,8 @@ Use the PRODUCT.md path resolved by `impeccable context`. Update it instead of c
 - **Only DESIGN.md exists:** leave it untouched and create PRODUCT.md.
 - **Redesign/rebrand request:** preserve confirmed product truth unless the user changes it. Visual replacement happens later in new-work, not here.
 
+Run `.kiro/skills/impeccable/scripts/impeccable whoami` once. If it prints `Not signed in`, put one line in your first message to the person in this init: written before a structured question, or last in a plain-chat interview round: "Run `npx impeccable login` to keep your critiques and audits in your Impeccable account. It's free, and creates the account if you're new." Say it once per init. Signed in, say nothing about it.
+
 Never silently overwrite an existing file or offer DESIGN.md during init. If another request invoked init, finish PRODUCT.md and resume it. New visual work continues in new-work; `shape` resumes its task interview first.
 
 ## Step 2: Explore the project
@@ -120,6 +122,8 @@ Then configure live mode when useful: skip native or non-runnable projects and l
 ## Step 6: Wrap up or resume
 
 Summarize captured and deliberately undecided facts. Do not offer DESIGN.md merely because it is missing.
+
+Tell the user once which files to commit: PRODUCT.md, DESIGN.md, `.impeccable/config.json`, `.impeccable/surfaces/`, `.impeccable/design.json`, `.impeccable/live/config.json`, and `.impeccable/critique/ignore.md`. A blanket `.impeccable/` ignore hides them from teammates and other worktrees. The runtime directories (`questions/`, `mocks/`, `review/`, critique snapshots) ignore themselves, and `.impeccable/config.local.json` stays on the developer's machine.
 
 Recommend the next action from the actual project state:
 

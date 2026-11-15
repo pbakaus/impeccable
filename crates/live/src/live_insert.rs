@@ -2,6 +2,7 @@
 //! element in source and splice an insert-variant wrapper before or after
 //! it (no original variant), or scaffold a Svelte insert session.
 
+use crate::inject::resolve_source_traits;
 use crate::roots::enter_live_root;
 use crate::source_search::is_generated_file;
 use crate::svelte_component::{
@@ -25,7 +26,7 @@ Required:
 Element identification (at least one required):
   --element-id ID    HTML id attribute of the anchor element
   --classes A,B,C    Comma-separated CSS class names
-  --tag TAG          Tag name (div, section, etc.)
+  --tag TAG          Tag name (div, section, etc.); a tag alone is enough
   --query TEXT       Fallback: raw text to search for
 
 Optional:
@@ -116,8 +117,8 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
         eprintln(io, &format!("Invalid --position: {}", position));
         return 1;
     }
-    if element_id.is_none() && classes.is_none() && query.is_none() {
-        eprintln(io, "Need at least one of: --element-id, --classes, --query");
+    if element_id.is_none() && classes.is_none() && tag.is_none() && query.is_none() {
+        eprintln(io, "Need at least one of: --element-id, --classes, --tag, --query");
         return 1;
     }
 
@@ -152,10 +153,32 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     } else {
         resolve_in_project(&queries, &cwd, tag.as_deref(), text.as_deref())
     };
+    let rel = |path: &str| jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[path]));
     let (file, m) = match resolved {
+        Resolution::Inline(path) => {
+            eprintln(io, &json_compact(&element_inline_error(&rel(&path))));
+            return 1;
+        }
         Resolution::Match(file, m) => (file, m),
-        // Insert anchors on the first candidate when the text is in none.
-        Resolution::TextNotInFile(file, candidates) => (file, candidates[0]),
+        // Preserve the legacy fallback for stronger locators, but never guess by tag.
+        Resolution::TextNotInFile(file, candidates)
+            if candidates.len() == 1 || !is_tag_only_search(&queries, tag.as_deref()) =>
+        {
+            (file, candidates[0])
+        }
+        Resolution::TextNotInFile(file, candidates) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "reason": "rendered_text_not_in_source",
+                    "file": jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[&file.path])),
+                    "candidates": candidates_json(&candidates),
+                })),
+            );
+            return 1;
+        }
         Resolution::Ambiguous(file, candidates) => {
             eprintln(
                 io,
@@ -187,10 +210,25 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
             );
             return 1;
         }
+        Resolution::SharedLine(file, m) => {
+            eprintln(io, &json_compact(&element_shared_line_error(&jsp::relative("/", &cwd, &jsp::resolve(&cwd, &[&file.path])), m)));
+            return 1;
+        }
+        Resolution::AmbiguousFiles(hits) => {
+            eprintln(
+                io,
+                &json_compact(&json!({
+                    "error": "element_ambiguous",
+                    "fallback": "agent-driven",
+                    "candidates": file_candidates_json(&cwd, &hits),
+                })),
+            );
+            return 1;
+        }
         Resolution::NotFound => {
             let mut generated_hit: Option<String> = None;
             for q in &queries {
-                generated_hit = find_file_with_query(q, &cwd, true);
+                generated_hit = find_file_with_query(q, &cwd, true, tag.as_deref());
                 if generated_hit.is_some() {
                     break;
                 }
@@ -206,6 +244,11 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
             return 1;
         }
     };
+    if file.isolation.is_some() && should_use_svelte_component_injection(&file.path, &env) {
+        eprintln(io, &json_compact(&element_inline_error(&rel(&file.path))));
+        return 1;
+    }
+    let isolation = file.isolation;
     let target_file = file.path;
     let target_abs = jsp::resolve(&cwd, &[&target_file]);
     let lines = file.lines;
@@ -226,7 +269,7 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
         }
     };
     let comment_syntax = detect_comment_syntax(&target_file);
-    let style_mode = detect_style_mode(&target_file);
+    let traits = resolve_source_traits(&target_file);
     let is_jsx = comment_syntax.0 == "{/*";
     let splice_index = if position == "before" {
         start_line
@@ -290,7 +333,14 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
 
     let mut deferred: Option<(String, usize, usize)> = None;
     if defer_source_write {
-        deferred = Some((wrapper_lines.join("\n"), splice_index + 1, splice_index));
+        deferred = Some(if let Some((rs, re, split_end)) = isolation {
+            let mut block = lines[rs..splice_index].to_vec();
+            block.extend(wrapper_lines.iter().cloned());
+            block.extend_from_slice(&lines[splice_index..split_end + 1]);
+            (block.join("\n"), rs + 1, re + 1)
+        } else {
+            (wrapper_lines.join("\n"), splice_index + 1, splice_index)
+        });
     } else {
         let mut new_lines: Vec<String> = Vec::new();
         new_lines.extend_from_slice(&lines[..splice_index.min(lines.len())]);
@@ -312,18 +362,18 @@ fn insert_cli(args: &[String], io: &mut Io) -> i32 {
     }
     out.insert("insertLine".into(), json!(insert_line + 1));
     out.insert("commentSyntax".into(), comment_syntax_value(comment_syntax));
-    out.insert("styleMode".into(), Value::String(style_mode.0.into()));
-    out.insert("styleTag".into(), Value::String(style_mode.1.into()));
+    out.insert("styleMode".into(), Value::String(traits.style_mode.into()));
+    out.insert("styleTag".into(), Value::String(traits.style_tag.into()));
     out.insert(
         "cssSelectorPrefixExamples".into(),
         json!(build_css_selector_prefix_examples(
-            style_mode.0,
+            traits.style_mode,
             count_len(count)
         )),
     );
     out.insert(
         "cssAuthoring".into(),
-        build_css_authoring(style_mode, count_len(count)),
+        build_css_authoring(&traits, count_len(count)),
     );
     println(io, &json_compact(&Value::Object(out)));
     0

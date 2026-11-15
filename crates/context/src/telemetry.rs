@@ -119,8 +119,8 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
 /// (it is the feature), and the server records nothing for it.
 pub const TELEMETRY_HEADER: &str = "X-Impeccable-Telemetry";
 
-pub fn agent(timeout: Duration) -> ureq::Agent {
-    crate::http::agent_builder().timeout_connect(timeout).timeout(timeout).build()
+pub fn agent(url: &str, timeout: Duration) -> ureq::Agent {
+    crate::http::agent_builder(url).timeout_connect(timeout).timeout(timeout).build()
 }
 
 pub const CLIENT_HEADER: &str = "X-Impeccable-Client";
@@ -600,7 +600,7 @@ pub fn send_choice(env: &Env, cwd: &str, ping: &ChoicePing, timeout: Duration) -
         return false;
     }
     let url = format!("{}/chosen", api_base(env));
-    agent(timeout)
+    agent(&url, timeout)
         .post(&url)
         .set("Content-Type", "application/json")
         .set(CLIENT_HEADER, &client_header(env, cwd))

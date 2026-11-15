@@ -46,13 +46,32 @@ import {
 
 const NPM_REGISTRY = 'https://registry.npmjs.org';
 
+// GitHub release downloads can fail for a while with 5xx (every download
+// answered 504 for hours on 8 Nov 2026). A 5xx, a 429 or a network error is
+// retried with backoff before an asset counts as missing; a 404 is final.
+const RETRY_BASE_MS = Number(process.env.IMPECCABLE_RELEASE_CHECK_RETRY_MS ?? 2000);
+const ATTEMPTS = 4;
+
+async function fetchRetrying(url, init) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if ((res.status < 500 && res.status !== 429) || attempt === ATTEMPTS) return res;
+      await res.body?.cancel();
+    } catch (err) {
+      if (attempt === ATTEMPTS) throw err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * 3 ** (attempt - 1)));
+  }
+}
+
 // A ranged GET is the most portable existence probe: GitHub release downloads
 // answer HEAD inconsistently across their 302 to object storage, but a
 // `Range: bytes=0-0` GET follows the redirect and returns 200/206 for a real
 // asset and 404 for a missing one without pulling the whole binary.
 async function urlExists(url) {
   try {
-    const res = await fetch(url, { redirect: 'follow', headers: { Range: 'bytes=0-0' } });
+    const res = await fetchRetrying(url, { redirect: 'follow', headers: { Range: 'bytes=0-0' } });
     return res.ok || res.status === 206;
   } catch (err) {
     return false;
@@ -62,7 +81,7 @@ async function urlExists(url) {
 // The digest a .sha256 sidecar publishes, or null when it cannot be fetched.
 async function sidecarDigest(url) {
   try {
-    const res = await fetch(url, { redirect: 'follow' });
+    const res = await fetchRetrying(url, { redirect: 'follow' });
     return res.ok ? (await res.text()).trim().split(/\s+/)[0].toLowerCase() || null : null;
   } catch {
     return null;
@@ -78,7 +97,7 @@ function npmPackageUrl(target, version, registry) {
 async function npmVersionExists(target, version, registry) {
   const url = npmPackageUrl(target, version, registry);
   try {
-    const res = await fetch(url, { redirect: 'follow' });
+    const res = await fetchRetrying(url, { redirect: 'follow' });
     return res.ok;
   } catch {
     return false;
