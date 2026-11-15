@@ -14,6 +14,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import {
@@ -643,6 +646,53 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    for (const signedIn of [false, true]) {
+      it(`scenario 25: init ${signedIn ? 'stays quiet about sign-in when signed in' : 'leads with the sign-in line when signed out'}`, async () => {
+        // init reads context's ACCOUNT line: signed out, its first message names the
+        // sign-in before any question; signed in, it says nothing; either way no whoami call.
+        const workspace = prepareWorkspace({ files: {} });
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-home-'));
+        if (signedIn) {
+          const issuer = 'https://api.impeccable.style';
+          const id = crypto.createHash('sha256').update(issuer).digest('hex').slice(0, 16);
+          const dir = path.join(home, 'account', id);
+          // The CLI trusts only a private store: 0700 directories, a 0600 file.
+          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          fs.chmodSync(home, 0o700);
+          fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+            schema: 1, issuer, generation: 1, login: 1, signed_in: true, backend: 'file', token_endpoint: `${issuer}/oauth/token`,
+          }), { mode: 0o600 });
+        }
+        try {
+          const { trace, text } = await runTurn({
+            workspace,
+            model,
+            userPrompt: '/impeccable init',
+            env: { IMPECCABLE_HOME: home, IMPECCABLE_ACCOUNT_URL: '', IMPECCABLE_NO_UPDATE_CHECK: '1' },
+            maxSteps: 10,
+            stopAfter: (t) => t.questionCalls.length > 0,
+          });
+          logTrace('S25', signedIn ? 'init-signed-in' : 'init-signed-out', modelId, trace, { textSample: text.slice(0, 600) });
+          const firstQuestion = trace.questionCalls[0] ? JSON.stringify(trace.questionCalls[0]) : '';
+          const firstQuestionAt = trace.toolCalls.findIndex((c) => c.name === 'ask_user_question');
+          const before = (trace.textSteps ?? [])
+            .filter((s) => firstQuestionAt < 0 || s.callsBefore <= firstQuestionAt)
+            .map((s) => s.text).join('\n');
+          const said = `${before}\n${firstQuestion}`;
+          const summary = `Said before the first question: ${said.slice(0, 1200)}\nTrace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`;
+          assert.equal(bashCommandsMatching(trace, 'impeccable whoami').length, 0, `init should read context's ACCOUNT line, not call whoami.\n${summary}`);
+          if (signedIn) {
+            assert.ok(!/impeccable login/.test(`${trace.assistantTexts?.join('\n') ?? ''}\n${JSON.stringify(trace.questionCalls)}`), `a signed-in init should not mention sign-in.\n${summary}`);
+          } else {
+            assert.ok(/npx impeccable login/.test(said), `a signed-out init should name the sign-in before its first question.\n${summary}`);
+          }
+        } finally {
+          cleanupWorkspace(workspace);
+          fs.rmSync(home, { recursive: true, force: true });
+        }
+      });
+    }
 
     it('scenario 14: native iOS project (context loads ios.md)', async () => {
       // PRODUCT.md sets `## Platform` to `ios`. impeccable context now reads and emits
