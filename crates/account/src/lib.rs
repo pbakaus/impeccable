@@ -216,6 +216,14 @@ pub fn has_sign_in(io: &Io) -> bool {
     Account::from_env(&io.env).ok().is_some_and(|account| Session::load(&account).is_ok())
 }
 
+/// Whether a sign-in is recorded, from the stored state alone: the credential isn't
+/// read, so an unattended run never meets a Keychain prompt.
+pub fn sign_in_recorded(io: &Io) -> bool {
+    Account::from_env(&io.env).ok().is_some_and(|account| {
+        store::Store::new(&account).try_state().ok().flatten().is_some_and(|s| s.signed_in)
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Skip {
     Never,

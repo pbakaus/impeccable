@@ -4,10 +4,13 @@
 //! Impeccable Loop. Each part is the verb that already does it; this only offers and
 //! sequences them.
 //!
-//! Nothing here runs for `install -y`, outside a terminal, in CI, or when a sign-in is
-//! already stored, so scripted installs and reruns are what they were.
+//! An install with `-y` or outside a terminal (most are run by a coding agent) ends
+//! with one line naming the sign-in instead. Nothing here runs in CI or once a sign-in
+//! is stored.
 use impeccable_common::Io;
 use std::io::Write;
+
+const HINT: &str = "Optional: npx impeccable login keeps your critiques and audits in your Impeccable account. It's free, and creates the account if you're new.\n";
 
 const OFFER: &str =
     "\nSign in to keep your critiques and audits in your Impeccable account and see this
@@ -15,13 +18,25 @@ repository on your Home. With Pro, the detector catches more and Loop collects
 your agents' questions. No account yet? Signing in creates one.
 ";
 
-/// Whether install's end may offer the sign-in, before the stored one is read: that
-/// read can raise a Keychain prompt, which a scripted or CI install must never see.
-fn offered(args: &[String], terminal: bool, ci: bool) -> bool {
-    let scripted = args
-        .iter()
-        .any(|a| matches!(a.as_str(), "-y" | "--yes" | "-h" | "--help"));
-    terminal && !ci && !scripted
+#[derive(Debug, PartialEq)]
+enum End {
+    Nothing,
+    /// One line naming the sign-in, for an install nobody is there to answer.
+    Hint,
+    Offer,
+}
+
+/// How install ends, decided before the stored sign-in is read: that read can raise a
+/// Keychain prompt, which a scripted or CI install must never see.
+fn end(args: &[String], terminal: bool, ci: bool) -> End {
+    let has = |flags: [&str; 2]| args.iter().any(|a| flags.contains(&a.as_str()));
+    if ci || has(["-h", "--help"]) {
+        End::Nothing
+    } else if !terminal || has(["-y", "--yes"]) {
+        End::Hint
+    } else {
+        End::Offer
+    }
 }
 
 /// Whether to offer Loop's install after the sign-in.
@@ -36,8 +51,16 @@ pub(crate) fn after_install(
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
-    if !offered(args, terminal, io.env_truthy("CI")) || impeccable_account::has_sign_in(io) {
-        return;
+    match end(args, terminal, io.env_truthy("CI")) {
+        End::Nothing => return,
+        End::Hint => {
+            if !impeccable_account::sign_in_recorded(io) {
+                io.err(HINT);
+            }
+            return;
+        }
+        End::Offer if impeccable_account::has_sign_in(io) => return,
+        End::Offer => {}
     }
     io.err(OFFER);
     if !ask(io, "Sign in now?") {
@@ -113,20 +136,22 @@ fn ask(io: &mut Io, question: &str) -> bool {
 mod tests {
     use super::*;
 
-    // Catches the offer reaching a scripted, CI or non-terminal install.
+    // Catches the offer reaching a scripted, CI or non-terminal install, or the hint
+    // missing from an install an agent ran.
     #[test]
-    fn offers_the_sign_in_only_to_a_person_not_signed_in() {
+    fn offers_the_sign_in_to_a_person_and_names_it_to_an_agent() {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         for (flags, terminal, ci, want) in [
-            (&[][..], true, false, true),
-            (&["-y"][..], true, false, false),
-            (&["--yes"][..], true, false, false),
-            (&["--help"][..], true, false, false),
-            (&[][..], false, false, false),
-            (&[][..], true, true, false),
+            (&[][..], true, false, End::Offer),
+            (&["-y"][..], true, false, End::Hint),
+            (&["--yes"][..], true, false, End::Hint),
+            (&[][..], false, false, End::Hint),
+            (&["--help"][..], true, false, End::Nothing),
+            (&[][..], true, true, End::Nothing),
+            (&["-y"][..], false, true, End::Nothing),
         ] {
             assert_eq!(
-                offered(&args(flags), terminal, ci),
+                end(&args(flags), terminal, ci),
                 want,
                 "{flags:?} {terminal} {ci}"
             );

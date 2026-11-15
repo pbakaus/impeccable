@@ -97,7 +97,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "agents" => impeccable_agents::run(rest, io),
         "install" => {
             let code = impeccable_skills::run(args, io);
-            // On a terminal, install ends by offering the sign-in (`crate::install_sign_in`).
+            // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
             if code == 0 {
                 crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
             }
