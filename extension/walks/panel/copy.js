@@ -37,6 +37,8 @@ export const COPY = {
     retry: 'Try again',
     signIn: 'Sign in again',
     make: 'Make a persona',
+    /** Under the grid when no app of the person's is at the tab's address. */
+    defaults: 'No app of yours is at this address, so these are the defaults.',
     /** The width a journey runs at (REN-1890): the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
@@ -54,6 +56,11 @@ export const COPY = {
     action: 'Send',
     making: 'Making them…',
     use: 'Use them',
+    /** Personas an app already has, instead of a new one. */
+    fromApp: 'Use personas from your app',
+    pickApp: 'Pick an app',
+    appNone: 'That app has no personas yet.',
+    appFailed: 'Couldn’t load that app’s personas.',
     short: 'Say a bit more about them.',
     scope: 'Sign out and in again to make personas.',
     limit: (max) => `You can make up to ${max || 3} of your own.`,

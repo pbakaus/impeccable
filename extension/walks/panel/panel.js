@@ -33,6 +33,12 @@ let hereUrl = '';
  * `sees`: how the persona sees the page on this journey; Make a persona's description, what it sent, and who it made.
  */
 const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', said: '', making: false, made: null, signingIn: false };
+/**
+ * Whose personas the home shows: the app at the tab's address, else the six defaults (`defaults`), the person's own in
+ * both. Make a persona's "Use personas from your app": the apps, the one open (`workspace/repo/app`), the list shown,
+ * and that app's personas.
+ */
+Object.assign(pre, { defaults: false, apps: undefined, app: null, appsOpen: false, appPersonas: undefined });
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
@@ -41,6 +47,8 @@ const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
 let walker = null;
 let walkUrl = null;
+/** A stand-in state (stub.js): nothing is asked of the worker for it. */
+let stubbed = false;
 /** Set once the person opened a walk's results: the panel goes home. A new walk clears it. */
 let ended = false;
 /** Talk to type (voice.js): the browser's speech recognition, none where it has none; and the listening under way. */
@@ -82,6 +90,7 @@ const ICONS = {
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
   plus: ['M12 5v14M5 12h14'],
   back: ['M19 12H5M11 6l-6 6 6 6'],
+  down: ['M6 9l6 6 6-6'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
 function icon(name) {
@@ -113,6 +122,7 @@ function face(person, size, mood = 'neutral', cls = '') {
 }
 
 const hostOf = (url) => { try { return /^https?:/.test(url) ? new URL(url).host : ''; } catch { return ''; } };
+const siteOf = (url) => { try { return /^https?:/.test(url) ? new URL(url).origin : ''; } catch { return ''; } };
 const name = () => view.who?.name || walker?.name || '';
 /** The persona walking, with its face when it is the one picked here. */
 const walking = () => (walker && walker.name === view.who?.name ? walker : { name: name() });
@@ -152,14 +162,15 @@ function choose(i) {
 }
 const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
 
-/** The personas; `slug`, one of the person's own just made, is picked. */
-async function loadPersonas(slug) {
-  const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
-  const first = !pre.personas;
+/** The personas for the tab's address; the one picked stays picked where it is still listed. */
+async function loadPersonas() {
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', site: siteOf(hereUrl) }).catch(() => null);
+  const was = picked();
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
+  pre.defaults = answer?.defaults === true;
   pre.failed = answer?.why ?? null;
-  if (slug) choose(Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0));
-  else if (first) choose(pre.pick);
+  const at = was ? pre.personas?.findIndex((person) => person.slug === was.slug) ?? -1 : -1;
+  if (at >= 0) pre.pick = at; else choose(0);
   if (!isLive(view)) render();
 }
 
@@ -185,11 +196,52 @@ async function make(box) {
   render();
 }
 
-/** Back home, with the persona just made picked when `slug` names one. */
-function leaveMake(slug) {
-  if (slug) choose(Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0));
-  Object.assign(pre, { screen: 'home', said: '', made: null, note: '' });
+/** Back home, with `person` picked when there is one: listed already, or added to the list for this address. */
+function leaveMake(person) {
+  if (person) {
+    let at = pre.personas?.findIndex((each) => each.slug === person.slug && Boolean(each.mine) === Boolean(person.mine)) ?? -1;
+    if (at < 0) { pre.personas = [...(pre.personas ?? []), person]; at = pre.personas.length - 1; }
+    choose(at);
+  }
+  Object.assign(pre, { screen: 'home', said: '', made: null, note: '', appsOpen: false });
   render();
+}
+
+const appKey = (app) => `${app.workspace}/${app.repo}/${app.app}`;
+
+/** Make a persona's apps, asked once each time it opens. */
+async function loadApps() {
+  const answer = await chrome.runtime.sendMessage({ account: 'apps' }).catch(() => null);
+  pre.apps = answer?.ok ? answer.apps : null;
+  if (screen() === 'make') render();
+}
+
+/** One app's personas, for "Use personas from your app": its own cast, without the six everyone has. */
+async function openApp(app) {
+  const key = appKey(app);
+  Object.assign(pre, { app: key, appsOpen: false, appPersonas: undefined });
+  render();
+  const answer = await chrome.runtime.sendMessage({ account: 'personas', app: { workspace: app.workspace, repo: app.repo, app: app.app } }).catch(() => null);
+  if (pre.app !== key) return;
+  pre.appPersonas = answer?.ok ? answer.personas.filter((person) => !person.default && !person.mine && refOf(person)) : null;
+  if (screen() === 'make') render();
+}
+
+/** "Use personas from your app": the apps in a list that opens under its button, then the app's personas to pick from. */
+function fromApp() {
+  if (!pre.apps?.length) return null;
+  const chosen = pre.apps.find((app) => appKey(app) === pre.app);
+  const list = pre.appPersonas;
+  return el('div', { class: 'from-app' },
+    el('p', { class: 'label', text: COPY.make.fromApp }),
+    el('button', { class: 'pick-app', type: 'button', 'data-act': 'apps', 'aria-expanded': pre.appsOpen ? 'true' : 'false', onclick: () => { pre.appsOpen = !pre.appsOpen; render(); } },
+      el('span', { text: chosen?.name ?? COPY.make.pickApp }), icon('down')),
+    pre.appsOpen ? el('ul', { class: 'apps', 'aria-label': COPY.make.fromApp }, pre.apps.map((app, i) => el('li', {},
+      el('button', { type: 'button', 'data-act': `app-${i}`, 'aria-pressed': appKey(app) === pre.app ? 'true' : 'false', onclick: () => { void openApp(app); } }, app.name)))) : null,
+    !chosen ? null : list === undefined ? dots() : !list?.length ? el('p', { class: 'task', text: list === null ? COPY.make.appFailed : COPY.make.appNone })
+      : el('div', { class: 'cast', role: 'group', 'aria-label': chosen.name }, list.map((each, i) => el('button', {
+        type: 'button', title: each.name, 'aria-label': each.name, 'data-act': `use-${i}`, onclick: () => leaveMake(each),
+      }, face(each, 48), el('span', { class: 'cast-name', text: each.name })))));
 }
 
 const dots = () => el('span', { class: 'dots' }, el('i'), el('i'), el('i'));
@@ -202,13 +254,14 @@ function maker() {
   const made = pre.made;
   return [
     el('div', { class: 'top' }, el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => leaveMake() }, icon('back')), el('span', { class: 'where' }, el('b', { text: COPY.make.title }))),
+    made || pre.making || pre.said ? null : fromApp(),
     el('div', { class: 'chat', role: 'log' },
       el('p', { class: 'msg' }, COPY.make.ask),
       pre.said ? el('p', { class: 'msg mine', text: pre.said }) : null,
       pre.making ? el('p', { class: 'msg', 'data-state': 'making' }, COPY.make.making, ' ', dots()) : null,
       pre.note ? el('p', { class: 'msg err', role: 'alert', text: pre.note }) : null,
       made ? el('div', { class: 'msg made', 'data-slug': made.slug }, face(made, 72), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }),
-        button('use', COPY.make.use, 'gold full', () => leaveMake(made.slug))) : null),
+        button('use', COPY.make.use, 'gold full', () => leaveMake(pre.personas?.find((each) => each.mine && each.slug === made.slug) ?? made))) : null),
     el('span', { class: 'grow' }),
     made || pre.making ? null : el('div', { class: 'box' }, el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }), button('make', COPY.make.action, 'gold', () => { void make(box); })))),
   ];
@@ -221,7 +274,7 @@ function cast() {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
     }, face(each, 48), el('span', { class: 'cast-name', text: each.name }))),
-    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', said: '', made: null, note: '' }); render(); } },
+    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', said: '', made: null, note: '', appsOpen: false }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
       el('span', { class: 'face' }, icon('plus'))));
 }
 
@@ -236,6 +289,7 @@ function home() {
   const person = picked();
   if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
   if (pre.personas?.length === 0) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.none }), cast())];
+  const defaults = pre.defaults ? el('p', { class: 'task cast-note', 'data-defaults': true, text: COPY.home.defaults }) : null;
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
@@ -245,6 +299,7 @@ function home() {
     top(hereUrl, { tools: true }),
     el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
     cast(),
+    defaults,
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
       el('div', { class: 'field' }, box,
@@ -591,6 +646,7 @@ async function start() {
   if (WIDTHS.includes(walkWidth)) pre.width = walkWidth;
   if (stub !== null) {
     const { STUBS, PRE } = await import('./stub.js');
+    stubbed = true;
     view = STUBS[stub] ?? STUBS.idle;
     Object.assign(pre, PRE[stub] ?? PRE.home);
     account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro' };
@@ -608,8 +664,10 @@ async function start() {
       if (isLive(view)) ended = false;
       render();
     });
-    chrome.tabs.onActivated.addListener(() => { void look().then(render); });
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; if (pre.screen === 'home' && !isLive(view)) render(); } });
+    // Another address may be another app's: its personas, or the defaults.
+    const moved = (was) => { if (siteOf(hereUrl) !== siteOf(was) && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); };
+    chrome.tabs.onActivated.addListener(() => { const was = hereUrl; void look().then(() => { moved(was); render(); }); });
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const was = hereUrl; hereUrl = change.url; moved(was); if (pre.screen === 'home' && !isLive(view)) render(); } });
     const [{ view: kept }] = await Promise.all([chrome.storage.session.get('view'), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';

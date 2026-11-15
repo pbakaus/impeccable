@@ -74,17 +74,28 @@ const PERSONAS = [
   ['Sam', 'A 28-year-old daily user who is red-green colour-blind', 'colour-blind'],
   ['Grace', 'A 58-year-old office manager with a hand tremor'],
 ].map(([name, role, sees]) => ({ name, role, slug: `default:${name.toLowerCase()}`, default: true, ...(sees ? { sees } : {}) }));
+/** An app of the person's at the tab's address: its own cast, and one the person made. */
+const APP_CAST = [
+  ['Mira', 'Studio manager, opens this first every morning'],
+  ['Alex', 'Freelance designer, juggles three clients'],
+  ['Nadia', 'Ops lead, lives in the weekly report'],
+  ['Owen', 'New hire, on his first day'],
+  ['Robin', 'Part-timer, on a shared laptop'],
+].map(([name, role]) => ({ name, role, slug: name.toLowerCase() }));
+const APPS = [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }, { workspace: 'acme', repo: 'tidy', app: 'admin', name: 'Tidy admin' }, { workspace: 'acme', repo: 'ledgerly', app: 'web', name: 'Ledgerly' }];
 const MADE = { name: 'Rosa', role: 'A night-shift nurse who books her shifts on her phone', slug: 'rosa', mine: true };
 const DESCRIBED = 'A night-shift nurse who books her shifts on her phone, tired, in a hurry, one hand free.';
 const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risky: false }, { text: 'Add a to-do', risky: false }, { text: 'Rename it', risky: false }, { text: 'Delete it', risky: true }] };
 const TASK = HANDOFF.errand.goal;
 /** Before a walk: the panel's own state, by stub name. */
 export const PRE = {
-  home: { personas: PERSONAS, task: TASK, pick: 3 },
-  'home-sam': { personas: PERSONAS, task: TASK, pick: 4 },
+  home: { personas: PERSONAS, task: TASK, pick: 3, defaults: true },
+  'home-sam': { personas: PERSONAS, task: TASK, pick: 4, defaults: true },
+  'home-app': { personas: [...APP_CAST, MADE], task: TASK },
   'home-empty': { personas: [] },
   'signing-in': { signingIn: true },
-  make: { personas: PERSONAS, screen: 'make' },
+  make: { personas: PERSONAS, screen: 'make', apps: APPS },
+  'make-apps': { personas: PERSONAS, screen: 'make', apps: APPS, app: 'acme/tidy/web', appsOpen: true, appPersonas: APP_CAST },
   'make-making': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, making: true },
   'make-made': { personas: [...PERSONAS, MADE], screen: 'make', said: DESCRIBED, made: MADE },
   'make-refused': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, note: COPY.make.limit(3) },
@@ -98,5 +109,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['home-sam', 'home-empty', 'make', 'make-making', 'make-made', 'make-refused']) STUBS[name] = STUBS.idle;
+for (const name of ['home-sam', 'home-app', 'make-apps', 'home-empty', 'make', 'make-making', 'make-made', 'make-refused']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

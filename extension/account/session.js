@@ -61,10 +61,18 @@ const sealed = { credentials: 'omit', redirect: 'error' };
 const SIGNED_IN = ['signed-in', 'refreshing'];
 /** A persona's name in the person's own list, as the server gives it. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
-/** A persona as the server lists it, field by field: `{ name, role, slug?, mine?, about?, face? }` (`mine`: the person's own, by slug; `face`: its face sheet's https address). */
+/** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`, REN-2039). */
+const LISTED = /^(?:default:)?[a-z0-9-]{1,80}$/;
+/** An app as the server lists it (`/apps`): its workspace, repository and app, and its name. */
+const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
+/**
+ * A persona as the server lists it, field by field: `{ name, role, slug?, mine?, default?, sees?, about?, face? }` (`mine`:
+ * the person's own, by slug; `default`: one of the six; `sees`: how it sees the page; `face`: its face sheet's https address).
+ */
 const personaOf = (p) => ({
   name: p.name, role: typeof p.role === 'string' ? p.role : '',
-  ...(SLUG.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : {}) } : {}),
+  ...(LISTED.test(p.slug) ? { slug: p.slug, ...(p.mine === true ? { mine: true } : p.default === true ? { default: true } : {}) } : {}),
+  ...(p.sees === 'older-eyes' || p.sees === 'colour-blind' ? { sees: p.sees } : {}),
   ...(typeof (p.profile ?? p.about) === 'string' && (p.profile ?? p.about) ? { about: (p.profile ?? p.about).slice(0, 1500) } : {}),
   ...(typeof p.face === 'string' && /^https?:\/\//.test(p.face) && p.face.length <= 2048 ? { face: p.face } : {}),
 });
@@ -265,11 +273,25 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true } : null;
     },
 
-    /** The signed-in person's personas: `[{ name, role, slug?, mine? }]`, or null. */
-    async personas() {
-      const list = await read(issuer(), '/personas');
+    /**
+     * The signed-in person's personas, `{ personas: [{ name, role, slug?, mine? }], defaults }`, or null. `site`: the tab's
+     * origin, for the personas of the app at that address; `defaults` says none of theirs is, so these are the six.
+     * `app`: one app's (`{ workspace, repo, app }`) instead.
+     */
+    async personas({ site, app } = {}) {
+      const one = app && ['workspace', 'repo', 'app'].every((key) => APP_PART.test(app[key]));
+      const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : site ? `?${new URLSearchParams({ site })}` : '';
+      const list = await read(issuer(), `/personas${query}`);
       const rows = Array.isArray(list?.personas) ? list.personas : null;
-      return rows?.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf) ?? null;
+      return rows ? { personas: rows.filter((p) => typeof p?.name === 'string').slice(0, 100).map(personaOf), defaults: list.defaults === true } : null;
+    },
+
+    /** The person's apps, `[{ workspace, repo, app, name }]`, or null. */
+    async apps() {
+      const list = await read(issuer(), '/apps');
+      const rows = Array.isArray(list?.apps) ? list.apps : null;
+      return rows?.filter((a) => ['workspace', 'repo', 'app'].every((key) => APP_PART.test(a?.[key]))).slice(0, 50)
+        .map((a) => ({ workspace: a.workspace, repo: a.repo, app: a.app, name: typeof a.name === 'string' && a.name ? a.name.slice(0, 80) : `${a.repo}/${a.app}` })) ?? null;
     },
 
     /**

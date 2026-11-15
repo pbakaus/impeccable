@@ -20,8 +20,8 @@ const UNPACKED = BUILD.devHosts;
 /** Whether a message came from this extension's own popup. */
 export const fromPopup = (sender) => sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(POPUP);
 const PANEL = chrome.runtime.getURL('walks/panel/');
-/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, to make one, a plan and the walk. */
-const PANEL_ASKS = ['status', 'sign-in', 'personas', 'create', 'plan', 'walk'];
+/** What the side panel may ask: who is signed in, to sign in, and, signed in, the personas, the apps, to make one, a plan and the walk. */
+const PANEL_ASKS = ['status', 'sign-in', 'personas', 'apps', 'create', 'plan', 'walk'];
 const fromPanel = (sender, account) => PANEL_ASKS.includes(account) && sender?.id === chrome.runtime.id && typeof sender.url === 'string' && sender.url.startsWith(PANEL);
 
 let issuer = PRODUCTION;
@@ -193,16 +193,20 @@ async function create({ description }) {
  * The personas, and the description of one still being made (or sent and never answered), for the popup to wait on.
  * None: `signed-out` when no sign-in is kept any more (the server ended it), else `personas`.
  */
-async function personas() {
-  const [list, was] = await Promise.all([session.personas(), making ? null : kept()]);
+async function personas({ site, app }) {
+  // `site`: the side panel's tab, by its origin alone; `app`: one app's, from Make a persona.
+  let origin = null;
+  try { origin = /^https?:\/\//.test(site) ? new URL(site).origin : null; } catch { /* no address */ }
+  const [list, was] = await Promise.all([session.personas({ ...(origin ? { site: origin } : {}), ...(app ? { app } : {}) }), making ? null : kept()]);
   const creating = making?.description ?? (was?.open ? was.description : null);
-  if (list) return { ok: true, personas: list, ...(creating ? { creating } : {}) };
+  if (list) return { ok: true, personas: list.personas, ...(list.defaults ? { defaults: true } : {}), ...(creating ? { creating } : {}) };
   return { ok: false, why: (await session.signedIn().catch(() => true)) ? 'personas' : 'signed-out' };
 }
 
 const ANSWERS = {
   create,
   personas,
+  async apps() { const apps = await session.apps(); return apps ? { ok: true, apps } : { ok: false, why: 'apps' }; },
   plan,
   async remove({ slug }) { return session.removePersona(slug); },
   walk,

@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false } } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], defaults = false, apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false } } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -328,7 +328,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search: '' }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: { ok: true, personas }, plan, walk, create }[message.account]; } },
+      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas, ...(defaults ? { defaults } : {}) }, apps, plan, walk, create }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -410,6 +410,23 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     }
   });
 }
+
+// The tab's address decides whose personas: an app's, or the six defaults with a line saying why. The + screen also
+// offers an app's own cast, without the defaults, to pick one from.
+test('the side panel says when it shows the defaults, and takes a persona from one of the person’s apps', async () => {
+  const maya = { name: 'Maya', role: '', slug: 'default:maya', default: true };
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [maya], defaults: true, apps: { ok: true, apps: [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }] }, cast: [maya, { name: 'Mira', role: '', slug: 'mira' }] });
+  assert.deepEqual([h.sent.find((m) => m.account === 'personas').site, h.app.querySelectorAll('[data-defaults]').length], ['https://tidy.example', 1]);
+  await h.press('make-persona');
+  await h.press('apps');
+  await h.press('app-0');
+  assert.deepEqual(h.sent.at(-1), { account: 'personas', app: { workspace: 'acme', repo: 'tidy', app: 'web' } });
+  assert.deepEqual(h.acts().filter((act) => act.startsWith('use-')), ['use-0'], 'the app’s own cast, not the defaults');
+  await h.press('use-0');
+  h.app.querySelector('textarea').value = 'Add a to-do.';
+  await h.press('send');
+  assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ own: 'mira' }]);
+});
 
 test('a walk that ended with no results page to open offers the way home', async () => {
   const h = await sidePanel({ view: STUBS.stopped, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });

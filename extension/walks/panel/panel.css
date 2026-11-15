@@ -96,6 +96,7 @@ b { font-weight: 500; }
 .cast .add .face { width: 48px; height: 48px; background: none; border: 1.5px dashed var(--mute-deep); color: var(--muted); }
 .cast .add:hover .face { border-color: var(--gold-deep); color: var(--ink); }
 .cast .add .ic { width: 20px; height: 20px; }
+.cast-note { margin: 12px auto 0; max-width: 30ch; text-align: center; }
 .box { flex: none; margin-top: auto; padding-top: 16px; }
 .box .err { margin: 0 4px 10px; text-align: center; }
 .field { border-radius: 16px; background: var(--paper-deep); padding: 14px 12px 12px 16px; }
@@ -212,3 +213,14 @@ b { font-weight: 500; }
 .msg.made .name { font-size: 2.25rem; }
 .msg.made .about { margin: 0 0 10px; font-size: 14px; }
 .screen-make .top .where b { font-weight: 600; }
+.from-app { flex: none; display: flex; flex-direction: column; gap: 8px; margin-top: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--rule); }
+.from-app .label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.pick-app { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 0 14px; border-radius: 10px; background: var(--paper-deep); font-size: 14px; color: var(--ink); }
+.pick-app:hover { background: var(--gray); }
+.pick-app[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.apps { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
+.apps button { width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.apps button:hover { background: var(--paper-deep); }
+.apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
+.from-app .cast { margin-top: 4px; }
+.from-app > .dots { align-self: center; margin: 8px 0; }

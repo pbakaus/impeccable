@@ -506,8 +506,16 @@ describe('account worker', () => {
   });
 
   // The side panel's home asks for the personas itself, and is told whether signing in again would help.
-  for (const [label, personas, token, answer] of [
+  for (const [label, personas, token, answer, asked = {}, path = '/extension/v1/personas'] of [
     ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
+    // One of the six everyone has (REN-2039): its `default:` slug, and how it sees, kept for the walk.
+    ['lists a default persona', () => json(200, { personas: [{ name: 'Robert', role: '', profile: 'Retired.', slug: 'default:robert', default: true, sees: 'older-eyes' }] }), () => json(200, {}),
+      { ok: true, personas: [{ name: 'Robert', role: '', slug: 'default:robert', default: true, sees: 'older-eyes', about: 'Retired.' }] }],
+    // The tab's origin alone, never its path: the server answers that app's personas, or the defaults and says so.
+    ['for the tab’s address, told they are the defaults', () => json(200, { personas: [PERSONA], defaults: true }), () => json(200, {}), { ok: true, personas: [PERSONA], defaults: true },
+      { site: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?site=https%3A%2F%2Ftidy.example'],
+    ['for one app', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] },
+      { app: { workspace: 'acme', repo: 'tidy', app: 'web' } }, '/extension/v1/personas?workspace=acme&repo=tidy&app=web'],
     ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],
     ['says sign in again when the server ended the sign-in', () => json(401, {}), () => json(400, { error: 'invalid_grant' }), { ok: false, why: 'signed-out' }],
   ]) {
@@ -517,9 +525,9 @@ describe('account worker', () => {
       globalThis.fetch = async (url) => {
         if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
         if (url === META.token_endpoint) return token();
-        return url === `${ISSUER}/extension/v1/personas` ? personas() : json(404, {});
+        return url === `${ISSUER}${path}` ? personas() : json(404, {});
       };
-      assert.deepEqual(await ask({ account: 'personas' }, fromPanel), answer);
+      assert.deepEqual(await ask({ account: 'personas', ...asked }, fromPanel), answer);
       records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
     });
   }
