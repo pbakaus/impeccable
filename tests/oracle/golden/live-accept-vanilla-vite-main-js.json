@@ -1,0 +1,11 @@
+{
+  "stdout": "{\"handled\":true,\"file\":\"src/main.js\",\"carbonize\":false}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".impeccable/live/accept-receipts/ab12cd34.json": "{\n  \"id\": \"ab12cd34\",\n  \"operation\": \"accept\",\n  \"variantId\": \"1\",\n  \"result\": {\n    \"handled\": true,\n    \"file\": \"src/main.js\",\n    \"carbonize\": false\n  },\n  \"completedAt\": \"<ISO>\"\n}\n",
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/main.js": "document.querySelector('#app').innerHTML = `\n<h1>New</h1>\n`\n"
+  }
+}

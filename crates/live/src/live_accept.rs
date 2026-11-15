@@ -1384,10 +1384,20 @@ fn deindent_content(content: &[String], base_indent: &str) -> Vec<String> {
         .collect()
 }
 
+/// Script files that can hold a session's markers beside the template extensions.
+const SESSION_SCRIPT_EXTENSIONS: [&str; 6] = [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"];
+
 /// JS: findSessionFile(id, cwd) → (file, content, lines)
 fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>)> {
     let skip: [&str; 5] = ["node_modules", ".git", ".impeccable", "dist", "build"];
-    let extensions = resolve_live_template_extensions(cwd);
+    // A session's marker comment is unique, so script files are searched too: markup
+    // in a template literal (a stock Vite app's src/main.js) is wrapped with --file.
+    let mut extensions = resolve_live_template_extensions(cwd);
+    for ext in SESSION_SCRIPT_EXTENSIONS {
+        if !extensions.iter().any(|e| e == ext) {
+            extensions.push(ext.to_string());
+        }
+    }
     let file = find_source_file(
         &format!("impeccable-variants-start {}", id),
         cwd,
