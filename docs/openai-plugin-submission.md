@@ -13,7 +13,7 @@ Without a hook, `impeccable context` tells the agent to run the bundled detector
 - Plugin name: Impeccable
 - Publisher: Renaissance Geek Inc
 - Short description: Design and refine interfaces
-- Long description: Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 23 focused design commands, live browser iteration for exploring visual directions, and a bundled detector that flags common design anti-patterns.
+- Long description: Create, critique, and refine frontend interfaces with your coding agent. Impeccable provides 24 focused design commands, live browser iteration for exploring visual directions, and a bundled detector that flags common design anti-patterns.
 - Category: Creativity
 - Website: https://impeccable.style
 - Support: https://github.com/pbakaus/impeccable/issues
@@ -88,7 +88,7 @@ Use the verified Renaissance Geek Inc business identity. The generated manifest 
 
 ## Initial release notes
 
-Initial submission of Impeccable, a frontend design skill for ChatGPT and Codex. It packages one skill with 24 design workflows, referenced scripts and guidance, and a local anti-pattern detector. No MCP server, authentication, demo account, or private network is required. The skill's network requests are the documented optional daily version check to `https://impeccable.style/api/version`, the design-direction roll (`/api/roll`) and its choice ping (`/api/chosen`, skipped when telemetry is off) on the same host, and a download of the pinned engine binary from GitHub releases when none is cached.
+Initial submission of Impeccable, a frontend design skill for ChatGPT and Codex. It packages one skill with 24 design workflows, referenced scripts and guidance, and a local anti-pattern detector. No MCP server, authentication, demo account, or private network is required. The skill's network requests are the documented optional daily version check to `https://impeccable.style/api/version`, the design-direction roll (`/api/roll`) and its choice ping (`/api/chosen`, skipped when telemetry is off) on the same host, a download of the pinned engine binary from GitHub releases when none is cached, and, only when the harness has no native image tool and `OPENAI_API_KEY` is set, `generate-image` calls to OpenAI's Images API (with any reference images, fetching URL references passed via `--ref`).
 
 ## Final checks
 
