@@ -647,8 +647,15 @@ for (const modelId of resolveModelList()) {
       }
     });
 
+    // The ACCOUNT line arrives with an engine release; the pinned engine before it has none.
+    const accountLine = (() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-account-probe-'));
+      try {
+        return /^ACCOUNT: /m.test(execFileSync(ENGINE_BIN, ['context'], { cwd: dir, env: { ...process.env, IMPECCABLE_HOME: dir, IMPECCABLE_NO_UPDATE_CHECK: '1' }, encoding: 'utf8' }));
+      } catch { return false; } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    })();
     for (const signedIn of [false, true]) {
-      it(`scenario 25: init ${signedIn ? 'stays quiet about sign-in when signed in' : 'leads with the sign-in line when signed out'}`, async () => {
+      it(`scenario 25: init ${signedIn ? 'stays quiet about sign-in when signed in' : 'leads with the sign-in line when signed out'}`, { skip: !accountLine && 'this engine prints no ACCOUNT line' }, async () => {
         // init reads context's ACCOUNT line: signed out, its first message names the
         // sign-in before any question; signed in, it says nothing; either way no whoami call.
         const workspace = prepareWorkspace({ files: {} });
