@@ -28,10 +28,16 @@ let signInFailed = false;
  */
 let here;
 let hereUrl = '';
-/** Before a walk: the personas, the one picked, the task, and where the person is (`home`, `planning`, `plan`). */
-const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', describe: '', making: false };
+/**
+ * Before a walk: the personas, the one picked, the task, and where the person is (`home`, `make`, `planning`, `plan`).
+ * `sees`: how the persona sees the page on this journey; Make a persona's description, what it sent, and who it made.
+ */
+const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null, note: '', width: 'desktop', sees: 'normal', describe: '', said: '', making: false, made: null, signingIn: false };
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
+/** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
+const SIGHTS = { normal: 'eye', older: 'glasses', 'colour-blind': 'palette' };
+const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */
 let walker = null;
 let walkUrl = null;
@@ -71,6 +77,11 @@ const ICONS = {
   desktop: ['M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z', 'M9 21h6M12 17v4'],
   tablet: ['M6 3h12a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 18 21H6a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 6 3z', 'M11 18h2'],
   phone: ['M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3z', 'M11 18h2'],
+  eye: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
+  glasses: ['M3 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M14 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M10 14c.6-.8 1.3-1.2 2-1.2s1.4.4 2 1.2', 'M3.2 12.8L5.5 6.5h1.5M20.8 12.8L18.5 6.5H17'],
+  palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
+  plus: ['M12 5v14M5 12h14'],
+  back: ['M19 12H5M11 6l-6 6 6 6'],
   cog: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'],
 };
 function icon(name) {
@@ -134,14 +145,21 @@ function button(action, text, kind = 'sec', onclick = () => act(action)) {
 /* ------------------------------ before a walk ------------------------------ */
 
 const picked = () => pre.personas?.[pre.pick] ?? null;
+/** Picks a persona, and with it how it sees the page, from its card: the person may change that for this journey. */
+function choose(i) {
+  pre.pick = i;
+  pre.sees = SEES_OF[pre.personas?.[i]?.sees] ?? 'normal';
+}
 const refOf = (person) => (person.mine ? { mine: person.slug } : person.slug ? { own: person.slug } : null);
 
 /** The personas; `slug`, one of the person's own just made, is picked. */
 async function loadPersonas(slug) {
   const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
+  const first = !pre.personas;
   pre.personas = answer?.ok ? answer.personas.filter((person) => refOf(person)) : null;
   pre.failed = answer?.why ?? null;
-  if (slug) pre.pick = Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0);
+  if (slug) choose(Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0));
+  else if (first) choose(pre.pick);
   if (!isLive(view)) render();
 }
 
@@ -149,33 +167,62 @@ async function loadPersonas(slug) {
 const UNMADE = { short: COPY.make.short, scope: COPY.make.scope, 'not-pro': COPY.why['not-pro'] };
 const unmade = (answer) => (answer?.why === 'limit' ? COPY.make.limit(answer.max) : UNMADE[answer?.why] ?? COPY.make.later);
 
-/** Make persona: the description becomes the person's own persona (the draft takes up to about half a minute), then it is picked. */
+/** Make a persona: the description becomes the person's own persona (the draft takes up to about half a minute), shown as the reply. */
 async function make(box) {
+  if (pre.making) return;
   pre.describe = (box.value ?? pre.describe).trim();
   if (!pre.describe) { box.focus(); return; }
   pre.making = true;
+  pre.said = pre.describe;
   pre.note = '';
   render();
   const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe }).catch(() => null);
+  if (answer?.ok) await loadPersonas();
   pre.making = false;
   if (!answer?.ok) { pre.note = unmade(answer); render(); return; }
   pre.describe = '';
-  await loadPersonas(answer.persona?.slug);
+  pre.made = answer.persona ?? null;
+  render();
 }
 
-/** No personas yet: a sentence or two about someone who uses the site, and Make persona. */
-function first() {
-  if (pre.making) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.make.making }), el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.describe, oninput: (event) => { pre.describe = event.target.value; } });
+/** Back home, with the persona just made picked when `slug` names one. */
+function leaveMake(slug) {
+  if (slug) choose(Math.max(0, pre.personas?.findIndex((person) => person.mine && person.slug === slug) ?? 0));
+  Object.assign(pre, { screen: 'home', said: '', made: null, note: '' });
+  render();
+}
+
+const dots = () => el('span', { class: 'dots' }, el('i'), el('i'), el('i'));
+
+/** Make a persona, as a chat: the panel asks, the person describes someone, and the persona made is the reply. */
+function maker() {
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.ask, oninput: (event) => { pre.describe = event.target.value; } });
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
+  const made = pre.made;
   return [
-    top(hereUrl, { tools: true }),
-    el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.none })),
-    el('div', { class: 'box' },
-      pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
-      el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }), button('make', COPY.make.action, 'gold', () => { void make(box); })))),
+    el('div', { class: 'top' }, el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => leaveMake() }, icon('back')), el('span', { class: 'where' }, el('b', { text: COPY.make.title }))),
+    el('div', { class: 'chat', role: 'log' },
+      el('p', { class: 'msg' }, COPY.make.ask),
+      pre.said ? el('p', { class: 'msg mine', text: pre.said }) : null,
+      pre.making ? el('p', { class: 'msg', 'data-state': 'making' }, COPY.make.making, ' ', dots()) : null,
+      pre.note ? el('p', { class: 'msg err', role: 'alert', text: pre.note }) : null,
+      made ? el('div', { class: 'msg made', 'data-slug': made.slug }, face(made, 72), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }),
+        button('use', COPY.make.use, 'gold full', () => leaveMake(made.slug))) : null),
+    el('span', { class: 'grow' }),
+    made || pre.making ? null : el('div', { class: 'box' }, el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }), button('make', COPY.make.action, 'gold', () => { void make(box); })))),
   ];
+}
+
+/** The personas as a grid of faces, four to a row, and + last, which makes one. */
+function cast() {
+  return el('div', { class: 'cast', role: 'group', 'aria-label': COPY.home.who },
+    (pre.personas ?? []).map((each, i) => el('button', {
+      type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
+      onclick: () => { choose(i); pre.note = ''; render(); },
+    }, face(each, 48), el('span', { class: 'cast-name', text: each.name }))),
+    el('button', { type: 'button', class: 'add', title: COPY.home.make, 'aria-label': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', said: '', made: null, note: '' }); render(); } },
+      el('span', { class: 'face' }, icon('plus'))));
 }
 
 /** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
@@ -187,8 +234,8 @@ function unloaded() {
 
 function home() {
   const person = picked();
-  if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('span', { class: 'dots' }, el('i'), el('i'), el('i')))];
-  if (pre.personas?.length === 0) return first();
+  if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
+  if (pre.personas?.length === 0) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.none }), cast())];
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: pre.personas === null ? COPY.home.failed : COPY.home.none }), pre.personas === null ? unloaded() : null)];
   const box = el('textarea', { class: 'text', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
   box.value = pre.task;
@@ -197,17 +244,16 @@ function home() {
   return [
     top(hereUrl, { tools: true }),
     el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
-    pre.personas.length > 1 ? el('div', { class: 'strip', role: 'group', 'aria-label': COPY.home.who }, pre.personas.map((each, i) => el('button', {
-      type: 'button', class: i === pre.pick ? 'sel' : '', 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
-      onclick: () => { pre.pick = i; pre.note = ''; render(); },
-    }, face(each, 38)))) : null,
+    cast(),
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
-      el('div', { class: 'field' }, box, el('div', { class: 'row' },
-        Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
-        el('span', { class: 'grow' }),
-        widths(),
-        button('send', COPY.home.send, 'gold', send))),
+      el('div', { class: 'field' }, box,
+        el('div', { class: 'row' }, widths(), sights()),
+        el('p', { class: 'choice', 'data-width': pre.width, 'data-sees': pre.sees, text: COPY.home.pair(COPY.home.widths[pre.width], COPY.home.sees[pre.sees]) }),
+        el('div', { class: 'row' },
+          Speech ? el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic')) : null,
+          el('span', { class: 'grow' }),
+          button('send', COPY.home.send, 'gold', send))),
     ),
   ];
 }
@@ -218,6 +264,14 @@ function widths() {
     type: 'button', 'data-act': `size-${width}`, 'aria-pressed': pre.width === width ? 'true' : 'false', title: COPY.home.widths[width], 'aria-label': COPY.home.widths[width],
     onclick: () => { pre.width = width; void chrome.storage.local.set({ walkWidth: width }).catch(() => undefined); render(); },
   }, icon(width))));
+}
+
+/** Normal, Older eyes or Colour-blind: how the persona sees the page on this journey alone. */
+function sights() {
+  return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', title: COPY.home.sights[sees], 'aria-label': COPY.home.sights[sees],
+    onclick: () => { pre.sees = sees; render(); },
+  }, icon(look))));
 }
 
 /**
@@ -298,7 +352,7 @@ async function go(start) {
   start.disabled = true;
   walker = { name: person.name, face: person.face ?? null };
   ended = false;
-  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.runAt ?? pre.width }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'walk', persona: refOf(person), task: pre.task, tabId: here, plan: pre.plan.id, walker, device: pre.runAt ?? pre.width, sees: pre.sees }).catch(() => null);
   if (answer?.ok) { pre.screen = 'home'; pre.task = ''; pre.plan = null; return; }
   pre.note = WHY[answer?.why] ?? COPY.why.failed;
   // A plan the server no longer takes (expired, or for another task or site): back to the box, to send again.
@@ -319,6 +373,7 @@ function planned() {
     el('div', { class: 'plan-head' }, face(person, 56, 'confident'), el('h2', { class: 'hd', text: COPY.plan.title(person.name) })),
     el('q', { class: 'task', text: pre.task }),
     COPY.plan.at[pre.width] ? el('p', { class: 'task at', 'data-width': pre.runAt ?? pre.width }, icon(pre.runAt ?? pre.width), pre.runAt === 'desktop' ? COPY.plan.atDesktop : COPY.plan.at[pre.width]) : null,
+    pre.sees !== 'normal' ? el('p', { class: 'task at', 'data-sees': pre.sees }, icon(SIGHTS[pre.sees]), COPY.home.sees[pre.sees]) : null,
     el('ul', { class: 'plan' }, pre.plan.steps.map((line) => el('li', { class: line.risky ? 'risky' : '', 'data-risky': line.risky ? 'yes' : undefined }, el('i', { text: line.risky ? '!' : '' }), el('span', { text: line.text })))),
     el('span', { class: 'grow' }),
     pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
@@ -409,8 +464,12 @@ function mark(cls) {
 
 /** The extension's own sign-in, as the popup's Sign in does it. */
 async function signIn(control) {
+  if (pre.signingIn) return;
   control.disabled = true;
+  pre.signingIn = true;
+  if (screen() === 'signed-out') render();
   const answer = await chrome.runtime.sendMessage({ account: 'sign-in' }).catch(() => null);
+  pre.signingIn = false;
   signInFailed = answer?.ok !== true;
   if (!signInFailed) account = answer.available === true ? answer : null;
   if (account?.signedIn === true) void loadPersonas();
@@ -418,8 +477,9 @@ async function signIn(control) {
 }
 
 function signedOut() {
-  const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), el('span', { class: 'arrow', text: '→' }));
-  return [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro)];
+  const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', disabled: pre.signingIn, onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), pre.signingIn ? dots() : el('span', { class: 'arrow', text: '→' }));
+  return [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed && !pre.signingIn ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro,
+    pre.signingIn ? el('p', { class: 'task', role: 'status', text: COPY.signedOut.signingIn }) : null)];
 }
 
 /** Signed in without Impeccable Pro, by the server's word: one line, and the settings, where the account is signed out. */
@@ -479,7 +539,7 @@ function screen() {
   return pre.screen;
 }
 
-const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, home, planning, plan: planned, scan };
+const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, home, make: maker, planning, plan: planned, scan };
 
 function render() {
   const shown = screen();
@@ -533,8 +593,9 @@ async function start() {
     const { STUBS, PRE } = await import('./stub.js');
     view = STUBS[stub] ?? STUBS.idle;
     Object.assign(pre, PRE[stub] ?? PRE.home);
-    account = { signedIn: stub !== 'signed-out', pro: stub !== 'not-pro' };
-    walker = pre.personas?.[0] ?? null;
+    account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro' };
+    if (pre.personas?.length) choose(pre.pick);
+    walker = picked();
     walkUrl = 'https://impeccable.reviews/app/tidy/outings/o-7f3a';
     hereUrl = 'https://tidy.example/';
     act = (action) => { view = reduce(view, { type: action }); render(); };

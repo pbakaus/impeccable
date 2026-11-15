@@ -25,29 +25,38 @@ export const COPY = {
     start: 'Start',
     later: 'Not now',
   },
-  signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.' },
+  signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.', signingIn: 'Finish signing in in the window that opened.' },
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', settings: 'Settings', back: 'Back' },
 
   home: {
     ask: (name) => `What should ${name} try?`,
     who: 'Personas',
     send: 'Send',
-    none: 'No personas yet.',
+    none: 'No personas yet. Press + to make one.',
     failed: 'Couldn’t load your personas.',
     retry: 'Try again',
     signIn: 'Sign in again',
+    make: 'Make a persona',
     /** The width a journey runs at (REN-1890): the group, and each choice. */
-    width: 'Width',
+    width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
+    /** How the persona sees the page on this journey (../sight.js): the group, each choice, and the line under both. */
+    sight: 'Sees',
+    sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
+    sees: { normal: 'Sees the page as it is.', older: 'Older eyes: blurry and low contrast.', 'colour-blind': 'Colour-blind: red and green look alike.' },
+    pair: (width, sees) => `${width} · ${sees}`,
   },
-  /** No personas yet: one made from a description (account/worker.js `create`). A refusal keys on the worker's reason. */
+  /** Make a persona: a short chat, where one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
-    describe: 'Describe someone who uses your site, in a sentence or two.',
-    action: 'Make persona',
-    making: 'Making your persona…',
+    title: 'Make a persona',
+    ask: 'Who uses your site? Describe them in a sentence or two.',
+    describe: 'Describe them…',
+    action: 'Send',
+    making: 'Making them…',
+    use: 'Use them',
     short: 'Say a bit more about them.',
     scope: 'Sign out and in again to make personas.',
-    limit: (max) => `You can have up to ${max || 3} personas.`,
+    limit: (max) => `You can make up to ${max || 3} of your own.`,
     later: 'Couldn’t make it right now. Try again later.',
   },
   /** Talk to type: the mic in the ask box. A failure keys on the browser's error code; typing always still works. */
@@ -147,7 +156,7 @@ export const COPY = {
 
   tabGroup: (name) => `Impeccable · ${name}`,
 
-  /** The corner of every picture while the options page's sight experiment is on (../sight.js). */
+  /** The corner of every picture on a journey whose persona sees differently (../sight.js). */
   seenAs: { older: 'As seen with older eyes', 'colour-blind': 'As seen with colour blindness' },
 
   /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print]. */

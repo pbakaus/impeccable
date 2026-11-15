@@ -365,7 +365,7 @@ test('the side panel shows a finished walk on its own tab alone, with one button
 
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
   const plan = { id: 'p-1', risky: true, steps: [{ text: 'Add a to-do', risky: false }, { text: 'Delete it', risky: true }] };
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex' }], plan: { ok: true, plan }, tab: 7 });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }], plan: { ok: true, plan }, tab: 7 });
   assert.equal(h.body.dataset.screen, 'home');
   await h.press('pick-1');
   const box = h.app.querySelector('textarea');
@@ -377,23 +377,30 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
   assert.deepEqual([h.body.dataset.screen, h.app.querySelector('textarea').value], ['home', 'Add a to-do, then delete it.']);
   await h.press('send');
   await h.press('start');
-  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId, m.walker.name]), [[{ mine: 'alex' }, 'p-1', 7, 'Alex']]);
+  // How the persona sees goes with the journey: the card's own, unless the person picks another for this one.
+  assert.deepEqual(h.sent.filter((m) => m.account === 'walk').map((m) => [m.persona, m.plan, m.tabId, m.walker.name, m.sees]), [[{ mine: 'alex' }, 'p-1', 7, 'Alex', 'colour-blind']]);
   const expired = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], plan: { ok: true, plan }, walk: { ok: false, why: 'plan' } });
+  assert.equal(expired.app.querySelector('[data-act="sees-normal"]').attributes['aria-pressed'], 'true', 'a card that says nothing sees normally');
+  await expired.press('sees-older');
   expired.app.querySelector('textarea').value = 'Add a to-do.';
   await expired.press('send');
   await expired.press('start');
-  assert.equal(expired.body.dataset.screen, 'home', 'a plan the server refuses goes back to the box');
+  assert.deepEqual([expired.body.dataset.screen, expired.sent.find((m) => m.account === 'walk').sees], ['home', 'older'], 'a plan the server refuses goes back to the box');
 });
 
-// No personas yet is never a dead end: a description makes one, which is then picked; a refusal says why and keeps the words.
+// No personas yet is never a dead end: + opens Make a persona, a description makes one, and Use them picks it; a refusal says why and keeps the words.
 for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
   test(`the side panel with no personas makes one from a description: ${label}`, async () => {
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [], create });
     assert.deepEqual([h.body.dataset.screen, h.acts().includes('send')], ['home', false]);
+    await h.press('make-persona');
+    assert.equal(h.body.dataset.screen, 'make');
     h.app.querySelector('textarea').value = '  A night-shift nurse who books shifts on her phone.  ';
     await h.press('make');
     assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.' }]);
     if (create.ok) {
+      await h.press('use');
+      assert.equal(h.body.dataset.screen, 'home');
       h.app.querySelector('textarea').value = 'Book a shift.';
       await h.press('send');
       assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ mine: 'rosa' }], 'the new persona is the one picked');

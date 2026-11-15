@@ -2,10 +2,11 @@
 // walk, PRE for before one). The buttons work, on the stand-in.
 // Every state is made by the same steps a real walk takes (view.js), so none can be one a walk cannot reach.
 import { emptyView, reduce } from '../view.js';
+import { COPY } from './copy.js';
 
 const HANDOFF = {
   site: 'http://localhost:3000',
-  persona: { name: 'Mira', role: 'Office manager, keeps the team’s chores in one list', visit: 'new', device: 'desktop' },
+  persona: { name: 'Robert', role: 'A 72-year-old retiree with low vision, using large text and zoom', visit: 'new', device: 'desktop' },
   errand: {
     name: 'Create, edit and delete a to-do',
     goal: 'Add a to-do, rename it, then delete it.',
@@ -25,7 +26,7 @@ const STEPS = [
 const run = (view, actions) => actions.reduce(reduce, view);
 const waiting = run(emptyView(true), [{ type: 'handoff', handoff: HANDOFF }]);
 const walking = run(waiting, [
-  { type: 'opened', name: 'Mira', site: HANDOFF.site },
+  { type: 'opened', name: 'Robert', site: HANDOFF.site },
   ...STEPS.slice(0, 3).map((step) => ({ type: 'step', step })),
   { type: 'checks', met: [true, false, false] },
   { type: 'blocked', what: 'navigation', url: 'https://oat-milk-deals.example/win' },
@@ -53,6 +54,7 @@ export const STUBS = {
   'paused-sign-in': run(walking, [{ type: 'pause', why: 'sign-in' }]),
   takeover: run(walking, [{ type: 'takeover' }]),
   asking: run(walking, [{ type: 'ask', ask: { kind: 'delete', what: 'Delete the to-do “Buy oat milk and bread”' } }]),
+  'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a sample photo to the to-do’s picture field' } }]),
   'asking-go': run(walking, [{ type: 'ask', ask: { kind: 'go', what: 'oat-milk-deals.example' } }]),
   done: run(walking, [finish([])]),
   'done-issues': run(walking, [finish(ISSUES)]),
@@ -63,22 +65,38 @@ export const STUBS = {
   'failed-left-site': run(walking, [{ type: 'fail', reason: 'left-site' }]),
 };
 
+/** The six every app has (REN-2039), as the personas read lists them: no faces yet, so their initials. */
 const PERSONAS = [
-  { name: 'Mira', role: 'Studio manager', about: 'The studio manager who opens this first every morning. Runs a 24-person studio from this one page.', slug: 'mira' },
-  ...['Alex', 'Grace', 'Nadia', 'Owen', 'Robin', 'Sam'].map((name) => ({ name, role: 'A visitor', slug: name.toLowerCase() })),
-];
+  ['Maya', 'A 19-year-old student on her phone, always in a hurry'],
+  ['Daniel', 'A 34-year-old busy professional, good with tech'],
+  ['Priya', 'A 45-year-old small-business owner, careful with money'],
+  ['Robert', 'A 72-year-old retiree with low vision, using large text and zoom', 'older-eyes'],
+  ['Sam', 'A 28-year-old daily user who is red-green colour-blind', 'colour-blind'],
+  ['Grace', 'A 58-year-old office manager with a hand tremor'],
+].map(([name, role, sees]) => ({ name, role, slug: `default:${name.toLowerCase()}`, default: true, ...(sees ? { sees } : {}) }));
+const MADE = { name: 'Rosa', role: 'A night-shift nurse who books her shifts on her phone', slug: 'rosa', mine: true };
+const DESCRIBED = 'A night-shift nurse who books her shifts on her phone, tired, in a hurry, one hand free.';
 const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risky: false }, { text: 'Add a to-do', risky: false }, { text: 'Rename it', risky: false }, { text: 'Delete it', risky: true }] };
 const TASK = HANDOFF.errand.goal;
 /** Before a walk: the panel's own state, by stub name. */
 export const PRE = {
-  home: { personas: PERSONAS, task: TASK },
-  planning: { personas: PERSONAS, task: TASK, screen: 'planning' },
-  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN },
+  home: { personas: PERSONAS, task: TASK, pick: 3 },
+  'home-sam': { personas: PERSONAS, task: TASK, pick: 4 },
+  'home-empty': { personas: [] },
+  'signing-in': { signingIn: true },
+  make: { personas: PERSONAS, screen: 'make' },
+  'make-making': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, making: true },
+  'make-made': { personas: [...PERSONAS, MADE], screen: 'make', said: DESCRIBED, made: MADE },
+  'make-refused': { personas: PERSONAS, screen: 'make', said: DESCRIBED, describe: DESCRIBED, note: COPY.make.limit(3) },
+  planning: { personas: PERSONAS, task: TASK, screen: 'planning', pick: 3 },
+  plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3 },
   before: { personas: PERSONAS, screen: 'before' },
-  'tab-group': { personas: PERSONAS, screen: 'tab-group' },
+  'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3 },
 };
 STUBS.before = STUBS.idle;
 STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
+for (const name of ['home-sam', 'home-empty', 'make', 'make-making', 'make-made', 'make-refused']) STUBS[name] = STUBS.idle;
+STUBS['signing-in'] = STUBS['signed-out'];
