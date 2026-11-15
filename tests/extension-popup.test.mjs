@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, mic = null, appForSite, hold = {} } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -328,7 +328,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search: '' }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async sendMessage(message) { sent.push(message); if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
+      runtime: { async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: 'https://tidy.example/' }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -519,6 +519,21 @@ for (const [label, status, offers] of [
     assert.deepEqual([h.body.dataset.account, h.body.dataset.screen, h.acts().includes('send')], ['signed-in', 'home', true]);
   });
 }
+
+// `hold`: the account's answer, then its personas', each released by the test.
+test('the side panel shows only its loading dots until the account and its personas are known', async () => {
+  const release = {};
+  const hold = Object.fromEntries(['status', 'personas'].map((ask) => [ask, new Promise((done) => { release[ask] = done; })]));
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], hold });
+  const drawn = () => [h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().filter((act) => act !== 'scan' && act !== 'settings')];
+  assert.deepEqual(drawn(), ['loading', 1, []], 'the account still coming');
+  release.status();
+  for (let n = 0; n < 5; n += 1) await tick();
+  assert.deepEqual(drawn(), ['home', 1, []], 'its personas still coming');
+  release.personas();
+  for (let n = 0; n < 5; n += 1) await tick();
+  assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().includes('send')], ['home', 0, true]);
+});
 
 test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, firstRunSeen: false, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });

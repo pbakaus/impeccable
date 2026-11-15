@@ -18,8 +18,8 @@ const app = document.getElementById('app');
 let view = emptyView(false);
 /** What a control does: asks the worker, or, on a stand-in, walks the same state machine here. */
 let act = () => undefined;
-/** The account as the popup sees it (account/worker.js `status`): null when there is none to offer. */
-let account = null;
+/** The account as the popup sees it (account/worker.js `status`): null when there is none to offer, undefined until it answers. */
+let account = BUILD.account ? undefined : null;
 /** Whether the panel's last sign-in did not finish: said until one does. */
 let signInFailed = false;
 /**
@@ -184,6 +184,8 @@ const forgetApp = (site) => { void keepApp(site, null); };
 
 /** The personas for the tab's address, or of the app chosen for it; the one picked stays picked where it is still listed. */
 async function loadPersonas() {
+  // Asked again after a list that didn't load: the dots while it comes, not the failure.
+  if (pre.personas === null) { pre.personas = undefined; if (screen() === 'home') render(); }
   const site = siteOf(hereUrl);
   const chosen = site ? (await Promise.resolve(chrome.storage.local.get('appForSite')).catch(() => null))?.appForSite?.[site] : null;
   const [answer, theirs] = await Promise.all([
@@ -375,9 +377,12 @@ function unloaded() {
   return again;
 }
 
+/** The account or its personas still coming: the top bar and the dots, as the home draws them. */
+const loading = () => [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
+
 function home() {
   const person = picked();
-  if (pre.personas === undefined) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, dots())];
+  if (pre.personas === undefined) return loading();
   // Every account has personas, the six defaults at least: a list that came back empty is one that didn't load.
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.failed }), unloaded())];
   const box = el('textarea', { class: 'text scrolls', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
@@ -741,13 +746,14 @@ function screen() {
   if (isLive(view)) return 'walking';
   const over = (view.state === 'done' && (here === undefined || view.tab === here)) || view.state === 'stopped' || view.state === 'failed';
   if (over && !ended) return 'end';
+  if (account === undefined) return 'loading';
   if (!account) return 'terminal';
   if (account.signedIn !== true) return 'signed-out';
   if (account.pro === false) return 'not-pro';
   return pre.screen;
 }
 
-const SCREENS = { walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, home, make: maker, planning, plan: planned, scan };
+const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': signedOut, 'not-pro': notPro, home, make: maker, planning, plan: planned, scan };
 
 function render() {
   const shown = screen();
