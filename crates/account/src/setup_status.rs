@@ -69,7 +69,14 @@ fn step_line(step: &Value) -> Option<String> {
     })
 }
 
-/// At most three lines: what is connected, what isn't yet, and the one next
+/// The agent place's `fix` line, when a machine reported something wrong.
+fn agent_fix(v: &Value) -> Option<String> {
+    let p = v["places"].as_array()?.iter().find(|p| p["kind"] == "agent")?;
+    let line = p["fix"]["line"].as_str().map(clean)?;
+    Some(line.trim_end_matches('.').to_string()).filter(|l| !l.is_empty())
+}
+
+/// At most four lines: what is connected, what isn't yet, what a machine reported wrong, and the one next
 /// step. A place the service marks `unavailable`, or with a state this
 /// version doesn't know, is left out rather than guessed at.
 pub fn lines(v: &Value) -> String {
@@ -94,6 +101,10 @@ pub fn lines(v: &Value) -> String {
     }
     if !off.is_empty() {
         out.push_str(&format!("Not connected yet: {}.\n", off.join(", ")));
+    }
+    // What a machine reports wrong; the service's next step carries its command.
+    if let Some(line) = agent_fix(v) {
+        out.push_str(&format!("{line}.\n"));
     }
     if let Some(next) = v.get("next").filter(|n| n.is_object()).and_then(step_line) {
         out.push_str(&format!("Next: {next}\n"));
@@ -224,6 +235,21 @@ mod tests {
         // A url that isn't https is never shown to open.
         v["next"] = json!({ "id": "get-loop", "place": "loop", "label": "Get it for Mac", "url": "javascript:alert(1)", "command": null });
         assert!(lines(&v).ends_with("Next: Get it for Mac\n"));
+    }
+
+    // Catches a machine's reported problem dropped from status, or drawn with its
+    // terminal escapes.
+    #[test]
+    fn names_what_a_machine_reported_before_the_repair_step() {
+        let mut v = example();
+        v["places"][0]["fix"] = json!({ "line": "A change to Impeccable didn't finish on your Linux machine\u{1b}[2J", "command": "npx impeccable loop connect" });
+        v["next"] = json!({ "id": "repair-agent", "place": "agent", "label": "Repair", "url": null, "command": "npx impeccable loop connect" });
+        let text = lines(&v);
+        assert!(
+            text.ends_with("A change to Impeccable didn't finish on your Linux machine[2J.\nNext: Repair: npx impeccable loop connect\n"),
+            "{text}"
+        );
+        assert!(!lines(&example()).contains("finish"));
     }
 
     #[test]
