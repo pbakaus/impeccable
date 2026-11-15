@@ -115,17 +115,30 @@ fn project_line(v: &Value) -> Option<String> {
 /// login's words, so stdout keeps only what a script reads. Quiet when the
 /// read fails: the sign-in already worked.
 pub fn after_login(io: &mut Io, account: &Account) {
-    let Ok(mut session) = Session::load(account) else { return };
-    let cwd = io.cwd.to_string_lossy().into_owned();
-    if let Ok(v) = read(&mut session, &cwd, &io.env) {
-        if usable(&v) {
-            let text = lines(&v);
-            if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
-                NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
-            io.err(&text);
-        }
+    if let Some(v) = read_for(io, account) {
+        print(io, &v);
     }
+}
+
+/// The service's setup answer for this folder, when it gave one this client can draw.
+pub fn read_for(io: &Io, account: &Account) -> Option<Value> {
+    let mut session = Session::load(account).ok()?;
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    read(&mut session, &cwd, &io.env).ok().filter(usable)
+}
+
+/// The answer's lines on stderr, as `login` ends.
+pub fn print(io: &mut Io, v: &Value) {
+    let text = lines(v);
+    if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
+        NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    io.err(&text);
+}
+
+/// Whether the answer's plan includes Loop: Pro, Team and Enterprise do, Free doesn't.
+pub fn plan_includes_loop(v: &Value) -> bool {
+    matches!(v["plan"]["tier"].as_str(), Some(tier) if tier != "free")
 }
 
 const USAGE: &str = "Usage: impeccable status [--json]\n\nShows what Impeccable is connected to for your account (your agent, its tools,\nLoop, the Chrome extension and GitHub pull requests), this project when your\naccount knows it, and the one next step.\n\n  --json   Print the account service's answer as it came.\n";
@@ -249,5 +262,16 @@ mod tests {
         assert!(usable(&v));
         v["version"] = 2.into();
         assert!(!usable(&v));
+    }
+
+    // Catches Loop offered to Free after install's sign-in, or withheld from a paid plan.
+    #[test]
+    fn loop_comes_with_every_plan_but_free() {
+        for (tier, want) in [("free", false), ("pro", true), ("team", true)] {
+            let mut v = example();
+            v["plan"]["tier"] = tier.into();
+            assert_eq!(plan_includes_loop(&v), want, "{tier}");
+        }
+        assert!(!plan_includes_loop(&json!({})));
     }
 }

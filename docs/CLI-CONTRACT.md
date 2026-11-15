@@ -2767,33 +2767,22 @@ Exit 0; 1 for an unknown option or a missing folder. After printing, a
 signed-in CLI uploads the scan exactly as a full `detect` does (design health
 and foundations sync, same opt-outs, `--json` keeps notices off stderr).
 
-## `start [--yes] [--json]`
+## `install` ends with the sign-in offer
 
-`impeccable start` sets Impeccable up in one go by running, in order, the verbs
-that already do each part: `skills install -y`, the sign-in (skipped when a
-usable one is stored, as for `login`), the MCP server for each coding agent
-`loop connect` finds (an entry already there is kept), the repository's first
-scan, and, only with `--yes` on macOS, `loop install`. Each step keeps its own
-rules; running `start` again redoes nothing.
+After the skills are installed, `impeccable install` on a terminal (stdin and
+stderr both TTYs, `CI` unset, no `-y`/`--yes`) with no sign-in stored offers
+one on stderr: what signing in unlocks, then `Sign in now? [Y/n]` (Enter is
+yes). No prints `Later: impeccable login`. Install's own output and exit code
+are unchanged by the offer and by everything after it.
 
-After a sign-in it schedules the setup report, as `login` does. Loop's install
-runs with `--connect`, so it wires the agents' Loop hooks and instructions
-without asking (with `--no-connect` when no agent was found), and, under
-`--json`, `--no-open`.
-
-Exit codes: **0** set up; **1** a step failed (later steps still ran),
-including an MCP step stopped before it looked for agents (a refused
-`IMPECCABLE_ACCOUNT_URL`, a held lock) and a first scan that failed or could
-not be added to the account; **2** no coding agent was found; **3** the
-sign-in did not finish (declined, timed out or refused), and nothing after it
-ran.
-
-`--json` prints one line on stdout, `{"ok":bool,"exit":n,"steps":[{"step","result"}]}`,
-with `step` one of `skills`, `sign_in`, `mcp`, `scan`, `loop` and `result` one
-of `done`, `already` (sign-in; scan when this repository was scanned before),
-`no_agents` (mcp), `skipped` (scan when not wanted or not in a repository;
-loop) or `failed`. The steps' own lines are held back, except the sign-in's
-link and outcome and an MCP error, which go to stderr.
+A yes runs `login`'s sign-in (its lines included). After a fresh sign-in, in
+order: the setup report is scheduled; the MCP server is added for each coding
+agent `loop connect` finds (an entry already there is kept); the repository's
+first scan runs as after `login`; then, on macOS when the setup answer's
+`plan.tier` is not `free` and Loop isn't installed, `Install Loop? [Y/n]`, and
+a yes runs `loop install --connect`. With Loop already installed, agents not
+yet connected to it are offered as after `login`. Install ends with the setup
+lines `login` ends with. Free gets no Loop offer.
 
 ## `login` when already signed in
 

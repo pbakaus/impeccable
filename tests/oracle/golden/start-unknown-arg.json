@@ -1,7 +1,0 @@
-{
-  "stdout": "",
-  "stderr": "Unknown option for start: --bogus\nUsage: impeccable start [--yes] [--json]\n\nSet Impeccable up here: install the skills, sign in, give your coding agents the\nImpeccable MCP server and scan this repository. Running it again redoes nothing.\n\nOptions:\n  --yes    Also install Impeccable Loop (macOS)\n  --json   Print one JSON result on stdout instead of each step's lines\n",
-  "exit": 1,
-  "signal": null,
-  "files": {}
-}

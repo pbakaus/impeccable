@@ -174,7 +174,7 @@ fn unknown_args(args: &[String], allowed: &[&str], io: &mut Io, verb: &str) -> b
 /// `impeccable login [--no-browser]`. With `--no-browser` (or
 /// `IMPECCABLE_NO_BROWSER=1`) the authorization URL is the only line on
 /// stdout, so a script can open it itself.
-/// How a sign-in attempt ended, for callers that act on it (`impeccable start`).
+/// How a sign-in attempt ended, for callers that act on it (`install`'s sign-in offer).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoginOutcome {
     /// A usable sign-in was already here; no browser was opened.
@@ -204,11 +204,16 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
-/// `impeccable start`'s sign-in: any usable sign-in counts as done, even one missing a
-/// scope the service has since added, so running start again never reopens the browser.
-/// `login` itself is what asks for the new scope.
-pub fn login_for_start(io: &mut Io) -> LoginOutcome {
+/// The sign-in `install` offers at its end. Only a fresh sign-in reaches here (the
+/// offer is made only when none is stored), and it prints what `login` prints.
+pub fn login_after_install(io: &mut Io) -> LoginOutcome {
     sign_in(io, false, Skip::AnyUsable)
+}
+
+/// Whether a sign-in is stored here, read offline and silently: `install` asks this
+/// before it offers one.
+pub fn has_sign_in(io: &Io) -> bool {
+    Account::from_env(&io.env).ok().is_some_and(|account| Session::load(&account).is_ok())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

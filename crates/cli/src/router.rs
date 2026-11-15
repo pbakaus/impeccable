@@ -78,8 +78,6 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             }
             code
         }
-        // One command that sets everything up (`crate::start`).
-        "start" => crate::start::run(rest, io, &engines, pack.rule_pack),
         "setup" => impeccable_account::setup::run(rest, io),
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
@@ -97,7 +95,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "loop" => crate::loop_install::run(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
-        "help" | "install" | "link" | "update" | "check" => impeccable_skills::run(args, io),
+        "install" => {
+            let code = impeccable_skills::run(args, io);
+            // On a terminal, install ends by offering the sign-in (`crate::install_sign_in`).
+            if code == 0 {
+                crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
+            }
+            code
+        }
+        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => impeccable_hook::run_context(rest, io),
         "pin" => impeccable_context::run_pin(rest, io),
@@ -362,7 +368,6 @@ const KNOWN_VERBS: &[&str] = &[
     "ignores",
     "ignore",
     "login",
-    "start",
     "logout",
     "whoami",
     "status",
