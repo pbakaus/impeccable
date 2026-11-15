@@ -33,6 +33,16 @@ const walking = run(waiting, [
   ...STEPS.slice(3).map((step) => ({ type: 'step', step })),
   { type: 'checks', met: [true, true, false] },
 ]);
+/** A longer walk, past step 9, so the step numbers can be seen lining up. */
+const MORE = [
+  { n: 7, did: 'Clicked “Delete” on Buy oat milk and bread', said: 'It asked me first. Good.' },
+  { n: 8, did: 'Clicked “Yes, delete”', said: 'Gone, and the list says it is empty.' },
+  { n: 9, did: 'Clicked “New to-do”', said: 'Same form again.' },
+  { n: 10, did: 'Typed “Call the vet” and pressed Enter', said: 'Added at the top this time.' },
+  { n: 11, did: 'Scrolled to the bottom of the list', said: 'Nothing else down here.' },
+  { n: 12, did: 'Opened “Settings”', said: 'Small grey text. Hard to read.' },
+];
+const walkingLong = run(walking, MORE.map((step) => ({ type: 'step', step })));
 const outcome = (issues) => ({
   finished: true, steps: 8, ms: 41_000,
   doneWhen: HANDOFF.errand.doneWhen.map((text) => ({ text, met: true })),
@@ -50,6 +60,7 @@ export const STUBS = {
   idle: emptyView(true),
   waiting,
   walking,
+  'walking-long': walkingLong,
   paused: run(walking, [{ type: 'pause' }]),
   'paused-sign-in': run(walking, [{ type: 'pause', why: 'sign-in' }]),
   takeover: run(walking, [{ type: 'takeover' }]),

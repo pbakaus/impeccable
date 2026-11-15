@@ -168,12 +168,14 @@ b { font-weight: 500; }
 .ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
 .ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
 .sofar { flex: none; display: flex; flex-direction: column; margin-top: 24px; }
-.sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 4px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
-.sofar li:first-child { border-top: 0; }
-.sofar .n { width: 22px; flex: none; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--mute-deep); }
+/* Every row has the same side padding and a border (clear but for the current one), so no number moves when the current step moves on. */
+.sofar li { display: flex; gap: 12px; align-items: baseline; padding: 9px 13px 9px 12px; border: 1px solid transparent; border-top-color: var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
+.sofar li:first-child { border-top-color: transparent; }
+/* The step's number: one fixed column, right-aligned, figures all one width (1 to 99 line up on their last digit). */
+.sofar .n { width: 2ch; flex: none; text-align: right; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mute-deep); }
 .sofar .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.sofar li.now { padding: 12px 14px 12px 12px; border: 1px solid var(--gold-rich); border-radius: 12px; background: var(--gold-wash); color: var(--ink); font-size: 15px; }
-.sofar li.now + li { border-top: 0; }
+.sofar li.now { padding-top: 12px; padding-bottom: 12px; border-color: var(--gold-rich); border-radius: 12px; background: var(--gold-wash); color: var(--ink); font-size: 15px; }
+.sofar li.now + li { border-top-color: transparent; }
 .sofar li.now .n { color: var(--gold-deep); }
 .sofar li.now q { font-size: 13px; color: var(--muted); }
 .screen-walking > .task { margin-top: 24px; text-align: center; }
