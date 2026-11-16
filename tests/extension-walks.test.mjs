@@ -505,7 +505,7 @@ describe('walk worker', () => {
     await loaded;
     Object.assign(chrome.debugger, {
       async attach() {}, async detach() {},
-      async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(); },
+      async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(params); },
     });
     Object.assign(chrome.tabs, {
       async create() { return { id: 11, windowId: 1 }; }, async get() { return { id: 11, windowId: 1, width: 800, height: 600, active: true }; },
@@ -528,6 +528,48 @@ describe('walk worker', () => {
 
   // Chrome (a 2x display, the tab at the engine's size) lands a mouse event it takes while a picture is being taken at
   // twice its coordinates: HR Pilot's login links were clicked on nothing while the step was filmed.
+  // A native list's menu is Chrome's own, outside every picture, and on a Mac a click or an arrow opens it: Talia never
+  // got past Northside Live's "How did you hear about us?" (W14t).
+  it('focuses a native list on a click and steps its choice by arrow key, with input and change, never opening its menu', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    // The page, as the walk's own world reads it: one list of four, the third disabled, and a field beside it.
+    class HTMLOptGroupElement {}
+    class HTMLSelectElement {
+      constructor(labels) {
+        this.multiple = false; this.size = 0; this.disabled = false; this.fired = [];
+        this.options = labels.map((label, n) => {
+          const list = this;
+          return { label, disabled: label.startsWith('-'), parentElement: null, get selected() { return list.selectedIndex === n; }, set selected(on) { if (on) list.selectedIndex = n; } };
+        });
+        this.selectedIndex = 0;
+      }
+      closest() { return this; }
+      focus() { dom.document.activeElement = this; }
+      dispatchEvent(event) { this.fired.push(event.type); }
+    }
+    const list = new HTMLSelectElement(['Choose one', 'Friend or family', '-Poster', 'Search']);
+    const field = { closest: () => null };
+    const dom = vm.createContext({ HTMLSelectElement, HTMLOptGroupElement, Event: class { constructor(type) { this.type = type; } }, document: { activeElement: field, elementFromPoint: (x) => (x === 5 ? list : field) } });
+    const was = answers['Runtime.evaluate'];
+    answers['Runtime.evaluate'] = (params) => (/focusListAt|stepList/.test(params.expression) ? { result: { value: vm.runInContext(params.expression, dom) } } : was(params));
+    const keys = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchKeyEvent').length;
+    try {
+      let at = sent.length;
+      await ops.mouse({ action: 'click', x: 5, y: 5 });
+      assert.deepEqual([dom.document.activeElement === list, since(at, 'Input.dispatchMouseEvent')], [true, 1], 'focused, the pointer only moved there');
+      at = sent.length;
+      for (const key of ['ArrowDown', 'ArrowDown', 'Enter', 'ArrowUp', 'End']) await ops.keyboard({ action: 'press', key });
+      assert.deepEqual([list.selectedIndex, list.fired, keys(at)], [3, ['input', 'change', 'input', 'change', 'input', 'change', 'input', 'change'], 0], 'past the disabled option, and no key reaches Chrome');
+      dom.document.activeElement = field;
+      at = sent.length;
+      await ops.keyboard({ action: 'press', key: 'ArrowDown' });
+      assert.equal(keys(at), 2, 'anywhere else a key is pressed');
+    } finally {
+      answers['Runtime.evaluate'] = was;
+    }
+  });
+
   it('never moves or clicks the pointer while a film’s picture is being taken, nor takes one while the pointer acts', async () => {
     const { ops } = await walked();
     page.seen = {};

@@ -446,6 +446,54 @@ export async function look() {
   return null;
 }
 
+/** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
+async function inLookout(expression) {
+  const tab = walk;
+  if (!tab) return null;
+  for (let tries = 0; tries < 2; tries++) {
+    try {
+      if (tab.lookout?.loader !== tab.loader) {
+        const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: LOOKOUT });
+        tab.lookout = { loader: tab.loader, context: executionContextId };
+      }
+      const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression, contextId: tab.lookout.context, returnByValue: true });
+      if (!exceptionDetails) return { value: result?.value };
+    } catch { /* its world went with its document */ }
+    tab.lookout = null;
+  }
+  return null;
+}
+
+/*
+ * A native list (a `<select>` showing one option) opens a menu of Chrome's own, drawn outside the page: no picture the
+ * persona sees shows it, and on a Mac a click or an arrow key opens it rather than changing the choice (measured: a
+ * click and two ArrowDowns left Northside Live's "How did you hear about us?" on "Choose one"). So a click on one only
+ * gives it focus, and an arrow key, Home or End on a focused one steps its choice the way Chrome does on Windows,
+ * with the `input` and `change` a person's choice fires. Space and Enter, which only open the menu, do nothing there.
+ */
+function focusListAt(x, y) {
+  const list = document.elementFromPoint(x, y)?.closest('select');
+  if (!list || list.multiple || list.size > 1 || list.disabled) return false;
+  list.focus();
+  return true;
+}
+function stepList(key, change) {
+  const list = document.activeElement;
+  if (!(list instanceof HTMLSelectElement) || list.multiple || list.size > 1 || list.disabled) return false;
+  if (key === 'Space' || key === ' ' || key === 'Enter') return true;
+  const open = [...list.options].filter((o) => !o.disabled && !(o.parentElement instanceof HTMLOptGroupElement && o.parentElement.disabled));
+  const at = open.indexOf(list.options[list.selectedIndex]);
+  const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, PageUp: 0, End: open.length - 1, PageDown: open.length - 1 }[key];
+  if (to === undefined) return false;
+  const pick = open[Math.max(0, Math.min(open.length - 1, to))];
+  if (change && pick && !pick.selected) {
+    pick.selected = true;
+    list.dispatchEvent(new Event('input', { bubbles: true }));
+    list.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  return true;
+}
+
 /**
  * The person pressed Continue at a sign-in on this page: its empty password field no longer pauses the walk while the
  * tab stays at this very address, query and fragment too, so a page routed by its hash is a new page (a page the
@@ -1131,6 +1179,8 @@ export const ops = {
         m.y = y;
         await cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: m.down ? 'left' : 'none', buttons: m.down ? 1 : 0 });
       }
+      // A native list is focused, never opened (`focusListAt`).
+      if (action === 'click' && (await inLookout(`(${focusListAt})(${Number(x)}, ${Number(y)})`))?.value === true) return {};
       if (action === 'down' || action === 'click') {
         overtaken(at);
         m.down = true;
@@ -1153,7 +1203,9 @@ export const ops = {
     if (action === 'press') {
       await typable();
       overtaken(at);
-      await press(key);
+      // On a focused native list, its choice steps (`stepList`); on another site, where the walk only looks, it stays.
+      const listed = await inLookout(`(${stepList})(${JSON.stringify(String(key))}, ${!lookOnly()})`);
+      if (listed?.value !== true) await press(key);
     } else {
       for (const ch of text) {
         if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
