@@ -198,6 +198,10 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
         return 1;
     }
     let skip = if has_flag(args, "--force") { Skip::Never } else { Skip::UnlessStale };
+    if has_flag(args, "--no-browser") {
+        // The rest of this run (setup, the first scan, Loop, the summary) stays plain too: impeccable_common::steps reads it.
+        io.env.insert("IMPECCABLE_NO_BROWSER".to_string(), "1".to_string());
+    }
     match sign_in(io, has_flag(args, "--no-browser"), skip) {
         LoginOutcome::Failed => 1,
         LoginOutcome::Already => 0,

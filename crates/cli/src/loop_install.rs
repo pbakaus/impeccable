@@ -493,17 +493,16 @@ pub(crate) fn after_login(io: &mut Io) {
             set_last_loop("not connected yet: impeccable loop connect".to_string());
             return;
         }
-        let connecting = steps.progress(io, &format!("Connecting {names}"));
-        let ((result, connected), said) = steps.held(io, |io| crate::loop_connect::connect_text(io, None));
+        // No spinner here: connecting may start an agent's own browser sign-in, which writes to the terminal itself.
+        let (result, connected) = crate::loop_connect::connect_text(io, None);
         match result {
             Ok(message) => {
-                connecting.done(&steps, io, &format!("Connected {names} to Loop"), &[]);
-                steps.details(io, &said);
+                steps.done(io, &format!("Connected {names} to Loop"), &[]);
                 steps.details(io, &message.lines().map(str::to_string).collect::<Vec<_>>());
                 set_last_loop(format!("{names} connected"));
             }
             Err(e) => {
-                connecting.failed(&steps, io, &format!("Couldn't connect {names}: {e}"), &["You're signed in. Run impeccable loop connect again once that is sorted."]);
+                steps.failed(io, &format!("Couldn't connect {names}: {e}"), &["You're signed in. Run impeccable loop connect again once that is sorted."]);
                 set_last_loop("not connected yet: impeccable loop connect".to_string());
             }
         }

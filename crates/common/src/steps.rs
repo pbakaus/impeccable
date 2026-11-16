@@ -28,7 +28,8 @@ impl Steps {
     pub fn new(io: &Io) -> Option<Steps> {
         let prompt = Prompt::new(io);
         let terminal = prompt.interactive() && std::io::stderr().is_terminal();
-        let plain = io.env("NO_COLOR").is_some() || io.env("TERM") == Some("dumb") || io.env("CI").is_some();
+        // `login --no-browser` (which sets IMPECCABLE_NO_BROWSER for the rest of the run) keeps every line plain.
+        let plain = io.env("NO_COLOR").is_some() || io.env("TERM") == Some("dumb") || io.env("CI").is_some() || io.env_truthy("IMPECCABLE_NO_BROWSER");
         let multiplexed = io.env("TMUX").is_some() || io.env("STY").is_some() || io.env("TERM").is_some_and(|t| t.starts_with("screen") || t.starts_with("tmux"));
         (terminal && !plain).then_some(Steps { prompt, hyperlinks: !multiplexed })
     }
@@ -81,7 +82,10 @@ impl Steps {
         io.err("\n");
         let _ = io.stderr.flush();
         let stop = Arc::new(AtomicBool::new(false));
-        let text = format!("{} {}", self.prompt.accent("◆"), self.prompt.bold(label));
+        // Clipped to the terminal's width: a frame that wrapped would leave its first row behind on every redraw.
+        let room = columns().saturating_sub(5).max(8);
+        let label: String = if label.chars().count() > room { format!("{}…", label.chars().take(room - 1).collect::<String>()) } else { label.to_string() };
+        let text = format!("{} {}", self.prompt.accent("◆"), self.prompt.bold(&label));
         let spin: Vec<String> = FRAMES.iter().map(|f| self.prompt.accent(f)).collect();
         let running = Arc::clone(&stop);
         interrupt::arm();
@@ -106,6 +110,12 @@ impl Steps {
         let options: Vec<RadioOption> =
             options.iter().map(|(label, hint)| RadioOption { label: (*label).to_string(), hint: hint.map(str::to_string) }).collect();
         io.err("\n");
+        // Keys pressed before the question (an extra Enter from an earlier picker) never answer it.
+        #[cfg(unix)]
+        // SAFETY: tcflush on stdin's descriptor only discards unread terminal input.
+        unsafe {
+            libc::tcflush(libc::STDIN_FILENO, libc::TCIFLUSH);
+        }
         self.prompt.radio(io, question, &options, initial)
     }
 
@@ -246,4 +256,17 @@ mod interrupt {
             libc::signal(libc::SIGINT, libc::SIG_DFL);
         }
     }
+}
+
+/// The terminal's width on stderr, 80 when it can't be read.
+fn columns() -> usize {
+    #[cfg(unix)]
+    {
+        let mut size: libc::winsize = unsafe { std::mem::zeroed() };
+        // SAFETY: TIOCGWINSZ only fills the struct passed in.
+        if unsafe { libc::ioctl(libc::STDERR_FILENO, libc::TIOCGWINSZ, &mut size) } == 0 && size.ws_col > 0 {
+            return size.ws_col as usize;
+        }
+    }
+    80
 }
