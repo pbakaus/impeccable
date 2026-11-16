@@ -18,10 +18,38 @@ pub(crate) const LOOP: &str = "When you need a person's decision or input, use n
 /// Matches the MCP server's own instruction text.
 pub(crate) const TASTE: &str = "Impeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule.";
 
-/// Every switch and its line, in the order the lines appear.
-pub(crate) const CATALOG: [(&str, &str); 2] = [("loop", LOOP), ("taste", TASTE)];
+/// Every switch, its label for the settings page, and its line, in the order the lines
+/// appear. The repo settings page mirrors this (`impeccable switches --catalog`), pinned
+/// by a test there; ids are what the service stores.
+pub(crate) const CATALOG: [(&str, &str, &str); 9] = [
+    ("use", "Use Impeccable for design work", "For design or UI work, use the impeccable skill (/impeccable)."),
+    ("taste", "Follow my taste", TASTE),
+    ("wide", "Go wide before building new UI", "New UI: show three or four quick directions that differ in idea, let the person pick, then build only that one."),
+    ("browser", "Check UI in a real browser", "Before calling UI done, check it in a real browser at 1440 and 390 px wide."),
+    ("system", "Use the design system", "Use DESIGN.md's tokens and components, not one-off colors, sizes or components."),
+    ("critique", "Critique before a pull request", "Before a pull request that changes UI, run /impeccable critique on those pages and fix what it raises."),
+    ("loop", "Ask through Loop", LOOP),
+    ("voice", "Write in the product's voice", "Write interface copy in the voice PRODUCT.md describes."),
+    ("a11y", "Meet WCAG 2.2 AA", "Keep UI at WCAG 2.2 AA: contrast, visible focus, keyboard use, labelled controls."),
+];
 
 type Result<T> = std::result::Result<T, String>;
+
+/// Earlier wording of a switch's line, still read as that switch and replaced by its
+/// current line on the next write, so a copy edit never strands an old line. When a
+/// line in CATALOG changes, its previous text goes here.
+const ALIASES: &[(&str, &str)] = &[];
+
+/// The switch a line stands for, by its current wording or an earlier one.
+fn switch_of(line: &str) -> Option<&'static str> {
+    CATALOG
+        .iter()
+        .find(|(_, _, l)| *l == line)
+        .map(|(id, _, _)| *id)
+        .or_else(|| ALIASES.iter().find(|(_, l)| *l == line).map(|(id, _)| *id))
+}
+
+
 
 /// Where a block sits in `text`: the start of its start marker to the end of its end
 /// marker. Markers that are duplicated, unbalanced, out of order or not on lines of
@@ -50,7 +78,7 @@ fn other_lines(text: &str) -> Result<Vec<String>> {
     Ok(text[a + START.len()..b - END.len()]
         .lines()
         .map(|l| l.trim_end_matches('\r'))
-        .filter(|l| !l.trim().is_empty() && !CATALOG.iter().any(|(_, line)| line == l))
+        .filter(|l| !l.trim().is_empty() && switch_of(l).is_none())
         .map(str::to_string)
         .collect())
 }
@@ -61,7 +89,11 @@ pub(crate) fn switches(text: &str) -> Result<Vec<&'static str>> {
     let mut on = Vec::new();
     if let Some((a, b)) = span(text, START, END)? {
         let body: Vec<&str> = text[a..b].lines().map(|l| l.trim_end_matches('\r')).collect();
-        on.extend(CATALOG.iter().filter(|(_, line)| body.contains(line)).map(|(id, _)| *id));
+        for (id, _, _) in CATALOG {
+            if body.iter().any(|l| switch_of(l) == Some(id)) {
+                on.push(id);
+            }
+        }
     }
     if span(text, OLD_TASTE.0, OLD_TASTE.1)?.is_some() && !on.contains(&"taste") {
         on.push("taste");
@@ -104,8 +136,8 @@ pub(crate) fn with_switches(text: &str, on: &[&str]) -> Result<String> {
     let others = other_lines(text)?;
     let mut lines: Vec<String> = CATALOG
         .iter()
-        .filter(|(id, _)| on.contains(id))
-        .map(|(_, l)| l.to_string())
+        .filter(|(id, _, _)| on.contains(id))
+        .map(|(_, _, l)| l.to_string())
         .collect();
     lines.extend(others);
     let block = format!("{START}{nl}{}{nl}{END}", lines.join(nl));
@@ -202,7 +234,7 @@ pub(crate) fn writable(path: &Path) -> Result<()> {
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
-    let Some(&(id, _)) = CATALOG.iter().find(|(i, _)| *i == id) else {
+    let Some(&(id, _, _)) = CATALOG.iter().find(|(i, _, _)| *i == id) else {
         return Err(format!("{id} isn't a switch"));
     };
     let before = read(path)?;
@@ -223,6 +255,49 @@ pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
     Ok(true)
 }
 
+/// `impeccable switches [--catalog]`: which switches are on in each user-level rule
+/// file this machine's agents read, or (`--catalog`) the catalog as JSON for the
+/// settings page to mirror.
+pub(crate) fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
+    match args.first().map(String::as_str) {
+        Some("--catalog") if args.len() == 1 => {
+            let rows: Vec<serde_json::Value> = CATALOG
+                .iter()
+                .map(|(id, label, line)| serde_json::json!({ "id": id, "label": label, "line": line }))
+                .collect();
+            io.out(&format!("{}\n", serde_json::json!({ "schema": 1, "start": START, "end": END, "switches": rows })));
+            0
+        }
+        None => {
+            let home = std::path::PathBuf::from(impeccable_context::util::homedir(&io.env));
+            let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+            let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
+            let codex = [codex.join("AGENTS.override.md"), codex.join("AGENTS.md")]
+                .into_iter()
+                .find(|p| p.exists())
+                .unwrap_or_else(|| codex.join("AGENTS.md"));
+            let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude")).join("CLAUDE.md");
+            for (name, file) in [("Claude Code", claude), ("Codex", codex)] {
+                let shown = file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()));
+                let on = match read(&file) {
+                    Ok(Some(t)) => switches(&t).map(|ids| if ids.is_empty() { "none".to_string() } else { ids.join(", ") }),
+                    Ok(None) => Ok("none".to_string()),
+                    Err(e) => Err(e),
+                };
+                match on {
+                    Ok(on) => io.out(&format!("{name} ({shown}): {on}\n")),
+                    Err(e) => io.out(&format!("{name} ({shown}): unreadable, {e}\n")),
+                }
+            }
+            0
+        }
+        _ => {
+            io.err("Usage: impeccable switches [--catalog]\n");
+            2
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,9 +316,9 @@ mod tests {
 
     #[test]
     fn lines_follow_the_catalog_order_whatever_the_order_asked() {
-        let t = with_switches("", &["taste", "loop"]).unwrap();
-        assert_eq!(t, format!("{START}\n{LOOP}\n{TASTE}\n{END}\n"));
-        assert_eq!(switches(&t).unwrap(), vec!["loop", "taste"]);
+        let t = with_switches("", &["loop", "taste"]).unwrap();
+        assert_eq!(t, format!("{START}\n{TASTE}\n{LOOP}\n{END}\n"));
+        assert_eq!(switches(&t).unwrap(), vec!["taste", "loop"]);
         let only = with_switches(&t, &["taste"]).unwrap();
         assert_eq!(only, format!("{START}\n{TASTE}\n{END}\n"));
     }
@@ -257,7 +332,7 @@ mod tests {
         let mut on = switches(&old).unwrap();
         on.push("loop");
         let new = with_switches(&old, &on).unwrap();
-        assert_eq!(new, format!("mine\n\n{START}\n{LOOP}\n{TASTE}\n{END}\n"));
+        assert_eq!(new, format!("mine\n\n{START}\n{TASTE}\n{LOOP}\n{END}\n"));
         // Where it stands, between the person's own lines.
         let mid = format!("top\n{}\nold\n{}\nbottom\n", OLD_TASTE.0, OLD_TASTE.1);
         assert_eq!(with_switches(&mid, &["taste"]).unwrap(), format!("top\n{START}\n{TASTE}\n{END}\nbottom\n"));
@@ -268,7 +343,7 @@ mod tests {
     fn a_line_this_engine_doesnt_know_survives_its_write() {
         let t = format!("{START}\n{TASTE}\nA newer switch's line.\n{END}\n");
         let out = with_switches(&t, &["loop", "taste"]).unwrap();
-        assert_eq!(out, format!("{START}\n{LOOP}\n{TASTE}\nA newer switch's line.\n{END}\n"));
+        assert_eq!(out, format!("{START}\n{TASTE}\n{LOOP}\nA newer switch's line.\n{END}\n"));
     }
 
     #[test]
@@ -291,10 +366,30 @@ mod tests {
     }
 
     #[test]
+    fn an_alias_reads_as_its_switch() {
+        // Copy edits (review): an earlier wording must read as its switch, not as an
+        // unknown line kept beside the new one. Every alias names a catalog id.
+        for (id, line) in ALIASES {
+            assert!(CATALOG.iter().any(|(i, _, _)| i == id), "{id}");
+            assert_eq!(switch_of(line), Some(*id));
+        }
+        assert_eq!(switch_of(TASTE), Some("taste"));
+        assert_eq!(switch_of("A newer switch's line."), None);
+    }
+
+    #[test]
     fn each_line_is_one_line_and_names_no_person() {
-        for (id, line) in CATALOG {
+        for (id, _, line) in CATALOG {
             assert_eq!(line.lines().count(), 1, "{id}");
             assert!(!line.contains("every message"), "{id}");
         }
+    }
+
+    #[test]
+    fn every_switch_on_stays_under_the_token_budget() {
+        // REN-2056: the whole block stays under about 300 tokens (~4 bytes each).
+        let all: Vec<&str> = CATALOG.iter().map(|(id, _, _)| *id).collect();
+        let block = with_switches("", &all).unwrap();
+        assert!(block.len() <= 1200, "{} bytes", block.len());
     }
 }

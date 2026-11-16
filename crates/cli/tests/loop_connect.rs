@@ -1222,7 +1222,7 @@ fn taste_is_added_once_keeps_the_file_and_goes_on_disconnect() {
     for f in [&claude_md, &codex_md] {
         assert_eq!(taste_blocks(f), 1, "{}: {}", f.display(), read(f));
         assert_eq!(read(f).matches(START).count(), 1, "one block: {}", read(f));
-        assert!(read(f).contains(&format!("{START}\n{INSTRUCTION}\n{TASTE_LINE}")), "Loop's line, then taste's: {}", read(f));
+        assert!(read(f).contains(&format!("{START}\n{TASTE_LINE}")) && read(f).contains(&format!("{INSTRUCTION}\n{END}")), "taste's line, then Loop's: {}", read(f));
         assert!(!read(f).contains(TASTE_START), "{}", read(f));
     }
     assert!(read(&claude_md).starts_with("# mine\nkeep this\n"));
@@ -1261,7 +1261,7 @@ fn an_older_taste_block_is_replaced_where_it_stands() {
     assert_eq!(taste_blocks(&claude_md), 1, "{t}");
     assert!(!t.contains("old wording"), "{t}");
     assert!(!t.contains(TASTE_START), "{t}");
-    assert!(t.starts_with(&format!("top\n{START}\n{INSTRUCTION}\n{TASTE_LINE}")), "{t}");
+    assert!(t.starts_with(&format!("top\n{START}\n{TASTE_LINE}")) && t.contains(&format!("{INSTRUCTION}\n{END}\nbottom")), "{t}");
     assert!(t.contains(&format!("{END}\nbottom\n")), "{t}");
 }
 

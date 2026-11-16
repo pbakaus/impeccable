@@ -2479,8 +2479,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   it goes to stderr, after the setup lines. A yes connects as `loop connect`
   does, taste block offer included. A failed connect is reported on stderr and login still exits 0. Without Loop,
   or with every agent connected, login prints nothing about Loop.
+- `impeccable switches` prints, for Claude Code and Codex, the user-level rule file
+  and the switches on in it (`none` when there is no block). `impeccable switches
+  --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
+  switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
+  argument prints `Usage: impeccable switches [--catalog]` and exits 2.
 - **The Impeccable block** (REN-2056). Each switch that is on adds one fixed,
-  compiled-in line, in catalog order (`loop`, then `taste`), between
+  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together stay under about 300 tokens), between
   `<!-- impeccable start -->` and `<!-- impeccable end -->` in the rule file the agent
   reads: `CLAUDE.md` in the Claude config folder (`$CLAUDE_CONFIG_DIR` when set), and
   for Codex `AGENTS.override.md` in `CODEX_HOME` when it exists, else `AGENTS.md`.
