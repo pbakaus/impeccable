@@ -2437,11 +2437,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
 - `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
-  `impeccable` MCP server, Loop's hooks and an engine-managed instruction block in
-  its rule file (`CLAUDE.md` or `AGENTS.md` in the agent's config folder): "When you
+  `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
+  (see **The Impeccable block** below), the loop switch's line: "When you
   need a person's decision or input, use needs_you.post (Impeccable) instead of
   asking in chat or a built-in question tool. If needs_you says Loop isn't
-  connected, ask normally." For Codex it also sets
+  connected, ask normally." An installation an older CLI made, whose engine-managed
+  block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
+  block through the engine on the next connect, and the line moves into the
+  Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets
   `default_tools_approval_mode = "approve"` on `[mcp_servers.impeccable]`. When the
   installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
   synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
@@ -2476,25 +2479,30 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   it goes to stderr, after the setup lines. A yes connects as `loop connect`
   does, taste block offer included. A failed connect is reported on stderr and login still exits 0. Without Loop,
   or with every agent connected, login prints nothing about Loop.
-- **Taste block.** After a connect (text, `--agent`, `--json`, the one after
-  `loop install`, or a yes to login's offer), each agent the engine now holds a committed installation for
-  gets a fixed three-line block in the rule file it reads (`CLAUDE.md` in the
-  Claude config folder, `$CLAUDE_CONFIG_DIR` when set; `AGENTS.md` in
-  `CODEX_HOME` for Codex, with a line saying to copy it when
-  `AGENTS.override.md` shadows that file), between `<!-- impeccable:taste -->` and
-  `<!-- /impeccable:taste -->`, telling the agent to call the MCP's `taste.get`
-  once per task and record design calls with `taste.note`. It never holds rules,
-  taste or ids. A file whose block is there is rewritten in place (no question).
+- **The Impeccable block** (REN-2056). Each switch that is on adds one fixed,
+  compiled-in line, in catalog order (`loop`, then `taste`), between
+  `<!-- impeccable start -->` and `<!-- impeccable end -->` in the rule file the agent
+  reads: `CLAUDE.md` in the Claude config folder (`$CLAUDE_CONFIG_DIR` when set), and
+  for Codex `AGENTS.override.md` in `CODEX_HOME` when it exists, else `AGENTS.md`.
+  A line the engine doesn't know is kept, after the known ones. When no switch is
+  left on, the block goes. The pre-REN-2056 taste block (`<!-- impeccable:taste -->`
+  to `<!-- /impeccable:taste -->`) reads as the taste switch being on and is replaced
+  by the Impeccable block where it stood on the first write. **Taste:** after a connect (text, `--agent`, `--json`, the one after
+  `loop install`, or a yes to login's offer), each agent the engine now holds a
+  committed installation for is offered the taste line, telling the agent to call the
+  MCP's `taste.get` once per task and record design calls with `taste.note`. It never
+  holds rules, taste or ids. A file whose taste line is there is brought up to date
+  in place (no question).
   A file with no recorded answer is asked about once, for all such files
-  together: `Let your agents use your Impeccable taste? This adds 3 lines to
+  together: `Let your agents use your Impeccable taste? This adds a line to
   <files joined by " and ">. [Y/n]` (stdin and stdout both terminals; Enter
   means yes). `--taste` adds it without asking (also where the person had
-  deleted it); `--no-taste` declines and takes out a block that is there; with
+  deleted it); `--no-taste` declines and takes out a line that is there; with
   neither flag and no terminal (and always under `--json`) nothing is written
   and the text form prints `To let your agents use your Impeccable taste:
   impeccable loop connect --taste`. Answers (`on` or `off` per file) live under
   `taste` in Loop's `connect.json`, so a declined file is not asked again and a
-  block the person deleted by hand is not put back. Writes keep the file's
+  line the person deleted by hand is not put back. Writes keep the file's
   mode, follow a symlink to its target, and leave every byte outside the markers
   alone; duplicated or unbalanced markers leave the file untouched and are
   reported. Under `--json` a `taste` array of `{file, result:
@@ -2503,15 +2511,15 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   naming `connect.json`). When one agent fails, the text and JSON forms still make
   the offer, once, to the agents this run connected (and to no one when nothing
   connected), and the files and agents are re-checked under the lock
-  after the question, so a disconnect meanwhile is never undone. `loop disconnect` takes the block out of every file
+  after the question, so a disconnect meanwhile is never undone. `loop disconnect` takes the taste line out of every file
   recorded and every rule file of the installations it removes (printing
-  `  Removed the taste lines from <file>.`) before the engine's undo, so the
-  engine finds each file as it wrote it, then forgets the answers, keeping those
+  `  Removed the taste lines from <file>.`), and the loop line out of the latter,
+  before the engine's undo, then forgets the answers, keeping those
   whose file could not be changed so the next disconnect tries again. Connect
   records under `tasteCreated` each rule file that was missing before it first
   wrote there (and drops the entry when that agent's connect fails with the file
-  still missing); such a file, when plain (not a symlink) and left empty after both
-  blocks are out, is removed. A file the person had, even an empty one, stays. The two flags go with `connect` or `install`, one at a
+  still missing); such a file, when plain (not a symlink) and left empty after the
+  block is out, is removed. A file the person had, even an empty one, stays. The two flags go with `connect` or `install`, one at a
   time.
 - `impeccable loop status [--json]` reads, and never writes: whether Loop is
   installed and its version, and per agent `detected`, `mcp`
