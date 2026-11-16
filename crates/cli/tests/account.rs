@@ -662,6 +662,16 @@ fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":4,"team":null,"me":["taste"]}"#);
     refresh();
     assert_eq!(std::fs::read_to_string(&rule).unwrap(), "---\nalwaysApply: false\n---\nMine.\n");
+    // ...and that refusal holds nothing else back: a switch turned on in CLAUDE.md is sent.
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    refresh();
+    let claude = home.join(".claude/CLAUDE.md");
+    let c = std::fs::read_to_string(&claude).unwrap();
+    std::fs::write(&claude, c.replace("<!-- impeccable end -->", "Keep UI at WCAG 2.2 AA: contrast, visible focus, keyboard use, labelled controls.\n<!-- impeccable end -->")).unwrap();
+    let before = fake.hits("/cli/v1/agents/me");
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), before + 1, "the CLAUDE.md change was sent");
+    std::fs::remove_dir_all(home.join(".claude")).unwrap();
     std::fs::remove_file(&rule).unwrap();
     std::fs::write(project.join(".gitignore"), "!*.mdc\n").unwrap();
     refresh();

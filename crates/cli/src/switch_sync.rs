@@ -174,13 +174,12 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
             return false;
         }
         let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
-        files.iter().all(|f| {
-            if f.ends_with(".cursor/rules/impeccable.mdc") {
-                agent_block::write_cursor(f, &refs).is_ok()
-            } else {
-                agent_block::write_switches(f, &refs).is_ok()
-            }
-        })
+        // Cursor's rule is projected on its own below: a repository that can't take it
+        // never holds back the shared base.
+        files
+            .iter()
+            .filter(|f| !f.ends_with(".cursor/rules/impeccable.mdc"))
+            .all(|f| agent_block::write_switches(f, &refs).is_ok())
     };
     let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
@@ -198,10 +197,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         }
         Step::Nothing => remote.me.clone().or(base.clone()),
     };
-    // Cursor's rule in this repository always ends at the page's set, whatever the step.
-    if let (Some(page), Some(cursor)) = (remote.me.as_ref(), agent_block::cursor_personal_file(io)) {
+    // Cursor's rule in this repository ends at the set this refresh settled on (what it
+    // just sent, or the page's), whatever the step; a repository that can't take it is
+    // skipped without touching the shared state.
+    let settled = synced.clone().or_else(|| remote.me.clone());
+    if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
         if link.still_current() {
-            let refs: Vec<&str> = page.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
+            let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
             let _ = agent_block::write_cursor(&cursor, &refs);
         }
     }
