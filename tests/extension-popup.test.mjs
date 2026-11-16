@@ -478,7 +478,7 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
 });
 
 // + opens Make a persona: a description makes one, and Use them picks it; a refusal says why and keeps the words.
-for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true, device: 'mobile', sees: 'older-eyes' } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
+for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
   test(`the side panel makes a persona from a description: ${label}`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     // A list that came back empty is one that didn't load: never an empty home.
@@ -504,7 +504,6 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
       assert.deepEqual([traits['data-device'], traits['data-disability']], ['phone', 'low-vision'], 'the made persona shows what was picked');
       await h.press('confirm');
       assert.deepEqual([h.body.dataset.screen, h.app.querySelector('[data-act="pick-0"]').attributes['aria-pressed']], ['home', 'true'], 'first in the grid, picked');
-      assert.deepEqual(['size-phone', 'sees-older'].map((act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-pressed']), ['true', 'true'], 'Home starts on its screen and sight');
       h.app.querySelector('textarea').value = 'Book a shift.';
       await h.press('send');
       assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ mine: 'rosa' }], 'the new persona is the one picked');

@@ -135,7 +135,7 @@ b { font-weight: 500; }
 .widths { flex: none; display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--gray); }
 .widths button { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--muted); }
 .widths button:hover { color: var(--ink); }
-.widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.widths button[aria-pressed="true"], .needs-btn[aria-expanded="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
 /* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
 /*
@@ -357,7 +357,6 @@ b { font-weight: 500; }
 /* ---------- Make a persona: the Disability tab and its list, opening upward over the face ---------- */
 .tabs .widths button.needs-btn { width: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 8px; font-size: 13px; }
 .needs-btn .ic:last-child { width: 14px; height: 14px; }
-.needs-btn[aria-expanded="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .needs-word { margin-right: 2px; }
 .tabs:has(.needs-menu) { position: relative; }
 .tabs .need-row::after { content: none; }
