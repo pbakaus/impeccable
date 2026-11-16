@@ -13,9 +13,10 @@ pub mod http;
 pub mod jsp;
 pub mod launcher;
 pub mod proc;
-#[cfg(feature = "seed")]
 pub mod prompt;
+#[cfg(feature = "seed")]
 pub mod seed;
+pub mod steps;
 pub mod text;
 
 use std::collections::HashMap;

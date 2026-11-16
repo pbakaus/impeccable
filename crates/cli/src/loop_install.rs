@@ -437,6 +437,17 @@ fn connect_then_taste(
     code
 }
 
+/// What the Loop step ended with, for the closing summary of the sign-in it followed.
+static LAST_LOOP: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+fn set_last_loop(said: String) {
+    if let Ok(mut s) = LAST_LOOP.lock() {
+        *s = Some(said);
+    }
+}
+pub(crate) fn last_loop() -> Option<String> {
+    LAST_LOOP.lock().ok().and_then(|s| s.clone())
+}
+
 /// After a successful `impeccable login`: when Loop is on this Mac and an agent here is
 /// not connected to it yet, offer that step, so Loop never needs a door of its own. A
 /// person at a terminal is asked once (Enter means yes); anything else gets one sentence
@@ -463,6 +474,46 @@ pub(crate) fn after_login(io: &mut Io) {
         return;
     }
     let names = waiting.join(" and ");
+    // A sign-in other than production's names its account, so a staging test never connects real agents unawares.
+    let to = impeccable_account::config::Account::from_env(&io.env)
+        .ok()
+        .filter(|a| a.issuer != impeccable_account::config::DEFAULT_ACCOUNT_URL)
+        .map(|a| format!(" to {}", a.display_name()))
+        .unwrap_or_default();
+    if let Some(mut steps) = impeccable_common::steps::Steps::new(io) {
+        // Install's own choice: Enter takes the first option, as the plain question's Enter did.
+        let connect_hint = format!("their questions reach you in Loop{to}");
+        let options = [("Connect them", Some(connect_hint.as_str())), ("Not now", Some("later: impeccable loop connect"))];
+        let pick = steps.choose(io, &format!("Connect {names} to Loop?"), &options, 0).unwrap_or(1);
+        if pick != 0 {
+            set_last_loop("not connected yet: impeccable loop connect".to_string());
+            return;
+        }
+        let connecting = steps.progress(io, &format!("Connecting {names}"));
+        let ((result, connected), said) = steps.held(io, |io| crate::loop_connect::connect_text(io, None));
+        match result {
+            Ok(message) => {
+                connecting.done(&steps, io, &format!("Connected {names} to Loop"), &[]);
+                steps.details(io, &said);
+                steps.details(io, &message.lines().map(str::to_string).collect::<Vec<_>>());
+                set_last_loop(format!("{names} connected"));
+            }
+            Err(e) => {
+                connecting.done(&steps, io, &format!("Couldn't connect {names}: {e}"), &["You're signed in. Run impeccable loop connect again once that is sorted."]);
+                set_last_loop("not connected yet: impeccable loop connect".to_string());
+            }
+        }
+        if !connected.is_empty() {
+            let err = std::mem::replace(&mut io.stderr, Box::new(std::io::sink()));
+            let out = std::mem::replace(&mut io.stdout, err);
+            let (lines, _) = crate::loop_connect::offer_taste(io, &connected, crate::loop_connect::Taste::Ask);
+            io.stderr = std::mem::replace(&mut io.stdout, out);
+            if !lines.is_empty() {
+                steps.details(io, &lines.lines().map(str::to_string).collect::<Vec<_>>());
+            }
+        }
+        return;
+    }
     if !(io.stdin_is_tty && std::io::stdout().is_terminal()) {
         // The service's Next line already said this command: once is enough.
         if impeccable_account::setup_status::named_loop_connect() {
@@ -473,12 +524,7 @@ pub(crate) fn after_login(io: &mut Io) {
         ));
         return;
     }
-    // Set apart, and plain about what Enter does; a sign-in other than production's names its account there.
-    let to = impeccable_account::config::Account::from_env(&io.env)
-        .ok()
-        .filter(|a| a.issuer != impeccable_account::config::DEFAULT_ACCOUNT_URL)
-        .map(|a| format!(" to {}", a.display_name()))
-        .unwrap_or_default();
+    // Set apart, and plain about what Enter does.
     io.err(&format!("\nLoop is installed. Connect {names} to it, so their questions reach you in Loop?\nEnter connects them{to}; n skips. [Y/n] "));
     let _ = std::io::Write::flush(&mut io.stderr);
     let mut line = String::new();
