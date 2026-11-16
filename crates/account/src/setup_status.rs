@@ -156,13 +156,13 @@ const USAGE: &str = "Usage: impeccable status [--json]\n\nShows what Impeccable 
 
 /// `impeccable status [--json]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
-    run_with(args, io, "")
+    run_with(args, io, &|_| String::new())
 }
 
-/// `run`, with `local` (what this machine knows that the service doesn't, such as the
+/// `run`, with `local` building (only when text output prints it) what this machine knows that the service doesn't, such as the
 /// Impeccable block in each agent's rule file) printed after the project line and before
 /// the service's own lines, so the next step stays last. The JSON form never carries it.
-pub fn run_with(args: &[String], io: &mut Io, local: &str) -> i32 {
+pub fn run_with(args: &[String], io: &mut Io, local: &dyn Fn(&Io) -> String) -> i32 {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         io.out(USAGE);
         return 0;
@@ -209,7 +209,9 @@ pub fn run_with(args: &[String], io: &mut Io, local: &str) -> i32 {
     if let Some(line) = project_line(&v) {
         io.out(&line);
     }
-    io.out(local);
+    // Built only here, where it prints: help, --json and errors never read the files.
+    let local = local(io);
+    io.out(&local);
     io.out(&lines(&v));
     0
 }

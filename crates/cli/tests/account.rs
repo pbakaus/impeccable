@@ -335,12 +335,22 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
          Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"
     ), "{err}");
 
+    // An installed agent with the taste switch on, for status to name.
+    let claude_md = std::path::PathBuf::from(&env["HOME"]).join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(claude_md.parent().unwrap()).unwrap();
+    std::fs::write(&claude_md, "<!-- impeccable start -->\nImpeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule.\n<!-- impeccable end -->\n").unwrap();
     let status = impeccable(&env, &["status"]).current_dir(&repo).output().unwrap();
     assert!(status.status.success());
     let text = String::from_utf8_lossy(&status.stdout);
     assert!(text.contains("This project: pristine.\n"), "{text}");
     // The Impeccable block in each installed agent's rule file, before the next step (REN-2056).
-    assert!(text.contains("Impeccable lines in your agents' rule files:\n"), "{text}");
+    let listed = text.replace('\\', "/");
+    let (p, l, c) = (
+        listed.find("This project: pristine.").unwrap(),
+        listed.find("Impeccable lines in your agents' rule files:\nClaude Code (~/.claude/CLAUDE.md): taste\n").expect(&listed),
+        listed.find("Connected:").unwrap(),
+    );
+    assert!(p < l && l < c, "{listed}");
     assert!(text.ends_with("Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"), "{text}");
 
     let json = impeccable(&env, &["status", "--json"]).current_dir(&repo).output().unwrap();

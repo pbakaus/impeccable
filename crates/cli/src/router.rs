@@ -88,8 +88,9 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "whoami" => impeccable_account::run_whoami(rest, io),
         "status" => {
             // What the Impeccable block holds in each agent's rule file (REN-2056), read here.
-            let local = format!("Impeccable lines in your agents' rule files:\n{}", crate::agent_block::listing(io));
-            impeccable_account::setup_status::run_with(rest, io, &local)
+            impeccable_account::setup_status::run_with(rest, io, &|io| {
+                format!("Impeccable lines in your agents' rule files:\n{}", crate::agent_block::listing(io))
+            })
         }
         "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
