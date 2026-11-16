@@ -106,7 +106,9 @@ function harness({ grant = null, me = 401, launched, issuers = [ISSUER], gated =
         return gated ? new Promise((resolve) => gates.push(() => resolve(issue()))) : issue();
       },
       [meta.revocation_endpoint]: (init) => { const token = new URLSearchParams(String(init.body)).get('token'); live.delete(token); ended.push(token); return json(200, {}); },
-      [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira', pro: true }) : json(me, {})),
+      [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira', pro: true }) : json(401, {})),
+      // The availability probe, marked so the server's logs tell its 401 from a real one.
+      [`${at}/extension/v1/me?probe=1`]: () => json(me, {}),
       [`${at}/extension/v1/personas`]: () => json(200, { personas: [] }),
     });
   }
@@ -335,7 +337,7 @@ describe('account worker', () => {
     globalThis.fetch = async (url, init = {}) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-in', refresh_token: 'refresh-walk', expires_in: 900 });
-      if (url === `${ISSUER}/extension/v1/me`) return json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: true });
+      if (url.startsWith(`${ISSUER}/extension/v1/me`)) return json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro: true });
       if (url.startsWith(`${ISSUER}/extension/v1/waiting`)) { asked.push([url.slice(ISSUER.length), init.method ?? 'GET', init.headers.authorization]); return init.method ? json(down ? 503 : 204, null) : json(200, { journeys }); }
       return json(404, {});
     };
@@ -367,8 +369,11 @@ describe('account worker', () => {
   });
 
   // Before any walk (a walk under way keeps the icon on its panel too). Chrome offers no side panel to an account without Pro.
-  it('reads History for the side panel: the server’s rows, and never one whose link is off our app', async () => {
+  it('reads History for the side panel: the server’s rows, and never one whose link is off our app, counting the dropped once', async () => {
     await loaded;
+    const warned = [];
+    const { warn } = console;
+    console.warn = (...args) => warned.push(args);
     const row = (id, url) => ({ id, task: 'Buy a mug.', persona: { name: 'Dana' }, at: 1, outcome: 'issues', issues: 2, url });
     globalThis.fetch = async (url) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
@@ -377,7 +382,11 @@ describe('account worker', () => {
       return json(404, {});
     };
     const answer = await ask({ account: 'journeys' }, fromPanel);
+    await ask({ account: 'journeys' }, fromPanel);
+    console.warn = warn;
     assert.deepEqual([answer.ok, answer.journeys.map((j) => [j.id, j.outcome, j.issues, j.url])], [true, [['o7', 'issues', 2, 'https://app.impeccable.style/app/acme/outings/o7']]]);
+    // Said once however often asked: the list and the count, never the row's id or link.
+    assert.deepEqual([warned.length, warned[0]?.slice(1), /o8|evil/.test(JSON.stringify(warned))], [1, ['journeys', 1], false]);
   });
   it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
     await loaded;
@@ -387,7 +396,7 @@ describe('account worker', () => {
     // Signed in, and the server says the account has no Impeccable Pro, or doesn't say: the popup alone, until it says Pro.
     const served = globalThis.fetch;
     for (const said of [{ pro: false }, {}]) {
-      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', ...said }) : served(url, init));
+      globalThis.fetch = async (url, init = {}) => (url.startsWith(`${ISSUER}/extension/v1/me`) ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', ...said }) : served(url, init));
       assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false, JSON.stringify(said));
       assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], false]);
     }

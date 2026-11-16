@@ -109,7 +109,7 @@ const notPro = (answer) => answer?.status === 403 && answer.json?.error === 'not
  * only ever go to the recorded issuer. Each call reads the server in use once, at its start, and works for that server
  * alone; one that finds the server changed under it when an answer comes back hands nothing on.
  */
-export function createSession({ fetch, store, issuer, launch, redirectUri, now = () => Date.now() }) {
+export function createSession({ fetch, store, issuer, launch, redirectUri, now = () => Date.now(), warn = (...args) => console.warn(...args) }) {
   /** The access token, in memory only: `{ token, until, issuer }`. */
   let access = null;
   /** The refresh under way for each issuer: a second caller for the same one waits for the first. */
@@ -230,6 +230,19 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
   }
   const read = async (at, path) => { const answer = await call(at, path); return answer && answer.status >= 200 && answer.status < 300 ? answer.json : null; };
 
+  /** The lists whose dropped rows were said: once each for this worker, as the check-in reads `waiting` every half minute. */
+  const warned = new Set();
+  /**
+   * `list[key]`'s rows that `keep` reads, or null when there is no list. Rows it can't read (the server's answer moved
+   * on from this build) are counted and said once: the list's `name` and the count, never an id or a link.
+   */
+  function rowsOf(list, key, keep, name = key) {
+    const all = Array.isArray(list?.[key]) ? list[key] : null;
+    const rows = all?.filter(keep) ?? null;
+    if (rows && rows.length < all.length && !warned.has(name)) { warned.add(name); warn('account rows dropped', name, all.length - rows.length); }
+    return rows;
+  }
+
   /**
    * A listed persona's face (`face: { src, crop }`) as a `data:` address the panel can paint: `src` is a short-lived
    * link on `at`'s own face door that answers only with the bearer, so a CSS `url()` could never load it. A link
@@ -273,11 +286,12 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
   return {
     /**
      * Whether the server takes extension sign-ins at all: its door asked with no token answers 401. A 404 (the door
-     * is off), any other answer, or no answer: no.
+     * is off), any other answer, or no answer: no. `?probe=1` tells the server's logs this 401 from a real one; a
+     * `HEAD` would do it too, but the door answers that 404.
      */
     async available() {
       try {
-        const answer = await fetch(`${resourceFor(issuer())}/me`, { headers: { accept: 'application/json' }, credentials: 'omit', redirect: 'error' });
+        const answer = await fetch(`${resourceFor(issuer())}/me?probe=1`, { headers: { accept: 'application/json' }, credentials: 'omit', redirect: 'error' });
         return answer.status === 401;
       } catch {
         return false;
@@ -318,7 +332,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       const one = appOf(app);
       const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
       const list = await read(at, `/personas${query}`);
-      const rows = Array.isArray(list?.personas) ? list.personas.filter((p) => typeof p?.name === 'string').slice(0, 100) : null;
+      const rows = rowsOf(list, 'personas', (p) => typeof p?.name === 'string')?.slice(0, 100);
       if (!rows) return null;
       const only = Array.isArray(faceless) ? faceless : null;
       const faces = await Promise.all(rows.map((p) => (!only || (p.mine === true && only.includes(p.slug)) ? faceOf(at, p.face) : null)));
@@ -332,8 +346,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async journeys() {
       const at = issuer();
       const list = await read(at, '/journeys');
-      const rows = Array.isArray(list?.journeys) ? list.journeys.filter((j) => typeof j?.id === 'string' && typeof j.task === 'string' && typeof j.persona?.name === 'string'
-        && Number.isFinite(j.at) && OUTCOMES.includes(j.outcome) && typeof j.url === 'string' && isOutingPage(j.url)).slice(0, 100) : null;
+      const rows = rowsOf(list, 'journeys', (j) => typeof j?.id === 'string' && typeof j.task === 'string' && typeof j.persona?.name === 'string'
+        && Number.isFinite(j.at) && OUTCOMES.includes(j.outcome) && typeof j.url === 'string' && isOutingPage(j.url))?.slice(0, 100);
       if (!rows) return null;
       // One fetch per face, however many of the person's journeys it walked.
       const faces = new Map();
@@ -346,8 +360,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     /** The person's apps, `[{ workspace, repo, app, name }]`, or null. */
     async apps() {
       const list = await read(issuer(), '/apps');
-      const rows = Array.isArray(list?.apps) ? list.apps : null;
-      return rows?.filter((a) => appOf(a)).slice(0, 50)
+      return rowsOf(list, 'apps', (a) => appOf(a))?.slice(0, 50)
         .map((a) => ({ workspace: a.workspace, repo: a.repo, app: a.app, name: typeof a.name === 'string' && a.name ? a.name.slice(0, 80) : `${a.repo}/${a.app}` })) ?? null;
     },
 
@@ -357,10 +370,9 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      */
     async waiting() {
       const list = await read(issuer(), '/waiting');
-      const rows = Array.isArray(list?.journeys) ? list.journeys : null;
       // Short enough for one line of a notice.
       const text = (value, max) => (typeof value !== 'string' ? '' : value.length > max ? `${value.slice(0, max - 1)}…` : value);
-      return rows?.filter((j) => typeof j?.id === 'string' && WAITING_ID.test(j.id) && typeof j.page === 'string' && j.page.length <= 2048).slice(0, 3)
+      return rowsOf(list, 'journeys', (j) => typeof j?.id === 'string' && WAITING_ID.test(j.id) && typeof j.page === 'string' && j.page.length <= 2048, 'waiting')?.slice(0, 3)
         .map((j) => ({ id: j.id, page: j.page, persona: text(j.persona, 40), site: text(j.site, 60), task: text(j.task, 120) })) ?? null;
     },
 
