@@ -61,7 +61,10 @@ fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
 /// The launcher paths the manifests invoke, per harness. Project-relative
 /// (or `${CLAUDE_PROJECT_DIR}` / repo-root anchored) so a committed manifest
 /// resolves on every teammate's checkout.
-const CLAUDE_HOOK_COMMAND: &str = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+/// Claude's carries the installer's existence guard (`guardedLauncher` in
+/// `transformers/hooks.js`, #399): a copy in user-level settings exits 0 where
+/// the launcher is absent, and a present launcher keeps its own exit code.
+const CLAUDE_HOOK_COMMAND: &str = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
 const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
 const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook";
 const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
@@ -77,7 +80,37 @@ pub struct ManifestTarget {
     pub user_settings: bool,
 }
 
+const SESSION_STATUS_MESSAGE: &str = "Preparing build session";
+
+/// The Claude Code manifest, the same entries `buildClaudeSettingsManifest`
+/// writes at install (pinned against `tests/fixtures/hook-manifests/claude-settings.json`
+/// on both sides). SessionStart is where the hook exports the session id that
+/// `build-phase` records as a build's owner (#811, #1307).
 pub fn claude_manifest_for_command(cmd: &str) -> Value {
+    claude_compatible_manifest(cmd, true)
+}
+
+/// Claude-shaped hooks; Grok's manifest has no SessionStart
+/// (`buildGrokHooksManifest`), so the entry is opt-in.
+fn claude_compatible_manifest(cmd: &str, session_identity: bool) -> Value {
+    let mut events = Vec::new();
+    if session_identity {
+        events.push((
+            "SessionStart",
+            Value::Array(vec![obj(vec![(
+                "hooks",
+                Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, SESSION_STATUS_MESSAGE)]),
+            )])]),
+        ));
+    }
+    events.push((
+        "PostToolUse",
+        Value::Array(vec![obj(vec![
+            ("matcher", Value::from("Edit|Write")),
+            ("hooks", Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, STATUS_MESSAGE)])),
+        ])]),
+    ));
+    events.push(("Stop", Value::Array(vec![stop_manifest_entry(cmd)])));
     obj(vec![
         (
             "description",
@@ -85,19 +118,7 @@ pub fn claude_manifest_for_command(cmd: &str) -> Value {
             // tracks the current Edit and Write tools (upstream 7d5c60d2).
             Value::from("Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop."),
         ),
-        (
-            "hooks",
-            obj(vec![
-                (
-                    "PostToolUse",
-                    Value::Array(vec![obj(vec![
-                        ("matcher", Value::from("Edit|Write")),
-                        ("hooks", Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, STATUS_MESSAGE)])),
-                    ])]),
-                ),
-                ("Stop", Value::Array(vec![stop_manifest_entry(cmd)])),
-            ]),
-        ),
+        ("hooks", obj(events)),
     ])
 }
 
@@ -111,7 +132,7 @@ fn grok_manifest() -> Value {
     } else {
         "\".grok/skills/impeccable/scripts/impeccable\" hook".to_string()
     };
-    let mut manifest = claude_manifest_for_command(&command);
+    let mut manifest = claude_compatible_manifest(&command, false);
     manifest["hooks"]["PostToolUse"][0]["matcher"] = Value::from("Edit|Write|MultiEdit");
     manifest
 }
@@ -280,5 +301,72 @@ fn contains_entries(actual: &Value, expected: &Value) -> bool {
         Value::Array(entries) => actual.as_array().is_some_and(|a|
             entries.iter().all(|e| a.iter().any(|v| contains_entries(v, e)))),
         _ => actual == expected,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_manifest(name: &str, body: &str) -> String {
+        let dir = std::env::temp_dir().join(format!("impeccable-hook-wiring-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.local.json");
+        std::fs::write(&path, body).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    /// `hooks on` writes the installer's manifest byte for byte: the fixture
+    /// is also asserted against `buildClaudeSettingsManifest` in
+    /// `tests/hook-build.test.mjs`, so the two cannot drift (#1307).
+    #[test]
+    fn hooks_on_claude_manifest_matches_the_installer_fixture() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/hook-manifests/claude-settings.json");
+        let expected = std::fs::read_to_string(fixture).unwrap();
+        let actual = serde_json::to_string_pretty(&claude_manifest()).unwrap();
+        assert_eq!(actual, expected.trim_end());
+    }
+
+    #[test]
+    fn hooks_on_claude_manifest_carries_session_start_and_the_guard() {
+        let manifest = claude_manifest();
+        let hooks = &manifest["hooks"];
+        let keys: Vec<&str> = hooks.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["SessionStart", "PostToolUse", "Stop"]);
+        let guarded = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+        for event in keys {
+            assert_eq!(hooks[event][0]["hooks"][0]["command"], guarded, "{event}");
+        }
+        assert_eq!(hooks["SessionStart"][0]["hooks"][0]["statusMessage"], "Preparing build session");
+    }
+
+    #[test]
+    fn grok_manifest_has_no_session_start() {
+        let manifest = grok_manifest();
+        let keys: Vec<&str> = manifest["hooks"].as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["PostToolUse", "Stop"]);
+    }
+
+    /// The two-entry, unguarded manifest earlier `hooks on` runs wrote is not
+    /// current, so status reports it and `hooks on` / the context repair
+    /// rewrite it with SessionStart.
+    #[test]
+    fn old_two_entry_claude_manifest_is_not_wired() {
+        let bare = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+        let old = serde_json::json!({
+            "description": "Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.",
+            "hooks": {
+                "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+                "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+            }
+        });
+        let old_path = temp_manifest("old", &old.to_string());
+        assert!(!manifest_is_wired(&old_path, &claude_manifest()));
+        let current_path = temp_manifest("current", &claude_manifest().to_string());
+        assert!(manifest_is_wired(&current_path, &claude_manifest()));
+        for path in [old_path, current_path] {
+            std::fs::remove_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+        }
     }
 }
