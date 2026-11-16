@@ -220,3 +220,28 @@ fn tells_the_agent_its_tools_changed_when_chrome_connects_later() {
     assert_eq!(said, ["1", "2", "notifications/tools/list_changed", "3", "4"]);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// Catches a crashed relay's leftover socket file hiding the relay that replaces it: same path, a new socket.
+#[test]
+fn a_relay_replacing_a_crashed_ones_file_is_news() {
+    let dir = short_dir("stale");
+    let socket = dir.join("browser").join("host.sock");
+    std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
+    std::fs::write(&socket, b"").unwrap();
+    let (mut to_server, server_in) = UnixStream::pair().unwrap();
+    let s = socket.clone();
+    let server = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        serve_with(std::io::BufReader::new(server_in), &mut out, &mut Vec::new(), &mut Remote, Some(&s));
+        out
+    });
+    use std::io::Write as _;
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" })).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    let _ext = relay(&socket);
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 2, "method": "ping" })).unwrap();
+    drop(to_server);
+    let out = String::from_utf8(server.join().unwrap()).unwrap();
+    assert!(out.contains("notifications/tools/list_changed"));
+    let _ = std::fs::remove_dir_all(dir);
+}
